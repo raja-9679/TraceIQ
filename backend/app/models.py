@@ -38,6 +38,9 @@ class TestRun(SQLModel, table=True):
     error_message: Optional[str] = Field(default=None)
     trace_url: Optional[str] = Field(default=None)
     video_url: Optional[str] = Field(default=None)
+    response_status: Optional[int] = Field(default=None)
+    request_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
+    response_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     
     results: List["TestCaseResult"] = Relationship(back_populates="test_run")
 

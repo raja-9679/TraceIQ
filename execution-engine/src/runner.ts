@@ -44,9 +44,18 @@ export class PlaywrightRunner {
         let status = 'passed';
         let error = null;
 
+        let responseStatus = null;
+        let requestHeaders = null;
+        let responseHeaders = null;
+
         try {
             console.log(`Running test for runId: ${runId}`);
-            await page.goto('https://www.thehindu.com');
+            const response = await page.goto('https://www.thehindu.com');
+            if (response) {
+                responseStatus = response.status();
+                responseHeaders = response.headers();
+                requestHeaders = response.request().headers();
+            }
             // Simulate interaction
             // await page.click('text=More information...');
         } catch (e: any) {
@@ -79,7 +88,10 @@ export class PlaywrightRunner {
                 duration_ms: duration,
                 error,
                 trace: traceKey,
-                video: videoKey
+                video: videoKey,
+                response_status: responseStatus,
+                request_headers: requestHeaders,
+                response_headers: responseHeaders
             };
         }
     }

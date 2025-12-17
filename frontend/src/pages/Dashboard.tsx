@@ -2,8 +2,10 @@ import { useQuery } from '@tanstack/react-query';
 import { getRuns } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle2, XCircle, Clock, TrendingUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function Dashboard() {
+    const navigate = useNavigate();
     const { data: runs } = useQuery({
         queryKey: ['runs'],
         queryFn: getRuns,
@@ -81,11 +83,15 @@ export default function Dashboard() {
                 <CardContent>
                     <div className="space-y-4">
                         {runs?.slice(0, 5).map((run) => (
-                            <div key={run.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
+                            <div
+                                key={run.id}
+                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                                onClick={() => navigate(`/runs/${run.id}`)}
+                            >
                                 <div className="flex items-center space-x-4">
                                     <div className={`h-10 w-10 rounded-full flex items-center justify-center ${run.status === 'passed' ? 'bg-green-100' :
-                                            run.status === 'failed' ? 'bg-red-100' :
-                                                run.status === 'running' ? 'bg-blue-100' : 'bg-gray-100'
+                                        run.status === 'failed' ? 'bg-red-100' :
+                                            run.status === 'running' ? 'bg-blue-100' : 'bg-gray-100'
                                         }`}>
                                         {run.status === 'passed' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
                                         {run.status === 'failed' && <XCircle className="h-5 w-5 text-red-600" />}

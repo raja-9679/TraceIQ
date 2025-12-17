@@ -16,6 +16,9 @@ export interface TestRun {
     video_url?: string;
     error_message?: string;
     ai_analysis?: string;
+    response_status?: number;
+    request_headers?: Record<string, string>;
+    response_headers?: Record<string, string>;
 }
 
 export const getRuns = async (): Promise<TestRun[]> => {
@@ -24,6 +27,9 @@ export const getRuns = async (): Promise<TestRun[]> => {
 };
 
 export const getRun = async (id: number): Promise<TestRun> => {
+    if (!id || id <= 0) {
+        throw new Error("Invalid run ID");
+    }
     const response = await api.get(`/runs/${id}`);
     return response.data;
 };

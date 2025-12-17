@@ -2,14 +2,17 @@ import { useQuery } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { getRun, getArtifactUrl } from "@/lib/api";
 import { ArrowLeft, Brain, FileText, Video } from "lucide-react";
+import { TraceTimeline } from "@/components/TraceTimeline";
 
 export default function TestRunDetails() {
-    const { id } = useParams<{ id: string }>();
-    const runId = parseInt(id || "0");
+    const { runId: idParam } = useParams<{ runId: string }>();
+    const runId = parseInt(idParam || "0");
+    const isValidRunId = !isNaN(runId) && runId > 0;
 
     const { data: run, isLoading } = useQuery({
         queryKey: ["run", runId],
         queryFn: () => getRun(runId),
+        enabled: isValidRunId,
     });
 
     const { data: traceUrl } = useQuery({
@@ -24,6 +27,7 @@ export default function TestRunDetails() {
         enabled: !!run?.video_url,
     });
 
+    if (!isValidRunId) return <div className="p-4">Invalid Run ID</div>;
     if (isLoading) return <div className="p-4">Loading...</div>;
     if (!run) return <div className="p-4">Run not found</div>;
 
@@ -65,17 +69,57 @@ export default function TestRunDetails() {
                 </div>
             )}
 
+            {/* Network Details */}
+            {(run.response_status || run.request_headers) && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h3 className="text-gray-800 font-semibold flex items-center gap-2 mb-3">
+                        <FileText size={18} />
+                        Network Details
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Response Status</p>
+                            <p className={`mt-1 font-mono ${run.response_status && run.response_status >= 400 ? 'text-red-600' : 'text-green-600'}`}>
+                                {run.response_status || 'N/A'}
+                            </p>
+                        </div>
+                        {run.response_headers && (
+                            <div className="col-span-full">
+                                <p className="text-sm font-medium text-gray-500 mb-1">Response Headers</p>
+                                <pre className="text-xs bg-white p-2 rounded border overflow-x-auto">
+                                    {JSON.stringify(run.response_headers, null, 2)}
+                                </pre>
+                            </div>
+                        )}
+                        {run.request_headers && (
+                            <div className="col-span-full">
+                                <p className="text-sm font-medium text-gray-500 mb-1">Request Headers</p>
+                                <pre className="text-xs bg-white p-2 rounded border overflow-x-auto">
+                                    {JSON.stringify(run.request_headers, null, 2)}
+                                </pre>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {traceUrl && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm h-[600px]">
-                        <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 font-medium text-sm text-gray-700">
-                            Trace Viewer
+                    <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="font-semibold text-gray-900">Trace Timeline</h3>
+                            <a
+                                href={traceUrl}
+                                download
+                                className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                                target="_blank"
+                                rel="noreferrer"
+                            >
+                                <FileText size={16} />
+                                Download Full Trace
+                            </a>
                         </div>
-                        <iframe
-                            src={`https://trace.playwright.dev/?trace=${encodeURIComponent(traceUrl)}`}
-                            className="w-full h-full border-0"
-                            title="Playwright Trace Viewer"
-                        />
+                        <TraceTimeline url={traceUrl} />
                     </div>
                 )}
 

@@ -36,6 +36,9 @@ def run_test_suite(run_id: int):
                 run.duration_ms = result.get("duration_ms", 0)
                 run.trace_url = result.get("trace")
                 run.video_url = result.get("video")
+                run.response_status = result.get("response_status")
+                run.request_headers = result.get("request_headers")
+                run.response_headers = result.get("response_headers")
                 if result.get("error"):
                     run.error_message = result["error"]
             else:

@@ -66,7 +66,7 @@ async def get_run(run_id: int, session: AsyncSession = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Run not found")
     return run
 
-@router.get("/artifacts/{object_name}")
+@router.get("/artifacts/{object_name:path}")
 async def get_artifact_url(object_name: str):
     url = minio_client.get_presigned_url(object_name)
     return {"url": url}
