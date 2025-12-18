@@ -9,18 +9,15 @@ const runner = new PlaywrightRunner();
 app.use(bodyParser.json());
 
 app.post('/run', async (req, res) => {
-    const { runId } = req.body;
+    const { runId, testCases } = req.body;
+    console.log(`Received run request for runId: ${runId}`);
+    console.log(`Test Cases received: ${JSON.stringify(testCases)}`);
     if (!runId) {
         return res.status(400).json({ error: 'runId is required' });
     }
 
-    // Run async, don't block? Or block for now since Celery waits?
-    // Celery worker calls this, so we can block or return pending.
-    // Let's block for simplicity in this MVP, or return immediately and use webhook?
-    // The Python worker is synchronous-ish (it waits). Let's wait.
-
     try {
-        const result = await runner.runTest(runId);
+        const result = await runner.runTest(runId, testCases);
         res.json(result);
     } catch (e: any) {
         res.status(500).json({ error: e.message });

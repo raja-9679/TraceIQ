@@ -30,7 +30,7 @@ export default function TestSuites() {
     const navigate = useNavigate();
 
     const runMutation = useMutation({
-        mutationFn: triggerRun,
+        mutationFn: (id: number) => triggerRun(id),
         onSuccess: (newRun) => {
             navigate(`/runs/${newRun.id}`);
         },
@@ -140,7 +140,7 @@ export default function TestSuites() {
                                 <Button
                                     size="sm"
                                     className="flex-1"
-                                    onClick={() => runMutation.mutate()}
+                                    onClick={() => runMutation.mutate(suite.id)}
                                     disabled={runMutation.isPending}
                                 >
                                     <Play className="mr-1 h-3 w-3" />

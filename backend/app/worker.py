@@ -27,8 +27,47 @@ def run_test_suite(run_id: int):
         session.commit()
         
         try:
+            # Fetch Test Suite and Cases
+            from app.models import TestSuite
+            from sqlalchemy.orm import selectinload
+            from sqlmodel import select
+            
+            suite = session.exec(
+                select(TestSuite)
+                .where(TestSuite.id == run.test_suite_id)
+                .options(selectinload(TestSuite.test_cases))
+            ).first()
+            
+            if not suite:
+                raise Exception(f"Test Suite {run.test_suite_id} not found")
+            
+            # Filter cases if specific case_id is requested
+            cases_to_run = suite.test_cases
+            if run.test_case_id:
+                cases_to_run = [c for c in suite.test_cases if c.id == run.test_case_id]
+                if not cases_to_run:
+                    raise Exception(f"Test Case {run.test_case_id} not found in suite {run.test_suite_id}")
+
+            # Serialize test cases
+            test_cases_data = []
+            for case in cases_to_run:
+                test_cases_data.append({
+                    "id": case.id,
+                    "name": case.name,
+                    "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps]
+                })
+
+            print(f"DEBUG: Found {len(cases_to_run)} cases to run. Serialized data: {test_cases_data}")
+
+            payload = {
+                "runId": run_id,
+                "testCases": test_cases_data
+            }
+            
+            print(f"DEBUG: Sending payload to execution engine: {payload}")
+
             # Call Node.js Execution Engine
-            response = requests.post(EXECUTION_ENGINE_URL, json={"runId": run_id})
+            response = requests.post(EXECUTION_ENGINE_URL, json=payload)
             
             if response.status_code == 200:
                 result = response.json()

@@ -4,7 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { CheckCircle2, XCircle, Clock, TrendingUp } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
+import { useAuth } from '@/context/AuthContext';
+
 export default function Dashboard() {
+    const { user } = useAuth();
     const navigate = useNavigate();
     const { data: runs } = useQuery({
         queryKey: ['runs'],
@@ -24,7 +27,7 @@ export default function Dashboard() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+                <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.full_name?.split(' ')[0] || 'User'}!</h1>
                 <p className="text-gray-500 mt-1">Overview of your test automation platform</p>
             </div>
 

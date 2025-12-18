@@ -1,0 +1,5 @@
+goto "https://www.thehindu.com/"
+click on .btn.btn-signup.thgsignin ".btn.btn-signup.thgsignin"
+expect-visible on iframe[id^="piano-id-"]
+switch-frame on iframe[title="User authentication interface"]
+fill on input[name="email"] "raja.d@thehindu.co.in"

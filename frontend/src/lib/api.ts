@@ -4,6 +4,14 @@ export const api = axios.create({
     baseURL: "http://localhost:8000/api",
 });
 
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem("token");
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
 export interface TestRun {
     id: number;
     created_at: string;
@@ -34,8 +42,22 @@ export const getRun = async (id: number): Promise<TestRun> => {
     return response.data;
 };
 
-export const triggerRun = async (): Promise<TestRun> => {
-    const response = await api.post("/runs");
+export const triggerRun = async (suiteId: number, caseId?: number): Promise<TestRun> => {
+    let url = `/runs?suite_id=${suiteId}`;
+    if (caseId) {
+        url += `&case_id=${caseId}`;
+    }
+    const response = await api.post(url);
+    return response.data;
+};
+
+export const getTestCase = async (caseId: number): Promise<any> => {
+    const response = await api.get(`/cases/${caseId}`);
+    return response.data;
+};
+
+export const updateTestCase = async (caseId: number, data: any): Promise<any> => {
+    const response = await api.put(`/cases/${caseId}`, data);
     return response.data;
 };
 

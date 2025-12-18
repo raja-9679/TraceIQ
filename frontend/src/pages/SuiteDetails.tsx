@@ -12,6 +12,7 @@ export default function SuiteDetails() {
     const queryClient = useQueryClient();
 
     const [showCreateDialog, setShowCreateDialog] = useState(false);
+    const [showTriggerDialog, setShowTriggerDialog] = useState(false);
     const [newTestName, setNewTestName] = useState('');
     const [newTestSteps, setNewTestSteps] = useState('');
 
@@ -66,10 +67,10 @@ export default function SuiteDetails() {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button onClick={() => setShowCreateDialog(true)}>
-                        <Plus className="mr-2 h-4 w-4" /> Add Test Case
+                    <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
+                        <Plus className="mr-2 h-4 w-4" /> New Test Case
                     </Button>
-                    <Button variant="outline">
+                    <Button onClick={() => triggerRun(Number(suiteId))}>
                         <Play className="mr-2 h-4 w-4" /> Run Suite
                     </Button>
                 </div>
@@ -144,9 +145,17 @@ export default function SuiteDetails() {
                                                 <div className="ml-7">
                                                     <p className="text-sm font-medium text-gray-700 mb-2">Steps:</p>
                                                     <ol className="list-decimal list-inside space-y-1">
-                                                        {testCase.steps.map((step: string, idx: number) => (
+                                                        {testCase.steps.map((step: any, idx: number) => (
                                                             <li key={idx} className="text-sm text-gray-600">
-                                                                {step}
+                                                                {typeof step === 'string' ? (
+                                                                    step
+                                                                ) : (
+                                                                    <span>
+                                                                        <span className="font-semibold text-primary">{step.type}</span>
+                                                                        {step.selector && <span className="text-gray-500"> on {step.selector}</span>}
+                                                                        {step.value && <span className="text-gray-900"> "{step.value}"</span>}
+                                                                    </span>
+                                                                )}
                                                             </li>
                                                         ))}
                                                     </ol>
@@ -154,7 +163,10 @@ export default function SuiteDetails() {
                                             )}
                                         </div>
                                         <div className="flex gap-2">
-                                            <Button variant="ghost" size="sm">
+                                            <Button variant="ghost" size="sm" onClick={() => triggerRun(Number(suiteId), testCase.id)}>
+                                                <Play className="h-4 w-4 text-green-600" />
+                                            </Button>
+                                            <Button variant="ghost" size="sm" onClick={() => navigate(`/suites/${suiteId}/cases/${testCase.id}/edit`)}>
                                                 <Edit className="h-4 w-4" />
                                             </Button>
                                             <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">

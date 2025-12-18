@@ -13,6 +13,7 @@ import {
     Search
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/context/AuthContext';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -22,6 +23,7 @@ const navigation = [
 ];
 
 export default function DashboardLayout() {
+    const { user, logout } = useAuth();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const location = useLocation();
 
@@ -53,8 +55,8 @@ export default function DashboardLayout() {
                                     key={item.name}
                                     to={item.href}
                                     className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive
-                                            ? 'bg-primary text-primary-foreground'
-                                            : 'text-gray-700 hover:bg-gray-100'
+                                        ? 'bg-primary text-primary-foreground'
+                                        : 'text-gray-700 hover:bg-gray-100'
                                         }`}
                                 >
                                     <item.icon className="h-5 w-5 mr-3" />
@@ -73,13 +75,14 @@ export default function DashboardLayout() {
                                 </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">Test User</p>
-                                <p className="text-xs text-gray-500 truncate">user@example.com</p>
+                                <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name || 'User'}</p>
+                                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                             </div>
                         </div>
                         <Button
                             variant="ghost"
                             className="w-full justify-start mt-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={logout}
                         >
                             <LogOut className="h-4 w-4 mr-2" />
                             Logout
@@ -119,6 +122,15 @@ export default function DashboardLayout() {
                                 <Bell className="h-6 w-6" />
                                 <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
                             </button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={logout}
+                                className="text-gray-500 hover:text-red-600 hover:bg-red-50"
+                                title="Logout"
+                            >
+                                <LogOut className="h-5 w-5" />
+                            </Button>
                         </div>
                     </div>
                 </header>

@@ -1,9 +1,12 @@
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import * as Minio from 'minio';
+import { chromium, Browser, BrowserContext, Page, FrameLocator, Locator } from 'playwright';
+import * as Minio from 'minio'; // Try standard import, but fallback if needed
 import * as fs from 'fs';
 import * as path from 'path';
 
-const minioClient = new Minio.Client({
+// Fix for Minio import consistency
+const MinioClient = (Minio as any).Client || Minio;
+
+const minioClient = new MinioClient({
     endPoint: process.env.MINIO_ENDPOINT || 'localhost',
     port: parseInt(process.env.MINIO_PORT || '9000'),
     useSSL: false,
@@ -17,7 +20,10 @@ export class PlaywrightRunner {
     private browser: Browser | null = null;
 
     async start() {
-        this.browser = await chromium.launch({ headless: true });
+        this.browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
     }
 
     async stop() {
@@ -26,7 +32,7 @@ export class PlaywrightRunner {
         }
     }
 
-    async runTest(runId: number): Promise<any> {
+    async runTest(runId: number, testCases: any[]): Promise<any> {
         if (!this.browser) await this.start();
 
         const artifactsDir = `/tmp/artifacts/${runId}`;
@@ -34,6 +40,50 @@ export class PlaywrightRunner {
 
         const context = await this.browser!.newContext({
             recordVideo: { dir: artifactsDir, size: { width: 1280, height: 720 } }
+        });
+
+        // Inject mouse cursor visualization
+        await context.addInitScript(() => {
+            const box = document.createElement('div');
+            box.classList.add('selenium-mouse-helper');
+            const styleElement = document.createElement('style');
+            styleElement.innerHTML = `
+                .selenium-mouse-helper {
+                    pointer-events: none;
+                    position: absolute;
+                    top: 0;
+                    left: 0;
+                    width: 20px;
+                    height: 20px;
+                    border: 1px solid white;
+                    border-radius: 50%;
+                    background: rgba(255, 0, 0, 0.7);
+                    margin: -10px 0 0 -10px;
+                    padding: 0;
+                    transition: background .2s, border-radius .2s, border-color .2s;
+                    box-shadow: 0 0 4px rgba(0,0,0,0.8);
+                    z-index: 100000;
+                }
+                .selenium-mouse-helper.button-pressed {
+                    background: rgba(255, 0, 0, 1);
+                    transform: scale(0.9);
+                }
+            `;
+            document.head.appendChild(styleElement);
+            document.body.appendChild(box);
+
+            document.addEventListener('mousemove', event => {
+                box.style.left = event.pageX + 'px';
+                box.style.top = event.pageY + 'px';
+            }, true);
+
+            document.addEventListener('mousedown', event => {
+                box.classList.add('button-pressed');
+            }, true);
+
+            document.addEventListener('mouseup', event => {
+                box.classList.remove('button-pressed');
+            }, true);
         });
 
         const tracePath = path.join(artifactsDir, 'trace.zip');
@@ -49,15 +99,35 @@ export class PlaywrightRunner {
         let responseHeaders = null;
 
         try {
-            console.log(`Running test for runId: ${runId}`);
-            const response = await page.goto('https://www.thehindu.com');
-            if (response) {
-                responseStatus = response.status();
-                responseHeaders = response.headers();
-                requestHeaders = response.request().headers();
+            console.log(`Running test suite for runId: ${runId} with ${testCases?.length || 0} cases`);
+
+            if (!testCases || testCases.length === 0) {
+                throw new Error("No test cases provided");
             }
-            // Simulate interaction
-            // await page.click('text=More information...');
+
+            for (const testCase of testCases) {
+                console.log(`Executing Test Case: ${testCase.name}`);
+
+                // Track current context (Page or Frame)
+                let currentContext: Page | FrameLocator = page;
+
+                for (const step of testCase.steps) {
+                    if (step.type === 'switch-frame') {
+                        const frameSelector = step.selector || step.value;
+                        if (frameSelector === 'main' || frameSelector === 'top') {
+                            console.log('  Step: switch-frame to main page');
+                            currentContext = page;
+                        } else if (frameSelector) {
+                            console.log(`  Step: switch-frame ${frameSelector}`);
+                            // Switch context to frame
+                            currentContext = page.frameLocator(frameSelector);
+                        }
+                    } else {
+                        await this.executeStep(page, currentContext, step);
+                    }
+                }
+            }
+
         } catch (e: any) {
             status = 'failed';
             error = e.message;
@@ -93,6 +163,98 @@ export class PlaywrightRunner {
                 request_headers: requestHeaders,
                 response_headers: responseHeaders
             };
+        }
+    }
+
+    private async executeStep(page: Page, context: Page | FrameLocator, step: any) {
+        console.log(`  Step: ${step.type} ${step.selector || ''} ${step.value || ''}`);
+
+        // Helper to simulate mouse movement (only works reliably on main Page for now)
+        const moveMouseTo = async (locator: Locator) => {
+            try {
+                await locator.hover();
+            } catch (e) {
+                // ignore
+            }
+        };
+
+        const getLocator = (selector: string) => {
+            return context.locator(selector).first();
+        }
+
+        switch (step.type) {
+            case 'goto':
+                const url = step.value || step.selector || 'about:blank';
+                // goto is always on page
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                break;
+            case 'click':
+                const clickSelector = step.selector || step.value;
+                if (clickSelector) {
+                    const locator = getLocator(clickSelector);
+                    await moveMouseTo(locator);
+                    await locator.click();
+                }
+                break;
+            case 'fill':
+                if (step.selector) {
+                    const locator = getLocator(step.selector);
+                    await moveMouseTo(locator);
+                    await locator.fill(step.value || '');
+                }
+                break;
+            case 'check':
+                const checkSelector = step.selector || step.value;
+                if (checkSelector) {
+                    const locator = getLocator(checkSelector);
+                    await moveMouseTo(locator);
+                    await locator.check();
+                }
+                break;
+            case 'expect-visible':
+                const visibleSelector = step.selector || step.value;
+                if (visibleSelector) {
+                    console.log(`Waiting for selector: ${visibleSelector} to be visible...`);
+                    // Smart wait: use Page.waitForSelector if available to find ANY visible element
+                    // Check if 'waitForSelector' exists on the context object (it exists on Page, not FrameLocator)
+                    if ('waitForSelector' in context) {
+                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 30000 });
+                    } else {
+                        // FrameLocator doesn't have waitForSelector, so we rely on locator.waitFor
+                        await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 30000 });
+                    }
+                }
+                break;
+            case 'expect-hidden':
+                const hiddenSelector = step.selector || step.value;
+                if (hiddenSelector) {
+                    console.log(`Waiting for selector: ${hiddenSelector} to be hidden...`);
+                    // Use waitForSelector if available (Page), otherwise locator
+                    if ('waitForSelector' in context) {
+                        await (context as Page).waitForSelector(hiddenSelector, { state: 'hidden', timeout: 30000 });
+                    } else {
+                        await getLocator(hiddenSelector).waitFor({ state: 'hidden', timeout: 30000 });
+                    }
+                }
+                break;
+            case 'expect-text':
+                if (step.selector && step.value) {
+                    const locator = getLocator(step.selector);
+                    await locator.waitFor({ state: 'visible', timeout: 50000 });
+                    const text = await locator.textContent();
+                    if (!text?.includes(step.value)) {
+                        throw new Error(`Expected text "${step.value}" not found in element "${step.selector}"`);
+                    }
+                }
+                break;
+            case 'expect-url':
+                const expectedUrl = step.value || step.selector;
+                if (expectedUrl) {
+                    await page.waitForURL(expectedUrl, { timeout: 15000 });
+                }
+                break;
+            default:
+                console.warn(`Unknown step type: ${step.type}`);
         }
     }
 }

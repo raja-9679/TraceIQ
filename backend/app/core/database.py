@@ -4,6 +4,12 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 
+# SQLite optimization: Enable WAL mode for concurrency
+from sqlalchemy import event
+
+# Patch for async engine event listening
+import sqlite3
+
 engine = create_async_engine(settings.DATABASE_URL, echo=True, future=True)
 
 async def init_db():
