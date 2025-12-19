@@ -186,7 +186,7 @@ export class PlaywrightRunner {
             case 'goto':
                 const url = step.value || step.selector || 'about:blank';
                 // goto is always on page
-                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 80000 });
                 break;
             case 'click':
                 const clickSelector = step.selector || step.value;
@@ -218,10 +218,10 @@ export class PlaywrightRunner {
                     // Smart wait: use Page.waitForSelector if available to find ANY visible element
                     // Check if 'waitForSelector' exists on the context object (it exists on Page, not FrameLocator)
                     if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 30000 });
+                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 50000 });
                     } else {
                         // FrameLocator doesn't have waitForSelector, so we rely on locator.waitFor
-                        await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 30000 });
+                        await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 50000 });
                     }
                 }
                 break;
@@ -231,9 +231,9 @@ export class PlaywrightRunner {
                     console.log(`Waiting for selector: ${hiddenSelector} to be hidden...`);
                     // Use waitForSelector if available (Page), otherwise locator
                     if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(hiddenSelector, { state: 'hidden', timeout: 30000 });
+                        await (context as Page).waitForSelector(hiddenSelector, { state: 'hidden', timeout: 50000 });
                     } else {
-                        await getLocator(hiddenSelector).waitFor({ state: 'hidden', timeout: 30000 });
+                        await getLocator(hiddenSelector).waitFor({ state: 'hidden', timeout: 50000 });
                     }
                 }
                 break;
@@ -252,6 +252,44 @@ export class PlaywrightRunner {
                 if (expectedUrl) {
                     await page.waitForURL(expectedUrl, { timeout: 15000 });
                 }
+                break;
+            case 'hover':
+                const hoverSelector = step.selector || step.value;
+                if (hoverSelector) {
+                    const locator = getLocator(hoverSelector);
+                    await locator.hover();
+                }
+                break;
+            case 'select-option':
+                if (step.selector && step.value) {
+                    const locator = getLocator(step.selector);
+                    await moveMouseTo(locator);
+                    await locator.selectOption(step.value);
+                }
+                break;
+            case 'press-key':
+                const key = step.value || step.selector;
+                if (key) {
+                    await page.keyboard.press(key);
+                }
+                break;
+            case 'screenshot':
+                const screenshotName = step.value || `screenshot-${Date.now()}`;
+                const videoPath = await page.video()?.path();
+                const screenshotPath = path.join(videoPath ? path.dirname(videoPath) : '/tmp', `${screenshotName}.png`);
+                await page.screenshot({ path: screenshotPath, fullPage: true });
+                console.log(`Screenshot saved to: ${screenshotPath}`);
+                break;
+            case 'scroll-to':
+                const scrollSelector = step.selector || step.value;
+                if (scrollSelector) {
+                    const locator = getLocator(scrollSelector);
+                    await locator.scrollIntoViewIfNeeded();
+                }
+                break;
+            case 'wait-timeout':
+                const timeout = parseInt(step.value || step.selector || '1000');
+                await page.waitForTimeout(timeout);
                 break;
             default:
                 console.warn(`Unknown step type: ${step.type}`);

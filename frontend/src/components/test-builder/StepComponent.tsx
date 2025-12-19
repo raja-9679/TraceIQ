@@ -6,7 +6,7 @@ import { Trash2, GripVertical } from "lucide-react";
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-url';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-url' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout';
     selector?: string;
     value?: string;
 }
@@ -42,23 +42,35 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, updateStep, 
                             <option value="expect-hidden">Expect Hidden</option>
                             <option value="expect-text">Expect Text</option>
                             <option value="expect-url">Expect URL</option>
+                            <option value="hover">Hover</option>
+                            <option value="select-option">Select Option</option>
+                            <option value="press-key">Press Key</option>
+                            <option value="screenshot">Take Screenshot</option>
+                            <option value="scroll-to">Scroll To</option>
+                            <option value="wait-timeout">Wait (ms)</option>
                         </select>
                     </div>
 
                     {/* Selector / URL Input */}
                     <div className={`${step.type === 'goto' || step.type === 'expect-url' ? 'col-span-9' : 'col-span-5'}`}>
                         <Input
-                            placeholder={step.type === 'goto' ? "https://example.com" : "Selector (e.g., #submit-btn)"}
-                            value={(step.type === 'goto' || step.type === 'expect-url' ? step.value : step.selector) || ''}
-                            onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' ? 'value' : 'selector'), e.target.value)}
+                            placeholder={
+                                step.type === 'goto' ? "https://example.com" :
+                                    step.type === 'press-key' ? "Key (e.g., Enter)" :
+                                        step.type === 'wait-timeout' ? "Timeout in ms" :
+                                            step.type === 'screenshot' ? "Screenshot name" :
+                                                "Selector (e.g., #submit-btn)"
+                            }
+                            value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? step.value : step.selector) || ''}
+                            onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? 'value' : 'selector'), e.target.value)}
                         />
                     </div>
 
                     {/* Value Input (Only for specific types) */}
-                    {(step.type === 'fill' || step.type === 'expect-text') && (
+                    {(step.type === 'fill' || step.type === 'expect-text' || step.type === 'select-option') && (
                         <div className="col-span-4">
                             <Input
-                                placeholder={step.type === 'fill' ? "Value to type" : "Expected text"}
+                                placeholder={step.type === 'fill' ? "Value to type" : step.type === 'select-option' ? "Option value" : "Expected text"}
                                 value={step.value || ''}
                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                             />

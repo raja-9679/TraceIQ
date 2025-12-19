@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Play, Save, Check } from "lucide-react";
+import { Plus, Save } from "lucide-react";
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getTestCase, updateTestCase } from '@/lib/api';
@@ -112,6 +112,8 @@ export default function TestBuilder() {
                         <Button variant="secondary" size="sm" onClick={() => addStep('click')}>+ Click</Button>
                         <Button variant="secondary" size="sm" onClick={() => addStep('fill')}>+ Fill</Button>
                         <Button variant="secondary" size="sm" onClick={() => addStep('expect-visible')}>+ Assert</Button>
+                        <Button variant="secondary" size="sm" onClick={() => addStep('hover')}>+ Hover</Button>
+                        <Button variant="secondary" size="sm" onClick={() => addStep('press-key')}>+ Key</Button>
                     </div>
                 </div>
 
