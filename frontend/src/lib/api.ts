@@ -20,6 +20,8 @@ export interface TestRun {
     passed_tests: number;
     failed_tests: number;
     duration_ms: number | null;
+    suite_name?: string;
+    test_case_name?: string;
     trace_url?: string;
     video_url?: string;
     error_message?: string;
@@ -27,6 +29,8 @@ export interface TestRun {
     response_status?: number;
     request_headers?: Record<string, string>;
     response_headers?: Record<string, string>;
+    network_events?: any[];
+    execution_log?: any[];
 }
 
 export const getRuns = async (): Promise<TestRun[]> => {
@@ -42,7 +46,7 @@ export const getRun = async (id: number): Promise<TestRun> => {
     return response.data;
 };
 
-export const triggerRun = async (suiteId: number, caseId?: number): Promise<TestRun> => {
+export const triggerRun = async (suiteId: number, caseId?: number): Promise<TestRun | TestRun[]> => {
     let url = `/runs?suite_id=${suiteId}`;
     if (caseId) {
         url += `&case_id=${caseId}`;

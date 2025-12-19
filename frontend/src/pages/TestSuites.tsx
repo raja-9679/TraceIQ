@@ -10,15 +10,22 @@ export default function TestSuites() {
     const queryClient = useQueryClient();
     const [newSuiteName, setNewSuiteName] = useState('');
     const [newSuiteDesc, setNewSuiteDesc] = useState('');
+    const [newExecutionMode, setNewExecutionMode] = useState<'continuous' | 'separate'>('continuous');
     const [showCreateDialog, setShowCreateDialog] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
 
     const { data: suites, isLoading } = useQuery({
         queryKey: ['suites'],
-        queryFn: () => api.get('/suites').then(res => res.data)
+        queryFn: () => api.get('/suites').then(res => res.data.filter((s: any) => !s.parent_id))
     });
 
+    const filteredSuites = suites?.filter((suite: any) =>
+        suite.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (suite.description && suite.description.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
+
     const createSuite = useMutation({
-        mutationFn: (data: { name: string; description?: string }) => api.post('/suites', data),
+        mutationFn: (data: { name: string; description?: string; execution_mode: string }) => api.post('/suites', data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suites'] });
             setNewSuiteName('');
@@ -31,8 +38,12 @@ export default function TestSuites() {
 
     const runMutation = useMutation({
         mutationFn: (id: number) => triggerRun(id),
-        onSuccess: (newRun) => {
-            navigate(`/runs/${newRun.id}`);
+        onSuccess: (newRun: any) => {
+            if (Array.isArray(newRun)) {
+                navigate('/runs');
+            } else {
+                navigate(`/runs/${newRun.id}`);
+            }
         },
         onError: (error) => {
             console.error("Failed to start run:", error);
@@ -44,7 +55,8 @@ export default function TestSuites() {
         if (newSuiteName.trim()) {
             createSuite.mutate({
                 name: newSuiteName,
-                description: newSuiteDesc || undefined
+                description: newSuiteDesc || undefined,
+                execution_mode: newExecutionMode
             });
         }
     };
@@ -58,9 +70,18 @@ export default function TestSuites() {
                     <h1 className="text-3xl font-bold text-gray-900">Test Suites</h1>
                     <p className="text-gray-500 mt-1">Organize and manage your test collections</p>
                 </div>
-                <Button onClick={() => setShowCreateDialog(true)}>
-                    <Plus className="mr-2 h-4 w-4" /> Create Suite
-                </Button>
+                <div className="flex gap-4">
+                    <input
+                        type="text"
+                        placeholder="Search suites..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary w-64"
+                    />
+                    <Button onClick={() => setShowCreateDialog(true)}>
+                        <Plus className="mr-2 h-4 w-4" /> Create Suite
+                    </Button>
+                </div>
             </div>
 
             {/* Create Suite Dialog */}
@@ -94,6 +115,24 @@ export default function TestSuites() {
                                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                             />
                         </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                Execution Mode
+                            </label>
+                            <select
+                                value={newExecutionMode}
+                                onChange={(e) => setNewExecutionMode(e.target.value as any)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            >
+                                <option value="continuous">Continuous (One run for all cases)</option>
+                                <option value="separate">Separate (Individual run for each case)</option>
+                            </select>
+                            <p className="text-xs text-gray-500 mt-1">
+                                {newExecutionMode === 'continuous'
+                                    ? "All test cases will run in a single browser session with one video."
+                                    : "Each test case will start a fresh browser session with its own video and logs."}
+                            </p>
+                        </div>
                         <div className="flex gap-2">
                             <Button onClick={handleCreate} disabled={!newSuiteName.trim()}>
                                 Create Suite
@@ -108,7 +147,7 @@ export default function TestSuites() {
 
             {/* Suites Grid */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {suites?.map((suite: any) => (
+                {filteredSuites?.map((suite: any) => (
                     <Card key={suite.id} className="hover:shadow-lg transition-shadow group">
                         <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                             <div className="flex items-center space-x-2">
@@ -125,8 +164,21 @@ export default function TestSuites() {
                             <div className="flex items-center justify-between text-sm">
                                 <div className="flex items-center text-gray-500">
                                     <FileText className="h-4 w-4 mr-1" />
-                                    <span>{suite.test_cases?.length || 0} test cases</span>
+                                    <span>{suite.total_test_cases || 0} test cases</span>
                                 </div>
+                                {suite.total_sub_modules > 0 && (
+                                    <div className="flex items-center text-gray-500">
+                                        <FolderOpen className="h-4 w-4 mr-1" />
+                                        <span>{suite.total_sub_modules} modules</span>
+                                    </div>
+                                )}
+                                {(!suite.sub_modules || suite.sub_modules.length === 0) && (
+                                    <div className="flex items-center text-gray-500">
+                                        <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold ${suite.execution_mode === 'separate' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            {suite.execution_mode}
+                                        </span>
+                                    </div>
+                                )}
                                 <span className="text-xs text-gray-400">
                                     {new Date(suite.created_at).toLocaleDateString()}
                                 </span>

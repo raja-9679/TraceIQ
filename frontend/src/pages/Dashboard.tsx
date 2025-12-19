@@ -101,7 +101,12 @@ export default function Dashboard() {
                                         {run.status === 'running' && <Clock className="h-5 w-5 text-blue-600 animate-spin" />}
                                     </div>
                                     <div>
-                                        <p className="font-medium">Run #{run.id}</p>
+                                        <p className="font-medium">
+                                            {run.suite_name || `Run #${run.id}`}
+                                            {run.test_case_name && (
+                                                <span className="text-gray-400 font-normal"> › {run.test_case_name}</span>
+                                            )}
+                                        </p>
                                         <p className="text-sm text-gray-500">
                                             {new Date(run.created_at).toLocaleString()}
                                         </p>

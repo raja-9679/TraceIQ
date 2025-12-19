@@ -15,7 +15,7 @@ export default function TestMatrix() {
     });
 
     const triggerMutation = useMutation({
-        mutationFn: triggerRun,
+        mutationFn: (suiteId: number) => triggerRun(suiteId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["runs"] });
         },
@@ -50,7 +50,7 @@ export default function TestMatrix() {
                     <h1 className="text-3xl font-bold text-gray-900">Test Runs</h1>
                     <p className="text-gray-500 mt-1">View and manage all test executions</p>
                 </div>
-                <Button onClick={() => triggerMutation.mutate()} disabled={triggerMutation.isPending}>
+                <Button onClick={() => triggerMutation.mutate(1)} disabled={triggerMutation.isPending}>
                     <Play className="mr-2 h-4 w-4" />
                     {triggerMutation.isPending ? "Starting..." : "Run Test Suite"}
                 </Button>

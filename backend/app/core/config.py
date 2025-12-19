@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     MINIO_SECRET_KEY: str
     MINIO_BUCKET_NAME: str = "test-artifacts"
     OPENAI_API_KEY: str = ""
+    EXECUTION_ENGINE_URL: str = "http://execution-engine:3000/run"
 
     class Config:
         env_file = ".env"

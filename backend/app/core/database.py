@@ -14,8 +14,6 @@ engine = create_async_engine(settings.DATABASE_URL, echo=True, future=True)
 
 async def init_db():
     async with engine.begin() as conn:
-        # WARNING: This drops all tables! Use only for dev/prototyping.
-        await conn.run_sync(SQLModel.metadata.drop_all)
         # In production, use Alembic. For now, create tables directly.
         await conn.run_sync(SQLModel.metadata.create_all)
 
