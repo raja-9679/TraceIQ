@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
@@ -268,10 +268,34 @@ async def get_effective_settings(suite_id: int, session: AsyncSession) -> Dict[s
         merged_headers = {**parent_settings.get("headers", {}), **current_settings.get("headers", {})}
         merged_params = {**parent_settings.get("params", {}), **current_settings.get("params", {})}
         
-        # Merge Allowed Domains: Union of lists
-        parent_domains = set(parent_settings.get("allowed_domains", []))
-        current_domains = set(current_settings.get("allowed_domains", []))
-        merged_domains = list(parent_domains.union(current_domains))
+        # Merge Allowed Domains: Handle both strings and dicts
+        parent_domains_raw = parent_settings.get("allowed_domains", [])
+        current_domains_raw = current_settings.get("allowed_domains", [])
+        
+        # Helper to normalize to dict
+        def normalize_domain(d):
+            if not d:
+                return None
+            if isinstance(d, str):
+                return {"domain": d, "headers": True, "params": False}
+            if isinstance(d, dict) and "domain" not in d:
+                return None # Skip invalid dicts
+            return d
+
+        # Use a dict keyed by domain name to merge, favoring child (current) settings
+        merged_domains_map = {}
+        
+        for d in parent_domains_raw:
+            norm = normalize_domain(d)
+            if norm:
+                merged_domains_map[norm["domain"]] = norm
+            
+        for d in current_domains_raw:
+            norm = normalize_domain(d)
+            if norm:
+                merged_domains_map[norm["domain"]] = norm # Overwrite parent
+            
+        merged_domains = list(merged_domains_map.values())
         
         # Merge Domain Settings: Deep merge
         parent_domain_settings = parent_settings.get("domain_settings", {})
@@ -330,7 +354,9 @@ async def create_run(suite_id: int, case_id: Optional[int] = None, session: Asyn
                 suite_name=case_suite_path,
                 test_case_name=case.name,
                 request_headers=case_settings.get("headers", {}),
-                request_params=case_settings.get("params", {})
+                request_params=case_settings.get("params", {}),
+                allowed_domains=case_settings.get("allowed_domains", []),
+                domain_settings=case_settings.get("domain_settings", {})
                 # We can store params in a new field or handle them in the worker
             )
             session.add(run)
@@ -362,7 +388,9 @@ async def create_run(suite_id: int, case_id: Optional[int] = None, session: Asyn
             suite_name=suite_path,
             test_case_name=test_case_name,
             request_headers=effective_settings.get("headers", {}),
-            request_params=effective_settings.get("params", {})
+            request_params=effective_settings.get("params", {}),
+            allowed_domains=effective_settings.get("allowed_domains", []),
+            domain_settings=effective_settings.get("domain_settings", {})
         )
         session.add(run)
         await session.commit()
@@ -392,6 +420,50 @@ async def get_run(run_id: int, session: AsyncSession = Depends(get_session), cur
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return run
+
+@router.delete("/runs/{run_id}")
+async def delete_run(run_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    
+    # Delete artifacts from MinIO
+    minio_client.delete_run_artifacts(run_id)
+    
+    # Delete from DB
+    await session.delete(run)
+    await session.commit()
+    
+    return {"status": "success", "message": f"Run {run_id} deleted"}
+
+@router.delete("/runs")
+async def delete_runs(
+    run_ids: Optional[List[int]] = Query(None), 
+    all: bool = False, 
+    session: AsyncSession = Depends(get_session), 
+    current_user: User = Depends(get_current_user)
+):
+    if all:
+        # Delete all runs
+        result = await session.exec(select(TestRun))
+        runs = result.all()
+        for run in runs:
+            minio_client.delete_run_artifacts(run.id)
+            await session.delete(run)
+        await session.commit()
+        return {"status": "success", "message": f"All {len(runs)} runs deleted"}
+    
+    if run_ids:
+        # Delete specific runs
+        result = await session.exec(select(TestRun).where(TestRun.id.in_(run_ids)))
+        runs = result.all()
+        for run in runs:
+            minio_client.delete_run_artifacts(run.id)
+            await session.delete(run)
+        await session.commit()
+        return {"status": "success", "message": f"{len(runs)} runs deleted"}
+        
+    raise HTTPException(status_code=400, detail="Must specify run_ids or all=true")
 
 @router.get("/artifacts/{object_name:path}")
 async def get_artifact_url(object_name: str, current_user: User = Depends(get_current_user)):

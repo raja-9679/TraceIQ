@@ -35,9 +35,12 @@ class TestSuite(TestSuiteBase, table=True):
     )
     sub_modules: List["TestSuite"] = Relationship(back_populates="parent")
 
+class TestSuiteParent(TestSuiteBase):
+    id: int
+
 class TestSuiteRead(TestSuiteBase):
     id: int
-    parent: Optional[TestSuiteBase] = None
+    parent: Optional[TestSuiteParent] = None
 
 class TestSuiteReadWithChildren(TestSuiteRead):
     test_cases: List["TestCaseRead"] = []
@@ -90,7 +93,7 @@ class TestRunBase(SQLModel):
     request_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     request_params: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     response_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
-    allowed_domains: Optional[List[str]] = Field(default=[], sa_column=Column(JSON))
+    allowed_domains: Optional[List[Any]] = Field(default=[], sa_column=Column(JSON))
     domain_settings: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     network_events: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
     execution_log: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
