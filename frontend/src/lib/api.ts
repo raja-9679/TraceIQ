@@ -70,3 +70,20 @@ export const getArtifactUrl = async (path: string): Promise<string> => {
     const response = await api.get(`/artifacts/${encodeURIComponent(path)}`);
     return response.data.url;
 };
+
+export const deleteRun = async (runId: number): Promise<void> => {
+    await api.delete(`/runs/${runId}`);
+};
+
+export const deleteRuns = async (data: { runIds?: number[], all?: boolean }): Promise<void> => {
+    let url = "/runs";
+    if (data.all) {
+        url += "?all=true";
+    } else if (data.runIds && data.runIds.length > 0) {
+        // Pass IDs as repeated query params: ?run_ids=1&run_ids=2
+        const params = new URLSearchParams();
+        data.runIds.forEach(id => params.append("run_ids", id.toString()));
+        url += `?${params.toString()}`;
+    }
+    await api.delete(url);
+};

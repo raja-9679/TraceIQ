@@ -10,6 +10,7 @@ interface TraceTimelineProps {
 interface TraceAction {
     id: string;
     apiName: string;
+    params?: any;
     startTime: number;
     endTime: number;
     error: any;
@@ -53,6 +54,7 @@ export function TraceTimeline({ url, executionLog: _executionLog }: TraceTimelin
                                 actionMap.set(callId, {
                                     id: callId,
                                     apiName: event.apiName || event.method || 'Unknown Action',
+                                    params: event.params,
                                     startTime: event.startTime,
                                     status: 'passed' // Default, updated on failure
                                 });
@@ -108,23 +110,28 @@ export function TraceTimeline({ url, executionLog: _executionLog }: TraceTimelin
         if (showAllEvents) return true;
 
         const allowedActions = [
-            'page.goto',
-            'locator.click',
-            'locator.fill',
-            'locator.check',
-            'locator.selectOption',
-            'keyboard.press',
-            'page.waitForURL',
+            'goto',
+            'click',
+            'fill',
+            'check',
+            'selectOption',
+            'press',
+            'waitForURL',
             'expect',
-            'assert'
+            'assert',
+            'screenshot',
+            'hover',
+            'scrollIntoViewIfNeeded',
+            'waitForTimeout',
+            'waitForSelector',
+            'textContent'
         ];
 
-        // Check if apiName exists and matches allowed list or starts with expect/assert
+        // Check if apiName exists and matches allowed list
         if (!action.apiName) return false;
 
-        return allowedActions.includes(action.apiName) ||
-            action.apiName.startsWith('expect') ||
-            action.apiName.startsWith('assert');
+        const lowerApiName = action.apiName.toLowerCase();
+        return allowedActions.some(allowed => lowerApiName.includes(allowed.toLowerCase()));
     });
 
     // Group actions by execution log if available
@@ -168,9 +175,37 @@ export function TraceTimeline({ url, executionLog: _executionLog }: TraceTimelin
 
 function TraceActionItem({ action }: { action: TraceAction }) {
     const duration = action.endTime - action.startTime;
+
+    // Extract details based on action type
+    let details = null;
+    const lowerName = action.apiName.toLowerCase();
+    const params = action.params || {};
+
+    if (lowerName.includes('goto')) {
+        details = <span className="text-blue-600 truncate max-w-xs block" title={params.url}>{params.url}</span>;
+    } else if (lowerName.includes('click') || lowerName.includes('check') || lowerName.includes('hover') || lowerName.includes('fill')) {
+        details = (
+            <div className="flex flex-col gap-0.5">
+                {params.selector && <span className="text-purple-600 font-mono text-xs bg-purple-50 px-1.5 py-0.5 rounded w-fit" title="Selector">{params.selector}</span>}
+                {params.value && <span className="text-gray-600 text-xs">Value: "{params.value}"</span>}
+            </div>
+        );
+    } else if (lowerName.includes('press')) {
+        details = <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{params.key}</span>;
+    } else if (lowerName.includes('waitforurl')) {
+        details = <span className="text-blue-600 truncate max-w-xs block">{params.url}</span>;
+    } else if (lowerName.includes('screenshot')) {
+        // Screenshot usually doesn't have interesting params in the trace event itself other than path which is internal
+    } else if (lowerName.includes('waitfortimeout')) {
+        const timeout = params.waitTimeout || params.millis || params.timeout;
+        if (timeout) {
+            details = <span className="text-gray-600 text-xs flex items-center gap-1"><Clock size={10} /> {timeout}ms</span>;
+        }
+    }
+
     return (
-        <div className="p-3 hover:bg-gray-50 flex items-start gap-3">
-            <div className="mt-1">
+        <div className="p-3 hover:bg-gray-50 flex items-start gap-3 group transition-colors">
+            <div className="mt-1 shrink-0">
                 {action.status === 'failed' ? (
                     <XCircle size={16} className="text-red-500" />
                 ) : (
@@ -178,11 +213,14 @@ function TraceActionItem({ action }: { action: TraceAction }) {
                 )}
             </div>
             <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-center mb-1">
-                    <p className="font-mono text-sm font-medium text-gray-900 truncate">
-                        {action.apiName}
-                    </p>
-                    <span className="text-xs text-gray-500 flex items-center gap-1">
+                <div className="flex justify-between items-start mb-1">
+                    <div className="flex flex-col">
+                        <p className="font-mono text-sm font-medium text-gray-900 truncate" title={action.apiName}>
+                            {action.apiName}
+                        </p>
+                        {details && <div className="mt-1 text-sm">{details}</div>}
+                    </div>
+                    <span className="text-xs text-gray-400 flex items-center gap-1 shrink-0 ml-2">
                         <Clock size={12} />
                         {duration.toFixed(0)}ms
                     </span>

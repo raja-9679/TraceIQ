@@ -74,10 +74,34 @@ def run_test_suite(run_id: int):
                         merged_headers = {**parent_settings.get("headers", {}), **current_settings.get("headers", {})}
                         merged_params = {**parent_settings.get("params", {}), **current_settings.get("params", {})}
                         
-                        # Merge Allowed Domains: Union
-                        parent_domains = set(parent_settings.get("allowed_domains", []))
-                        current_domains = set(current_settings.get("allowed_domains", []))
-                        merged_domains = list(parent_domains.union(current_domains))
+                        # Merge Allowed Domains: Handle both strings and dicts
+                        parent_domains_raw = parent_settings.get("allowed_domains", [])
+                        current_domains_raw = current_settings.get("allowed_domains", [])
+                        
+                        # Helper to normalize to dict
+                        def normalize_domain(d):
+                            if not d:
+                                return None
+                            if isinstance(d, str):
+                                return {"domain": d, "headers": True, "params": False}
+                            if isinstance(d, dict) and "domain" not in d:
+                                return None
+                            return d
+
+                        # Use a dict keyed by domain name to merge, favoring child (current) settings
+                        merged_domains_map = {}
+                        
+                        for d in parent_domains_raw:
+                            norm = normalize_domain(d)
+                            if norm:
+                                merged_domains_map[norm["domain"]] = norm
+                            
+                        for d in current_domains_raw:
+                            norm = normalize_domain(d)
+                            if norm:
+                                merged_domains_map[norm["domain"]] = norm # Overwrite parent
+                            
+                        merged_domains = list(merged_domains_map.values())
                         
                         # Merge Domain Settings: Deep merge
                         parent_domain_settings = parent_settings.get("domain_settings", {})

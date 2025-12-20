@@ -9,8 +9,7 @@ import {
     Menu,
     X,
     User,
-    Bell,
-    Search
+    Bell
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -104,17 +103,7 @@ export default function DashboardLayout() {
                                 <Menu className="h-6 w-6" />
                             </button>
 
-                            {/* Search bar */}
-                            <div className="hidden md:flex items-center max-w-md w-full">
-                                <div className="relative w-full">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search tests, suites..."
-                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
-                                    />
-                                </div>
-                            </div>
+
                         </div>
 
                         <div className="flex items-center space-x-4">

@@ -1,12 +1,34 @@
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getRuns, triggerRun } from "@/lib/api";
+import { getRuns, triggerRun, deleteRun, deleteRuns } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Eye, Clock, CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Play, Eye, Clock, CheckCircle2, XCircle, AlertCircle, Trash2, MoreHorizontal } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export default function TestMatrix() {
     const queryClient = useQueryClient();
+    const [selectedRuns, setSelectedRuns] = useState<number[]>([]);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [runToDelete, setRunToDelete] = useState<number | null>(null);
+    const [isDeletingAll, setIsDeletingAll] = useState(false);
 
     const { data: runs, isLoading } = useQuery({
         queryKey: ["runs"],
@@ -20,6 +42,69 @@ export default function TestMatrix() {
             queryClient.invalidateQueries({ queryKey: ["runs"] });
         },
     });
+
+    const deleteMutation = useMutation({
+        mutationFn: (runId: number) => deleteRun(runId),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["runs"] });
+            setRunToDelete(null);
+            setDeleteDialogOpen(false);
+        },
+    });
+
+    const deleteBulkMutation = useMutation({
+        mutationFn: (data: { runIds?: number[], all?: boolean }) => deleteRuns(data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["runs"] });
+            setSelectedRuns([]);
+            setIsDeletingAll(false);
+            setDeleteDialogOpen(false);
+        },
+    });
+
+    const handleDeleteClick = (runId: number) => {
+        setRunToDelete(runId);
+        setIsDeletingAll(false);
+        setDeleteDialogOpen(true);
+    };
+
+    const handleBulkDeleteClick = () => {
+        setRunToDelete(null);
+        setIsDeletingAll(false);
+        setDeleteDialogOpen(true);
+    };
+
+    const handleDeleteAllClick = () => {
+        setRunToDelete(null);
+        setIsDeletingAll(true);
+        setDeleteDialogOpen(true);
+    };
+
+    const confirmDelete = () => {
+        if (runToDelete) {
+            deleteMutation.mutate(runToDelete);
+        } else if (isDeletingAll) {
+            deleteBulkMutation.mutate({ all: true });
+        } else {
+            deleteBulkMutation.mutate({ runIds: selectedRuns });
+        }
+    };
+
+    const toggleSelectAll = () => {
+        if (selectedRuns.length === (runs?.length || 0)) {
+            setSelectedRuns([]);
+        } else {
+            setSelectedRuns(runs?.map(r => r.id) || []);
+        }
+    };
+
+    const toggleSelectRun = (runId: number) => {
+        if (selectedRuns.includes(runId)) {
+            setSelectedRuns(selectedRuns.filter(id => id !== runId));
+        } else {
+            setSelectedRuns([...selectedRuns, runId]);
+        }
+    };
 
     const getStatusIcon = (status: string) => {
         switch (status) {
@@ -50,10 +135,32 @@ export default function TestMatrix() {
                     <h1 className="text-3xl font-bold text-gray-900">Test Runs</h1>
                     <p className="text-gray-500 mt-1">View and manage all test executions</p>
                 </div>
-                <Button onClick={() => triggerMutation.mutate(1)} disabled={triggerMutation.isPending}>
-                    <Play className="mr-2 h-4 w-4" />
-                    {triggerMutation.isPending ? "Starting..." : "Run Test Suite"}
-                </Button>
+                <div className="flex gap-2">
+                    {selectedRuns.length > 0 && (
+                        <Button variant="destructive" onClick={handleBulkDeleteClick}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Selected ({selectedRuns.length})
+                        </Button>
+                    )}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline">
+                                <MoreHorizontal className="mr-2 h-4 w-4" />
+                                Actions
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                            <DropdownMenuItem onClick={handleDeleteAllClick} className="text-red-600">
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete All Runs
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                    <Button onClick={() => triggerMutation.mutate(1)} disabled={triggerMutation.isPending}>
+                        <Play className="mr-2 h-4 w-4" />
+                        {triggerMutation.isPending ? "Starting..." : "Run Test Suite"}
+                    </Button>
+                </div>
             </div>
 
             <Card>
@@ -65,6 +172,12 @@ export default function TestMatrix() {
                         <table className="w-full">
                             <thead>
                                 <tr className="border-b border-gray-200">
+                                    <th className="w-12 py-3 px-4">
+                                        <Checkbox
+                                            checked={runs && runs.length > 0 && selectedRuns.length === runs.length}
+                                            onCheckedChange={toggleSelectAll}
+                                        />
+                                    </th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">ID</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Duration</th>
@@ -75,6 +188,12 @@ export default function TestMatrix() {
                             <tbody>
                                 {runs?.map((run) => (
                                     <tr key={run.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                        <td className="py-4 px-4">
+                                            <Checkbox
+                                                checked={selectedRuns.includes(run.id)}
+                                                onCheckedChange={() => toggleSelectRun(run.id)}
+                                            />
+                                        </td>
                                         <td className="py-4 px-4">
                                             <span className="font-mono text-sm">#{run.id}</span>
                                         </td>
@@ -92,12 +211,15 @@ export default function TestMatrix() {
                                         <td className="py-4 px-4 text-sm text-gray-600">
                                             {new Date(run.created_at).toLocaleString()}
                                         </td>
-                                        <td className="py-4 px-4">
+                                        <td className="py-4 px-4 flex gap-2">
                                             <Link to={`/runs/${run.id}`}>
                                                 <Button variant="outline" size="sm">
                                                     <Eye className="mr-1 h-3 w-3" /> View
                                                 </Button>
                                             </Link>
+                                            <Button variant="ghost" size="sm" onClick={() => handleDeleteClick(run.id)}>
+                                                <Trash2 className="h-4 w-4 text-red-500" />
+                                            </Button>
                                         </td>
                                     </tr>
                                 ))}
@@ -111,6 +233,28 @@ export default function TestMatrix() {
                     </div>
                 </CardContent>
             </Card>
+
+            <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            {runToDelete
+                                ? "This will permanently delete this test run and all associated data."
+                                : isDeletingAll
+                                    ? "This will permanently delete ALL test runs and all associated data. This action cannot be undone."
+                                    : `This will permanently delete ${selectedRuns.length} selected test runs.`
+                            }
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={confirmDelete} className="bg-red-600 hover:bg-red-700">
+                            Delete
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </div>
     );
 }

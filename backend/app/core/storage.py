@@ -71,4 +71,21 @@ class MinioClient:
         )
         return url
 
+    def delete_run_artifacts(self, run_id: int):
+        """Delete all artifacts associated with a run ID (prefix match)"""
+        try:
+            prefix = f"runs/{run_id}/"
+            # List all objects with the prefix
+            objects_to_delete = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+            
+            if 'Contents' in objects_to_delete:
+                delete_keys = [{'Key': obj['Key']} for obj in objects_to_delete['Contents']]
+                self.s3.delete_objects(
+                    Bucket=self.bucket,
+                    Delete={'Objects': delete_keys}
+                )
+                print(f"Deleted {len(delete_keys)} artifacts for run {run_id}")
+        except Exception as e:
+            print(f"Failed to delete artifacts for run {run_id}: {e}")
+
 minio_client = MinioClient()

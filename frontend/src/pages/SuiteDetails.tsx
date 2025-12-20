@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Play, Trash2, Edit, FileText, FolderOpen } from 'lucide-react';
+import { Plus, Play, Trash2, Edit, FileText, FolderOpen, Search } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { triggerRun } from '@/lib/api';
 import { ChevronRight } from 'lucide-react';
@@ -28,6 +28,7 @@ export default function SuiteDetails() {
     const [paramVal, setParamVal] = useState('');
     const [moduleError, setModuleError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const location = useLocation();
 
     useEffect(() => {
@@ -133,12 +134,17 @@ export default function SuiteDetails() {
 
     const handleRunSuite = async () => {
         try {
-            const result = await triggerRun(Number(suiteId));
-            if (Array.isArray(result)) {
-                navigate('/runs');
-            } else {
-                navigate(`/runs/${result.id}`);
-            }
+            await triggerRun(Number(suiteId));
+            navigate('/runs');
+        } catch (error) {
+            console.error("Failed to start run:", error);
+        }
+    };
+
+    const handleRunTestCase = async (caseId: number) => {
+        try {
+            await triggerRun(Number(suiteId), caseId);
+            navigate('/runs');
         } catch (error) {
             console.error("Failed to start run:", error);
         }
@@ -258,20 +264,32 @@ export default function SuiteDetails() {
 
             {activeTab === 'tests' ? (
                 <div className="space-y-6">
-                    <div className="flex gap-2">
-                        {(!suite.sub_modules || suite.sub_modules.length === 0) && (
-                            <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
-                                <Plus className="mr-2 h-4 w-4" /> New Test Case
+                    <div className="flex justify-between items-center gap-4">
+                        <div className="relative flex-1 max-w-sm">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <input
+                                type="text"
+                                placeholder="Search modules or test cases..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                        </div>
+                        <div className="flex gap-2">
+                            {suite.total_sub_modules === 0 && (
+                                <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
+                                    <Plus className="mr-2 h-4 w-4" /> New Test Case
+                                </Button>
+                            )}
+                            {suite.total_test_cases === 0 && (
+                                <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}>
+                                    <FolderOpen className="mr-2 h-4 w-4" /> New Sub-Module
+                                </Button>
+                            )}
+                            <Button onClick={handleRunSuite}>
+                                <Play className="mr-2 h-4 w-4" /> Run Suite
                             </Button>
-                        )}
-                        {(!suite.test_cases || suite.test_cases.length === 0) && (
-                            <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}>
-                                <FolderOpen className="mr-2 h-4 w-4" /> New Sub-Module
-                            </Button>
-                        )}
-                        <Button onClick={handleRunSuite}>
-                            <Play className="mr-2 h-4 w-4" /> Run Suite
-                        </Button>
+                        </div>
                     </div>
                     {/* ... rest of the tests content ... */}
 
@@ -334,26 +352,31 @@ export default function SuiteDetails() {
                                 </Button>
                             </div>
                             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                                {suite.sub_modules.map((sub: any) => (
-                                    <Card
-                                        key={sub.id}
-                                        className="hover:border-primary transition-all cursor-pointer hover:shadow-md group bg-white border-gray-200"
-                                        onClick={() => navigate(`/suites/${sub.id}`)}
-                                    >
-                                        <CardContent className="p-4 flex items-center justify-between">
-                                            <div className="flex items-center space-x-3">
-                                                <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
-                                                    <FolderOpen className="h-5 w-5 text-primary" />
+                                {suite.sub_modules
+                                    .filter((sub: any) =>
+                                        sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                        (sub.description && sub.description.toLowerCase().includes(searchTerm.toLowerCase()))
+                                    )
+                                    .map((sub: any) => (
+                                        <Card
+                                            key={sub.id}
+                                            className="hover:border-primary transition-all cursor-pointer hover:shadow-md group bg-white border-gray-200"
+                                            onClick={() => navigate(`/suites/${sub.id}`)}
+                                        >
+                                            <CardContent className="p-4 flex items-center justify-between">
+                                                <div className="flex items-center space-x-3">
+                                                    <div className="p-2 bg-primary/10 rounded-lg group-hover:bg-primary/20 transition-colors">
+                                                        <FolderOpen className="h-5 w-5 text-primary" />
+                                                    </div>
+                                                    <div>
+                                                        <span className="font-semibold text-gray-900 block">{sub.name}</span>
+                                                        {sub.description && <p className="text-xs text-gray-500 line-clamp-1">{sub.description}</p>}
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <span className="font-semibold text-gray-900 block">{sub.name}</span>
-                                                    {sub.description && <p className="text-xs text-gray-500 line-clamp-1">{sub.description}</p>}
-                                                </div>
-                                            </div>
-                                            <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-primary transition-colors" />
-                                        </CardContent>
-                                    </Card>
-                                ))}
+                                                <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-primary transition-colors" />
+                                            </CardContent>
+                                        </Card>
+                                    ))}
                             </div>
                         </div>
                     )}
@@ -407,72 +430,78 @@ export default function SuiteDetails() {
                     )}
 
                     {/* Test Cases List */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Test Cases ({suite.test_cases?.length || 0})</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            {suite.test_cases && suite.test_cases.length > 0 ? (
-                                <div className="space-y-4">
-                                    {suite.test_cases.map((testCase: any) => (
-                                        <div
-                                            key={testCase.id}
-                                            className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors"
-                                        >
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex-1">
-                                                    <div className="flex items-center space-x-2 mb-2">
-                                                        <FileText className="h-5 w-5 text-primary" />
-                                                        <h3 className="font-semibold text-lg">{testCase.name}</h3>
-                                                    </div>
-                                                    {testCase.steps && testCase.steps.length > 0 && (
-                                                        <div className="ml-7">
-                                                            <p className="text-sm font-medium text-gray-700 mb-2">Steps:</p>
-                                                            <ol className="list-decimal list-inside space-y-1">
-                                                                {testCase.steps.map((step: any, idx: number) => (
-                                                                    <li key={idx} className="text-sm text-gray-600">
-                                                                        {typeof step === 'string' ? (
-                                                                            step
-                                                                        ) : (
-                                                                            <span>
-                                                                                <span className="font-semibold text-primary">{step.type}</span>
-                                                                                {step.selector && <span className="text-gray-500"> on {step.selector}</span>}
-                                                                                {step.value && <span className="text-gray-900"> "{step.value}"</span>}
-                                                                            </span>
-                                                                        )}
-                                                                    </li>
-                                                                ))}
-                                                            </ol>
+                    {suite.total_sub_modules === 0 && (
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Test Cases ({suite.test_cases?.length || 0})</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {suite.test_cases && suite.test_cases.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {suite.test_cases
+                                            .filter((tc: any) => tc.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                                            .map((testCase: any) => (
+                                                <div
+                                                    key={testCase.id}
+                                                    className="border border-gray-200 rounded-lg p-4 hover:border-primary transition-colors"
+                                                >
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center space-x-2 mb-2">
+                                                                <FileText className="h-5 w-5 text-primary" />
+                                                                <h3 className="font-semibold text-lg">{testCase.name}</h3>
+                                                            </div>
+                                                            {testCase.steps && testCase.steps.length > 0 && (
+                                                                <div className="ml-7">
+                                                                    <p className="text-sm font-medium text-gray-700 mb-2">Steps:</p>
+                                                                    <ol className="list-decimal list-inside space-y-1">
+                                                                        {testCase.steps.map((step: any, idx: number) => (
+                                                                            <li key={idx} className="text-sm text-gray-600">
+                                                                                {typeof step === 'string' ? (
+                                                                                    step
+                                                                                ) : (
+                                                                                    <span>
+                                                                                        <span className="font-semibold text-primary">{step.type}</span>
+                                                                                        {step.selector && <span className="text-gray-500"> on {step.selector}</span>}
+                                                                                        {step.value && <span className="text-gray-900"> "{step.value}"</span>}
+                                                                                    </span>
+                                                                                )}
+                                                                            </li>
+                                                                        ))}
+                                                                    </ol>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
+                                                        <div className="flex gap-2">
+                                                            <Button variant="ghost" size="sm" onClick={() => handleRunTestCase(testCase.id)}>
+                                                                <Play className="h-4 w-4 text-green-600" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="sm" onClick={() => navigate(`/suites/${suiteId}/cases/${testCase.id}/edit`)}>
+                                                                <Edit className="h-4 w-4" />
+                                                            </Button>
+                                                            <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                                                                <Trash2 className="h-4 w-4" />
+                                                            </Button>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <Button variant="ghost" size="sm" onClick={() => triggerRun(Number(suiteId), testCase.id)}>
-                                                        <Play className="h-4 w-4 text-green-600" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="sm" onClick={() => navigate(`/suites/${suiteId}/cases/${testCase.id}/edit`)}>
-                                                        <Edit className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-12">
-                                    <FileText className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">No test cases yet</h3>
-                                    <p className="text-gray-500 mb-6">Add your first test case to this suite</p>
-                                    <Button onClick={() => setShowCreateDialog(true)}>
-                                        <Plus className="mr-2 h-4 w-4" /> Add Test Case
-                                    </Button>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                                            ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12">
+                                        <FileText className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                                        <h3 className="text-lg font-medium text-gray-900 mb-2">No test cases yet</h3>
+                                        <p className="text-gray-500 mb-6">Add your first test case to this suite</p>
+                                        {suite.total_sub_modules === 0 && (
+                                            <Button onClick={() => setShowCreateDialog(true)}>
+                                                <Plus className="mr-2 h-4 w-4" /> Add Test Case
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
             ) : (
                 <div className="space-y-6">
@@ -654,26 +683,81 @@ export default function SuiteDetails() {
                                     {/* Inherited Allowed Domains */}
                                     {suite.inherit_settings && suite.effective_settings?.allowed_domains &&
                                         suite.effective_settings.allowed_domains
-                                            .filter((d: string) => !suite.settings?.allowed_domains?.includes(d))
-                                            .map((domain: string, idx: number) => (
-                                                <div key={`inherited-domain-${idx}`} className="flex gap-2 opacity-60">
-                                                    <input disabled value={domain} className="flex-1 px-3 py-1 bg-gray-100 border rounded text-sm italic" />
-                                                    <div className="w-8" />
-                                                </div>
-                                            ))}
+                                            .filter((d: any) => {
+                                                const domainName = typeof d === 'string' ? d : d.domain;
+                                                const currentDomains = suite.settings?.allowed_domains || [];
+                                                return !currentDomains.some((cd: any) => (typeof cd === 'string' ? cd : cd.domain) === domainName);
+                                            })
+                                            .map((d: any, idx: number) => {
+                                                const domainName = typeof d === 'string' ? d : d.domain;
+                                                const allowHeaders = typeof d === 'string' ? true : d.headers !== false;
+                                                const allowParams = typeof d === 'string' ? false : d.params === true;
+                                                return (
+                                                    <div key={`inherited-domain-${idx}`} className="flex items-center gap-2 opacity-60">
+                                                        <input disabled value={domainName} className="flex-1 px-3 py-1 bg-gray-100 border rounded text-sm italic" />
+                                                        <div className="flex items-center gap-2 text-xs text-gray-500">
+                                                            <label className="flex items-center gap-1 cursor-not-allowed">
+                                                                <input type="checkbox" checked={allowHeaders} disabled /> Headers
+                                                            </label>
+                                                            <label className="flex items-center gap-1 cursor-not-allowed">
+                                                                <input type="checkbox" checked={allowParams} disabled /> Params
+                                                            </label>
+                                                        </div>
+                                                        <div className="w-8" />
+                                                    </div>
+                                                );
+                                            })}
 
                                     {/* Custom Allowed Domains */}
-                                    {(suite.settings?.allowed_domains || []).map((domain: string, idx: number) => (
-                                        <div key={idx} className="flex gap-2">
-                                            <input disabled value={domain} className="flex-1 px-3 py-1 bg-white border rounded text-sm" />
-                                            <Button variant="ghost" size="sm" onClick={() => {
-                                                const newDomains = suite.settings.allowed_domains.filter((d: string) => d !== domain);
-                                                handleUpdateSettings({ ...suite.settings, allowed_domains: newDomains }, suite.inherit_settings);
-                                            }}>
-                                                <Trash2 className="h-4 w-4 text-red-500" />
-                                            </Button>
-                                        </div>
-                                    ))}
+                                    {(suite.settings?.allowed_domains || []).map((d: any, idx: number) => {
+                                        const domainName = typeof d === 'string' ? d : d.domain;
+                                        const allowHeaders = typeof d === 'string' ? true : d.headers !== false;
+                                        const allowParams = typeof d === 'string' ? false : d.params === true;
+
+                                        return (
+                                            <div key={idx} className="flex items-center gap-2">
+                                                <input disabled value={domainName} className="flex-1 px-3 py-1 bg-white border rounded text-sm" />
+                                                <div className="flex items-center gap-2 text-xs">
+                                                    <label className="flex items-center gap-1 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={allowHeaders}
+                                                            onChange={(e) => {
+                                                                const newDomains = [...suite.settings.allowed_domains];
+                                                                newDomains[idx] = {
+                                                                    domain: domainName,
+                                                                    headers: e.target.checked,
+                                                                    params: allowParams
+                                                                };
+                                                                handleUpdateSettings({ ...suite.settings, allowed_domains: newDomains }, suite.inherit_settings);
+                                                            }}
+                                                        /> Headers
+                                                    </label>
+                                                    <label className="flex items-center gap-1 cursor-pointer">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={allowParams}
+                                                            onChange={(e) => {
+                                                                const newDomains = [...suite.settings.allowed_domains];
+                                                                newDomains[idx] = {
+                                                                    domain: domainName,
+                                                                    headers: allowHeaders,
+                                                                    params: e.target.checked
+                                                                };
+                                                                handleUpdateSettings({ ...suite.settings, allowed_domains: newDomains }, suite.inherit_settings);
+                                                            }}
+                                                        /> Params
+                                                    </label>
+                                                </div>
+                                                <Button variant="ghost" size="sm" onClick={() => {
+                                                    const newDomains = suite.settings.allowed_domains.filter((_: any, i: number) => i !== idx);
+                                                    handleUpdateSettings({ ...suite.settings, allowed_domains: newDomains }, suite.inherit_settings);
+                                                }}>
+                                                    <Trash2 className="h-4 w-4 text-red-500" />
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
                                     <div className="flex gap-2 pt-2">
                                         <input
                                             id="new-domain-input"
@@ -685,10 +769,13 @@ export default function SuiteDetails() {
                                                     if (val) {
                                                         const currentSettings = suite.settings || {};
                                                         const currentDomains = currentSettings.allowed_domains || [];
-                                                        if (!currentDomains.includes(val)) {
+                                                        // Check if domain already exists (handling both string and object)
+                                                        const exists = currentDomains.some((d: any) => (typeof d === 'string' ? d : d.domain) === val);
+
+                                                        if (!exists) {
                                                             handleUpdateSettings({
                                                                 ...currentSettings,
-                                                                allowed_domains: [...currentDomains, val]
+                                                                allowed_domains: [...currentDomains, { domain: val, headers: true, params: false }]
                                                             }, suite.inherit_settings);
                                                             (e.target as HTMLInputElement).value = '';
                                                         }
@@ -702,10 +789,12 @@ export default function SuiteDetails() {
                                             if (val) {
                                                 const currentSettings = suite.settings || {};
                                                 const currentDomains = currentSettings.allowed_domains || [];
-                                                if (!currentDomains.includes(val)) {
+                                                const exists = currentDomains.some((d: any) => (typeof d === 'string' ? d : d.domain) === val);
+
+                                                if (!exists) {
                                                     handleUpdateSettings({
                                                         ...currentSettings,
-                                                        allowed_domains: [...currentDomains, val]
+                                                        allowed_domains: [...currentDomains, { domain: val, headers: true, params: false }]
                                                     }, suite.inherit_settings);
                                                     input.value = '';
                                                 }
@@ -740,10 +829,26 @@ export default function SuiteDetails() {
                                         </div>
                                         {/* Headers for this domain */}
                                         <div className="pl-4 border-l-2 border-gray-100 space-y-2">
+                                            <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Headers</h5>
                                             {Object.entries(settings.headers || {}).map(([hKey, hVal]: [string, any], hIdx) => (
                                                 <div key={hIdx} className="flex gap-2 text-sm">
                                                     <span className="font-mono text-gray-600">{hKey}:</span>
                                                     <span className="text-gray-900">{hVal}</span>
+                                                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => {
+                                                        const currentDomainSettings = suite.settings.domain_settings[domain] || { headers: {}, params: {} };
+                                                        const newHeaders = { ...currentDomainSettings.headers };
+                                                        delete newHeaders[hKey];
+
+                                                        handleUpdateSettings({
+                                                            ...suite.settings,
+                                                            domain_settings: {
+                                                                ...suite.settings.domain_settings,
+                                                                [domain]: { ...currentDomainSettings, headers: newHeaders }
+                                                            }
+                                                        }, suite.inherit_settings);
+                                                    }}>
+                                                        <Trash2 className="h-3 w-3 text-red-500" />
+                                                    </Button>
                                                 </div>
                                             ))}
                                             <div className="flex gap-2 pt-1">
@@ -753,7 +858,7 @@ export default function SuiteDetails() {
                                                     const keyInput = document.getElementById(`header-key-${idx}`) as HTMLInputElement;
                                                     const valInput = document.getElementById(`header-val-${idx}`) as HTMLInputElement;
                                                     if (keyInput.value && valInput.value) {
-                                                        const currentDomainSettings = suite.settings.domain_settings[domain] || { headers: {} };
+                                                        const currentDomainSettings = suite.settings.domain_settings[domain] || { headers: {}, params: {} };
                                                         const newHeaders = { ...currentDomainSettings.headers, [keyInput.value]: valInput.value };
 
                                                         handleUpdateSettings({
@@ -767,6 +872,54 @@ export default function SuiteDetails() {
                                                         valInput.value = '';
                                                     }
                                                 }}>Add Header</Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Params for this domain */}
+                                        <div className="pl-4 border-l-2 border-gray-100 space-y-2 mt-4">
+                                            <h5 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Query Parameters</h5>
+                                            {Object.entries(settings.params || {}).map(([pKey, pVal]: [string, any], pIdx) => (
+                                                <div key={pIdx} className="flex gap-2 text-sm">
+                                                    <span className="font-mono text-gray-600">{pKey}:</span>
+                                                    <span className="text-gray-900">{pVal}</span>
+                                                    <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => {
+                                                        const currentDomainSettings = suite.settings.domain_settings[domain] || { headers: {}, params: {} };
+                                                        const newParams = { ...currentDomainSettings.params };
+                                                        delete newParams[pKey];
+
+                                                        handleUpdateSettings({
+                                                            ...suite.settings,
+                                                            domain_settings: {
+                                                                ...suite.settings.domain_settings,
+                                                                [domain]: { ...currentDomainSettings, params: newParams }
+                                                            }
+                                                        }, suite.inherit_settings);
+                                                    }}>
+                                                        <Trash2 className="h-3 w-3 text-red-500" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            <div className="flex gap-2 pt-1">
+                                                <input placeholder="Key" className="flex-1 px-2 py-1 text-sm border rounded" id={`param-key-${idx}`} />
+                                                <input placeholder="Value" className="flex-1 px-2 py-1 text-sm border rounded" id={`param-val-${idx}`} />
+                                                <Button size="sm" variant="outline" onClick={() => {
+                                                    const keyInput = document.getElementById(`param-key-${idx}`) as HTMLInputElement;
+                                                    const valInput = document.getElementById(`param-val-${idx}`) as HTMLInputElement;
+                                                    if (keyInput.value && valInput.value) {
+                                                        const currentDomainSettings = suite.settings.domain_settings[domain] || { headers: {}, params: {} };
+                                                        const newParams = { ...currentDomainSettings.params, [keyInput.value]: valInput.value };
+
+                                                        handleUpdateSettings({
+                                                            ...suite.settings,
+                                                            domain_settings: {
+                                                                ...suite.settings.domain_settings,
+                                                                [domain]: { ...currentDomainSettings, params: newParams }
+                                                            }
+                                                        }, suite.inherit_settings);
+                                                        keyInput.value = '';
+                                                        valInput.value = '';
+                                                    }
+                                                }}>Add Param</Button>
                                             </div>
                                         </div>
                                     </div>

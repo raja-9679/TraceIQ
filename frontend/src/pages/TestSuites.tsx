@@ -38,12 +38,8 @@ export default function TestSuites() {
 
     const runMutation = useMutation({
         mutationFn: (id: number) => triggerRun(id),
-        onSuccess: (newRun: any) => {
-            if (Array.isArray(newRun)) {
-                navigate('/runs');
-            } else {
-                navigate(`/runs/${newRun.id}`);
-            }
+        onSuccess: () => {
+            navigate('/runs');
         },
         onError: (error) => {
             console.error("Failed to start run:", error);

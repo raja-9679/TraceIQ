@@ -174,31 +174,50 @@ export class PlaywrightRunner {
                     modifiedHeaders = true;
                     console.log(`Applied specific headers for ${hostname}`);
                 }
-                // Note: Domain specific params are not yet in the UI, but logic is here if needed
+                if (specificParams) {
+                    newUrl = appendParams(newUrl, specificParams);
+                    if (newUrl !== urlStr) {
+                        modifiedUrl = true;
+                        console.log(`Applied specific params for ${hostname}`);
+                    }
+                }
             }
             // 2. Check if it matches source domain or allowed domains
-            const isAllowedDomain = allowedDomains.some((d: string) => hostname === d || hostname.endsWith(`.${d}`));
+            // Normalize allowed domains to objects
+            const normalizedAllowedDomains = allowedDomains.map((d: any) => {
+                if (typeof d === 'string') return { domain: d, headers: true, params: false }; // Default legacy behavior: headers only
+                return { domain: d.domain, headers: d.headers !== false, params: d.params === true };
+            });
 
-            if (sourceDomain && (hostname === sourceDomain || hostname.endsWith(`.${sourceDomain}`) || isAllowedDomain)) {
+            const matchedAllowedDomain = normalizedAllowedDomains.find((d: any) =>
+                hostname === d.domain || hostname.endsWith(`.${d.domain}`)
+            );
+
+            const isSourceDomain = sourceDomain && (hostname === sourceDomain || hostname.endsWith(`.${sourceDomain}`));
+
+            if (isSourceDomain || matchedAllowedDomain) {
+                const allowHeaders = isSourceDomain || matchedAllowedDomain?.headers;
+                const allowParams = isSourceDomain || matchedAllowedDomain?.params;
+
                 // Apply Global Headers
-                if (Object.keys(globalHeaders).length > 0) {
+                if (allowHeaders && Object.keys(globalHeaders).length > 0) {
                     Object.assign(headers, globalHeaders);
                     modifiedHeaders = true;
                 }
 
                 // Apply Source Domain specific settings to Allowed Domains and Subdomains
                 // (If we are not strictly on the source domain, which was handled in Step 1)
-                if (hostname !== sourceDomain && domainSettings[sourceDomain]) {
+                if (sourceDomain && hostname !== sourceDomain && domainSettings[sourceDomain]) {
                     const sourceHeaders = domainSettings[sourceDomain].headers;
                     const sourceParams = domainSettings[sourceDomain].params;
 
-                    if (sourceHeaders) {
+                    if (allowHeaders && sourceHeaders) {
                         Object.assign(headers, sourceHeaders);
                         modifiedHeaders = true;
                         console.log(`Applied source domain (${sourceDomain}) headers to ${hostname}`);
                     }
 
-                    if (sourceParams) {
+                    if (allowParams && sourceParams) {
                         newUrl = appendParams(newUrl, sourceParams);
                         if (newUrl !== urlStr) {
                             modifiedUrl = true;
@@ -208,7 +227,7 @@ export class PlaywrightRunner {
                 }
 
                 // Apply Global Params
-                if (Object.keys(globalParams).length > 0) {
+                if (allowParams && Object.keys(globalParams).length > 0) {
                     newUrl = appendParams(newUrl, globalParams);
                     if (newUrl !== urlStr) {
                         modifiedUrl = true;
