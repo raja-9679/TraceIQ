@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, String
 from enum import Enum
 
 class TestStatus(str, Enum):
@@ -19,7 +19,7 @@ class ExecutionMode(str, Enum):
 class TestSuiteBase(SQLModel):
     name: str
     description: Optional[str] = None
-    execution_mode: ExecutionMode = Field(default=ExecutionMode.CONTINUOUS)
+    execution_mode: ExecutionMode = Field(default=ExecutionMode.CONTINUOUS, sa_column=Column(String))
     parent_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
     settings: Optional[Dict[str, Any]] = Field(default={"headers": {}, "params": {}}, sa_column=Column(JSON))
     inherit_settings: bool = Field(default=True)

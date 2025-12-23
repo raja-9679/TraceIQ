@@ -36,6 +36,95 @@ def run_test_suite(run_id: int):
             if not suite:
                 raise Exception(f"Test Suite {run.test_suite_id} not found")
             
+            # Helper functions defined at top scope
+            def collect_cases_recursive(suite_id, session):
+                cases = []
+                # Direct cases
+                result = session.exec(select(TestSuite).where(TestSuite.id == suite_id).options(selectinload(TestSuite.test_cases)))
+                s = result.first()
+                if s:
+                    cases.extend(s.test_cases)
+                
+                # Sub-modules
+                result = session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
+                subs = result.all()
+                for sub in subs:
+                    cases.extend(collect_cases_recursive(sub.id, session))
+                return cases
+
+            # Helper to calculate effective settings synchronously
+            def get_effective_settings_sync(suite_id, session):
+                suite = session.get(TestSuite, suite_id)
+                if not suite:
+                    return {"headers": {}, "params": {}, "allowed_domains": [], "domain_settings": {}}
+                
+                current_settings = suite.settings or {"headers": {}, "params": {}}
+                
+                if suite.inherit_settings and suite.parent_id:
+                    parent_settings = get_effective_settings_sync(suite.parent_id, session)
+                    
+                    # Merge Headers & Params: Child overrides parent
+                    merged_headers = {**parent_settings.get("headers", {}), **current_settings.get("headers", {})}
+                    merged_params = {**parent_settings.get("params", {}), **current_settings.get("params", {})}
+                    
+                    # Merge Allowed Domains: Handle both strings and dicts
+                    parent_domains_raw = parent_settings.get("allowed_domains", [])
+                    current_domains_raw = current_settings.get("allowed_domains", [])
+                    
+                    # Helper to normalize to dict
+                    def normalize_domain(d):
+                        if not d:
+                            return None
+                        if isinstance(d, str):
+                            return {"domain": d, "headers": True, "params": False}
+                        if isinstance(d, dict) and "domain" not in d:
+                            return None
+                        return d
+
+                    # Use a dict keyed by domain name to merge, favoring child (current) settings
+                    merged_domains_map = {}
+                    
+                    for d in parent_domains_raw:
+                        norm = normalize_domain(d)
+                        if norm:
+                            merged_domains_map[norm["domain"]] = norm
+                        
+                    for d in current_domains_raw:
+                        norm = normalize_domain(d)
+                        if norm:
+                            merged_domains_map[norm["domain"]] = norm # Overwrite parent
+                        
+                    merged_domains = list(merged_domains_map.values())
+                    
+                    # Merge Domain Settings: Deep merge
+                    parent_domain_settings = parent_settings.get("domain_settings", {})
+                    current_domain_settings = current_settings.get("domain_settings", {})
+                    merged_domain_settings = {**parent_domain_settings}
+                    
+                    for domain, settings in current_domain_settings.items():
+                        if domain in merged_domain_settings:
+                            merged_domain_settings[domain] = {
+                                "headers": {**merged_domain_settings[domain].get("headers", {}), **settings.get("headers", {})},
+                                "params": {**merged_domain_settings[domain].get("params", {}), **settings.get("params", {})}
+                            }
+                        else:
+                            merged_domain_settings[domain] = settings
+                            
+                    return {
+                        "headers": merged_headers, 
+                        "params": merged_params,
+                        "allowed_domains": merged_domains,
+                        "domain_settings": merged_domain_settings
+                    }
+                
+                # Ensure all keys exist
+                return {
+                    "headers": current_settings.get("headers", {}),
+                    "params": current_settings.get("params", {}),
+                    "allowed_domains": current_settings.get("allowed_domains", []),
+                    "domain_settings": current_settings.get("domain_settings", {})
+                }
+
             # Filter cases if specific case_id is requested
             if run.test_case_id:
                 case = session.get(TestCase, run.test_case_id)
@@ -44,94 +133,6 @@ def run_test_suite(run_id: int):
                 cases_to_run = [case]
             else:
                 # Load all cases recursively if no specific case_id (Continuous mode)
-                def collect_cases_recursive(suite_id, session):
-                    cases = []
-                    # Direct cases
-                    result = session.exec(select(TestSuite).where(TestSuite.id == suite_id).options(selectinload(TestSuite.test_cases)))
-                    s = result.first()
-                    if s:
-                        cases.extend(s.test_cases)
-                    
-                    # Sub-modules
-                    result = session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-                    subs = result.all()
-                    for sub in subs:
-                        cases.extend(collect_cases_recursive(sub.id, session))
-                    return cases
-
-                # Helper to calculate effective settings synchronously
-                def get_effective_settings_sync(suite_id, session):
-                    suite = session.get(TestSuite, suite_id)
-                    if not suite:
-                        return {"headers": {}, "params": {}, "allowed_domains": [], "domain_settings": {}}
-                    
-                    current_settings = suite.settings or {"headers": {}, "params": {}}
-                    
-                    if suite.inherit_settings and suite.parent_id:
-                        parent_settings = get_effective_settings_sync(suite.parent_id, session)
-                        
-                        # Merge Headers & Params: Child overrides parent
-                        merged_headers = {**parent_settings.get("headers", {}), **current_settings.get("headers", {})}
-                        merged_params = {**parent_settings.get("params", {}), **current_settings.get("params", {})}
-                        
-                        # Merge Allowed Domains: Handle both strings and dicts
-                        parent_domains_raw = parent_settings.get("allowed_domains", [])
-                        current_domains_raw = current_settings.get("allowed_domains", [])
-                        
-                        # Helper to normalize to dict
-                        def normalize_domain(d):
-                            if not d:
-                                return None
-                            if isinstance(d, str):
-                                return {"domain": d, "headers": True, "params": False}
-                            if isinstance(d, dict) and "domain" not in d:
-                                return None
-                            return d
-
-                        # Use a dict keyed by domain name to merge, favoring child (current) settings
-                        merged_domains_map = {}
-                        
-                        for d in parent_domains_raw:
-                            norm = normalize_domain(d)
-                            if norm:
-                                merged_domains_map[norm["domain"]] = norm
-                            
-                        for d in current_domains_raw:
-                            norm = normalize_domain(d)
-                            if norm:
-                                merged_domains_map[norm["domain"]] = norm # Overwrite parent
-                            
-                        merged_domains = list(merged_domains_map.values())
-                        
-                        # Merge Domain Settings: Deep merge
-                        parent_domain_settings = parent_settings.get("domain_settings", {})
-                        current_domain_settings = current_settings.get("domain_settings", {})
-                        merged_domain_settings = {**parent_domain_settings}
-                        
-                        for domain, settings in current_domain_settings.items():
-                            if domain in merged_domain_settings:
-                                merged_domain_settings[domain] = {
-                                    "headers": {**merged_domain_settings[domain].get("headers", {}), **settings.get("headers", {})},
-                                    "params": {**merged_domain_settings[domain].get("params", {}), **settings.get("params", {})}
-                                }
-                            else:
-                                merged_domain_settings[domain] = settings
-                                
-                        return {
-                            "headers": merged_headers, 
-                            "params": merged_params,
-                            "allowed_domains": merged_domains,
-                            "domain_settings": merged_domain_settings
-                        }
-                    
-                    # Ensure all keys exist
-                    return {
-                        "headers": current_settings.get("headers", {}),
-                        "params": current_settings.get("params", {}),
-                        "allowed_domains": current_settings.get("allowed_domains", []),
-                        "domain_settings": current_settings.get("domain_settings", {})
-                    }
-
                 cases_to_run = collect_cases_recursive(run.test_suite_id, session)
 
             # Serialize test cases with their effective settings

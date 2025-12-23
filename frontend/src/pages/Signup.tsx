@@ -130,17 +130,22 @@ export default function Signup() {
                                 <motion.line
                                     x1={`${start.x}%`} y1={`${start.y}%`}
                                     x2={`${end.x}%`} y2={`${end.y}%`}
-                                    stroke="#CBD5E1"
-                                    strokeWidth="1.5"
-                                    strokeOpacity="0.3"
+                                    stroke="#64748B"
+                                    strokeWidth="2"
+                                    strokeOpacity="0.8"
                                 />
-                                <motion.circle r="2" fill="#3B82F6">
-                                    <animateMotion
-                                        dur={`${2 + Math.random() * 2}s`}
-                                        repeatCount="indefinite"
-                                        path={`M ${start.x * window.innerWidth / 100} ${start.y * window.innerHeight / 100} L ${end.x * window.innerWidth / 100} ${end.y * window.innerHeight / 100}`}
-                                    />
-                                </motion.circle>
+                                <motion.circle
+                                    r="3"
+                                    fill="#3B82F6"
+                                    initial={{ cx: `${start.x}%`, cy: `${start.y}%` }}
+                                    animate={{ cx: `${end.x}%`, cy: `${end.y}%` }}
+                                    transition={{
+                                        duration: 1.5 + Math.random(),
+                                        repeat: Infinity,
+                                        ease: "linear",
+                                        repeatDelay: Math.random() * 0.5
+                                    }}
+                                />
                             </g>
                         );
                     })}
