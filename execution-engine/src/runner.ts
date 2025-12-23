@@ -360,8 +360,39 @@ export class PlaywrightRunner {
                                 currentContext = page;
                             } else if (frameSelector) {
                                 console.log(`  Step: switch-frame ${frameSelector}`);
-                                // Switch context to frame
-                                currentContext = page.frameLocator(frameSelector);
+
+                                // Enhanced Lifecycle Management for Cross-Origin Stability
+                                if (step.options?.strict_lifecycle) {
+                                    console.log('    [Strict Lifecycle] 1. Waiting for iframe attachment...');
+
+                                    // 1. Wait for Attachment (Antigravity: Attachment confirms existence)
+                                    // We locate the iframe element itself (not its content yet)
+                                    // Note: We use 'attached' state, ignoring visibility (opacity:0 iframes are valid)
+                                    const frameElement = currentContext.locator(frameSelector).first();
+                                    await frameElement.waitFor({ state: 'attached', timeout: 30000 });
+
+                                    // 2. Sync Load State (Antigravity: Load state confirms readiness)
+                                    // For cross-origin iframes, existence attached != Ready to accept commands.
+                                    // We must acquire the underlying Frame object to check its network idle/load state.
+                                    const elementHandle = await frameElement.elementHandle();
+                                    const contentFrame = await elementHandle?.contentFrame();
+
+                                    if (contentFrame) {
+                                        console.log('    [Strict Lifecycle] 2. Waiting for frame load state (domcontentloaded)...');
+                                        // This is critical: waits for the SUB-RESOURCE (the iframe src) to finish loading
+                                        try {
+                                            await contentFrame.waitForLoadState('domcontentloaded', { timeout: 30000 });
+                                        } catch (e) {
+                                            console.warn(`    [Strict Lifecycle] Warning: Frame load wait warning: ${e}`);
+                                        }
+                                    } else {
+                                        console.warn('    [Strict Lifecycle] Warning: Could not access content frame (detached or strict CSP?)');
+                                    }
+                                }
+
+                                // 3. Set Context (Antigravity: Interaction via frameLocator)
+                                // We switch to the isolated context for subsequent steps
+                                currentContext = currentContext.frameLocator(frameSelector);
                             }
                         } else {
                             const stepResponse = await this.executeStep(page, currentContext, step, globalSettings);
@@ -508,7 +539,7 @@ export class PlaywrightRunner {
                     // Smart wait: use Page.waitForSelector if available to find ANY visible element
                     // Check if 'waitForSelector' exists on the context object (it exists on Page, not FrameLocator)
                     if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 50000 });
+                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 80000 });
                     } else {
                         // FrameLocator doesn't have waitForSelector, so we rely on locator.waitFor
                         await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 50000 });

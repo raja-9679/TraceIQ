@@ -14,30 +14,34 @@ export default function Login() {
 
     const { register, handleSubmit, formState: { errors } } = useForm();
 
-    // Microservices Testing Grid Simulation
+    // Complex Microservices Architecture Simulation
     const initialNodes = [
-        // Core Infrastructure
-        { id: 1, x: 50, y: 10, label: "Load Balancer", status: "success" },
-        { id: 2, x: 50, y: 25, label: "API Gateway", status: "success" },
-        { id: 3, x: 30, y: 35, label: "Auth Service", status: "success" },
-        { id: 4, x: 70, y: 35, label: "Test Orchestrator", status: "running" },
+        // Entry Points & LB
+        { id: 1, x: 50, y: 8, label: "Global LB", status: "success" },
+        { id: 2, x: 50, y: 18, label: "API Gateway", status: "success" },
 
-        // Data Layer
-        { id: 5, x: 20, y: 50, label: "Users DB", status: "success" },
-        { id: 6, x: 80, y: 50, label: "Test Results DB", status: "pending" },
-        { id: 7, x: 50, y: 45, label: "Redis Queue", status: "running" },
+        // Core Microservices Mesh
+        { id: 3, x: 25, y: 30, label: "Auth Service", status: "success" },
+        { id: 4, x: 75, y: 30, label: "Payment Core", status: "success" },
+        { id: 5, x: 40, y: 40, label: "Order Service", status: "running" },
+        { id: 6, x: 60, y: 40, label: "Inventory", status: "success" },
+        { id: 7, x: 50, y: 55, label: "Notification", status: "pending" },
 
-        // Execution Workers (The "Grid")
-        { id: 8, x: 15, y: 70, label: "Runner-US-E", status: "running" },
-        { id: 9, x: 35, y: 80, label: "Runner-EU-W", status: "pending" },
-        { id: 10, x: 65, y: 80, label: "Runner-AP-S", status: "success" },
-        { id: 11, x: 85, y: 70, label: "Runner-SA-E", status: "error" },
+        // Data & Caching Layer
+        { id: 8, x: 15, y: 45, label: "User DB (P)", status: "success" },
+        { id: 9, x: 85, y: 45, label: "Ledger DB", status: "success" },
+        { id: 10, x: 50, y: 30, label: "Redis Cluster", status: "running" },
 
-        // External Integrations
-        { id: 12, x: 10, y: 25, label: "GitHub", status: "success" },
-        { id: 13, x: 90, y: 25, label: "Slack", status: "pending" },
-        { id: 14, x: 50, y: 90, label: "Analytics", status: "pending" },
-        { id: 15, x: 90, y: 90, label: "Archiver", status: "pending" }
+        // Testing Infrastructure (The "Intelligence")
+        { id: 11, x: 15, y: 70, label: "Test Runner 1", status: "running" },
+        { id: 12, x: 35, y: 75, label: "Test Runner 2", status: "pending" },
+        { id: 13, x: 65, y: 75, label: "Test Runner 3", status: "success" },
+        { id: 14, x: 85, y: 70, label: "Test Runner 4", status: "error" },
+
+        // Monitoring & External
+        { id: 15, x: 90, y: 15, label: "Stripe API", status: "success" },
+        { id: 16, x: 10, y: 15, label: "Auth0", status: "success" },
+        { id: 17, x: 50, y: 85, label: "Observability", status: "running" }
     ];
 
     const [nodes, setNodes] = useState(initialNodes);
@@ -46,8 +50,9 @@ export default function Login() {
     useEffect(() => {
         const interval = setInterval(() => {
             setNodes(prev => prev.map(node => {
-                if (Math.random() > 0.7) {
-                    const statuses = ["success", "running", "pending", "error", "warning"];
+                // Randomly flicker status for "live" feel
+                if (Math.random() > 0.85) {
+                    const statuses = ["success", "running", "running", "success", "pending"]; // bias towards active
                     const newStatus = statuses[Math.floor(Math.random() * statuses.length)];
                     return { ...node, status: newStatus };
                 }
@@ -55,12 +60,12 @@ export default function Login() {
             }));
 
             // Generate Log
-            const actions = ["Compiling", "Verifying", "Connecting", "Refactoring", "Deploying", "Testing"];
-            const targets = ["UserAPI", "PaymentGateway", "FrontendWrapper", "DBCluster", "CacheLayer"];
+            const actions = ["Compiling", "Verifying", "Connecting", "Refactoring", "Deploying", "Testing", "Tracing"];
+            const targets = ["UserAPI", "PaymentGateway", "FrontendWrapper", "DBCluster", "CacheLayer", "WorkerNode"];
             const newLog = `> [${new Date().toLocaleTimeString()}] ${actions[Math.floor(Math.random() * actions.length)]} module: ${targets[Math.floor(Math.random() * targets.length)]}...`;
             setLogs(prev => [newLog, ...prev].slice(0, 8));
 
-        }, 2000);
+        }, 1500); // Faster updates
         return () => clearInterval(interval);
     }, []);
 
@@ -91,31 +96,48 @@ export default function Login() {
     };
 
     const edges = [
-        // Flow down from Gateway
-        { from: 12, to: 1 }, // Github -> LB
-        { from: 1, to: 2 },  // LB -> Gateway
-        { from: 2, to: 3 },  // Gateway -> Auth
-        { from: 2, to: 4 },  // Gateway -> Orch
-        { from: 3, to: 5 },  // Auth -> UsersDB
-        { from: 2, to: 7 },  // Gateway -> Redis
+        // Ingress Flow
+        { from: 1, to: 2 }, // LB -> Gateway
 
-        // Orchestrator Fan-out
-        { from: 4, to: 7 },  // Orch -> Redis
-        { from: 7, to: 8 },  // Redis -> Runner 1
-        { from: 7, to: 9 },  // Redis -> Runner 2
-        { from: 7, to: 10 }, // Redis -> Runner 3
-        { from: 7, to: 11 }, // Redis -> Runner 4
+        // Service Dependencies
+        { from: 2, to: 3 }, // Gateway -> Auth
+        { from: 2, to: 4 }, // Gateway -> Payment
+        { from: 2, to: 5 }, // Gateway -> Order
+        { from: 2, to: 6 }, // Gateway -> Inventory
 
-        // Results aggregation
-        { from: 8, to: 6 },
-        { from: 9, to: 6 },
-        { from: 10, to: 6 },
-        { from: 11, to: 6 },
+        // Inner Mesh
+        { from: 3, to: 10 }, // Auth -> Redis
+        { from: 5, to: 6 },  // Order -> Inventory
+        { from: 5, to: 4 },  // Order -> Payment
+        { from: 5, to: 10 }, // Order -> Redis
 
-        // Final pipes
-        { from: 6, to: 14 }, // DB -> Analytics
-        { from: 6, to: 15 }, // DB -> S3
-        { from: 4, to: 13 }, // Orch -> Slack
+        // Data Access
+        { from: 3, to: 8 },  // Auth -> User DB
+        { from: 4, to: 9 },  // Payment -> Ledger DB
+        { from: 6, to: 9 },  // Inventory -> Ledger DB
+
+        // External
+        { from: 3, to: 16 }, // Auth -> Auth0
+        { from: 4, to: 15 }, // Payment -> Stripe
+
+        // Test Coverage (The "Complex Arch Testing" part)
+        // Runners probing services
+        { from: 11, to: 3 }, // Runner 1 -> Auth
+        { from: 11, to: 8 }, // Runner 1 -> User DB
+
+        { from: 12, to: 5 }, // Runner 2 -> Order
+        { from: 12, to: 2 }, // Runner 2 -> Gateway
+
+        { from: 13, to: 4 }, // Runner 3 -> Payment
+        { from: 13, to: 9 }, // Runner 3 -> Ledger
+
+        { from: 14, to: 6 }, // Runner 4 -> Inventory
+        { from: 14, to: 7 }, // Runner 4 -> Notification
+
+        // Monitoring Aggregation
+        { from: 17, to: 1 }, // Observability -> LB
+        { from: 17, to: 8 },
+        { from: 17, to: 9 },
     ];
 
     const features = [
@@ -168,7 +190,7 @@ export default function Login() {
 
             {/* Background Flow Diagram */}
             <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
-                <svg className="w-full h-full opacity-[0.05]">
+                <svg className="w-full h-full opacity-[0.06]">
                     <defs>
                         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
                             <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e4e4e7" strokeWidth="0.5" />
@@ -186,18 +208,23 @@ export default function Login() {
                                 <motion.line
                                     x1={`${start.x}%`} y1={`${start.y}%`}
                                     x2={`${end.x}%`} y2={`${end.y}%`}
-                                    stroke="#CBD5E1"
-                                    strokeWidth="1.5"
-                                    strokeOpacity="0.3"
+                                    stroke="#64748B"
+                                    strokeWidth="2"
+                                    strokeOpacity="0.6"
                                 />
                                 {/* Fast Moving Data Packets */}
-                                <motion.circle r="2" fill={i % 2 === 0 ? "#10B981" : "#6366F1"}>
-                                    <animateMotion
-                                        dur={`${1 + Math.random() * 2}s`}
-                                        repeatCount="indefinite"
-                                        path={`M ${start.x * window.innerWidth / 100} ${start.y * window.innerHeight / 100} L ${end.x * window.innerWidth / 100} ${end.y * window.innerHeight / 100}`}
-                                    />
-                                </motion.circle>
+                                <motion.circle
+                                    r="3"
+                                    fill={i % 2 === 0 ? "#10B981" : "#6366F1"}
+                                    initial={{ cx: `${start.x}%`, cy: `${start.y}%` }}
+                                    animate={{ cx: `${end.x}%`, cy: `${end.y}%` }}
+                                    transition={{
+                                        duration: 1.5 + Math.random(),
+                                        repeat: Infinity,
+                                        ease: "linear",
+                                        repeatDelay: Math.random() * 0.5
+                                    }}
+                                />
                             </g>
                         );
                     })}
