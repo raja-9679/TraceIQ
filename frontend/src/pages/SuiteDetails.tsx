@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { api } from '@/lib/api';
+import { api, getSettings } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Play, Trash2, Edit, FileText, FolderOpen, Search } from 'lucide-react';
@@ -29,7 +29,15 @@ export default function SuiteDetails() {
     const [moduleError, setModuleError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedBrowser, setSelectedBrowser] = useState('chromium');
+    const [selectedDevice, setSelectedDevice] = useState<string>('Desktop');
     const location = useLocation();
+
+    // Load user settings to check if multi-browser is enabled
+    const { data: userSettings } = useQuery({
+        queryKey: ['settings'],
+        queryFn: getSettings,
+    });
 
     useEffect(() => {
         if (location.state?.message) {
@@ -133,8 +141,15 @@ export default function SuiteDetails() {
     };
 
     const handleRunSuite = async () => {
+        // Validate device selection
+        if (!selectedDevice || selectedDevice.length === 0) {
+            setModuleError('Please select at least one device');
+            setTimeout(() => setModuleError(null), 3000);
+            return;
+        }
+
         try {
-            await triggerRun(Number(suiteId));
+            await triggerRun(Number(suiteId), undefined, selectedBrowser, selectedDevice);
             navigate('/runs');
         } catch (error) {
             console.error("Failed to start run:", error);
@@ -142,8 +157,15 @@ export default function SuiteDetails() {
     };
 
     const handleRunTestCase = async (caseId: number) => {
+        // Validate device selection
+        if (!selectedDevice || selectedDevice.length === 0) {
+            setModuleError('Please select at least one device');
+            setTimeout(() => setModuleError(null), 3000);
+            return;
+        }
+
         try {
-            await triggerRun(Number(suiteId), caseId);
+            await triggerRun(Number(suiteId), caseId, selectedBrowser, selectedDevice);
             navigate('/runs');
         } catch (error) {
             console.error("Failed to start run:", error);
@@ -285,7 +307,43 @@ export default function SuiteDetails() {
                                 <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}>
                                     <FolderOpen className="mr-2 h-4 w-4" /> New Sub-Module
                                 </Button>
-                            )}
+                            )
+                            }
+                            <div className="flex gap-3 items-center">
+                                {/* Browser Selector - Only show if multi-browser is ENABLED */}
+                                {userSettings && userSettings.multi_browser_enabled && (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs text-gray-500">Browser</label>
+                                        <select
+                                            value={selectedBrowser}
+                                            onChange={(e) => setSelectedBrowser(e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                                        >
+                                            <option value="chromium">Chromium</option>
+                                            <option value="firefox">Firefox</option>
+                                            <option value="webkit">WebKit</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {/* Device Selector - Only show if multi-device is ENABLED */}
+                                {userSettings && userSettings.multi_device_enabled && (
+                                    <div className="flex flex-col gap-1">
+                                        <label className="text-xs text-gray-500">Device</label>
+                                        <select
+                                            value={selectedDevice}
+                                            onChange={(e) => setSelectedDevice(e.target.value)}
+                                            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                                        >
+                                            <option value="Desktop">Desktop</option>
+                                            <option value="Mobile (Generic)">Mobile (Generic)</option>
+                                            <option value="iPhone 13">iPhone 13</option>
+                                            <option value="Pixel 5">Pixel 5</option>
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
                             <Button onClick={handleRunSuite}>
                                 <Play className="mr-2 h-4 w-4" /> Run Suite
                             </Button>

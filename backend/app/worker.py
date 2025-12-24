@@ -22,6 +22,12 @@ def run_test_suite(run_id: int):
             return
         
         print(f"Starting run {run_id}")
+        print(f"DEBUG: Run attributes: {run}")
+        try:
+             print(f"DEBUG: run.browser = {run.browser}")
+        except Exception as e:
+             print(f"DEBUG: Could not access run.browser: {e}")
+        
         run.status = TestStatus.RUNNING
         session.add(run)
         session.commit()
@@ -153,6 +159,8 @@ def run_test_suite(run_id: int):
             payload = {
                 "runId": run_id,
                 "testCases": test_cases_data,
+                "browser": run.browser,
+                "device": run.device,
                 "globalSettings": {
                     "headers": run.request_headers or {},
                     "params": run.request_params or {},
