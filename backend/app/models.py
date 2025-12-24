@@ -5,6 +5,9 @@ from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, JSON, String
 from enum import Enum
 
+# Import settings models
+from app.settings_models import UserSettings
+
 class TestStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
@@ -97,6 +100,8 @@ class TestRunBase(SQLModel):
     domain_settings: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     network_events: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
     execution_log: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
+    browser: str = Field(default="chromium")
+    device: Optional[str] = Field(default=None)
 
 class TestRun(TestRunBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -120,8 +125,12 @@ class TestCaseResult(SQLModel, table=True):
 
 class User(SQLModel, table=True):
     __tablename__ = "users"
+    
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(unique=True, index=True)
-    full_name: Optional[str] = None
+    full_name: str
     hashed_password: str
+    
+    # Relationship
+    settings: Optional["UserSettings"] = Relationship(back_populates="user", sa_relationship_kwargs={"uselist": False})
     is_active: bool = True

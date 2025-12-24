@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext, Page, FrameLocator, Locator } from 'playwright';
+import { chromium, firefox, webkit, Browser, BrowserContext, Page, FrameLocator, Locator, devices } from 'playwright';
 import * as Minio from 'minio'; // Try standard import, but fallback if needed
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,29 +18,131 @@ const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 
 export class PlaywrightRunner {
     private browser: Browser | null = null;
+    private currentBrowserType: string = 'chromium';
 
-    async start() {
-        this.browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+    async start(browserType: string = 'chromium') {
+        if (this.browser && this.currentBrowserType !== browserType) {
+            console.log(`Switching browser from ${this.currentBrowserType} to ${browserType}`);
+            await this.stop();
+        }
+
+        if (!this.browser) {
+            console.log(`Launching browser: ${browserType}`);
+
+            switch (browserType) {
+                case 'firefox':
+                    this.browser = await firefox.launch({
+                        headless: true
+                    });
+                    break;
+                case 'webkit':
+                    this.browser = await webkit.launch({
+                        headless: true
+                    });
+                    break;
+                case 'chromium':
+                default:
+                    this.browser = await chromium.launch({
+                        headless: true,
+                        args: ['--no-sandbox', '--disable-setuid-sandbox']
+                    });
+                    break;
+            }
+            this.currentBrowserType = browserType;
+        }
     }
 
     async stop() {
         if (this.browser) {
             await this.browser.close();
+            this.browser = null;
         }
     }
 
-    async runTest(runId: number, testCases: any[], globalSettings: any = {}): Promise<any> {
-        if (!this.browser) await this.start();
+    async runTest(runId: number, testCases: any[], browserType: string = 'chromium', globalSettings: any = {}, device?: string): Promise<any> {
+        await this.start(browserType);
 
         const artifactsDir = `/tmp/artifacts/${runId}`;
         fs.mkdirSync(artifactsDir, { recursive: true });
 
-        const context = await this.browser!.newContext({
+        // Create context with optional device emulation
+        let contextOptions: any = {
             recordVideo: { dir: artifactsDir, size: { width: 1280, height: 720 } }
-        });
+        };
+
+        // Apply device emulation if specified
+        let emulatedAs: string | null = null;
+        if (device) {
+            let descriptor: any = null;
+            if (device === 'Mobile (Generic)') {
+                descriptor = {
+                    viewport: { width: 375, height: 667 },
+                    deviceScaleFactor: 2,
+                    isMobile: browserType !== 'firefox',
+                    hasTouch: true,
+                };
+            } else if (devices[device as keyof typeof devices]) {
+                const deviceDescriptor = devices[device as keyof typeof devices];
+
+                // Check if the device's default browser matches the selected browser
+                // If they don't match (e.g. Chrome selected for iPhone), we should NOT spoof the UA
+                // We only want the viewport and physical characteristics
+                if (deviceDescriptor.defaultBrowserType && deviceDescriptor.defaultBrowserType !== browserType) {
+                    descriptor = {
+                        viewport: deviceDescriptor.viewport,
+                        deviceScaleFactor: deviceDescriptor.deviceScaleFactor,
+                        hasTouch: deviceDescriptor.hasTouch,
+                        isMobile: browserType !== 'firefox', // Firefox doesn't support isMobile
+                    };
+
+                    // Intelligently synthesize a User Agent to match the Platform + Browser combination
+                    // e.g. "Chrome on iPhone" (CriOS) or "Firefox on Android"
+
+                    const isIOS = deviceDescriptor.defaultBrowserType === 'webkit' || (device && device.includes('iPhone')) || (device && device.includes('iPad'));
+                    // Default to Android/Mobile for non-iOS mobile devices
+
+                    if (isIOS) {
+                        if (browserType === 'chromium') {
+                            // Chrome on iOS (CriOS)
+                            descriptor.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1';
+                        } else if (browserType === 'firefox') {
+                            // Firefox on iOS (FxiOS)
+                            descriptor.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/120.0 Mobile/15E148 Safari/605.1.15';
+                        }
+                    } else {
+                        // Android / Generic Mobile
+                        if (browserType === 'firefox') {
+                            // Firefox on Android
+                            descriptor.userAgent = 'Mozilla/5.0 (Android 14; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0';
+                        }
+                        // For Chrome on Android, isMobile: true usually handles it well (giving Chrome Mobile UA).
+                        // But we can force it if needed. Let's rely on isMobile for Chromium-Android for now as it's native.
+                    }
+
+                    console.log(`Browser mismatch (${browserType} vs ${deviceDescriptor.defaultBrowserType}). Synthesized UA for ${isIOS ? 'iOS' : 'Android'}: ${descriptor.userAgent || 'Default'}`);
+                } else {
+                    // Match! Use the full descriptor including UA for authentic emulation
+                    descriptor = { ...deviceDescriptor };
+                    emulatedAs = descriptor.defaultBrowserType;
+
+                    // Firefox doesn't support isMobile option in newContext
+                    if (browserType === 'firefox') {
+                        delete descriptor.isMobile;
+                        console.log(`Removed isMobile from ${device} descriptor for Firefox compatibility`);
+                    }
+                }
+            }
+
+            if (descriptor) {
+                contextOptions = {
+                    ...contextOptions,
+                    ...descriptor
+                };
+                console.log(`Using device emulation: ${device}${emulatedAs ? ` (as ${emulatedAs})` : ''}`);
+            }
+        }
+
+        const context = await this.browser!.newContext(contextOptions);
 
         let currentTestCaseId: number | null = null;
         let currentTestCaseName: string | null = null;
@@ -248,49 +350,151 @@ export class PlaywrightRunner {
             }
         });
 
-        // Inject mouse cursor visualization
-        await context.addInitScript(() => {
-            const box = document.createElement('div');
-            box.classList.add('selenium-mouse-helper');
-            const styleElement = document.createElement('style');
-            styleElement.innerHTML = `
-                .selenium-mouse-helper {
-                    pointer-events: none;
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 20px;
-                    height: 20px;
-                    border: 1px solid white;
-                    border-radius: 50%;
-                    background: rgba(255, 0, 0, 0.7);
-                    margin: -10px 0 0 -10px;
-                    padding: 0;
-                    transition: background .2s, border-radius .2s, border-color .2s;
-                    box-shadow: 0 0 4px rgba(0,0,0,0.8);
-                    z-index: 100000;
-                }
-                .selenium-mouse-helper.button-pressed {
-                    background: rgba(255, 0, 0, 1);
-                    transform: scale(0.9);
-                }
-            `;
-            document.head.appendChild(styleElement);
-            document.body.appendChild(box);
+        // Inject mouse cursor visualization and browser indicator
+        await context.addInitScript(({ browserType, deviceName, emulatedAs }: { browserType: string, deviceName: string | null, emulatedAs: string | null }) => {
+            const initElements = () => {
+                // Mouse cursor
+                const box = document.createElement('div');
+                box.classList.add('selenium-mouse-helper');
 
-            document.addEventListener('mousemove', event => {
-                box.style.left = event.pageX + 'px';
-                box.style.top = event.pageY + 'px';
-            }, true);
+                // Browser indicator badge
+                const browserBadge = document.createElement('div');
+                browserBadge.classList.add('browser-indicator');
+                browserBadge.textContent = browserType.toUpperCase();
 
-            document.addEventListener('mousedown', event => {
-                box.classList.add('button-pressed');
-            }, true);
+                const styleElement = document.createElement('style');
+                styleElement.innerHTML = `
+                    .selenium-mouse-helper {
+                        pointer-events: none;
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 20px;
+                        height: 20px;
+                        border: 1px solid white;
+                        border-radius: 50%;
+                        background: rgba(255, 0, 0, 0.7);
+                        margin: -10px 0 0 -10px;
+                        padding: 0;
+                        transition: background .2s, border-radius .2s, border-color .2s;
+                        box-shadow: 0 0 4px rgba(0,0,0,0.8);
+                        z-index: 100000;
+                    }
+                    .selenium-mouse-helper.button-pressed {
+                        background: rgba(255, 0, 0, 1);
+                        transform: scale(0.9);
+                    }
+                    .browser-indicator {
+                        pointer-events: none !important;
+                        position: fixed !important;
+                        top: 20px !important;
+                        right: 20px !important;
+                        padding: 8px 16px !important;
+                        background: rgba(0, 0, 0, 0.85) !important;
+                        color: white !important;
+                        font-family: 'Courier New', monospace !important;
+                        font-size: 12px !important;
+                        font-weight: bold !important;
+                        border-radius: 6px !important;
+                        z-index: 2147483647 !important;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+                        border: 2px solid ${browserType === 'chromium' ? '#4285f4' : browserType === 'firefox' ? '#ff7139' : '#00d4ff'} !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        gap: 4px !important;
+                        min-width: 150px !important;
+                        opacity: 1 !important;
+                        transition: opacity 0.5s ease-out !important;
+                    }
+                    .browser-indicator.hidden {
+                        opacity: 0 !important;
+                    }
+                    .browser-indicator .browser-type {
+                        font-size: 14px !important;
+                        color: ${browserType === 'chromium' ? '#4285f4' : browserType === 'firefox' ? '#ff7139' : '#00d4ff'} !important;
+                    }
+                    .browser-indicator .device-name {
+                        font-size: 10px !important;
+                        color: #888 !important;
+                        font-weight: normal !important;
+                    }
+                    .browser-indicator .emulated-note {
+                        font-size: 10px !important;
+                        color: rgba(255, 255, 255, 0.5) !important;
+                        font-weight: normal !important;
+                        font-style: italic !important;
+                    }
+                    .browser-indicator .test-name {
+                        font-size: 11px !important;
+                        color: #aaa !important;
+                        font-weight: normal !important;
+                    }
+                `;
+                document.head.appendChild(styleElement);
+                document.body.appendChild(box);
 
-            document.addEventListener('mouseup', event => {
-                box.classList.remove('button-pressed');
-            }, true);
-        });
+                // Create badge with browser type, device, and test name sections
+                browserBadge.innerHTML = `
+                    <div class="browser-type">
+                        ${browserType.toUpperCase()}
+                        ${emulatedAs && emulatedAs !== browserType ? `<span class="emulated-note"> (as ${emulatedAs})</span>` : ''}
+                    </div>
+                    ${deviceName ? `<div class="device-name">${deviceName}</div>` : ''}
+                    <div class="test-name" id="test-name-display">${(window as any).__TRACEIQ_TEST_NAME__ || 'Loading...'}</div>
+                `;
+                document.body.appendChild(browserBadge);
+
+                // Watch for test name changes in window property
+                let lastTestName = '';
+                let hideTimeout: any = null;
+                setInterval(() => {
+                    const testNameEl = document.getElementById('test-name-display');
+                    const currentTestName = (window as any).__TRACEIQ_TEST_NAME__ || 'Loading...';
+
+                    if (testNameEl && currentTestName !== lastTestName) {
+                        testNameEl.textContent = currentTestName;
+                        lastTestName = currentTestName;
+
+                        // Reset hide timeout when test name changes
+                        if (hideTimeout) clearTimeout(hideTimeout);
+                        browserBadge.classList.remove('hidden');
+
+                        // Auto-hide after 3 seconds (only if not "Loading...")
+                        if (currentTestName !== 'Loading...') {
+                            hideTimeout = setTimeout(() => {
+                                browserBadge.classList.add('hidden');
+                            }, 3000);
+                        }
+                    }
+                }, 100);
+
+                document.addEventListener('mousemove', event => {
+                    box.style.left = event.pageX + 'px';
+                    box.style.top = event.pageY + 'px';
+                }, true);
+
+                document.addEventListener('mousedown', event => {
+                    box.classList.add('button-pressed');
+                }, true);
+
+                document.addEventListener('mouseup', event => {
+                    box.classList.remove('button-pressed');
+                }, true);
+            };
+
+            // Wait for body to exist
+            if (document.body) {
+                initElements();
+            } else {
+                const observer = new MutationObserver(() => {
+                    if (document.body) {
+                        observer.disconnect();
+                        initElements();
+                    }
+                });
+                observer.observe(document.documentElement, { childList: true });
+            }
+        }, { browserType, deviceName: device || null, emulatedAs: emulatedAs || null });
 
         const tracePath = path.join(artifactsDir, 'trace.zip');
         await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
@@ -344,6 +548,11 @@ export class PlaywrightRunner {
                 try {
                     console.log('  Resetting page state (about:blank)...');
                     await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
+
+                    // Set test name in window property so init script can read it
+                    await page.evaluate((testName) => {
+                        (window as any).__TRACEIQ_TEST_NAME__ = testName;
+                    }, testCase.name);
                 } catch (e) {
                     console.warn(`  Warning: Failed to reset page state: ${e}`);
                 }
@@ -513,6 +722,8 @@ export class PlaywrightRunner {
                 const clickSelector = step.selector || step.value;
                 if (clickSelector) {
                     const locator = getLocator(clickSelector);
+                    // Auto-wait for element to be visible and enabled before clicking
+                    await locator.waitFor({ state: 'visible', timeout: 80000 });
                     await moveMouseTo(locator);
                     await locator.click();
                 }
@@ -520,6 +731,8 @@ export class PlaywrightRunner {
             case 'fill':
                 if (step.selector) {
                     const locator = getLocator(step.selector);
+                    // Auto-wait for element to be visible before filling (handles dynamic content)
+                    await locator.waitFor({ state: 'visible', timeout: 80000 });
                     await moveMouseTo(locator);
                     await locator.fill(step.value || '');
                 }
@@ -528,6 +741,8 @@ export class PlaywrightRunner {
                 const checkSelector = step.selector || step.value;
                 if (checkSelector) {
                     const locator = getLocator(checkSelector);
+                    // Auto-wait for checkbox to be visible before checking
+                    await locator.waitFor({ state: 'visible', timeout: 80000 });
                     await moveMouseTo(locator);
                     await locator.check();
                 }
@@ -543,6 +758,18 @@ export class PlaywrightRunner {
                     } else {
                         // FrameLocator doesn't have waitForSelector, so we rely on locator.waitFor
                         await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 50000 });
+                    }
+                }
+                break;
+            case 'wait-for-selector':
+                const waitSelector = step.selector || step.value;
+                if (waitSelector) {
+                    console.log(`  Step: wait-for-selector  ${waitSelector}`);
+                    // Wait for element to be attached to DOM (not necessarily visible)
+                    if ('waitForSelector' in context) {
+                        await (context as Page).waitForSelector(waitSelector, { state: 'attached', timeout: 80000 });
+                    } else {
+                        await getLocator(waitSelector).waitFor({ state: 'attached', timeout: 80000 });
                     }
                 }
                 break;

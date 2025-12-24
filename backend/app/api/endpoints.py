@@ -1,7 +1,7 @@
 from typing import List, Optional, Union, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select
+from sqlmodel import select, func
 from app.core.database import get_session
 from app.models import TestRun, TestStatus, TestSuite, TestCase, TestSuiteRead, ExecutionMode, TestCaseRead, TestRunRead, TestSuiteReadWithChildren, TestSuiteUpdate
 
@@ -322,7 +322,7 @@ async def get_effective_settings(suite_id: int, session: AsyncSession) -> Dict[s
     return current_settings
 
 @router.post("/runs", response_model=Union[TestRunRead, List[TestRunRead]])
-async def create_run(suite_id: int, case_id: Optional[int] = None, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def create_run(suite_id: int, case_id: Optional[int] = None, browser: str = "chromium", device: Optional[str] = None, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
@@ -356,7 +356,9 @@ async def create_run(suite_id: int, case_id: Optional[int] = None, session: Asyn
                 request_headers=case_settings.get("headers", {}),
                 request_params=case_settings.get("params", {}),
                 allowed_domains=case_settings.get("allowed_domains", []),
-                domain_settings=case_settings.get("domain_settings", {})
+                domain_settings=case_settings.get("domain_settings", {}),
+                browser=browser,
+                device=device
                 # We can store params in a new field or handle them in the worker
             )
             session.add(run)
@@ -390,7 +392,9 @@ async def create_run(suite_id: int, case_id: Optional[int] = None, session: Asyn
             request_headers=effective_settings.get("headers", {}),
             request_params=effective_settings.get("params", {}),
             allowed_domains=effective_settings.get("allowed_domains", []),
-            domain_settings=effective_settings.get("domain_settings", {})
+            domain_settings=effective_settings.get("domain_settings", {}),
+            browser=browser,
+            device=device
         )
         session.add(run)
         await session.commit()
@@ -409,10 +413,49 @@ async def create_run(suite_id: int, case_id: Optional[int] = None, session: Asyn
         
         return run
 
-@router.get("/runs", response_model=List[TestRunRead])
-async def list_runs(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    result = await session.exec(select(TestRun).order_by(TestRun.created_at.desc()))
-    return result.all()
+@router.get("/runs")
+async def get_runs(
+    limit: int = 50,
+    offset: int = 0,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    browser: Optional[str] = None,
+    device: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    # Build query with filters
+    query = select(TestRun)
+    
+    # Apply filters
+    if search:
+        query = query.where(
+            (TestRun.suite_name.contains(search)) | 
+            (TestRun.test_case_name.contains(search))
+        )
+    if status:
+        query = query.where(TestRun.status == status)
+    if browser:
+        query = query.where(TestRun.browser == browser)
+    if device:
+        query = query.where(TestRun.device == device)
+    
+    # Get total count with filters
+    count_query = select(func.count()).select_from(query.subquery())
+    count_result = await session.exec(count_query)
+    total = count_result.one()
+    
+    # Get paginated runs
+    query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(offset)
+    result = await session.exec(query)
+    runs = result.all()
+    
+    return {
+        "runs": [TestRunRead.model_validate(run) for run in runs],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
 
 @router.get("/runs/{run_id}", response_model=TestRunRead)
 async def get_run(run_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
