@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, String
+from sqlalchemy import Column, JSON, String, Enum as SAEnum
 from enum import Enum
 
 # Import settings models
@@ -22,7 +22,7 @@ class ExecutionMode(str, Enum):
 class TestSuiteBase(SQLModel):
     name: str
     description: Optional[str] = None
-    execution_mode: ExecutionMode = Field(default=ExecutionMode.CONTINUOUS, sa_column=Column(String))
+    execution_mode: ExecutionMode = Field(default=ExecutionMode.CONTINUOUS, sa_column=Column(SAEnum(ExecutionMode, name="executionmode", values_callable=lambda obj: [e.value for e in obj])))
     parent_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
     settings: Optional[Dict[str, Any]] = Field(default={"headers": {}, "params": {}}, sa_column=Column(JSON))
     inherit_settings: bool = Field(default=True)
@@ -44,12 +44,12 @@ class TestSuiteParent(TestSuiteBase):
 class TestSuiteRead(TestSuiteBase):
     id: int
     parent: Optional[TestSuiteParent] = None
+    total_test_cases: int = 0
+    total_sub_modules: int = 0
 
 class TestSuiteReadWithChildren(TestSuiteRead):
     test_cases: List["TestCaseRead"] = []
     sub_modules: List["TestSuiteRead"] = []
-    total_test_cases: int = 0
-    total_sub_modules: int = 0
     effective_settings: Dict[str, Any] = {"headers": {}, "params": {}}
 
 class TestSuiteUpdate(SQLModel):
@@ -92,6 +92,7 @@ class TestRunBase(SQLModel):
     error_message: Optional[str] = Field(default=None)
     trace_url: Optional[str] = Field(default=None)
     video_url: Optional[str] = Field(default=None)
+    screenshots: Optional[List[str]] = Field(default=[], sa_column=Column(JSON))
     response_status: Optional[int] = Field(default=None)
     request_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     request_params: Optional[dict] = Field(default={}, sa_column=Column(JSON))
@@ -105,10 +106,19 @@ class TestRunBase(SQLModel):
 
 class TestRun(TestRunBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    results: List["TestCaseResult"] = Relationship(back_populates="test_run")
+    results: List["TestCaseResult"] = Relationship(back_populates="test_run", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+
+class TestCaseResultRead(SQLModel):
+    id: int
+    test_name: str
+    status: TestStatus
+    duration_ms: float
+    error_message: Optional[str] = None
+    screenshots: Optional[List[str]] = []
 
 class TestRunRead(TestRunBase):
     id: int
+    results: List[TestCaseResultRead] = []
 
 class TestCaseResult(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -119,6 +129,7 @@ class TestCaseResult(SQLModel, table=True):
     error_message: Optional[str] = None
     trace_url: Optional[str] = None
     video_url: Optional[str] = None
+    screenshots: Optional[List[str]] = Field(default=[], sa_column=Column(JSON))
     ai_analysis: Optional[str] = None
     
     test_run: TestRun = Relationship(back_populates="results")

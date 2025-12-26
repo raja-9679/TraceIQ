@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings as SettingsIcon, User, Bell, Database, Zap, Save, X } from 'lucide-react';
-import { getSettings, updateSettings, UserSettings } from '@/lib/api';
+import { Settings as SettingsIcon, User, Bell, Database, Zap, Save, X, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { getSettings, updateSettings } from '@/lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export default function Settings() {
@@ -67,6 +76,8 @@ export default function Settings() {
             setMaxParallelTests(settings.max_parallel_tests);
             setMultiBrowserEnabled(settings.multi_browser_enabled);
             setSelectedBrowsers(settings.selected_browsers);
+            setMultiDeviceEnabled(settings.multi_device_enabled);
+            setSelectedDevices(settings.selected_devices);
             setEmailNotifications(settings.email_notifications);
             setNotifyOnCompletion(settings.notify_on_completion);
             setNotifyOnFailure(settings.notify_on_failure);
@@ -85,7 +96,11 @@ export default function Settings() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['settings'] });
             setHasUnsavedChanges(false);
+            toast.success('Settings saved successfully');
         },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.detail || 'Failed to save settings');
+        }
     });
 
     const handleSave = () => {
@@ -201,52 +216,64 @@ export default function Settings() {
                                 <CardContent className="space-y-6">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
-                                        <select
+                                        <Select
                                             value={theme}
-                                            onChange={(e) => {
-                                                setTheme(e.target.value);
+                                            onValueChange={(value) => {
+                                                setTheme(value);
                                                 setHasUnsavedChanges(true);
                                             }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                         >
-                                            <option value="light">Light</option>
-                                            <option value="dark">Dark</option>
-                                            <option value="auto">Auto (System)</option>
-                                        </select>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select theme" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="light">Light</SelectItem>
+                                                <SelectItem value="dark">Dark</SelectItem>
+                                                <SelectItem value="auto">Auto (System)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
-                                        <select
+                                        <Select
                                             value={timezone}
-                                            onChange={(e) => {
-                                                setTimezone(e.target.value);
+                                            onValueChange={(value) => {
+                                                setTimezone(value);
                                                 setHasUnsavedChanges(true);
                                             }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                         >
-                                            <option value="UTC">UTC</option>
-                                            <option value="America/New_York">Eastern Time</option>
-                                            <option value="America/Chicago">Central Time</option>
-                                            <option value="America/Los_Angeles">Pacific Time</option>
-                                            <option value="Asia/Kolkata">India Standard Time</option>
-                                        </select>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select timezone" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="UTC">UTC</SelectItem>
+                                                <SelectItem value="America/New_York">Eastern Time</SelectItem>
+                                                <SelectItem value="America/Chicago">Central Time</SelectItem>
+                                                <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
+                                                <SelectItem value="Asia/Kolkata">India Standard Time</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
 
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
-                                        <select
+                                        <Select
                                             value={dateFormat}
-                                            onChange={(e) => {
-                                                setDateFormat(e.target.value);
+                                            onValueChange={(value) => {
+                                                setDateFormat(value);
                                                 setHasUnsavedChanges(true);
                                             }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                         >
-                                            <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                                            <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                                            <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                                        </select>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select date format" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
+                                                <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
+                                                <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -263,35 +290,43 @@ export default function Settings() {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Default Browser</label>
-                                            <select
+                                            <Select
                                                 value={defaultBrowser}
-                                                onChange={(e) => {
-                                                    setDefaultBrowser(e.target.value);
+                                                onValueChange={(value) => {
+                                                    setDefaultBrowser(value);
                                                     setHasUnsavedChanges(true);
                                                 }}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                             >
-                                                <option value="chromium">Chromium</option>
-                                                <option value="firefox">Firefox</option>
-                                                <option value="webkit">WebKit</option>
-                                            </select>
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue placeholder="Select browser" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="chromium">Chromium</SelectItem>
+                                                    <SelectItem value="firefox">Firefox</SelectItem>
+                                                    <SelectItem value="webkit">WebKit</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
 
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Default Device</label>
-                                            <select
+                                            <Select
                                                 value={defaultDevice}
-                                                onChange={(e) => {
-                                                    setDefaultDevice(e.target.value);
+                                                onValueChange={(value) => {
+                                                    setDefaultDevice(value);
                                                     setHasUnsavedChanges(true);
                                                 }}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                             >
-                                                <option value="Desktop">Desktop</option>
-                                                <option value="Mobile (Generic)">Mobile (Generic)</option>
-                                                <option value="iPhone 13">iPhone 13</option>
-                                                <option value="Pixel 5">Pixel 5</option>
-                                            </select>
+                                                <SelectTrigger className="w-full">
+                                                    <SelectValue placeholder="Select device" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Desktop">Desktop</SelectItem>
+                                                    <SelectItem value="Mobile (Generic)">Mobile (Generic)</SelectItem>
+                                                    <SelectItem value="iPhone 13">iPhone 13</SelectItem>
+                                                    <SelectItem value="Pixel 5">Pixel 5</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
 
@@ -412,18 +447,16 @@ export default function Settings() {
                                             <p className="text-sm font-medium text-gray-700">Select browsers to test:</p>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedBrowsers.includes('chromium')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedBrowsers([...selectedBrowsers, 'chromium']);
                                                         } else {
                                                             setSelectedBrowsers(selectedBrowsers.filter(b => b !== 'chromium'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
@@ -437,18 +470,16 @@ export default function Settings() {
                                             </label>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedBrowsers.includes('firefox')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedBrowsers([...selectedBrowsers, 'firefox']);
                                                         } else {
                                                             setSelectedBrowsers(selectedBrowsers.filter(b => b !== 'firefox'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
@@ -462,18 +493,16 @@ export default function Settings() {
                                             </label>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedBrowsers.includes('webkit')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedBrowsers([...selectedBrowsers, 'webkit']);
                                                         } else {
                                                             setSelectedBrowsers(selectedBrowsers.filter(b => b !== 'webkit'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
@@ -520,18 +549,16 @@ export default function Settings() {
                                             <p className="text-sm font-medium text-gray-700">Select devices to test:</p>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedDevices.includes('Desktop')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedDevices([...selectedDevices, 'Desktop']);
                                                         } else {
                                                             setSelectedDevices(selectedDevices.filter(d => d !== 'Desktop'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
@@ -545,18 +572,16 @@ export default function Settings() {
                                             </label>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedDevices.includes('Mobile (Generic)')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedDevices([...selectedDevices, 'Mobile (Generic)']);
                                                         } else {
                                                             setSelectedDevices(selectedDevices.filter(d => d !== 'Mobile (Generic)'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
@@ -570,18 +595,16 @@ export default function Settings() {
                                             </label>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedDevices.includes('iPhone 13')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedDevices([...selectedDevices, 'iPhone 13']);
                                                         } else {
                                                             setSelectedDevices(selectedDevices.filter(d => d !== 'iPhone 13'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
@@ -595,18 +618,16 @@ export default function Settings() {
                                             </label>
 
                                             <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <input
-                                                    type="checkbox"
+                                                <Checkbox
                                                     checked={selectedDevices.includes('Pixel 5')}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
                                                             setSelectedDevices([...selectedDevices, 'Pixel 5']);
                                                         } else {
                                                             setSelectedDevices(selectedDevices.filter(d => d !== 'Pixel 5'));
                                                         }
                                                         setHasUnsavedChanges(true);
                                                     }}
-                                                    className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                 />
                                                 <div className="flex items-center gap-2">
                                                     <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
@@ -677,14 +698,12 @@ export default function Settings() {
                                                 <p className="text-sm font-medium text-gray-700">Notify me when:</p>
 
                                                 <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                    <input
-                                                        type="checkbox"
+                                                    <Checkbox
                                                         checked={notifyOnCompletion}
-                                                        onChange={(e) => {
-                                                            setNotifyOnCompletion(e.target.checked);
+                                                        onCheckedChange={(checked) => {
+                                                            setNotifyOnCompletion(checked as boolean);
                                                             setHasUnsavedChanges(true);
                                                         }}
-                                                        className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                     />
                                                     <div>
                                                         <p className="font-medium text-gray-900">Test Completion</p>
@@ -693,14 +712,12 @@ export default function Settings() {
                                                 </label>
 
                                                 <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                    <input
-                                                        type="checkbox"
+                                                    <Checkbox
                                                         checked={notifyOnFailure}
-                                                        onChange={(e) => {
-                                                            setNotifyOnFailure(e.target.checked);
+                                                        onCheckedChange={(checked) => {
+                                                            setNotifyOnFailure(checked as boolean);
                                                             setHasUnsavedChanges(true);
                                                         }}
-                                                        className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                     />
                                                     <div>
                                                         <p className="font-medium text-gray-900">Test Failure</p>
@@ -709,14 +726,12 @@ export default function Settings() {
                                                 </label>
 
                                                 <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                    <input
-                                                        type="checkbox"
+                                                    <Checkbox
                                                         checked={dailySummary}
-                                                        onChange={(e) => {
-                                                            setDailySummary(e.target.checked);
+                                                        onCheckedChange={(checked) => {
+                                                            setDailySummary(checked as boolean);
                                                             setHasUnsavedChanges(true);
                                                         }}
-                                                        className="h-4 w-4 text-primary rounded border-gray-300 focus:ring-primary"
                                                     />
                                                     <div>
                                                         <p className="font-medium text-gray-900">Daily Summary</p>
@@ -740,18 +755,22 @@ export default function Settings() {
                                 <CardContent className="space-y-6">
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Video Recording</label>
-                                        <select
+                                        <Select
                                             value={videoRecording}
-                                            onChange={(e) => {
-                                                setVideoRecording(e.target.value);
+                                            onValueChange={(value) => {
+                                                setVideoRecording(value);
                                                 setHasUnsavedChanges(true);
                                             }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                         >
-                                            <option value="always">Always Record</option>
-                                            <option value="on-failure">Only on Failure</option>
-                                            <option value="never">Never Record</option>
-                                        </select>
+                                            <SelectTrigger className="w-full">
+                                                <SelectValue placeholder="Select recording preference" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="always">Always Record</SelectItem>
+                                                <SelectItem value="on-failure">Only on Failure</SelectItem>
+                                                <SelectItem value="never">Never Record</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                         <p className="text-xs text-gray-500 mt-1">When to record video of test execution</p>
                                     </div>
 
@@ -905,13 +924,22 @@ export default function Settings() {
                             <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between shadow-lg rounded-lg">
                                 <p className="text-sm text-gray-600">You have unsaved changes</p>
                                 <div className="flex gap-3">
-                                    <Button variant="outline" onClick={handleCancel}>
+                                    <Button variant="outline" onClick={handleCancel} disabled={saveMutation.isPending}>
                                         <X className="h-4 w-4 mr-2" />
                                         Cancel
                                     </Button>
-                                    <Button onClick={handleSave}>
-                                        <Save className="h-4 w-4 mr-2" />
-                                        Save Changes
+                                    <Button onClick={handleSave} disabled={saveMutation.isPending}>
+                                        {saveMutation.isPending ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Save className="h-4 w-4 mr-2" />
+                                                Save Changes
+                                            </>
+                                        )}
                                     </Button>
                                 </div>
                             </div>
