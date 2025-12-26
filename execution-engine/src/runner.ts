@@ -2,6 +2,10 @@ import { chromium, firefox, webkit, Browser, BrowserContext, Page, FrameLocator,
 import * as Minio from 'minio'; // Try standard import, but fallback if needed
 import * as fs from 'fs';
 import * as path from 'path';
+import { DOMParser } from '@xmldom/xmldom';
+import * as xpath from 'xpath';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 
 // Fix for Minio import consistency
 const MinioClient = (Minio as any).Client || Minio;
@@ -797,6 +801,134 @@ export class PlaywrightRunner {
                 let attempts = 0;
                 const maxAttempts = 3;
                 const waitUntil = (step.params?.wait_until as 'load' | 'domcontentloaded' | 'networkidle' | 'commit') || 'domcontentloaded';
+
+                while (attempts < maxAttempts) {
+                    try {
+                        await page.goto(url, { waitUntil, timeout: 30000 });
+                        break;
+                    } catch (e) {
+                        attempts++;
+                        console.warn(`  Goto attempt ${attempts} failed: ${e}`);
+                        if (attempts === maxAttempts) throw e;
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                }
+                break;
+
+            case 'http-request':
+                const method = step.params?.method || 'GET';
+                const reqUrl = step.value || step.selector;
+                const headers = step.params?.headers || {};
+                const body = step.params?.body;
+
+                console.log(`  [API] ${method} ${reqUrl}`);
+
+                const apiResponse = await page.request.fetch(reqUrl, {
+                    method,
+                    headers,
+                    data: body,
+                    timeout: 30000
+                });
+
+                const status = apiResponse.status();
+                const respBody = await apiResponse.text();
+                let jsonBody;
+                try {
+                    jsonBody = JSON.parse(respBody);
+                } catch (e) {
+                    // Not JSON
+                }
+
+                console.log(`  [API] Status: ${status}`);
+
+                // Assertions
+                if (step.params?.assertions) {
+                    for (const assertion of step.params.assertions) {
+                        if (assertion.type === 'status') {
+                            if (status !== parseInt(assertion.value)) {
+                                throw new Error(`Expected status ${assertion.value} but got ${status}`);
+                            }
+                        } else if (assertion.type === 'json-path') {
+                            if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
+                            // Simple dot notation support for now, or use a library if needed
+                            // For MVP, let's support simple key access
+                            const pathParts = assertion.path.split('.');
+                            let current = jsonBody;
+                            for (const part of pathParts) {
+                                if (current === undefined || current === null) break;
+                                current = current[part];
+                            }
+
+                            if (assertion.operator === 'equals') {
+                                if (String(current) !== String(assertion.value)) {
+                                    throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
+                                }
+                            } else if (assertion.operator === 'contains') {
+                                if (!String(current).includes(String(assertion.value))) {
+                                    throw new Error(`Expected ${assertion.path} to contain ${assertion.value} but got ${current}`);
+                                }
+                            }
+                        } else if (assertion.type === 'json-schema') {
+                            if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
+                            try {
+                                const ajv = new Ajv({ allErrors: true });
+                                addFormats(ajv);
+                                const schema = JSON.parse(assertion.value || '{}');
+                                const validate = ajv.compile(schema);
+                                const valid = validate(jsonBody);
+                                if (!valid) {
+                                    const errors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
+                                    throw new Error(`JSON Schema validation failed: ${errors}`);
+                                }
+                            } catch (e: any) {
+                                throw new Error(`Schema validation error: ${e.message}`);
+                            }
+                        }
+                    }
+                }
+                break;
+
+            case 'feed-check':
+                const feedUrl = step.value || step.selector;
+                console.log(`  [Feed] Checking ${feedUrl}`);
+
+                const feedResponse = await page.request.get(feedUrl);
+                if (!feedResponse.ok()) {
+                    throw new Error(`Failed to fetch feed: ${feedResponse.status()}`);
+                }
+
+                const feedText = await feedResponse.text();
+                const doc = new DOMParser().parseFromString(feedText, 'text/xml');
+
+                // Assertions
+                if (step.params?.assertions) {
+                    for (const assertion of step.params.assertions) {
+                        if (assertion.type === 'xpath') {
+                            const nodes = xpath.select(assertion.path, doc);
+                            const nodeValue = nodes[0] ? (nodes[0] as any).textContent : null;
+
+                            if (assertion.operator === 'equals') {
+                                if (nodeValue !== assertion.value) {
+                                    throw new Error(`Expected XPath ${assertion.path} to equal ${assertion.value} but got ${nodeValue}`);
+                                }
+                            } else if (assertion.operator === 'contains') {
+                                if (!nodeValue || !nodeValue.includes(assertion.value)) {
+                                    throw new Error(`Expected XPath ${assertion.path} to contain ${assertion.value} but got ${nodeValue}`);
+                                }
+                            } else if (assertion.operator === 'exists') {
+                                if (!nodes || nodes.length === 0) {
+                                    throw new Error(`Expected XPath ${assertion.path} to exist`);
+                                }
+                            }
+                        } else if (assertion.type === 'text') {
+                            if (!feedText.includes(assertion.value)) {
+                                throw new Error(`Expected feed to contain text "${assertion.value}"`);
+                            }
+                        }
+                    }
+                }
+                break;
+
 
                 while (attempts < maxAttempts) {
                     try {

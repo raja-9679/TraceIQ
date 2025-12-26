@@ -61,7 +61,7 @@ class TestSuiteUpdate(SQLModel):
 
 class TestStep(BaseModel):
     id: str
-    type: str  # 'goto', 'click', 'fill', 'check', 'expect'
+    type: str  # 'goto', 'click', 'fill', 'check', 'expect', 'http-request', 'feed-check'
     selector: Optional[str] = None
     value: Optional[str] = None
     params: Optional[dict] = None
