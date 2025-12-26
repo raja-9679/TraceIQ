@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRuns, triggerRun, deleteRun, deleteRuns } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Eye, Clock, CheckCircle2, XCircle, AlertCircle, Trash2, MoreHorizontal } from "lucide-react";
+import { Play, Eye, Clock, CheckCircle2, XCircle, AlertCircle, Trash2, MoreHorizontal, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -22,6 +22,13 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 export default function TestMatrix() {
     const queryClient = useQueryClient();
@@ -29,12 +36,34 @@ export default function TestMatrix() {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [runToDelete, setRunToDelete] = useState<number | null>(null);
     const [isDeletingAll, setIsDeletingAll] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [pageSize, setPageSize] = useState(50);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<string>('');
+    const [browserFilter, setBrowserFilter] = useState<string>('');
+    const [deviceFilter, setDeviceFilter] = useState<string>('');
 
-    const { data: runs, isLoading } = useQuery({
-        queryKey: ["runs"],
-        queryFn: getRuns,
+    const { data, isLoading } = useQuery({
+        queryKey: ["runs", currentPage, pageSize, searchTerm, statusFilter, browserFilter, deviceFilter],
+        queryFn: () => getRuns(
+            pageSize,
+            (currentPage - 1) * pageSize,
+            searchTerm || undefined,
+            statusFilter || undefined,
+            browserFilter || undefined,
+            deviceFilter || undefined
+        ),
         refetchInterval: 2000,
     });
+
+    const runs = data?.runs || [];
+    const total = data?.total || 0;
+    const totalPages = Math.ceil(total / pageSize);
+
+    // Reset to page 1 when filters change
+    const handleFilterChange = () => {
+        setCurrentPage(1);
+    };
 
     const triggerMutation = useMutation({
         mutationFn: (suiteId: number) => triggerRun(suiteId),
@@ -165,7 +194,103 @@ export default function TestMatrix() {
 
             <Card>
                 <CardHeader>
-                    <CardTitle>All Test Runs</CardTitle>
+                    <div className="flex items-center justify-between">
+                        <CardTitle>All Test Runs</CardTitle>
+                        <div className="flex gap-2 items-center">
+                            {/* Search */}
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    placeholder="Search tests..."
+                                    value={searchTerm}
+                                    onChange={(e) => {
+                                        setSearchTerm(e.target.value);
+                                        handleFilterChange();
+                                    }}
+                                    className="pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary w-64"
+                                />
+                            </div>
+
+                            {/* Status Filter */}
+                            <Select
+                                value={statusFilter}
+                                onValueChange={(value) => {
+                                    setStatusFilter(value);
+                                    handleFilterChange();
+                                }}
+                            >
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="All Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all_status">All Status</SelectItem>
+                                    <SelectItem value="passed">Passed</SelectItem>
+                                    <SelectItem value="failed">Failed</SelectItem>
+                                    <SelectItem value="running">Running</SelectItem>
+                                    <SelectItem value="error">Error</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {/* Browser Filter */}
+                            <Select
+                                value={browserFilter}
+                                onValueChange={(value) => {
+                                    setBrowserFilter(value);
+                                    handleFilterChange();
+                                }}
+                            >
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="All Browsers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all_browsers">All Browsers</SelectItem>
+                                    <SelectItem value="chromium">Chromium</SelectItem>
+                                    <SelectItem value="firefox">Firefox</SelectItem>
+                                    <SelectItem value="webkit">WebKit</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {/* Device Filter */}
+                            <Select
+                                value={deviceFilter}
+                                onValueChange={(value) => {
+                                    setDeviceFilter(value);
+                                    handleFilterChange();
+                                }}
+                            >
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="All Devices" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all_devices">All Devices</SelectItem>
+                                    <SelectItem value="Desktop">Desktop</SelectItem>
+                                    <SelectItem value="Mobile (Generic)">Mobile (Generic)</SelectItem>
+                                    <SelectItem value="iPhone 13">iPhone 13</SelectItem>
+                                    <SelectItem value="Pixel 5">Pixel 5</SelectItem>
+                                    <SelectItem value="Galaxy S21">Galaxy S21</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {/* Clear Filters */}
+                            {(searchTerm || statusFilter || browserFilter || deviceFilter) && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        setSearchTerm('');
+                                        setStatusFilter('');
+                                        setBrowserFilter('');
+                                        setDeviceFilter('');
+                                        handleFilterChange();
+                                    }}
+                                >
+                                    Clear Filters
+                                </Button>
+                            )}
+                        </div>
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <div className="overflow-x-auto">
@@ -179,6 +304,9 @@ export default function TestMatrix() {
                                         />
                                     </th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">ID</th>
+                                    <th className="text-left py-3 px-4 font-medium text-gray-700">Test Name</th>
+                                    <th className="text-left py-3 px-4 font-medium text-gray-700">Browser</th>
+                                    <th className="text-left py-3 px-4 font-medium text-gray-700">Device</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Duration</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Created At</th>
@@ -196,6 +324,33 @@ export default function TestMatrix() {
                                         </td>
                                         <td className="py-4 px-4">
                                             <span className="font-mono text-sm">#{run.id}</span>
+                                        </td>
+                                        <td className="py-4 px-4 text-sm text-gray-900">
+                                            <div className="max-w-xs">
+                                                {run.suite_name && (
+                                                    <div className="font-medium truncate" title={run.suite_name}>
+                                                        {run.suite_name}
+                                                    </div>
+                                                )}
+                                                {run.test_case_name && (
+                                                    <div className="text-xs text-gray-500 truncate" title={run.test_case_name}>
+                                                        {run.test_case_name}
+                                                    </div>
+                                                )}
+                                                {!run.suite_name && !run.test_case_name && (
+                                                    <span className="text-gray-400">-</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="py-4 px-4">
+                                            <span className="px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 capitalize">
+                                                {run.browser || "chromium"}
+                                            </span>
+                                        </td>
+                                        <td className="py-4 px-4">
+                                            <span className="px-2 py-1 rounded-md text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200">
+                                                {run.device || "Desktop"}
+                                            </span>
                                         </td>
                                         <td className="py-4 px-4">
                                             <div className="flex items-center space-x-2">
@@ -231,6 +386,70 @@ export default function TestMatrix() {
                             </div>
                         )}
                     </div>
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200">
+                            <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-700">
+                                    Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, total)} of {total} runs
+                                </span>
+                                <Select
+                                    value={pageSize.toString()}
+                                    onValueChange={(value) => {
+                                        setPageSize(Number(value));
+                                        setCurrentPage(1);
+                                    }}
+                                >
+                                    <SelectTrigger className="w-[130px] ml-2 h-8">
+                                        <SelectValue placeholder="Page Size" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="25">25 per page</SelectItem>
+                                        <SelectItem value="50">50 per page</SelectItem>
+                                        <SelectItem value="100">100 per page</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="flex gap-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1}
+                                >
+                                    First
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                                    disabled={currentPage === 1}
+                                >
+                                    Previous
+                                </Button>
+                                <span className="px-3 py-1 text-sm text-gray-700">
+                                    Page {currentPage} of {totalPages}
+                                </span>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    Next
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    disabled={currentPage === totalPages}
+                                >
+                                    Last
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 

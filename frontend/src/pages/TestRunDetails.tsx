@@ -56,6 +56,37 @@ export default function TestRunDetails() {
                 </div>
             </div>
 
+            {run.results && run.results.length > 0 && (
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h3 className="text-gray-800 font-semibold mb-3 flex items-center gap-2">
+                        <FileText size={18} />
+                        Test Cases ({run.results.length})
+                    </h3>
+                    <div className="space-y-2">
+                        {run.results.map((result) => (
+                            <div key={result.id} className="flex items-center justify-between p-2 bg-gray-50 rounded border border-gray-100">
+                                <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
+                                    <span className={`w-2 h-2 rounded-full shrink-0 ${result.status === 'passed' ? 'bg-green-500' :
+                                        result.status === 'failed' ? 'bg-red-500' :
+                                            'bg-gray-400'
+                                        }`} />
+                                    <span className="font-medium text-sm text-gray-700 truncate" title={result.test_name}>{result.test_name}</span>
+                                </div>
+                                <div className="flex items-center gap-4 text-sm">
+                                    <span className="text-gray-500">{Math.round(result.duration_ms)}ms</span>
+                                    <span className={`font-medium ${result.status === 'passed' ? 'text-green-600' :
+                                        result.status === 'failed' ? 'text-red-600' :
+                                            'text-gray-600'
+                                        }`}>
+                                        {result.status}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             {run.error_message && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                     <h3 className="text-red-800 font-semibold flex items-center gap-2">
@@ -169,6 +200,46 @@ export default function TestRunDetails() {
                             Test Recording
                         </div>
                         <video controls className="w-full bg-black" src={videoUrl} />
+                    </div>
+                )}
+
+                {/* Screenshots Section */}
+                {((run.screenshots && run.screenshots.length > 0) || (run.results && run.results.some(r => r.screenshots && r.screenshots.length > 0))) && (
+                    <div className="col-span-full border border-gray-200 rounded-lg overflow-hidden shadow-sm mt-6">
+                        <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 font-medium text-sm text-gray-700 flex items-center gap-2">
+                            <FileText size={16} />
+                            Screenshots
+                        </div>
+                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {(() => {
+                                const seenPaths = new Set<string>();
+                                const screenshots: React.ReactNode[] = [];
+
+                                // Result Level Screenshots (Prioritize these as they have test names)
+                                run.results?.forEach(result => {
+                                    result.screenshots?.forEach((path, index) => {
+                                        if (!seenPaths.has(path)) {
+                                            seenPaths.add(path);
+                                            screenshots.push(
+                                                <ScreenshotItem key={`res-${result.id}-${index}`} path={path} title={`${result.test_name} - ${index + 1}`} />
+                                            );
+                                        }
+                                    });
+                                });
+
+                                // Run Level Screenshots
+                                run.screenshots?.forEach((path, index) => {
+                                    if (!seenPaths.has(path)) {
+                                        seenPaths.add(path);
+                                        screenshots.push(
+                                            <ScreenshotItem key={`run-${index}`} path={path} title={`Run Screenshot ${index + 1}`} />
+                                        );
+                                    }
+                                });
+
+                                return screenshots;
+                            })()}
+                        </div>
                     </div>
                 )}
             </div>
@@ -352,6 +423,34 @@ function NetworkEventItem({ event }: { event: any, index?: number }) {
                     )}
                 </div>
             )}
+        </div>
+    );
+}
+
+function ScreenshotItem({ path, title }: { path: string, title: string }) {
+    const { data: url } = useQuery({
+        queryKey: ["screenshot", path],
+        queryFn: () => getArtifactUrl(path),
+        enabled: !!path,
+    });
+
+    if (!url) return <div className="animate-pulse bg-gray-200 h-48 rounded-lg"></div>;
+
+    return (
+        <div className="group relative border rounded-lg overflow-hidden bg-gray-100">
+            <img src={url} alt={title} className="w-full h-48 object-cover transition-transform group-hover:scale-105" />
+            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-2 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                {title}
+            </div>
+            <a
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="absolute top-2 right-2 bg-white/90 p-1.5 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white"
+                title="Open full size"
+            >
+                <ChevronRight size={14} className="rotate-[-45deg]" />
+            </a>
         </div>
     );
 }

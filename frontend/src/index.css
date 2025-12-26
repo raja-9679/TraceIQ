@@ -47,6 +47,12 @@
   }
 }
 
+@layer utilities {
+  .glass {
+    @apply bg-opacity-20 backdrop-blur-lg border border-white/10;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;

@@ -1,4 +1,4 @@
-import { chromium, Browser, BrowserContext, Page, FrameLocator, Locator } from 'playwright';
+import { chromium, firefox, webkit, Browser, BrowserContext, Page, FrameLocator, Locator, devices } from 'playwright';
 import * as Minio from 'minio'; // Try standard import, but fallback if needed
 import * as fs from 'fs';
 import * as path from 'path';
@@ -18,29 +18,132 @@ const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 
 export class PlaywrightRunner {
     private browser: Browser | null = null;
+    private currentBrowserType: string = 'chromium';
 
-    async start() {
-        this.browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+    async start(browserType: string = 'chromium') {
+        if (this.browser && this.currentBrowserType !== browserType) {
+            console.log(`Switching browser from ${this.currentBrowserType} to ${browserType}`);
+            await this.stop();
+        }
+
+        if (!this.browser) {
+            console.log(`Launching browser: ${browserType}`);
+
+            switch (browserType) {
+                case 'firefox':
+                    this.browser = await firefox.launch({
+                        headless: true
+                    });
+                    break;
+                case 'webkit':
+                    this.browser = await webkit.launch({
+                        headless: true
+                    });
+                    break;
+                case 'chromium':
+                default:
+                    this.browser = await chromium.launch({
+                        headless: true,
+                        args: ['--no-sandbox', '--disable-setuid-sandbox']
+                    });
+                    break;
+            }
+            this.currentBrowserType = browserType;
+        }
     }
 
     async stop() {
         if (this.browser) {
             await this.browser.close();
+            this.browser = null;
         }
     }
 
-    async runTest(runId: number, testCases: any[], globalSettings: any = {}): Promise<any> {
-        if (!this.browser) await this.start();
+    async runTest(runId: number, testCases: any[], browserType: string = 'chromium', globalSettings: any = {}, device?: string): Promise<any> {
+        await this.start(browserType);
 
         const artifactsDir = `/tmp/artifacts/${runId}`;
         fs.mkdirSync(artifactsDir, { recursive: true });
 
-        const context = await this.browser!.newContext({
+        // Create context with optional device emulation
+        let contextOptions: any = {
             recordVideo: { dir: artifactsDir, size: { width: 1280, height: 720 } }
-        });
+        };
+
+        // Apply device emulation if specified
+        let emulatedAs: string | null = null;
+        if (device) {
+            let descriptor: any = null;
+            if (device === 'Mobile (Generic)') {
+                descriptor = {
+                    viewport: { width: 375, height: 667 },
+                    deviceScaleFactor: 2,
+                    isMobile: browserType !== 'firefox',
+                    hasTouch: true,
+                };
+            } else if (devices[device as keyof typeof devices]) {
+                const deviceDescriptor = devices[device as keyof typeof devices];
+
+                // Check if the device's default browser matches the selected browser
+                // If they don't match (e.g. Chrome selected for iPhone), we should NOT spoof the UA
+                // We only want the viewport and physical characteristics
+                if (deviceDescriptor.defaultBrowserType && deviceDescriptor.defaultBrowserType !== browserType) {
+                    descriptor = {
+                        viewport: deviceDescriptor.viewport,
+                        deviceScaleFactor: deviceDescriptor.deviceScaleFactor,
+                        hasTouch: deviceDescriptor.hasTouch,
+                        isMobile: browserType !== 'firefox', // Firefox doesn't support isMobile
+                    };
+
+                    // Intelligently synthesize a User Agent to match the Platform + Browser combination
+                    // e.g. "Chrome on iPhone" (CriOS) or "Firefox on Android"
+
+                    const isIOS = deviceDescriptor.defaultBrowserType === 'webkit' || (device && device.includes('iPhone')) || (device && device.includes('iPad'));
+                    // Default to Android/Mobile for non-iOS mobile devices
+
+                    if (isIOS) {
+                        if (browserType === 'chromium') {
+                            // Chrome on iOS (CriOS)
+                            descriptor.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1';
+                        } else if (browserType === 'firefox') {
+                            // Firefox on iOS (FxiOS)
+                            descriptor.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/120.0 Mobile/15E148 Safari/605.1.15';
+                        }
+                    } else {
+                        // Android / Generic Mobile
+                        if (browserType === 'firefox') {
+                            // Firefox on Android
+                            descriptor.userAgent = 'Mozilla/5.0 (Android 14; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0';
+                        }
+                        // For Chrome on Android, isMobile: true usually handles it well (giving Chrome Mobile UA).
+                        // But we can force it if needed. Let's rely on isMobile for Chromium-Android for now as it's native.
+                    }
+
+                    console.log(`Browser mismatch (${browserType} vs ${deviceDescriptor.defaultBrowserType}). Synthesized UA for ${isIOS ? 'iOS' : 'Android'}: ${descriptor.userAgent || 'Default'}`);
+                } else {
+                    // Match! Use the full descriptor including UA for authentic emulation
+                    descriptor = { ...deviceDescriptor };
+                    emulatedAs = descriptor.defaultBrowserType;
+
+                    // Firefox doesn't support isMobile option in newContext
+                    if (browserType === 'firefox') {
+                        delete descriptor.isMobile;
+                        console.log(`Removed isMobile from ${device} descriptor for Firefox compatibility`);
+                    }
+                }
+            }
+
+            if (descriptor) {
+                contextOptions = {
+                    ...contextOptions,
+                    ...descriptor
+                };
+                console.log(`Using device emulation: ${device}${emulatedAs ? ` (as ${emulatedAs})` : ''}`);
+            }
+        }
+
+        const sharedContext = await this.browser!.newContext(contextOptions);
+        let tempContext: BrowserContext | null = null;
 
         let currentTestCaseId: number | null = null;
         let currentTestCaseName: string | null = null;
@@ -52,6 +155,432 @@ export class PlaywrightRunner {
         const requestStartTimes = new Map<string, number>();
 
         // Listen for network events
+        // Listen for network events on shared context
+        this.setupNetworkListeners(sharedContext, requestStartTimes, networkEvents, currentTestCaseId, currentTestCaseName);
+
+        // Apply global headers and params
+        // We now use route interception to apply headers selectively based on domain
+        // These serve as defaults, but can be overridden per test case
+        let currentSettings = {
+            headers: globalSettings?.headers || {},
+            params: globalSettings?.params || {},
+            allowed_domains: globalSettings?.allowed_domains || [],
+            domain_settings: globalSettings?.domain_settings || {}
+        };
+
+        let sourceDomain: string | null = null;
+
+        // Helper to get domain from URL
+        const getDomain = (url: string) => {
+            try {
+                return new URL(url).hostname;
+            } catch {
+                return '';
+            }
+        };
+
+        // Intercept all requests to apply headers and params
+        // Intercept all requests to apply headers and params on shared context
+        await this.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
+
+        await this.injectInitScripts(sharedContext, browserType, device || null, emulatedAs || null);
+
+        const tracePath = path.join(artifactsDir, 'trace.zip');
+        await sharedContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
+
+        let page = await sharedContext.newPage();
+        const startTime = Date.now();
+        let status = 'passed';
+        let error: string | null = null;
+
+        let executionLog: any[] = []; // Track execution times for each test case
+
+        try {
+            console.log(`Running test suite for runId: ${runId} with ${testCases?.length || 0} cases`);
+
+            if (!testCases || testCases.length === 0) {
+                throw new Error("No test cases provided");
+            }
+
+            for (const testCase of testCases) {
+                const caseStartTime = Date.now();
+                let caseStatus = 'passed';
+                let caseError = null;
+
+                currentTestCaseId = testCase.id; // Set current test case ID
+                currentTestCaseName = testCase.name;
+                console.log(`Executing Test Case: ${testCase.name} (ID: ${testCase.id})`);
+
+                // Update settings for this test case if provided
+                if (testCase.settings) {
+                    currentSettings = {
+                        headers: testCase.settings.headers || {},
+                        params: testCase.settings.params || {},
+                        allowed_domains: testCase.settings.allowed_domains || [],
+                        domain_settings: testCase.settings.domain_settings || {}
+                    };
+                    console.log(`Updated settings for test case ${testCase.name}`);
+                } else {
+                    // Fallback to global settings if not provided (shouldn't happen with new worker logic)
+                    currentSettings = {
+                        headers: globalSettings?.headers || {},
+                        params: globalSettings?.params || {},
+                        allowed_domains: globalSettings?.allowed_domains || [],
+                        domain_settings: globalSettings?.domain_settings || {}
+                    };
+                }
+
+                // Reset source domain for each test case to ensure isolation in continuous mode
+                sourceDomain = null;
+
+                // Handle Execution Mode (Separate vs Continuous)
+                const executionMode = testCase.executionMode || 'continuous';
+                console.log(`  Execution Mode: ${executionMode}`);
+
+                if (executionMode === 'separate') {
+                    console.log('  [Separate Mode] Creating temporary context...');
+                    tempContext = await this.browser!.newContext(contextOptions);
+
+                    // Setup temp context
+                    await this.injectInitScripts(tempContext, browserType, device || null, emulatedAs || null);
+                    await tempContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
+                    page = await tempContext.newPage();
+                    this.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, currentTestCaseId, currentTestCaseName);
+                    this.setupRouteInterception(tempContext, currentSettings, sourceDomain);
+                } else {
+                    // Continuous Mode: Use shared context
+                    console.log('  [Continuous Mode] Using shared context');
+
+                    // Ensure shared page is valid
+                    const pages = sharedContext.pages();
+                    if (pages.length > 0) {
+                        page = pages[0];
+                        if (page.isClosed()) {
+                            page = await sharedContext.newPage();
+                        }
+                    } else {
+                        page = await sharedContext.newPage();
+                    }
+
+                    // Update listeners/interception for shared context with current test case details
+                    // Note: setupNetworkListeners and setupRouteInterception attach handlers. 
+                    // For continuous mode, we might accumulate handlers if we call them repeatedly.
+                    // Ideally, we should update the state they reference, or clear and re-add.
+                    // However, the current implementation uses closure variables (currentTestCaseId, currentSettings) 
+                    // which are updated in this loop. But the *handlers* were attached once outside.
+                    // Wait, the handlers capture the *initial* values if they are primitives?
+                    // No, `currentTestCaseId` is a let variable. Closures capture the variable *reference*.
+                    // So updating `currentTestCaseId` inside the loop *will* be seen by the handlers attached outside.
+                    // BUT `setupRouteInterception` uses `currentSettings` which is re-assigned in the loop.
+                    // If `setupRouteInterception` was called with `currentSettings` passed as an argument, 
+                    // the handler captures that specific object reference.
+                    // If we re-assign `currentSettings = {...}`, the handler still holds the OLD object.
+                    // FIX: We need to re-apply route interception for the shared context if settings changed, 
+                    // OR make the handler look up the *current* settings from a mutable container.
+
+                    // For now, let's re-apply route interception to be safe, but we must be careful about duplicate handlers.
+                    // Playwright's `route` overrides previous routes if the pattern matches.
+                    // So calling `setupRouteInterception` again should overwrite the previous handler for '**/*'.
+                    await this.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
+
+                    // Network listeners (`on('request')`) DO accumulate. We shouldn't re-add them for sharedContext.
+                    // We need a way to update the ID they use. 
+                    // Since `currentTestCaseId` is defined in the outer scope and captured, it should be fine.
+                    // The only issue is `currentTestCaseName` which is also updated.
+                }
+
+                // Reset page state to prevent navigation interruptions from previous test cases
+                try {
+                    console.log('  Resetting page state (about:blank)...');
+                    await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
+
+                    // Set test name in window property so init script can read it
+                    await page.evaluate((testName) => {
+                        (window as any).__TRACEIQ_TEST_NAME__ = testName;
+                    }, testCase.name);
+                } catch (e) {
+                    console.warn(`  Warning: Failed to reset page state: ${e}`);
+                }
+
+                // Track current context (Page or Frame)
+                let currentContext: Page | FrameLocator = page;
+
+                try {
+                    for (const step of testCase.steps) {
+                        if (step.type === 'switch-frame') {
+                            const frameSelector = step.selector || step.value;
+                            if (frameSelector === 'main' || frameSelector === 'top') {
+                                console.log('  Step: switch-frame to main page');
+                                currentContext = page;
+                            } else if (frameSelector) {
+                                console.log(`  Step: switch-frame ${frameSelector}`);
+
+                                // Enhanced Lifecycle Management for Cross-Origin Stability
+                                if (step.options?.strict_lifecycle) {
+                                    console.log('    [Strict Lifecycle] 1. Waiting for iframe attachment...');
+
+                                    // 1. Wait for Attachment (Antigravity: Attachment confirms existence)
+                                    // We locate the iframe element itself (not its content yet)
+                                    // Note: We use 'attached' state, ignoring visibility (opacity:0 iframes are valid)
+                                    const frameElement = currentContext.locator(frameSelector).first();
+                                    await frameElement.waitFor({ state: 'attached', timeout: 30000 });
+
+                                    // 2. Sync Load State (Antigravity: Load state confirms readiness)
+                                    // For cross-origin iframes, existence attached != Ready to accept commands.
+                                    // We must acquire the underlying Frame object to check its network idle/load state.
+                                    const elementHandle = await frameElement.elementHandle();
+                                    const contentFrame = await elementHandle?.contentFrame();
+
+                                    if (contentFrame) {
+                                        console.log('    [Strict Lifecycle] 2. Waiting for frame load state (domcontentloaded)...');
+                                        // This is critical: waits for the SUB-RESOURCE (the iframe src) to finish loading
+                                        try {
+                                            await contentFrame.waitForLoadState('domcontentloaded', { timeout: 30000 });
+                                        } catch (e) {
+                                            console.warn(`    [Strict Lifecycle] Warning: Frame load wait warning: ${e}`);
+                                        }
+                                    } else {
+                                        console.warn('    [Strict Lifecycle] Warning: Could not access content frame (detached or strict CSP?)');
+                                    }
+                                }
+
+                                // 3. Set Context (Antigravity: Interaction via frameLocator)
+                                // We switch to the isolated context for subsequent steps
+                                currentContext = currentContext.frameLocator(frameSelector);
+                            }
+                        } else {
+                            const stepResponse = await this.executeStep(page, currentContext, step, globalSettings);
+                            // Legacy capture logic moved to event listener, but we keep this just in case
+                            // actually we can remove the legacy capture from here since the event listener handles it better
+                        }
+                    }
+                } catch (e: any) {
+                    caseStatus = 'failed';
+                    caseError = e.message;
+                    throw e; // Re-throw to fail the run? Or continue? 
+                    // For continuous mode, we might want to continue? 
+                    // But the outer catch block catches it and sets global status to failed.
+                    // Let's re-throw for now to maintain existing behavior, but log the case result first.
+                } finally {
+                    const caseEndTime = Date.now();
+                    executionLog.push({
+                        testCaseId: testCase.id,
+                        testCaseName: testCase.name,
+                        startTime: caseStartTime,
+                        endTime: caseEndTime,
+                        status: caseStatus,
+                        error: caseError
+                    });
+                }
+
+                // Cleanup temp context if it was used
+                if (tempContext) {
+                    console.log('  [Separate Mode] Closing temporary context...');
+                    await tempContext.close();
+                    tempContext = null;
+                }
+            }
+
+        } catch (e: any) {
+            status = 'failed';
+            error = e.message;
+            console.error(`Test failed: ${e}`);
+        } finally {
+            const duration = Date.now() - startTime;
+            await sharedContext.tracing.stop({ path: tracePath });
+            await sharedContext.close(); // Saves video
+
+            // Upload artifacts
+            const traceKey = `runs/${runId}/trace.zip`;
+            await minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
+
+            const files = fs.readdirSync(artifactsDir);
+
+            // Upload Screenshots
+            const screenshots: string[] = [];
+            const screenshotFiles = files.filter(f => f.endsWith('.png'));
+            for (const file of screenshotFiles) {
+                const filePath = path.join(artifactsDir, file);
+                const key = `runs/${runId}/screenshots/${file}`;
+                await minioClient.fPutObject(BUCKET_NAME, key, filePath);
+                screenshots.push(key);
+            }
+
+            let videoKey = null;
+            const videoFile = files.find(f => f.endsWith('.webm'));
+            if (videoFile) {
+                const videoPath = path.join(artifactsDir, videoFile);
+                videoKey = `runs/${runId}/video.webm`;
+                await minioClient.fPutObject(BUCKET_NAME, videoKey, videoPath);
+            }
+
+            // Cleanup
+            fs.rmSync(artifactsDir, { recursive: true, force: true });
+
+            return {
+                status,
+                duration_ms: duration,
+                error,
+                trace: traceKey,
+                video: videoKey,
+                screenshots: screenshots,
+                response_status: responseStatus,
+                request_headers: requestHeaders,
+                response_headers: responseHeaders,
+                network_events: networkEvents,
+                execution_log: executionLog
+            };
+        }
+    }
+
+    private async injectInitScripts(context: BrowserContext, browserType: string, deviceName: string | null, emulatedAs: string | null) {
+        await context.addInitScript(({ browserType, deviceName, emulatedAs }: { browserType: string, deviceName: string | null, emulatedAs: string | null }) => {
+            const initElements = () => {
+                // Mouse cursor
+                const box = document.createElement('div');
+                box.classList.add('selenium-mouse-helper');
+
+                // Browser indicator badge
+                const browserBadge = document.createElement('div');
+                browserBadge.classList.add('browser-indicator');
+                browserBadge.textContent = browserType.toUpperCase();
+
+                const styleElement = document.createElement('style');
+                styleElement.innerHTML = `
+                    .selenium-mouse-helper {
+                        pointer-events: none;
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        width: 20px;
+                        height: 20px;
+                        border: 1px solid white;
+                        border-radius: 50%;
+                        background: rgba(255, 0, 0, 0.7);
+                        margin: -10px 0 0 -10px;
+                        padding: 0;
+                        transition: background .2s, border-radius .2s, border-color .2s;
+                        box-shadow: 0 0 4px rgba(0,0,0,0.8);
+                        z-index: 100000;
+                    }
+                    .selenium-mouse-helper.button-pressed {
+                        background: rgba(255, 0, 0, 1);
+                        transform: scale(0.9);
+                    }
+                    .browser-indicator {
+                        pointer-events: none !important;
+                        position: fixed !important;
+                        top: 20px !important;
+                        right: 20px !important;
+                        padding: 8px 16px !important;
+                        background: rgba(0, 0, 0, 0.85) !important;
+                        color: white !important;
+                        font-family: 'Courier New', monospace !important;
+                        font-size: 12px !important;
+                        font-weight: bold !important;
+                        border-radius: 6px !important;
+                        z-index: 2147483647 !important;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
+                        border: 2px solid ${browserType === 'chromium' ? '#4285f4' : browserType === 'firefox' ? '#ff7139' : '#00d4ff'} !important;
+                        display: flex !important;
+                        flex-direction: column !important;
+                        gap: 4px !important;
+                        min-width: 150px !important;
+                        opacity: 1 !important;
+                        transition: opacity 0.5s ease-out !important;
+                    }
+                    .browser-indicator.hidden {
+                        opacity: 0 !important;
+                    }
+                    .browser-indicator .browser-type {
+                        font-size: 14px !important;
+                        color: ${browserType === 'chromium' ? '#4285f4' : browserType === 'firefox' ? '#ff7139' : '#00d4ff'} !important;
+                    }
+                    .browser-indicator .device-name {
+                        font-size: 10px !important;
+                        color: #888 !important;
+                        font-weight: normal !important;
+                    }
+                    .browser-indicator .emulated-note {
+                        font-size: 10px !important;
+                        color: rgba(255, 255, 255, 0.5) !important;
+                        font-weight: normal !important;
+                        font-style: italic !important;
+                    }
+                    .browser-indicator .test-name {
+                        font-size: 11px !important;
+                        color: #aaa !important;
+                        font-weight: normal !important;
+                    }
+                `;
+                document.head.appendChild(styleElement);
+                document.body.appendChild(box);
+
+                // Create badge with browser type, device, and test name sections
+                browserBadge.innerHTML = `
+                    <div class="browser-type">
+                        ${browserType.toUpperCase()}
+                        ${emulatedAs && emulatedAs !== browserType ? `<span class="emulated-note"> (as ${emulatedAs})</span>` : ''}
+                    </div>
+                    ${deviceName ? `<div class="device-name">${deviceName}</div>` : ''}
+                    <div class="test-name" id="test-name-display">${(window as any).__TRACEIQ_TEST_NAME__ || 'Loading...'}</div>
+                `;
+                document.body.appendChild(browserBadge);
+
+                // Watch for test name changes in window property
+                let lastTestName = '';
+                let hideTimeout: any = null;
+                setInterval(() => {
+                    const testNameEl = document.getElementById('test-name-display');
+                    const currentTestName = (window as any).__TRACEIQ_TEST_NAME__ || 'Loading...';
+
+                    if (testNameEl && currentTestName !== lastTestName) {
+                        testNameEl.textContent = currentTestName;
+                        lastTestName = currentTestName;
+
+                        // Reset hide timeout when test name changes
+                        if (hideTimeout) clearTimeout(hideTimeout);
+                        browserBadge.classList.remove('hidden');
+
+                        // Auto-hide after 3 seconds (only if not "Loading...")
+                        if (currentTestName !== 'Loading...') {
+                            hideTimeout = setTimeout(() => {
+                                browserBadge.classList.add('hidden');
+                            }, 3000);
+                        }
+                    }
+                }, 100);
+
+                document.addEventListener('mousemove', event => {
+                    box.style.left = event.pageX + 'px';
+                    box.style.top = event.pageY + 'px';
+                }, true);
+
+                document.addEventListener('mousedown', event => {
+                    box.classList.add('button-pressed');
+                }, true);
+
+                document.addEventListener('mouseup', event => {
+                    box.classList.remove('button-pressed');
+                }, true);
+            };
+
+            // Wait for body to exist
+            if (document.body) {
+                initElements();
+            } else {
+                const observer = new MutationObserver(() => {
+                    if (document.body) {
+                        observer.disconnect();
+                        initElements();
+                    }
+                });
+                observer.observe(document.documentElement, { childList: true });
+            }
+        }, { browserType, deviceName: deviceName || null, emulatedAs: emulatedAs || null });
+    }
+
+    private setupNetworkListeners(context: BrowserContext, requestStartTimes: Map<string, number>, networkEvents: any[], currentTestCaseId: number | null, currentTestCaseName: string | null) {
         context.on('request', request => {
             requestStartTimes.set(request.url(), Date.now());
         });
@@ -82,32 +611,13 @@ export class PlaywrightRunner {
                     requestHeaders: reqHeaders,
                     responseHeaders: headers
                 });
-
-                // Keep legacy fields for backward compatibility with existing UI logic
-                // (Capture first successful navigation)
-                if (!responseStatus && response.status() < 400 && request.resourceType() === 'document') {
-                    responseStatus = response.status();
-                    requestHeaders = reqHeaders;
-                    responseHeaders = headers;
-                }
             } catch (e) {
                 console.error('Error capturing network event:', e);
             }
         });
+    }
 
-        // Apply global headers and params
-        // We now use route interception to apply headers selectively based on domain
-        // These serve as defaults, but can be overridden per test case
-        let currentSettings = {
-            headers: globalSettings?.headers || {},
-            params: globalSettings?.params || {},
-            allowed_domains: globalSettings?.allowed_domains || [],
-            domain_settings: globalSettings?.domain_settings || {}
-        };
-
-        let sourceDomain: string | null = null;
-
-        // Helper to get domain from URL
+    private async setupRouteInterception(context: BrowserContext, currentSettings: any, sourceDomain: string | null) {
         const getDomain = (url: string) => {
             try {
                 return new URL(url).hostname;
@@ -116,7 +626,6 @@ export class PlaywrightRunner {
             }
         };
 
-        // Intercept all requests to apply headers and params
         await context.route('**/*', async route => {
             const request = route.request();
             const urlStr = request.url();
@@ -247,217 +756,6 @@ export class PlaywrightRunner {
                 await route.continue();
             }
         });
-
-        // Inject mouse cursor visualization
-        await context.addInitScript(() => {
-            const box = document.createElement('div');
-            box.classList.add('selenium-mouse-helper');
-            const styleElement = document.createElement('style');
-            styleElement.innerHTML = `
-                .selenium-mouse-helper {
-                    pointer-events: none;
-                    position: absolute;
-                    top: 0;
-                    left: 0;
-                    width: 20px;
-                    height: 20px;
-                    border: 1px solid white;
-                    border-radius: 50%;
-                    background: rgba(255, 0, 0, 0.7);
-                    margin: -10px 0 0 -10px;
-                    padding: 0;
-                    transition: background .2s, border-radius .2s, border-color .2s;
-                    box-shadow: 0 0 4px rgba(0,0,0,0.8);
-                    z-index: 100000;
-                }
-                .selenium-mouse-helper.button-pressed {
-                    background: rgba(255, 0, 0, 1);
-                    transform: scale(0.9);
-                }
-            `;
-            document.head.appendChild(styleElement);
-            document.body.appendChild(box);
-
-            document.addEventListener('mousemove', event => {
-                box.style.left = event.pageX + 'px';
-                box.style.top = event.pageY + 'px';
-            }, true);
-
-            document.addEventListener('mousedown', event => {
-                box.classList.add('button-pressed');
-            }, true);
-
-            document.addEventListener('mouseup', event => {
-                box.classList.remove('button-pressed');
-            }, true);
-        });
-
-        const tracePath = path.join(artifactsDir, 'trace.zip');
-        await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
-
-        const page = await context.newPage();
-        const startTime = Date.now();
-        let status = 'passed';
-        let error: string | null = null;
-
-        let executionLog: any[] = []; // Track execution times for each test case
-
-        try {
-            console.log(`Running test suite for runId: ${runId} with ${testCases?.length || 0} cases`);
-
-            if (!testCases || testCases.length === 0) {
-                throw new Error("No test cases provided");
-            }
-
-            for (const testCase of testCases) {
-                const caseStartTime = Date.now();
-                let caseStatus = 'passed';
-                let caseError = null;
-
-                currentTestCaseId = testCase.id; // Set current test case ID
-                currentTestCaseName = testCase.name;
-                console.log(`Executing Test Case: ${testCase.name} (ID: ${testCase.id})`);
-
-                // Update settings for this test case if provided
-                if (testCase.settings) {
-                    currentSettings = {
-                        headers: testCase.settings.headers || {},
-                        params: testCase.settings.params || {},
-                        allowed_domains: testCase.settings.allowed_domains || [],
-                        domain_settings: testCase.settings.domain_settings || {}
-                    };
-                    console.log(`Updated settings for test case ${testCase.name}`);
-                } else {
-                    // Fallback to global settings if not provided (shouldn't happen with new worker logic)
-                    currentSettings = {
-                        headers: globalSettings?.headers || {},
-                        params: globalSettings?.params || {},
-                        allowed_domains: globalSettings?.allowed_domains || [],
-                        domain_settings: globalSettings?.domain_settings || {}
-                    };
-                }
-
-                // Reset source domain for each test case to ensure isolation in continuous mode
-                sourceDomain = null;
-
-                // Reset page state to prevent navigation interruptions from previous test cases
-                try {
-                    console.log('  Resetting page state (about:blank)...');
-                    await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
-                } catch (e) {
-                    console.warn(`  Warning: Failed to reset page state: ${e}`);
-                }
-
-                // Track current context (Page or Frame)
-                let currentContext: Page | FrameLocator = page;
-
-                try {
-                    for (const step of testCase.steps) {
-                        if (step.type === 'switch-frame') {
-                            const frameSelector = step.selector || step.value;
-                            if (frameSelector === 'main' || frameSelector === 'top') {
-                                console.log('  Step: switch-frame to main page');
-                                currentContext = page;
-                            } else if (frameSelector) {
-                                console.log(`  Step: switch-frame ${frameSelector}`);
-
-                                // Enhanced Lifecycle Management for Cross-Origin Stability
-                                if (step.options?.strict_lifecycle) {
-                                    console.log('    [Strict Lifecycle] 1. Waiting for iframe attachment...');
-
-                                    // 1. Wait for Attachment (Antigravity: Attachment confirms existence)
-                                    // We locate the iframe element itself (not its content yet)
-                                    // Note: We use 'attached' state, ignoring visibility (opacity:0 iframes are valid)
-                                    const frameElement = currentContext.locator(frameSelector).first();
-                                    await frameElement.waitFor({ state: 'attached', timeout: 30000 });
-
-                                    // 2. Sync Load State (Antigravity: Load state confirms readiness)
-                                    // For cross-origin iframes, existence attached != Ready to accept commands.
-                                    // We must acquire the underlying Frame object to check its network idle/load state.
-                                    const elementHandle = await frameElement.elementHandle();
-                                    const contentFrame = await elementHandle?.contentFrame();
-
-                                    if (contentFrame) {
-                                        console.log('    [Strict Lifecycle] 2. Waiting for frame load state (domcontentloaded)...');
-                                        // This is critical: waits for the SUB-RESOURCE (the iframe src) to finish loading
-                                        try {
-                                            await contentFrame.waitForLoadState('domcontentloaded', { timeout: 30000 });
-                                        } catch (e) {
-                                            console.warn(`    [Strict Lifecycle] Warning: Frame load wait warning: ${e}`);
-                                        }
-                                    } else {
-                                        console.warn('    [Strict Lifecycle] Warning: Could not access content frame (detached or strict CSP?)');
-                                    }
-                                }
-
-                                // 3. Set Context (Antigravity: Interaction via frameLocator)
-                                // We switch to the isolated context for subsequent steps
-                                currentContext = currentContext.frameLocator(frameSelector);
-                            }
-                        } else {
-                            const stepResponse = await this.executeStep(page, currentContext, step, globalSettings);
-                            // Legacy capture logic moved to event listener, but we keep this just in case
-                            // actually we can remove the legacy capture from here since the event listener handles it better
-                        }
-                    }
-                } catch (e: any) {
-                    caseStatus = 'failed';
-                    caseError = e.message;
-                    throw e; // Re-throw to fail the run? Or continue? 
-                    // For continuous mode, we might want to continue? 
-                    // But the outer catch block catches it and sets global status to failed.
-                    // Let's re-throw for now to maintain existing behavior, but log the case result first.
-                } finally {
-                    const caseEndTime = Date.now();
-                    executionLog.push({
-                        testCaseId: testCase.id,
-                        testCaseName: testCase.name,
-                        startTime: caseStartTime,
-                        endTime: caseEndTime,
-                        status: caseStatus,
-                        error: caseError
-                    });
-                }
-            }
-
-        } catch (e: any) {
-            status = 'failed';
-            error = e.message;
-            console.error(`Test failed: ${e}`);
-        } finally {
-            const duration = Date.now() - startTime;
-            await context.tracing.stop({ path: tracePath });
-            await context.close(); // Saves video
-
-            // Upload artifacts
-            const traceKey = `runs/${runId}/trace.zip`;
-            await minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
-
-            let videoKey = null;
-            const files = fs.readdirSync(artifactsDir);
-            const videoFile = files.find(f => f.endsWith('.webm'));
-            if (videoFile) {
-                const videoPath = path.join(artifactsDir, videoFile);
-                videoKey = `runs/${runId}/video.webm`;
-                await minioClient.fPutObject(BUCKET_NAME, videoKey, videoPath);
-            }
-
-            // Cleanup
-            fs.rmSync(artifactsDir, { recursive: true, force: true });
-
-            return {
-                status,
-                duration_ms: duration,
-                error,
-                trace: traceKey,
-                video: videoKey,
-                response_status: responseStatus,
-                request_headers: requestHeaders,
-                response_headers: responseHeaders,
-                network_events: networkEvents,
-                execution_log: executionLog
-            };
-        }
     }
 
     private async executeStep(page: Page, context: Page | FrameLocator, step: any, globalSettings: any = {}) {
@@ -498,9 +796,11 @@ export class PlaywrightRunner {
                 // Retry logic for goto
                 let attempts = 0;
                 const maxAttempts = 3;
+                const waitUntil = (step.params?.wait_until as 'load' | 'domcontentloaded' | 'networkidle' | 'commit') || 'domcontentloaded';
+
                 while (attempts < maxAttempts) {
                     try {
-                        return await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 80000 });
+                        return await page.goto(url, { waitUntil: waitUntil, timeout: 80000 });
                     } catch (e: any) {
                         attempts++;
                         console.warn(`  goto failed (attempt ${attempts}/${maxAttempts}): ${e.message}`);
@@ -513,6 +813,8 @@ export class PlaywrightRunner {
                 const clickSelector = step.selector || step.value;
                 if (clickSelector) {
                     const locator = getLocator(clickSelector);
+                    // Auto-wait for element to be visible and enabled before clicking
+                    await locator.waitFor({ state: 'visible', timeout: 80000 });
                     await moveMouseTo(locator);
                     await locator.click();
                 }
@@ -520,6 +822,8 @@ export class PlaywrightRunner {
             case 'fill':
                 if (step.selector) {
                     const locator = getLocator(step.selector);
+                    // Auto-wait for element to be visible before filling (handles dynamic content)
+                    await locator.waitFor({ state: 'visible', timeout: 80000 });
                     await moveMouseTo(locator);
                     await locator.fill(step.value || '');
                 }
@@ -528,6 +832,8 @@ export class PlaywrightRunner {
                 const checkSelector = step.selector || step.value;
                 if (checkSelector) {
                     const locator = getLocator(checkSelector);
+                    // Auto-wait for checkbox to be visible before checking
+                    await locator.waitFor({ state: 'visible', timeout: 80000 });
                     await moveMouseTo(locator);
                     await locator.check();
                 }
@@ -543,6 +849,18 @@ export class PlaywrightRunner {
                     } else {
                         // FrameLocator doesn't have waitForSelector, so we rely on locator.waitFor
                         await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 50000 });
+                    }
+                }
+                break;
+            case 'wait-for-selector':
+                const waitSelector = step.selector || step.value;
+                if (waitSelector) {
+                    console.log(`  Step: wait-for-selector  ${waitSelector}`);
+                    // Wait for element to be attached to DOM (not necessarily visible)
+                    if ('waitForSelector' in context) {
+                        await (context as Page).waitForSelector(waitSelector, { state: 'attached', timeout: 80000 });
+                    } else {
+                        await getLocator(waitSelector).waitFor({ state: 'attached', timeout: 80000 });
                     }
                 }
                 break;

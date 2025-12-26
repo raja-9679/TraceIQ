@@ -31,10 +31,37 @@ export interface TestRun {
     response_headers?: Record<string, string>;
     network_events?: any[];
     execution_log?: any[];
+    browser?: string;
+    device?: string;
+    screenshots?: string[];
+    results?: {
+        id: number;
+        test_name: string;
+        status: "pending" | "running" | "passed" | "failed" | "error";
+        duration_ms: number;
+        error_message?: string;
+        screenshots?: string[];
+    }[];
 }
 
-export const getRuns = async (): Promise<TestRun[]> => {
-    const response = await api.get("/runs");
+export const getRuns = async (
+    limit: number = 50,
+    offset: number = 0,
+    search?: string,
+    status?: string,
+    browser?: string,
+    device?: string
+): Promise<{ runs: TestRun[], total: number, limit: number, offset: number }> => {
+    const params = new URLSearchParams({
+        limit: limit.toString(),
+        offset: offset.toString(),
+    });
+    if (search) params.append('search', search);
+    if (status) params.append('status', status);
+    if (browser) params.append('browser', browser);
+    if (device) params.append('device', device);
+
+    const response = await api.get(`/runs?${params.toString()}`);
     return response.data;
 };
 
@@ -46,10 +73,25 @@ export const getRun = async (id: number): Promise<TestRun> => {
     return response.data;
 };
 
-export const triggerRun = async (suiteId: number, caseId?: number): Promise<TestRun | TestRun[]> => {
+export const triggerRun = async (suiteId: number, caseId?: number, browser: string | string[] = "chromium", device?: string | string[]): Promise<TestRun | TestRun[]> => {
     let url = `/runs?suite_id=${suiteId}`;
+
+    if (Array.isArray(browser)) {
+        browser.forEach(b => url += `&browser=${b}`);
+    } else {
+        url += `&browser=${browser}`;
+    }
+
     if (caseId) {
         url += `&case_id=${caseId}`;
+    }
+
+    if (device) {
+        if (Array.isArray(device)) {
+            device.forEach(d => url += `&device=${encodeURIComponent(d)}`);
+        } else {
+            url += `&device=${encodeURIComponent(device)}`;
+        }
     }
     const response = await api.post(url);
     return response.data;
@@ -75,6 +117,46 @@ export const deleteRun = async (runId: number): Promise<void> => {
     await api.delete(`/runs/${runId}`);
 };
 
+// Settings API
+export interface UserSettings {
+    id: number;
+    user_id: number;
+    theme: string;
+    timezone: string;
+    date_format: string;
+    default_browser: string;
+    default_device: string;
+    default_timeout: number;
+    auto_retry: boolean;
+    max_retries: number;
+    parallel_execution: boolean;
+    max_parallel_tests: number;
+    multi_browser_enabled: boolean;
+    selected_browsers: string[];
+    multi_device_enabled: boolean;
+    selected_devices: string[];
+    email_notifications: boolean;
+    notify_on_completion: boolean;
+    notify_on_failure: boolean;
+    daily_summary: boolean;
+    notification_email: string | null;
+    video_recording: string;
+    screenshot_on_error: boolean;
+    trace_files: boolean;
+    retention_period: number;
+    auto_cleanup: boolean;
+}
+
+export const getSettings = async (): Promise<UserSettings> => {
+    const response = await api.get("/settings");
+    return response.data;
+};
+
+export const updateSettings = async (settings: Partial<UserSettings>): Promise<UserSettings> => {
+    const response = await api.put("/settings", settings);
+    return response.data;
+};
+
 export const deleteRuns = async (data: { runIds?: number[], all?: boolean }): Promise<void> => {
     let url = "/runs";
     if (data.all) {
@@ -86,4 +168,9 @@ export const deleteRuns = async (data: { runIds?: number[], all?: boolean }): Pr
         url += `?${params.toString()}`;
     }
     await api.delete(url);
+};
+
+export const updateTestSuite = async (suiteId: number, data: any): Promise<any> => {
+    const response = await api.put(`/suites/${suiteId}`, data);
+    return response.data;
 };

@@ -9,17 +9,18 @@ import { useAuth } from '@/context/AuthContext';
 export default function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
-    const { data: runs } = useQuery({
+    const { data: runsData } = useQuery({
         queryKey: ['runs'],
-        queryFn: getRuns,
+        queryFn: () => getRuns(),
         refetchInterval: 2000,
     });
 
+    const runs = runsData?.runs || [];
     const stats = {
-        total: runs?.length || 0,
-        passed: runs?.filter(r => r.status === 'passed').length || 0,
-        failed: runs?.filter(r => r.status === 'failed').length || 0,
-        running: runs?.filter(r => r.status === 'running').length || 0,
+        total: runsData?.total || 0,
+        passed: runs.filter(r => r.status === 'passed').length,
+        failed: runs.filter(r => r.status === 'failed').length,
+        running: runs.filter(r => r.status === 'running').length,
     };
 
     const passRate = stats.total > 0 ? ((stats.passed / stats.total) * 100).toFixed(1) : 0;
@@ -27,8 +28,8 @@ export default function Dashboard() {
     return (
         <div className="space-y-6">
             <div>
-                <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user?.full_name?.split(' ')[0] || 'User'}!</h1>
-                <p className="text-gray-500 mt-1">Overview of your test automation platform</p>
+                <h1 className="text-3xl font-bold text-foreground">Welcome back, {user?.full_name?.split(' ')[0] || 'User'}!</h1>
+                <p className="text-muted-foreground mt-1">Overview of your test automation platform</p>
             </div>
 
             {/* Stats Grid */}
@@ -85,29 +86,29 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent>
                     <div className="space-y-4">
-                        {runs?.slice(0, 5).map((run) => (
+                        {runs.slice(0, 5).map((run) => (
                             <div
                                 key={run.id}
-                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+                                className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
                                 onClick={() => navigate(`/runs/${run.id}`)}
                             >
                                 <div className="flex items-center space-x-4">
-                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${run.status === 'passed' ? 'bg-green-100' :
-                                        run.status === 'failed' ? 'bg-red-100' :
-                                            run.status === 'running' ? 'bg-blue-100' : 'bg-gray-100'
+                                    <div className={`h-10 w-10 rounded-full flex items-center justify-center ${run.status === 'passed' ? 'bg-green-500/10' :
+                                        run.status === 'failed' ? 'bg-red-500/10' :
+                                            run.status === 'running' ? 'bg-blue-500/10' : 'bg-secondary'
                                         }`}>
-                                        {run.status === 'passed' && <CheckCircle2 className="h-5 w-5 text-green-600" />}
-                                        {run.status === 'failed' && <XCircle className="h-5 w-5 text-red-600" />}
-                                        {run.status === 'running' && <Clock className="h-5 w-5 text-blue-600 animate-spin" />}
+                                        {run.status === 'passed' && <CheckCircle2 className="h-5 w-5 text-green-500" />}
+                                        {run.status === 'failed' && <XCircle className="h-5 w-5 text-red-500" />}
+                                        {run.status === 'running' && <Clock className="h-5 w-5 text-blue-500 animate-spin" />}
                                     </div>
                                     <div>
                                         <p className="font-medium">
                                             {run.suite_name || `Run #${run.id}`}
                                             {run.test_case_name && (
-                                                <span className="text-gray-400 font-normal"> › {run.test_case_name}</span>
+                                                <span className="text-muted-foreground font-normal"> › {run.test_case_name}</span>
                                             )}
                                         </p>
-                                        <p className="text-sm text-gray-500">
+                                        <p className="text-sm text-muted-foreground">
                                             {new Date(run.created_at).toLocaleString()}
                                         </p>
                                     </div>
@@ -115,13 +116,13 @@ export default function Dashboard() {
                                 <div className="text-right">
                                     <p className="text-sm font-medium capitalize">{run.status}</p>
                                     {run.duration_ms && (
-                                        <p className="text-xs text-gray-500">{(run.duration_ms / 1000).toFixed(2)}s</p>
+                                        <p className="text-xs text-muted-foreground">{(run.duration_ms / 1000).toFixed(2)}s</p>
                                     )}
                                 </div>
                             </div>
                         ))}
                         {(!runs || runs.length === 0) && (
-                            <p className="text-center text-gray-500 py-8">No test runs yet</p>
+                            <p className="text-center text-muted-foreground py-8">No test runs yet</p>
                         )}
                     </div>
                 </CardContent>

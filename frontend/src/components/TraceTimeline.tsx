@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import JSZip from 'jszip';
 import { CheckCircle, XCircle, Clock } from 'lucide-react';
+import { Checkbox } from "@/components/ui/checkbox";
 
 interface TraceTimelineProps {
     url: string;
@@ -149,11 +150,9 @@ export function TraceTimeline({ url, executionLog: _executionLog }: TraceTimelin
             <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex justify-between items-center">
                 <span className="font-medium text-sm text-gray-700">Execution Steps ({filteredActions.length})</span>
                 <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
-                    <input
-                        type="checkbox"
+                    <Checkbox
                         checked={showAllEvents}
-                        onChange={(e) => setShowAllEvents(e.target.checked)}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        onCheckedChange={(checked) => setShowAllEvents(checked as boolean)}
                     />
                     Show System Events
                 </label>
