@@ -9,6 +9,7 @@ import SuiteDetails from "@/pages/SuiteDetails";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import TestBuilder from "@/pages/TestBuilder";
+import Settings from "@/pages/Settings";
 import PrivateRoute from "@/components/PrivateRoute";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -32,6 +33,7 @@ function App() {
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="suites/:suiteId/builder" element={<TestBuilder />} />
                 <Route path="suites/:suiteId/cases/:caseId/edit" element={<TestBuilder />} />
+                <Route path="settings" element={<Settings />} />
               </Route>
             </Route>
           </Routes>

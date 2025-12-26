@@ -3,11 +3,13 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Save } from "lucide-react";
+import { Plus, Save, Loader2 } from "lucide-react";
+import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function TestBuilder() {
     const { suiteId, caseId } = useParams();
@@ -51,6 +53,28 @@ export default function TestBuilder() {
         setSteps(steps.filter(step => step.id !== id));
     };
 
+    const moveStep = (index: number, direction: 'up' | 'down') => {
+        if (direction === 'up' && index === 0) return;
+        if (direction === 'down' && index === steps.length - 1) return;
+
+        const newSteps = [...steps];
+        const targetIndex = direction === 'up' ? index - 1 : index + 1;
+        [newSteps[index], newSteps[targetIndex]] = [newSteps[targetIndex], newSteps[index]];
+        setSteps(newSteps);
+    };
+
+    const insertStep = (index: number) => {
+        const newStep: TestStep = {
+            id: crypto.randomUUID(),
+            type: 'goto',
+            selector: '',
+            value: ''
+        };
+        const newSteps = [...steps];
+        newSteps.splice(index + 1, 0, newStep);
+        setSteps(newSteps);
+    };
+
     const saveMutation = useMutation({
         mutationFn: async () => {
             const payload = {
@@ -68,12 +92,20 @@ export default function TestBuilder() {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
+            toast.success(isEditing ? 'Test case updated successfully' : 'Test case created successfully');
             navigate(`/suites/${suiteId}`);
+        },
+        onError: (error: any) => {
+            toast.error(error?.response?.data?.detail || 'Failed to save test case');
         }
     });
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-4xl mx-auto space-y-6"
+        >
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">{isEditing ? 'Edit Test Case' : 'Create Test Case'}</h1>
@@ -81,8 +113,17 @@ export default function TestBuilder() {
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" onClick={() => navigate(-1)}>Cancel</Button>
-                    <Button onClick={() => saveMutation.mutate()} disabled={!testName || steps.length === 0}>
-                        <Save className="mr-2 h-4 w-4" /> {isEditing ? 'Update Test' : 'Save Test'}
+                    <Button onClick={() => saveMutation.mutate()} disabled={!testName || steps.length === 0 || saveMutation.isPending}>
+                        {saveMutation.isPending ? (
+                            <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : (
+                            <>
+                                <Save className="mr-2 h-4 w-4" /> {isEditing ? 'Update Test' : 'Save Test'}
+                            </>
+                        )}
                     </Button>
                 </div>
             </div>
@@ -123,15 +164,28 @@ export default function TestBuilder() {
                             No steps added yet. Start by adding a "Go to URL" step.
                         </div>
                     ) : (
-                        steps.map((step, index) => (
-                            <StepComponent
-                                key={step.id}
-                                step={step}
-                                index={index}
-                                updateStep={updateStep}
-                                removeStep={removeStep}
-                            />
-                        ))
+                        <AnimatePresence mode='popLayout'>
+                            {steps.map((step, index) => (
+                                <motion.div
+                                    key={step.id}
+                                    layout
+                                    initial={{ opacity: 0, x: -20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: 20 }}
+                                >
+                                    <StepComponent
+                                        step={step}
+                                        index={index}
+                                        updateStep={updateStep}
+                                        removeStep={removeStep}
+                                        moveStep={moveStep}
+                                        insertStep={insertStep}
+                                        isFirst={index === 0}
+                                        isLast={index === steps.length - 1}
+                                    />
+                                </motion.div>
+                            ))}
+                        </AnimatePresence>
                     )}
 
                     <Button
@@ -143,6 +197,6 @@ export default function TestBuilder() {
                     </Button>
                 </div>
             </div>
-        </div>
+        </motion.div >
     );
 }
