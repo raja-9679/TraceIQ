@@ -27,19 +27,19 @@ export default function DashboardLayout() {
     const location = useLocation();
 
     return (
-        <div className="min-h-screen bg-gray-50">
+        <div className="min-h-screen bg-background">
             {/* Sidebar */}
             <aside
-                className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+                className={`fixed inset-y-0 left-0 z-50 w-64 bg-card border-r border-border transform transition-transform duration-200 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
                     }`}
             >
                 <div className="flex flex-col h-full">
                     {/* Logo */}
-                    <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
-                        <h1 className="text-xl font-bold text-gray-900">QI Platform</h1>
+                    <div className="flex items-center justify-between h-16 px-6 border-b border-border">
+                        <h1 className="text-xl font-bold text-foreground">QI Platform</h1>
                         <button
                             onClick={() => setSidebarOpen(false)}
-                            className="lg:hidden text-gray-500 hover:text-gray-700"
+                            className="lg:hidden text-muted-foreground hover:text-foreground"
                         >
                             <X className="h-6 w-6" />
                         </button>
@@ -55,7 +55,7 @@ export default function DashboardLayout() {
                                     to={item.href}
                                     className={`flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors ${isActive
                                         ? 'bg-primary text-primary-foreground'
-                                        : 'text-gray-700 hover:bg-gray-100'
+                                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                                         }`}
                                 >
                                     <item.icon className="h-5 w-5 mr-3" />
@@ -66,16 +66,16 @@ export default function DashboardLayout() {
                     </nav>
 
                     {/* User section */}
-                    <div className="p-4 border-t border-gray-200">
-                        <div className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 cursor-pointer">
+                    <div className="p-4 border-t border-border">
+                        <div className="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors">
                             <div className="flex-shrink-0">
                                 <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
                                     <User className="h-6 w-6 text-primary-foreground" />
                                 </div>
                             </div>
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name || 'User'}</p>
-                                <p className="text-xs text-gray-500 truncate">{user?.email}</p>
+                                <p className="text-sm font-medium text-foreground truncate">{user?.full_name || 'User'}</p>
+                                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
                             </div>
                         </div>
                         <Button
@@ -93,12 +93,12 @@ export default function DashboardLayout() {
             {/* Main content */}
             <div className={`transition-all duration-200 ${sidebarOpen ? 'lg:pl-64' : ''}`}>
                 {/* Top navbar */}
-                <header className="sticky top-0 z-40 bg-white border-b border-gray-200">
+                <header className="sticky top-0 z-40 bg-card border-b border-border">
                     <div className="flex items-center justify-between h-16 px-6">
                         <div className="flex items-center space-x-4">
                             <button
                                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                                className="text-gray-500 hover:text-gray-700"
+                                className="text-muted-foreground hover:text-foreground"
                             >
                                 <Menu className="h-6 w-6" />
                             </button>
@@ -107,15 +107,15 @@ export default function DashboardLayout() {
                         </div>
 
                         <div className="flex items-center space-x-4">
-                            <button className="relative text-gray-500 hover:text-gray-700">
+                            <button className="relative text-muted-foreground hover:text-foreground">
                                 <Bell className="h-6 w-6" />
-                                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
+                                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
                             </button>
                             <Button
                                 variant="ghost"
                                 size="icon"
                                 onClick={logout}
-                                className="text-gray-500 hover:text-red-600 hover:bg-red-50"
+                                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                                 title="Logout"
                             >
                                 <LogOut className="h-5 w-5" />
