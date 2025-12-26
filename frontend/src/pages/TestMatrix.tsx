@@ -22,6 +22,13 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 export default function TestMatrix() {
     const queryClient = useQueryClient();
@@ -206,53 +213,65 @@ export default function TestMatrix() {
                             </div>
 
                             {/* Status Filter */}
-                            <select
+                            <Select
                                 value={statusFilter}
-                                onChange={(e) => {
-                                    setStatusFilter(e.target.value);
+                                onValueChange={(value) => {
+                                    setStatusFilter(value);
                                     handleFilterChange();
                                 }}
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                             >
-                                <option value="">All Status</option>
-                                <option value="passed">Passed</option>
-                                <option value="failed">Failed</option>
-                                <option value="running">Running</option>
-                                <option value="error">Error</option>
-                                <option value="pending">Pending</option>
-                            </select>
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="All Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all_status">All Status</SelectItem>
+                                    <SelectItem value="passed">Passed</SelectItem>
+                                    <SelectItem value="failed">Failed</SelectItem>
+                                    <SelectItem value="running">Running</SelectItem>
+                                    <SelectItem value="error">Error</SelectItem>
+                                    <SelectItem value="pending">Pending</SelectItem>
+                                </SelectContent>
+                            </Select>
 
                             {/* Browser Filter */}
-                            <select
+                            <Select
                                 value={browserFilter}
-                                onChange={(e) => {
-                                    setBrowserFilter(e.target.value);
+                                onValueChange={(value) => {
+                                    setBrowserFilter(value);
                                     handleFilterChange();
                                 }}
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                             >
-                                <option value="">All Browsers</option>
-                                <option value="chromium">Chromium</option>
-                                <option value="firefox">Firefox</option>
-                                <option value="webkit">WebKit</option>
-                            </select>
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="All Browsers" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all_browsers">All Browsers</SelectItem>
+                                    <SelectItem value="chromium">Chromium</SelectItem>
+                                    <SelectItem value="firefox">Firefox</SelectItem>
+                                    <SelectItem value="webkit">WebKit</SelectItem>
+                                </SelectContent>
+                            </Select>
 
                             {/* Device Filter */}
-                            <select
+                            <Select
                                 value={deviceFilter}
-                                onChange={(e) => {
-                                    setDeviceFilter(e.target.value);
+                                onValueChange={(value) => {
+                                    setDeviceFilter(value);
                                     handleFilterChange();
                                 }}
-                                className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary"
                             >
-                                <option value="">All Devices</option>
-                                <option value="Desktop">Desktop</option>
-                                <option value="Mobile (Generic)">Mobile (Generic)</option>
-                                <option value="iPhone 13">iPhone 13</option>
-                                <option value="Pixel 5">Pixel 5</option>
-                                <option value="Galaxy S21">Galaxy S21</option>
-                            </select>
+                                <SelectTrigger className="w-[140px]">
+                                    <SelectValue placeholder="All Devices" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all_devices">All Devices</SelectItem>
+                                    <SelectItem value="Desktop">Desktop</SelectItem>
+                                    <SelectItem value="Mobile (Generic)">Mobile (Generic)</SelectItem>
+                                    <SelectItem value="iPhone 13">iPhone 13</SelectItem>
+                                    <SelectItem value="Pixel 5">Pixel 5</SelectItem>
+                                    <SelectItem value="Galaxy S21">Galaxy S21</SelectItem>
+                                </SelectContent>
+                            </Select>
 
                             {/* Clear Filters */}
                             {(searchTerm || statusFilter || browserFilter || deviceFilter) && (
@@ -375,18 +394,22 @@ export default function TestMatrix() {
                                 <span className="text-sm text-gray-700">
                                     Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, total)} of {total} runs
                                 </span>
-                                <select
-                                    value={pageSize}
-                                    onChange={(e) => {
-                                        setPageSize(Number(e.target.value));
+                                <Select
+                                    value={pageSize.toString()}
+                                    onValueChange={(value) => {
+                                        setPageSize(Number(value));
                                         setCurrentPage(1);
                                     }}
-                                    className="ml-2 px-2 py-1 border border-gray-300 rounded text-sm"
                                 >
-                                    <option value={25}>25 per page</option>
-                                    <option value={50}>50 per page</option>
-                                    <option value={100}>100 per page</option>
-                                </select>
+                                    <SelectTrigger className="w-[130px] ml-2 h-8">
+                                        <SelectValue placeholder="Page Size" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="25">25 per page</SelectItem>
+                                        <SelectItem value="50">50 per page</SelectItem>
+                                        <SelectItem value="100">100 per page</SelectItem>
+                                    </SelectContent>
+                                </Select>
                             </div>
                             <div className="flex gap-2">
                                 <Button

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
 from app.core.database import get_session
-from app.models import TestRun, TestStatus, TestSuite, TestCase, TestSuiteRead, ExecutionMode, TestCaseRead, TestRunRead, TestSuiteReadWithChildren, TestSuiteUpdate
+from app.models import TestRun, TestStatus, TestSuite, TestCase, TestSuiteRead, ExecutionMode, TestCaseRead, TestRunRead, TestSuiteReadWithChildren, TestSuiteUpdate, TestCaseResultRead, TestCaseResult
 
 from app.worker import run_test_suite
 from app.core.storage import minio_client
@@ -36,6 +36,13 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
         if result.first():
             raise HTTPException(status_code=400, detail="Cannot add sub-module to a suite that contains test cases")
 
+        # Enforce Execution Mode Rule: Parent must be in 'separate' mode if it has sub-modules
+        if parent.execution_mode == ExecutionMode.CONTINUOUS:
+            parent.execution_mode = ExecutionMode.SEPARATE
+            session.add(parent)
+            # We don't need to commit here, the final commit will handle it
+
+
     session.add(suite)
     await session.commit()
     await session.refresh(suite)
@@ -59,6 +66,14 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
         resp.total_test_cases = total_cases
         resp.total_sub_modules = total_subs
         resp.effective_settings = effective_settings
+        
+        # Populate counts for sub-modules
+        if resp.sub_modules:
+            for sub in resp.sub_modules:
+                sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+                sub.total_test_cases = sub_cases
+                sub.total_sub_modules = sub_subs
+                
         return resp
     return None
 
@@ -79,6 +94,14 @@ async def list_test_suites(session: AsyncSession = Depends(get_session), current
         resp = TestSuiteReadWithChildren.model_validate(suite)
         resp.total_test_cases = total_cases
         resp.total_sub_modules = total_subs
+        
+        # Populate counts for sub-modules
+        if resp.sub_modules:
+            for sub in resp.sub_modules:
+                sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+                sub.total_test_cases = sub_cases
+                sub.total_sub_modules = sub_subs
+                
         resp_suites.append(resp)
     return resp_suites
 
@@ -103,6 +126,14 @@ async def get_test_suite(suite_id: int, session: AsyncSession = Depends(get_sess
     resp.total_test_cases = total_cases
     resp.total_sub_modules = total_subs
     resp.effective_settings = effective_settings
+
+    # Populate counts for sub-modules
+    if resp.sub_modules:
+        for sub in resp.sub_modules:
+            sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+            sub.total_test_cases = sub_cases
+            sub.total_sub_modules = sub_subs
+
     return resp
 
 @router.put("/suites/{suite_id}", response_model=TestSuiteReadWithChildren)
@@ -122,7 +153,13 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
         flag_modified(db_suite, "settings")
     
     session.add(db_suite)
-    await session.commit()
+    try:
+        await session.commit()
+    except Exception as e:
+        # Log the full traceback if possible, or just return the error
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
     
     # Fetch again with relationships to satisfy TestSuiteRead and avoid lazy loading errors
     result = await session.exec(
@@ -143,6 +180,14 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
     resp.total_test_cases = total_cases
     resp.total_sub_modules = total_subs
     resp.effective_settings = effective_settings
+
+    # Populate counts for sub-modules
+    if resp.sub_modules:
+        for sub in resp.sub_modules:
+            sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+            sub.total_test_cases = sub_cases
+            sub.total_sub_modules = sub_subs
+
     return resp
 
 @router.delete("/suites/{suite_id}")
@@ -156,10 +201,36 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
     return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted"}
 
 async def recursive_delete_suite(suite_id: int, session: AsyncSession):
+    # Delete all TestRuns associated with this suite
+    result = await session.exec(select(TestRun).where(TestRun.test_suite_id == suite_id))
+    runs = result.all()
+    for run in runs:
+        # Delete artifacts from MinIO
+        minio_client.delete_run_artifacts(run.id)
+        
+        # Delete associated TestCaseResults
+        # We need to delete them explicitly because of the foreign key constraint
+        result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+        for res in result_cases.all():
+            await session.delete(res)
+            
+        await session.delete(run)
+
     # Delete all test cases
     result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
     cases = result.all()
     for case in cases:
+        # Delete runs associated with this case (even if they belong to another suite)
+        result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case.id))
+        runs = result_runs.all()
+        for run in runs:
+            minio_client.delete_run_artifacts(run.id)
+            # Delete associated TestCaseResults
+            result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+            for res in result_cases.all():
+                await session.delete(res)
+            await session.delete(run)
+            
         await session.delete(case)
     
     # Get sub-modules
@@ -211,6 +282,27 @@ async def update_test_case(case_id: int, case_update: TestCase, session: AsyncSe
     await session.commit()
     await session.refresh(db_case)
     return db_case
+
+@router.delete("/cases/{case_id}")
+async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    case = await session.get(TestCase, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    
+    # Delete associated TestRuns
+    result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case_id))
+    runs = result_runs.all()
+    for run in runs:
+        minio_client.delete_run_artifacts(run.id)
+        # Delete associated TestCaseResults (explicitly, though cascade should handle it now)
+        result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+        for res in result_cases.all():
+            await session.delete(res)
+        await session.delete(run)
+
+    await session.delete(case)
+    await session.commit()
+    return {"status": "success", "message": f"Test case {case_id} deleted"}
 
 async def get_suite_path(suite_id: int, session: AsyncSession) -> str:
     suite = await session.get(TestSuite, suite_id)
@@ -322,7 +414,14 @@ async def get_effective_settings(suite_id: int, session: AsyncSession) -> Dict[s
     return current_settings
 
 @router.post("/runs", response_model=Union[TestRunRead, List[TestRunRead]])
-async def create_run(suite_id: int, case_id: Optional[int] = None, browser: str = "chromium", device: Optional[str] = None, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def create_run(
+    suite_id: int, 
+    case_id: Optional[int] = None, 
+    browser: List[str] = Query(["chromium"]), 
+    device: Optional[List[str]] = Query(None), 
+    session: AsyncSession = Depends(get_session), 
+    current_user: User = Depends(get_current_user)
+):
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
@@ -330,88 +429,162 @@ async def create_run(suite_id: int, case_id: Optional[int] = None, browser: str 
     # Get effective settings for this suite
     effective_settings = await get_effective_settings(suite_id, session)
 
-    # Check if we need to run multiple cases (either SEPARATE mode or has sub-modules)
-    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-    has_sub_modules = result.first() is not None
+    # Normalize devices list
+    target_devices = device if device else [None]
 
-    if suite.execution_mode == ExecutionMode.SEPARATE and case_id is None:
-        # Collect all test cases recursively
-        cases = await collect_test_cases(suite_id, session)
-        
-        if not cases:
-            raise HTTPException(status_code=400, detail="No test cases found in suite or its sub-modules")
+    created_runs = []
+
+    try:
+        # Recursive function to process suites and create runs
+        async def process_suite(s_id: int, parent_settings: Dict[str, Any]):
+            current_suite = await session.get(TestSuite, s_id)
+            if not current_suite:
+                return
+
+            # Calculate effective settings for this level
+            # We can optimize by merging with parent_settings, but for now let's use the helper
+            # to ensure correctness as per existing logic.
+            current_effective_settings = await get_effective_settings(s_id, session)
             
-        runs = []
-        for case in cases:
-            # Get effective settings for the specific suite this case belongs to
-            case_settings = await get_effective_settings(case.test_suite_id, session)
-            # Get the path for this specific case's suite
-            case_suite_path = await get_suite_path(case.test_suite_id, session)
-            run = TestRun(
-                status=TestStatus.PENDING, 
-                test_suite_id=suite_id, 
-                test_case_id=case.id,
-                suite_name=case_suite_path,
-                test_case_name=case.name,
-                request_headers=case_settings.get("headers", {}),
-                request_params=case_settings.get("params", {}),
-                allowed_domains=case_settings.get("allowed_domains", []),
-                domain_settings=case_settings.get("domain_settings", {}),
-                browser=browser,
-                device=device
-                # We can store params in a new field or handle them in the worker
-            )
-            session.add(run)
-            runs.append(run)
-        
-        await session.commit()
-        for run in runs:
-            await session.refresh(run)
-            try:
-                run_test_suite.delay(run.id)
-            except Exception as e:
-                print(f"Failed to queue run {run.id}: {e}")
-                # Continue queuing others? Or fail all?
-                # For now, just log. The user will see them as PENDING forever if not picked up.
-                pass
-        return runs
-    else:
-        suite_path = await get_suite_path(suite_id, session)
-        test_case_name = None
-        if case_id:
-            case = await session.get(TestCase, case_id)
-            if case:
-                test_case_name = case.name
+            suite_path = await get_suite_path(s_id, session)
 
-        run = TestRun(
-            status=TestStatus.PENDING, 
-            test_suite_id=suite_id, 
-            test_case_id=case_id,
-            suite_name=suite_path,
-            test_case_name=test_case_name,
-            request_headers=effective_settings.get("headers", {}),
-            request_params=effective_settings.get("params", {}),
-            allowed_domains=effective_settings.get("allowed_domains", []),
-            domain_settings=effective_settings.get("domain_settings", {}),
-            browser=browser,
-            device=device
-        )
-        session.add(run)
-        await session.commit()
-        await session.refresh(run)
-        
-        # Trigger Celery task
-        try:
-            run_test_suite.delay(run.id)
-        except Exception as e:
-            # If we can't queue the task, we should probably let the user know
-            # but since we already committed the run, we might want to update its status to ERROR
-            # However, for the API response, a 500 is appropriate if the infrastructure is down.
-            # Let's log it and re-raise or handle gracefully.
-            # For now, let's raise a 500 with a clear message.
-            raise HTTPException(status_code=500, detail=f"Failed to queue test execution: {str(e)}")
-        
-        return run
+            if current_suite.execution_mode == ExecutionMode.SEPARATE:
+                # 1. Create individual runs for direct test cases
+                result = await session.exec(select(TestCase).where(TestCase.test_suite_id == s_id))
+                direct_cases = result.all()
+                
+                for case in direct_cases:
+                    for target_browser in browser:
+                        for target_device in target_devices:
+                            run = TestRun(
+                                status=TestStatus.PENDING, 
+                                test_suite_id=s_id, 
+                                test_case_id=case.id,
+                                suite_name=suite_path,
+                                test_case_name=case.name,
+                                request_headers=current_effective_settings.get("headers", {}),
+                                request_params=current_effective_settings.get("params", {}),
+                                allowed_domains=current_effective_settings.get("allowed_domains", []),
+                                domain_settings=current_effective_settings.get("domain_settings", {}),
+                                browser=target_browser,
+                                device=target_device
+                            )
+                            session.add(run)
+                            await session.commit()
+                            await session.refresh(run)
+                            created_runs.append(run)
+                            try:
+                                run_test_suite.delay(run.id)
+                            except Exception as e:
+                                print(f"Failed to queue run {run.id}: {e}")
+
+                # 2. Recurse for sub-modules
+                result = await session.exec(select(TestSuite).where(TestSuite.parent_id == s_id))
+                sub_modules = result.all()
+                for sub in sub_modules:
+                    await process_suite(sub.id, current_effective_settings)
+
+            else: # CONTINUOUS
+                # 1. Create ONE run for this suite (covering direct cases and continuous descendants)
+                # We only create a run if there are cases to run in this continuous block
+                # But the worker will handle finding cases. We just need to define the entry point.
+                
+                # However, we must ensure that the worker STOPS at Separate boundaries.
+                # So we create a run for this suite.
+                
+                for target_browser in browser:
+                    for target_device in target_devices:
+                        run = TestRun(
+                            status=TestStatus.PENDING, 
+                            test_suite_id=s_id, 
+                            test_case_id=None, # Indicates run all applicable cases in this suite
+                            suite_name=suite_path,
+                            test_case_name=None,
+                            request_headers=current_effective_settings.get("headers", {}),
+                            request_params=current_effective_settings.get("params", {}),
+                            allowed_domains=current_effective_settings.get("allowed_domains", []),
+                            domain_settings=current_effective_settings.get("domain_settings", {}),
+                            browser=target_browser,
+                            device=target_device
+                        )
+                        session.add(run)
+                        await session.commit()
+                        await session.refresh(run)
+                        created_runs.append(run)
+                        try:
+                            run_test_suite.delay(run.id)
+                        except Exception as e:
+                            print(f"Failed to queue run {run.id}: {e}")
+
+                # 2. Recurse for sub-modules to find SEPARATE modules
+                # We need to traverse down. If a sub-module is CONTINUOUS, it's covered by the run we just created (assuming worker logic).
+                # IF a sub-module is SEPARATE, we need to process it explicitly.
+                
+                # Wait, if we rely on the worker to pick up "Continuous descendants", then we shouldn't recurse into Continuous sub-modules here?
+                # YES, correct. The worker will pick them up.
+                # BUT, we DO need to find SEPARATE sub-modules that are children of this Continuous suite (or children of children).
+                
+                # So we need a helper to find "Boundary" Separate suites.
+                
+                async def find_and_process_separate_descendants(p_id):
+                    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == p_id))
+                    subs = result.all()
+                    for sub in subs:
+                        if sub.execution_mode == ExecutionMode.SEPARATE:
+                            # Found a boundary! Process it as a separate suite.
+                            await process_suite(sub.id, current_effective_settings)
+                        else:
+                            # Still Continuous, keep digging
+                            await find_and_process_separate_descendants(sub.id)
+
+                await find_and_process_separate_descendants(s_id)
+
+        # If a specific case is requested, just run that case
+        if case_id:
+             for target_browser in browser:
+                for target_device in target_devices:
+                    suite_path = await get_suite_path(suite_id, session)
+                    case = await session.get(TestCase, case_id)
+                    test_case_name = case.name if case else None
+                    
+                    run = TestRun(
+                        status=TestStatus.PENDING, 
+                        test_suite_id=suite_id, 
+                        test_case_id=case_id,
+                        suite_name=suite_path,
+                        test_case_name=test_case_name,
+                        request_headers=effective_settings.get("headers", {}),
+                        request_params=effective_settings.get("params", {}),
+                        allowed_domains=effective_settings.get("allowed_domains", []),
+                        domain_settings=effective_settings.get("domain_settings", {}),
+                        browser=target_browser,
+                        device=target_device
+                    )
+                    session.add(run)
+                    await session.commit()
+                    await session.refresh(run)
+                    created_runs.append(run)
+                    try:
+                        run_test_suite.delay(run.id)
+                    except Exception as e:
+                        print(f"Failed to queue run {run.id}: {e}")
+        else:
+            # Run the suite recursively
+            await process_suite(suite_id, effective_settings)
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+    return [
+        TestRunRead(
+            **run.model_dump(),
+            results=[]
+        ) for run in created_runs
+    ]
+
+
 
 @router.get("/runs")
 async def get_runs(
@@ -445,13 +618,18 @@ async def get_runs(
     count_result = await session.exec(count_query)
     total = count_result.one()
     
-    # Get paginated runs
-    query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(offset)
+    # Get paginated runs with eager loaded results
+    query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(offset).options(selectinload(TestRun.results))
     result = await session.exec(query)
     runs = result.all()
     
     return {
-        "runs": [TestRunRead.model_validate(run) for run in runs],
+        "runs": [
+            TestRunRead(
+                **run.model_dump(),
+                results=[TestCaseResultRead.model_validate(r) for r in run.results]
+            ) for run in runs
+        ],
         "total": total,
         "limit": limit,
         "offset": offset
@@ -459,10 +637,25 @@ async def get_runs(
 
 @router.get("/runs/{run_id}", response_model=TestRunRead)
 async def get_run(run_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    run = await session.get(TestRun, run_id)
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-    return run
+    try:
+        # Eager load results
+        query = select(TestRun).where(TestRun.id == run_id).options(selectinload(TestRun.results))
+        result = await session.exec(query)
+        run = result.first()
+        
+        if not run:
+            raise HTTPException(status_code=404, detail="Run not found")
+            
+        # Manually construct response to avoid validation issues with lazy/eager loading
+        response = TestRunRead(
+            **run.model_dump(),
+            results=[TestCaseResultRead.model_validate(r) for r in run.results]
+        )
+        return response
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
 
 @router.delete("/runs/{run_id}")
 async def delete_run(run_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
@@ -472,6 +665,11 @@ async def delete_run(run_id: int, session: AsyncSession = Depends(get_session), 
     
     # Delete artifacts from MinIO
     minio_client.delete_run_artifacts(run_id)
+    
+    # Delete associated TestCaseResults
+    result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
+    for res in result_cases.all():
+        await session.delete(res)
     
     # Delete from DB
     await session.delete(run)
@@ -492,6 +690,10 @@ async def delete_runs(
         runs = result.all()
         for run in runs:
             minio_client.delete_run_artifacts(run.id)
+            # Delete associated TestCaseResults
+            result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+            for res in result_cases.all():
+                await session.delete(res)
             await session.delete(run)
         await session.commit()
         return {"status": "success", "message": f"All {len(runs)} runs deleted"}
@@ -502,6 +704,10 @@ async def delete_runs(
         runs = result.all()
         for run in runs:
             minio_client.delete_run_artifacts(run.id)
+            # Delete associated TestCaseResults
+            result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+            for res in result_cases.all():
+                await session.delete(res)
             await session.delete(run)
         await session.commit()
         return {"status": "success", "message": f"{len(runs)} runs deleted"}

@@ -2,7 +2,7 @@ from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models import TestRun, TestStatus
+from app.models import TestRun, TestStatus, ExecutionMode
 import requests
 import time
 
@@ -55,6 +55,11 @@ def run_test_suite(run_id: int):
                 result = session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
                 subs = result.all()
                 for sub in subs:
+                    # Check execution mode of sub-module
+                    # If SEPARATE, do not recurse (it will be handled by its own run)
+                    if sub.execution_mode == ExecutionMode.SEPARATE:
+                        continue
+                        
                     cases.extend(collect_cases_recursive(sub.id, session))
                 return cases
 
@@ -147,11 +152,18 @@ def run_test_suite(run_id: int):
                 # Calculate effective settings for this specific case's suite
                 case_settings = get_effective_settings_sync(case.test_suite_id, session)
                 
+                # Fetch execution mode from the suite
+                # case_suite = session.get(TestSuite, case.test_suite_id)
+                # execution_mode = case_suite.execution_mode.value if case_suite else "continuous"
+                # Reverting: execution_mode was not present in payload before
+                pass
+
                 test_cases_data.append({
                     "id": case.id,
                     "name": case.name,
                     "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps],
-                    "settings": case_settings # Pass effective settings for this case
+                    "settings": case_settings, # Pass effective settings for this case
+                    # "executionMode": execution_mode # Reverted
                 })
 
             print(f"DEBUG: Found {len(cases_to_run)} cases to run. Serialized data: {test_cases_data}")
@@ -182,11 +194,60 @@ def run_test_suite(run_id: int):
                 run.error_message = result.get("error")
                 run.trace_url = result.get("trace")
                 run.video_url = result.get("video")
+                run.screenshots = result.get("screenshots", [])
                 run.response_status = result.get("response_status")
                 run.request_headers = result.get("request_headers")
                 run.response_headers = result.get("response_headers")
                 run.network_events = result.get("network_events")
                 run.execution_log = result.get("execution_log") # Save execution log
+                
+                # Save individual test case results
+                from app.models import TestCaseResult
+                
+                # Clear existing results if any (for retries)
+                # session.exec(delete(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
+                
+                test_results = result.get("results", [])
+                if not test_results and "status" in result:
+                    # Single test case run or legacy format
+                    # If the engine returns a single result structure, wrap it
+                    pass 
+                    
+                # If the execution engine returns a list of results under "results" key
+                if test_results:
+                    for res in test_results:
+                        test_result = TestCaseResult(
+                            test_run_id=run.id,
+                            test_name=res.get("test_name", "Unknown Test"),
+                            status=TestStatus.PASSED if res.get("status") == "passed" else TestStatus.FAILED,
+                            duration_ms=res.get("duration_ms", 0),
+                            error_message=res.get("error"),
+                        trace_url=res.get("trace"),
+                        video_url=res.get("video"),
+                        screenshots=res.get("screenshots", [])
+                    )
+                    session.add(test_result)
+                else:
+                    # Fallback for single case run or legacy format where "results" list is missing
+                    # Create a single result record from the main run result
+                    # Use run.test_case_name if available, otherwise fallback to first case name or "Single Test"
+                    name = run.test_case_name
+                    if not name and cases_to_run:
+                        name = cases_to_run[0].name
+                    if not name:
+                        name = "Single Test"
+                        
+                    test_result = TestCaseResult(
+                        test_run_id=run.id,
+                        test_name=name,
+                        status=run.status,
+                        duration_ms=run.duration_ms or 0,
+                        error_message=run.error_message,
+                        trace_url=run.trace_url,
+                        video_url=run.video_url,
+                        screenshots=result.get("screenshots", [])
+                    )
+                    session.add(test_result)
             else:
                 run.status = TestStatus.ERROR
                 run.error_message = f"Execution Engine failed: {response.text}"
