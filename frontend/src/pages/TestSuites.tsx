@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, triggerRun } from '@/lib/api';
+import { api, triggerRun, exportTestSuite, importTestSuite } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Play, FolderOpen, FileText } from 'lucide-react';
+import { Plus, Play, FolderOpen, FileText, Download, Upload } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
     Select,
     SelectContent,
@@ -64,6 +65,42 @@ export default function TestSuites() {
         }
     };
 
+    const handleExportSuite = async (id: number, name: string) => {
+        try {
+            const data = await exportTestSuite(id);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${name.replace(/\s+/g, '_')}_suite.json`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            toast.success('Suite exported successfully');
+        } catch (error) {
+            toast.error('Failed to export suite');
+        }
+    };
+
+    const handleImportSuite = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const content = e.target?.result as string;
+                const data = JSON.parse(content);
+                await importTestSuite(undefined, data);
+                queryClient.invalidateQueries({ queryKey: ['suites'] });
+                toast.success('Suite imported successfully');
+            } catch (error) {
+                toast.error('Failed to import suite');
+            }
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    };
+
     if (isLoading) return <div className="p-8">Loading suites...</div>;
 
     return (
@@ -81,6 +118,18 @@ export default function TestSuites() {
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary w-64"
                     />
+                    <div className="relative">
+                        <input
+                            type="file"
+                            accept=".json"
+                            onChange={handleImportSuite}
+                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            title="Import Suite"
+                        />
+                        <Button variant="outline">
+                            <Upload className="mr-2 h-4 w-4" /> Import Suite
+                        </Button>
+                    </div>
                     <Button onClick={() => setShowCreateDialog(true)}>
                         <Plus className="mr-2 h-4 w-4" /> Create Suite
                     </Button>
@@ -194,6 +243,13 @@ export default function TestSuites() {
                                         View Cases
                                     </Button>
                                 </Link>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handleExportSuite(suite.id, suite.name)}
+                                >
+                                    <Download className="h-3 w-3" />
+                                </Button>
                                 <Button
                                     size="sm"
                                     className="flex-1"

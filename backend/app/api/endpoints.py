@@ -304,6 +304,116 @@ async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_ses
     await session.commit()
     return {"status": "success", "message": f"Test case {case_id} deleted"}
 
+@router.get("/cases/{case_id}/export")
+async def export_test_case(case_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    case = await session.get(TestCase, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    return {
+        "name": case.name,
+        "steps": case.steps
+    }
+
+@router.post("/suites/{suite_id}/import-case")
+async def import_test_case(suite_id: int, case_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    suite = await session.get(TestSuite, suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    
+    # Check if suite has sub-modules
+    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
+    if result.first():
+        raise HTTPException(status_code=400, detail="Cannot import test case to a suite that contains sub-modules")
+
+    new_case = TestCase(
+        name=case_data.get("name", "Imported Case"),
+        steps=case_data.get("steps", []),
+        test_suite_id=suite_id
+    )
+    session.add(new_case)
+    await session.commit()
+    await session.refresh(new_case)
+    return new_case
+
+@router.get("/suites/{suite_id}/export")
+async def export_test_suite(suite_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    suite = await session.get(TestSuite, suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    
+    return await get_suite_export_data(suite_id, session)
+
+async def get_suite_export_data(suite_id: int, session: AsyncSession):
+    suite = await session.get(TestSuite, suite_id)
+    
+    # Get cases
+    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
+    cases = result.all()
+    
+    # Get sub-modules
+    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
+    subs = result.all()
+    
+    return {
+        "name": suite.name,
+        "description": suite.description,
+        "execution_mode": suite.execution_mode,
+        "settings": suite.settings,
+        "inherit_settings": suite.inherit_settings,
+        "test_cases": [{"name": c.name, "steps": c.steps} for c in cases],
+        "sub_modules": [await get_suite_export_data(sub.id, session) for sub in subs]
+    }
+
+@router.post("/suites/import-suite")
+async def import_top_level_suite(suite_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    new_suite = await create_suite_from_data(suite_data, None, session)
+    await session.commit()
+    return {"status": "success", "id": new_suite.id}
+
+@router.post("/suites/{suite_id}/import-suite")
+async def import_test_suite(suite_id: int, suite_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    # If suite_id is 0, we can't import under it (unless we want top-level)
+    # But for now, let's assume we import into an existing suite
+    parent = await session.get(TestSuite, suite_id)
+    if not parent:
+         raise HTTPException(status_code=404, detail="Parent suite not found")
+
+    # Check if parent has test cases
+    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
+    if result.first():
+        raise HTTPException(status_code=400, detail="Cannot import sub-module to a suite that contains test cases")
+
+    new_suite = await create_suite_from_data(suite_data, suite_id, session)
+    await session.commit()
+    return {"status": "success", "id": new_suite.id}
+
+async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], session: AsyncSession):
+    new_suite = TestSuite(
+        name=data.get("name", "Imported Suite"),
+        description=data.get("description"),
+        execution_mode=data.get("execution_mode", ExecutionMode.CONTINUOUS),
+        settings=data.get("settings", {"headers": {}, "params": {}}),
+        inherit_settings=data.get("inherit_settings", True),
+        parent_id=parent_id
+    )
+    session.add(new_suite)
+    await session.flush() # Get ID
+    
+    # Import cases
+    for case_data in data.get("test_cases", []):
+        new_case = TestCase(
+            name=case_data.get("name"),
+            steps=case_data.get("steps", []),
+            test_suite_id=new_suite.id
+        )
+        session.add(new_case)
+        
+    # Import sub-modules
+    for sub_data in data.get("sub_modules", []):
+        await create_suite_from_data(sub_data, new_suite.id, session)
+        
+    return new_suite
+
 async def get_suite_path(suite_id: int, session: AsyncSession) -> str:
     suite = await session.get(TestSuite, suite_id)
     if not suite:
