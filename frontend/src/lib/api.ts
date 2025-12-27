@@ -181,3 +181,24 @@ export const updateTestSuite = async (suiteId: number, data: any): Promise<any> 
     const response = await api.put(`/suites/${suiteId}`, data);
     return response.data;
 };
+
+export const exportTestCase = async (caseId: number): Promise<any> => {
+    const response = await api.get(`/cases/${caseId}/export`);
+    return response.data;
+};
+
+export const importTestCase = async (suiteId: number, data: any): Promise<any> => {
+    const response = await api.post(`/suites/${suiteId}/import-case`, data);
+    return response.data;
+};
+
+export const exportTestSuite = async (suiteId: number): Promise<any> => {
+    const response = await api.get(`/suites/${suiteId}/export`);
+    return response.data;
+};
+
+export const importTestSuite = async (suiteId?: number, data?: any): Promise<any> => {
+    const url = suiteId ? `/suites/${suiteId}/import-suite` : `/suites/import-suite`;
+    const response = await api.post(url, data);
+    return response.data;
+};
