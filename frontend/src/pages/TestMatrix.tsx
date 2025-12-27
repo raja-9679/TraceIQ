@@ -305,6 +305,7 @@ export default function TestMatrix() {
                                     </th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">ID</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Test Name</th>
+                                    <th className="text-left py-3 px-4 font-medium text-gray-700">User</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Browser</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Device</th>
                                     <th className="text-left py-3 px-4 font-medium text-gray-700">Status</th>
@@ -341,6 +342,20 @@ export default function TestMatrix() {
                                                     <span className="text-gray-400">-</span>
                                                 )}
                                             </div>
+                                        </td>
+                                        <td className="py-4 px-4 text-sm text-gray-900">
+                                            {run.user ? (
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
+                                                        {run.user.full_name.charAt(0).toUpperCase()}
+                                                    </div>
+                                                    <span className="truncate max-w-[120px]" title={run.user.full_name}>
+                                                        {run.user.full_name}
+                                                    </span>
+                                                </div>
+                                            ) : (
+                                                <span className="text-gray-400 text-xs">System</span>
+                                            )}
                                         </td>
                                         <td className="py-4 px-4">
                                             <span className="px-2 py-1 rounded-md text-xs font-medium bg-blue-50 text-blue-700 border border-blue-200 capitalize">
