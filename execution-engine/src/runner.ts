@@ -394,7 +394,8 @@ export class PlaywrightRunner {
                         request_headers: lastStepResult?.request?.headers,
                         request_body: lastStepResult?.request?.body,
                         request_url: lastStepResult?.request?.url,
-                        request_method: lastStepResult?.request?.method
+                        request_method: lastStepResult?.request?.method,
+                        request_params: lastStepResult?.request?.params
                     });
 
                     // Cleanup temp context if it was used
@@ -837,26 +838,53 @@ export class PlaywrightRunner {
                 }
                 break;
 
-            case 'http-request':
+            case 'http-request': {
                 const method = step.params?.method || 'GET';
                 const reqUrl = step.value || step.selector;
-                const headers = step.params?.headers || {};
+                const stepHeaders = step.params?.headers || {};
+                const stepParams = step.params?.params || {};
                 const body = step.params?.body;
 
-                console.log(`  [API] ${method} ${reqUrl}`);
+                // Merge with global settings
+                const mergedHeaders = { ...globalSettings.headers, ...stepHeaders };
+                const mergedParams = { ...globalSettings.params, ...stepParams };
+
+                console.log(`  [API] ${method} ${reqUrl} (Headers: ${Object.keys(mergedHeaders).length}, Params: ${Object.keys(mergedParams).length})`);
 
                 let apiResponse;
+                let actualRequestHeaders = mergedHeaders;
+                let actualRequestUrl = reqUrl;
+                const requestHandler = async (request: any) => {
+                    try {
+                        const requestUrl = request.url();
+                        // Match exact URL or normalized URL
+                        if ((requestUrl === reqUrl || requestUrl.split('?')[0] === reqUrl.split('?')[0]) &&
+                            request.method() === method) {
+                            actualRequestHeaders = await request.allHeaders();
+                            actualRequestUrl = requestUrl;
+                            console.log(`    [API] Captured actual request URL: ${actualRequestUrl}`);
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                };
+
+                page.context().on('request', requestHandler);
+
                 try {
                     apiResponse = await page.request.fetch(reqUrl, {
                         method,
-                        headers,
+                        headers: mergedHeaders,
+                        params: mergedParams,
                         data: body,
                         timeout: 30000
                     });
                 } finally {
+                    page.context().off('request', requestHandler);
                 }
 
                 const status = apiResponse.status();
+                const apiHeaders = apiResponse.headers();
                 const respBody = await apiResponse.text();
                 let jsonBody;
                 try {
@@ -865,7 +893,7 @@ export class PlaywrightRunner {
                     // Not JSON
                 }
 
-                console.log(`  [API] Status: ${status}`);
+                console.log(`  [API] Status: ${status}, Headers: ${Object.keys(apiHeaders).length}`);
 
                 // Assertions
                 if (step.params?.assertions) {
@@ -916,25 +944,52 @@ export class PlaywrightRunner {
                 return {
                     type: 'http-request',
                     status: status,
-                    headers: await apiResponse.headers(),
+                    headers: apiHeaders,
                     body: respBody,
                     request: {
-                        url: reqUrl,
+                        url: actualRequestUrl,
                         method: method,
-                        headers: headers,
+                        headers: actualRequestHeaders,
+                        params: mergedParams,
                         body: body
                     }
                 };
                 break;
+            }
 
-            case 'feed-check':
+            case 'feed-check': {
                 const feedUrl = step.value || step.selector;
-                console.log(`  [Feed] Checking ${feedUrl}`);
+                const mergedHeaders = { ...globalSettings.headers };
+                const mergedParams = { ...globalSettings.params }; // Feed check inherits global params
+
+                console.log(`  [Feed] Checking ${feedUrl} (Headers: ${Object.keys(mergedHeaders).length}, Params: ${Object.keys(mergedParams).length})`);
 
                 let feedResponse;
+                let actualRequestHeaders = mergedHeaders;
+                let actualRequestUrl = feedUrl;
+                const requestHandler = async (request: any) => {
+                    try {
+                        const requestUrl = request.url();
+                        if ((requestUrl === feedUrl || requestUrl.split('?')[0] === feedUrl.split('?')[0]) &&
+                            request.method() === 'GET') {
+                            actualRequestHeaders = await request.allHeaders();
+                            actualRequestUrl = requestUrl;
+                            console.log(`    [Feed] Captured actual request URL: ${actualRequestUrl}`);
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                };
+
+                page.context().on('request', requestHandler);
+
                 try {
-                    feedResponse = await page.request.get(feedUrl);
+                    feedResponse = await page.request.get(feedUrl, {
+                        headers: mergedHeaders,
+                        params: mergedParams
+                    });
                 } finally {
+                    page.context().off('request', requestHandler);
                 }
 
                 if (!feedResponse.ok()) {
@@ -942,7 +997,10 @@ export class PlaywrightRunner {
                 }
 
                 const feedText = await feedResponse.text();
+                const feedHeaders = feedResponse.headers();
                 const doc = new DOMParser().parseFromString(feedText, 'text/xml');
+
+                console.log(`  [Feed] Status: ${feedResponse.status()}, Headers: ${Object.keys(feedHeaders).length}`);
 
                 // Assertions
                 if (step.params?.assertions) {
@@ -975,14 +1033,17 @@ export class PlaywrightRunner {
                 return {
                     type: 'feed-check',
                     status: feedResponse.status(),
-                    headers: await feedResponse.headers(),
+                    headers: feedHeaders,
                     body: feedText,
                     request: {
-                        url: feedUrl,
-                        method: 'GET'
+                        url: actualRequestUrl,
+                        method: 'GET',
+                        headers: actualRequestHeaders,
+                        params: mergedParams
                     }
                 };
                 break;
+            }
             case 'click':
                 const clickSelector = step.selector || step.value;
                 if (clickSelector) {

@@ -232,7 +232,8 @@ def run_test_suite(run_id: int):
                             request_headers=res.get("request_headers"),
                             request_body=res.get("request_body"),
                             request_url=res.get("request_url"),
-                            request_method=res.get("request_method")
+                            request_method=res.get("request_method"),
+                            request_params=res.get("request_params")
                         )
                         session.add(test_result)
                 else:

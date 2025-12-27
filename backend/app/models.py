@@ -122,6 +122,7 @@ class TestCaseResultRead(SQLModel):
     request_body: Optional[str] = None
     request_url: Optional[str] = None
     request_method: Optional[str] = None
+    request_params: Optional[dict] = {}
 
 class TestRunRead(TestRunBase):
     id: int
@@ -144,6 +145,7 @@ class TestCaseResult(SQLModel, table=True):
     request_body: Optional[str] = Field(default=None)
     request_url: Optional[str] = Field(default=None)
     request_method: Optional[str] = Field(default=None)
+    request_params: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     ai_analysis: Optional[str] = None
     
     test_run: TestRun = Relationship(back_populates="results")
