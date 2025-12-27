@@ -222,11 +222,20 @@ def run_test_suite(run_id: int):
                             status=TestStatus.PASSED if res.get("status") == "passed" else TestStatus.FAILED,
                             duration_ms=res.get("duration_ms", 0),
                             error_message=res.get("error"),
-                        trace_url=res.get("trace"),
-                        video_url=res.get("video"),
-                        screenshots=res.get("screenshots", [])
-                    )
-                    session.add(test_result)
+                            trace_url=res.get("trace"),
+                            video_url=res.get("video"),
+                            screenshots=res.get("screenshots", []),
+                            # Capture API details from result if available
+                            response_status=res.get("response_status"),
+                            response_headers=res.get("response_headers"),
+                            response_body=res.get("response_body"),
+                            request_headers=res.get("request_headers"),
+                            request_body=res.get("request_body"),
+                            request_url=res.get("request_url"),
+                            request_method=res.get("request_method"),
+                            request_params=res.get("request_params")
+                        )
+                        session.add(test_result)
                 else:
                     # Fallback for single case run or legacy format where "results" list is missing
                     # Create a single result record from the main run result
@@ -236,6 +245,9 @@ def run_test_suite(run_id: int):
                         name = cases_to_run[0].name
                     if not name:
                         name = "Single Test"
+                    
+                    # Try to find the result in execution_log for this test case
+                    log_entry = next((log for log in (result.get("execution_log") or []) if log.get("testCaseName") == name), {})
                         
                     test_result = TestCaseResult(
                         test_run_id=run.id,
@@ -245,7 +257,15 @@ def run_test_suite(run_id: int):
                         error_message=run.error_message,
                         trace_url=run.trace_url,
                         video_url=run.video_url,
-                        screenshots=result.get("screenshots", [])
+                        screenshots=result.get("screenshots", []),
+                        # Capture API details from log entry
+                        response_status=log_entry.get("response_status"),
+                        response_headers=log_entry.get("response_headers"),
+                        response_body=log_entry.get("response_body"),
+                        request_headers=log_entry.get("request_headers"),
+                        request_body=log_entry.get("request_body"),
+                        request_url=log_entry.get("request_url"),
+                        request_method=log_entry.get("request_method")
                     )
                     session.add(test_result)
             else:
