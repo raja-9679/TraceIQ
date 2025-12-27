@@ -41,6 +41,13 @@ export interface TestRun {
         duration_ms: number;
         error_message?: string;
         screenshots?: string[];
+        response_status?: number;
+        response_headers?: Record<string, string>;
+        response_body?: string;
+        request_headers?: Record<string, string>;
+        request_body?: string;
+        request_url?: string;
+        request_method?: string;
     }[];
 }
 
@@ -172,5 +179,26 @@ export const deleteRuns = async (data: { runIds?: number[], all?: boolean }): Pr
 
 export const updateTestSuite = async (suiteId: number, data: any): Promise<any> => {
     const response = await api.put(`/suites/${suiteId}`, data);
+    return response.data;
+};
+
+export const exportTestCase = async (caseId: number): Promise<any> => {
+    const response = await api.get(`/cases/${caseId}/export`);
+    return response.data;
+};
+
+export const importTestCase = async (suiteId: number, data: any): Promise<any> => {
+    const response = await api.post(`/suites/${suiteId}/import-case`, data);
+    return response.data;
+};
+
+export const exportTestSuite = async (suiteId: number): Promise<any> => {
+    const response = await api.get(`/suites/${suiteId}/export`);
+    return response.data;
+};
+
+export const importTestSuite = async (suiteId?: number, data?: any): Promise<any> => {
+    const url = suiteId ? `/suites/${suiteId}/import-suite` : `/suites/import-suite`;
+    const response = await api.post(url, data);
     return response.data;
 };

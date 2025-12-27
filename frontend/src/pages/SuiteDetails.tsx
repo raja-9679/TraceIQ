@@ -11,7 +11,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox";
-import { Plus, Play, Trash2, Edit, FileText, FolderOpen, Search, Loader2, ChevronDown, AlertCircle } from 'lucide-react';
+import { Plus, Play, Trash2, Edit, FileText, FolderOpen, Search, Loader2, ChevronDown, AlertCircle, Download, Upload } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuCheckboxItem,
@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
-import { triggerRun } from '@/lib/api';
+import { triggerRun, exportTestCase, importTestCase, exportTestSuite, importTestSuite } from '@/lib/api';
 import { ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -277,6 +277,80 @@ export default function SuiteDetails() {
         }
     };
 
+    const handleExportCase = async (caseId: number, caseName: string) => {
+        try {
+            const data = await exportTestCase(caseId);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${caseName.replace(/\s+/g, '_')}_test_case.json`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            toast.success('Test case exported successfully');
+        } catch (error) {
+            toast.error('Failed to export test case');
+        }
+    };
+
+    const handleImportCase = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const content = e.target?.result as string;
+                const data = JSON.parse(content);
+                await importTestCase(Number(suiteId), data);
+                queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
+                toast.success('Test case imported successfully');
+            } catch (error) {
+                toast.error('Failed to import test case');
+            }
+        };
+        reader.readAsText(file);
+        // Reset input
+        event.target.value = '';
+    };
+
+    const handleExportSuite = async () => {
+        try {
+            const data = await exportTestSuite(Number(suiteId));
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${suite.name.replace(/\s+/g, '_')}_suite.json`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+            toast.success('Module exported successfully');
+        } catch (error) {
+            toast.error('Failed to export module');
+        }
+    };
+
+    const handleImportSuite = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const content = e.target?.result as string;
+                const data = JSON.parse(content);
+                await importTestSuite(Number(suiteId), data);
+                queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
+                toast.success('Module imported successfully');
+            } catch (error) {
+                toast.error('Failed to import module');
+            }
+        };
+        reader.readAsText(file);
+        // Reset input
+        event.target.value = '';
+    };
+
     if (isLoading) return <div>Loading suite...</div>;
     if (!suite) return <div>Suite not found</div>;
 
@@ -352,6 +426,13 @@ export default function SuiteDetails() {
 
                 {/* Actions */}
                 <div className="flex items-center gap-3">
+                    <Button
+                        variant="outline"
+                        onClick={handleExportSuite}
+                        className="text-primary hover:bg-primary/10 border-primary/20"
+                    >
+                        <Download className="mr-2 h-4 w-4" /> Export Module
+                    </Button>
                     <Button
                         variant="outline"
                         className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/20"
@@ -477,14 +558,42 @@ export default function SuiteDetails() {
                             </div>
                             <div className="flex items-center gap-2">
                                 {suite.total_sub_modules === 0 && (
-                                    <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
-                                        <Plus className="mr-2 h-4 w-4" /> New Test Case
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
+                                            <Plus className="mr-2 h-4 w-4" /> New Test Case
+                                        </Button>
+                                        <div className="relative">
+                                            <input
+                                                type="file"
+                                                accept=".json"
+                                                onChange={handleImportCase}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                title="Import Test Case"
+                                            />
+                                            <Button variant="outline">
+                                                <Upload className="mr-2 h-4 w-4" /> Import Case
+                                            </Button>
+                                        </div>
+                                    </div>
                                 )}
                                 {suite.total_test_cases === 0 && (
-                                    <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}>
-                                        <FolderOpen className="mr-2 h-4 w-4" /> New Sub-Module
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}>
+                                            <FolderOpen className="mr-2 h-4 w-4" /> New Sub-Module
+                                        </Button>
+                                        <div className="relative">
+                                            <input
+                                                type="file"
+                                                accept=".json"
+                                                onChange={handleImportSuite}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                title="Import Module"
+                                            />
+                                            <Button variant="outline">
+                                                <Upload className="mr-2 h-4 w-4" /> Import Module
+                                            </Button>
+                                        </div>
+                                    </div>
                                 )}
 
                                 {/* Browser Selector - Only show if multi-browser is ENABLED */}
@@ -823,6 +932,9 @@ export default function SuiteDetails() {
                                                                     <Button variant="ghost" size="sm" onClick={() => navigate(`/suites/${suiteId}/cases/${testCase.id}/edit`)} className="h-8 w-8 p-0">
                                                                         <Edit className="h-4 w-4" />
                                                                     </Button>
+                                                                    <Button variant="ghost" size="sm" onClick={() => handleExportCase(testCase.id, testCase.name)} className="h-8 w-8 p-0 text-muted-foreground hover:text-primary">
+                                                                        <Download className="h-4 w-4" />
+                                                                    </Button>
                                                                     <Button variant="ghost" size="sm" onClick={() => {
                                                                         setTestCaseToDelete({ id: testCase.id, name: testCase.name });
                                                                         setShowDeleteTestCaseDialog(true);
@@ -843,9 +955,23 @@ export default function SuiteDetails() {
                                             <h3 className="text-lg font-semibold text-foreground mb-2">No test cases yet</h3>
                                             <p className="text-muted-foreground mb-6 max-w-sm mx-auto">Get started by adding your first test case to this suite. You can define steps and assertions.</p>
                                             {suite.total_sub_modules === 0 && (
-                                                <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
-                                                    <Plus className="mr-2 h-4 w-4" /> Add Test Case
-                                                </Button>
+                                                <div className="flex items-center gap-2 justify-center">
+                                                    <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
+                                                        <Plus className="mr-2 h-4 w-4" /> Add Test Case
+                                                    </Button>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="file"
+                                                            accept=".json"
+                                                            onChange={handleImportCase}
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                            title="Import Test Case"
+                                                        />
+                                                        <Button variant="outline">
+                                                            <Upload className="mr-2 h-4 w-4" /> Import Case
+                                                        </Button>
+                                                    </div>
+                                                </div>
                                             )}
                                         </div>
                                     )}

@@ -155,6 +155,8 @@ export default function TestBuilder() {
                         <Button variant="secondary" size="sm" onClick={() => addStep('expect-visible')}>+ Assert</Button>
                         <Button variant="secondary" size="sm" onClick={() => addStep('hover')}>+ Hover</Button>
                         <Button variant="secondary" size="sm" onClick={() => addStep('press-key')}>+ Key</Button>
+                        <Button variant="secondary" size="sm" onClick={() => addStep('http-request')}>+ API</Button>
+                        <Button variant="secondary" size="sm" onClick={() => addStep('feed-check')}>+ Feed</Button>
                     </div>
                 </div>
 
