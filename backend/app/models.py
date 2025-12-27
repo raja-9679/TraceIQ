@@ -115,6 +115,13 @@ class TestCaseResultRead(SQLModel):
     duration_ms: float
     error_message: Optional[str] = None
     screenshots: Optional[List[str]] = []
+    response_status: Optional[int] = None
+    response_headers: Optional[dict] = {}
+    response_body: Optional[str] = None
+    request_headers: Optional[dict] = {}
+    request_body: Optional[str] = None
+    request_url: Optional[str] = None
+    request_method: Optional[str] = None
 
 class TestRunRead(TestRunBase):
     id: int
@@ -130,6 +137,13 @@ class TestCaseResult(SQLModel, table=True):
     trace_url: Optional[str] = None
     video_url: Optional[str] = None
     screenshots: Optional[List[str]] = Field(default=[], sa_column=Column(JSON))
+    response_status: Optional[int] = Field(default=None)
+    response_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
+    response_body: Optional[str] = Field(default=None)
+    request_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
+    request_body: Optional[str] = Field(default=None)
+    request_url: Optional[str] = Field(default=None)
+    request_method: Optional[str] = Field(default=None)
     ai_analysis: Optional[str] = None
     
     test_run: TestRun = Relationship(back_populates="results")
