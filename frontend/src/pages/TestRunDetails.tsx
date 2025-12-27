@@ -10,8 +10,8 @@ export default function TestRunDetails() {
     const runId = parseInt(idParam || "0");
     const isValidRunId = !isNaN(runId) && runId > 0;
 
-    const [showReqHeaders, setShowReqHeaders] = useState(true);
-    const [showRespHeaders, setShowRespHeaders] = useState(true);
+    const [showReqHeaders, setShowReqHeaders] = useState(false);
+    const [showRespHeaders, setShowRespHeaders] = useState(false);
     const [testSearchTerm, setTestSearchTerm] = useState('');
     const [isTestCasesExpanded, setIsTestCasesExpanded] = useState(false);
 
@@ -470,9 +470,13 @@ function TestCaseResultItem({ result }: { result: any }) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showReqHeaders, setShowReqHeaders] = useState(false);
     const [showRespHeaders, setShowRespHeaders] = useState(false);
-    const [showRespBody, setShowRespBody] = useState(true);
+    const [showReqParams, setShowReqParams] = useState(false);
+    const [showRespBody, setShowRespBody] = useState(false);
 
-    const hasDetails = result.response_status || result.response_body || (result.response_headers && Object.keys(result.response_headers).length > 0);
+    const hasDetails = result.response_status || result.response_body ||
+        (result.response_headers && Object.keys(result.response_headers).length > 0) ||
+        (result.request_headers && Object.keys(result.request_headers).length > 0) ||
+        (result.request_params && Object.keys(result.request_params).length > 0);
 
     return (
         <div className={`border rounded-lg overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary shadow-md' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
@@ -550,6 +554,27 @@ function TestCaseResultItem({ result }: { result: any }) {
                                         {showReqHeaders && (
                                             <pre className="text-[10px] bg-gray-50 p-2.5 rounded-lg border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-inner max-h-48">
                                                 {JSON.stringify(result.request_headers, null, 2)}
+                                            </pre>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Request Params */}
+                                {result.request_params && Object.keys(result.request_params).length > 0 && (
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between w-full mb-1">
+                                            <button
+                                                onClick={() => setShowReqParams(!showReqParams)}
+                                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider"
+                                            >
+                                                {showReqParams ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                <span>Query Parameters ({Object.keys(result.request_params).length})</span>
+                                            </button>
+                                            {showReqParams && <CopyButton text={JSON.stringify(result.request_params, null, 2)} />}
+                                        </div>
+                                        {showReqParams && (
+                                            <pre className="text-[10px] bg-gray-50 p-2.5 rounded-lg border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-inner max-h-48">
+                                                {JSON.stringify(result.request_params, null, 2)}
                                             </pre>
                                         )}
                                     </div>
