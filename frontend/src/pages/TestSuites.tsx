@@ -233,9 +233,16 @@ export default function TestSuites() {
                                         {suite.execution_mode}
                                     </span>
                                 </div>
-                                <span className="text-xs text-gray-400">
-                                    {new Date(suite.created_at).toLocaleDateString()}
+                            </div>
+                            <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-100">
+                                <span>
+                                    Created {new Date(suite.created_at).toLocaleDateString()}
                                 </span>
+                                {suite.created_by_name && (
+                                    <span title={`Updated by ${suite.updated_by_name || suite.created_by_name}`}>
+                                        by {suite.created_by_name}
+                                    </span>
+                                )}
                             </div>
                             <div className="flex gap-2 pt-2">
                                 <Link to={`/suites/${suite.id}`} className="flex-1">

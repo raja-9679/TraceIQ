@@ -1,16 +1,21 @@
 from typing import List, Optional, Union, Dict, Any
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select, func
+from sqlmodel import select, func, or_, and_
 from app.core.database import get_session
-from app.models import TestRun, TestStatus, TestSuite, TestCase, TestSuiteRead, ExecutionMode, TestCaseRead, TestRunRead, TestSuiteReadWithChildren, TestSuiteUpdate, TestCaseResultRead, TestCaseResult
 
 from app.worker import run_test_suite
 from app.core.storage import minio_client
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user
-from app.models import User
+from app.models import (
+    User, AuditLog, AuditLogRead,
+    TestSuite, TestSuiteRead, TestSuiteReadWithChildren, TestSuiteUpdate, 
+    TestCase, TestCaseRead, TestCaseUpdate, TestCaseResult, TestCaseResultRead,
+    TestRun, TestRunRead, TestStatus, ExecutionMode, UserRead, UserSettings
+)
 
 router = APIRouter()
 
@@ -43,9 +48,22 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
             # We don't need to commit here, the final commit will handle it
 
 
+    suite.created_by_id = current_user.id
+    suite.updated_by_id = current_user.id
     session.add(suite)
     await session.commit()
     await session.refresh(suite)
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="suite",
+        entity_id=suite.id,
+        action="create",
+        user_id=current_user.id,
+        changes=suite.model_dump(mode='json')
+    )
+    session.add(audit)
+    await session.commit()
     
     # Fetch again with relationships to satisfy TestSuiteRead and avoid lazy loading errors
     result = await session.exec(
@@ -144,22 +162,41 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
     
     # Update fields if provided using exclude_unset to handle False/None correctly
     update_data = suite_update.model_dump(exclude_unset=True)
+    # Track changes for audit log
+    changes = {}
     for key, value in update_data.items():
-        setattr(db_suite, key, value)
+        old_value = getattr(db_suite, key)
+        if old_value != value:
+            changes[key] = {"old": old_value, "new": value}
+            setattr(db_suite, key, value)
     
     # Ensure JSON changes are detected
     from sqlalchemy.orm.attributes import flag_modified
     if "settings" in update_data:
         flag_modified(db_suite, "settings")
-    
-    session.add(db_suite)
-    try:
-        await session.commit()
-    except Exception as e:
-        # Log the full traceback if possible, or just return the error
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
+
+    if changes:
+        db_suite.updated_by_id = current_user.id
+        db_suite.updated_at = datetime.utcnow()
+        session.add(db_suite)
+        
+        # Audit Log
+        audit = AuditLog(
+            entity_type="suite",
+            entity_id=suite_id,
+            action="update",
+            user_id=current_user.id,
+            changes=changes
+        )
+        session.add(audit)
+        
+        try:
+            await session.commit()
+        except Exception as e:
+            # Log the full traceback if possible, or just return the error
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
     
     # Fetch again with relationships to satisfy TestSuiteRead and avoid lazy loading errors
     result = await session.exec(
@@ -256,9 +293,23 @@ async def create_test_case(suite_id: int, case: TestCase, session: AsyncSession 
         raise HTTPException(status_code=400, detail="Cannot add test case to a suite that contains sub-modules")
 
     case.test_suite_id = suite_id
+    case.created_by_id = current_user.id
+    case.updated_by_id = current_user.id
     session.add(case)
     await session.commit()
     await session.refresh(case)
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="case",
+        entity_id=case.id,
+        action="create",
+        user_id=current_user.id,
+        changes=case.model_dump(mode='json')
+    )
+    session.add(audit)
+    await session.commit()
+    
     return case
 
 @router.get("/cases/{case_id}", response_model=TestCaseRead)
@@ -275,12 +326,45 @@ async def update_test_case(case_id: int, case_update: TestCase, session: AsyncSe
         raise HTTPException(status_code=404, detail="Test case not found")
     
     case_data = case_update.dict(exclude_unset=True)
+    
+    # Track changes for audit log
+    changes = {}
     for key, value in case_data.items():
-        setattr(db_case, key, value)
+        if key == "id": continue # Skip ID
+        old_value = getattr(db_case, key)
+        # Handle list of steps comparison
+        if key == "steps":
+             # Simple comparison for now, could be more granular
+             if old_value != value:
+                 changes[key] = {"old": old_value, "new": value}
+                 setattr(db_case, key, value)
+        elif old_value != value:
+            changes[key] = {"old": old_value, "new": value}
+            setattr(db_case, key, value)
+            
+    # Ensure JSON changes are detected
+    from sqlalchemy.orm.attributes import flag_modified
+    if "steps" in case_data:
+        flag_modified(db_case, "steps")
+
+    if changes:
+        db_case.updated_by_id = current_user.id
+        db_case.updated_at = datetime.utcnow()
+        session.add(db_case)
         
-    session.add(db_case)
-    await session.commit()
-    await session.refresh(db_case)
+        # Audit Log
+        audit = AuditLog(
+            entity_type="case",
+            entity_id=case_id,
+            action="update",
+            user_id=current_user.id,
+            changes=changes
+        )
+        session.add(audit)
+        
+        await session.commit()
+        await session.refresh(db_case)
+        
     return db_case
 
 @router.delete("/cases/{case_id}")
@@ -328,11 +412,25 @@ async def import_test_case(suite_id: int, case_data: Dict[str, Any], session: As
     new_case = TestCase(
         name=case_data.get("name", "Imported Case"),
         steps=case_data.get("steps", []),
-        test_suite_id=suite_id
+        test_suite_id=suite_id,
+        created_by_id=current_user.id,
+        updated_by_id=current_user.id
     )
     session.add(new_case)
     await session.commit()
     await session.refresh(new_case)
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="case",
+        entity_id=new_case.id,
+        action="import",
+        user_id=current_user.id,
+        changes={"source": "import", "data": case_data}
+    )
+    session.add(audit)
+    await session.commit()
+    
     return new_case
 
 @router.get("/suites/{suite_id}/export")
@@ -361,13 +459,27 @@ async def get_suite_export_data(suite_id: int, session: AsyncSession):
         "settings": suite.settings,
         "inherit_settings": suite.inherit_settings,
         "test_cases": [{"name": c.name, "steps": c.steps} for c in cases],
-        "sub_modules": [await get_suite_export_data(sub.id, session) for sub in subs]
+        "sub_modules": [await get_suite_export_data(sub.id, session) for sub in subs],
+        "created_by_name": suite.created_by.full_name if suite.created_by else None,
+        "updated_by_name": suite.updated_by.full_name if suite.updated_by else None
     }
 
 @router.post("/suites/import-suite")
 async def import_top_level_suite(suite_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    new_suite = await create_suite_from_data(suite_data, None, session)
+    new_suite = await create_suite_from_data(suite_data, None, session, current_user.id)
     await session.commit()
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="suite",
+        entity_id=new_suite.id,
+        action="import",
+        user_id=current_user.id,
+        changes={"source": "import", "data": suite_data}
+    )
+    session.add(audit)
+    await session.commit()
+    
     return {"status": "success", "id": new_suite.id}
 
 @router.post("/suites/{suite_id}/import-suite")
@@ -383,18 +495,32 @@ async def import_test_suite(suite_id: int, suite_data: Dict[str, Any], session: 
     if result.first():
         raise HTTPException(status_code=400, detail="Cannot import sub-module to a suite that contains test cases")
 
-    new_suite = await create_suite_from_data(suite_data, suite_id, session)
+    new_suite = await create_suite_from_data(suite_data, suite_id, session, current_user.id)
     await session.commit()
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="suite",
+        entity_id=new_suite.id,
+        action="import",
+        user_id=current_user.id,
+        changes={"source": "import", "data": suite_data}
+    )
+    session.add(audit)
+    await session.commit()
+    
     return {"status": "success", "id": new_suite.id}
 
-async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], session: AsyncSession):
+async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], session: AsyncSession, user_id: int):
     new_suite = TestSuite(
         name=data.get("name", "Imported Suite"),
         description=data.get("description"),
         execution_mode=data.get("execution_mode", ExecutionMode.CONTINUOUS),
         settings=data.get("settings", {"headers": {}, "params": {}}),
         inherit_settings=data.get("inherit_settings", True),
-        parent_id=parent_id
+        parent_id=parent_id,
+        created_by_id=user_id,
+        updated_by_id=user_id
     )
     session.add(new_suite)
     await session.flush() # Get ID
@@ -404,15 +530,40 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
         new_case = TestCase(
             name=case_data.get("name"),
             steps=case_data.get("steps", []),
-            test_suite_id=new_suite.id
+            test_suite_id=new_suite.id,
+            created_by_id=user_id,
+            updated_by_id=user_id
         )
         session.add(new_case)
         
     # Import sub-modules
     for sub_data in data.get("sub_modules", []):
-        await create_suite_from_data(sub_data, new_suite.id, session)
+        await create_suite_from_data(sub_data, new_suite.id, session, user_id)
         
     return new_suite
+
+@router.get("/audit/{entity_type}/{entity_id}", response_model=List[AuditLogRead])
+async def get_audit_log(entity_type: str, entity_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    query = select(AuditLog).options(selectinload(AuditLog.user)).order_by(AuditLog.timestamp.desc())
+    
+    if entity_type == 'suite':
+        # Fetch logs for the suite AND its direct test cases
+        # First, get all test case IDs for this suite
+        case_ids_result = await session.exec(select(TestCase.id).where(TestCase.test_suite_id == entity_id))
+        case_ids = case_ids_result.all()
+        
+        query = query.where(
+            or_(
+                and_(AuditLog.entity_type == 'suite', AuditLog.entity_id == entity_id),
+                and_(AuditLog.entity_type == 'case', AuditLog.entity_id.in_(case_ids))
+            )
+        )
+    else:
+        query = query.where(AuditLog.entity_type == entity_type, AuditLog.entity_id == entity_id)
+
+    result = await session.exec(query)
+    logs = result.all()
+    return logs
 
 async def get_suite_path(suite_id: int, session: AsyncSession) -> str:
     suite = await session.get(TestSuite, suite_id)
@@ -577,7 +728,8 @@ async def create_run(
                                 allowed_domains=current_effective_settings.get("allowed_domains", []),
                                 domain_settings=current_effective_settings.get("domain_settings", {}),
                                 browser=target_browser,
-                                device=target_device
+                                device=target_device,
+                                user_id=current_user.id
                             )
                             session.add(run)
                             await session.commit()
@@ -615,7 +767,8 @@ async def create_run(
                             allowed_domains=current_effective_settings.get("allowed_domains", []),
                             domain_settings=current_effective_settings.get("domain_settings", {}),
                             browser=target_browser,
-                            device=target_device
+                            device=target_device,
+                            user_id=current_user.id
                         )
                         session.add(run)
                         await session.commit()
@@ -668,7 +821,8 @@ async def create_run(
                         allowed_domains=effective_settings.get("allowed_domains", []),
                         domain_settings=effective_settings.get("domain_settings", {}),
                         browser=target_browser,
-                        device=target_device
+                        device=target_device,
+                        user_id=current_user.id
                     )
                     session.add(run)
                     await session.commit()
@@ -728,8 +882,8 @@ async def get_runs(
     count_result = await session.exec(count_query)
     total = count_result.one()
     
-    # Get paginated runs with eager loaded results
-    query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(offset).options(selectinload(TestRun.results))
+    # Get paginated runs with eager loaded results and user
+    query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(offset).options(selectinload(TestRun.results), selectinload(TestRun.user))
     result = await session.exec(query)
     runs = result.all()
     
@@ -737,7 +891,8 @@ async def get_runs(
         "runs": [
             TestRunRead(
                 **run.model_dump(),
-                results=[TestCaseResultRead.model_validate(r) for r in run.results]
+                results=[TestCaseResultRead.model_validate(r) for r in run.results],
+                user=run.user
             ) for run in runs
         ],
         "total": total,
@@ -748,8 +903,8 @@ async def get_runs(
 @router.get("/runs/{run_id}", response_model=TestRunRead)
 async def get_run(run_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     try:
-        # Eager load results
-        query = select(TestRun).where(TestRun.id == run_id).options(selectinload(TestRun.results))
+        # Eager load results and user
+        query = select(TestRun).where(TestRun.id == run_id).options(selectinload(TestRun.results), selectinload(TestRun.user))
         result = await session.exec(query)
         run = result.first()
         
@@ -759,7 +914,8 @@ async def get_run(run_id: int, session: AsyncSession = Depends(get_session), cur
         # Manually construct response to avoid validation issues with lazy/eager loading
         response = TestRunRead(
             **run.model_dump(),
-            results=[TestCaseResultRead.model_validate(r) for r in run.results]
+            results=[TestCaseResultRead.model_validate(r) for r in run.results],
+            user=run.user
         )
         return response
     except Exception as e:
