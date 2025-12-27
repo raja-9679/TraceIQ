@@ -149,8 +149,10 @@ export class PlaywrightRunner {
         const sharedContext = await this.browser!.newContext(contextOptions);
         let tempContext: BrowserContext | null = null;
 
-        let currentTestCaseId: number | null = null;
-        let currentTestCaseName: string | null = null;
+        const testCaseContext = {
+            id: null as number | null,
+            name: null as string | null
+        };
 
         let responseStatus: number | null = null;
         let requestHeaders: any = null;
@@ -160,7 +162,7 @@ export class PlaywrightRunner {
 
         // Listen for network events
         // Listen for network events on shared context
-        this.setupNetworkListeners(sharedContext, requestStartTimes, networkEvents, currentTestCaseId, currentTestCaseName);
+        this.setupNetworkListeners(sharedContext, requestStartTimes, networkEvents, testCaseContext);
 
         // Apply global headers and params
         // We now use route interception to apply headers selectively based on domain
@@ -198,6 +200,7 @@ export class PlaywrightRunner {
         let error: string | null = null;
 
         let executionLog: any[] = []; // Track execution times for each test case
+        let testResults: any[] = []; // Track detailed results for each test case
 
         try {
             console.log(`Running test suite for runId: ${runId} with ${testCases?.length || 0} cases`);
@@ -210,9 +213,10 @@ export class PlaywrightRunner {
                 const caseStartTime = Date.now();
                 let caseStatus = 'passed';
                 let caseError = null;
+                let lastStepResult: any = null;
 
-                currentTestCaseId = testCase.id; // Set current test case ID
-                currentTestCaseName = testCase.name;
+                testCaseContext.id = testCase.id; // Set current test case ID
+                testCaseContext.name = testCase.name;
                 console.log(`Executing Test Case: ${testCase.name} (ID: ${testCase.id})`);
 
                 // Update settings for this test case if provided
@@ -249,7 +253,7 @@ export class PlaywrightRunner {
                     await this.injectInitScripts(tempContext, browserType, device || null, emulatedAs || null);
                     await tempContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
                     page = await tempContext.newPage();
-                    this.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, currentTestCaseId, currentTestCaseName);
+                    this.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, testCaseContext);
                     this.setupRouteInterception(tempContext, currentSettings, sourceDomain);
                 } else {
                     // Continuous Mode: Use shared context
@@ -270,11 +274,9 @@ export class PlaywrightRunner {
                     // Note: setupNetworkListeners and setupRouteInterception attach handlers. 
                     // For continuous mode, we might accumulate handlers if we call them repeatedly.
                     // Ideally, we should update the state they reference, or clear and re-add.
-                    // However, the current implementation uses closure variables (currentTestCaseId, currentSettings) 
-                    // which are updated in this loop. But the *handlers* were attached once outside.
-                    // Wait, the handlers capture the *initial* values if they are primitives?
-                    // No, `currentTestCaseId` is a let variable. Closures capture the variable *reference*.
-                    // So updating `currentTestCaseId` inside the loop *will* be seen by the handlers attached outside.
+                    // However, the current implementation uses a mutable object (testCaseContext) 
+                    // which is updated in this loop. The handlers capture the object reference.
+                    // So updating testCaseContext.id/name inside the loop will be seen by the handlers.
                     // BUT `setupRouteInterception` uses `currentSettings` which is re-assigned in the loop.
                     // If `setupRouteInterception` was called with `currentSettings` passed as an argument, 
                     // the handler captures that specific object reference.
@@ -289,8 +291,7 @@ export class PlaywrightRunner {
 
                     // Network listeners (`on('request')`) DO accumulate. We shouldn't re-add them for sharedContext.
                     // We need a way to update the ID they use. 
-                    // Since `currentTestCaseId` is defined in the outer scope and captured, it should be fine.
-                    // The only issue is `currentTestCaseName` which is also updated.
+                    // Since `testCaseContext` is a mutable object and its reference is captured, it works fine.
                 }
 
                 // Reset page state to prevent navigation interruptions from previous test cases
@@ -353,18 +354,24 @@ export class PlaywrightRunner {
                                 currentContext = currentContext.frameLocator(frameSelector);
                             }
                         } else {
-                            const stepResponse = await this.executeStep(page, currentContext, step, globalSettings);
-                            // Legacy capture logic moved to event listener, but we keep this just in case
-                            // actually we can remove the legacy capture from here since the event listener handles it better
+                            const stepResponse = await this.executeStep(page, currentContext, step, currentSettings, testCaseContext);
+                            if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
+                                lastStepResult = stepResponse;
+                                // Update top-level variables for backward compatibility/main run fields
+                                if (typeof stepResponse.status === 'number') {
+                                    responseStatus = stepResponse.status;
+                                }
+                                responseHeaders = stepResponse.headers;
+                                if (stepResponse.request && typeof stepResponse.request === 'object') {
+                                    requestHeaders = stepResponse.request.headers;
+                                }
+                            }
                         }
                     }
                 } catch (e: any) {
                     caseStatus = 'failed';
                     caseError = e.message;
-                    throw e; // Re-throw to fail the run? Or continue? 
-                    // For continuous mode, we might want to continue? 
-                    // But the outer catch block catches it and sets global status to failed.
-                    // Let's re-throw for now to maintain existing behavior, but log the case result first.
+                    console.error(`  Test Case Failed: ${testCase.name} - ${e.message}`);
                 } finally {
                     const caseEndTime = Date.now();
                     executionLog.push({
@@ -375,16 +382,29 @@ export class PlaywrightRunner {
                         status: caseStatus,
                         error: caseError
                     });
-                }
 
-                // Cleanup temp context if it was used
-                if (tempContext) {
-                    console.log('  [Separate Mode] Closing temporary context...');
-                    await tempContext.close();
-                    tempContext = null;
+                    testResults.push({
+                        test_name: testCase.name,
+                        status: caseStatus,
+                        duration_ms: caseEndTime - caseStartTime,
+                        error: caseError,
+                        response_status: lastStepResult?.status,
+                        response_headers: lastStepResult?.headers,
+                        response_body: lastStepResult?.body,
+                        request_headers: lastStepResult?.request?.headers,
+                        request_body: lastStepResult?.request?.body,
+                        request_url: lastStepResult?.request?.url,
+                        request_method: lastStepResult?.request?.method
+                    });
+
+                    // Cleanup temp context if it was used
+                    if (tempContext) {
+                        console.log('  [Separate Mode] Closing temporary context...');
+                        await tempContext.close();
+                        tempContext = null;
+                    }
                 }
             }
-
         } catch (e: any) {
             status = 'failed';
             error = e.message;
@@ -432,7 +452,8 @@ export class PlaywrightRunner {
                 request_headers: requestHeaders,
                 response_headers: responseHeaders,
                 network_events: networkEvents,
-                execution_log: executionLog
+                execution_log: executionLog,
+                results: testResults
             };
         }
     }
@@ -584,7 +605,7 @@ export class PlaywrightRunner {
         }, { browserType, deviceName: deviceName || null, emulatedAs: emulatedAs || null });
     }
 
-    private setupNetworkListeners(context: BrowserContext, requestStartTimes: Map<string, number>, networkEvents: any[], currentTestCaseId: number | null, currentTestCaseName: string | null) {
+    private setupNetworkListeners(context: BrowserContext, requestStartTimes: Map<string, number>, networkEvents: any[], testCaseContext: { id: number | null, name: string | null }) {
         context.on('request', request => {
             requestStartTimes.set(request.url(), Date.now());
         });
@@ -604,10 +625,11 @@ export class PlaywrightRunner {
                 const reqHeaders = await request.allHeaders();
 
                 networkEvents.push({
-                    testCaseId: currentTestCaseId, // Tag event with current test case
-                    testCaseName: currentTestCaseName, // Tag event with current test case name
+                    testCaseId: testCaseContext.id, // Tag event with current test case
+                    testCaseName: testCaseContext.name, // Tag event with current test case name
                     url: url,
                     method: request.method(),
+                    resourceType: request.resourceType(), // Capture resource type (xhr, fetch, script, etc.)
                     status: response.status(),
                     startTime,
                     endTime,
@@ -762,7 +784,7 @@ export class PlaywrightRunner {
         });
     }
 
-    private async executeStep(page: Page, context: Page | FrameLocator, step: any, globalSettings: any = {}) {
+    private async executeStep(page: Page, context: Page | FrameLocator, step: any, globalSettings: any = {}, testCaseContext?: any) {
         console.log(`  Step: ${step.type} ${step.selector || ''} ${step.value || ''}`);
 
         // Helper to simulate mouse movement (only works reliably on main Page for now)
@@ -823,12 +845,16 @@ export class PlaywrightRunner {
 
                 console.log(`  [API] ${method} ${reqUrl}`);
 
-                const apiResponse = await page.request.fetch(reqUrl, {
-                    method,
-                    headers,
-                    data: body,
-                    timeout: 30000
-                });
+                let apiResponse;
+                try {
+                    apiResponse = await page.request.fetch(reqUrl, {
+                        method,
+                        headers,
+                        data: body,
+                        timeout: 30000
+                    });
+                } finally {
+                }
 
                 const status = apiResponse.status();
                 const respBody = await apiResponse.text();
@@ -886,13 +912,31 @@ export class PlaywrightRunner {
                         }
                     }
                 }
+
+                return {
+                    type: 'http-request',
+                    status: status,
+                    headers: await apiResponse.headers(),
+                    body: respBody,
+                    request: {
+                        url: reqUrl,
+                        method: method,
+                        headers: headers,
+                        body: body
+                    }
+                };
                 break;
 
             case 'feed-check':
                 const feedUrl = step.value || step.selector;
                 console.log(`  [Feed] Checking ${feedUrl}`);
 
-                const feedResponse = await page.request.get(feedUrl);
+                let feedResponse;
+                try {
+                    feedResponse = await page.request.get(feedUrl);
+                } finally {
+                }
+
                 if (!feedResponse.ok()) {
                     throw new Error(`Failed to fetch feed: ${feedResponse.status()}`);
                 }
@@ -927,19 +971,17 @@ export class PlaywrightRunner {
                         }
                     }
                 }
-                break;
 
-
-                while (attempts < maxAttempts) {
-                    try {
-                        return await page.goto(url, { waitUntil: waitUntil, timeout: 80000 });
-                    } catch (e: any) {
-                        attempts++;
-                        console.warn(`  goto failed (attempt ${attempts}/${maxAttempts}): ${e.message}`);
-                        if (attempts >= maxAttempts) throw e;
-                        await page.waitForTimeout(1000);
+                return {
+                    type: 'feed-check',
+                    status: feedResponse.status(),
+                    headers: await feedResponse.headers(),
+                    body: feedText,
+                    request: {
+                        url: feedUrl,
+                        method: 'GET'
                     }
-                }
+                };
                 break;
             case 'click':
                 const clickSelector = step.selector || step.value;

@@ -6,7 +6,7 @@ import { Wand2, ArrowRight, Check, X, ChevronRight, ChevronDown } from "lucide-r
 interface AssertionRequest {
     type: 'xpath';
     key: string; // xpath
-    operator: 'equals' | 'exists' | 'contains';
+    operator: 'equals' | 'exists' | 'contains' | 'optional' | 'matches';
     value?: string;
 }
 
@@ -17,15 +17,26 @@ interface FeedAssertionGeneratorModalProps {
 interface XmlNode {
     id: string;
     tagName: string;
+    localName: string;
+    namespaceURI: string | null;
     textContent: string | null;
     path: string;
+    strictPath: string;
     children: XmlNode[];
     attributes: { name: string; value: string }[];
+    count?: number;
+}
+
+interface ManualAssertion {
+    id: string;
+    path: string;
+    operator: 'equals' | 'exists' | 'contains' | 'optional' | 'matches';
+    value: string;
 }
 
 interface NodeSelection {
     selected: boolean;
-    operator: 'exists' | 'equals' | 'contains';
+    operator: 'exists' | 'equals' | 'contains' | 'optional' | 'matches';
 }
 
 export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalProps> = ({ onGenerate }) => {
@@ -34,8 +45,10 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
     const [xmlInput, setXmlInput] = useState('');
     const [rootNode, setRootNode] = useState<XmlNode | null>(null);
     const [selections, setSelections] = useState<Record<string, NodeSelection>>({});
+    const [manualAssertions, setManualAssertions] = useState<ManualAssertion[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [expandedNodes, setExpandedNodes] = useState<Record<string, boolean>>({});
+    const [strictMode, setStrictMode] = useState(false);
 
     const parseXml = () => {
         try {
@@ -46,7 +59,7 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                 throw new Error(parseError.textContent || "XML Parse Error");
             }
 
-            const root = buildNodeTree(doc.documentElement, "");
+            const root = buildNodeTree(doc.documentElement, "", "");
             setRootNode(root);
             setStep('selection');
             setError(null);
@@ -57,25 +70,49 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
         }
     };
 
-    const buildNodeTree = (element: Element, parentPath: string): XmlNode => {
+    const buildNodeTree = (element: Element, parentPath: string, parentStrictPath: string): XmlNode => {
         const id = crypto.randomUUID();
-        // Simple XPath generation (not perfect for all cases but good for feeds)
-        // We need to calculate index if there are siblings with same tag
+        const tagName = element.tagName;
+        const localName = element.localName || tagName.split(':').pop() || tagName;
+        const namespaceURI = element.namespaceURI;
+
+        // Robust XPath (name-based)
+        const xpathTag = `*[name()='${tagName}']`;
+
+        // Strict XPath (local-name + namespace-uri)
+        const strictTag = namespaceURI
+            ? `*[local-name()='${localName}' and namespace-uri()='${namespaceURI}']`
+            : `*[local-name()='${localName}' and not(namespace-uri())]`;
+
+        // Calculate index among siblings with same tag name
         let index = 1;
         let sibling = element.previousElementSibling;
         while (sibling) {
-            if (sibling.tagName === element.tagName) index++;
+            if (sibling.tagName === tagName) index++;
             sibling = sibling.previousElementSibling;
         }
 
-        const tagName = element.tagName;
-        // Handle namespaces in XPath: if tag has colon, use *[name()='tag'] syntax to avoid namespace prefix errors
-        const xpathTag = tagName.includes(':') ? `*[name()='${tagName}']` : tagName;
         const currentPath = parentPath ? `${parentPath}/${xpathTag}[${index}]` : `/${xpathTag}`;
+        const currentStrictPath = parentStrictPath ? `${parentStrictPath}/${strictTag}[${index}]` : `/${strictTag}`;
 
         const children: XmlNode[] = [];
+        const seenTags = new Set<string>();
+
         for (let i = 0; i < element.children.length; i++) {
-            children.push(buildNodeTree(element.children[i], currentPath));
+            const child = element.children[i];
+            const childTagName = child.tagName;
+
+            if (seenTags.has(childTagName)) {
+                // Find existing child and increment count
+                const existing = children.find(c => c.tagName === childTagName);
+                if (existing) {
+                    existing.count = (existing.count || 1) + 1;
+                }
+                continue;
+            }
+
+            children.push(buildNodeTree(child, currentPath, currentStrictPath));
+            seenTags.add(childTagName);
         }
 
         const attributes = [];
@@ -86,19 +123,22 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
             });
         }
 
-        // Get direct text content (ignoring children text) if it's a leaf-ish node
         let textContent = null;
-        if (children.length === 0) {
+        if (element.children.length === 0) {
             textContent = element.textContent;
         }
 
         return {
             id,
             tagName,
+            localName,
+            namespaceURI,
             textContent,
             path: currentPath,
+            strictPath: currentStrictPath,
             children,
-            attributes
+            attributes,
+            count: 1
         };
     };
 
@@ -112,7 +152,7 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
         }));
     };
 
-    const updateOperator = (id: string, operator: 'exists' | 'equals' | 'contains') => {
+    const updateOperator = (id: string, operator: 'exists' | 'equals' | 'contains' | 'optional' | 'matches') => {
         setSelections(prev => ({
             ...prev,
             [id]: {
@@ -120,6 +160,21 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                 operator
             }
         }));
+    };
+
+    const addManualAssertion = () => {
+        setManualAssertions(prev => [
+            ...prev,
+            { id: crypto.randomUUID(), path: '', operator: 'equals', value: '' }
+        ]);
+    };
+
+    const updateManualAssertion = (id: string, field: keyof ManualAssertion, value: string) => {
+        setManualAssertions(prev => prev.map(a => a.id === id ? { ...a, [field]: value } : a));
+    };
+
+    const removeManualAssertion = (id: string) => {
+        setManualAssertions(prev => prev.filter(a => a.id !== id));
     };
 
     const toggleExpand = (id: string) => {
@@ -134,9 +189,9 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
             if (selection && selection.selected) {
                 assertions.push({
                     type: 'xpath',
-                    key: node.path,
+                    key: strictMode ? node.strictPath : node.path,
                     operator: selection.operator,
-                    value: selection.operator !== 'exists' ? (node.textContent || '') : undefined
+                    value: (selection.operator !== 'exists' && selection.operator !== 'optional') ? (node.textContent || '') : undefined
                 });
             }
             node.children.forEach(traverse);
@@ -144,11 +199,24 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
 
         if (rootNode) traverse(rootNode);
 
+        // Add manual assertions
+        manualAssertions.forEach(ma => {
+            if (ma.path) {
+                assertions.push({
+                    type: 'xpath',
+                    key: ma.path,
+                    operator: ma.operator,
+                    value: (ma.operator !== 'exists' && ma.operator !== 'optional') ? ma.value : undefined
+                });
+            }
+        });
+
         onGenerate(assertions);
         setOpen(false);
         setStep('input');
         setXmlInput('');
         setSelections({});
+        setManualAssertions([]);
     };
 
     const renderNode = (node: XmlNode, depth: number) => {
@@ -173,9 +241,19 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                         className="h-4 w-4 accent-slate-900 cursor-pointer"
                     />
 
-                    <span className="text-xs font-mono text-blue-700 font-medium">
-                        &lt;{node.tagName}&gt;
-                    </span>
+                    <div className="flex flex-col min-w-0">
+                        <span className="text-xs font-mono text-blue-700 font-medium truncate">
+                            &lt;{node.tagName}&gt;
+                            {node.count && node.count > 1 && (
+                                <span className="ml-1 text-[10px] text-slate-400 font-normal">(x{node.count})</span>
+                            )}
+                        </span>
+                        {strictMode && node.namespaceURI && (
+                            <span className="text-[9px] text-slate-400 font-mono truncate max-w-[200px]" title={node.namespaceURI}>
+                                {node.namespaceURI}
+                            </span>
+                        )}
+                    </div>
 
                     {node.textContent && (
                         <span className="text-xs text-slate-600 truncate max-w-[150px]" title={node.textContent}>
@@ -184,20 +262,32 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                     )}
 
                     {selection.selected && (
-                        <div className="ml-auto">
+                        <div className="ml-auto flex items-center gap-2">
                             <Select
                                 value={selection.operator}
-                                onValueChange={(v: any) => updateOperator(node.id, v)}
+                                onValueChange={(v: 'exists' | 'equals' | 'contains' | 'optional') => updateOperator(node.id, v)}
                             >
                                 <SelectTrigger className="h-6 w-[100px] text-xs">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="exists">Exists</SelectItem>
+                                    <SelectItem value="optional">Optional</SelectItem>
                                     <SelectItem value="equals">Equals</SelectItem>
                                     <SelectItem value="contains">Contains</SelectItem>
+                                    <SelectItem value="matches">Matches (Regex)</SelectItem>
                                 </SelectContent>
                             </Select>
+                            {(selection.operator !== 'exists' && selection.operator !== 'optional') && (
+                                <input
+                                    type="text"
+                                    className="h-6 w-[120px] text-xs border rounded px-2 py-1 bg-slate-50"
+                                    placeholder="Expected Value"
+                                    value={node.textContent || ''}
+                                    readOnly
+                                    disabled
+                                />
+                            )}
                         </div>
                     )}
                 </div>
@@ -215,9 +305,12 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
 
             {open && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl max-h-[80vh] flex flex-col m-4">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl max-h-[90vh] flex flex-col m-4">
                         <div className="flex items-center justify-between p-4 border-b">
-                            <h2 className="text-lg font-semibold">Generate Feed Assertions</h2>
+                            <div className="flex flex-col">
+                                <h2 className="text-lg font-semibold">Generate Feed Assertions</h2>
+                                <p className="text-xs text-slate-500">Select nodes to create XPath assertions</p>
+                            </div>
                             <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
                                 <X className="w-4 h-4" />
                             </Button>
@@ -231,20 +324,82 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                                         className="flex-1 font-mono text-xs p-4 border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-slate-400"
                                         placeholder='<?xml version="1.0" ...'
                                         value={xmlInput}
-                                        onChange={e => setXmlInput(e.target.value)}
+                                        onChange={(e) => setXmlInput(e.target.value)}
                                     />
                                     {error && <p className="text-xs text-red-500">{error}</p>}
                                 </div>
                             ) : (
-                                <div className="flex-1 flex flex-col gap-2 overflow-hidden">
-                                    <p className="text-sm text-slate-500">Select nodes to generate assertions for.</p>
-                                    <div className="border rounded-md flex-1 overflow-hidden flex flex-col">
-                                        <div className="bg-slate-100 p-2 border-b text-xs font-medium text-slate-500 px-4 flex justify-between">
-                                            <span>XML Structure</span>
-                                            <span>Assertion Type</span>
+                                <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+                                    <div className="flex-1 flex flex-col gap-2 overflow-hidden">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-medium text-slate-700">Select nodes from sample</p>
+                                            <div className="flex items-center gap-2 bg-slate-100 px-2 py-1 rounded border">
+                                                <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Strict Namespaces</span>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={strictMode}
+                                                    onChange={e => setStrictMode(e.target.checked)}
+                                                    className="h-3 w-3 accent-slate-900 cursor-pointer"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="flex-1 overflow-y-auto p-2">
-                                            {rootNode && renderNode(rootNode, 0)}
+                                        <div className="border rounded-md flex-1 overflow-hidden flex flex-col">
+                                            <div className="bg-slate-100 p-2 border-b text-xs font-medium text-slate-500 px-4 flex justify-between">
+                                                <span>XML Structure</span>
+                                                <span>Assertion Type</span>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto p-2">
+                                                {rootNode && renderNode(rootNode, 0)}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <p className="text-sm font-medium text-slate-700">Manual Assertions</p>
+                                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addManualAssertion}>
+                                                + Add Manual
+                                            </Button>
+                                        </div>
+                                        <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2">
+                                            {manualAssertions.map(ma => (
+                                                <div key={ma.id} className="flex gap-2 items-center">
+                                                    <input
+                                                        className="flex-1 text-xs p-1.5 border rounded"
+                                                        placeholder="XPath (e.g. //item/title)"
+                                                        value={ma.path}
+                                                        onChange={e => updateManualAssertion(ma.id, 'path', e.target.value)}
+                                                    />
+                                                    <Select
+                                                        value={ma.operator}
+                                                        onValueChange={(v: any) => updateManualAssertion(ma.id, 'operator', v)}
+                                                    >
+                                                        <SelectTrigger className="h-8 w-[100px] text-xs">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="exists">Exists</SelectItem>
+                                                            <SelectItem value="optional">Optional</SelectItem>
+                                                            <SelectItem value="equals">Equals</SelectItem>
+                                                            <SelectItem value="contains">Contains</SelectItem>
+                                                            <SelectItem value="matches">Matches (Regex)</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <input
+                                                        className="flex-1 text-xs p-1.5 border rounded"
+                                                        placeholder="Expected Value"
+                                                        value={ma.value}
+                                                        onChange={e => updateManualAssertion(ma.id, 'value', e.target.value)}
+                                                        disabled={ma.operator === 'exists' || ma.operator === 'optional'}
+                                                    />
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => removeManualAssertion(ma.id)}>
+                                                        <X className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            {manualAssertions.length === 0 && (
+                                                <p className="text-xs text-slate-400 italic text-center py-2">No manual assertions added</p>
+                                            )}
                                         </div>
                                     </div>
                                 </div>

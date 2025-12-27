@@ -26,7 +26,7 @@ export interface TestStep {
         assertions?: Array<{
             type: 'status' | 'json-path' | 'xpath' | 'text' | 'json-schema';
             path?: string;
-            operator?: 'equals' | 'contains' | 'exists';
+            operator?: 'equals' | 'exists' | 'contains' | 'optional' | 'matches';
             value?: string;
         }>;
         [key: string]: any;
@@ -209,21 +209,39 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                 {(step.type === 'http-request' || step.type === 'feed-check') && (
                     <div className="w-full bg-slate-50 p-4 rounded-md border border-slate-200 space-y-4">
                         {step.type === 'http-request' && (
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
-                                    <textarea
-                                        className="w-full h-20 p-2 text-xs font-mono border rounded-md"
-                                        placeholder='{"Content-Type": "application/json"}'
-                                        value={JSON.stringify(step.params?.headers || {}, null, 2)}
-                                        onChange={(e) => {
-                                            try {
-                                                updateParams('headers', JSON.parse(e.target.value));
-                                            } catch (e) {
-                                                // Allow typing invalid JSON temporarily
-                                            }
-                                        }}
-                                    />
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="col-span-1">
+                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Response Format</label>
+                                        <Select
+                                            value={step.params?.response_format || 'json'}
+                                            onValueChange={(value) => updateParams('response_format', value)}
+                                        >
+                                            <SelectTrigger className="h-8 text-xs">
+                                                <SelectValue placeholder="Format" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="json">JSON</SelectItem>
+                                                <SelectItem value="xml">XML</SelectItem>
+                                                <SelectItem value="text">Plain Text</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div className="col-span-2">
+                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
+                                        <textarea
+                                            className="w-full h-20 p-2 text-xs font-mono border rounded-md"
+                                            placeholder='{"Content-Type": "application/json"}'
+                                            value={JSON.stringify(step.params?.headers || {}, null, 2)}
+                                            onChange={(e) => {
+                                                try {
+                                                    updateParams('headers', JSON.parse(e.target.value));
+                                                } catch (e) {
+                                                    // Allow typing invalid JSON temporarily
+                                                }
+                                            }}
+                                        />
+                                    </div>
                                 </div>
                                 <div>
                                     <label className="text-xs font-medium text-gray-500 mb-1 block">Body</label>
@@ -241,16 +259,15 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             <div className="flex items-center justify-between mb-2">
                                 <label className="text-xs font-medium text-gray-500">Assertions</label>
                                 <div className="flex gap-2">
-                                    {step.type === 'feed-check' && (
+                                    {(step.type === 'feed-check' || (step.type === 'http-request' && step.params?.response_format === 'xml')) && (
                                         <FeedAssertionGeneratorModal
                                             onGenerate={(newAssertions) => {
                                                 const currentAssertions = step.params?.assertions || [];
-                                                // Map to correct format if needed, assuming modal returns compatible objects
                                                 const formattedAssertions = newAssertions.map(a => ({
                                                     type: a.type,
                                                     path: a.key,
                                                     operator: a.operator,
-                                                    value: a.value
+                                                    value: (a.operator !== 'exists' && a.operator !== 'optional') ? (a.value || '') : undefined
                                                 }));
                                                 updateParams('assertions', [...currentAssertions, ...formattedAssertions]);
                                             }}
@@ -273,8 +290,16 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                 {step.type === 'http-request' ? (
                                                     <>
                                                         <SelectItem value="status">Status Code</SelectItem>
-                                                        <SelectItem value="json-path">JSON Path</SelectItem>
-                                                        <SelectItem value="json-schema">JSON Schema</SelectItem>
+                                                        <SelectItem value="text">Text Content</SelectItem>
+                                                        {(step.params?.response_format === 'json' || !step.params?.response_format) && (
+                                                            <>
+                                                                <SelectItem value="json-path">JSON Path</SelectItem>
+                                                                <SelectItem value="json-schema">JSON Schema</SelectItem>
+                                                            </>
+                                                        )}
+                                                        {step.params?.response_format === 'xml' && (
+                                                            <SelectItem value="xpath">XPath</SelectItem>
+                                                        )}
                                                     </>
                                                 ) : (
                                                     <>
@@ -320,8 +345,12 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                     <SelectContent>
                                                         <SelectItem value="equals">Equals</SelectItem>
                                                         <SelectItem value="contains">Contains</SelectItem>
+                                                        <SelectItem value="matches">Matches (Regex)</SelectItem>
                                                         {(assertion.type === 'json-path' || assertion.type === 'xpath') && (
-                                                            <SelectItem value="exists">Exists</SelectItem>
+                                                            <>
+                                                                <SelectItem value="exists">Exists</SelectItem>
+                                                                <SelectItem value="optional">Optional</SelectItem>
+                                                            </>
                                                         )}
                                                     </SelectContent>
                                                 </Select>
@@ -331,6 +360,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                     placeholder="Expected Value"
                                                     value={assertion.value || ''}
                                                     onChange={(e) => updateAssertion(idx, 'value', e.target.value)}
+                                                    disabled={assertion.operator === 'exists' || assertion.operator === 'optional'}
                                                 />
                                             </>
                                         )}
