@@ -234,6 +234,17 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
         raise HTTPException(status_code=404, detail="Suite not found")
     
     await recursive_delete_suite(suite_id, session)
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="suite",
+        entity_id=suite_id,
+        action="delete",
+        user_id=current_user.id,
+        changes={}
+    )
+    session.add(audit)
+    
     await session.commit()
     return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted"}
 
@@ -385,6 +396,17 @@ async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_ses
         await session.delete(run)
 
     await session.delete(case)
+    
+    # Audit Log
+    audit = AuditLog(
+        entity_type="case",
+        entity_id=case_id,
+        action="delete",
+        user_id=current_user.id,
+        changes={}
+    )
+    session.add(audit)
+    
     await session.commit()
     return {"status": "success", "message": f"Test case {case_id} deleted"}
 
