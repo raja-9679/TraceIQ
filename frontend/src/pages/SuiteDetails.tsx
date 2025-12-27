@@ -1548,8 +1548,16 @@ export default function SuiteDetails() {
                                                                 Source: {log.changes.source || 'Unknown'}
                                                             </div>
                                                         </div>
+                                                    ) : log.action === 'delete' ? (
+                                                        <div className="bg-red-50 border border-red-100 rounded p-3 text-red-800 text-xs">
+                                                            <span className="font-semibold">Deleted entity:</span>
+                                                            <div className="mt-1 font-mono opacity-80">
+                                                                ID: {log.entity_id}
+                                                            </div>
+                                                        </div>
                                                     ) : (
                                                         <div className="mt-2 text-xs font-mono bg-white p-2 rounded border overflow-x-auto">
+                                                            <div className="mb-1 text-gray-500 font-semibold">Raw Data (Action: {log.action})</div>
                                                             <pre>{JSON.stringify(log.changes, null, 2)}</pre>
                                                         </div>
                                                     )}
