@@ -41,6 +41,13 @@ export interface TestRun {
         duration_ms: number;
         error_message?: string;
         screenshots?: string[];
+        response_status?: number;
+        response_headers?: Record<string, string>;
+        response_body?: string;
+        request_headers?: Record<string, string>;
+        request_body?: string;
+        request_url?: string;
+        request_method?: string;
     }[];
 }
 
