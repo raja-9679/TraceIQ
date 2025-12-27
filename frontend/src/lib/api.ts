@@ -49,6 +49,11 @@ export interface TestRun {
         request_url?: string;
         request_method?: string;
     }[];
+    user?: {
+        id: number;
+        email: string;
+        full_name: string;
+    };
 }
 
 export const getRuns = async (
@@ -202,3 +207,9 @@ export const importTestSuite = async (suiteId?: number, data?: any): Promise<any
     const response = await api.post(url, data);
     return response.data;
 };
+
+export const getAuditLog = async (entityType: string, entityId: number): Promise<any[]> => {
+    const response = await api.get(`/audit/${entityType}/${entityId}`);
+    return response.data;
+};
+
