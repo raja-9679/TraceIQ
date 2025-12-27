@@ -45,6 +45,10 @@ interface StepComponentProps {
 }
 
 export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast }) => {
+    const [localHeaders, setLocalHeaders] = React.useState(JSON.stringify(step.params?.headers || {}, null, 2));
+    const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
+    const [localBody, setLocalBody] = React.useState(step.params?.body || '');
+
     const updateParams = (key: string, value: any) => {
         const newParams = { ...(step.params || {}), [key]: value };
         updateStep(step.id, 'params', newParams);
@@ -208,8 +212,43 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                 {/* Extended Configuration for API/Feed */}
                 {(step.type === 'http-request' || step.type === 'feed-check') && (
                     <div className="w-full bg-slate-50 p-4 rounded-md border border-slate-200 space-y-4">
-                        {step.type === 'http-request' && (
-                            <div className="space-y-4">
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
+                                    <textarea
+                                        className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
+                                        placeholder='{"Authorization": "Bearer token"}'
+                                        value={localHeaders}
+                                        onChange={(e) => {
+                                            setLocalHeaders(e.target.value);
+                                            try {
+                                                const parsed = JSON.parse(e.target.value);
+                                                updateParams('headers', parsed);
+                                            } catch (err) { /* ignore invalid JSON while typing */ }
+                                        }}
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level headers</p>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Query Parameters (JSON)</label>
+                                    <textarea
+                                        className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
+                                        placeholder='{"key": "value"}'
+                                        value={localParams}
+                                        onChange={(e) => {
+                                            setLocalParams(e.target.value);
+                                            try {
+                                                const parsed = JSON.parse(e.target.value);
+                                                updateParams('params', parsed);
+                                            } catch (err) { /* ignore invalid JSON while typing */ }
+                                        }}
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level parameters</p>
+                                </div>
+                            </div>
+
+                            {step.type === 'http-request' && (
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="col-span-1">
                                         <label className="text-xs font-medium text-gray-500 mb-1 block">Response Format</label>
@@ -217,7 +256,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             value={step.params?.response_format || 'json'}
                                             onValueChange={(value) => updateParams('response_format', value)}
                                         >
-                                            <SelectTrigger className="h-8 text-xs">
+                                            <SelectTrigger className="h-8 text-xs bg-white">
                                                 <SelectValue placeholder="Format" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -227,33 +266,23 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="col-span-2">
-                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
-                                        <textarea
-                                            className="w-full h-20 p-2 text-xs font-mono border rounded-md"
-                                            placeholder='{"Content-Type": "application/json"}'
-                                            value={JSON.stringify(step.params?.headers || {}, null, 2)}
-                                            onChange={(e) => {
-                                                try {
-                                                    updateParams('headers', JSON.parse(e.target.value));
-                                                } catch (e) {
-                                                    // Allow typing invalid JSON temporarily
-                                                }
-                                            }}
-                                        />
-                                    </div>
+                                    {(step.params?.method && step.params.method !== 'GET') && (
+                                        <div className="col-span-2">
+                                            <label className="text-xs font-medium text-gray-500 mb-1 block">Request Body</label>
+                                            <textarea
+                                                className="w-full h-20 p-2 text-xs font-mono border rounded-md bg-white"
+                                                placeholder="Request Body (JSON/Text)"
+                                                value={localBody}
+                                                onChange={(e) => {
+                                                    setLocalBody(e.target.value);
+                                                    updateParams('body', e.target.value);
+                                                }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
-                                <div>
-                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Body</label>
-                                    <textarea
-                                        className="w-full h-20 p-2 text-xs font-mono border rounded-md"
-                                        placeholder="Request Body"
-                                        value={step.params?.body || ''}
-                                        onChange={(e) => updateParams('body', e.target.value)}
-                                    />
-                                </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
 
                         <div>
                             <div className="flex items-center justify-between mb-2">
