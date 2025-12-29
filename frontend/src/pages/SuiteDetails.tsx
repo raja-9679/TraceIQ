@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
-import { triggerRun, exportTestCase, importTestCase, exportTestSuite, importTestSuite } from '@/lib/api';
+import { triggerRun, exportTestCase, importTestCase, exportTestSuite, importTestSuite, getAuditLog } from '@/lib/api';
+import { History } from 'lucide-react';
 import { ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -58,7 +59,7 @@ export default function SuiteDetails() {
     const [showRenameDialog, setShowRenameDialog] = useState(false);
     const [renameName, setRenameName] = useState('');
     const [renameDesc, setRenameDesc] = useState('');
-    const [activeTab, setActiveTab] = useState<'tests' | 'settings'>('tests');
+    const [activeTab, setActiveTab] = useState<'tests' | 'settings' | 'audit'>('tests');
     const [showDeleteDialog, setShowDeleteDialog] = useState(false);
     const [deleteConfirmName, setDeleteConfirmName] = useState('');
     const [showDeleteTestCaseDialog, setShowDeleteTestCaseDialog] = useState(false);
@@ -96,6 +97,18 @@ export default function SuiteDetails() {
             }
         }
     }, [userSettings]);
+
+    const { data: auditLogs } = useQuery({
+        queryKey: ['audit', suiteId],
+        queryFn: () => getAuditLog('suite', Number(suiteId)),
+        enabled: !!suiteId && activeTab === 'audit'
+    });
+
+    // Reset state when suite changes
+    useEffect(() => {
+        setSearchTerm('');
+        setActiveTab('tests');
+    }, [suiteId]);
 
     useEffect(() => {
         if (location.state?.message) {
@@ -532,6 +545,12 @@ export default function SuiteDetails() {
                     onClick={() => setActiveTab('settings')}
                 >
                     Settings & Inheritance
+                </button>
+                <button
+                    className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === 'audit' ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
+                    onClick={() => setActiveTab('audit')}
+                >
+                    Audit Log
                 </button>
             </div>
 
@@ -979,7 +998,7 @@ export default function SuiteDetails() {
                             </Card>
                         )}
                     </motion.div>
-                ) : (
+                ) : activeTab === 'settings' ? (
                     <motion.div
                         key="settings"
                         variants={tabVariants}
@@ -1448,6 +1467,109 @@ export default function SuiteDetails() {
                                             }
                                         }}>Add Domain Setting</Button>
                                     </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </motion.div>
+                ) : null}
+
+                {activeTab === 'audit' && (
+                    <motion.div
+                        key="audit"
+                        variants={tabVariants}
+                        initial="hidden"
+                        animate="visible"
+                        exit="exit"
+                        className="space-y-4"
+                    >
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Audit Log</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-4">
+                                    {auditLogs?.map((log: any) => (
+                                        <div key={log.id} className="flex flex-col p-4 border rounded-lg bg-gray-50">
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${log.action === 'create' ? 'bg-green-100 text-green-700' :
+                                                        log.action === 'update' ? 'bg-blue-100 text-blue-700' :
+                                                            log.action === 'delete' ? 'bg-red-100 text-red-700' :
+                                                                'bg-gray-100 text-gray-700'
+                                                        }`}>
+                                                        {log.action}
+                                                    </span>
+                                                    <span className="font-medium text-sm">
+                                                        by {log.user?.full_name || 'Unknown User'}
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs text-gray-500">
+                                                    {new Date(log.timestamp).toLocaleString()}
+                                                </span>
+                                            </div>
+                                            {log.changes && Object.keys(log.changes).length > 0 && (
+                                                <div className="mt-3 text-sm">
+                                                    {log.action === 'update' ? (
+                                                        <div className="border rounded-md overflow-hidden">
+                                                            <table className="w-full text-left text-xs">
+                                                                <thead className="bg-gray-50 border-b">
+                                                                    <tr>
+                                                                        <th className="px-3 py-2 font-medium text-gray-500">Field</th>
+                                                                        <th className="px-3 py-2 font-medium text-gray-500">Old Value</th>
+                                                                        <th className="px-3 py-2 font-medium text-gray-500">New Value</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y">
+                                                                    {Object.entries(log.changes).map(([key, val]: [string, any]) => (
+                                                                        <tr key={key} className="bg-white">
+                                                                            <td className="px-3 py-2 font-mono text-gray-600">{key}</td>
+                                                                            <td className="px-3 py-2 text-red-600 bg-red-50/30 font-mono break-all">
+                                                                                {typeof val.old === 'object' ? JSON.stringify(val.old) : String(val.old ?? 'null')}
+                                                                            </td>
+                                                                            <td className="px-3 py-2 text-green-600 bg-green-50/30 font-mono break-all">
+                                                                                {typeof val.new === 'object' ? JSON.stringify(val.new) : String(val.new ?? 'null')}
+                                                                            </td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    ) : log.action === 'create' ? (
+                                                        <div className="bg-green-50 border border-green-100 rounded p-3 text-green-800 text-xs">
+                                                            <span className="font-semibold">Created with initial values:</span>
+                                                            <div className="mt-1 font-mono opacity-80">
+                                                                {Object.keys(log.changes).join(', ')}
+                                                            </div>
+                                                        </div>
+                                                    ) : log.action === 'import' ? (
+                                                        <div className="bg-blue-50 border border-blue-100 rounded p-3 text-blue-800 text-xs">
+                                                            <span className="font-semibold">Imported data source:</span>
+                                                            <div className="mt-1 font-mono opacity-80">
+                                                                Source: {log.changes.source || 'Unknown'}
+                                                            </div>
+                                                        </div>
+                                                    ) : log.action === 'delete' ? (
+                                                        <div className="bg-red-50 border border-red-100 rounded p-3 text-red-800 text-xs">
+                                                            <span className="font-semibold">Deleted entity:</span>
+                                                            <div className="mt-1 font-mono opacity-80">
+                                                                ID: {log.entity_id}
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="mt-2 text-xs font-mono bg-white p-2 rounded border overflow-x-auto">
+                                                            <div className="mb-1 text-gray-500 font-semibold">Raw Data (Action: {log.action})</div>
+                                                            <pre>{JSON.stringify(log.changes, null, 2)}</pre>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                    {(!auditLogs || auditLogs.length === 0) && (
+                                        <div className="text-center py-8 text-gray-500">
+                                            No audit history available.
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
