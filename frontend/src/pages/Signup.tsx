@@ -23,7 +23,9 @@ export default function Signup() {
             const registerResponse = await axios.post("http://localhost:8000/api/auth/register", {
                 email: data.email,
                 password: data.password,
-                full_name: data.fullName
+                full_name: data.fullName,
+                org_name: data.orgName,
+                project_name: data.projectName
             });
 
             // Login automatically after registration
@@ -274,9 +276,28 @@ export default function Signup() {
                                         <input
                                             {...register("fullName", { required: "Required" })}
                                             className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
-                                            placeholder="John Doe"
+                                            placeholder="Name"
                                         />
                                         {errors.fullName && <span className="text-xs text-red-500">{errors.fullName.message as string}</span>}
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Org Name (Optional)</label>
+                                            <input
+                                                {...register("orgName")}
+                                                className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                                                placeholder="My Company"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Name (Optional)</label>
+                                            <input
+                                                {...register("projectName")}
+                                                className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                                                placeholder="Alpha"
+                                            />
+                                        </div>
                                     </div>
 
                                     <div className="space-y-2">
