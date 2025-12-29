@@ -26,7 +26,11 @@ class TestSuiteBase(SQLModel):
     parent_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
     settings: Optional[Dict[str, Any]] = Field(default={"headers": {}, "params": {}}, sa_column=Column(JSON))
     inherit_settings: bool = Field(default=True)
+    inherit_settings: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
 class TestSuite(TestSuiteBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -37,6 +41,9 @@ class TestSuite(TestSuiteBase, table=True):
         sa_relationship_kwargs={"remote_side": "TestSuite.id"}
     )
     sub_modules: List["TestSuite"] = Relationship(back_populates="parent")
+    
+    created_by: Optional["User"] = Relationship(sa_relationship_kwargs={"foreign_keys": "TestSuite.created_by_id"})
+    updated_by: Optional["User"] = Relationship(sa_relationship_kwargs={"foreign_keys": "TestSuite.updated_by_id"})
 
 class TestSuiteParent(TestSuiteBase):
     id: int
@@ -70,13 +77,24 @@ class TestCaseBase(SQLModel):
     name: str
     steps: List[TestStep] = Field(default=[], sa_column=Column(JSON)) # List of TestSteps
     test_suite_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
 class TestCase(TestCaseBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     test_suite: Optional[TestSuite] = Relationship(back_populates="test_cases")
+    created_by: Optional["User"] = Relationship(sa_relationship_kwargs={"foreign_keys": "TestCase.created_by_id"})
+    updated_by: Optional["User"] = Relationship(sa_relationship_kwargs={"foreign_keys": "TestCase.updated_by_id"})
 
 class TestCaseRead(TestCaseBase):
     id: int
+
+class TestCaseUpdate(SQLModel):
+    name: Optional[str] = None
+    steps: Optional[List[TestStep]] = None
+    test_suite_id: Optional[int] = None
 
 class TestRunBase(SQLModel):
     test_suite_id: int = Field(foreign_key="testsuite.id")
@@ -103,10 +121,17 @@ class TestRunBase(SQLModel):
     execution_log: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
     browser: str = Field(default="chromium")
     device: Optional[str] = Field(default=None)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+class UserRead(SQLModel):
+    id: int
+    email: str
+    full_name: str
 
 class TestRun(TestRunBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     results: List["TestCaseResult"] = Relationship(back_populates="test_run", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    user: Optional["User"] = Relationship(back_populates="test_runs")
 
 class TestCaseResultRead(SQLModel):
     id: int
@@ -127,6 +152,7 @@ class TestCaseResultRead(SQLModel):
 class TestRunRead(TestRunBase):
     id: int
     results: List[TestCaseResultRead] = []
+    user: Optional[UserRead] = None
 
 class TestCaseResult(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -160,4 +186,26 @@ class User(SQLModel, table=True):
     
     # Relationship
     settings: Optional["UserSettings"] = Relationship(back_populates="user", sa_relationship_kwargs={"uselist": False})
+    test_runs: List["TestRun"] = Relationship(back_populates="user")
     is_active: bool = True
+
+class AuditLog(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    entity_type: str # 'suite', 'case'
+    entity_id: int
+    action: str # 'create', 'update', 'delete', 'import'
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    changes: Optional[dict] = Field(default={}, sa_column=Column(JSON))
+    
+    user: Optional["User"] = Relationship()
+
+class AuditLogRead(SQLModel):
+    id: int
+    entity_type: str
+    entity_id: int
+    action: str
+    user_id: Optional[int]
+    timestamp: datetime
+    changes: Optional[dict]
+    user: Optional[UserRead] = None
