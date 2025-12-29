@@ -213,3 +213,168 @@ export const getAuditLog = async (entityType: string, entityId: number): Promise
     return response.data;
 };
 
+// Organization & Team API
+export interface User {
+    id: number;
+    email: string;
+    full_name?: string;
+    is_active: boolean;
+}
+
+export interface Organization {
+    id: number;
+    name: string;
+    description?: string;
+}
+
+export interface Team {
+    id: number;
+    name: string;
+    description?: string;
+    organization_id: number;
+}
+
+export interface Project {
+    id: number;
+    name: string;
+    description?: string;
+    organization_id: number;
+    access_level?: string;
+}
+
+export const getOrganizations = async (): Promise<Organization[]> => {
+    const response = await api.get("/organizations");
+    return response.data;
+};
+
+export const createOrganization = async (data: { name: string, description?: string }): Promise<Organization> => {
+    const response = await api.post("/organizations", data);
+    return response.data;
+};
+
+export const deleteOrganization = async (orgId: number): Promise<any> => {
+    const response = await api.delete(`/organizations/${orgId}`);
+    return response.data;
+};
+
+export const removeUserFromTeam = async (teamId: number, userId: number): Promise<void> => {
+    await api.delete(`/teams/${teamId}/users/${userId}`);
+};
+
+export const getProjectTeams = async (projectId: number): Promise<any[]> => {
+    const response = await api.get(`/projects/${projectId}/teams`);
+    return response.data;
+};
+
+export const getProjectMembers = async (projectId: number): Promise<any[]> => {
+    const response = await api.get(`/projects/${projectId}/users`);
+    return response.data;
+};
+
+export const unlinkTeamFromProject = async (projectId: number, teamId: number): Promise<void> => {
+    await api.delete(`/projects/${projectId}/teams/${teamId}`);
+};
+
+export const removeUserProjectAccess = async (projectId: number, userId: number): Promise<void> => {
+    await api.delete(`/projects/${projectId}/users/${userId}`);
+};
+
+export const addTeamToProject = async (projectId: number, teamId: number, accessLevel: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/teams/${teamId}`, { access_level: accessLevel });
+};
+
+export const addUserProjectAccess = async (projectId: number, userId: number, accessLevel: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/users/${userId}`, { access_level: accessLevel });
+};
+
+export interface DetailedMember {
+    id: number;
+    full_name: string;
+    email: string;
+    role: string;
+    last_login_at: string | null;
+    is_active: boolean;
+    status: 'active' | 'invited';
+    created_at?: string;
+}
+
+export const getOrgMembersDetailed = async (orgId: number): Promise<DetailedMember[]> => {
+    const response = await api.get(`/organizations/${orgId}/members/detailed`);
+    return response.data;
+};
+
+export const inviteUserToOrg = async (orgId: number, email: string, role: string): Promise<void> => {
+    await api.post(`/organizations/${orgId}/invitations`, { email, role });
+};
+
+export const getOrgInvitations = async (orgId: number): Promise<DetailedMember[]> => {
+    const response = await api.get(`/organizations/${orgId}/invitations`);
+    return response.data;
+};
+
+export const getOrganizationMembers = async (orgId: number): Promise<User[]> => {
+    const response = await api.get(`/organizations/${orgId}/users`);
+    return response.data;
+};
+
+export const getTeams = async (orgId: number): Promise<Team[]> => {
+    const response = await api.get(`/organizations/${orgId}/teams`);
+    return response.data;
+};
+
+export const createTeam = async (orgId: number, data: {
+    name: string,
+    description?: string,
+    initial_project_id?: number,
+    initial_access_level?: string
+}): Promise<Team> => {
+    const response = await api.post(`/organizations/${orgId}/teams`, data);
+    return response.data;
+};
+
+export const deleteTeam = async (teamId: number): Promise<any> => {
+    const response = await api.delete(`/teams/${teamId}`);
+    return response.data;
+};
+
+export const inviteToTeam = async (teamId: number, email: string): Promise<any> => {
+    const response = await api.post(`/teams/${teamId}/users/invite`, { email });
+    return response.data;
+};
+
+export const getTeamMembers = async (teamId: number): Promise<User[]> => {
+    const response = await api.get(`/teams/${teamId}/users`);
+    return response.data;
+};
+
+export const getProjects = async (orgId?: number): Promise<Project[]> => {
+    const url = orgId ? `/projects?org_id=${orgId}` : "/projects";
+    const response = await api.get(url);
+    return response.data;
+};
+
+export const createProject = async (data: { name: string, description?: string, organization_id: number }): Promise<Project> => {
+    const response = await api.post("/projects", data);
+    return response.data;
+};
+
+export const deleteProject = async (projectId: number): Promise<any> => {
+    const response = await api.delete(`/projects/${projectId}`);
+    return response.data;
+};
+
+export const linkTeamToProject = async (projectId: number, teamId: number, accessLevel: string): Promise<any> => {
+    const response = await api.post(`/projects/${projectId}/teams/${teamId}/access`, { access_level: accessLevel });
+    return response.data;
+};
+
+export const getTestSuites = async (projectId?: number): Promise<any[]> => {
+    const response = await api.get("/suites", { params: { project_id: projectId } });
+    return response.data;
+};
+
+export const removeUserFromOrg = async (orgId: number, userId: number): Promise<void> => {
+    await api.delete(`/organizations/${orgId}/users/${userId}`);
+};
+
+

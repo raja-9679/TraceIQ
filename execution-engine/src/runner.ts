@@ -1,13 +1,11 @@
-import { chromium, firefox, webkit, Browser, BrowserContext, Page, FrameLocator, Locator, devices } from 'playwright';
-import * as Minio from 'minio'; // Try standard import, but fallback if needed
+import { Browser, BrowserContext, devices, Page, FrameLocator } from 'playwright';
+import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DOMParser } from '@xmldom/xmldom';
-import * as xpath from 'xpath';
-import Ajv from 'ajv';
-import addFormats from 'ajv-formats';
+import { BrowserManager } from './core/browser-manager';
+import { NetworkInterceptor } from './core/network-interceptor';
+import { TestExecutor } from './core/test-executor';
 
-// Fix for Minio import consistency
 const MinioClient = (Minio as any).Client || Minio;
 
 const minioClient = new MinioClient({
@@ -21,60 +19,25 @@ const minioClient = new MinioClient({
 const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 
 export class PlaywrightRunner {
-    private browser: Browser | null = null;
-    private currentBrowserType: string = 'chromium';
+    private browserManager = new BrowserManager();
 
     async start(browserType: string = 'chromium') {
-        if (this.browser && this.currentBrowserType !== browserType) {
-            console.log(`Switching browser from ${this.currentBrowserType} to ${browserType}`);
-            await this.stop();
-        }
-
-        if (!this.browser) {
-            console.log(`Launching browser: ${browserType}`);
-
-            switch (browserType) {
-                case 'firefox':
-                    this.browser = await firefox.launch({
-                        headless: true
-                    });
-                    break;
-                case 'webkit':
-                    this.browser = await webkit.launch({
-                        headless: true
-                    });
-                    break;
-                case 'chromium':
-                default:
-                    this.browser = await chromium.launch({
-                        headless: true,
-                        args: ['--no-sandbox', '--disable-setuid-sandbox']
-                    });
-                    break;
-            }
-            this.currentBrowserType = browserType;
-        }
+        return this.browserManager.start(browserType);
     }
 
     async stop() {
-        if (this.browser) {
-            await this.browser.close();
-            this.browser = null;
-        }
+        return this.browserManager.stop();
     }
 
     async runTest(runId: number, testCases: any[], browserType: string = 'chromium', globalSettings: any = {}, device?: string): Promise<any> {
-        await this.start(browserType);
-
+        const browser = await this.start(browserType);
         const artifactsDir = `/tmp/artifacts/${runId}`;
         fs.mkdirSync(artifactsDir, { recursive: true });
 
-        // Create context with optional device emulation
         let contextOptions: any = {
             recordVideo: { dir: artifactsDir, size: { width: 1280, height: 720 } }
         };
 
-        // Apply device emulation if specified
         let emulatedAs: string | null = null;
         if (device) {
             let descriptor: any = null;
@@ -87,86 +50,42 @@ export class PlaywrightRunner {
                 };
             } else if (devices[device as keyof typeof devices]) {
                 const deviceDescriptor = devices[device as keyof typeof devices];
-
-                // Check if the device's default browser matches the selected browser
-                // If they don't match (e.g. Chrome selected for iPhone), we should NOT spoof the UA
-                // We only want the viewport and physical characteristics
                 if (deviceDescriptor.defaultBrowserType && deviceDescriptor.defaultBrowserType !== browserType) {
                     descriptor = {
                         viewport: deviceDescriptor.viewport,
                         deviceScaleFactor: deviceDescriptor.deviceScaleFactor,
                         hasTouch: deviceDescriptor.hasTouch,
-                        isMobile: browserType !== 'firefox', // Firefox doesn't support isMobile
+                        isMobile: browserType !== 'firefox',
                     };
-
-                    // Intelligently synthesize a User Agent to match the Platform + Browser combination
-                    // e.g. "Chrome on iPhone" (CriOS) or "Firefox on Android"
-
                     const isIOS = deviceDescriptor.defaultBrowserType === 'webkit' || (device && device.includes('iPhone')) || (device && device.includes('iPad'));
-                    // Default to Android/Mobile for non-iOS mobile devices
-
                     if (isIOS) {
                         if (browserType === 'chromium') {
-                            // Chrome on iOS (CriOS)
                             descriptor.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1';
                         } else if (browserType === 'firefox') {
-                            // Firefox on iOS (FxiOS)
                             descriptor.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/120.0 Mobile/15E148 Safari/605.1.15';
                         }
-                    } else {
-                        // Android / Generic Mobile
-                        if (browserType === 'firefox') {
-                            // Firefox on Android
-                            descriptor.userAgent = 'Mozilla/5.0 (Android 14; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0';
-                        }
-                        // For Chrome on Android, isMobile: true usually handles it well (giving Chrome Mobile UA).
-                        // But we can force it if needed. Let's rely on isMobile for Chromium-Android for now as it's native.
+                    } else if (browserType === 'firefox') {
+                        descriptor.userAgent = 'Mozilla/5.0 (Android 14; Mobile; rv:120.0) Gecko/120.0 Firefox/120.0';
                     }
-
-                    console.log(`Browser mismatch (${browserType} vs ${deviceDescriptor.defaultBrowserType}). Synthesized UA for ${isIOS ? 'iOS' : 'Android'}: ${descriptor.userAgent || 'Default'}`);
                 } else {
-                    // Match! Use the full descriptor including UA for authentic emulation
                     descriptor = { ...deviceDescriptor };
                     emulatedAs = descriptor.defaultBrowserType;
-
-                    // Firefox doesn't support isMobile option in newContext
-                    if (browserType === 'firefox') {
-                        delete descriptor.isMobile;
-                        console.log(`Removed isMobile from ${device} descriptor for Firefox compatibility`);
-                    }
+                    if (browserType === 'firefox') delete descriptor.isMobile;
                 }
             }
-
             if (descriptor) {
-                contextOptions = {
-                    ...contextOptions,
-                    ...descriptor
-                };
-                console.log(`Using device emulation: ${device}${emulatedAs ? ` (as ${emulatedAs})` : ''}`);
+                contextOptions = { ...contextOptions, ...descriptor };
             }
         }
 
-        const sharedContext = await this.browser!.newContext(contextOptions);
-        let tempContext: BrowserContext | null = null;
-
-        const testCaseContext = {
-            id: null as number | null,
-            name: null as string | null
-        };
-
-        let responseStatus: number | null = null;
-        let requestHeaders: any = null;
-        let responseHeaders: any = null;
-        let networkEvents: any[] = [];
+        const sharedContext = await browser.newContext(contextOptions);
         const requestStartTimes = new Map<string, number>();
+        const networkEvents: any[] = [];
+        const testCaseContext = { id: null as number | null, name: null as string | null };
+        const sourceDomain = { value: null as string | null };
 
-        // Listen for network events
-        // Listen for network events on shared context
-        this.setupNetworkListeners(sharedContext, requestStartTimes, networkEvents, testCaseContext);
+        await NetworkInterceptor.setupNetworkListeners(sharedContext, requestStartTimes, networkEvents, testCaseContext);
 
-        // Apply global headers and params
-        // We now use route interception to apply headers selectively based on domain
-        // These serve as defaults, but can be overridden per test case
         let currentSettings = {
             headers: globalSettings?.headers || {},
             params: globalSettings?.params || {},
@@ -174,22 +93,8 @@ export class PlaywrightRunner {
             domain_settings: globalSettings?.domain_settings || {}
         };
 
-        let sourceDomain: string | null = null;
-
-        // Helper to get domain from URL
-        const getDomain = (url: string) => {
-            try {
-                return new URL(url).hostname;
-            } catch {
-                return '';
-            }
-        };
-
-        // Intercept all requests to apply headers and params
-        // Intercept all requests to apply headers and params on shared context
-        await this.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
-
-        await this.injectInitScripts(sharedContext, browserType, device || null, emulatedAs || null);
+        await NetworkInterceptor.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
+        await this.browserManager.injectInitScripts(sharedContext, browserType, device || null, emulatedAs || null);
 
         const tracePath = path.join(artifactsDir, 'trace.zip');
         await sharedContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
@@ -198,116 +103,50 @@ export class PlaywrightRunner {
         const startTime = Date.now();
         let status = 'passed';
         let error: string | null = null;
-
-        let executionLog: any[] = []; // Track execution times for each test case
-        let testResults: any[] = []; // Track detailed results for each test case
+        let executionLog: any[] = [];
+        let testResults: any[] = [];
 
         try {
-            console.log(`Running test suite for runId: ${runId} with ${testCases?.length || 0} cases`);
-
-            if (!testCases || testCases.length === 0) {
-                throw new Error("No test cases provided");
-            }
+            if (!testCases || testCases.length === 0) throw new Error("No test cases provided");
 
             for (const testCase of testCases) {
                 const caseStartTime = Date.now();
                 let caseStatus = 'passed';
                 let caseError = null;
                 let lastStepResult: any = null;
+                let tempContext: BrowserContext | null = null;
 
-                testCaseContext.id = testCase.id; // Set current test case ID
+                testCaseContext.id = testCase.id;
                 testCaseContext.name = testCase.name;
-                console.log(`Executing Test Case: ${testCase.name} (ID: ${testCase.id})`);
 
-                // Update settings for this test case if provided
                 if (testCase.settings) {
-                    currentSettings = {
-                        headers: testCase.settings.headers || {},
-                        params: testCase.settings.params || {},
-                        allowed_domains: testCase.settings.allowed_domains || [],
-                        domain_settings: testCase.settings.domain_settings || {}
-                    };
-                    console.log(`Updated settings for test case ${testCase.name}`);
-                } else {
-                    // Fallback to global settings if not provided (shouldn't happen with new worker logic)
-                    currentSettings = {
-                        headers: globalSettings?.headers || {},
-                        params: globalSettings?.params || {},
-                        allowed_domains: globalSettings?.allowed_domains || [],
-                        domain_settings: globalSettings?.domain_settings || {}
-                    };
+                    currentSettings.headers = testCase.settings.headers || {};
+                    currentSettings.params = testCase.settings.params || {};
+                    currentSettings.allowed_domains = testCase.settings.allowed_domains || [];
+                    currentSettings.domain_settings = testCase.settings.domain_settings || {};
                 }
 
-                // Reset source domain for each test case to ensure isolation in continuous mode
-                sourceDomain = null;
-
-                // Handle Execution Mode (Separate vs Continuous)
+                sourceDomain.value = null;
                 const executionMode = testCase.executionMode || 'continuous';
-                console.log(`  Execution Mode: ${executionMode}`);
 
                 if (executionMode === 'separate') {
-                    console.log('  [Separate Mode] Creating temporary context...');
-                    tempContext = await this.browser!.newContext(contextOptions);
-
-                    // Setup temp context
-                    await this.injectInitScripts(tempContext, browserType, device || null, emulatedAs || null);
+                    tempContext = await browser.newContext(contextOptions);
+                    await this.browserManager.injectInitScripts(tempContext, browserType, device || null, emulatedAs || null);
                     await tempContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
                     page = await tempContext.newPage();
-                    this.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, testCaseContext);
-                    this.setupRouteInterception(tempContext, currentSettings, sourceDomain);
+                    await NetworkInterceptor.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, testCaseContext);
+                    await NetworkInterceptor.setupRouteInterception(tempContext, currentSettings, sourceDomain);
                 } else {
-                    // Continuous Mode: Use shared context
-                    console.log('  [Continuous Mode] Using shared context');
-
-                    // Ensure shared page is valid
                     const pages = sharedContext.pages();
-                    if (pages.length > 0) {
-                        page = pages[0];
-                        if (page.isClosed()) {
-                            page = await sharedContext.newPage();
-                        }
-                    } else {
-                        page = await sharedContext.newPage();
-                    }
-
-                    // Update listeners/interception for shared context with current test case details
-                    // Note: setupNetworkListeners and setupRouteInterception attach handlers. 
-                    // For continuous mode, we might accumulate handlers if we call them repeatedly.
-                    // Ideally, we should update the state they reference, or clear and re-add.
-                    // However, the current implementation uses a mutable object (testCaseContext) 
-                    // which is updated in this loop. The handlers capture the object reference.
-                    // So updating testCaseContext.id/name inside the loop will be seen by the handlers.
-                    // BUT `setupRouteInterception` uses `currentSettings` which is re-assigned in the loop.
-                    // If `setupRouteInterception` was called with `currentSettings` passed as an argument, 
-                    // the handler captures that specific object reference.
-                    // If we re-assign `currentSettings = {...}`, the handler still holds the OLD object.
-                    // FIX: We need to re-apply route interception for the shared context if settings changed, 
-                    // OR make the handler look up the *current* settings from a mutable container.
-
-                    // For now, let's re-apply route interception to be safe, but we must be careful about duplicate handlers.
-                    // Playwright's `route` overrides previous routes if the pattern matches.
-                    // So calling `setupRouteInterception` again should overwrite the previous handler for '**/*'.
-                    await this.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
-
-                    // Network listeners (`on('request')`) DO accumulate. We shouldn't re-add them for sharedContext.
-                    // We need a way to update the ID they use. 
-                    // Since `testCaseContext` is a mutable object and its reference is captured, it works fine.
+                    page = (pages.length > 0 && !pages[0].isClosed()) ? pages[0] : await sharedContext.newPage();
+                    await NetworkInterceptor.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
                 }
 
-                // Reset page state to prevent navigation interruptions from previous test cases
                 try {
-                    console.log('  Resetting page state (about:blank)...');
                     await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
+                    await page.evaluate((tn) => { (window as any).__TRACEIQ_TEST_NAME__ = tn; }, testCase.name);
+                } catch (e) { }
 
-                    // Set test name in window property so init script can read it
-                    await page.evaluate((testName) => {
-                        (window as any).__TRACEIQ_TEST_NAME__ = testName;
-                    }, testCase.name);
-                } catch (e) {
-                    console.warn(`  Warning: Failed to reset page state: ${e}`);
-                }
-
-                // Track current context (Page or Frame)
                 let currentContext: Page | FrameLocator = page;
 
                 try {
@@ -315,858 +154,71 @@ export class PlaywrightRunner {
                         if (step.type === 'switch-frame') {
                             const frameSelector = step.selector || step.value;
                             if (frameSelector === 'main' || frameSelector === 'top') {
-                                console.log('  Step: switch-frame to main page');
                                 currentContext = page;
                             } else if (frameSelector) {
-                                console.log(`  Step: switch-frame ${frameSelector}`);
-
-                                // Enhanced Lifecycle Management for Cross-Origin Stability
                                 if (step.options?.strict_lifecycle) {
-                                    console.log('    [Strict Lifecycle] 1. Waiting for iframe attachment...');
-
-                                    // 1. Wait for Attachment (Antigravity: Attachment confirms existence)
-                                    // We locate the iframe element itself (not its content yet)
-                                    // Note: We use 'attached' state, ignoring visibility (opacity:0 iframes are valid)
                                     const frameElement = currentContext.locator(frameSelector).first();
                                     await frameElement.waitFor({ state: 'attached', timeout: 30000 });
-
-                                    // 2. Sync Load State (Antigravity: Load state confirms readiness)
-                                    // For cross-origin iframes, existence attached != Ready to accept commands.
-                                    // We must acquire the underlying Frame object to check its network idle/load state.
                                     const elementHandle = await frameElement.elementHandle();
                                     const contentFrame = await elementHandle?.contentFrame();
-
-                                    if (contentFrame) {
-                                        console.log('    [Strict Lifecycle] 2. Waiting for frame load state (domcontentloaded)...');
-                                        // This is critical: waits for the SUB-RESOURCE (the iframe src) to finish loading
-                                        try {
-                                            await contentFrame.waitForLoadState('domcontentloaded', { timeout: 30000 });
-                                        } catch (e) {
-                                            console.warn(`    [Strict Lifecycle] Warning: Frame load wait warning: ${e}`);
-                                        }
-                                    } else {
-                                        console.warn('    [Strict Lifecycle] Warning: Could not access content frame (detached or strict CSP?)');
-                                    }
+                                    if (contentFrame) await contentFrame.waitForLoadState('domcontentloaded', { timeout: 30000 });
                                 }
-
-                                // 3. Set Context (Antigravity: Interaction via frameLocator)
-                                // We switch to the isolated context for subsequent steps
                                 currentContext = currentContext.frameLocator(frameSelector);
                             }
                         } else {
-                            const stepResponse = await this.executeStep(page, currentContext, step, currentSettings, testCaseContext);
+                            const stepResponse = await TestExecutor.executeStep(page, currentContext, step, currentSettings, testCaseContext);
                             if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
                                 lastStepResult = stepResponse;
-                                // Update top-level variables for backward compatibility/main run fields
-                                if (typeof stepResponse.status === 'number') {
-                                    responseStatus = stepResponse.status;
-                                }
-                                responseHeaders = stepResponse.headers;
-                                if (stepResponse.request && typeof stepResponse.request === 'object') {
-                                    requestHeaders = stepResponse.request.headers;
-                                }
                             }
                         }
                     }
                 } catch (e: any) {
                     caseStatus = 'failed';
                     caseError = e.message;
-                    console.error(`  Test Case Failed: ${testCase.name} - ${e.message}`);
                 } finally {
                     const caseEndTime = Date.now();
-                    executionLog.push({
-                        testCaseId: testCase.id,
-                        testCaseName: testCase.name,
-                        startTime: caseStartTime,
-                        endTime: caseEndTime,
-                        status: caseStatus,
-                        error: caseError
-                    });
-
+                    executionLog.push({ testCaseId: testCase.id, testCaseName: testCase.name, startTime: caseStartTime, endTime: caseEndTime, status: caseStatus, error: caseError });
                     testResults.push({
-                        test_name: testCase.name,
-                        status: caseStatus,
-                        duration_ms: caseEndTime - caseStartTime,
-                        error: caseError,
-                        response_status: lastStepResult?.status,
-                        response_headers: lastStepResult?.headers,
-                        response_body: lastStepResult?.body,
-                        request_headers: lastStepResult?.request?.headers,
-                        request_body: lastStepResult?.request?.body,
-                        request_url: lastStepResult?.request?.url,
-                        request_method: lastStepResult?.request?.method,
-                        request_params: lastStepResult?.request?.params
+                        test_name: testCase.name, status: caseStatus, duration_ms: caseEndTime - caseStartTime, error: caseError,
+                        response_status: lastStepResult?.status, response_headers: lastStepResult?.headers, response_body: lastStepResult?.body,
+                        request_headers: lastStepResult?.request?.headers, request_body: lastStepResult?.request?.body, request_url: lastStepResult?.request?.url,
+                        request_method: lastStepResult?.request?.method, request_params: lastStepResult?.request?.params
                     });
-
-                    // Cleanup temp context if it was used
-                    if (tempContext) {
-                        console.log('  [Separate Mode] Closing temporary context...');
-                        await tempContext.close();
-                        tempContext = null;
-                    }
+                    if (tempContext) await tempContext.close();
                 }
             }
         } catch (e: any) {
             status = 'failed';
             error = e.message;
-            console.error(`Test failed: ${e}`);
         } finally {
             const duration = Date.now() - startTime;
             await sharedContext.tracing.stop({ path: tracePath });
-            await sharedContext.close(); // Saves video
+            await sharedContext.close();
 
-            // Upload artifacts
             const traceKey = `runs/${runId}/trace.zip`;
             await minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
 
             const files = fs.readdirSync(artifactsDir);
-
-            // Upload Screenshots
             const screenshots: string[] = [];
-            const screenshotFiles = files.filter(f => f.endsWith('.png'));
-            for (const file of screenshotFiles) {
-                const filePath = path.join(artifactsDir, file);
+            for (const file of files.filter(f => f.endsWith('.png'))) {
                 const key = `runs/${runId}/screenshots/${file}`;
-                await minioClient.fPutObject(BUCKET_NAME, key, filePath);
+                await minioClient.fPutObject(BUCKET_NAME, key, path.join(artifactsDir, file));
                 screenshots.push(key);
             }
 
             let videoKey = null;
             const videoFile = files.find(f => f.endsWith('.webm'));
             if (videoFile) {
-                const videoPath = path.join(artifactsDir, videoFile);
                 videoKey = `runs/${runId}/video.webm`;
-                await minioClient.fPutObject(BUCKET_NAME, videoKey, videoPath);
+                await minioClient.fPutObject(BUCKET_NAME, videoKey, path.join(artifactsDir, videoFile));
             }
 
-            // Cleanup
             fs.rmSync(artifactsDir, { recursive: true, force: true });
 
             return {
-                status,
-                duration_ms: duration,
-                error,
-                trace: traceKey,
-                video: videoKey,
-                screenshots: screenshots,
-                response_status: responseStatus,
-                request_headers: requestHeaders,
-                response_headers: responseHeaders,
-                network_events: networkEvents,
-                execution_log: executionLog,
-                results: testResults
+                status, duration_ms: duration, error, trace: traceKey, video: videoKey, screenshots,
+                network_events: networkEvents, execution_log: executionLog, results: testResults
             };
-        }
-    }
-
-    private async injectInitScripts(context: BrowserContext, browserType: string, deviceName: string | null, emulatedAs: string | null) {
-        await context.addInitScript(({ browserType, deviceName, emulatedAs }: { browserType: string, deviceName: string | null, emulatedAs: string | null }) => {
-            const initElements = () => {
-                // Mouse cursor
-                const box = document.createElement('div');
-                box.classList.add('selenium-mouse-helper');
-
-                // Browser indicator badge
-                const browserBadge = document.createElement('div');
-                browserBadge.classList.add('browser-indicator');
-                browserBadge.textContent = browserType.toUpperCase();
-
-                const styleElement = document.createElement('style');
-                styleElement.innerHTML = `
-                    .selenium-mouse-helper {
-                        pointer-events: none;
-                        position: absolute;
-                        top: 0;
-                        left: 0;
-                        width: 20px;
-                        height: 20px;
-                        border: 1px solid white;
-                        border-radius: 50%;
-                        background: rgba(255, 0, 0, 0.7);
-                        margin: -10px 0 0 -10px;
-                        padding: 0;
-                        transition: background .2s, border-radius .2s, border-color .2s;
-                        box-shadow: 0 0 4px rgba(0,0,0,0.8);
-                        z-index: 100000;
-                    }
-                    .selenium-mouse-helper.button-pressed {
-                        background: rgba(255, 0, 0, 1);
-                        transform: scale(0.9);
-                    }
-                    .browser-indicator {
-                        pointer-events: none !important;
-                        position: fixed !important;
-                        top: 20px !important;
-                        right: 20px !important;
-                        padding: 8px 16px !important;
-                        background: rgba(0, 0, 0, 0.85) !important;
-                        color: white !important;
-                        font-family: 'Courier New', monospace !important;
-                        font-size: 12px !important;
-                        font-weight: bold !important;
-                        border-radius: 6px !important;
-                        z-index: 2147483647 !important;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.3) !important;
-                        border: 2px solid ${browserType === 'chromium' ? '#4285f4' : browserType === 'firefox' ? '#ff7139' : '#00d4ff'} !important;
-                        display: flex !important;
-                        flex-direction: column !important;
-                        gap: 4px !important;
-                        min-width: 150px !important;
-                        opacity: 1 !important;
-                        transition: opacity 0.5s ease-out !important;
-                    }
-                    .browser-indicator.hidden {
-                        opacity: 0 !important;
-                    }
-                    .browser-indicator .browser-type {
-                        font-size: 14px !important;
-                        color: ${browserType === 'chromium' ? '#4285f4' : browserType === 'firefox' ? '#ff7139' : '#00d4ff'} !important;
-                    }
-                    .browser-indicator .device-name {
-                        font-size: 10px !important;
-                        color: #888 !important;
-                        font-weight: normal !important;
-                    }
-                    .browser-indicator .emulated-note {
-                        font-size: 10px !important;
-                        color: rgba(255, 255, 255, 0.5) !important;
-                        font-weight: normal !important;
-                        font-style: italic !important;
-                    }
-                    .browser-indicator .test-name {
-                        font-size: 11px !important;
-                        color: #aaa !important;
-                        font-weight: normal !important;
-                    }
-                `;
-                document.head.appendChild(styleElement);
-                document.body.appendChild(box);
-
-                // Create badge with browser type, device, and test name sections
-                browserBadge.innerHTML = `
-                    <div class="browser-type">
-                        ${browserType.toUpperCase()}
-                        ${emulatedAs && emulatedAs !== browserType ? `<span class="emulated-note"> (as ${emulatedAs})</span>` : ''}
-                    </div>
-                    ${deviceName ? `<div class="device-name">${deviceName}</div>` : ''}
-                    <div class="test-name" id="test-name-display">${(window as any).__TRACEIQ_TEST_NAME__ || 'Loading...'}</div>
-                `;
-                document.body.appendChild(browserBadge);
-
-                // Watch for test name changes in window property
-                let lastTestName = '';
-                let hideTimeout: any = null;
-                setInterval(() => {
-                    const testNameEl = document.getElementById('test-name-display');
-                    const currentTestName = (window as any).__TRACEIQ_TEST_NAME__ || 'Loading...';
-
-                    if (testNameEl && currentTestName !== lastTestName) {
-                        testNameEl.textContent = currentTestName;
-                        lastTestName = currentTestName;
-
-                        // Reset hide timeout when test name changes
-                        if (hideTimeout) clearTimeout(hideTimeout);
-                        browserBadge.classList.remove('hidden');
-
-                        // Auto-hide after 3 seconds (only if not "Loading...")
-                        if (currentTestName !== 'Loading...') {
-                            hideTimeout = setTimeout(() => {
-                                browserBadge.classList.add('hidden');
-                            }, 3000);
-                        }
-                    }
-                }, 100);
-
-                document.addEventListener('mousemove', event => {
-                    box.style.left = event.pageX + 'px';
-                    box.style.top = event.pageY + 'px';
-                }, true);
-
-                document.addEventListener('mousedown', event => {
-                    box.classList.add('button-pressed');
-                }, true);
-
-                document.addEventListener('mouseup', event => {
-                    box.classList.remove('button-pressed');
-                }, true);
-            };
-
-            // Wait for body to exist
-            if (document.body) {
-                initElements();
-            } else {
-                const observer = new MutationObserver(() => {
-                    if (document.body) {
-                        observer.disconnect();
-                        initElements();
-                    }
-                });
-                observer.observe(document.documentElement, { childList: true });
-            }
-        }, { browserType, deviceName: deviceName || null, emulatedAs: emulatedAs || null });
-    }
-
-    private setupNetworkListeners(context: BrowserContext, requestStartTimes: Map<string, number>, networkEvents: any[], testCaseContext: { id: number | null, name: string | null }) {
-        context.on('request', request => {
-            requestStartTimes.set(request.url(), Date.now());
-        });
-
-        context.on('response', async response => {
-            try {
-                const request = response.request();
-                const url = response.url();
-                const startTime = requestStartTimes.get(url) || Date.now();
-                const endTime = Date.now();
-                const duration = endTime - startTime;
-
-                // Clean up map
-                requestStartTimes.delete(url);
-
-                const headers = await response.allHeaders();
-                const reqHeaders = await request.allHeaders();
-
-                networkEvents.push({
-                    testCaseId: testCaseContext.id, // Tag event with current test case
-                    testCaseName: testCaseContext.name, // Tag event with current test case name
-                    url: url,
-                    method: request.method(),
-                    resourceType: request.resourceType(), // Capture resource type (xhr, fetch, script, etc.)
-                    status: response.status(),
-                    startTime,
-                    endTime,
-                    duration,
-                    requestHeaders: reqHeaders,
-                    responseHeaders: headers
-                });
-            } catch (e) {
-                console.error('Error capturing network event:', e);
-            }
-        });
-    }
-
-    private async setupRouteInterception(context: BrowserContext, currentSettings: any, sourceDomain: string | null) {
-        const getDomain = (url: string) => {
-            try {
-                return new URL(url).hostname;
-            } catch {
-                return '';
-            }
-        };
-
-        await context.route('**/*', async route => {
-            const request = route.request();
-            const urlStr = request.url();
-            const hostname = getDomain(urlStr);
-
-            // Use current dynamic settings
-            const { headers: globalHeaders, params: globalParams, allowed_domains: allowedDomains, domain_settings: domainSettings } = currentSettings;
-
-            // Determine source domain from the first navigation if not set
-            if (!sourceDomain && request.isNavigationRequest()) {
-                sourceDomain = hostname;
-                console.log(`Inferred source domain: ${sourceDomain}`);
-            }
-
-            // DEBUG: Log matching logic for fetch/xhr
-            if (request.resourceType() === 'fetch' || request.resourceType() === 'xhr') {
-                console.log(`[Network] Checking headers for ${urlStr}`);
-                console.log(`  Hostname: ${hostname}`);
-                console.log(`  SourceDomain: ${sourceDomain}`);
-                console.log(`  AllowedDomains: ${JSON.stringify(allowedDomains)}`);
-                console.log(`  DomainSettings keys: ${JSON.stringify(Object.keys(domainSettings))}`);
-            }
-
-            const headers = { ...request.headers() };
-            let modifiedHeaders = false;
-            let modifiedUrl = false;
-            let newUrl = urlStr;
-
-            // Helper to append params
-            const appendParams = (targetUrl: string, params: any) => {
-                try {
-                    const urlObj = new URL(targetUrl);
-                    for (const [key, value] of Object.entries(params)) {
-                        const strValue = String(value);
-                        // Only append if this specific key-value pair doesn't already exist
-                        // We check if the value is already in the list of values for this key
-                        const existingValues = urlObj.searchParams.getAll(key);
-                        if (!existingValues.includes(strValue)) {
-                            urlObj.searchParams.append(key, strValue);
-                        }
-                    }
-                    return urlObj.toString();
-                } catch (e) {
-                    return targetUrl;
-                }
-            };
-
-            // 1. Check for domain-specific settings first (highest priority)
-            if (domainSettings[hostname]) {
-                const specificHeaders = domainSettings[hostname].headers;
-                const specificParams = domainSettings[hostname].params; // Assuming params can be domain-specific too
-
-                if (specificHeaders) {
-                    Object.assign(headers, specificHeaders);
-                    modifiedHeaders = true;
-                    console.log(`Applied specific headers for ${hostname}`);
-                }
-                if (specificParams) {
-                    newUrl = appendParams(newUrl, specificParams);
-                    if (newUrl !== urlStr) {
-                        modifiedUrl = true;
-                        console.log(`Applied specific params for ${hostname}`);
-                    }
-                }
-            }
-            // 2. Check if it matches source domain or allowed domains
-            // Normalize allowed domains to objects
-            const normalizedAllowedDomains = allowedDomains.map((d: any) => {
-                if (typeof d === 'string') return { domain: d, headers: true, params: false }; // Default legacy behavior: headers only
-                return { domain: d.domain, headers: d.headers !== false, params: d.params === true };
-            });
-
-            const matchedAllowedDomain = normalizedAllowedDomains.find((d: any) =>
-                hostname === d.domain || hostname.endsWith(`.${d.domain}`)
-            );
-
-            const isSourceDomain = sourceDomain && (hostname === sourceDomain || hostname.endsWith(`.${sourceDomain}`));
-
-            if (isSourceDomain || matchedAllowedDomain) {
-                const allowHeaders = isSourceDomain || matchedAllowedDomain?.headers;
-                const allowParams = isSourceDomain || matchedAllowedDomain?.params;
-
-                // Apply Global Headers
-                if (allowHeaders && Object.keys(globalHeaders).length > 0) {
-                    Object.assign(headers, globalHeaders);
-                    modifiedHeaders = true;
-                }
-
-                // Apply Source Domain specific settings to Allowed Domains and Subdomains
-                // (If we are not strictly on the source domain, which was handled in Step 1)
-                if (sourceDomain && hostname !== sourceDomain && domainSettings[sourceDomain]) {
-                    const sourceHeaders = domainSettings[sourceDomain].headers;
-                    const sourceParams = domainSettings[sourceDomain].params;
-
-                    if (allowHeaders && sourceHeaders) {
-                        Object.assign(headers, sourceHeaders);
-                        modifiedHeaders = true;
-                        console.log(`Applied source domain (${sourceDomain}) headers to ${hostname}`);
-                    }
-
-                    if (allowParams && sourceParams) {
-                        newUrl = appendParams(newUrl, sourceParams);
-                        if (newUrl !== urlStr) {
-                            modifiedUrl = true;
-                            console.log(`Applied source domain (${sourceDomain}) params to ${hostname}`);
-                        }
-                    }
-                }
-
-                // Apply Global Params
-                if (allowParams && Object.keys(globalParams).length > 0) {
-                    newUrl = appendParams(newUrl, globalParams);
-                    if (newUrl !== urlStr) {
-                        modifiedUrl = true;
-                        console.log(`Applied global params for ${hostname}`);
-                    }
-                }
-            }
-
-            if (modifiedHeaders || modifiedUrl) {
-                // If URL changed, we must pass it. If only headers changed, we pass headers.
-                const continueOptions: any = { headers };
-                if (modifiedUrl) {
-                    continueOptions.url = newUrl;
-                }
-                await route.continue(continueOptions);
-            } else {
-                await route.continue();
-            }
-        });
-    }
-
-    private async executeStep(page: Page, context: Page | FrameLocator, step: any, globalSettings: any = {}, testCaseContext?: any) {
-        console.log(`  Step: ${step.type} ${step.selector || ''} ${step.value || ''}`);
-
-        // Helper to simulate mouse movement (only works reliably on main Page for now)
-        const moveMouseTo = async (locator: Locator) => {
-            try {
-                await locator.hover();
-            } catch (e) {
-                // ignore
-            }
-        };
-
-        const getLocator = (selector: string) => {
-            return context.locator(selector).first();
-        }
-
-        switch (step.type) {
-            case 'goto':
-                let url = step.value || step.selector || 'about:blank';
-
-                // Append global params if present
-                if (globalSettings?.params && Object.keys(globalSettings.params).length > 0) {
-                    try {
-                        const urlObj = new URL(url);
-                        for (const [key, value] of Object.entries(globalSettings.params)) {
-                            urlObj.searchParams.append(key, String(value));
-                        }
-                        url = urlObj.toString();
-                        console.log(`  Modified URL with params: ${url}`);
-                    } catch (e) {
-                        console.warn(`  Could not append params to URL ${url}: ${e}`);
-                    }
-                }
-
-                // goto is always on page
-                // Retry logic for goto
-                let attempts = 0;
-                const maxAttempts = 3;
-                const waitUntil = (step.params?.wait_until as 'load' | 'domcontentloaded' | 'networkidle' | 'commit') || 'domcontentloaded';
-
-                while (attempts < maxAttempts) {
-                    try {
-                        await page.goto(url, { waitUntil, timeout: 30000 });
-                        break;
-                    } catch (e) {
-                        attempts++;
-                        console.warn(`  Goto attempt ${attempts} failed: ${e}`);
-                        if (attempts === maxAttempts) throw e;
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
-                }
-                break;
-
-            case 'http-request': {
-                const method = step.params?.method || 'GET';
-                const reqUrl = step.value || step.selector;
-                const stepHeaders = step.params?.headers || {};
-                const stepParams = step.params?.params || {};
-                const body = step.params?.body;
-
-                // Merge with global settings
-                const mergedHeaders = { ...globalSettings.headers, ...stepHeaders };
-                const mergedParams = { ...globalSettings.params, ...stepParams };
-
-                console.log(`  [API] ${method} ${reqUrl} (Headers: ${Object.keys(mergedHeaders).length}, Params: ${Object.keys(mergedParams).length})`);
-
-                let apiResponse;
-                let actualRequestHeaders = mergedHeaders;
-                let actualRequestUrl = reqUrl;
-                const requestHandler = async (request: any) => {
-                    try {
-                        const requestUrl = request.url();
-                        // Match exact URL or normalized URL
-                        if ((requestUrl === reqUrl || requestUrl.split('?')[0] === reqUrl.split('?')[0]) &&
-                            request.method() === method) {
-                            actualRequestHeaders = await request.allHeaders();
-                            actualRequestUrl = requestUrl;
-                            console.log(`    [API] Captured actual request URL: ${actualRequestUrl}`);
-                        }
-                    } catch (e) {
-                        // ignore
-                    }
-                };
-
-                page.context().on('request', requestHandler);
-
-                try {
-                    apiResponse = await page.request.fetch(reqUrl, {
-                        method,
-                        headers: mergedHeaders,
-                        params: mergedParams,
-                        data: body,
-                        timeout: 30000
-                    });
-                } finally {
-                    page.context().off('request', requestHandler);
-                }
-
-                const status = apiResponse.status();
-                const apiHeaders = apiResponse.headers();
-                const respBody = await apiResponse.text();
-                let jsonBody;
-                try {
-                    jsonBody = JSON.parse(respBody);
-                } catch (e) {
-                    // Not JSON
-                }
-
-                console.log(`  [API] Status: ${status}, Headers: ${Object.keys(apiHeaders).length}`);
-
-                // Assertions
-                if (step.params?.assertions) {
-                    for (const assertion of step.params.assertions) {
-                        if (assertion.type === 'status') {
-                            if (status !== parseInt(assertion.value)) {
-                                throw new Error(`Expected status ${assertion.value} but got ${status}`);
-                            }
-                        } else if (assertion.type === 'json-path') {
-                            if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
-                            // Simple dot notation support for now, or use a library if needed
-                            // For MVP, let's support simple key access
-                            const pathParts = assertion.path.split('.');
-                            let current = jsonBody;
-                            for (const part of pathParts) {
-                                if (current === undefined || current === null) break;
-                                current = current[part];
-                            }
-
-                            if (assertion.operator === 'equals') {
-                                if (String(current) !== String(assertion.value)) {
-                                    throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
-                                }
-                            } else if (assertion.operator === 'contains') {
-                                if (!String(current).includes(String(assertion.value))) {
-                                    throw new Error(`Expected ${assertion.path} to contain ${assertion.value} but got ${current}`);
-                                }
-                            }
-                        } else if (assertion.type === 'json-schema') {
-                            if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
-                            try {
-                                const ajv = new Ajv({ allErrors: true });
-                                addFormats(ajv);
-                                const schema = JSON.parse(assertion.value || '{}');
-                                const validate = ajv.compile(schema);
-                                const valid = validate(jsonBody);
-                                if (!valid) {
-                                    const errors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
-                                    throw new Error(`JSON Schema validation failed: ${errors}`);
-                                }
-                            } catch (e: any) {
-                                throw new Error(`Schema validation error: ${e.message}`);
-                            }
-                        }
-                    }
-                }
-
-                return {
-                    type: 'http-request',
-                    status: status,
-                    headers: apiHeaders,
-                    body: respBody,
-                    request: {
-                        url: actualRequestUrl,
-                        method: method,
-                        headers: actualRequestHeaders,
-                        params: mergedParams,
-                        body: body
-                    }
-                };
-                break;
-            }
-
-            case 'feed-check': {
-                const feedUrl = step.value || step.selector;
-                const mergedHeaders = { ...globalSettings.headers };
-                const mergedParams = { ...globalSettings.params }; // Feed check inherits global params
-
-                console.log(`  [Feed] Checking ${feedUrl} (Headers: ${Object.keys(mergedHeaders).length}, Params: ${Object.keys(mergedParams).length})`);
-
-                let feedResponse;
-                let actualRequestHeaders = mergedHeaders;
-                let actualRequestUrl = feedUrl;
-                const requestHandler = async (request: any) => {
-                    try {
-                        const requestUrl = request.url();
-                        if ((requestUrl === feedUrl || requestUrl.split('?')[0] === feedUrl.split('?')[0]) &&
-                            request.method() === 'GET') {
-                            actualRequestHeaders = await request.allHeaders();
-                            actualRequestUrl = requestUrl;
-                            console.log(`    [Feed] Captured actual request URL: ${actualRequestUrl}`);
-                        }
-                    } catch (e) {
-                        // ignore
-                    }
-                };
-
-                page.context().on('request', requestHandler);
-
-                try {
-                    feedResponse = await page.request.get(feedUrl, {
-                        headers: mergedHeaders,
-                        params: mergedParams
-                    });
-                } finally {
-                    page.context().off('request', requestHandler);
-                }
-
-                if (!feedResponse.ok()) {
-                    throw new Error(`Failed to fetch feed: ${feedResponse.status()}`);
-                }
-
-                const feedText = await feedResponse.text();
-                const feedHeaders = feedResponse.headers();
-                const doc = new DOMParser().parseFromString(feedText, 'text/xml');
-
-                console.log(`  [Feed] Status: ${feedResponse.status()}, Headers: ${Object.keys(feedHeaders).length}`);
-
-                // Assertions
-                if (step.params?.assertions) {
-                    for (const assertion of step.params.assertions) {
-                        if (assertion.type === 'xpath') {
-                            const nodes = xpath.select(assertion.path, doc);
-                            const nodeValue = nodes[0] ? (nodes[0] as any).textContent : null;
-
-                            if (assertion.operator === 'equals') {
-                                if (nodeValue !== assertion.value) {
-                                    throw new Error(`Expected XPath ${assertion.path} to equal ${assertion.value} but got ${nodeValue}`);
-                                }
-                            } else if (assertion.operator === 'contains') {
-                                if (!nodeValue || !nodeValue.includes(assertion.value)) {
-                                    throw new Error(`Expected XPath ${assertion.path} to contain ${assertion.value} but got ${nodeValue}`);
-                                }
-                            } else if (assertion.operator === 'exists') {
-                                if (!nodes || nodes.length === 0) {
-                                    throw new Error(`Expected XPath ${assertion.path} to exist`);
-                                }
-                            }
-                        } else if (assertion.type === 'text') {
-                            if (!feedText.includes(assertion.value)) {
-                                throw new Error(`Expected feed to contain text "${assertion.value}"`);
-                            }
-                        }
-                    }
-                }
-
-                return {
-                    type: 'feed-check',
-                    status: feedResponse.status(),
-                    headers: feedHeaders,
-                    body: feedText,
-                    request: {
-                        url: actualRequestUrl,
-                        method: 'GET',
-                        headers: actualRequestHeaders,
-                        params: mergedParams
-                    }
-                };
-                break;
-            }
-            case 'click':
-                const clickSelector = step.selector || step.value;
-                if (clickSelector) {
-                    const locator = getLocator(clickSelector);
-                    // Auto-wait for element to be visible and enabled before clicking
-                    await locator.waitFor({ state: 'visible', timeout: 80000 });
-                    await moveMouseTo(locator);
-                    await locator.click();
-                }
-                break;
-            case 'fill':
-                if (step.selector) {
-                    const locator = getLocator(step.selector);
-                    // Auto-wait for element to be visible before filling (handles dynamic content)
-                    await locator.waitFor({ state: 'visible', timeout: 80000 });
-                    await moveMouseTo(locator);
-                    await locator.fill(step.value || '');
-                }
-                break;
-            case 'check':
-                const checkSelector = step.selector || step.value;
-                if (checkSelector) {
-                    const locator = getLocator(checkSelector);
-                    // Auto-wait for checkbox to be visible before checking
-                    await locator.waitFor({ state: 'visible', timeout: 80000 });
-                    await moveMouseTo(locator);
-                    await locator.check();
-                }
-                break;
-            case 'expect-visible':
-                const visibleSelector = step.selector || step.value;
-                if (visibleSelector) {
-                    console.log(`Waiting for selector: ${visibleSelector} to be visible...`);
-                    // Smart wait: use Page.waitForSelector if available to find ANY visible element
-                    // Check if 'waitForSelector' exists on the context object (it exists on Page, not FrameLocator)
-                    if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 80000 });
-                    } else {
-                        // FrameLocator doesn't have waitForSelector, so we rely on locator.waitFor
-                        await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 50000 });
-                    }
-                }
-                break;
-            case 'wait-for-selector':
-                const waitSelector = step.selector || step.value;
-                if (waitSelector) {
-                    console.log(`  Step: wait-for-selector  ${waitSelector}`);
-                    // Wait for element to be attached to DOM (not necessarily visible)
-                    if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(waitSelector, { state: 'attached', timeout: 80000 });
-                    } else {
-                        await getLocator(waitSelector).waitFor({ state: 'attached', timeout: 80000 });
-                    }
-                }
-                break;
-            case 'expect-hidden':
-                const hiddenSelector = step.selector || step.value;
-                if (hiddenSelector) {
-                    console.log(`Waiting for selector: ${hiddenSelector} to be hidden...`);
-                    // Use waitForSelector if available (Page), otherwise locator
-                    if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(hiddenSelector, { state: 'hidden', timeout: 50000 });
-                    } else {
-                        await getLocator(hiddenSelector).waitFor({ state: 'hidden', timeout: 50000 });
-                    }
-                }
-                break;
-            case 'expect-text':
-                if (step.selector && step.value) {
-                    const locator = getLocator(step.selector);
-                    await locator.waitFor({ state: 'visible', timeout: 50000 });
-                    const text = await locator.textContent();
-                    if (!text?.includes(step.value)) {
-                        throw new Error(`Expected text "${step.value}" not found in element "${step.selector}"`);
-                    }
-                }
-                break;
-            case 'expect-url':
-                const expectedUrl = step.value || step.selector;
-                if (expectedUrl) {
-                    await page.waitForURL(expectedUrl, { timeout: 15000 });
-                }
-                break;
-            case 'hover':
-                const hoverSelector = step.selector || step.value;
-                if (hoverSelector) {
-                    const locator = getLocator(hoverSelector);
-                    await locator.hover();
-                }
-                break;
-            case 'select-option':
-                if (step.selector && step.value) {
-                    const locator = getLocator(step.selector);
-                    await moveMouseTo(locator);
-                    await locator.selectOption(step.value);
-                }
-                break;
-            case 'press-key':
-                const key = step.value || step.selector;
-                if (key) {
-                    await page.keyboard.press(key);
-                }
-                break;
-            case 'screenshot':
-                const screenshotName = step.value || `screenshot-${Date.now()}`;
-                const videoPath = await page.video()?.path();
-                const screenshotPath = path.join(videoPath ? path.dirname(videoPath) : '/tmp', `${screenshotName}.png`);
-                await page.screenshot({ path: screenshotPath, fullPage: true });
-                console.log(`Screenshot saved to: ${screenshotPath}`);
-                break;
-            case 'scroll-to':
-                const scrollSelector = step.selector || step.value;
-                if (scrollSelector) {
-                    const locator = getLocator(scrollSelector);
-                    await locator.scrollIntoViewIfNeeded();
-                }
-                break;
-            case 'wait-timeout':
-                const timeout = parseInt(step.value || step.selector || '1000');
-                await page.waitForTimeout(timeout);
-                break;
-            default:
-                console.warn(`Unknown step type: ${step.type}`);
         }
     }
 }

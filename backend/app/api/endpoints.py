@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user
 from app.models import (
-    User, AuditLog, AuditLogRead,
+    User, AuditLog, AuditLogRead, Project, UserOrganization, UserProjectAccess,
     TestSuite, TestSuiteRead, TestSuiteReadWithChildren, TestSuiteUpdate, 
     TestCase, TestCaseRead, TestCaseUpdate, TestCaseResult, TestCaseResultRead,
     TestRun, TestRunRead, TestStatus, ExecutionMode, UserRead, UserSettings
@@ -19,13 +19,45 @@ from app.models import (
 
 router = APIRouter()
 
+from app.services.test_service import test_service
+from app.services.access_service import access_service
+
 @router.post("/suites", response_model=TestSuiteReadWithChildren)
 async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    # If no project_id provided, try to find a default project for the user
+    if not suite.project_id:
+        org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
+        from app.models import TeamProjectAccess, UserTeam, UserProjectAccess
+        team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
+        user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
+        
+        result = await session.exec(
+            select(Project)
+            .where(
+                or_(
+                    Project.id.in_(org_stmt),
+                    Project.id.in_(team_stmt),
+                    Project.id.in_(user_stmt)
+                )
+            )
+            .limit(1)
+        )
+        default_project = result.first()
+        if default_project:
+            suite.project_id = default_project.id
+        else:
+            raise HTTPException(status_code=400, detail="Project ID is required, and no default project was found.")
+
+    # Check project access
+    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="You do not have permission to create suites/modules in this project")
+
     # Enforce unique naming among siblings
     result = await session.exec(
         select(TestSuite).where(
             TestSuite.parent_id == suite.parent_id,
-            TestSuite.name == suite.name
+            TestSuite.name == suite.name,
+            TestSuite.project_id == suite.project_id
         )
     )
     if result.first():
@@ -36,17 +68,10 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
         if not parent:
             raise HTTPException(status_code=404, detail="Parent suite not found")
         
-        # Enforce mutual exclusivity: Parent cannot have test cases if it has sub-modules
+        # Enforce mutual exclusivity
         result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite.parent_id))
         if result.first():
             raise HTTPException(status_code=400, detail="Cannot add sub-module to a suite that contains test cases")
-
-        # Enforce Execution Mode Rule: Parent must be in 'separate' mode if it has sub-modules
-        if parent.execution_mode == ExecutionMode.CONTINUOUS:
-            parent.execution_mode = ExecutionMode.SEPARATE
-            session.add(parent)
-            # We don't need to commit here, the final commit will handle it
-
 
     suite.created_by_id = current_user.id
     suite.updated_by_id = current_user.id
@@ -65,7 +90,6 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
     session.add(audit)
     await session.commit()
     
-    # Fetch again with relationships to satisfy TestSuiteRead and avoid lazy loading errors
     result = await session.exec(
         select(TestSuite)
         .where(TestSuite.id == suite.id)
@@ -77,18 +101,16 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
     )
     db_suite = result.first()
     if db_suite:
-        total_cases, total_subs = await count_recursive_items(db_suite.id, session)
-        effective_settings = await get_effective_settings(db_suite.id, session)
-        # Convert to Read model before setting extra fields
+        total_cases, total_subs = await test_service.count_recursive_items(db_suite.id, session)
+        effective_settings = await test_service.get_effective_settings(db_suite.id, session)
         resp = TestSuiteReadWithChildren.model_validate(db_suite)
         resp.total_test_cases = total_cases
         resp.total_sub_modules = total_subs
         resp.effective_settings = effective_settings
         
-        # Populate counts for sub-modules
         if resp.sub_modules:
             for sub in resp.sub_modules:
-                sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+                sub_cases, sub_subs = await test_service.count_recursive_items(sub.id, session)
                 sub.total_test_cases = sub_cases
                 sub.total_sub_modules = sub_subs
                 
@@ -96,10 +118,34 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
     return None
 
 @router.get("/suites", response_model=List[TestSuiteReadWithChildren])
-async def list_test_suites(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def list_test_suites(
+    project_id: Optional[int] = None, 
+    session: AsyncSession = Depends(get_session), 
+    current_user: User = Depends(get_current_user)
+):
+    # Filter by user access
+    # Filter by user access
+    # We first find all projects the user can see
+    org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
+    from app.models import TeamProjectAccess, UserTeam, UserProjectAccess
+    team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
+    user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
+    
+    query = select(TestSuite).where(
+        or_(
+            TestSuite.project_id.in_(org_stmt),
+            TestSuite.project_id.in_(team_stmt),
+            TestSuite.project_id.in_(user_stmt)
+        )
+    )
+    
+    if project_id:
+        if not await access_service.has_project_access(current_user.id, project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
+        query = query.where(TestSuite.project_id == project_id)
+        
     result = await session.exec(
-        select(TestSuite)
-        .options(
+        query.options(
             selectinload(TestSuite.test_cases),
             selectinload(TestSuite.sub_modules),
             selectinload(TestSuite.parent)
@@ -108,15 +154,14 @@ async def list_test_suites(session: AsyncSession = Depends(get_session), current
     suites = result.all()
     resp_suites = []
     for suite in suites:
-        total_cases, total_subs = await count_recursive_items(suite.id, session)
+        total_cases, total_subs = await test_service.count_recursive_items(suite.id, session)
         resp = TestSuiteReadWithChildren.model_validate(suite)
         resp.total_test_cases = total_cases
         resp.total_sub_modules = total_subs
         
-        # Populate counts for sub-modules
         if resp.sub_modules:
             for sub in resp.sub_modules:
-                sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+                sub_cases, sub_subs = await test_service.count_recursive_items(sub.id, session)
                 sub.total_test_cases = sub_cases
                 sub.total_sub_modules = sub_subs
                 
@@ -138,17 +183,20 @@ async def get_test_suite(suite_id: int, session: AsyncSession = Depends(get_sess
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
     
-    total_cases, total_subs = await count_recursive_items(suite.id, session)
-    effective_settings = await get_effective_settings(suite.id, session)
+    # Check project access
+    if not await access_service.has_project_access(current_user.id, suite.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
+    total_cases, total_subs = await test_service.count_recursive_items(suite.id, session)
+    effective_settings = await test_service.get_effective_settings(suite.id, session)
     resp = TestSuiteReadWithChildren.model_validate(suite)
     resp.total_test_cases = total_cases
     resp.total_sub_modules = total_subs
     resp.effective_settings = effective_settings
 
-    # Populate counts for sub-modules
     if resp.sub_modules:
         for sub in resp.sub_modules:
-            sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+            sub_cases, sub_subs = await test_service.count_recursive_items(sub.id, session)
             sub.total_test_cases = sub_cases
             sub.total_sub_modules = sub_subs
 
@@ -160,9 +208,12 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
     if not db_suite:
         raise HTTPException(status_code=404, detail="Suite not found")
     
-    # Update fields if provided using exclude_unset to handle False/None correctly
+    # Check project access - ADMIN required for editing modules
+    if not await access_service.has_project_access(current_user.id, db_suite.project_id, session, min_role="admin"):
+        raise HTTPException(status_code=403, detail="Special 'admin' permission required to edit suites/modules")
+
+    # Update fields
     update_data = suite_update.model_dump(exclude_unset=True)
-    # Track changes for audit log
     changes = {}
     for key, value in update_data.items():
         old_value = getattr(db_suite, key)
@@ -170,58 +221,35 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
             changes[key] = {"old": old_value, "new": value}
             setattr(db_suite, key, value)
     
-    # Ensure JSON changes are detected
-    from sqlalchemy.orm.attributes import flag_modified
     if "settings" in update_data:
+        from sqlalchemy.orm.attributes import flag_modified
         flag_modified(db_suite, "settings")
 
     if changes:
         db_suite.updated_by_id = current_user.id
         db_suite.updated_at = datetime.utcnow()
         session.add(db_suite)
-        
-        # Audit Log
-        audit = AuditLog(
-            entity_type="suite",
-            entity_id=suite_id,
-            action="update",
-            user_id=current_user.id,
-            changes=changes
-        )
+        audit = AuditLog(entity_type="suite", entity_id=suite_id, action="update", user_id=current_user.id, changes=changes)
         session.add(audit)
-        
-        try:
-            await session.commit()
-        except Exception as e:
-            # Log the full traceback if possible, or just return the error
-            import traceback
-            traceback.print_exc()
-            raise HTTPException(status_code=500, detail=f"Database update failed: {str(e)}")
+        await session.commit()
     
-    # Fetch again with relationships to satisfy TestSuiteRead and avoid lazy loading errors
     result = await session.exec(
         select(TestSuite)
         .where(TestSuite.id == suite_id)
-        .options(
-            selectinload(TestSuite.test_cases),
-            selectinload(TestSuite.sub_modules),
-            selectinload(TestSuite.parent)
-        )
+        .options(selectinload(TestSuite.test_cases), selectinload(TestSuite.sub_modules), selectinload(TestSuite.parent))
     )
     db_suite = result.first()
     
-    # Return with counts
-    total_cases, total_subs = await count_recursive_items(db_suite.id, session)
-    effective_settings = await get_effective_settings(db_suite.id, session)
+    total_cases, total_subs = await test_service.count_recursive_items(db_suite.id, session)
+    effective_settings = await test_service.get_effective_settings(db_suite.id, session)
     resp = TestSuiteReadWithChildren.model_validate(db_suite)
     resp.total_test_cases = total_cases
     resp.total_sub_modules = total_subs
     resp.effective_settings = effective_settings
 
-    # Populate counts for sub-modules
     if resp.sub_modules:
         for sub in resp.sub_modules:
-            sub_cases, sub_subs = await count_recursive_items(sub.id, session)
+            sub_cases, sub_subs = await test_service.count_recursive_items(sub.id, session)
             sub.total_test_cases = sub_cases
             sub.total_sub_modules = sub_subs
 
@@ -233,64 +261,16 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
     
-    await recursive_delete_suite(suite_id, session)
+    # Check project access - ADMIN required for deleting modules
+    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="admin"):
+        raise HTTPException(status_code=403, detail="Special 'admin' permission required to delete suites/modules")
     
-    # Audit Log
-    audit = AuditLog(
-        entity_type="suite",
-        entity_id=suite_id,
-        action="delete",
-        user_id=current_user.id,
-        changes={}
-    )
+    await test_service.recursive_delete_suite(suite_id, session)
+    
+    audit = AuditLog(entity_type="suite", entity_id=suite_id, action="delete", user_id=current_user.id, changes={})
     session.add(audit)
-    
     await session.commit()
     return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted"}
-
-async def recursive_delete_suite(suite_id: int, session: AsyncSession):
-    # Delete all TestRuns associated with this suite
-    result = await session.exec(select(TestRun).where(TestRun.test_suite_id == suite_id))
-    runs = result.all()
-    for run in runs:
-        # Delete artifacts from MinIO
-        minio_client.delete_run_artifacts(run.id)
-        
-        # Delete associated TestCaseResults
-        # We need to delete them explicitly because of the foreign key constraint
-        result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-        for res in result_cases.all():
-            await session.delete(res)
-            
-        await session.delete(run)
-
-    # Delete all test cases
-    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
-    cases = result.all()
-    for case in cases:
-        # Delete runs associated with this case (even if they belong to another suite)
-        result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case.id))
-        runs = result_runs.all()
-        for run in runs:
-            minio_client.delete_run_artifacts(run.id)
-            # Delete associated TestCaseResults
-            result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-            for res in result_cases.all():
-                await session.delete(res)
-            await session.delete(run)
-            
-        await session.delete(case)
-    
-    # Get sub-modules
-    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-    sub_modules = result.all()
-    for sub in sub_modules:
-        await recursive_delete_suite(sub.id, session)
-    
-    # Delete the suite itself
-    suite = await session.get(TestSuite, suite_id)
-    if suite:
-        await session.delete(suite)
 
 @router.post("/suites/{suite_id}/cases", response_model=TestCaseRead)
 async def create_test_case(suite_id: int, case: TestCase, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
@@ -298,29 +278,26 @@ async def create_test_case(suite_id: int, case: TestCase, session: AsyncSession 
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
     
-    # Enforce mutual exclusivity: Suite cannot have test cases if it has sub-modules
+    # Check project access
+    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Enforce mutual exclusivity
     result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
     if result.first():
         raise HTTPException(status_code=400, detail="Cannot add test case to a suite that contains sub-modules")
 
     case.test_suite_id = suite_id
+    case.project_id = suite.project_id
     case.created_by_id = current_user.id
     case.updated_by_id = current_user.id
     session.add(case)
     await session.commit()
     await session.refresh(case)
     
-    # Audit Log
-    audit = AuditLog(
-        entity_type="case",
-        entity_id=case.id,
-        action="create",
-        user_id=current_user.id,
-        changes=case.model_dump(mode='json')
-    )
+    audit = AuditLog(entity_type="case", entity_id=case.id, action="create", user_id=current_user.id, changes=case.model_dump(mode='json'))
     session.add(audit)
     await session.commit()
-    
     return case
 
 @router.get("/cases/{case_id}", response_model=TestCaseRead)
@@ -328,51 +305,39 @@ async def get_test_case(case_id: int, session: AsyncSession = Depends(get_sessio
     case = await session.get(TestCase, case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Test case not found")
+    
+    if not await access_service.has_test_case_access(current_user.id, case_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+        
     return case
 
 @router.put("/cases/{case_id}", response_model=TestCaseRead)
-async def update_test_case(case_id: int, case_update: TestCase, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     db_case = await session.get(TestCase, case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Test case not found")
     
-    case_data = case_update.dict(exclude_unset=True)
-    
-    # Track changes for audit log
+    if not await access_service.has_test_case_access(current_user.id, case_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    case_data = case_update.model_dump(exclude_unset=True)
     changes = {}
     for key, value in case_data.items():
-        if key == "id": continue # Skip ID
         old_value = getattr(db_case, key)
-        # Handle list of steps comparison
-        if key == "steps":
-             # Simple comparison for now, could be more granular
-             if old_value != value:
-                 changes[key] = {"old": old_value, "new": value}
-                 setattr(db_case, key, value)
-        elif old_value != value:
+        if old_value != value:
             changes[key] = {"old": old_value, "new": value}
             setattr(db_case, key, value)
             
-    # Ensure JSON changes are detected
-    from sqlalchemy.orm.attributes import flag_modified
     if "steps" in case_data:
+        from sqlalchemy.orm.attributes import flag_modified
         flag_modified(db_case, "steps")
 
     if changes:
         db_case.updated_by_id = current_user.id
         db_case.updated_at = datetime.utcnow()
         session.add(db_case)
-        
-        # Audit Log
-        audit = AuditLog(
-            entity_type="case",
-            entity_id=case_id,
-            action="update",
-            user_id=current_user.id,
-            changes=changes
-        )
+        audit = AuditLog(entity_type="case", entity_id=case_id, action="update", user_id=current_user.id, changes=changes)
         session.add(audit)
-        
         await session.commit()
         await session.refresh(db_case)
         
@@ -384,93 +349,38 @@ async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_ses
     if not case:
         raise HTTPException(status_code=404, detail="Test case not found")
     
+    if not await access_service.has_test_case_access(current_user.id, case_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+    
     # Delete associated TestRuns
     result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case_id))
-    runs = result_runs.all()
-    for run in runs:
+    for run in result_runs.all():
         minio_client.delete_run_artifacts(run.id)
-        # Delete associated TestCaseResults (explicitly, though cascade should handle it now)
-        result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-        for res in result_cases.all():
-            await session.delete(res)
         await session.delete(run)
 
     await session.delete(case)
-    
-    # Audit Log
-    audit = AuditLog(
-        entity_type="case",
-        entity_id=case_id,
-        action="delete",
-        user_id=current_user.id,
-        changes={}
-    )
+    audit = AuditLog(entity_type="case", entity_id=case_id, action="delete", user_id=current_user.id, changes={})
     session.add(audit)
-    
     await session.commit()
     return {"status": "success", "message": f"Test case {case_id} deleted"}
 
-@router.get("/cases/{case_id}/export")
-async def export_test_case(case_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    case = await session.get(TestCase, case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Test case not found")
-    return {
-        "name": case.name,
-        "steps": case.steps
-    }
-
-@router.post("/suites/{suite_id}/import-case")
-async def import_test_case(suite_id: int, case_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    suite = await session.get(TestSuite, suite_id)
-    if not suite:
-        raise HTTPException(status_code=404, detail="Suite not found")
-    
-    # Check if suite has sub-modules
-    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-    if result.first():
-        raise HTTPException(status_code=400, detail="Cannot import test case to a suite that contains sub-modules")
-
-    new_case = TestCase(
-        name=case_data.get("name", "Imported Case"),
-        steps=case_data.get("steps", []),
-        test_suite_id=suite_id,
-        created_by_id=current_user.id,
-        updated_by_id=current_user.id
-    )
-    session.add(new_case)
-    await session.commit()
-    await session.refresh(new_case)
-    
-    # Audit Log
-    audit = AuditLog(
-        entity_type="case",
-        entity_id=new_case.id,
-        action="import",
-        user_id=current_user.id,
-        changes={"source": "import", "data": case_data}
-    )
-    session.add(audit)
-    await session.commit()
-    
-    return new_case
+# --- Import/Export ---
 
 @router.get("/suites/{suite_id}/export")
 async def export_test_suite(suite_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
+        
+    if not await access_service.has_project_access(current_user.id, suite.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
     
     return await get_suite_export_data(suite_id, session)
 
 async def get_suite_export_data(suite_id: int, session: AsyncSession):
     suite = await session.get(TestSuite, suite_id)
-    
-    # Get cases
     result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
     cases = result.all()
-    
-    # Get sub-modules
     result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
     subs = result.all()
     
@@ -481,59 +391,23 @@ async def get_suite_export_data(suite_id: int, session: AsyncSession):
         "settings": suite.settings,
         "inherit_settings": suite.inherit_settings,
         "test_cases": [{"name": c.name, "steps": c.steps} for c in cases],
-        "sub_modules": [await get_suite_export_data(sub.id, session) for sub in subs],
-        "created_by_name": suite.created_by.full_name if suite.created_by else None,
-        "updated_by_name": suite.updated_by.full_name if suite.updated_by else None
+        "sub_modules": [await get_suite_export_data(sub.id, session) for sub in subs]
     }
 
 @router.post("/suites/import-suite")
-async def import_top_level_suite(suite_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    new_suite = await create_suite_from_data(suite_data, None, session, current_user.id)
+async def import_top_level_suite(suite_data: Dict[str, Any], project_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    if not await access_service.has_project_access(current_user.id, project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    new_suite = await create_suite_from_data(suite_data, None, project_id, session, current_user.id)
     await session.commit()
     
-    # Audit Log
-    audit = AuditLog(
-        entity_type="suite",
-        entity_id=new_suite.id,
-        action="import",
-        user_id=current_user.id,
-        changes={"source": "import", "data": suite_data}
-    )
+    audit = AuditLog(entity_type="suite", entity_id=new_suite.id, action="import", user_id=current_user.id, changes={"source": "import"})
     session.add(audit)
     await session.commit()
-    
     return {"status": "success", "id": new_suite.id}
 
-@router.post("/suites/{suite_id}/import-suite")
-async def import_test_suite(suite_id: int, suite_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # If suite_id is 0, we can't import under it (unless we want top-level)
-    # But for now, let's assume we import into an existing suite
-    parent = await session.get(TestSuite, suite_id)
-    if not parent:
-         raise HTTPException(status_code=404, detail="Parent suite not found")
-
-    # Check if parent has test cases
-    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
-    if result.first():
-        raise HTTPException(status_code=400, detail="Cannot import sub-module to a suite that contains test cases")
-
-    new_suite = await create_suite_from_data(suite_data, suite_id, session, current_user.id)
-    await session.commit()
-    
-    # Audit Log
-    audit = AuditLog(
-        entity_type="suite",
-        entity_id=new_suite.id,
-        action="import",
-        user_id=current_user.id,
-        changes={"source": "import", "data": suite_data}
-    )
-    session.add(audit)
-    await session.commit()
-    
-    return {"status": "success", "id": new_suite.id}
-
-async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], session: AsyncSession, user_id: int):
+async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], project_id: int, session: AsyncSession, user_id: int):
     new_suite = TestSuite(
         name=data.get("name", "Imported Suite"),
         description=data.get("description"),
@@ -541,160 +415,53 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
         settings=data.get("settings", {"headers": {}, "params": {}}),
         inherit_settings=data.get("inherit_settings", True),
         parent_id=parent_id,
+        project_id=project_id,
         created_by_id=user_id,
         updated_by_id=user_id
     )
     session.add(new_suite)
-    await session.flush() # Get ID
+    await session.flush()
     
-    # Import cases
     for case_data in data.get("test_cases", []):
         new_case = TestCase(
             name=case_data.get("name"),
             steps=case_data.get("steps", []),
             test_suite_id=new_suite.id,
+            project_id=project_id,
             created_by_id=user_id,
             updated_by_id=user_id
         )
         session.add(new_case)
         
-    # Import sub-modules
     for sub_data in data.get("sub_modules", []):
-        await create_suite_from_data(sub_data, new_suite.id, session, user_id)
+        await create_suite_from_data(sub_data, new_suite.id, project_id, session, user_id)
         
     return new_suite
 
 @router.get("/audit/{entity_type}/{entity_id}", response_model=List[AuditLogRead])
 async def get_audit_log(entity_type: str, entity_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    # Basic permission check: user must belong to the organization of the entity
+    # This needs more granular logic based on entity_type
     query = select(AuditLog).options(selectinload(AuditLog.user)).order_by(AuditLog.timestamp.desc())
     
     if entity_type == 'suite':
-        # Fetch logs for the suite AND its direct test cases
-        # First, get all test case IDs for this suite
+        suite = await session.get(TestSuite, entity_id)
+        if not suite or not await access_service.has_project_access(current_user.id, suite.project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+            
         case_ids_result = await session.exec(select(TestCase.id).where(TestCase.test_suite_id == entity_id))
         case_ids = case_ids_result.all()
-        
-        query = query.where(
-            or_(
-                and_(AuditLog.entity_type == 'suite', AuditLog.entity_id == entity_id),
-                and_(AuditLog.entity_type == 'case', AuditLog.entity_id.in_(case_ids))
-            )
-        )
-    else:
+        query = query.where(or_(and_(AuditLog.entity_type == 'suite', AuditLog.entity_id == entity_id), and_(AuditLog.entity_type == 'case', AuditLog.entity_id.in_(case_ids))))
+    elif entity_type == 'case':
+        if not await access_service.has_test_case_access(current_user.id, entity_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
         query = query.where(AuditLog.entity_type == entity_type, AuditLog.entity_id == entity_id)
+    else:
+        # Fallback security
+        query = query.where(AuditLog.user_id == current_user.id)
 
     result = await session.exec(query)
-    logs = result.all()
-    return logs
-
-async def get_suite_path(suite_id: int, session: AsyncSession) -> str:
-    suite = await session.get(TestSuite, suite_id)
-    if not suite:
-        return ""
-    
-    if suite.parent_id:
-        parent_path = await get_suite_path(suite.parent_id, session)
-        return f"{parent_path} > {suite.name}"
-    return suite.name
-
-async def collect_test_cases(suite_id: int, session: AsyncSession) -> List[TestCase]:
-    # Get direct cases
-    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
-    cases = list(result.all())
-    
-    # Get sub-modules and recurse
-    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-    sub_modules = result.all()
-    for sub in sub_modules:
-        cases.extend(await collect_test_cases(sub.id, session))
-    
-    return cases
-
-async def count_recursive_items(suite_id: int, session: AsyncSession):
-    # Count direct cases
-    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
-    direct_cases = len(result.all())
-    
-    # Count direct sub-modules
-    result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-    direct_subs = result.all()
-    
-    total_cases = direct_cases
-    total_subs = len(direct_subs)
-    
-    for sub in direct_subs:
-        sub_cases, sub_subs = await count_recursive_items(sub.id, session)
-        total_cases += sub_cases
-        total_subs += sub_subs
-        
-    return total_cases, total_subs
-
-async def get_effective_settings(suite_id: int, session: AsyncSession) -> Dict[str, Any]:
-    suite = await session.get(TestSuite, suite_id)
-    if not suite:
-        return {"headers": {}, "params": {}}
-    
-    current_settings = suite.settings or {"headers": {}, "params": {}}
-    
-    if suite.inherit_settings and suite.parent_id:
-        parent_settings = await get_effective_settings(suite.parent_id, session)
-        
-        # Merge Headers & Params: Child overrides parent
-        merged_headers = {**parent_settings.get("headers", {}), **current_settings.get("headers", {})}
-        merged_params = {**parent_settings.get("params", {}), **current_settings.get("params", {})}
-        
-        # Merge Allowed Domains: Handle both strings and dicts
-        parent_domains_raw = parent_settings.get("allowed_domains", [])
-        current_domains_raw = current_settings.get("allowed_domains", [])
-        
-        # Helper to normalize to dict
-        def normalize_domain(d):
-            if not d:
-                return None
-            if isinstance(d, str):
-                return {"domain": d, "headers": True, "params": False}
-            if isinstance(d, dict) and "domain" not in d:
-                return None # Skip invalid dicts
-            return d
-
-        # Use a dict keyed by domain name to merge, favoring child (current) settings
-        merged_domains_map = {}
-        
-        for d in parent_domains_raw:
-            norm = normalize_domain(d)
-            if norm:
-                merged_domains_map[norm["domain"]] = norm
-            
-        for d in current_domains_raw:
-            norm = normalize_domain(d)
-            if norm:
-                merged_domains_map[norm["domain"]] = norm # Overwrite parent
-            
-        merged_domains = list(merged_domains_map.values())
-        
-        # Merge Domain Settings: Deep merge
-        parent_domain_settings = parent_settings.get("domain_settings", {})
-        current_domain_settings = current_settings.get("domain_settings", {})
-        merged_domain_settings = {**parent_domain_settings}
-        
-        for domain, settings in current_domain_settings.items():
-            if domain in merged_domain_settings:
-                # Merge headers/params for this domain
-                merged_domain_settings[domain] = {
-                    "headers": {**merged_domain_settings[domain].get("headers", {}), **settings.get("headers", {})},
-                    "params": {**merged_domain_settings[domain].get("params", {}), **settings.get("params", {})}
-                }
-            else:
-                merged_domain_settings[domain] = settings
-                
-        return {
-            "headers": merged_headers, 
-            "params": merged_params,
-            "allowed_domains": merged_domains,
-            "domain_settings": merged_domain_settings
-        }
-    
-    return current_settings
+    return result.all()
 
 @router.post("/runs", response_model=Union[TestRunRead, List[TestRunRead]])
 async def create_run(
@@ -708,9 +475,13 @@ async def create_run(
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
+    
+    # Check project access - EDITOR required for running tests
+    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="You do not have permission to run tests in this project")
 
     # Get effective settings for this suite
-    effective_settings = await get_effective_settings(suite_id, session)
+    effective_settings = await test_service.get_effective_settings(suite_id, session)
 
     # Normalize devices list
     target_devices = device if device else [None]
@@ -725,11 +496,8 @@ async def create_run(
                 return
 
             # Calculate effective settings for this level
-            # We can optimize by merging with parent_settings, but for now let's use the helper
-            # to ensure correctness as per existing logic.
-            current_effective_settings = await get_effective_settings(s_id, session)
-            
-            suite_path = await get_suite_path(s_id, session)
+            current_effective_settings = await test_service.get_effective_settings(s_id, session)
+            suite_path = await test_service.get_suite_path(s_id, session)
 
             if current_suite.execution_mode == ExecutionMode.SEPARATE:
                 # 1. Create individual runs for direct test cases
@@ -743,6 +511,7 @@ async def create_run(
                                 status=TestStatus.PENDING, 
                                 test_suite_id=s_id, 
                                 test_case_id=case.id,
+                                project_id=suite.project_id,
                                 suite_name=suite_path,
                                 test_case_name=case.name,
                                 request_headers=current_effective_settings.get("headers", {}),
@@ -754,11 +523,11 @@ async def create_run(
                                 user_id=current_user.id
                             )
                             session.add(run)
-                            await session.commit()
-                            await session.refresh(run)
+                            await session.flush()
                             created_runs.append(run)
                             try:
-                                run_test_suite.delay(run.id)
+                                from app.worker import run_test_suite_task
+                                run_test_suite_task.delay(run.id)
                             except Exception as e:
                                 print(f"Failed to queue run {run.id}: {e}")
 
@@ -769,19 +538,13 @@ async def create_run(
                     await process_suite(sub.id, current_effective_settings)
 
             else: # CONTINUOUS
-                # 1. Create ONE run for this suite (covering direct cases and continuous descendants)
-                # We only create a run if there are cases to run in this continuous block
-                # But the worker will handle finding cases. We just need to define the entry point.
-                
-                # However, we must ensure that the worker STOPS at Separate boundaries.
-                # So we create a run for this suite.
-                
                 for target_browser in browser:
                     for target_device in target_devices:
                         run = TestRun(
                             status=TestStatus.PENDING, 
                             test_suite_id=s_id, 
-                            test_case_id=None, # Indicates run all applicable cases in this suite
+                            test_case_id=None,
+                            project_id=suite.project_id,
                             suite_name=suite_path,
                             test_case_name=None,
                             request_headers=current_effective_settings.get("headers", {}),
@@ -793,33 +556,22 @@ async def create_run(
                             user_id=current_user.id
                         )
                         session.add(run)
-                        await session.commit()
-                        await session.refresh(run)
+                        await session.flush()
                         created_runs.append(run)
                         try:
-                            run_test_suite.delay(run.id)
+                            from app.worker import run_test_suite_task
+                            run_test_suite_task.delay(run.id)
                         except Exception as e:
                             print(f"Failed to queue run {run.id}: {e}")
 
                 # 2. Recurse for sub-modules to find SEPARATE modules
-                # We need to traverse down. If a sub-module is CONTINUOUS, it's covered by the run we just created (assuming worker logic).
-                # IF a sub-module is SEPARATE, we need to process it explicitly.
-                
-                # Wait, if we rely on the worker to pick up "Continuous descendants", then we shouldn't recurse into Continuous sub-modules here?
-                # YES, correct. The worker will pick them up.
-                # BUT, we DO need to find SEPARATE sub-modules that are children of this Continuous suite (or children of children).
-                
-                # So we need a helper to find "Boundary" Separate suites.
-                
                 async def find_and_process_separate_descendants(p_id):
                     result = await session.exec(select(TestSuite).where(TestSuite.parent_id == p_id))
                     subs = result.all()
                     for sub in subs:
                         if sub.execution_mode == ExecutionMode.SEPARATE:
-                            # Found a boundary! Process it as a separate suite.
                             await process_suite(sub.id, current_effective_settings)
                         else:
-                            # Still Continuous, keep digging
                             await find_and_process_separate_descendants(sub.id)
 
                 await find_and_process_separate_descendants(s_id)
@@ -828,7 +580,7 @@ async def create_run(
         if case_id:
              for target_browser in browser:
                 for target_device in target_devices:
-                    suite_path = await get_suite_path(suite_id, session)
+                    suite_path = await test_service.get_suite_path(suite_id, session)
                     case = await session.get(TestCase, case_id)
                     test_case_name = case.name if case else None
                     
@@ -836,6 +588,7 @@ async def create_run(
                         status=TestStatus.PENDING, 
                         test_suite_id=suite_id, 
                         test_case_id=case_id,
+                        project_id=suite.project_id,
                         suite_name=suite_path,
                         test_case_name=test_case_name,
                         request_headers=effective_settings.get("headers", {}),
@@ -847,16 +600,19 @@ async def create_run(
                         user_id=current_user.id
                     )
                     session.add(run)
-                    await session.commit()
-                    await session.refresh(run)
+                    await session.flush()
                     created_runs.append(run)
                     try:
-                        run_test_suite.delay(run.id)
+                        from app.worker import run_test_suite_task
+                        run_test_suite_task.delay(run.id)
                     except Exception as e:
                         print(f"Failed to queue run {run.id}: {e}")
         else:
             # Run the suite recursively
             await process_suite(suite_id, effective_settings)
+
+        await session.commit()
+        for r in created_runs: await session.refresh(r)
 
     except Exception as e:
         import traceback
@@ -874,6 +630,7 @@ async def create_run(
 
 @router.get("/runs")
 async def get_runs(
+    project_id: Optional[int] = None,
     limit: int = 50,
     offset: int = 0,
     search: Optional[str] = None,
@@ -883,9 +640,25 @@ async def get_runs(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
-    # Build query with filters
-    query = select(TestRun)
+    # Build query with filters and security join
+    org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
+    from app.models import TeamProjectAccess, UserTeam, UserProjectAccess
+    team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
+    user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
     
+    query = select(TestRun).where(
+        or_(
+            TestRun.project_id.in_(org_stmt),
+            TestRun.project_id.in_(team_stmt),
+            TestRun.project_id.in_(user_stmt)
+        )
+    )
+    
+    if project_id:
+        if not await access_service.has_project_access(current_user.id, project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+        query = query.where(TestRun.project_id == project_id)
+
     # Apply filters
     if search:
         query = query.where(
@@ -933,6 +706,9 @@ async def get_run(run_id: int, session: AsyncSession = Depends(get_session), cur
         if not run:
             raise HTTPException(status_code=404, detail="Run not found")
             
+        if not await access_service.has_project_access(current_user.id, run.project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+
         # Manually construct response to avoid validation issues with lazy/eager loading
         response = TestRunRead(
             **run.model_dump(),
@@ -951,6 +727,9 @@ async def delete_run(run_id: int, session: AsyncSession = Depends(get_session), 
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     
+    if not await access_service.has_project_access(current_user.id, run.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
     # Delete artifacts from MinIO
     minio_client.delete_run_artifacts(run_id)
     
