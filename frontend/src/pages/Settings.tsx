@@ -867,7 +867,7 @@ export default function Settings() {
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
                                                 <input
                                                     type="text"
-                                                    placeholder="John Doe"
+                                                    placeholder="email"
                                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                                 />
                                             </div>
@@ -875,7 +875,7 @@ export default function Settings() {
                                                 <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
                                                 <input
                                                     type="email"
-                                                    placeholder="john@example.com"
+                                                    placeholder="user@example.com"
                                                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
                                                 />
                                             </div>

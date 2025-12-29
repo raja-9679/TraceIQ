@@ -1,5 +1,5 @@
 from typing import Any
-from datetime import timedelta
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -13,7 +13,7 @@ from app.core.auth import (
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
-from app.models import User
+from app.models import User, UserRead
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -22,6 +22,8 @@ class UserCreate(BaseModel):
     email: str
     password: str
     full_name: str | None = None
+    org_name: str | None = None
+    project_name: str | None = None
 
 class Token(BaseModel):
     access_token: str
@@ -44,9 +46,15 @@ async def login_for_access_token(
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
     )
+    
+    # Update last login
+    user.last_login_at = datetime.utcnow()
+    session.add(user)
+    await session.commit()
+    
     return {"access_token": access_token, "token_type": "bearer"}
 
-@router.post("/register", response_model=User)
+@router.post("/register", response_model=UserRead)
 async def register_user(
     user_in: UserCreate,
     session: AsyncSession = Depends(get_session)
@@ -64,11 +72,28 @@ async def register_user(
         full_name=user_in.full_name
     )
     session.add(user)
+    await session.flush() # Get user id
+    
+    # Create default organization for the user
+    from app.services.org_service import org_service
+    org_name = user_in.org_name or f"{user_in.full_name or user_in.email}'s Org"
+    await org_service.create_organization(
+        name=org_name, 
+        owner_id=user.id, 
+        session=session, 
+        commit=False, 
+        auto_create_project=True,
+        project_name=user_in.project_name
+    )
+    
+    # Process any pending invitations
+    await org_service.process_pending_invitations(user.email, user.id, session)
+    
     await session.commit()
     await session.refresh(user)
     return user
 
-@router.get("/me", response_model=User)
+@router.get("/me", response_model=UserRead)
 async def read_users_me(
     current_user: User = Depends(get_current_user)
 ) -> Any:
