@@ -25,43 +25,29 @@ class UserCreate(BaseModel):
     full_name: str | None = None
     org_name: str | None = None
     project_name: str | None = None
+    invite_token: str | None = None
 
 class Token(BaseModel):
     access_token: str
     token_type: str
 
-from app.core.rbac_service import rbac_service
+from app.services.rbac_service import rbac_service
 
 class PermissionsResponse(BaseModel):
-    permissions: List[str]
-    roles: List[str]
+    system: List[str]
+    organization: dict
+    project: dict
 
 @router.get("/permissions", response_model=PermissionsResponse)
 async def get_my_permissions(
-    project_id: int,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session)
 ) -> PermissionsResponse:
     """
-    Get effective permissions and roles for the current user in a specific project.
+    Get effective permissions for the current user across all scopes.
     """
-    roles = await rbac_service.get_user_roles_for_project(current_user.id, project_id, session)
-    role_names = [r.name for r in roles]
-    role_ids = [r.id for r in roles]
-    
-    if not role_ids:
-        return PermissionsResponse(permissions=[], roles=[])
-
-    # Fetch permissions
-    query = (
-        select(Permission)
-        .join(RolePermission, RolePermission.permission_id == Permission.id)
-        .where(RolePermission.role_id.in_(role_ids))
-    )
-    perms_result = await session.exec(query)
-    permissions = [f"{p.resource}:{p.action}" for p in perms_result.all()]
-    
-    return PermissionsResponse(permissions=permissions, roles=role_names)
+    perms_map = await rbac_service.get_user_permissions_map(current_user.id, session)
+    return PermissionsResponse(**perms_map)
 
 @router.post("/login", response_model=Token)
 async def login_for_access_token(
@@ -100,29 +86,126 @@ async def register_user(
             status_code=400,
             detail="User with this email already exists"
         )
-    user = User(
-        email=user_in.email,
-        hashed_password=get_password_hash(user_in.password),
-        full_name=user_in.full_name
-    )
-    session.add(user)
-    await session.flush() # Get user id
     
-    # Create default organization for the user
-    from app.services.org_service import org_service
-    org_name = user_in.org_name or f"{user_in.full_name or user_in.email}'s Org"
-    await org_service.create_organization(
-        name=org_name, 
-        owner_id=user.id, 
-        session=session, 
-        commit=False, 
-        auto_create_project=True,
-        project_name=user_in.project_name
-    )
-    
-    # Process any pending invitations
-    await org_service.process_pending_invitations(user.email, user.id, session)
-    
+    # --- Branching Logic ---
+    if user_in.invite_token:
+        # 1. Invite Flow
+        from app.models import OrganizationInvitation, UserOrganization
+        # Validate Invite
+        stmt = select(OrganizationInvitation).where(OrganizationInvitation.token == user_in.invite_token)
+        invite = (await session.exec(stmt)).first()
+        
+        if not invite:
+             raise HTTPException(status_code=400, detail="Invalid invitation token")
+        if invite.expires_at < datetime.utcnow():
+             raise HTTPException(status_code=400, detail="Invitation token expired")
+        if invite.email != user_in.email:
+             # Basic check, though usually token implies email matching or binding
+             raise HTTPException(status_code=400, detail="Email does not match invitation")
+
+        # Create User (No Tenant Admin)
+        user = User(
+            email=user_in.email,
+            hashed_password=get_password_hash(user_in.password),
+            full_name=user_in.full_name
+        )
+        session.add(user)
+        await session.flush()
+        
+        # Link to Org (Role is in invite)
+        # Re-use process logic but specific to this token
+        # Map role
+        rbac_role_name = "Organization Member"
+        if invite.role == "admin": 
+            rbac_role_name = "Organization Admin"
+        
+        # We need rbac_service here
+        # Local import or global? 'rbac_service' is imported at module level in original file but inside Pydantic block?
+        # Check original file imports. Line 33 imports rbac_service.
+        
+        rbac_role = await rbac_service.get_role_by_name(session, rbac_role_name)
+        role_id = rbac_role.id if rbac_role else None
+        
+        uo = UserOrganization(
+            user_id=user.id, 
+            organization_id=invite.organization_id, 
+            role=invite.role,
+            role_id=role_id
+        )
+        session.add(uo)
+        
+        # Consume Invite
+        await session.delete(invite)
+        
+        # NEW: Link to Project if invite has project info
+        if invite.project_id and invite.project_role:
+             from app.models import UserProjectAccess
+             # Map access_level ('admin', 'editor', 'viewer') to Role
+             pa_role_name = "Project Viewer"
+             if invite.project_role == "admin": pa_role_name = "Project Admin"
+             elif invite.project_role == "editor": pa_role_name = "Project Editor"
+             
+             p_role = await rbac_service.get_role_by_name(session, pa_role_name)
+             
+             upa = UserProjectAccess(
+                 user_id=user.id,
+                 project_id=invite.project_id,
+                 access_level=invite.project_role,
+                 role_id=p_role.id if p_role else None
+             )
+             session.add(upa)
+             await session.flush()
+        
+        # We DO NOT create a Tenant. We DO NOT assign UserSystemRole (Tenant Admin).
+        # We DO NOT create a default Org.
+        
+    else:
+        # 2. Standalone Flow (Tenant Creation)
+        user = User(
+            email=user_in.email,
+            hashed_password=get_password_hash(user_in.password),
+            full_name=user_in.full_name
+        )
+        session.add(user)
+        await session.flush()
+        
+        # Create New Tenant
+        from app.models import Tenant, UserSystemRole
+        tenant_name = user_in.org_name or f"{user_in.full_name or user_in.email}'s Workspace"
+        tenant = Tenant(name=tenant_name, owner_id=user.id)
+        session.add(tenant)
+        await session.flush() # Get Tenant ID
+        
+        # Assign Tenant Admin Role
+        ta_role = await rbac_service.get_role_by_name(session, "Tenant Admin")
+        if not ta_role:
+             raise HTTPException(500, "System configuration error: Tenant Admin role missing")
+             
+        usr = UserSystemRole(
+            user_id=user.id,
+            role_id=ta_role.id,
+            tenant_id=tenant.id
+        )
+        session.add(usr)
+        
+        # Create Default Org linked to Tenant
+        from app.services.org_service import org_service
+        # Note: org_service.create_organization now accepts tenant_id
+        await org_service.create_organization(
+            name=tenant_name, 
+            owner_id=user.id, 
+            session=session, 
+            commit=False, 
+            auto_create_project=True,
+            project_name=user_in.project_name,
+            tenant_id=tenant.id
+        )
+        
+        # Org Admin role is assigned inside create_organization
+        
+        # Process any other pending email-based invitations (legacy / team invites)
+        await org_service.process_pending_invitations(user.email, user.id, session)
+        
     await session.commit()
     await session.refresh(user)
     return user
