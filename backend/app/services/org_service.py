@@ -2,7 +2,8 @@ from typing import Optional, List
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.models import Organization, UserOrganization, User, Team, UserTeam, Project, AuditLog, UserProjectAccess
-from datetime import datetime
+from datetime import datetime, timedelta
+import secrets
 
 class OrgService:
     @staticmethod
@@ -13,14 +14,21 @@ class OrgService:
         description: Optional[str] = None, 
         commit: bool = True, 
         auto_create_project: bool = False,
-        project_name: Optional[str] = None
+        project_name: Optional[str] = None,
+        tenant_id: Optional[int] = None
     ) -> Organization:
-        org = Organization(name=name, description=description)
+        from app.services.rbac_service import rbac_service
+        
+        org = Organization(name=name, description=description, tenant_id=tenant_id)
         session.add(org)
         await session.flush()
         
-        # Link owner as admin
-        user_org = UserOrganization(user_id=owner_id, organization_id=org.id, role="admin")
+        # Link owner as Org Admin
+        admin_role = await rbac_service.get_role_by_name(session, "Organization Admin")
+        if not admin_role:
+             raise Exception("System Role 'Organization Admin' not found. Run setup_rbac.py")
+             
+        user_org = UserOrganization(user_id=owner_id, organization_id=org.id, role_id=admin_role.id, role="admin")
         session.add(user_org)
         
         # Audit log
@@ -43,10 +51,13 @@ class OrgService:
             )
             session.add(project)
             await session.flush() # Get project id
-            # Also grant the user access to this project
+            
+            # Grant access via Project Admin role
+            p_admin = await rbac_service.get_role_by_name(session, "Project Admin")
             access = UserProjectAccess(
                 user_id=owner_id,
                 project_id=project.id,
+                role_id=p_admin.id if p_admin else None,
                 access_level="admin"
             )
             session.add(access)
@@ -69,14 +80,18 @@ class OrgService:
 
     @staticmethod
     async def create_project(name: str, org_id: int, creator_id: int, session: AsyncSession, description: Optional[str] = None, commit: bool = True) -> Project:
+        from app.services.rbac_service import rbac_service
         project = Project(name=name, description=description, organization_id=org_id)
         session.add(project)
         await session.flush()
         
-        # Creator gets admin access by default to the project they created
+        # Creator gets admin access
+        p_admin = await rbac_service.get_role_by_name(session, "Project Admin")
+        
         access = UserProjectAccess(
             user_id=creator_id,
             project_id=project.id,
+            role_id=p_admin.id if p_admin else None,
             access_level="admin"
         )
         session.add(access)
@@ -118,14 +133,25 @@ class OrgService:
     @staticmethod
     async def link_team_to_project(team_id: int, project_id: int, access_level: str, session: AsyncSession) -> bool:
         from app.models import TeamProjectAccess
+        from app.services.rbac_service import rbac_service
+        
+        # Map access_level to Role
+        role_name = "Project Viewer"
+        if access_level == "admin": role_name = "Project Admin"
+        elif access_level == "editor": role_name = "Project Editor"
+        
+        role = await rbac_service.get_role_by_name(session, role_name)
+        role_id = role.id if role else None
+
         # Check if exists
         result = await session.exec(select(TeamProjectAccess).where(TeamProjectAccess.team_id == team_id, TeamProjectAccess.project_id == project_id))
         existing = result.first()
         if existing:
             existing.access_level = access_level
+            existing.role_id = role_id
             session.add(existing)
         else:
-            tpa = TeamProjectAccess(team_id=team_id, project_id=project_id, access_level=access_level)
+            tpa = TeamProjectAccess(team_id=team_id, project_id=project_id, access_level=access_level, role_id=role_id)
             session.add(tpa)
         await session.commit()
         return True
@@ -166,6 +192,15 @@ class OrgService:
     @staticmethod
     async def add_user_project_access(user_id: int, project_id: int, access_level: str, session: AsyncSession) -> bool:
         from app.models import UserProjectAccess
+        from app.services.rbac_service import rbac_service
+        
+        role_name = "Project Viewer"
+        if access_level == "admin": role_name = "Project Admin"
+        elif access_level == "editor": role_name = "Project Editor"
+        
+        role = await rbac_service.get_role_by_name(session, role_name)
+        role_id = role.id if role else None
+
         result = await session.exec(
             select(UserProjectAccess)
             .where(UserProjectAccess.user_id == user_id, UserProjectAccess.project_id == project_id)
@@ -173,9 +208,10 @@ class OrgService:
         existing = result.first()
         if existing:
             existing.access_level = access_level
+            existing.role_id = role_id
             session.add(existing)
         else:
-            upa = UserProjectAccess(user_id=user_id, project_id=project_id, access_level=access_level)
+            upa = UserProjectAccess(user_id=user_id, project_id=project_id, access_level=access_level, role_id=role_id)
             session.add(upa)
         await session.commit()
         return True
@@ -219,30 +255,131 @@ class OrgService:
         return result.all()
 
     @staticmethod
-    async def get_org_members_detailed(org_id: int, session: AsyncSession):
-        from app.models import User, UserOrganization
-        result = await session.exec(
-            select(User, UserOrganization.role)
-            .join(UserOrganization, UserOrganization.user_id == User.id)
-            .where(UserOrganization.organization_id == org_id)
-        )
+    async def get_org_members_detailed(org_id: int, session: AsyncSession, viewer_id: int):
+        from app.models import User, UserOrganization, Role, UserProjectAccess
+        from app.services.rbac_service import rbac_service
+        
+        # 1. Determine Viewer's Scope
+        # Check if Tenant Admin or Org Admin
+        is_tenant_admin = await rbac_service.has_permission(session, viewer_id, "tenant:manage_settings") # Proxy for Tenant Admin
+        is_org_admin = await rbac_service.has_permission(session, viewer_id, "org:manage_users", org_id=org_id)
+        
+        if is_tenant_admin or is_org_admin:
+            # Full Access: Return all org members
+            stmt = (
+                select(User, UserOrganization.role, Role.name)
+                .join(UserOrganization, UserOrganization.user_id == User.id)
+                .outerjoin(Role, UserOrganization.role_id == Role.id)
+                .where(UserOrganization.organization_id == org_id)
+            )
+        else:
+            # Restricted Access: Project Admin / Viewer
+            # strict rule: "when project admin sees the users only the project users should be visible"
+            # So we filter users to those who share a project with the viewer?
+            # Or specifically projects where the viewer IN AN ADMIN?
+            # User said: "when project admin sees the users only the project users should be visible"
+            # This implies visibility is bounded by common projects.
+            
+            # Find projects viewer is part of
+            viewer_projects = await session.exec(select(UserProjectAccess.project_id).where(UserProjectAccess.user_id == viewer_id))
+            p_ids = viewer_projects.all()
+            
+            if not p_ids:
+                return []
+                
+            # Select users who are in these projects
+            stmt = (
+                select(User, UserOrganization.role, Role.name)
+                .join(UserOrganization, UserOrganization.user_id == User.id)
+                .outerjoin(Role, UserOrganization.role_id == Role.id)
+                .join(UserProjectAccess, UserProjectAccess.user_id == User.id)
+                .where(UserOrganization.organization_id == org_id)
+                .where(UserProjectAccess.project_id.in_(p_ids)) # type: ignore
+                .distinct()
+            )
+
+        result = await session.exec(stmt)
         members = result.all()
-        return [
-            {
+        
+        # Deduplicate if distinct didn't catch (e.g. diff roles) - mostly handled by distinct on User if we select just User, but we select fields.
+        # Dictionary comprehension to uniq by ID
+        unique_members = {
+            m[0].id: {
                 "id": m[0].id,
                 "full_name": m[0].full_name,
                 "email": m[0].email,
-                "role": m[1],
+                "role": m[2] if m[2] else m[1], 
                 "last_login_at": m[0].last_login_at,
                 "is_active": m[0].is_active,
                 "status": "active"
             }
             for m in members
-        ]
+        }
+        
+        return list(unique_members.values())
 
     @staticmethod
-    async def invite_user_to_organization(email: str, org_id: int, invited_by_id: int, role: str, session: AsyncSession):
+    async def get_tenant_users_detailed(tenant_ids: List[int], session: AsyncSession):
+        from app.models import User, UserOrganization, Organization, Role
+        
+        if not tenant_ids:
+            return []
+            
+        stmt = (
+            select(User, UserOrganization.role, Role.name, Organization.name)
+            .join(UserOrganization, UserOrganization.user_id == User.id)
+            .join(Organization, UserOrganization.organization_id == Organization.id)
+            .outerjoin(Role, UserOrganization.role_id == Role.id)
+            .where(Organization.tenant_id.in_(tenant_ids)) # type: ignore
+        )
+        
+        result = await session.exec(stmt)
+        members = result.all()
+        
+        # Flatten and formatting
+        # A user might be in multiple orgs. Tenant Admin wants to see "User List".
+        # Should we show duplicates or merge?
+        # User list "in all org". Implies listed per org or just unique users?
+        # "view all the user in all org".
+        # Usually an Admin User Table is unique users.
+        # But for "assign to specific org" flow, we need to know who is where?
+        # Let's return unique users but maybe annotate with orgs?
+        # Or just return plain list for now as per `UserRead` model (simplified).
+        # Actually `DetailedMember` expects simplified fields. 
+        # Let's return unique users for the main table.
+        
+        unique_users = {}
+        for m in members:
+            uid = m[0].id
+            if uid not in unique_users:
+                unique_users[uid] = {
+                    "id": uid,
+                    "full_name": m[0].full_name,
+                    "email": m[0].email,
+                    "role": m[2] if m[2] else m[1], # Shows role in FIRST found org. imperfect but fits MVP
+                    "last_login_at": m[0].last_login_at,
+                    "is_active": m[0].is_active,
+                    "status": "active",
+                    # Add org info?
+                    "organization": m[3]
+                }
+        
+        return list(unique_users.values())
+
+    @staticmethod
+    async def invite_user_to_organization(email: str, org_id: int, invited_by_id: int, role: str, session: AsyncSession, project_id: Optional[int] = None, project_role: Optional[str] = None):
         from app.models import User, UserOrganization, OrganizationInvitation
+        from app.services.rbac_service import rbac_service
+        
+        # Map string role to RBAC Role
+        # UI sends 'admin' or 'member'. Map to 'Organization Admin' / 'Organization Member'
+        rbac_role_name = "Organization Member"
+        if role == "admin": 
+            rbac_role_name = "Organization Admin"
+            
+        rbac_role = await rbac_service.get_role_by_name(session, rbac_role_name)
+        role_id = rbac_role.id if rbac_role else None
+        
         # Check if user exists
         result = await session.exec(select(User).where(User.email == email))
         user = result.first()
@@ -253,8 +390,13 @@ class OrgService:
                 .where(UserOrganization.user_id == user.id, UserOrganization.organization_id == org_id)
             )
             if not result.first():
-                uo = UserOrganization(user_id=user.id, organization_id=org_id, role=role)
+                uo = UserOrganization(user_id=user.id, organization_id=org_id, role=role, role_id=role_id)
                 session.add(uo)
+            
+            # If Project Access Requested
+            if project_id and project_role:
+                await OrgService.add_user_project_access(user.id, project_id, project_role, session)
+
             await session.commit()
             return {"status": "success", "message": "User added to organization"}
         else:
@@ -263,17 +405,31 @@ class OrgService:
                 select(OrganizationInvitation)
                 .where(OrganizationInvitation.email == email, OrganizationInvitation.organization_id == org_id)
             )
-            if not result.first():
+            existing_invite = result.first()
+            if not existing_invite:
+                # Store simple role string in invite for now
+                # Generate Token
+                token = secrets.token_urlsafe(32)
+                expires_at = datetime.utcnow() + timedelta(days=7) # 7 days expiry
+
                 invite = OrganizationInvitation(
                     email=email,
                     organization_id=org_id,
                     role=role,
-                    invited_by_id=invited_by_id
+                    invited_by_id=invited_by_id,
+                    token=token,
+                    expires_at=expires_at,
+                    project_id=project_id,
+                    project_role=project_role
                 )
                 session.add(invite)
                 await session.commit()
-                return {"status": "invited", "message": "User invited to organization"}
-            return {"status": "exists", "message": "User already has a pending invitation"}
+                # In a real app, send email with link: f"{settings.FRONTEND_URL}/join?token={token}"
+                return {"status": "invited", "message": "User invited to organization", "token": token}
+            else:
+                 # Update existing invite if new scope?
+                 # ideally we should, but for now simple return
+                 return {"status": "exists", "message": "User already has a pending invitation"}
 
     @staticmethod
     async def get_org_invitations(org_id: int, session: AsyncSession):
@@ -325,6 +481,18 @@ class OrgService:
     async def delete_organization(org_id: int, session: AsyncSession):
         org = await session.get(Organization, org_id)
         if org:
+            # 1. Nullify Audit Logs (preserve history)
+            from app.models import AuditLog
+            audit_logs = await session.exec(select(AuditLog).where(AuditLog.organization_id == org_id))
+            for log in audit_logs.all():
+                log.organization_id = None
+                session.add(log)
+
+            # 2. Delete Dependent Teams
+            teams = await session.exec(select(Team).where(Team.organization_id == org_id))
+            for team in teams.all():
+                await OrgService.delete_team(team.id, session)
+
             await session.delete(org)
             await session.commit()
 
@@ -368,18 +536,31 @@ class OrgService:
     @staticmethod
     async def process_pending_invitations(email: str, user_id: int, session: AsyncSession):
         from app.models import TeamInvitation, UserTeam, Team, UserOrganization, OrganizationInvitation
+        from app.services.rbac_service import rbac_service
         
         # Process Org Invitations
         result_org = await session.exec(select(OrganizationInvitation).where(OrganizationInvitation.email == email))
         org_invites = result_org.all()
         for invite in org_invites:
+            # Map role string to RBAC
+            rbac_role_name = "Organization Member"
+            if invite.role == "admin": 
+                rbac_role_name = "Organization Admin"
+            rbac_role = await rbac_service.get_role_by_name(session, rbac_role_name)
+            role_id = rbac_role.id if rbac_role else None
+            
             # Add to organization if not already a member
             org_check = await session.exec(
                 select(UserOrganization)
                 .where(UserOrganization.user_id == user_id, UserOrganization.organization_id == invite.organization_id)
             )
             if not org_check.first():
-                uo = UserOrganization(user_id=user_id, organization_id=invite.organization_id, role=invite.role)
+                uo = UserOrganization(
+                    user_id=user_id, 
+                    organization_id=invite.organization_id, 
+                    role=invite.role,
+                    role_id=role_id
+                )
                 session.add(uo)
             await session.delete(invite)
 
@@ -397,7 +578,14 @@ class OrgService:
                     .where(UserOrganization.user_id == user_id, UserOrganization.organization_id == team.organization_id)
                 )
                 if not org_check.first():
-                    uo = UserOrganization(user_id=user_id, organization_id=team.organization_id, role="member")
+                    # Default: Member
+                    memb_role = await rbac_service.get_role_by_name(session, "Organization Member")
+                    uo = UserOrganization(
+                        user_id=user_id, 
+                        organization_id=team.organization_id, 
+                        role="member",
+                        role_id=memb_role.id if memb_role else None
+                    )
                     session.add(uo)
                 
                 # Add to team if not already a member

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,10 +9,23 @@ import { Loader2, ArrowRight, Code2, Globe, Database, Rocket, Users, Lock, Check
 export default function Signup() {
     const { login } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const inviteToken = searchParams.get("token");
+    const inviteEmail = searchParams.get("email");
+
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
-    const { register, handleSubmit, watch, formState: { errors } } = useForm();
+    const { register, handleSubmit, watch, formState: { errors } } = useForm({
+        defaultValues: {
+            email: inviteEmail || "",
+            fullName: "",
+            password: "",
+            confirmPassword: "",
+            orgName: "",
+            projectName: ""
+        }
+    });
     const password = watch("password");
 
     const onSubmit = async (data: any) => {
@@ -20,13 +33,19 @@ export default function Signup() {
         setError("");
         try {
             // Register
-            const registerResponse = await axios.post("http://localhost:8000/api/auth/register", {
+            const payload: any = {
                 email: data.email,
                 password: data.password,
                 full_name: data.fullName,
                 org_name: data.orgName,
                 project_name: data.projectName
-            });
+            };
+
+            if (inviteToken) {
+                payload.invite_token = inviteToken;
+            }
+
+            const registerResponse = await axios.post("http://localhost:8000/api/auth/register", payload);
 
             // Login automatically after registration
             const formData = new FormData();
@@ -46,6 +65,38 @@ export default function Signup() {
         }
     };
 
+    // ... existing benefits array ...
+
+    // ... inside render ...
+
+    <div className="grid grid-cols-2 gap-3">
+        {!inviteToken && (
+            <>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Org Name (Optional)</label>
+                    <input
+                        {...register("orgName")}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                        placeholder="My Company"
+                    />
+                </div>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Name (Optional)</label>
+                    <input
+                        {...register("projectName")}
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                        placeholder="Alpha"
+                    />
+                </div>
+            </>
+        )}
+        {inviteToken && (
+            <div className="col-span-2 p-3 bg-blue-50 text-blue-700 text-sm rounded-lg border border-blue-100 flex items-center justify-center">
+                <Check className="w-4 h-4 mr-2" />
+                Joining via Invitation
+            </div>
+        )}
+    </div>
     const benefits = [
         {
             icon: Rocket,

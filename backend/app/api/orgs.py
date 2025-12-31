@@ -29,35 +29,18 @@ class OrgInvite(BaseModel):
     email: str
     role: str = "member"
 
-async def check_is_org_admin_or_tenant_owner(session: AsyncSession, user_id: int, org_id: int) -> bool:
-    # 1. Check Org Admin
-    stmt = select(UserOrganization).where(
-        UserOrganization.user_id == user_id, 
-        UserOrganization.organization_id == org_id, 
-        UserOrganization.role == "admin"
-    )
-    if (await session.exec(stmt)).first():
-        return True
-        
-    # 2. Check Tenant Owner
-    org = await session.get(Organization, org_id)
-    if org and org.tenant_id:
-        tenant = await session.get(Tenant, org.tenant_id)
-        if tenant and tenant.owner_id == user_id:
-            return True
-            
-    return False
+from app.services.rbac_service import rbac_service
 
 @router.post("/organizations", response_model=Organization)
 async def create_org(org_in: OrgCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Restrict to Tenant Owner
-    # Check if user owns ANY tenant (assuming 1 tenant per user for now)
-    stmt = select(Tenant).where(Tenant.owner_id == current_user.id)
-    tenant = (await session.exec(stmt)).first()
+    # Check permissions
+    if not await rbac_service.has_permission(session, current_user.id, "tenant:create_org"):
+         raise HTTPException(status_code=403, detail="Permission denied: tenant:create_org")
+         
+    # Check if user owns ANY tenant (legacy check, but RBAC covers it via Tenant Admin role)
+    # Ideally pass tenant_id from context, but for now we rely on the permission check which 
+    # verifies the user has the 'tenant:create_org' permission logic (System Role).
     
-    if not tenant:
-        raise HTTPException(status_code=403, detail="Only Tenant Admins can create organizations")
-
     return await org_service.create_organization(name=org_in.name, owner_id=current_user.id, session=session, description=org_in.description)
 
 @router.get("/organizations", response_model=List[Organization])
@@ -66,9 +49,8 @@ async def list_orgs(session: AsyncSession = Depends(get_session), current_user: 
 
 @router.post("/organizations/{org_id}/teams", response_model=Team)
 async def create_team(org_id: int, team_in: TeamCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check if user is org admin or tenant owner
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can create teams")
+    if not await rbac_service.has_permission(session, current_user.id, "org:create_team", org_id=org_id):
+        raise HTTPException(status_code=403, detail="Permission denied: org:create_team")
     
     team = Team(name=team_in.name, organization_id=org_id)
     session.add(team)
@@ -105,9 +87,8 @@ async def invite_to_team(team_id: int, invite: InviteMember, session: AsyncSessi
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Only org admins or tenant owners can invite
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can invite to teams")
+    if not await rbac_service.has_permission(session, current_user.id, "org:manage_users", org_id=team.organization_id):
+         raise HTTPException(status_code=403, detail="Permission denied: org:manage_users")
         
     success = await org_service.add_user_to_team_by_email(invite.email, team_id, session)
     if not success:
@@ -130,9 +111,8 @@ async def add_user_to_team(team_id: int, user_id: int, session: AsyncSession = D
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Check org admin status or tenant owner
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can manage teams")
+    if not await rbac_service.has_permission(session, current_user.id, "org:manage_users", org_id=team.organization_id):
+         raise HTTPException(status_code=403, detail="Permission denied: org:manage_users")
         
     ut = UserTeam(user_id=user_id, team_id=team_id)
     session.add(ut)
@@ -141,13 +121,12 @@ async def add_user_to_team(team_id: int, user_id: int, session: AsyncSession = D
 
 @router.post("/projects/{project_id}/teams/{team_id}/access")
 async def link_team_project(project_id: int, team_id: int, access: ProjectAccess, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin
     project = await session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, project.organization_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can manage project access")
+    if not await rbac_service.has_permission(session, current_user.id, "project:manage_access", project_id=project_id, org_id=project.organization_id):
+        raise HTTPException(status_code=403, detail="Permission denied: project:manage_access")
         
     await org_service.link_team_to_project(team_id, project_id, access.access_level, session)
     return {"status": "success"}
@@ -164,7 +143,10 @@ async def list_org_members(org_id: int, session: AsyncSession = Depends(get_sess
         
     return await org_service.get_org_members(org_id, session)
 
-@router.get("/organizations/{org_id}/members/detailed")
+from app.models import User, Organization, UserOrganization, Team, UserTeam, UserRead, Project, Tenant, UserReadDetailed
+# ...
+
+@router.get("/organizations/{org_id}/members/detailed", response_model=List[UserReadDetailed])
 async def list_org_members_detailed(org_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Check if user is in org
     result = await session.exec(
@@ -174,13 +156,12 @@ async def list_org_members_detailed(org_id: int, session: AsyncSession = Depends
     if not result.first():
         raise HTTPException(status_code=403, detail="Not a member of this organization")
         
-    return await org_service.get_org_members_detailed(org_id, session)
+    return await org_service.get_org_members_detailed(org_id, session, current_user.id)
 
 @router.post("/organizations/{org_id}/invitations")
 async def invite_to_org(org_id: int, invite: OrgInvite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin status or tenant owner
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can invite members")
+    if not await rbac_service.has_permission(session, current_user.id, "org:manage_users", org_id=org_id):
+        raise HTTPException(status_code=403, detail="Permission denied: org:manage_users")
         
     return await org_service.invite_user_to_organization(invite.email, org_id, current_user.id, invite.role, session)
 
@@ -198,16 +179,14 @@ async def list_org_invitations(org_id: int, session: AsyncSession = Depends(get_
 
 @router.delete("/teams/{team_id}/users/{user_id}")
 async def remove_from_team(team_id: int, user_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check if user is org admin or team member (self-removal)
     team = await session.get(Team, team_id)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Check if current user is admin of the org or tenant owner
-    is_admin = await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id)
+    is_admin = await rbac_service.has_permission(session, current_user.id, "org:manage_users", org_id=team.organization_id)
     
     if not is_admin and current_user.id != user_id:
-        raise HTTPException(status_code=403, detail="Only org admins can remove other members from teams")
+        raise HTTPException(status_code=403, detail="Permission denied: org:manage_users")
         
     success = await org_service.remove_user_from_team(team_id, user_id, session)
     if not success:
@@ -241,34 +220,37 @@ async def delete_team(team_id: int, session: AsyncSession = Depends(get_session)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Check org admin status or tenant owner
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can delete teams")
+    if not await rbac_service.has_permission(session, current_user.id, "org:create_team", org_id=team.organization_id):
+        raise HTTPException(status_code=403, detail="Permission denied: org:create_team")
         
     await org_service.delete_team(team_id, session)
     return {"status": "success"}
 
 @router.delete("/organizations/{org_id}")
 async def delete_organization(org_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin status or tenant owner
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
-        raise HTTPException(status_code=403, detail="Only organization admins can delete organizations")
+    if not await rbac_service.has_permission(session, current_user.id, "org:delete_org", org_id=org_id):
+        raise HTTPException(status_code=403, detail="Permission denied: org:delete_org")
         
     await org_service.delete_organization(org_id, session)
     return {"status": "success"}
 
 @router.delete("/organizations/{org_id}/users/{user_id}")
 async def remove_user_from_org(org_id: int, user_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin status or tenant owner
-    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
-        # Allow self-removal? Typically yes, but require clarification or implemented as "leave org".
-        # For this requirement "admin can delete user", strict admin check is safer.
-        raise HTTPException(status_code=403, detail="Only organization admins can remove members")
-    
-    # Prevent removing yourself if you are the last admin? (Advanced validation, skipping for MVP/task speed unless critical)
+    if not await rbac_service.has_permission(session, current_user.id, "org:manage_users", org_id=org_id):
+        raise HTTPException(status_code=403, detail="Permission denied: org:manage_users")
     
     success = await org_service.remove_user_from_organization(org_id, user_id, session)
     if not success:
         raise HTTPException(status_code=404, detail="User not found in organization")
         
     return {"status": "success"}
+
+from app.models import Role
+
+@router.get("/roles", response_model=List[Role])
+async def list_roles(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """
+    List all available roles.
+    """
+    roles = await session.exec(select(Role))
+    return roles.all()

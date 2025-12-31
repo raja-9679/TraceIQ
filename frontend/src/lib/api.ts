@@ -307,6 +307,10 @@ export const inviteUserToOrg = async (orgId: number, email: string, role: string
     await api.post(`/organizations/${orgId}/invitations`, { email, role });
 };
 
+export const inviteUserToProject = async (projectId: number, email: string, role: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/invitations`, { email, role });
+};
+
 export const getOrgInvitations = async (orgId: number): Promise<DetailedMember[]> => {
     const response = await api.get(`/organizations/${orgId}/invitations`);
     return response.data;
@@ -377,7 +381,7 @@ export const removeUserFromOrg = async (orgId: number, userId: number): Promise<
     await api.delete(`/organizations/${orgId}/users/${userId}`);
 };
 
-export const getAdminUsers = async (): Promise<User[]> => {
+export const getAdminUsers = async (): Promise<DetailedMember[]> => {
     const response = await api.get("/admin/users");
     return response.data;
 };
@@ -393,3 +397,25 @@ export const assignUserToOrgs = async (userId: number, orgIds: number[], role: s
 };
 
 
+
+export interface Role {
+    id: number;
+    name: string;
+    description?: string;
+}
+
+export interface UserPermissions {
+    system: string[];
+    organization: Record<number, string[]>;
+    project: Record<number, string[]>;
+}
+
+export const getRoles = async (): Promise<Role[]> => {
+    const response = await api.get("/roles");
+    return response.data;
+};
+
+export const getMyPermissions = async (): Promise<UserPermissions> => {
+    const response = await api.get("/auth/permissions");
+    return response.data;
+};

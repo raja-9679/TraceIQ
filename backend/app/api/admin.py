@@ -4,8 +4,9 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
 from app.core.auth import get_current_user
-from app.models import User, Organization, UserOrganization, UserRead, Tenant
+from app.models import User, Organization, UserOrganization, UserRead, Tenant, UserSystemRole, UserReadDetailed
 from app.services.org_service import org_service
+from app.services.rbac_service import rbac_service
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -14,48 +15,60 @@ class OrgAssignment(BaseModel):
     org_ids: List[int]
     role: str = "member" # 'admin' or 'member'
 
-async def get_current_tenant_owner(
+async def get_current_tenant_admin(
     session: AsyncSession = Depends(get_session), 
     current_user: User = Depends(get_current_user)
 ) -> User:
     """
-    Dependency to ensure the current user is a Tenant Owner.
+    Dependency to ensure the current user has Tenant Admin permissions.
     """
-    stmt = select(Tenant).where(Tenant.owner_id == current_user.id)
-    tenant = (await session.exec(stmt)).first()
-    
-    if not tenant:
+    if not await rbac_service.has_permission(session, current_user.id, "tenant:manage_settings"):
         raise HTTPException(status_code=403, detail="Only Tenant Admins can access this resource")
     return current_user
 
-@router.get("/users", response_model=List[UserRead])
+@router.get("/users", response_model=List[UserReadDetailed])
 async def list_all_users(
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_tenant_owner)
+    current_user: User = Depends(get_current_tenant_admin)
 ):
     """
-    List ALL users in the system (for Tenant Admin to assign).
+    List ALL users in the system (scoped to Tenant Admin's tenants).
     """
-    users = await session.exec(select(User))
-    return users.all()
+    # 1. Get Tenants user administers
+    stmt = select(UserSystemRole.tenant_id).where(UserSystemRole.user_id == current_user.id)
+    tenant_ids = (await session.exec(stmt)).all()
+    
+    if not tenant_ids:
+        # Fallback ownership
+        t_stmt = select(Tenant.id).where(Tenant.owner_id == current_user.id)
+        tenant_ids = list((await session.exec(t_stmt)).all())
+
+    return await org_service.get_tenant_users_detailed(tenant_ids, session)
 
 @router.get("/orgs", response_model=List[Organization])
 async def list_tenant_orgs(
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_tenant_owner)
+    current_user: User = Depends(get_current_tenant_admin)
 ):
     """
-    List ALL organizations in the tenant (for Admin dropdowns).
+    List ALL organizations in the tenant(s) administered by this user.
     """
-    stmt = select(Tenant).where(Tenant.owner_id == current_user.id)
-    tenant = (await session.exec(stmt)).first()
+    # 1. Get Tenants user administers
+    stmt = select(UserSystemRole.tenant_id).where(UserSystemRole.user_id == current_user.id)
+    tenant_ids = (await session.exec(stmt)).all()
     
-    # In a real multi-tenant system, we filter by tenant_id.
-    # For now, we assume this Tenant Owner owns ALL orgs or we filter by tenant relationship.
-    # Check if we enforced tenant_id on Orgs. Yes we did.
-    
-    if tenant:
-        orgs = await session.exec(select(Organization).where(Organization.tenant_id == tenant.id))
+    if not tenant_ids:
+        # Fallback: Check if they are owner of any tenant directly (legacy/seed consistency)
+        t_stmt = select(Tenant.id).where(Tenant.owner_id == current_user.id)
+        implied_ids = (await session.exec(t_stmt)).all()
+        tenant_ids = list(implied_ids)
+
+    if not tenant_ids:
+        return []
+
+    # 2. Get Orgs for these tenants
+    if tenant_ids:
+        orgs = await session.exec(select(Organization).where(Organization.tenant_id.in_(tenant_ids))) # type: ignore
         return orgs.all()
     return []
 
@@ -64,7 +77,7 @@ async def assign_user_to_orgs(
     user_id: int, 
     assignment: OrgAssignment,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_tenant_owner)
+    current_user: User = Depends(get_current_tenant_admin)
 ):
     """
     Bulk assign a user to multiple organizations.
@@ -73,39 +86,45 @@ async def assign_user_to_orgs(
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Get admin's tenant scope
+    stmt = select(UserSystemRole.tenant_id).where(UserSystemRole.user_id == current_user.id)
+    admin_tenant_ids = (await session.exec(stmt)).all()
+    
+    # Fallback to direct ownership
+    if not admin_tenant_ids:
+        t_stmt = select(Tenant.id).where(Tenant.owner_id == current_user.id)
+        admin_tenant_ids = (await session.exec(t_stmt)).all()
+
     results = []
     
     for org_id in assignment.org_ids:
-        # Verify Org exists (and optionally belongs to this tenant, but Super Admin implies full access)
-        # For strict multi-tenancy, we should check if Org belongs to the caller's Tenant.
-        # However, if we assume single-tenant deployment or "Super Admin" means "Platform Owner", we skip.
-        # Let's enforce strict Tenant ownership for safety.
-        
         # Get Org and check Tenant
         org = await session.get(Organization, org_id)
         if not org:
             results.append({"org_id": org_id, "status": "error", "message": "Organization not found"})
             continue
             
-        stmt = select(Tenant).where(Tenant.owner_id == current_user.id)
-        my_tenant = (await session.exec(stmt)).first()
-        
-        if not my_tenant or org.tenant_id != my_tenant.id:
-             # If org has no tenant, maybe claim it? For now, error.
-             if org.tenant_id is None:
-                 # Auto-claim logic or error? Let's error to be safe.
-                 pass
-             elif org.tenant_id != my_tenant.id:
-                 results.append({"org_id": org_id, "status": "error", "message": "Organization does not belong to your tenant"})
-                 continue
+        # Security: Ensure Admin manages the tenant this org belongs to
+        if not org.tenant_id or org.tenant_id not in admin_tenant_ids:
+             results.append({"org_id": org_id, "status": "error", "message": "Organization does not belong to your tenant"})
+             continue
 
         # Add User to Org (using Service or Direct)
-        await org_service.add_user_to_organization(
-            user_id=target_user.id, 
+        # Note: 'role' here is string "admin" or "member". Service handles RBAC mapping.
+        await org_service.invite_user_to_organization(
+            email=target_user.email,
             org_id=org_id, 
+            invited_by_id=current_user.id,
             role=assignment.role, 
             session=session
         )
+        # Auto-accept since admin is forcing assignment?
+        # Service creates an invite if not strictly adding. 
+        # But 'assign' implies immediate addition usually.
+        # The service `invite_user_to_organization` logic:
+        # If user exists, it ADDS them directly (check org_service code).
+        # Yes: "if user: ... uo = UserOrganization(...)".
+        
         results.append({"org_id": org_id, "status": "success"})
         
     return {"results": results}
