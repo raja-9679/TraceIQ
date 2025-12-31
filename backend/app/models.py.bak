@@ -8,35 +8,6 @@ from enum import Enum
 # Import settings models
 from app.settings_models import UserSettings
 
-class Tenant(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str = Field(index=True)
-    owner_id: int = Field(foreign_key="users.id")
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    
-    # Relationships
-    organizations: List["Organization"] = Relationship(back_populates="tenant")
-
-class Permission(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    scope: str # 'global', 'org', 'project' (or resource type)
-    action: str # 'create', 'read', 'update', 'delete', 'execute', 'manage_users'
-    resource: str # 'test_case', 'test_run', 'project', 'team' (optional refinement)
-    description: Optional[str] = None
-
-class RolePermission(SQLModel, table=True):
-    role_id: int = Field(foreign_key="role.id", primary_key=True)
-    permission_id: int = Field(foreign_key="permission.id", primary_key=True)
-
-class Role(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    name: str
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id") # Null means system role
-    description: Optional[str] = None
-    
-    # Relationships
-    permissions: List["Permission"] = Relationship(link_model=RolePermission)
-
 class UserOrganization(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", primary_key=True)
     organization_id: int = Field(foreign_key="organization.id", primary_key=True)
@@ -49,14 +20,12 @@ class UserTeam(SQLModel, table=True):
 class TeamProjectAccess(SQLModel, table=True):
     team_id: int = Field(foreign_key="team.id", primary_key=True)
     project_id: int = Field(foreign_key="project.id", primary_key=True)
-    access_level: str = Field(default="editor") # DEPRECATED: use role_id
-    role_id: Optional[int] = Field(default=None, foreign_key="role.id") # New RBAC
+    access_level: str = Field(default="editor") # editor, viewer
 
 class UserProjectAccess(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", primary_key=True)
     project_id: int = Field(foreign_key="project.id", primary_key=True)
-    access_level: str = Field(default="editor") # DEPRECATED: use role_id
-    role_id: Optional[int] = Field(default=None, foreign_key="role.id") # New RBAC
+    access_level: str = Field(default="editor") # editor, viewer
 
 class UserTestCaseAccess(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", primary_key=True)
@@ -67,15 +36,12 @@ class Organization(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     description: Optional[str] = None
-
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships
     users: List["User"] = Relationship(back_populates="organizations", link_model=UserOrganization)
     projects: List["Project"] = Relationship(back_populates="organization")
     teams: List["Team"] = Relationship(back_populates="organization")
-    tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id")
-    tenant: Optional[Tenant] = Relationship(back_populates="organizations")
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

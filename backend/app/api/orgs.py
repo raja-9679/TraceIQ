@@ -4,7 +4,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
 from app.core.auth import get_current_user
-from app.models import User, Organization, UserOrganization, Team, UserTeam, UserRead, Project
+from app.models import User, Organization, UserOrganization, Team, UserTeam, UserRead, Project, Tenant
 from app.services.org_service import org_service
 from pydantic import BaseModel
 
@@ -29,8 +29,35 @@ class OrgInvite(BaseModel):
     email: str
     role: str = "member"
 
+async def check_is_org_admin_or_tenant_owner(session: AsyncSession, user_id: int, org_id: int) -> bool:
+    # 1. Check Org Admin
+    stmt = select(UserOrganization).where(
+        UserOrganization.user_id == user_id, 
+        UserOrganization.organization_id == org_id, 
+        UserOrganization.role == "admin"
+    )
+    if (await session.exec(stmt)).first():
+        return True
+        
+    # 2. Check Tenant Owner
+    org = await session.get(Organization, org_id)
+    if org and org.tenant_id:
+        tenant = await session.get(Tenant, org.tenant_id)
+        if tenant and tenant.owner_id == user_id:
+            return True
+            
+    return False
+
 @router.post("/organizations", response_model=Organization)
 async def create_org(org_in: OrgCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    # Restrict to Tenant Owner
+    # Check if user owns ANY tenant (assuming 1 tenant per user for now)
+    stmt = select(Tenant).where(Tenant.owner_id == current_user.id)
+    tenant = (await session.exec(stmt)).first()
+    
+    if not tenant:
+        raise HTTPException(status_code=403, detail="Only Tenant Admins can create organizations")
+
     return await org_service.create_organization(name=org_in.name, owner_id=current_user.id, session=session, description=org_in.description)
 
 @router.get("/organizations", response_model=List[Organization])
@@ -39,12 +66,8 @@ async def list_orgs(session: AsyncSession = Depends(get_session), current_user: 
 
 @router.post("/organizations/{org_id}/teams", response_model=Team)
 async def create_team(org_id: int, team_in: TeamCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check if user is org admin
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == org_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Check if user is org admin or tenant owner
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
         raise HTTPException(status_code=403, detail="Only organization admins can create teams")
     
     team = Team(name=team_in.name, organization_id=org_id)
@@ -82,12 +105,8 @@ async def invite_to_team(team_id: int, invite: InviteMember, session: AsyncSessi
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Only org admins can invite
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == team.organization_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Only org admins or tenant owners can invite
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id):
         raise HTTPException(status_code=403, detail="Only organization admins can invite to teams")
         
     success = await org_service.add_user_to_team_by_email(invite.email, team_id, session)
@@ -111,12 +130,8 @@ async def add_user_to_team(team_id: int, user_id: int, session: AsyncSession = D
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Check org admin status
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == team.organization_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Check org admin status or tenant owner
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id):
         raise HTTPException(status_code=403, detail="Only organization admins can manage teams")
         
     ut = UserTeam(user_id=user_id, team_id=team_id)
@@ -131,11 +146,7 @@ async def link_team_project(project_id: int, team_id: int, access: ProjectAccess
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
         
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == project.organization_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, project.organization_id):
         raise HTTPException(status_code=403, detail="Only organization admins can manage project access")
         
     await org_service.link_team_to_project(team_id, project_id, access.access_level, session)
@@ -167,12 +178,8 @@ async def list_org_members_detailed(org_id: int, session: AsyncSession = Depends
 
 @router.post("/organizations/{org_id}/invitations")
 async def invite_to_org(org_id: int, invite: OrgInvite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin status
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == org_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Check org admin status or tenant owner
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
         raise HTTPException(status_code=403, detail="Only organization admins can invite members")
         
     return await org_service.invite_user_to_organization(invite.email, org_id, current_user.id, invite.role, session)
@@ -196,9 +203,8 @@ async def remove_from_team(team_id: int, user_id: int, session: AsyncSession = D
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Check if current user is admin of the org
-    result = await session.exec(select(UserOrganization).where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == team.organization_id, UserOrganization.role == "admin"))
-    is_admin = result.first() is not None
+    # Check if current user is admin of the org or tenant owner
+    is_admin = await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id)
     
     if not is_admin and current_user.id != user_id:
         raise HTTPException(status_code=403, detail="Only org admins can remove other members from teams")
@@ -235,12 +241,8 @@ async def delete_team(team_id: int, session: AsyncSession = Depends(get_session)
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
         
-    # Check org admin
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == team.organization_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Check org admin status or tenant owner
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, team.organization_id):
         raise HTTPException(status_code=403, detail="Only organization admins can delete teams")
         
     await org_service.delete_team(team_id, session)
@@ -248,12 +250,8 @@ async def delete_team(team_id: int, session: AsyncSession = Depends(get_session)
 
 @router.delete("/organizations/{org_id}")
 async def delete_organization(org_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == org_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Check org admin status or tenant owner
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
         raise HTTPException(status_code=403, detail="Only organization admins can delete organizations")
         
     await org_service.delete_organization(org_id, session)
@@ -261,12 +259,8 @@ async def delete_organization(org_id: int, session: AsyncSession = Depends(get_s
 
 @router.delete("/organizations/{org_id}/users/{user_id}")
 async def remove_user_from_org(org_id: int, user_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check org admin
-    result = await session.exec(
-        select(UserOrganization)
-        .where(UserOrganization.user_id == current_user.id, UserOrganization.organization_id == org_id, UserOrganization.role == "admin")
-    )
-    if not result.first():
+    # Check org admin status or tenant owner
+    if not await check_is_org_admin_or_tenant_owner(session, current_user.id, org_id):
         # Allow self-removal? Typically yes, but require clarification or implemented as "leave org".
         # For this requirement "admin can delete user", strict admin check is safer.
         raise HTTPException(status_code=403, detail="Only organization admins can remove members")
