@@ -377,4 +377,19 @@ export const removeUserFromOrg = async (orgId: number, userId: number): Promise<
     await api.delete(`/organizations/${orgId}/users/${userId}`);
 };
 
+export const getAdminUsers = async (): Promise<User[]> => {
+    const response = await api.get("/admin/users");
+    return response.data;
+};
+
+export const getAdminOrgs = async (): Promise<Organization[]> => {
+    const response = await api.get("/admin/orgs");
+    return response.data;
+};
+
+export const assignUserToOrgs = async (userId: number, orgIds: number[], role: string): Promise<any> => {
+    const response = await api.post(`/admin/users/${userId}/assignments`, { org_ids: orgIds, role });
+    return response.data;
+};
+
 

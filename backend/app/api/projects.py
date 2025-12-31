@@ -4,9 +4,10 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_
 from app.core.database import get_session
 from app.core.auth import get_current_user
-from app.models import User, Project, Organization, UserOrganization, ProjectReadWithAccess, TeamProjectAccess, UserTeam, UserProjectAccess
+from app.models import User, Project, Organization, UserOrganization, ProjectReadWithAccess, TeamProjectAccess, UserTeam, UserProjectAccess, Tenant
 from app.services.org_service import org_service
 from app.services.access_service import access_service
+from app.core.rbac_service import rbac_service
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -39,14 +40,25 @@ async def create_project(project_in: ProjectCreate, session: AsyncSession = Depe
 
 @router.get("/projects", response_model=List[ProjectReadWithAccess])
 async def list_projects(org_id: Optional[int] = None, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Projects accessible via Org membership, Teams, or Direct access
-    org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
+    # Projects accessible via Org Admin, Tenant Owner, Teams, or Direct access
+    
+    # 1. Org Admin Access: All projects in orgs where user is admin
+    org_admin_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(
+        UserOrganization.user_id == current_user.id,
+        UserOrganization.role == "admin"
+    )
+    
+    # 2. Tenant Owner Access: All projects in orgs belonging to user's tenants
+    tenant_owner_stmt = select(Project.id).join(Organization).join(Tenant).where(Tenant.owner_id == current_user.id)
+
+    # 3. Team & Direct Access (Unchanged)
     team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
     user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
     
     combined_query = select(Project).where(
         or_(
-            Project.id.in_(org_stmt),
+            Project.id.in_(org_admin_stmt),
+            Project.id.in_(tenant_owner_stmt),
             Project.id.in_(team_stmt),
             Project.id.in_(user_stmt)
         )
@@ -87,20 +99,20 @@ async def get_project_members(project_id: int, session: AsyncSession = Depends(g
 
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check if user has admin access to project OR is org admin
-    role = await access_service.get_project_role(current_user.id, project_id, session)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required to delete project")
+    # Check if user has permission to delete project
+    allowed = await rbac_service.check_access(current_user.id, project_id, "delete", "project", session)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied to delete project")
     
     await org_service.delete_project(project_id, session)
     return {"status": "success"}
 
 @router.delete("/projects/{project_id}/teams/{team_id}")
 async def unlink_team_from_project(project_id: int, team_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check for admin access to the project
-    role = await access_service.get_project_role(current_user.id, project_id, session)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required to modify project access")
+    # Check for permission to update project (manage access)
+    allowed = await rbac_service.check_access(current_user.id, project_id, "update", "project", session)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied to modify project access")
         
     success = await org_service.unlink_team_from_project(team_id, project_id, session)
     if not success:
@@ -109,10 +121,10 @@ async def unlink_team_from_project(project_id: int, team_id: int, session: Async
 
 @router.delete("/projects/{project_id}/users/{user_id}")
 async def remove_user_project_access(project_id: int, user_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check for admin access to the project
-    role = await access_service.get_project_role(current_user.id, project_id, session)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required to modify project access")
+    # Check for permission
+    allowed = await rbac_service.check_access(current_user.id, project_id, "update", "project", session)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied to modify project access")
         
     success = await org_service.remove_user_project_access(user_id, project_id, session)
     if not success:
@@ -121,20 +133,20 @@ async def remove_user_project_access(project_id: int, user_id: int, session: Asy
 
 @router.post("/projects/{project_id}/teams/{team_id}")
 async def add_team_to_project(project_id: int, team_id: int, access: AccessUpdate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check for admin access to the project
-    role = await access_service.get_project_role(current_user.id, project_id, session)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required to modify project access")
+    # Check for permission
+    allowed = await rbac_service.check_access(current_user.id, project_id, "update", "project", session)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied to modify project access")
         
     await org_service.link_team_to_project(team_id, project_id, access.access_level, session)
     return {"status": "success"}
 
 @router.post("/projects/{project_id}/users/{user_id}")
 async def add_user_to_project(project_id: int, user_id: int, access: AccessUpdate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check for admin access to the project
-    role = await access_service.get_project_role(current_user.id, project_id, session)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required to modify project access")
+    # Check for permission
+    allowed = await rbac_service.check_access(current_user.id, project_id, "update", "project", session)
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Permission denied to modify project access")
         
     await org_service.add_user_project_access(user_id, project_id, access.access_level, session)
     return {"status": "success"}

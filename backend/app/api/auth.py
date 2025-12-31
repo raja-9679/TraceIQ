@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
+from typing import List, Optional
 
 from app.core.database import get_session
 from app.core.auth import (
@@ -13,7 +14,7 @@ from app.core.auth import (
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
 )
-from app.models import User, UserRead
+from app.models import User, UserRead, Role, Permission, RolePermission
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -28,6 +29,39 @@ class UserCreate(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+from app.core.rbac_service import rbac_service
+
+class PermissionsResponse(BaseModel):
+    permissions: List[str]
+    roles: List[str]
+
+@router.get("/permissions", response_model=PermissionsResponse)
+async def get_my_permissions(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session)
+) -> PermissionsResponse:
+    """
+    Get effective permissions and roles for the current user in a specific project.
+    """
+    roles = await rbac_service.get_user_roles_for_project(current_user.id, project_id, session)
+    role_names = [r.name for r in roles]
+    role_ids = [r.id for r in roles]
+    
+    if not role_ids:
+        return PermissionsResponse(permissions=[], roles=[])
+
+    # Fetch permissions
+    query = (
+        select(Permission)
+        .join(RolePermission, RolePermission.permission_id == Permission.id)
+        .where(RolePermission.role_id.in_(role_ids))
+    )
+    perms_result = await session.exec(query)
+    permissions = [f"{p.resource}:{p.action}" for p in perms_result.all()]
+    
+    return PermissionsResponse(permissions=permissions, roles=role_names)
 
 @router.post("/login", response_model=Token)
 async def login_for_access_token(

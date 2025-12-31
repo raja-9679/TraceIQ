@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.database import init_db
 from app.core.storage import minio_client
-from app.api import endpoints, auth, settings, orgs, projects
+from app.api import endpoints, auth, settings, orgs, projects, admin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -29,6 +29,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(orgs.router, prefix="/api", tags=["organizations"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 @app.get("/health")
 def health_check():

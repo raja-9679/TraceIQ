@@ -13,7 +13,8 @@ import {
     Bell,
     ChevronDown,
     Layers,
-    Plus
+    Plus,
+    UserCog
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -33,6 +34,7 @@ const navigation = [
     { name: 'Test Suites', href: '/suites', icon: FolderTree },
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
     { name: 'Users', href: '/users', icon: User },
+    { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
     { name: 'Organization', href: '/organization', icon: Users },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
