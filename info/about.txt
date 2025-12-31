@@ -17,7 +17,7 @@ Testing: Playwright (cross-browser, mobile, iframe, cross-domain)
 
 DevOps: Docker, scalable SaaS infrastructure
 
-Product Design: SaaS UI/UX, RBAC, teams & organization management
+Product Design: SaaS UI/UX, RBAC, user,teams & organization management
 
 Context
 
@@ -63,3 +63,5 @@ Mindset
 
 Design this as a long-lived SaaS platform, not a feature sprint.
 Think in systems, not files.
+
+the docker details of this project is in infrastructure folder

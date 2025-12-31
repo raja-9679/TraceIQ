@@ -37,10 +37,16 @@ class Role(SQLModel, table=True):
     # Relationships
     permissions: List["Permission"] = Relationship(link_model=RolePermission)
 
+class UserSystemRole(SQLModel, table=True):
+    user_id: int = Field(foreign_key="users.id", primary_key=True)
+    role_id: int = Field(foreign_key="role.id", primary_key=True)
+    tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id", primary_key=True) # Scoped to tenant
+
 class UserOrganization(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", primary_key=True)
     organization_id: int = Field(foreign_key="organization.id", primary_key=True)
-    role: str = Field(default="admin") # admin, member
+    role: str = Field(default="member") # DEPRECATED: use role_id
+    role_id: Optional[int] = Field(default=None, foreign_key="role.id")
 
 class UserTeam(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", primary_key=True)
@@ -239,6 +245,13 @@ class UserRead(SQLModel):
     email: str
     full_name: str
 
+class UserReadDetailed(UserRead):
+    role: Optional[str] = None
+    last_login_at: Optional[datetime] = None
+    is_active: bool = True
+    status: str = "active"
+    organization: Optional[str] = None # For Tenant Admin view
+
 class TestRun(TestRunBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     results: List["TestCaseResult"] = Relationship(back_populates="test_run", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
@@ -342,4 +355,10 @@ class OrganizationInvitation(SQLModel, table=True):
     organization_id: int = Field(foreign_key="organization.id")
     role: str = Field(default="member")
     invited_by_id: int = Field(foreign_key="users.id")
+    token: str = Field(unique=True, index=True)
+    expires_at: datetime
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    
+    # Project Scoping (Optional)
+    project_id: Optional[int] = Field(default=None)
+    project_role: Optional[str] = Field(default=None)
