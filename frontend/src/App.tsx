@@ -12,6 +12,7 @@ import TestBuilder from "@/pages/TestBuilder";
 import Settings from "@/pages/Settings";
 import Organization from "@/pages/Organization";
 import UsersPage from "@/pages/UsersPage";
+import AdminUsersPage from "@/pages/AdminUsersPage";
 import PrivateRoute from "@/components/PrivateRoute";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -37,6 +38,7 @@ function App() {
                 <Route path="suites/:suiteId/cases/:caseId/edit" element={<TestBuilder />} />
                 <Route path="organization" element={<Organization />} />
                 <Route path="users" element={<UsersPage />} />
+                <Route path="admin/users" element={<AdminUsersPage />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>

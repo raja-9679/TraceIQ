@@ -14,6 +14,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
+import { usePermission } from "@/hooks/usePermission";
+
 export default function TestSuites() {
     const queryClient = useQueryClient();
     const [newSuiteName, setNewSuiteName] = useState('');
@@ -42,8 +44,11 @@ export default function TestSuites() {
     });
 
     const activeProject = projects?.find(p => p.id === activeProjectId);
-    const isEditor = activeProject?.access_level === 'admin' || activeProject?.access_level === 'editor';
-    const isAdmin = activeProject?.access_level === 'admin';
+    const { hasPermission } = usePermission(activeProjectId ? Number(activeProjectId) : undefined);
+
+    // Legacy checks replaced by RBAC
+    // const isEditor = activeProject?.access_level === 'admin' || activeProject?.access_level === 'editor';
+    // const isAdmin = activeProject?.access_level === 'admin';
 
     const { data: suites, isLoading } = useQuery({
         queryKey: ['suites', activeProjectId],
@@ -163,12 +168,13 @@ export default function TestSuites() {
                             onChange={handleImportSuite}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             title="Import Suite"
+                            disabled={!hasPermission("update", "project")}
                         />
-                        <Button variant="outline" disabled={!isEditor}>
+                        <Button variant="outline" disabled={!hasPermission("update", "project")}>
                             <Upload className="mr-2 h-4 w-4" /> Import Suite
                         </Button>
                     </div>
-                    <Button onClick={() => setShowCreateDialog(true)} disabled={!isEditor}>
+                    <Button onClick={() => setShowCreateDialog(true)} disabled={!hasPermission("update", "project")}>
                         <Plus className="mr-2 h-4 w-4" /> Create Suite
                     </Button>
                 </div>
@@ -299,8 +305,8 @@ export default function TestSuites() {
                                     size="sm"
                                     className="flex-1"
                                     onClick={() => runMutation.mutate(suite.id)}
-                                    disabled={runMutation.isPending || !isEditor}
-                                    title={!isEditor ? "Editor access required to run tests" : ""}
+                                    disabled={runMutation.isPending || !hasPermission("update", "project")}
+                                    title={!hasPermission("update", "project") ? "Editor permissions required to run tests" : ""}
                                 >
                                     <Play className="mr-1 h-3 w-3" />
                                     {runMutation.isPending ? 'Starting...' : 'Run'}
@@ -324,7 +330,7 @@ export default function TestSuites() {
                             <FolderOpen className="h-16 w-16 mx-auto text-gray-300 mb-4" />
                             <h3 className="text-lg font-medium text-gray-900 mb-2">No test suites yet</h3>
                             <p className="text-gray-500 mb-6">Get started by creating your first test suite in <strong>{activeProject?.name}</strong></p>
-                            <Button onClick={() => setShowCreateDialog(true)} disabled={!isEditor}>
+                            <Button onClick={() => setShowCreateDialog(true)} disabled={!hasPermission("update", "project")}>
                                 <Plus className="mr-2 h-4 w-4" /> Create Your First Suite
                             </Button>
                         </>
