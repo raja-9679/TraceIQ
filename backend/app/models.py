@@ -15,7 +15,7 @@ class Tenant(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships
-    organizations: List["Organization"] = Relationship(back_populates="tenant")
+    workspaces: List["Workspace"] = Relationship(back_populates="tenant")
 
 class Permission(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -42,9 +42,9 @@ class UserSystemRole(SQLModel, table=True):
     role_id: int = Field(foreign_key="role.id", primary_key=True)
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id", primary_key=True) # Scoped to tenant
 
-class UserOrganization(SQLModel, table=True):
+class UserWorkspace(SQLModel, table=True):
     user_id: int = Field(foreign_key="users.id", primary_key=True)
-    organization_id: int = Field(foreign_key="organization.id", primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", primary_key=True)
     role: str = Field(default="member") # DEPRECATED: use role_id
     role_id: Optional[int] = Field(default=None, foreign_key="role.id")
 
@@ -69,7 +69,7 @@ class UserTestCaseAccess(SQLModel, table=True):
     test_case_id: int = Field(foreign_key="testcase.id", primary_key=True)
     access_level: str = Field(default="editor") # editor, viewer
 
-class Organization(SQLModel, table=True):
+class Workspace(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     description: Optional[str] = None
@@ -77,21 +77,21 @@ class Organization(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships
-    users: List["User"] = Relationship(back_populates="organizations", link_model=UserOrganization)
-    projects: List["Project"] = Relationship(back_populates="organization")
-    teams: List["Team"] = Relationship(back_populates="organization")
+    users: List["User"] = Relationship(back_populates="workspaces", link_model=UserWorkspace)
+    projects: List["Project"] = Relationship(back_populates="workspace")
+    teams: List["Team"] = Relationship(back_populates="workspace")
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id")
-    tenant: Optional[Tenant] = Relationship(back_populates="organizations")
+    tenant: Optional[Tenant] = Relationship(back_populates="workspaces")
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     description: Optional[str] = None
-    organization_id: int = Field(foreign_key="organization.id")
+    workspace_id: int = Field(foreign_key="workspace.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     # Relationships
-    organization: Organization = Relationship(back_populates="projects")
+    workspace: Workspace = Relationship(back_populates="projects")
     test_suites: List["TestSuite"] = Relationship(back_populates="project")
     teams: List["Team"] = Relationship(back_populates="projects", link_model=TeamProjectAccess)
     users: List["User"] = Relationship(back_populates="projects", link_model=UserProjectAccess)
@@ -100,7 +100,7 @@ class ProjectRead(SQLModel):
     id: int
     name: str
     description: Optional[str] = None
-    organization_id: int
+    workspace_id: int
     created_at: datetime
 
 class ProjectReadWithAccess(ProjectRead):
@@ -109,10 +109,10 @@ class ProjectReadWithAccess(ProjectRead):
 class Team(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
-    organization_id: int = Field(foreign_key="organization.id")
+    workspace_id: int = Field(foreign_key="workspace.id")
     
     # Relationships
-    organization: Organization = Relationship(back_populates="teams")
+    workspace: Workspace = Relationship(back_populates="teams")
     users: List["User"] = Relationship(back_populates="teams", link_model=UserTeam)
     projects: List["Project"] = Relationship(back_populates="teams", link_model=TeamProjectAccess)
 
@@ -250,7 +250,7 @@ class UserReadDetailed(UserRead):
     last_login_at: Optional[datetime] = None
     is_active: bool = True
     status: str = "active"
-    organization: Optional[str] = None # For Tenant Admin view
+    workspace: Optional[str] = None # For Tenant Admin view
 
 class TestRun(TestRunBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -312,7 +312,7 @@ class User(SQLModel, table=True):
     # Relationships
     settings: Optional["UserSettings"] = Relationship(back_populates="user", sa_relationship_kwargs={"uselist": False})
     test_runs: List["TestRun"] = Relationship(back_populates="user")
-    organizations: List[Organization] = Relationship(back_populates="users", link_model=UserOrganization)
+    workspaces: List[Workspace] = Relationship(back_populates="users", link_model=UserWorkspace)
     teams: List[Team] = Relationship(back_populates="users", link_model=UserTeam)
     projects: List[Project] = Relationship(back_populates="users", link_model=UserProjectAccess)
     test_case_overrides: List[TestCase] = Relationship(back_populates="user_access", link_model=UserTestCaseAccess)
@@ -322,11 +322,11 @@ class User(SQLModel, table=True):
 
 class AuditLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    entity_type: str # 'suite', 'case', 'org', 'team', 'project'
+    entity_type: str # 'suite', 'case', 'workspace', 'team', 'project'
     entity_id: int
     action: str # 'create', 'update', 'delete', 'import', 'invite'
     user_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    organization_id: Optional[int] = Field(default=None, foreign_key="organization.id")
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id")
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     changes: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     
@@ -349,10 +349,10 @@ class TeamInvitation(SQLModel, table=True):
     invited_by_id: int = Field(foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-class OrganizationInvitation(SQLModel, table=True):
+class WorkspaceInvitation(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     email: str = Field(index=True)
-    organization_id: int = Field(foreign_key="organization.id")
+    workspace_id: int = Field(foreign_key="workspace.id")
     role: str = Field(default="member")
     invited_by_id: int = Field(foreign_key="users.id")
     token: str = Field(unique=True, index=True)

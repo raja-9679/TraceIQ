@@ -2,8 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
     getAdminUsers,
-    getAdminOrgs,
-    assignUserToOrgs,
+    getAdminWorkspaces,
+    assignUserToWorkspaces,
     User,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -40,7 +40,7 @@ export default function AdminUsersPage() {
     const [isAssignOpen, setIsAssignOpen] = useState(false);
 
     // Assignment state
-    const [selectedOrgs, setSelectedOrgs] = useState<number[]>([]);
+    const [selectedWorkspaces, setSelectedWorkspaces] = useState<number[]>([]);
     const [role, setRole] = useState("member");
 
     const { data: users, isLoading: isLoadingUsers } = useQuery({
@@ -48,18 +48,18 @@ export default function AdminUsersPage() {
         queryFn: getAdminUsers,
     });
 
-    const { data: orgs } = useQuery({
-        queryKey: ["admin", "orgs"],
-        queryFn: getAdminOrgs,
+    const { data: workspaces } = useQuery({
+        queryKey: ["admin", "workspaces"],
+        queryFn: getAdminWorkspaces,
     });
 
     const assignMutation = useMutation({
-        mutationFn: (data: { userId: number; orgIds: number[]; role: string }) =>
-            assignUserToOrgs(data.userId, data.orgIds, data.role),
+        mutationFn: (data: { userId: number; workspaceIds: number[]; role: string }) =>
+            assignUserToWorkspaces(data.userId, data.workspaceIds, data.role),
         onSuccess: () => {
-            toast.success("User assigned to organizations");
+            toast.success("User assigned to workspaces");
             setIsAssignOpen(false);
-            setSelectedOrgs([]);
+            setSelectedWorkspaces([]);
         },
         onError: (error: any) => {
             toast.error(error.response?.data?.detail || "Failed to assign user");
@@ -73,28 +73,28 @@ export default function AdminUsersPage() {
 
     const handleAssignClick = (user: User) => {
         setSelectedUser(user);
-        setSelectedOrgs([]);
+        setSelectedWorkspaces([]);
         setRole("member");
         setIsAssignOpen(true);
     };
 
-    const handleOrgToggle = (orgId: number) => {
-        setSelectedOrgs((prev) =>
-            prev.includes(orgId)
-                ? prev.filter((id) => id !== orgId)
-                : [...prev, orgId]
+    const handleWorkspaceToggle = (workspaceId: number) => {
+        setSelectedWorkspaces((prev) =>
+            prev.includes(workspaceId)
+                ? prev.filter((id) => id !== workspaceId)
+                : [...prev, workspaceId]
         );
     };
 
     const handleAssignSubmit = () => {
-        if (selectedUser && selectedOrgs.length > 0) {
+        if (selectedUser && selectedWorkspaces.length > 0) {
             assignMutation.mutate({
                 userId: selectedUser.id,
-                orgIds: selectedOrgs,
+                workspaceIds: selectedWorkspaces,
                 role: role,
             });
         } else {
-            toast.error("Please select at least one organization");
+            toast.error("Please select at least one workspace");
         }
     };
 
@@ -115,7 +115,7 @@ export default function AdminUsersPage() {
                         Tenant User Management
                     </h1>
                     <p className="text-muted-foreground">
-                        Manage users across all organizations in your tenant.
+                        Manage users across all workspaces in your tenant.
                     </p>
                 </div>
             </div>
@@ -138,6 +138,7 @@ export default function AdminUsersPage() {
                         <TableRow>
                             <TableHead>User</TableHead>
                             <TableHead>Email</TableHead>
+                            <TableHead>Role</TableHead>
                             <TableHead>Status</TableHead>
                             <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
@@ -147,6 +148,13 @@ export default function AdminUsersPage() {
                             <TableRow key={user.id}>
                                 <TableCell className="font-medium">{user.full_name || "N/A"}</TableCell>
                                 <TableCell>{user.email}</TableCell>
+                                <TableCell>
+                                    <span className={`px-2 py-1 rounded-full text-xs font-semibold
+                                        ${user.role?.toLowerCase().includes('tenant admin') ? 'bg-purple-100 text-purple-800' :
+                                            user.role?.toLowerCase().includes('admin') ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-800'}`}>
+                                        {user.role || 'Member'}
+                                    </span>
+                                </TableCell>
                                 <TableCell>
                                     <span
                                         className={`px-2 py-1 rounded-full text-xs ${user.is_active
@@ -163,7 +171,7 @@ export default function AdminUsersPage() {
                                         size="sm"
                                         onClick={() => handleAssignClick(user)}
                                     >
-                                        Assign Orgs
+                                        Assign Workspaces
                                     </Button>
                                 </TableCell>
                             </TableRow>
@@ -182,7 +190,7 @@ export default function AdminUsersPage() {
             <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
-                        <DialogTitle>Assign Organizations</DialogTitle>
+                        <DialogTitle>Assign Workspaces</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="space-y-2">
@@ -198,26 +206,26 @@ export default function AdminUsersPage() {
                             </Select>
                         </div>
                         <div className="space-y-2">
-                            <label className="text-sm font-medium">Select Organizations</label>
+                            <label className="text-sm font-medium">Select Workspaces</label>
                             <div className="border rounded-md p-2 max-h-[200px] overflow-y-auto space-y-2">
-                                {orgs?.map((org) => (
-                                    <div key={org.id} className="flex items-center space-x-2">
+                                {workspaces?.map((ws) => (
+                                    <div key={ws.id} className="flex items-center space-x-2">
                                         <Checkbox
-                                            id={`org-${org.id}`}
-                                            checked={selectedOrgs.includes(org.id)}
-                                            onCheckedChange={() => handleOrgToggle(org.id)}
+                                            id={`ws-${ws.id}`}
+                                            checked={selectedWorkspaces.includes(ws.id)}
+                                            onCheckedChange={() => handleWorkspaceToggle(ws.id)}
                                         />
                                         <label
-                                            htmlFor={`org-${org.id}`}
+                                            htmlFor={`ws-${ws.id}`}
                                             className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                                         >
-                                            {org.name}
+                                            {ws.name}
                                         </label>
                                     </div>
                                 ))}
-                                {orgs?.length === 0 && (
+                                {workspaces?.length === 0 && (
                                     <p className="text-sm text-muted-foreground text-center py-2">
-                                        No organizations found in this tenant.
+                                        No workspaces found in this tenant.
                                     </p>
                                 )}
                             </div>
@@ -229,7 +237,7 @@ export default function AdminUsersPage() {
                         </Button>
                         <Button
                             onClick={handleAssignSubmit}
-                            disabled={assignMutation.isPending || selectedOrgs.length === 0}
+                            disabled={assignMutation.isPending || selectedWorkspaces.length === 0}
                         >
                             {assignMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Assign

@@ -4,15 +4,15 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
 from app.core.auth import get_current_user
-from app.models import User, Organization, UserOrganization, UserRead, Tenant, UserSystemRole, UserReadDetailed
-from app.services.org_service import org_service
+from app.models import User, Workspace, UserWorkspace, UserRead, Tenant, UserSystemRole, UserReadDetailed
+from app.services.workspace_service import workspace_service
 from app.services.rbac_service import rbac_service
 from pydantic import BaseModel
 
 router = APIRouter()
 
-class OrgAssignment(BaseModel):
-    org_ids: List[int]
+class WorkspaceAssignment(BaseModel):
+    workspace_ids: List[int]
     role: str = "member" # 'admin' or 'member'
 
 async def get_current_tenant_admin(
@@ -43,15 +43,15 @@ async def list_all_users(
         t_stmt = select(Tenant.id).where(Tenant.owner_id == current_user.id)
         tenant_ids = list((await session.exec(t_stmt)).all())
 
-    return await org_service.get_tenant_users_detailed(tenant_ids, session)
+    return await workspace_service.get_tenant_users_detailed(tenant_ids, session)
 
-@router.get("/orgs", response_model=List[Organization])
-async def list_tenant_orgs(
+@router.get("/workspaces", response_model=List[Workspace])
+async def list_tenant_workspaces(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_tenant_admin)
 ):
     """
-    List ALL organizations in the tenant(s) administered by this user.
+    List ALL workspaces in the tenant(s) administered by this user.
     """
     # 1. Get Tenants user administers
     stmt = select(UserSystemRole.tenant_id).where(UserSystemRole.user_id == current_user.id)
@@ -66,21 +66,21 @@ async def list_tenant_orgs(
     if not tenant_ids:
         return []
 
-    # 2. Get Orgs for these tenants
+    # 2. Get Workspaces for these tenants
     if tenant_ids:
-        orgs = await session.exec(select(Organization).where(Organization.tenant_id.in_(tenant_ids))) # type: ignore
-        return orgs.all()
+        workspaces = await session.exec(select(Workspace).where(Workspace.tenant_id.in_(tenant_ids))) # type: ignore
+        return workspaces.all()
     return []
 
 @router.post("/users/{user_id}/assignments")
-async def assign_user_to_orgs(
+async def assign_user_to_workspaces(
     user_id: int, 
-    assignment: OrgAssignment,
+    assignment: WorkspaceAssignment,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_tenant_admin)
 ):
     """
-    Bulk assign a user to multiple organizations.
+    Bulk assign a user to multiple workspaces.
     """
     target_user = await session.get(User, user_id)
     if not target_user:
@@ -97,23 +97,23 @@ async def assign_user_to_orgs(
 
     results = []
     
-    for org_id in assignment.org_ids:
-        # Get Org and check Tenant
-        org = await session.get(Organization, org_id)
-        if not org:
-            results.append({"org_id": org_id, "status": "error", "message": "Organization not found"})
+    for workspace_id in assignment.workspace_ids:
+        # Get Workspace and check Tenant
+        ws = await session.get(Workspace, workspace_id)
+        if not ws:
+            results.append({"workspace_id": workspace_id, "status": "error", "message": "Workspace not found"})
             continue
             
-        # Security: Ensure Admin manages the tenant this org belongs to
-        if not org.tenant_id or org.tenant_id not in admin_tenant_ids:
-             results.append({"org_id": org_id, "status": "error", "message": "Organization does not belong to your tenant"})
+        # Security: Ensure Admin manages the tenant this workspace belongs to
+        if not ws.tenant_id or ws.tenant_id not in admin_tenant_ids:
+             results.append({"workspace_id": workspace_id, "status": "error", "message": "Workspace does not belong to your tenant"})
              continue
 
-        # Add User to Org (using Service or Direct)
+        # Add User to Workspace (using Service or Direct)
         # Note: 'role' here is string "admin" or "member". Service handles RBAC mapping.
-        await org_service.invite_user_to_organization(
+        await workspace_service.invite_user_to_workspace(
             email=target_user.email,
-            org_id=org_id, 
+            workspace_id=workspace_id, 
             invited_by_id=current_user.id,
             role=assignment.role, 
             session=session
@@ -121,10 +121,10 @@ async def assign_user_to_orgs(
         # Auto-accept since admin is forcing assignment?
         # Service creates an invite if not strictly adding. 
         # But 'assign' implies immediate addition usually.
-        # The service `invite_user_to_organization` logic:
-        # If user exists, it ADDS them directly (check org_service code).
-        # Yes: "if user: ... uo = UserOrganization(...)".
+        # The service `invite_user_to_workspace` logic:
+        # If user exists, it ADDS them directly (check workspace_service code).
+        # Yes: "if user: ... uw = UserWorkspace(...)".
         
-        results.append({"org_id": org_id, "status": "success"})
+        results.append({"workspace_id": workspace_id, "status": "success"})
         
     return {"results": results}

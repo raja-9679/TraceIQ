@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.database import init_db
 from app.core.storage import minio_client
-from app.api import endpoints, auth, settings, orgs, projects, admin
+from app.api import endpoints, auth, settings, workspaces, projects, admin
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,7 +27,7 @@ app.add_middleware(
 app.include_router(endpoints.router, prefix="/api")
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
-app.include_router(orgs.router, prefix="/api", tags=["organizations"])
+app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 

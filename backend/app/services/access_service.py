@@ -2,7 +2,7 @@ from typing import Optional
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_, and_
 from app.models import (
-    User, UserOrganization, Organization, Project, Team, 
+    User, UserWorkspace, Workspace, Project, Team, 
     UserProjectAccess, TeamProjectAccess, TestCase, UserTestCaseAccess
 )
 
@@ -13,20 +13,20 @@ class AccessService:
         role_map = {"admin": 3, "editor": 2, "viewer": 1}
         min_val = role_map.get(min_role, 1)
 
-        # 1. Check if user is Org Admin
+        # 1. Check if user is Workspace Admin
         project = await session.get(Project, project_id)
         if not project:
             return False
             
-        org_access = await session.exec(
-            select(UserOrganization)
+        ws_access = await session.exec(
+            select(UserWorkspace)
             .where(
-                UserOrganization.user_id == user_id,
-                UserOrganization.organization_id == project.organization_id,
-                UserOrganization.role == "admin"
+                UserWorkspace.user_id == user_id,
+                UserWorkspace.workspace_id == project.workspace_id,
+                UserWorkspace.role == "admin"
             )
         )
-        if org_access.first():
+        if ws_access.first():
             return True
             
         # 2. Check direct User access to Project
@@ -60,21 +60,21 @@ class AccessService:
 
     @staticmethod
     async def get_project_role(user_id: int, project_id: int, session: AsyncSession) -> Optional[str]:
-        # Check Org Admin first
-        from app.models import Project, UserOrganization, UserProjectAccess, TeamProjectAccess
+        # Check Workspace Admin first
+        from app.models import Project, UserWorkspace, UserProjectAccess, TeamProjectAccess
         project = await session.get(Project, project_id)
         if not project:
             return None
             
-        org_access = await session.exec(
-            select(UserOrganization)
+        ws_access = await session.exec(
+            select(UserWorkspace)
             .where(
-                UserOrganization.user_id == user_id,
-                UserOrganization.organization_id == project.organization_id,
-                UserOrganization.role == "admin"
+                UserWorkspace.user_id == user_id,
+                UserWorkspace.workspace_id == project.workspace_id,
+                UserWorkspace.role == "admin"
             )
         )
-        if org_access.first():
+        if ws_access.first():
             return "admin"
             
         # Check direct User access

@@ -60,7 +60,8 @@ export default function SuiteDetails() {
         queryFn: () => api.get(`/suites/${suiteId}`).then(res => res.data),
         enabled: !!suiteId,
     });
-    const { hasPermission } = usePermission(suiteDataForPerms?.project_id);
+    const { can } = usePermission();
+    const projectId = suiteDataForPerms?.project_id;
 
     const [showSubModuleDialog, setShowSubModuleDialog] = useState(false);
     const [newModuleName, setNewModuleName] = useState('');
@@ -139,7 +140,7 @@ export default function SuiteDetails() {
 
     const createSubModule = useMutation({
         mutationFn: (data: { name: string; description?: string; parent_id: number }) =>
-            api.post(`/ suites`, data),
+            api.post(`/suites`, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
             setNewModuleName('');
@@ -166,11 +167,11 @@ export default function SuiteDetails() {
     };
 
     const deleteSuite = useMutation({
-        mutationFn: () => api.delete(`/ suites / ${suiteId}`),
+        mutationFn: () => api.delete(`/suites/${suiteId}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suite'] });
             const parentId = suite?.parent_id;
-            const targetPath = parentId ? `/ suites / ${parentId}` : '/suites';
+            const targetPath = parentId ? `/suites/${parentId}` : '/suites';
 
             setShowDeleteDialog(false);
             navigate(targetPath, {
@@ -184,7 +185,7 @@ export default function SuiteDetails() {
     });
 
     const deleteTestCase = useMutation({
-        mutationFn: (id: number) => api.delete(`/ cases / ${id}`),
+        mutationFn: (id: number) => api.delete(`/cases/${id}`),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
             setShowDeleteTestCaseDialog(false);
@@ -197,7 +198,7 @@ export default function SuiteDetails() {
     });
 
     const updateSettings = useMutation({
-        mutationFn: (data: any) => api.put(`/ suites / ${suiteId}`, data),
+        mutationFn: (data: any) => api.put(`/suites/${suiteId}`, data),
         onSuccess: (_data, variables) => {
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
             if (variables.successMessage) {
@@ -395,7 +396,7 @@ export default function SuiteDetails() {
                         {suite.parent && (
                             <>
                                 <ChevronRight className="h-3 w-3 mx-2 text-muted-foreground/50" />
-                                <Button variant="link" size="sm" className="p-0 h-auto text-muted-foreground hover:text-primary font-medium" onClick={() => navigate(`/ suites / ${suite.parent.id}`)}>
+                                <Button variant="link" size="sm" className="p-0 h-auto text-muted-foreground hover:text-primary font-medium" onClick={() => navigate(`/suites/${suite.parent.id}`)}>
                                     {suite.parent.name}
                                 </Button>
                             </>
@@ -455,7 +456,7 @@ export default function SuiteDetails() {
                     >
                         <Download className="mr-2 h-4 w-4" /> Export Module
                     </Button>
-                    {hasPermission("delete", "project") && (
+                    {can("project:delete", { projectId }) && (
                         <Button
                             variant="outline"
                             className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/20"
@@ -589,12 +590,12 @@ export default function SuiteDetails() {
                             <div className="flex items-center gap-2">
                                 {suite.total_sub_modules === 0 && (
                                     <div className="flex items-center gap-2">
-                                        {hasPermission("create", "test_case") && (
+                                        {can("test:create", { projectId }) && (
                                             <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
                                                 <Plus className="mr-2 h-4 w-4" /> New Test Case
                                             </Button>
                                         )}
-                                        {hasPermission("create", "test_case") && (
+                                        {can("test:create", { projectId }) && (
                                             <div className="relative">
                                                 <input
                                                     type="file"
@@ -613,12 +614,12 @@ export default function SuiteDetails() {
                                 {
                                     suite.total_test_cases === 0 && (
                                         <div className="flex items-center gap-2">
-                                            {hasPermission("update", "project") && ( // Creating sub-module is structure update
+                                            {can("project:manage", { projectId }) && ( // Creating sub-module is structure update
                                                 <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}>
                                                     <FolderOpen className="mr-2 h-4 w-4" /> New Sub-Module
                                                 </Button>
                                             )}
-                                            {hasPermission("update", "project") && (
+                                            {can("project:manage", { projectId }) && (
                                                 <div className="relative">
                                                     <input
                                                         type="file"
@@ -980,7 +981,7 @@ export default function SuiteDetails() {
                                                                         <Button variant="ghost" size="sm" onClick={() => handleRunTestCase(testCase.id)} className="h-8 w-8 p-0 hover:bg-green-50 hover:text-green-600">
                                                                             <Play className="h-4 w-4" />
                                                                         </Button>
-                                                                        {hasPermission("update", "test_case") && (
+                                                                        {can("test:create", { projectId }) && (
                                                                             <Button variant="ghost" size="sm" onClick={() => navigate(`/suites/${suiteId}/cases/${testCase.id}/edit`)} className="h-8 w-8 p-0">
                                                                                 <Edit className="h-4 w-4" />
                                                                             </Button>
@@ -988,7 +989,7 @@ export default function SuiteDetails() {
                                                                         <Button variant="ghost" size="sm" onClick={() => handleExportCase(testCase.id, testCase.name)} className="h-8 w-8 p-0 text-muted-foreground hover:text-primary">
                                                                             <Download className="h-4 w-4" />
                                                                         </Button>
-                                                                        {hasPermission("delete", "test_case") && (
+                                                                        {can("test:create", { projectId }) && (
                                                                             <Button variant="ghost" size="sm" onClick={() => {
                                                                                 setTestCaseToDelete({ id: testCase.id, name: testCase.name });
                                                                                 setShowDeleteTestCaseDialog(true);
@@ -1011,12 +1012,12 @@ export default function SuiteDetails() {
                                                 <p className="text-muted-foreground mb-6 max-w-sm mx-auto">Get started by adding your first test case to this suite. You can define steps and assertions.</p>
                                                 {suite.total_sub_modules === 0 && (
                                                     <div className="flex items-center gap-2 justify-center">
-                                                        {hasPermission("create", "test_case") && (
+                                                        {can("test:create", { projectId }) && (
                                                             <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}>
                                                                 <Plus className="mr-2 h-4 w-4" /> Add Test Case
                                                             </Button>
                                                         )}
-                                                        {hasPermission("create", "test_case") && (
+                                                        {can("test:create", { projectId }) && (
                                                             <div className="relative">
                                                                 <input
                                                                     type="file"

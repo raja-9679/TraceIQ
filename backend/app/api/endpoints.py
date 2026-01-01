@@ -11,7 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user
 from app.models import (
-    User, AuditLog, AuditLogRead, Project, UserOrganization, UserProjectAccess,
+    User, AuditLog, AuditLogRead, Project, UserWorkspace, UserProjectAccess,
     TestSuite, TestSuiteRead, TestSuiteReadWithChildren, TestSuiteUpdate, 
     TestCase, TestCaseRead, TestCaseUpdate, TestCaseResult, TestCaseResultRead,
     TestRun, TestRunRead, TestStatus, ExecutionMode, UserRead, UserSettings
@@ -21,12 +21,13 @@ router = APIRouter()
 
 from app.services.test_service import test_service
 from app.services.access_service import access_service
+from app.services.rbac_service import rbac_service
 
 @router.post("/suites", response_model=TestSuiteReadWithChildren)
 async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # If no project_id provided, try to find a default project for the user
     if not suite.project_id:
-        org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
+        org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
         from app.models import TeamProjectAccess, UserTeam, UserProjectAccess
         team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
         user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
@@ -49,8 +50,9 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
             raise HTTPException(status_code=400, detail="Project ID is required, and no default project was found.")
 
     # Check project access
-    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="editor"):
-        raise HTTPException(status_code=403, detail="You do not have permission to create suites/modules in this project")
+    from app.services.rbac_service import rbac_service
+    if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=suite.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You do not have permission to create suites/modules in this project")
 
     # Enforce unique naming among siblings
     result = await session.exec(
@@ -125,22 +127,48 @@ async def list_test_suites(
 ):
     # Filter by user access
     # Filter by user access
-    # We first find all projects the user can see
-    org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
-    from app.models import TeamProjectAccess, UserTeam, UserProjectAccess
+    # Check if user is Tenant Admin
+    from app.services.rbac_service import rbac_service
+    # Optimize: check if user is a tenant admin for ANY tenant
+    # For now, let's just check if they have permission to view projects globally or in the target project's scope if provided.
+    
+    # If project_id is provided, we check specific permission below.
+    # If NOT provided, we need to list ALL suites they have access to.
+    
+    # Existing logic builds a list of "allowed projects" based on direct membership.
+    # We should add "Projects in Tenants where I am Tenant Admin".
+    
+    org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
+    
+    from app.models import TeamProjectAccess, UserTeam, UserProjectAccess, UserSystemRole, Workspace, Role
+    
     team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
     user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
     
+    # Tenant Admin Logic: Get all projects in workspaces belonging to tenants managed by this user
+    tenant_admin_stmt = (
+        select(Project.id)
+        .join(Workspace, Workspace.id == Project.workspace_id)
+        .join(UserSystemRole, UserSystemRole.tenant_id == Workspace.tenant_id)
+        .where(
+            UserSystemRole.user_id == current_user.id,
+            UserSystemRole.role_id.in_(
+                select(Role.id).where(Role.name == "Tenant Admin")
+            )
+        )
+    )
+
     query = select(TestSuite).where(
         or_(
             TestSuite.project_id.in_(org_stmt),
             TestSuite.project_id.in_(team_stmt),
-            TestSuite.project_id.in_(user_stmt)
+            TestSuite.project_id.in_(user_stmt),
+            TestSuite.project_id.in_(tenant_admin_stmt)
         )
     )
     
     if project_id:
-        if not await access_service.has_project_access(current_user.id, project_id, session):
+        if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
             raise HTTPException(status_code=403, detail="Access denied to this project")
         query = query.where(TestSuite.project_id == project_id)
         
@@ -184,7 +212,8 @@ async def get_test_suite(suite_id: int, session: AsyncSession = Depends(get_sess
         raise HTTPException(status_code=404, detail="Suite not found")
     
     # Check project access
-    if not await access_service.has_project_access(current_user.id, suite.project_id, session):
+    from app.services.rbac_service import rbac_service
+    if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Access denied")
     
     total_cases, total_subs = await test_service.count_recursive_items(suite.id, session)
@@ -209,8 +238,8 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
         raise HTTPException(status_code=404, detail="Suite not found")
     
     # Check project access - ADMIN required for editing modules
-    if not await access_service.has_project_access(current_user.id, db_suite.project_id, session, min_role="admin"):
-        raise HTTPException(status_code=403, detail="Special 'admin' permission required to edit suites/modules")
+    if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=db_suite.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You cannot edit suites in this project")
 
     # Update fields
     update_data = suite_update.model_dump(exclude_unset=True)
@@ -262,8 +291,8 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
         raise HTTPException(status_code=404, detail="Suite not found")
     
     # Check project access - ADMIN required for deleting modules
-    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="admin"):
-        raise HTTPException(status_code=403, detail="Special 'admin' permission required to delete suites/modules")
+    if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=suite.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You cannot delete suites in this project")
     
     await test_service.recursive_delete_suite(suite_id, session)
     
@@ -279,8 +308,8 @@ async def create_test_case(suite_id: int, case: TestCase, session: AsyncSession 
         raise HTTPException(status_code=404, detail="Suite not found")
     
     # Check project access
-    if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="editor"):
-        raise HTTPException(status_code=403, detail="Access denied")
+    if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=suite.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You cannot create test cases in this project")
 
     # Enforce mutual exclusivity
     result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
@@ -317,8 +346,8 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
     if not db_case:
         raise HTTPException(status_code=404, detail="Test case not found")
     
-    if not await access_service.has_test_case_access(current_user.id, case_id, session, min_role="editor"):
-        raise HTTPException(status_code=403, detail="Access denied")
+    if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=db_case.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You cannot update test cases in this project")
 
     case_data = case_update.model_dump(exclude_unset=True)
     changes = {}
@@ -349,12 +378,16 @@ async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_ses
     if not case:
         raise HTTPException(status_code=404, detail="Test case not found")
     
-    if not await access_service.has_test_case_access(current_user.id, case_id, session, min_role="editor"):
-        raise HTTPException(status_code=403, detail="Access denied")
+    if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=case.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You cannot delete test cases in this project")
     
     # Delete associated TestRuns
     result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case_id))
     for run in result_runs.all():
+        run_results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+        for res in run_results.all():
+            await session.delete(res)
+            
         minio_client.delete_run_artifacts(run.id)
         await session.delete(run)
 
@@ -440,7 +473,7 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
 
 @router.get("/audit/{entity_type}/{entity_id}", response_model=List[AuditLogRead])
 async def get_audit_log(entity_type: str, entity_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Basic permission check: user must belong to the organization of the entity
+    # Basic permission check: user must belong to the workspace of the entity
     # This needs more granular logic based on entity_type
     query = select(AuditLog).options(selectinload(AuditLog.user)).order_by(AuditLog.timestamp.desc())
     
@@ -526,8 +559,8 @@ async def create_run(
                             await session.flush()
                             created_runs.append(run)
                             try:
-                                from app.worker import run_test_suite_task
-                                run_test_suite_task.delay(run.id)
+                                from app.worker import run_test_suite
+                                run_test_suite.delay(run.id)
                             except Exception as e:
                                 print(f"Failed to queue run {run.id}: {e}")
 
@@ -559,8 +592,8 @@ async def create_run(
                         await session.flush()
                         created_runs.append(run)
                         try:
-                            from app.worker import run_test_suite_task
-                            run_test_suite_task.delay(run.id)
+                            from app.worker import run_test_suite
+                            run_test_suite.delay(run.id)
                         except Exception as e:
                             print(f"Failed to queue run {run.id}: {e}")
 
@@ -603,8 +636,8 @@ async def create_run(
                     await session.flush()
                     created_runs.append(run)
                     try:
-                        from app.worker import run_test_suite_task
-                        run_test_suite_task.delay(run.id)
+                        from app.worker import run_test_suite
+                        run_test_suite.delay(run.id)
                     except Exception as e:
                         print(f"Failed to queue run {run.id}: {e}")
         else:
@@ -641,7 +674,7 @@ async def get_runs(
     current_user: User = Depends(get_current_user)
 ):
     # Build query with filters and security join
-    org_stmt = select(Project.id).join(UserOrganization, UserOrganization.organization_id == Project.organization_id).where(UserOrganization.user_id == current_user.id)
+    org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
     from app.models import TeamProjectAccess, UserTeam, UserProjectAccess
     team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
     user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
