@@ -8,7 +8,7 @@ export function usePermission() {
         staleTime: 5 * 60 * 1000, // Cache for 5 minutes
     });
 
-    const can = (action: string, context?: { orgId?: number; projectId?: number }) => {
+    const can = (action: string, context?: { workspaceId?: number; projectId?: number }) => {
         if (!permissions) return false;
 
         const [scope, act] = action.split(':');
@@ -19,10 +19,10 @@ export function usePermission() {
         // If wildcard (e.g. "tenant:*") - simplistic implementation
         if (permissions.system.includes(`${scope}:*`)) return true;
 
-        // 2. Check Org Scope
-        if (context?.orgId && permissions.organization[context.orgId]) {
-            const orgPerms = permissions.organization[context.orgId];
-            if (orgPerms.includes(action)) return true;
+        // 2. Check Workspace Scope
+        if (context?.workspaceId && permissions.workspace?.[context.workspaceId]) {
+            const wsPerms = permissions.workspace[context.workspaceId];
+            if (wsPerms.includes(action)) return true;
         }
 
         // 3. Check Project Scope

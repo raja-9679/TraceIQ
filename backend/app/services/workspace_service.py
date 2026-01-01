@@ -1,13 +1,13 @@
 from typing import Optional, List
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
-from app.models import Organization, UserOrganization, User, Team, UserTeam, Project, AuditLog, UserProjectAccess
+from app.models import Workspace, UserWorkspace, User, Team, UserTeam, Project, AuditLog, UserProjectAccess
 from datetime import datetime, timedelta
 import secrets
 
-class OrgService:
+class WorkspaceService:
     @staticmethod
-    async def create_organization(
+    async def create_workspace(
         name: str, 
         owner_id: int, 
         session: AsyncSession, 
@@ -16,28 +16,28 @@ class OrgService:
         auto_create_project: bool = False,
         project_name: Optional[str] = None,
         tenant_id: Optional[int] = None
-    ) -> Organization:
+    ) -> Workspace:
         from app.services.rbac_service import rbac_service
         
-        org = Organization(name=name, description=description, tenant_id=tenant_id)
-        session.add(org)
+        ws = Workspace(name=name, description=description, tenant_id=tenant_id)
+        session.add(ws)
         await session.flush()
         
-        # Link owner as Org Admin
-        admin_role = await rbac_service.get_role_by_name(session, "Organization Admin")
+        # Link owner as Workspace Admin
+        admin_role = await rbac_service.get_role_by_name(session, "Workspace Admin")
         if not admin_role:
-             raise Exception("System Role 'Organization Admin' not found. Run setup_rbac.py")
+             raise Exception("System Role 'Workspace Admin' not found. Run setup_rbac.py")
              
-        user_org = UserOrganization(user_id=owner_id, organization_id=org.id, role_id=admin_role.id, role="admin")
-        session.add(user_org)
+        user_ws = UserWorkspace(user_id=owner_id, workspace_id=ws.id, role_id=admin_role.id, role="admin")
+        session.add(user_ws)
         
         # Audit log
         audit = AuditLog(
-            entity_type="org",
-            entity_id=org.id,
+            entity_type="workspace",
+            entity_id=ws.id,
             action="create",
             user_id=owner_id,
-            organization_id=org.id,
+            workspace_id=ws.id,
             changes={"name": name}
         )
         session.add(audit)
@@ -47,7 +47,7 @@ class OrgService:
             project = Project(
                 name=project_name or "Initial Project",
                 description="Your first project",
-                organization_id=org.id
+                workspace_id=ws.id
             )
             session.add(project)
             await session.flush() # Get project id
@@ -64,24 +64,24 @@ class OrgService:
 
         if commit:
             await session.commit()
-            await session.refresh(org)
+            await session.refresh(ws)
         else:
             await session.flush()
-        return org
+        return ws
 
     @staticmethod
-    async def get_user_organizations(user_id: int, session: AsyncSession) -> List[Organization]:
+    async def get_user_workspaces(user_id: int, session: AsyncSession) -> List[Workspace]:
         result = await session.exec(
-            select(Organization)
-            .join(UserOrganization)
-            .where(UserOrganization.user_id == user_id)
+            select(Workspace)
+            .join(UserWorkspace)
+            .where(UserWorkspace.user_id == user_id)
         )
         return result.all()
 
     @staticmethod
-    async def create_project(name: str, org_id: int, creator_id: int, session: AsyncSession, description: Optional[str] = None, commit: bool = True) -> Project:
+    async def create_project(name: str, workspace_id: int, creator_id: int, session: AsyncSession, description: Optional[str] = None, commit: bool = True) -> Project:
         from app.services.rbac_service import rbac_service
-        project = Project(name=name, description=description, organization_id=org_id)
+        project = Project(name=name, description=description, workspace_id=workspace_id)
         session.add(project)
         await session.flush()
         
@@ -101,7 +101,7 @@ class OrgService:
             entity_id=project.id,
             action="create",
             user_id=creator_id,
-            organization_id=org_id,
+            workspace_id=workspace_id,
             changes={"name": name}
         )
         session.add(audit)
@@ -245,32 +245,32 @@ class OrgService:
         return False
 
     @staticmethod
-    async def get_org_members(org_id: int, session: AsyncSession) -> List[User]:
-        from app.models import User, UserOrganization
+    async def get_workspace_members(workspace_id: int, session: AsyncSession) -> List[User]:
+        from app.models import User, UserWorkspace
         result = await session.exec(
             select(User)
-            .join(UserOrganization)
-            .where(UserOrganization.organization_id == org_id)
+            .join(UserWorkspace)
+            .where(UserWorkspace.workspace_id == workspace_id)
         )
         return result.all()
 
     @staticmethod
-    async def get_org_members_detailed(org_id: int, session: AsyncSession, viewer_id: int):
-        from app.models import User, UserOrganization, Role, UserProjectAccess
+    async def get_workspace_members_detailed(workspace_id: int, session: AsyncSession, viewer_id: int):
+        from app.models import User, UserWorkspace, Role, UserProjectAccess
         from app.services.rbac_service import rbac_service
         
         # 1. Determine Viewer's Scope
-        # Check if Tenant Admin or Org Admin
+        # Check if Tenant Admin or Workspace Admin
         is_tenant_admin = await rbac_service.has_permission(session, viewer_id, "tenant:manage_settings") # Proxy for Tenant Admin
-        is_org_admin = await rbac_service.has_permission(session, viewer_id, "org:manage_users", org_id=org_id)
+        is_workspace_admin = await rbac_service.has_permission(session, viewer_id, "workspace:manage_users", workspace_id=workspace_id)
         
-        if is_tenant_admin or is_org_admin:
-            # Full Access: Return all org members
+        if is_tenant_admin or is_workspace_admin:
+            # Full Access: Return all workspace members
             stmt = (
-                select(User, UserOrganization.role, Role.name)
-                .join(UserOrganization, UserOrganization.user_id == User.id)
-                .outerjoin(Role, UserOrganization.role_id == Role.id)
-                .where(UserOrganization.organization_id == org_id)
+                select(User, UserWorkspace.role, Role.name)
+                .join(UserWorkspace, UserWorkspace.user_id == User.id)
+                .outerjoin(Role, UserWorkspace.role_id == Role.id)
+                .where(UserWorkspace.workspace_id == workspace_id)
             )
         else:
             # Restricted Access: Project Admin / Viewer
@@ -289,11 +289,11 @@ class OrgService:
                 
             # Select users who are in these projects
             stmt = (
-                select(User, UserOrganization.role, Role.name)
-                .join(UserOrganization, UserOrganization.user_id == User.id)
-                .outerjoin(Role, UserOrganization.role_id == Role.id)
+                select(User, UserWorkspace.role, Role.name)
+                .join(UserWorkspace, UserWorkspace.user_id == User.id)
+                .outerjoin(Role, UserWorkspace.role_id == Role.id)
                 .join(UserProjectAccess, UserProjectAccess.user_id == User.id)
-                .where(UserOrganization.organization_id == org_id)
+                .where(UserWorkspace.workspace_id == workspace_id)
                 .where(UserProjectAccess.project_id.in_(p_ids)) # type: ignore
                 .distinct()
             )
@@ -320,62 +320,101 @@ class OrgService:
 
     @staticmethod
     async def get_tenant_users_detailed(tenant_ids: List[int], session: AsyncSession):
-        from app.models import User, UserOrganization, Organization, Role
+        from app.models import User, UserWorkspace, Workspace, UserSystemRole, Role
         
         if not tenant_ids:
             return []
             
-        stmt = (
-            select(User, UserOrganization.role, Role.name, Organization.name)
-            .join(UserOrganization, UserOrganization.user_id == User.id)
-            .join(Organization, UserOrganization.organization_id == Organization.id)
-            .outerjoin(Role, UserOrganization.role_id == Role.id)
-            .where(Organization.tenant_id.in_(tenant_ids)) # type: ignore
+        # 1. Fetch Users in the Tenant (via Workspaces)
+        ws_stmt = (
+            select(User.id, User.email, User.full_name, User.last_login_at, User.is_active, UserWorkspace.role, Role.name)
+            .join(UserWorkspace, UserWorkspace.user_id == User.id)
+            .join(Workspace, UserWorkspace.workspace_id == Workspace.id)
+            .outerjoin(Role, UserWorkspace.role_id == Role.id)
+            .where(Workspace.tenant_id.in_(tenant_ids))
         )
+        ws_members = (await session.exec(ws_stmt)).all()
         
-        result = await session.exec(stmt)
-        members = result.all()
-        
-        # Flatten and formatting
-        # A user might be in multiple orgs. Tenant Admin wants to see "User List".
-        # Should we show duplicates or merge?
-        # User list "in all org". Implies listed per org or just unique users?
-        # "view all the user in all org".
-        # Usually an Admin User Table is unique users.
-        # But for "assign to specific org" flow, we need to know who is where?
-        # Let's return unique users but maybe annotate with orgs?
-        # Or just return plain list for now as per `UserRead` model (simplified).
-        # Actually `DetailedMember` expects simplified fields. 
-        # Let's return unique users for the main table.
+        # 2. Fetch System Users (Tenant Admins) directly linked to Tenant
+        sys_stmt = (
+            select(User.id, User.email, User.full_name, User.last_login_at, User.is_active, Role.name)
+            .join(UserSystemRole, UserSystemRole.user_id == User.id)
+            .join(Role, UserSystemRole.role_id == Role.id)
+            .where(UserSystemRole.tenant_id.in_(tenant_ids))
+        )
+        sys_members = (await session.exec(sys_stmt)).all()
         
         unique_users = {}
-        for m in members:
-            uid = m[0].id
+        
+        # Helper to determine priority
+        def get_priority(role_name: str) -> int:
+             if not role_name: return 0
+             r = role_name.lower()
+             if "tenant admin" in r: return 100
+             if "project admin" in r: return 50  # Rare to see at this level, but handled
+             if "workspace admin" in r: return 40 # Changed to Workspace Admin
+             if "admin" in r: return 40 # Generic admin
+             if "editor" in r: return 30
+             return 10 # Member/Viewer
+        
+        # Process Workspace Members first
+        for m in ws_members:
+            uid = m[0]
+            role_name = m[6] if m[6] else m[5] # Role Name from Role table OR string fallback
+            
             if uid not in unique_users:
                 unique_users[uid] = {
                     "id": uid,
-                    "full_name": m[0].full_name,
-                    "email": m[0].email,
-                    "role": m[2] if m[2] else m[1], # Shows role in FIRST found org. imperfect but fits MVP
-                    "last_login_at": m[0].last_login_at,
-                    "is_active": m[0].is_active,
-                    "status": "active",
-                    # Add org info?
-                    "organization": m[3]
+                    "email": m[1],
+                    "full_name": m[2],
+                    "last_login_at": m[3],
+                    "is_active": m[4],
+                    "role": role_name,
+                    "status": "active"
                 }
-        
+            else:
+                 # Update role if higher priority
+                 current_p = get_priority(unique_users[uid]["role"])
+                 new_p = get_priority(role_name)
+                 if new_p > current_p:
+                     unique_users[uid]["role"] = role_name
+                     
+        # Process Tenant Admins (Override or Add)
+        for sm in sys_members:
+            uid = sm[0]
+            role_name = sm[5] # Role Name associated with System Role
+            
+            if uid not in unique_users:
+                 unique_users[uid] = {
+                    "id": uid,
+                    "email": sm[1],
+                    "full_name": sm[2],
+                    "last_login_at": sm[3],
+                    "is_active": sm[4],
+                    "role": role_name,
+                    "status": "active"
+                }
+            else:
+                 # Tenant Admin should act as override/highest priority
+                 # We assume System Role -> Tenant Admin is high priority
+                 # But let's check explicitly
+                 current_p = get_priority(unique_users[uid]["role"])
+                 new_p = get_priority(role_name)
+                 if new_p > current_p:
+                     unique_users[uid]["role"] = role_name
+
         return list(unique_users.values())
 
     @staticmethod
-    async def invite_user_to_organization(email: str, org_id: int, invited_by_id: int, role: str, session: AsyncSession, project_id: Optional[int] = None, project_role: Optional[str] = None):
-        from app.models import User, UserOrganization, OrganizationInvitation
+    async def invite_user_to_workspace(email: str, workspace_id: int, invited_by_id: int, role: str, session: AsyncSession, project_id: Optional[int] = None, project_role: Optional[str] = None):
+        from app.models import User, UserWorkspace, WorkspaceInvitation
         from app.services.rbac_service import rbac_service
         
         # Map string role to RBAC Role
-        # UI sends 'admin' or 'member'. Map to 'Organization Admin' / 'Organization Member'
-        rbac_role_name = "Organization Member"
+        # UI sends 'admin' or 'member'. Map to 'Workspace Admin' / 'Workspace Member'
+        rbac_role_name = "Workspace Member"
         if role == "admin": 
-            rbac_role_name = "Organization Admin"
+            rbac_role_name = "Workspace Admin"
             
         rbac_role = await rbac_service.get_role_by_name(session, rbac_role_name)
         role_id = rbac_role.id if rbac_role else None
@@ -384,26 +423,26 @@ class OrgService:
         result = await session.exec(select(User).where(User.email == email))
         user = result.first()
         if user:
-            # Check if already in org
+            # Check if already in workspace
             result = await session.exec(
-                select(UserOrganization)
-                .where(UserOrganization.user_id == user.id, UserOrganization.organization_id == org_id)
+                select(UserWorkspace)
+                .where(UserWorkspace.user_id == user.id, UserWorkspace.workspace_id == workspace_id)
             )
             if not result.first():
-                uo = UserOrganization(user_id=user.id, organization_id=org_id, role=role, role_id=role_id)
-                session.add(uo)
+                uw = UserWorkspace(user_id=user.id, workspace_id=workspace_id, role=role, role_id=role_id)
+                session.add(uw)
             
             # If Project Access Requested
             if project_id and project_role:
-                await OrgService.add_user_project_access(user.id, project_id, project_role, session)
+                await WorkspaceService.add_user_project_access(user.id, project_id, project_role, session)
 
             await session.commit()
-            return {"status": "success", "message": "User added to organization"}
+            return {"status": "success", "message": "User added to workspace"}
         else:
             # Check if already invited
             result = await session.exec(
-                select(OrganizationInvitation)
-                .where(OrganizationInvitation.email == email, OrganizationInvitation.organization_id == org_id)
+                select(WorkspaceInvitation)
+                .where(WorkspaceInvitation.email == email, WorkspaceInvitation.workspace_id == workspace_id)
             )
             existing_invite = result.first()
             if not existing_invite:
@@ -412,9 +451,9 @@ class OrgService:
                 token = secrets.token_urlsafe(32)
                 expires_at = datetime.utcnow() + timedelta(days=7) # 7 days expiry
 
-                invite = OrganizationInvitation(
+                invite = WorkspaceInvitation(
                     email=email,
-                    organization_id=org_id,
+                    workspace_id=workspace_id,
                     role=role,
                     invited_by_id=invited_by_id,
                     token=token,
@@ -425,17 +464,17 @@ class OrgService:
                 session.add(invite)
                 await session.commit()
                 # In a real app, send email with link: f"{settings.FRONTEND_URL}/join?token={token}"
-                return {"status": "invited", "message": "User invited to organization", "token": token}
+                return {"status": "invited", "message": "User invited to workspace", "token": token}
             else:
                  # Update existing invite if new scope?
                  # ideally we should, but for now simple return
                  return {"status": "exists", "message": "User already has a pending invitation"}
 
     @staticmethod
-    async def get_org_invitations(org_id: int, session: AsyncSession):
-        from app.models import OrganizationInvitation
+    async def get_workspace_invitations(workspace_id: int, session: AsyncSession):
+        from app.models import WorkspaceInvitation
         result = await session.exec(
-            select(OrganizationInvitation).where(OrganizationInvitation.organization_id == org_id)
+            select(WorkspaceInvitation).where(WorkspaceInvitation.workspace_id == workspace_id)
         )
         invites = result.all()
         return [
@@ -444,14 +483,15 @@ class OrgService:
                 "email": i.email,
                 "role": i.role,
                 "created_at": i.created_at,
-                "status": "invited"
+                "status": "invited",
+                "token": i.token
             }
             for i in invites
         ]
 
     @staticmethod
-    async def get_org_teams(org_id: int, session: AsyncSession) -> List[Team]:
-        result = await session.exec(select(Team).where(Team.organization_id == org_id))
+    async def get_workspace_teams(workspace_id: int, session: AsyncSession) -> List[Team]:
+        result = await session.exec(select(Team).where(Team.workspace_id == workspace_id))
         return result.all()
 
     @staticmethod
@@ -478,44 +518,44 @@ class OrgService:
             await session.commit()
 
     @staticmethod
-    async def delete_organization(org_id: int, session: AsyncSession):
-        org = await session.get(Organization, org_id)
-        if org:
+    async def delete_workspace(workspace_id: int, session: AsyncSession):
+        ws = await session.get(Workspace, workspace_id)
+        if ws:
             # 1. Nullify Audit Logs (preserve history)
             from app.models import AuditLog
-            audit_logs = await session.exec(select(AuditLog).where(AuditLog.organization_id == org_id))
+            audit_logs = await session.exec(select(AuditLog).where(AuditLog.workspace_id == workspace_id))
             for log in audit_logs.all():
-                log.organization_id = None
+                log.workspace_id = None
                 session.add(log)
 
             # 2. Delete Dependent Teams
-            teams = await session.exec(select(Team).where(Team.organization_id == org_id))
+            teams = await session.exec(select(Team).where(Team.workspace_id == workspace_id))
             for team in teams.all():
-                await OrgService.delete_team(team.id, session)
+                await WorkspaceService.delete_team(team.id, session)
 
-            await session.delete(org)
+            await session.delete(ws)
             await session.commit()
 
     @staticmethod
-    async def remove_user_from_organization(org_id: int, user_id: int, session: AsyncSession) -> bool:
-        from app.models import UserOrganization, UserTeam, Team
+    async def remove_user_from_workspace(workspace_id: int, user_id: int, session: AsyncSession) -> bool:
+        from app.models import UserWorkspace, UserTeam, Team
         
-        # 1. Check/Get the UserOrganization record
+        # 1. Check/Get the UserWorkspace record
         result = await session.exec(
-            select(UserOrganization)
-            .where(UserOrganization.organization_id == org_id, UserOrganization.user_id == user_id)
+            select(UserWorkspace)
+            .where(UserWorkspace.workspace_id == workspace_id, UserWorkspace.user_id == user_id)
         )
-        uo = result.first()
-        if not uo:
+        uw = result.first()
+        if not uw:
             return False
             
-        # 2. Get all teams in this organization
-        teams = await session.exec(select(Team).where(Team.organization_id == org_id))
+        # 2. Get all teams in this workspace
+        teams = await session.exec(select(Team).where(Team.workspace_id == workspace_id))
         team_ids = [t.id for t in teams.all()]
         
-        # 3. Remove user from all teams in this organization
+        # 3. Remove user from all teams in this workspace
         if team_ids:
-            # This deletes all UserTeam records for this user where team_id is in the org's teams
+            # This deletes all UserTeam records for this user where team_id is in the workspace's teams
             # Note: SQLModel doesn't support .where(UserTeam.team_id.in_(team_ids)) nicely with async delete sometimes,
             # so iterating or a raw delete is safer. Let's do a bulk delete via statement if possible or iterate.
             # Iterating is safer for now to ensure hooks/session state is clean.
@@ -527,41 +567,41 @@ class OrgService:
             for ut in user_teams.all():
                 await session.delete(ut)
         
-        # 4. Remove UserOrganization record
-        await session.delete(uo)
+        # 4. Remove UserWorkspace record
+        await session.delete(uw)
         
         await session.commit()
         return True
 
     @staticmethod
     async def process_pending_invitations(email: str, user_id: int, session: AsyncSession):
-        from app.models import TeamInvitation, UserTeam, Team, UserOrganization, OrganizationInvitation
+        from app.models import TeamInvitation, UserTeam, Team, UserWorkspace, WorkspaceInvitation
         from app.services.rbac_service import rbac_service
         
-        # Process Org Invitations
-        result_org = await session.exec(select(OrganizationInvitation).where(OrganizationInvitation.email == email))
-        org_invites = result_org.all()
-        for invite in org_invites:
+        # Process Workspace Invitations
+        result_ws = await session.exec(select(WorkspaceInvitation).where(WorkspaceInvitation.email == email))
+        ws_invites = result_ws.all()
+        for invite in ws_invites:
             # Map role string to RBAC
-            rbac_role_name = "Organization Member"
+            rbac_role_name = "Workspace Member"
             if invite.role == "admin": 
-                rbac_role_name = "Organization Admin"
+                rbac_role_name = "Workspace Admin"
             rbac_role = await rbac_service.get_role_by_name(session, rbac_role_name)
             role_id = rbac_role.id if rbac_role else None
             
-            # Add to organization if not already a member
-            org_check = await session.exec(
-                select(UserOrganization)
-                .where(UserOrganization.user_id == user_id, UserOrganization.organization_id == invite.organization_id)
+            # Add to workspace if not already a member
+            ws_check = await session.exec(
+                select(UserWorkspace)
+                .where(UserWorkspace.user_id == user_id, UserWorkspace.workspace_id == invite.workspace_id)
             )
-            if not org_check.first():
-                uo = UserOrganization(
+            if not ws_check.first():
+                uw = UserWorkspace(
                     user_id=user_id, 
-                    organization_id=invite.organization_id, 
+                    workspace_id=invite.workspace_id, 
                     role=invite.role,
                     role_id=role_id
                 )
-                session.add(uo)
+                session.add(uw)
             await session.delete(invite)
 
         # Find all team invitations for this email
@@ -569,24 +609,24 @@ class OrgService:
         invitations = result.all()
         
         for invite in invitations:
-            # Get team to find organization_id
+            # Get team to find workspace_id
             team = await session.get(Team, invite.team_id)
             if team:
-                # Add to organization if not already a member
-                org_check = await session.exec(
-                    select(UserOrganization)
-                    .where(UserOrganization.user_id == user_id, UserOrganization.organization_id == team.organization_id)
+                # Add to workspace if not already a member
+                ws_check = await session.exec(
+                    select(UserWorkspace)
+                    .where(UserWorkspace.user_id == user_id, UserWorkspace.workspace_id == team.workspace_id)
                 )
-                if not org_check.first():
+                if not ws_check.first():
                     # Default: Member
-                    memb_role = await rbac_service.get_role_by_name(session, "Organization Member")
-                    uo = UserOrganization(
+                    memb_role = await rbac_service.get_role_by_name(session, "Workspace Member")
+                    uw = UserWorkspace(
                         user_id=user_id, 
-                        organization_id=team.organization_id, 
+                        workspace_id=team.workspace_id, 
                         role="member",
                         role_id=memb_role.id if memb_role else None
                     )
-                    session.add(uo)
+                    session.add(uw)
                 
                 # Add to team if not already a member
                 team_check = await session.exec(
@@ -602,4 +642,4 @@ class OrgService:
         
         await session.commit()
 
-org_service = OrgService()
+workspace_service = WorkspaceService()

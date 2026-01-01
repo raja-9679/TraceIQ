@@ -23,7 +23,7 @@ class UserCreate(BaseModel):
     email: str
     password: str
     full_name: str | None = None
-    org_name: str | None = None
+    workspace_name: str | None = None
     project_name: str | None = None
     invite_token: str | None = None
 
@@ -35,7 +35,7 @@ from app.services.rbac_service import rbac_service
 
 class PermissionsResponse(BaseModel):
     system: List[str]
-    organization: dict
+    workspace: dict
     project: dict
 
 @router.get("/permissions", response_model=PermissionsResponse)
@@ -90,9 +90,9 @@ async def register_user(
     # --- Branching Logic ---
     if user_in.invite_token:
         # 1. Invite Flow
-        from app.models import OrganizationInvitation, UserOrganization
+        from app.models import WorkspaceInvitation, UserWorkspace
         # Validate Invite
-        stmt = select(OrganizationInvitation).where(OrganizationInvitation.token == user_in.invite_token)
+        stmt = select(WorkspaceInvitation).where(WorkspaceInvitation.token == user_in.invite_token)
         invite = (await session.exec(stmt)).first()
         
         if not invite:
@@ -112,12 +112,12 @@ async def register_user(
         session.add(user)
         await session.flush()
         
-        # Link to Org (Role is in invite)
+        # Link to Workspace (Role is in invite)
         # Re-use process logic but specific to this token
         # Map role
-        rbac_role_name = "Organization Member"
+        rbac_role_name = "Workspace Member"
         if invite.role == "admin": 
-            rbac_role_name = "Organization Admin"
+            rbac_role_name = "Workspace Admin"
         
         # We need rbac_service here
         # Local import or global? 'rbac_service' is imported at module level in original file but inside Pydantic block?
@@ -126,13 +126,13 @@ async def register_user(
         rbac_role = await rbac_service.get_role_by_name(session, rbac_role_name)
         role_id = rbac_role.id if rbac_role else None
         
-        uo = UserOrganization(
+        uw = UserWorkspace(
             user_id=user.id, 
-            organization_id=invite.organization_id, 
+            workspace_id=invite.workspace_id, 
             role=invite.role,
             role_id=role_id
         )
-        session.add(uo)
+        session.add(uw)
         
         # Consume Invite
         await session.delete(invite)
@@ -157,7 +157,7 @@ async def register_user(
              await session.flush()
         
         # We DO NOT create a Tenant. We DO NOT assign UserSystemRole (Tenant Admin).
-        # We DO NOT create a default Org.
+        # We DO NOT create a default Workspace.
         
     else:
         # 2. Standalone Flow (Tenant Creation)
@@ -171,7 +171,7 @@ async def register_user(
         
         # Create New Tenant
         from app.models import Tenant, UserSystemRole
-        tenant_name = user_in.org_name or f"{user_in.full_name or user_in.email}'s Workspace"
+        tenant_name = user_in.workspace_name or f"{user_in.full_name or user_in.email}'s Workspace"
         tenant = Tenant(name=tenant_name, owner_id=user.id)
         session.add(tenant)
         await session.flush() # Get Tenant ID
@@ -188,10 +188,10 @@ async def register_user(
         )
         session.add(usr)
         
-        # Create Default Org linked to Tenant
-        from app.services.org_service import org_service
-        # Note: org_service.create_organization now accepts tenant_id
-        await org_service.create_organization(
+        # Create Default Workspace linked to Tenant
+        from app.services.workspace_service import workspace_service
+        # Note: workspace_service.create_workspace now accepts tenant_id
+        await workspace_service.create_workspace(
             name=tenant_name, 
             owner_id=user.id, 
             session=session, 
@@ -201,10 +201,10 @@ async def register_user(
             tenant_id=tenant.id
         )
         
-        # Org Admin role is assigned inside create_organization
+        # Workspace Admin role is assigned inside create_workspace
         
         # Process any other pending email-based invitations (legacy / team invites)
-        await org_service.process_pending_invitations(user.email, user.id, session)
+        await workspace_service.process_pending_invitations(user.email, user.id, session)
         
     await session.commit()
     await session.refresh(user)
