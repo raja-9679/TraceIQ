@@ -35,7 +35,7 @@ const navigation = [
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
     { name: 'Users', href: '/users', icon: User },
     { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
-    { name: 'Organization', href: '/organization', icon: Users },
+    { name: 'Workspace', href: '/workspace', icon: Users },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

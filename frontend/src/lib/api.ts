@@ -12,6 +12,21 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
+import { toast } from "sonner";
+
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 403) {
+            toast.error("Permission Denied", {
+                description: error.response.data.detail || "You do not have permission to perform this action.",
+                duration: 5000,
+            });
+        }
+        return Promise.reject(error);
+    }
+);
+
 export interface TestRun {
     id: number;
     created_at: string;
@@ -213,7 +228,7 @@ export const getAuditLog = async (entityType: string, entityId: number): Promise
     return response.data;
 };
 
-// Organization & Team API
+// Workspace & Team API
 export interface User {
     id: number;
     email: string;
@@ -221,7 +236,7 @@ export interface User {
     is_active: boolean;
 }
 
-export interface Organization {
+export interface Workspace {
     id: number;
     name: string;
     description?: string;
@@ -231,29 +246,29 @@ export interface Team {
     id: number;
     name: string;
     description?: string;
-    organization_id: number;
+    workspace_id: number;
 }
 
 export interface Project {
     id: number;
     name: string;
     description?: string;
-    organization_id: number;
+    workspace_id: number;
     access_level?: string;
 }
 
-export const getOrganizations = async (): Promise<Organization[]> => {
-    const response = await api.get("/organizations");
+export const getWorkspaces = async (): Promise<Workspace[]> => {
+    const response = await api.get("/workspaces");
     return response.data;
 };
 
-export const createOrganization = async (data: { name: string, description?: string }): Promise<Organization> => {
-    const response = await api.post("/organizations", data);
+export const createWorkspace = async (data: { name: string, description?: string }): Promise<Workspace> => {
+    const response = await api.post("/workspaces", data);
     return response.data;
 };
 
-export const deleteOrganization = async (orgId: number): Promise<any> => {
-    const response = await api.delete(`/organizations/${orgId}`);
+export const deleteWorkspace = async (wsId: number): Promise<any> => {
+    const response = await api.delete(`/workspaces/${wsId}`);
     return response.data;
 };
 
@@ -296,43 +311,44 @@ export interface DetailedMember {
     is_active: boolean;
     status: 'active' | 'invited';
     created_at?: string;
+    token?: string;
 }
 
-export const getOrgMembersDetailed = async (orgId: number): Promise<DetailedMember[]> => {
-    const response = await api.get(`/organizations/${orgId}/members/detailed`);
+export const getWorkspaceMembersDetailed = async (wsId: number): Promise<DetailedMember[]> => {
+    const response = await api.get(`/workspaces/${wsId}/members/detailed`);
     return response.data;
 };
 
-export const inviteUserToOrg = async (orgId: number, email: string, role: string): Promise<void> => {
-    await api.post(`/organizations/${orgId}/invitations`, { email, role });
+export const inviteUserToWorkspace = async (wsId: number, email: string, role: string): Promise<void> => {
+    const response = await api.post(`/workspaces/${wsId}/invitations`, { email, role });
 };
 
 export const inviteUserToProject = async (projectId: number, email: string, role: string): Promise<void> => {
     await api.post(`/projects/${projectId}/invitations`, { email, role });
 };
 
-export const getOrgInvitations = async (orgId: number): Promise<DetailedMember[]> => {
-    const response = await api.get(`/organizations/${orgId}/invitations`);
+export const getWorkspaceInvitations = async (wsId: number): Promise<DetailedMember[]> => {
+    const response = await api.get(`/workspaces/${wsId}/invitations`);
     return response.data;
 };
 
-export const getOrganizationMembers = async (orgId: number): Promise<User[]> => {
-    const response = await api.get(`/organizations/${orgId}/users`);
+export const getWorkspaceMembers = async (wsId: number): Promise<User[]> => {
+    const response = await api.get(`/workspaces/${wsId}/users`);
     return response.data;
 };
 
-export const getTeams = async (orgId: number): Promise<Team[]> => {
-    const response = await api.get(`/organizations/${orgId}/teams`);
+export const getTeams = async (wsId: number): Promise<Team[]> => {
+    const response = await api.get(`/workspaces/${wsId}/teams`);
     return response.data;
 };
 
-export const createTeam = async (orgId: number, data: {
+export const createTeam = async (wsId: number, data: {
     name: string,
     description?: string,
     initial_project_id?: number,
     initial_access_level?: string
 }): Promise<Team> => {
-    const response = await api.post(`/organizations/${orgId}/teams`, data);
+    const response = await api.post(`/workspaces/${wsId}/teams`, data);
     return response.data;
 };
 
@@ -351,13 +367,13 @@ export const getTeamMembers = async (teamId: number): Promise<User[]> => {
     return response.data;
 };
 
-export const getProjects = async (orgId?: number): Promise<Project[]> => {
-    const url = orgId ? `/projects?org_id=${orgId}` : "/projects";
+export const getProjects = async (wsId?: number): Promise<Project[]> => {
+    const url = wsId ? `/projects?workspace_id=${wsId}` : "/projects";
     const response = await api.get(url);
     return response.data;
 };
 
-export const createProject = async (data: { name: string, description?: string, organization_id: number }): Promise<Project> => {
+export const createProject = async (data: { name: string, description?: string, workspace_id: number }): Promise<Project> => {
     const response = await api.post("/projects", data);
     return response.data;
 };
@@ -377,8 +393,8 @@ export const getTestSuites = async (projectId?: number): Promise<any[]> => {
     return response.data;
 };
 
-export const removeUserFromOrg = async (orgId: number, userId: number): Promise<void> => {
-    await api.delete(`/organizations/${orgId}/users/${userId}`);
+export const removeUserFromWorkspace = async (wsId: number, userId: number): Promise<void> => {
+    await api.delete(`/workspaces/${wsId}/users/${userId}`);
 };
 
 export const getAdminUsers = async (): Promise<DetailedMember[]> => {
@@ -386,13 +402,13 @@ export const getAdminUsers = async (): Promise<DetailedMember[]> => {
     return response.data;
 };
 
-export const getAdminOrgs = async (): Promise<Organization[]> => {
-    const response = await api.get("/admin/orgs");
+export const getAdminWorkspaces = async (): Promise<Workspace[]> => {
+    const response = await api.get("/admin/workspaces");
     return response.data;
 };
 
-export const assignUserToOrgs = async (userId: number, orgIds: number[], role: string): Promise<any> => {
-    const response = await api.post(`/admin/users/${userId}/assignments`, { org_ids: orgIds, role });
+export const assignUserToWorkspaces = async (userId: number, wsIds: number[], role: string): Promise<any> => {
+    const response = await api.post(`/admin/users/${userId}/assignments`, { workspace_ids: wsIds, role });
     return response.data;
 };
 
@@ -406,7 +422,7 @@ export interface Role {
 
 export interface UserPermissions {
     system: string[];
-    organization: Record<number, string[]>;
+    workspace: Record<number, string[]>;
     project: Record<number, string[]>;
 }
 

@@ -172,6 +172,11 @@ class TestService:
         result = await session.exec(select(TestRun).where(TestRun.test_suite_id == suite_id))
         runs = result.all()
         for run in runs:
+            # Delete results
+            results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+            for res in results.all():
+                await session.delete(res)
+                
             minio_client.delete_run_artifacts(run.id)
             await session.delete(run)
 
@@ -181,6 +186,10 @@ class TestService:
         for case in cases:
             result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case.id))
             for run in result_runs.all():
+                results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
+                for res in results.all():
+                    await session.delete(res)
+
                 minio_client.delete_run_artifacts(run.id)
                 await session.delete(run)
             await session.delete(case)

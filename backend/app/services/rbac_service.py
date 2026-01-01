@@ -2,7 +2,7 @@ from typing import List, Optional
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.models import (
-    UserSystemRole, UserOrganization, UserProjectAccess, 
+    UserSystemRole, UserWorkspace, UserProjectAccess, 
     Role, Permission, RolePermission, TeamProjectAccess, UserTeam
 )
 
@@ -20,16 +20,26 @@ class RBACService:
         sys_roles = await session.exec(select(UserSystemRole.role_id).where(UserSystemRole.user_id == user_id))
         role_ids.update(sys_roles.all())
         
-        # 2. Org Roles
-        org_roles = await session.exec(select(UserOrganization.role_id).where(UserOrganization.user_id == user_id))
-        role_ids.update(org_roles.all())
+        # 2. Workspace Roles
+        ws_roles = await session.exec(select(UserWorkspace.role_id).where(UserWorkspace.user_id == user_id))
+        role_ids.update(ws_roles.all())
         
         # 3. Project Roles (Direct)
         proj_roles = await session.exec(select(UserProjectAccess.role_id).where(UserProjectAccess.user_id == user_id))
         role_ids.update(proj_roles.all())
         
-        # 4. Project Roles (via Team) - Optional, complex query
+        # 4. Project Roles (via Team)
+        user_teams_stmt = select(UserTeam.team_id).where(UserTeam.user_id == user_id)
+        user_team_ids = (await session.exec(user_teams_stmt)).all()
         
+        if user_team_ids:
+            tpa_stmt = select(TeamProjectAccess.role_id).where(
+                TeamProjectAccess.team_id.in_(user_team_ids),
+                TeamProjectAccess.role_id != None
+            )
+            team_role_ids = (await session.exec(tpa_stmt)).all()
+            role_ids.update(team_role_ids)
+
         if not role_ids:
             return []
             
@@ -38,31 +48,31 @@ class RBACService:
         results = await session.exec(stmt)
         return [f"{r[0]}:{r[1]}" for r in results.all()]
 
-    async def has_permission(self, session: AsyncSession, user_id: int, permission: str, org_id: Optional[int] = None, project_id: Optional[int] = None) -> bool:
+    async def has_permission(self, session: AsyncSession, user_id: int, permission: str, workspace_id: Optional[int] = None, project_id: Optional[int] = None) -> bool:
         """
         Check if user has a specific permission.
-        Format: "scope:action" (e.g. "org:create_project")
+        Format: "scope:action" (e.g. "workspace:create_project")
         """
         req_scope, req_action = permission.split(":")
         
         # 1. Tenant Admin Check (Global Override for most things, or specific tenant scope)
-        # Fix: Resolve Tenant ID from Org or Project
+        # Fix: Resolve Tenant ID from Workspace or Project
         tenant_id = None
-        if org_id:
-             # We need to fetch the Organization to know which Tenant it belongs to
-             from app.models import Organization
+        if workspace_id:
+             # We need to fetch the Workspace to know which Tenant it belongs to
+             from app.models import Workspace
              # Ideally cached or passed in, but for safety we fetch
-             org = await session.get(Organization, org_id)
-             if org:
-                 tenant_id = org.tenant_id
+             ws = await session.get(Workspace, workspace_id)
+             if ws:
+                 tenant_id = ws.tenant_id
         elif project_id:
-             # Resolve via Project -> Org -> Tenant
-             from app.models import Project, Organization
+             # Resolve via Project -> Workspace -> Tenant
+             from app.models import Project, Workspace
              proj = await session.get(Project, project_id)
              if proj:
-                 org = await session.get(Organization, proj.organization_id)
-                 if org:
-                     tenant_id = org.tenant_id
+                 ws = await session.get(Workspace, proj.workspace_id)
+                 if ws:
+                     tenant_id = ws.tenant_id
         
         # If we have a target tenant_id, we MUST check if the System Role is for THAT tenant.
         # If we don't (system level check?), we might default to no assumption or check all (dangerous).
@@ -93,94 +103,70 @@ class RBACService:
         if (await session.exec(sys_query)).first():
             return True
 
-        # 2. Org Scope Check
-        if org_id:
-            org_stmt = (
+        # 2. Workspace Scope Check
+        # Ensure we have workspace_id if available via project
+        if not workspace_id and project_id:
+             from app.models import Project
+             proj = await session.get(Project, project_id)
+             if proj:
+                 workspace_id = proj.workspace_id
+
+        if workspace_id:
+            ws_stmt = (
                 select(Permission)
                 .join(RolePermission)
                 .join(Role)
-                .join(UserOrganization)
+                .join(UserWorkspace)
                 .where(
-                    UserOrganization.user_id == user_id,
-                    UserOrganization.organization_id == org_id,
+                    UserWorkspace.user_id == user_id,
+                    UserWorkspace.workspace_id == workspace_id,
                     Permission.action == req_action,
                     Permission.scope == req_scope
                 )
             )
-            if (await session.exec(org_stmt)).first():
+            if (await session.exec(ws_stmt)).first():
                 return True
 
         # 3. Project Scope Check
         if project_id:
+            project_role_ids = set()
+
             # A. Direct Project Access
-            proj_stmt = (
-                select(Permission)
-                .join(RolePermission)
-                .join(Role)
-                .join(UserProjectAccess)
-                .where(
-                    UserProjectAccess.user_id == user_id,
-                    UserProjectAccess.project_id == project_id,
-                    Permission.action == req_action,
-                    Permission.scope == req_scope
-                )
+            upa_stmt = select(UserProjectAccess).where(
+                UserProjectAccess.user_id == user_id, 
+                UserProjectAccess.project_id == project_id
             )
-            if (await session.exec(proj_stmt)).first():
-                return True
-                
+            upa = (await session.exec(upa_stmt)).first()
+            if upa and upa.role_id:
+                project_role_ids.add(upa.role_id)
+
             # B. Team Project Access
-            team_stmt = (
-                select(Permission)
-                .join(RolePermission)
-                .join(Role)
-                .join(TeamProjectAccess)
-                .join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id)
-                .where(
-                    UserTeam.user_id == user_id,
+            user_teams_stmt = select(UserTeam.team_id).where(UserTeam.user_id == user_id)
+            user_team_ids = (await session.exec(user_teams_stmt)).all()
+            
+            if user_team_ids:
+                tpa_stmt = select(TeamProjectAccess).where(
                     TeamProjectAccess.project_id == project_id,
-                    Permission.action == req_action,
-                    Permission.scope == req_scope
+                    TeamProjectAccess.team_id.in_(user_team_ids)
                 )
-            )
-            if (await session.exec(team_stmt)).first():
-                return True
-                
-            # C. Inheritance: Does Org Admin imply Project Admin?
-            # Usually yes. If I am Org Admin, I should have access to all projects?
-            # Or explicit roles only? 
-            # Design decision: Org Admin has "project:*" permissions implicitly via the "Organization Admin" role 
-            # BUT those permissions are scoped to 'org' in the definition? 
-            # WAIT. "Organization Admin" has "project:create_suite". 
-            # If I query for "project:create_suite" and I have "Organization Admin", 
-            # my role is linked to Organization.
+                tpas = (await session.exec(tpa_stmt)).all()
+                for tpa in tpas:
+                    if tpa.role_id:
+                        project_role_ids.add(tpa.role_id)
             
-            # If the user is an Org Admin of the project's organization, they should pass.
-            if not org_id:
-                # Need to fetch org_id from project if not supplied
-                from app.models import Project
-                proj = await session.get(Project, project_id)
-                if proj:
-                    org_id = proj.organization_id
-            
-            if org_id:
-                # Check Org Level permissions again for this action
-                # Note: "Organization Admin" role has permissions with scope="project" and action="create_suite"?
-                # Let's check how we seeded it.
-                # "Organization Admin": ["project:create_suite", ...]
-                # So if I have Org Admin role, I have "project:create_suite" permission.
-                # BUT, that permission is linked to my UserOrganization record.
-                # So the query in step #2 (Org Scope Check) should match specific permissions too.
-                
-                # Logic Fix:
-                # If I am checking for "project:create_suite" (scope=project), 
-                # but I have it via an Org Role, the step #2 query filters by `Permission.scope == req_scope`.
-                # If the Permission definition has scope='project', then `req_scope` matches.
-                # So Step #2 covers "Org Admin accessing Project" IF the Org Admin role contains permissions with scope='project'.
-                # Checking `setup_rbac.py`: 
-                # {"scope": "project", "action": "create_suite", ...}
-                # "Organization Admin" has "project:create_suite".
-                # So yes, Step #2 works.
-                pass
+            # Check permissions for these roles
+            if project_role_ids:
+                perm_stmt = (
+                    select(Permission)
+                    .join(RolePermission)
+                    .where(
+                        RolePermission.role_id.in_(project_role_ids),
+                        Permission.action == req_action,
+                        Permission.scope == req_scope
+                     )
+                )
+                if (await session.exec(perm_stmt)).first():
+                    return True
 
         return False
 
@@ -199,7 +185,7 @@ class RBACService:
         """
         permissions = {
             "system": [],
-            "organization": {},
+            "workspace": {},
             "project": {}
         }
         
@@ -214,21 +200,21 @@ class RBACService:
         sys_perms = await session.exec(sys_stmt)
         permissions["system"] = [f"{p[0]}:{p[1]}" for p in sys_perms.all()]
         
-        # 2. Organization Permissions
-        # We need to group by organization_id
-        org_stmt = (
-            select(UserOrganization.organization_id, Permission.scope, Permission.action)
-            .join(Role, UserOrganization.role_id == Role.id)
+        # 2. Workspace Permissions
+        # We need to group by workspace_id
+        ws_stmt = (
+            select(UserWorkspace.workspace_id, Permission.scope, Permission.action)
+            .join(Role, UserWorkspace.role_id == Role.id)
             .join(RolePermission, Role.id == RolePermission.role_id)
             .join(Permission, RolePermission.permission_id == Permission.id)
-            .where(UserOrganization.user_id == user_id)
+            .where(UserWorkspace.user_id == user_id)
         )
-        org_res = await session.exec(org_stmt)
-        for row in org_res.all():
-            org_id, scope, action = row
-            if org_id not in permissions["organization"]:
-                permissions["organization"][org_id] = []
-            permissions["organization"][org_id].append(f"{scope}:{action}")
+        ws_res = await session.exec(ws_stmt)
+        for row in ws_res.all():
+            ws_id, scope, action = row
+            if ws_id not in permissions["workspace"]:
+                permissions["workspace"][ws_id] = []
+            permissions["workspace"][ws_id].append(f"{scope}:{action}")
             
         # 3. Project Permissions
         # Direct
@@ -245,6 +231,24 @@ class RBACService:
             if pid not in permissions["project"]:
                 permissions["project"][pid] = []
             permissions["project"][pid].append(f"{scope}:{action}")
+            
+        # Team Project Access
+        # Fetch user teams
+        ut_ids = (await session.exec(select(UserTeam.team_id).where(UserTeam.user_id == user_id))).all()
+        if ut_ids:
+                team_proj_stmt = (
+                    select(TeamProjectAccess.project_id, Permission.scope, Permission.action)
+                    .join(Role, TeamProjectAccess.role_id == Role.id)
+                    .join(RolePermission, Role.id == RolePermission.role_id)
+                    .join(Permission, RolePermission.permission_id == Permission.id)
+                    .where(TeamProjectAccess.team_id.in_(ut_ids))
+                )
+                team_res = await session.exec(team_proj_stmt)
+                for row in team_res.all():
+                    pid, scope, action = row
+                    if pid not in permissions["project"]:
+                        permissions["project"][pid] = []
+                    permissions["project"][pid].append(f"{scope}:{action}")
             
         return permissions
 
