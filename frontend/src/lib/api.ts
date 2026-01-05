@@ -12,6 +12,21 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
+import { toast } from "sonner";
+
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response && error.response.status === 403) {
+            toast.error("Permission Denied", {
+                description: error.response.data.detail || "You do not have permission to perform this action.",
+                duration: 5000,
+            });
+        }
+        return Promise.reject(error);
+    }
+);
+
 export interface TestRun {
     id: number;
     created_at: string;
@@ -213,3 +228,210 @@ export const getAuditLog = async (entityType: string, entityId: number): Promise
     return response.data;
 };
 
+// Workspace & Team API
+export interface User {
+    id: number;
+    email: string;
+    full_name?: string;
+    is_active: boolean;
+}
+
+export interface Workspace {
+    id: number;
+    name: string;
+    description?: string;
+}
+
+export interface Team {
+    id: number;
+    name: string;
+    description?: string;
+    workspace_id: number;
+}
+
+export interface Project {
+    id: number;
+    name: string;
+    description?: string;
+    workspace_id: number;
+    access_level?: string;
+}
+
+export const getWorkspaces = async (): Promise<Workspace[]> => {
+    const response = await api.get("/workspaces");
+    return response.data;
+};
+
+export const createWorkspace = async (data: { name: string, description?: string }): Promise<Workspace> => {
+    const response = await api.post("/workspaces", data);
+    return response.data;
+};
+
+export const deleteWorkspace = async (wsId: number): Promise<any> => {
+    const response = await api.delete(`/workspaces/${wsId}`);
+    return response.data;
+};
+
+export const removeUserFromTeam = async (teamId: number, userId: number): Promise<void> => {
+    await api.delete(`/teams/${teamId}/users/${userId}`);
+};
+
+export const getProjectTeams = async (projectId: number): Promise<any[]> => {
+    const response = await api.get(`/projects/${projectId}/teams`);
+    return response.data;
+};
+
+export const getProjectMembers = async (projectId: number): Promise<any[]> => {
+    const response = await api.get(`/projects/${projectId}/users`);
+    return response.data;
+};
+
+export const unlinkTeamFromProject = async (projectId: number, teamId: number): Promise<void> => {
+    await api.delete(`/projects/${projectId}/teams/${teamId}`);
+};
+
+export const removeUserProjectAccess = async (projectId: number, userId: number): Promise<void> => {
+    await api.delete(`/projects/${projectId}/users/${userId}`);
+};
+
+export const addTeamToProject = async (projectId: number, teamId: number, accessLevel: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/teams/${teamId}`, { access_level: accessLevel });
+};
+
+export const addUserProjectAccess = async (projectId: number, userId: number, accessLevel: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/users/${userId}`, { access_level: accessLevel });
+};
+
+export interface DetailedMember {
+    id: number;
+    full_name: string;
+    email: string;
+    role: string;
+    last_login_at: string | null;
+    is_active: boolean;
+    status: 'active' | 'invited';
+    created_at?: string;
+    token?: string;
+}
+
+export const getWorkspaceMembersDetailed = async (wsId: number): Promise<DetailedMember[]> => {
+    const response = await api.get(`/workspaces/${wsId}/members/detailed`);
+    return response.data;
+};
+
+export const inviteUserToWorkspace = async (wsId: number, email: string, role: string): Promise<void> => {
+    const response = await api.post(`/workspaces/${wsId}/invitations`, { email, role });
+};
+
+export const inviteUserToProject = async (projectId: number, email: string, role: string): Promise<void> => {
+    await api.post(`/projects/${projectId}/invitations`, { email, role });
+};
+
+export const getWorkspaceInvitations = async (wsId: number): Promise<DetailedMember[]> => {
+    const response = await api.get(`/workspaces/${wsId}/invitations`);
+    return response.data;
+};
+
+export const getWorkspaceMembers = async (wsId: number): Promise<User[]> => {
+    const response = await api.get(`/workspaces/${wsId}/users`);
+    return response.data;
+};
+
+export const getTeams = async (wsId: number): Promise<Team[]> => {
+    const response = await api.get(`/workspaces/${wsId}/teams`);
+    return response.data;
+};
+
+export const createTeam = async (wsId: number, data: {
+    name: string,
+    description?: string,
+    initial_project_id?: number,
+    initial_access_level?: string
+}): Promise<Team> => {
+    const response = await api.post(`/workspaces/${wsId}/teams`, data);
+    return response.data;
+};
+
+export const deleteTeam = async (teamId: number): Promise<any> => {
+    const response = await api.delete(`/teams/${teamId}`);
+    return response.data;
+};
+
+export const inviteToTeam = async (teamId: number, email: string): Promise<any> => {
+    const response = await api.post(`/teams/${teamId}/users/invite`, { email });
+    return response.data;
+};
+
+export const getTeamMembers = async (teamId: number): Promise<User[]> => {
+    const response = await api.get(`/teams/${teamId}/users`);
+    return response.data;
+};
+
+export const getProjects = async (wsId?: number): Promise<Project[]> => {
+    const url = wsId ? `/projects?workspace_id=${wsId}` : "/projects";
+    const response = await api.get(url);
+    return response.data;
+};
+
+export const createProject = async (data: { name: string, description?: string, workspace_id: number }): Promise<Project> => {
+    const response = await api.post("/projects", data);
+    return response.data;
+};
+
+export const deleteProject = async (projectId: number): Promise<any> => {
+    const response = await api.delete(`/projects/${projectId}`);
+    return response.data;
+};
+
+export const linkTeamToProject = async (projectId: number, teamId: number, accessLevel: string): Promise<any> => {
+    const response = await api.post(`/projects/${projectId}/teams/${teamId}/access`, { access_level: accessLevel });
+    return response.data;
+};
+
+export const getTestSuites = async (projectId?: number): Promise<any[]> => {
+    const response = await api.get("/suites", { params: { project_id: projectId } });
+    return response.data;
+};
+
+export const removeUserFromWorkspace = async (wsId: number, userId: number): Promise<void> => {
+    await api.delete(`/workspaces/${wsId}/users/${userId}`);
+};
+
+export const getAdminUsers = async (): Promise<DetailedMember[]> => {
+    const response = await api.get("/admin/users");
+    return response.data;
+};
+
+export const getAdminWorkspaces = async (): Promise<Workspace[]> => {
+    const response = await api.get("/admin/workspaces");
+    return response.data;
+};
+
+export const assignUserToWorkspaces = async (userId: number, wsIds: number[], role: string): Promise<any> => {
+    const response = await api.post(`/admin/users/${userId}/assignments`, { workspace_ids: wsIds, role });
+    return response.data;
+};
+
+
+
+export interface Role {
+    id: number;
+    name: string;
+    description?: string;
+}
+
+export interface UserPermissions {
+    system: string[];
+    workspace: Record<number, string[]>;
+    project: Record<number, string[]>;
+}
+
+export const getRoles = async (): Promise<Role[]> => {
+    const response = await api.get("/roles");
+    return response.data;
+};
+
+export const getMyPermissions = async (): Promise<UserPermissions> => {
+    const response = await api.get("/auth/permissions");
+    return response.data;
+};

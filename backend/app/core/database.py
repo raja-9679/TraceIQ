@@ -18,6 +18,17 @@ async def init_db():
         # In production, use Alembic. For now, create tables directly.
         await conn.run_sync(SQLModel.metadata.create_all)
 
+    # Initialize RBAC
+    from app.core.rbac_init import init_rbac
+    async with engine.begin() as conn:
+         # We need a session, not just a connection for init_rbac because it uses SQLModel objects
+         pass
+         
+    # To use session, we need to use the sessionmaker
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with async_session() as session:
+        await init_rbac(session)
+
 async def get_session() -> AsyncSession:
     async_session = sessionmaker(
         engine, class_=AsyncSession, expire_on_commit=False

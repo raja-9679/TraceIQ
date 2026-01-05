@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard,
@@ -9,15 +9,33 @@ import {
     Menu,
     X,
     User,
-    Bell
+    Users,
+    Bell,
+    ChevronDown,
+    Layers,
+    Plus,
+    UserCog
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
+import { getProjects } from '@/lib/api';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { useQuery } from '@tanstack/react-query';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Test Suites', href: '/suites', icon: FolderTree },
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
+    { name: 'Users', href: '/users', icon: User },
+    { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
+    { name: 'Workspace', href: '/workspace', icon: Users },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
@@ -25,6 +43,41 @@ export default function DashboardLayout() {
     const { user, logout } = useAuth();
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const location = useLocation();
+
+    const [selectedProjectId, setSelectedProjectId] = useState<number | null>(() => {
+        const saved = localStorage.getItem('activeProjectId');
+        return saved ? parseInt(saved) : null;
+    });
+
+    const { data: projects } = useQuery({
+        queryKey: ['projects'],
+        queryFn: () => getProjects()
+    });
+
+    const activeProject = projects?.find(p => p.id === selectedProjectId);
+
+    useEffect(() => {
+        if (projects && projects.length > 0) {
+            // Check if current selectedProjectId is still valid
+            if (selectedProjectId && !projects.find(p => p.id === selectedProjectId)) {
+                setSelectedProjectId(projects[0].id);
+                localStorage.setItem('activeProjectId', projects[0].id.toString());
+                window.dispatchEvent(new Event('projectChanged'));
+            } else if (!selectedProjectId) {
+                setSelectedProjectId(projects[0].id);
+                localStorage.setItem('activeProjectId', projects[0].id.toString());
+                window.dispatchEvent(new Event('projectChanged'));
+            } else {
+                localStorage.setItem('activeProjectId', selectedProjectId.toString());
+            }
+        }
+    }, [selectedProjectId, projects]);
+
+    const handleProjectSelect = (id: number) => {
+        setSelectedProjectId(id);
+        // Refresh page or trigger state update in children
+        window.dispatchEvent(new Event('projectChanged'));
+    };
 
     return (
         <div className="min-h-screen bg-background">
@@ -103,7 +156,45 @@ export default function DashboardLayout() {
                                 <Menu className="h-6 w-6" />
                             </button>
 
-
+                            {/* Project Selector */}
+                            <div className="h-8 w-px bg-border mx-2 hidden sm:block" />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="flex items-center space-x-2 px-3">
+                                        <Layers className="h-4 w-4 text-primary" />
+                                        <span className="font-semibold text-sm max-w-[150px] truncate">
+                                            {activeProject?.name || 'Select Project'}
+                                        </span>
+                                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="w-56">
+                                    <DropdownMenuLabel>Switch Project</DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {projects?.map((p) => (
+                                        <DropdownMenuItem
+                                            key={p.id}
+                                            onClick={() => handleProjectSelect(p.id)}
+                                            className={p.id === selectedProjectId ? "bg-accent" : ""}
+                                        >
+                                            <Layers className="h-4 w-4 mr-2 text-muted-foreground" />
+                                            <span className="truncate">{p.name}</span>
+                                        </DropdownMenuItem>
+                                    ))}
+                                    {(!projects || projects.length === 0) && (
+                                        <DropdownMenuItem disabled>
+                                            No projects found
+                                        </DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuSeparator />
+                                    <Link to="/organization">
+                                        <DropdownMenuItem>
+                                            <Plus className="h-4 w-4 mr-2" />
+                                            Manage Projects
+                                        </DropdownMenuItem>
+                                    </Link>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         </div>
 
                         <div className="flex items-center space-x-4">
