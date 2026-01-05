@@ -33,109 +33,9 @@ def run_test_suite(run_id: int):
         session.commit()
         
         try:
-            # Fetch Test Suite and Cases
             from app.models import TestSuite, TestCase
-            from sqlalchemy.orm import selectinload
-            from sqlmodel import select
+            from app.services.test_service import test_service
             
-            suite = session.get(TestSuite, run.test_suite_id)
-            if not suite:
-                raise Exception(f"Test Suite {run.test_suite_id} not found")
-            
-            # Helper functions defined at top scope
-            def collect_cases_recursive(suite_id, session):
-                cases = []
-                # Direct cases
-                result = session.exec(select(TestSuite).where(TestSuite.id == suite_id).options(selectinload(TestSuite.test_cases)))
-                s = result.first()
-                if s:
-                    cases.extend(s.test_cases)
-                
-                # Sub-modules
-                result = session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
-                subs = result.all()
-                for sub in subs:
-                    # Check execution mode of sub-module
-                    # If SEPARATE, do not recurse (it will be handled by its own run)
-                    if sub.execution_mode == ExecutionMode.SEPARATE:
-                        continue
-                        
-                    cases.extend(collect_cases_recursive(sub.id, session))
-                return cases
-
-            # Helper to calculate effective settings synchronously
-            def get_effective_settings_sync(suite_id, session):
-                suite = session.get(TestSuite, suite_id)
-                if not suite:
-                    return {"headers": {}, "params": {}, "allowed_domains": [], "domain_settings": {}}
-                
-                current_settings = suite.settings or {"headers": {}, "params": {}}
-                
-                if suite.inherit_settings and suite.parent_id:
-                    parent_settings = get_effective_settings_sync(suite.parent_id, session)
-                    
-                    # Merge Headers & Params: Child overrides parent
-                    merged_headers = {**parent_settings.get("headers", {}), **current_settings.get("headers", {})}
-                    merged_params = {**parent_settings.get("params", {}), **current_settings.get("params", {})}
-                    
-                    # Merge Allowed Domains: Handle both strings and dicts
-                    parent_domains_raw = parent_settings.get("allowed_domains", [])
-                    current_domains_raw = current_settings.get("allowed_domains", [])
-                    
-                    # Helper to normalize to dict
-                    def normalize_domain(d):
-                        if not d:
-                            return None
-                        if isinstance(d, str):
-                            return {"domain": d, "headers": True, "params": False}
-                        if isinstance(d, dict) and "domain" not in d:
-                            return None
-                        return d
-
-                    # Use a dict keyed by domain name to merge, favoring child (current) settings
-                    merged_domains_map = {}
-                    
-                    for d in parent_domains_raw:
-                        norm = normalize_domain(d)
-                        if norm:
-                            merged_domains_map[norm["domain"]] = norm
-                        
-                    for d in current_domains_raw:
-                        norm = normalize_domain(d)
-                        if norm:
-                            merged_domains_map[norm["domain"]] = norm # Overwrite parent
-                        
-                    merged_domains = list(merged_domains_map.values())
-                    
-                    # Merge Domain Settings: Deep merge
-                    parent_domain_settings = parent_settings.get("domain_settings", {})
-                    current_domain_settings = current_settings.get("domain_settings", {})
-                    merged_domain_settings = {**parent_domain_settings}
-                    
-                    for domain, settings in current_domain_settings.items():
-                        if domain in merged_domain_settings:
-                            merged_domain_settings[domain] = {
-                                "headers": {**merged_domain_settings[domain].get("headers", {}), **settings.get("headers", {})},
-                                "params": {**merged_domain_settings[domain].get("params", {}), **settings.get("params", {})}
-                            }
-                        else:
-                            merged_domain_settings[domain] = settings
-                            
-                    return {
-                        "headers": merged_headers, 
-                        "params": merged_params,
-                        "allowed_domains": merged_domains,
-                        "domain_settings": merged_domain_settings
-                    }
-                
-                # Ensure all keys exist
-                return {
-                    "headers": current_settings.get("headers", {}),
-                    "params": current_settings.get("params", {}),
-                    "allowed_domains": current_settings.get("allowed_domains", []),
-                    "domain_settings": current_settings.get("domain_settings", {})
-                }
-
             # Filter cases if specific case_id is requested
             if run.test_case_id:
                 case = session.get(TestCase, run.test_case_id)
@@ -144,26 +44,18 @@ def run_test_suite(run_id: int):
                 cases_to_run = [case]
             else:
                 # Load all cases recursively if no specific case_id (Continuous mode)
-                cases_to_run = collect_cases_recursive(run.test_suite_id, session)
+                cases_to_run = test_service.collect_cases_recursive_sync(run.test_suite_id, session)
 
             # Serialize test cases with their effective settings
             test_cases_data = []
             for case in cases_to_run:
-                # Calculate effective settings for this specific case's suite
-                case_settings = get_effective_settings_sync(case.test_suite_id, session)
+                case_settings = test_service.get_effective_settings_sync(case.test_suite_id, session)
                 
-                # Fetch execution mode from the suite
-                # case_suite = session.get(TestSuite, case.test_suite_id)
-                # execution_mode = case_suite.execution_mode.value if case_suite else "continuous"
-                # Reverting: execution_mode was not present in payload before
-                pass
-
                 test_cases_data.append({
                     "id": case.id,
                     "name": case.name,
                     "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps],
-                    "settings": case_settings, # Pass effective settings for this case
-                    # "executionMode": execution_mode # Reverted
+                    "settings": case_settings,
                 })
 
             print(f"DEBUG: Found {len(cases_to_run)} cases to run. Serialized data: {test_cases_data}")
@@ -208,66 +100,70 @@ def run_test_suite(run_id: int):
                 # session.exec(delete(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
                 
                 test_results = result.get("results", [])
-                if not test_results and "status" in result:
-                    # Single test case run or legacy format
-                    # If the engine returns a single result structure, wrap it
-                    pass 
+                
+                # Map results by ID (preferred) or Name (fallback)
+                results_by_id = {}
+                results_by_name = {}
+                for res in test_results:
+                    if res.get("test_case_id"):
+                        results_by_id[res.get("test_case_id")] = res
+                    results_by_name[res.get("test_name")] = res
+                
+                passed_count = 0
+                failed_count = 0
+                
+                # Create results for all expected cases
+                for case in cases_to_run:
+                    case_res = results_by_id.get(case.id) or results_by_name.get(case.name)
                     
-                # If the execution engine returns a list of results under "results" key
-                if test_results:
-                    for res in test_results:
+                    if case_res:
+                        status = TestStatus.PASSED if case_res.get("status") == "passed" else TestStatus.FAILED
+                        if status == TestStatus.PASSED:
+                            passed_count += 1
+                        else:
+                            failed_count += 1
+                            
                         test_result = TestCaseResult(
                             test_run_id=run.id,
-                            test_name=res.get("test_name", "Unknown Test"),
-                            status=TestStatus.PASSED if res.get("status") == "passed" else TestStatus.FAILED,
-                            duration_ms=res.get("duration_ms", 0),
-                            error_message=res.get("error"),
-                            trace_url=res.get("trace"),
-                            video_url=res.get("video"),
-                            screenshots=res.get("screenshots", []),
-                            # Capture API details from result if available
-                            response_status=res.get("response_status"),
-                            response_headers=res.get("response_headers"),
-                            response_body=res.get("response_body"),
-                            request_headers=res.get("request_headers"),
-                            request_body=res.get("request_body"),
-                            request_url=res.get("request_url"),
-                            request_method=res.get("request_method"),
-                            request_params=res.get("request_params")
+                            test_name=case.name,
+                            status=status,
+                            duration_ms=case_res.get("duration_ms", 0),
+                            error_message=case_res.get("error"),
+                            trace_url=case_res.get("trace"),
+                            video_url=case_res.get("video"),
+                            screenshots=case_res.get("screenshots", []),
+                            response_status=case_res.get("response_status"),
+                            response_headers=case_res.get("response_headers"),
+                            response_body=case_res.get("response_body"),
+                            request_headers=case_res.get("request_headers"),
+                            request_body=case_res.get("request_body"),
+                            request_url=case_res.get("request_url"),
+                            request_method=case_res.get("request_method"),
+                            request_params=case_res.get("request_params")
                         )
                         session.add(test_result)
+                    else:
+                        # Case was expected but not found in results -> Skipped or Error
+                        # We mark it as ERROR/FAILED so the user knows it didn't run
+                        failed_count += 1
+                        test_result = TestCaseResult(
+                            test_run_id=run.id,
+                            test_name=case.name,
+                            status=TestStatus.FAILED,
+                            duration_ms=0,
+                            error_message="Test execution skipped or crashed before completion"
+                        )
+                        session.add(test_result)
+
+                run.total_tests = len(cases_to_run)
+                run.passed_tests = passed_count
+                run.failed_tests = failed_count
+                
+                # Update main run status based on aggregated results
+                if failed_count > 0:
+                    run.status = TestStatus.FAILED
                 else:
-                    # Fallback for single case run or legacy format where "results" list is missing
-                    # Create a single result record from the main run result
-                    # Use run.test_case_name if available, otherwise fallback to first case name or "Single Test"
-                    name = run.test_case_name
-                    if not name and cases_to_run:
-                        name = cases_to_run[0].name
-                    if not name:
-                        name = "Single Test"
-                    
-                    # Try to find the result in execution_log for this test case
-                    log_entry = next((log for log in (result.get("execution_log") or []) if log.get("testCaseName") == name), {})
-                        
-                    test_result = TestCaseResult(
-                        test_run_id=run.id,
-                        test_name=name,
-                        status=run.status,
-                        duration_ms=run.duration_ms or 0,
-                        error_message=run.error_message,
-                        trace_url=run.trace_url,
-                        video_url=run.video_url,
-                        screenshots=result.get("screenshots", []),
-                        # Capture API details from log entry
-                        response_status=log_entry.get("response_status"),
-                        response_headers=log_entry.get("response_headers"),
-                        response_body=log_entry.get("response_body"),
-                        request_headers=log_entry.get("request_headers"),
-                        request_body=log_entry.get("request_body"),
-                        request_url=log_entry.get("request_url"),
-                        request_method=log_entry.get("request_method")
-                    )
-                    session.add(test_result)
+                    run.status = TestStatus.PASSED
             else:
                 run.status = TestStatus.ERROR
                 run.error_message = f"Execution Engine failed: {response.text}"

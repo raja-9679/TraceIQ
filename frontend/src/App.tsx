@@ -10,6 +10,9 @@ import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
 import TestBuilder from "@/pages/TestBuilder";
 import Settings from "@/pages/Settings";
+import WorkspacePage from "@/pages/WorkspacePage";
+import UsersPage from "@/pages/UsersPage";
+import AdminUsersPage from "@/pages/AdminUsersPage";
 import PrivateRoute from "@/components/PrivateRoute";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -33,9 +36,13 @@ function App() {
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="suites/:suiteId/builder" element={<TestBuilder />} />
                 <Route path="suites/:suiteId/cases/:caseId/edit" element={<TestBuilder />} />
+                <Route path="workspace" element={<WorkspacePage />} />
+                <Route path="users" element={<UsersPage />} />
+                <Route path="admin/users" element={<AdminUsersPage />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>
+
           </Routes>
         </BrowserRouter>
       </AuthProvider>

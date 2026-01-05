@@ -9,7 +9,7 @@ from datetime import datetime
 
 router = APIRouter()
 
-@router.get("/settings", response_model=UserSettingsRead)
+@router.get("/", response_model=UserSettingsRead)
 async def get_user_settings(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
@@ -30,7 +30,7 @@ async def get_user_settings(
     return settings
 
 
-@router.put("/settings", response_model=UserSettingsRead)
+@router.put("/", response_model=UserSettingsRead)
 async def update_user_settings(
     settings_update: UserSettingsUpdate,
     session: AsyncSession = Depends(get_session),
