@@ -31,7 +31,7 @@ export class PlaywrightRunner {
 
     async runTest(runId: number, testCases: any[], browserType: string = 'chromium', globalSettings: any = {}, device?: string): Promise<any> {
         const browser = await this.start(browserType);
-        const artifactsDir = `/tmp/artifacts/${runId}`;
+        const artifactsDir = process.env.ARTIFACTS_DIR ? path.join(process.env.ARTIFACTS_DIR, String(runId)) : `/tmp/artifacts/${runId}`;
         fs.mkdirSync(artifactsDir, { recursive: true });
 
         let contextOptions: any = {
@@ -144,6 +144,8 @@ export class PlaywrightRunner {
                     }
 
                     try {
+                        const defaultTimeout = parseInt(process.env.DEFAULT_TIMEOUT || '30000');
+                        page.setDefaultTimeout(defaultTimeout);
                         await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
                         await page.evaluate((tn) => { (window as any).__TRACEIQ_TEST_NAME__ = tn; }, testCase.name);
                     } catch (e) { }
