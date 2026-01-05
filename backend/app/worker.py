@@ -100,66 +100,70 @@ def run_test_suite(run_id: int):
                 # session.exec(delete(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
                 
                 test_results = result.get("results", [])
-                if not test_results and "status" in result:
-                    # Single test case run or legacy format
-                    # If the engine returns a single result structure, wrap it
-                    pass 
+                
+                # Map results by ID (preferred) or Name (fallback)
+                results_by_id = {}
+                results_by_name = {}
+                for res in test_results:
+                    if res.get("test_case_id"):
+                        results_by_id[res.get("test_case_id")] = res
+                    results_by_name[res.get("test_name")] = res
+                
+                passed_count = 0
+                failed_count = 0
+                
+                # Create results for all expected cases
+                for case in cases_to_run:
+                    case_res = results_by_id.get(case.id) or results_by_name.get(case.name)
                     
-                # If the execution engine returns a list of results under "results" key
-                if test_results:
-                    for res in test_results:
+                    if case_res:
+                        status = TestStatus.PASSED if case_res.get("status") == "passed" else TestStatus.FAILED
+                        if status == TestStatus.PASSED:
+                            passed_count += 1
+                        else:
+                            failed_count += 1
+                            
                         test_result = TestCaseResult(
                             test_run_id=run.id,
-                            test_name=res.get("test_name", "Unknown Test"),
-                            status=TestStatus.PASSED if res.get("status") == "passed" else TestStatus.FAILED,
-                            duration_ms=res.get("duration_ms", 0),
-                            error_message=res.get("error"),
-                            trace_url=res.get("trace"),
-                            video_url=res.get("video"),
-                            screenshots=res.get("screenshots", []),
-                            # Capture API details from result if available
-                            response_status=res.get("response_status"),
-                            response_headers=res.get("response_headers"),
-                            response_body=res.get("response_body"),
-                            request_headers=res.get("request_headers"),
-                            request_body=res.get("request_body"),
-                            request_url=res.get("request_url"),
-                            request_method=res.get("request_method"),
-                            request_params=res.get("request_params")
+                            test_name=case.name,
+                            status=status,
+                            duration_ms=case_res.get("duration_ms", 0),
+                            error_message=case_res.get("error"),
+                            trace_url=case_res.get("trace"),
+                            video_url=case_res.get("video"),
+                            screenshots=case_res.get("screenshots", []),
+                            response_status=case_res.get("response_status"),
+                            response_headers=case_res.get("response_headers"),
+                            response_body=case_res.get("response_body"),
+                            request_headers=case_res.get("request_headers"),
+                            request_body=case_res.get("request_body"),
+                            request_url=case_res.get("request_url"),
+                            request_method=case_res.get("request_method"),
+                            request_params=case_res.get("request_params")
                         )
                         session.add(test_result)
+                    else:
+                        # Case was expected but not found in results -> Skipped or Error
+                        # We mark it as ERROR/FAILED so the user knows it didn't run
+                        failed_count += 1
+                        test_result = TestCaseResult(
+                            test_run_id=run.id,
+                            test_name=case.name,
+                            status=TestStatus.FAILED,
+                            duration_ms=0,
+                            error_message="Test execution skipped or crashed before completion"
+                        )
+                        session.add(test_result)
+
+                run.total_tests = len(cases_to_run)
+                run.passed_tests = passed_count
+                run.failed_tests = failed_count
+                
+                # Update main run status based on aggregated results
+                if failed_count > 0:
+                    run.status = TestStatus.FAILED
                 else:
-                    # Fallback for single case run or legacy format where "results" list is missing
-                    # Create a single result record from the main run result
-                    # Use run.test_case_name if available, otherwise fallback to first case name or "Single Test"
-                    name = run.test_case_name
-                    if not name and cases_to_run:
-                        name = cases_to_run[0].name
-                    if not name:
-                        name = "Single Test"
-                    
-                    # Try to find the result in execution_log for this test case
-                    log_entry = next((log for log in (result.get("execution_log") or []) if log.get("testCaseName") == name), {})
-                        
-                    test_result = TestCaseResult(
-                        test_run_id=run.id,
-                        test_name=name,
-                        status=run.status,
-                        duration_ms=run.duration_ms or 0,
-                        error_message=run.error_message,
-                        trace_url=run.trace_url,
-                        video_url=run.video_url,
-                        screenshots=result.get("screenshots", []),
-                        # Capture API details from log entry
-                        response_status=log_entry.get("response_status"),
-                        response_headers=log_entry.get("response_headers"),
-                        response_body=log_entry.get("response_body"),
-                        request_headers=log_entry.get("request_headers"),
-                        request_body=log_entry.get("request_body"),
-                        request_url=log_entry.get("request_url"),
-                        request_method=log_entry.get("request_method")
-                    )
-                    session.add(test_result)
+                    run.status = TestStatus.PASSED
             else:
                 run.status = TestStatus.ERROR
                 run.error_message = f"Execution Engine failed: {response.text}"

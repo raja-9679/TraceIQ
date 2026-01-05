@@ -37,7 +37,7 @@ export default function Signup() {
                 email: data.email,
                 password: data.password,
                 full_name: data.fullName,
-                org_name: data.orgName,
+                organization_name: data.orgName,
                 project_name: data.projectName
             };
 
