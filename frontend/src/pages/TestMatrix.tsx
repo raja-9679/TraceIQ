@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getRuns, triggerRun, deleteRun, deleteRuns } from "@/lib/api";
+import { getRuns, deleteRun, deleteRuns } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, Eye, Clock, CheckCircle2, XCircle, AlertCircle, Trash2, MoreHorizontal, Search } from "lucide-react";
+import { Eye, Clock, CheckCircle2, XCircle, AlertCircle, Trash2, MoreHorizontal, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -65,12 +65,6 @@ export default function TestMatrix() {
         setCurrentPage(1);
     };
 
-    const triggerMutation = useMutation({
-        mutationFn: (suiteId: number) => triggerRun(suiteId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["runs"] });
-        },
-    });
 
     const deleteMutation = useMutation({
         mutationFn: (runId: number) => deleteRun(runId),
@@ -185,10 +179,6 @@ export default function TestMatrix() {
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button onClick={() => triggerMutation.mutate(1)} disabled={triggerMutation.isPending}>
-                        <Play className="mr-2 h-4 w-4" />
-                        {triggerMutation.isPending ? "Starting..." : "Run Test Suite"}
-                    </Button>
                 </div>
             </div>
 

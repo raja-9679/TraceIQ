@@ -138,8 +138,8 @@ export default function TestSuites() {
 
     if (isLoading) return <div className="p-8">Loading suites...</div>;
 
-    const canUpdateProject = activeProjectId ? can("project:create_suite", { projectId: activeProjectId }) : false;
-    const canExecuteTest = activeProjectId ? can("project:execute_test", { projectId: activeProjectId }) : false;
+    const canUpdateProject = activeProjectId ? can("project:create_suite", { projectId: activeProjectId, workspaceId: activeProject?.workspace_id }) : false;
+    const canExecuteTest = activeProjectId ? can("project:execute_test", { projectId: activeProjectId, workspaceId: activeProject?.workspace_id }) : false;
 
     return (
         <div className="space-y-6">

@@ -107,44 +107,7 @@ export class TestExecutor {
                 let jsonBody;
                 try { jsonBody = JSON.parse(respBody); } catch (e) { }
 
-                if (step.params?.assertions) {
-                    for (const assertion of step.params.assertions) {
-                        if (assertion.type === 'status') {
-                            if (status !== parseInt(assertion.value)) {
-                                throw new Error(`Expected status ${assertion.value} but got ${status}`);
-                            }
-                        } else if (assertion.type === 'json-path') {
-                            if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
-                            const pathParts = assertion.path.split('.');
-                            let current = jsonBody;
-                            for (const part of pathParts) {
-                                if (current === undefined || current === null) break;
-                                current = current[part];
-                            }
-                            if (assertion.operator === 'equals') {
-                                if (String(current) !== String(assertion.value)) {
-                                    throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
-                                }
-                            } else if (assertion.operator === 'contains') {
-                                if (!String(current).includes(String(assertion.value))) {
-                                    throw new Error(`Expected ${assertion.path} to contain ${assertion.value} but got ${current}`);
-                                }
-                            }
-                        } else if (assertion.type === 'json-schema') {
-                            if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
-                            const ajv = new Ajv({ allErrors: true });
-                            addFormats(ajv);
-                            const schema = JSON.parse(assertion.value || '{}');
-                            const validate = ajv.compile(schema);
-                            if (!validate(jsonBody)) {
-                                const errors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
-                                throw new Error(`JSON Schema validation failed: ${errors}`);
-                            }
-                        }
-                    }
-                }
-
-                return {
+                const resultObject = {
                     type: 'http-request',
                     status,
                     headers: apiHeaders,
@@ -157,6 +120,50 @@ export class TestExecutor {
                         body
                     }
                 };
+
+                if (step.params?.assertions) {
+                    for (const assertion of step.params.assertions) {
+                        try {
+                            if (assertion.type === 'status') {
+                                if (status !== parseInt(assertion.value)) {
+                                    throw new Error(`Expected status ${assertion.value} but got ${status}`);
+                                }
+                            } else if (assertion.type === 'json-path') {
+                                if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
+                                const pathParts = assertion.path.split('.');
+                                let current = jsonBody;
+                                for (const part of pathParts) {
+                                    if (current === undefined || current === null) break;
+                                    current = current[part];
+                                }
+                                if (assertion.operator === 'equals') {
+                                    if (String(current) !== String(assertion.value)) {
+                                        throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
+                                    }
+                                } else if (assertion.operator === 'contains') {
+                                    if (!String(current).includes(String(assertion.value))) {
+                                        throw new Error(`Expected ${assertion.path} to contain ${assertion.value} but got ${current}`);
+                                    }
+                                }
+                            } else if (assertion.type === 'json-schema') {
+                                if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
+                                const ajv = new Ajv({ allErrors: true });
+                                addFormats(ajv);
+                                const schema = JSON.parse(assertion.value || '{}');
+                                const validate = ajv.compile(schema);
+                                if (!validate(jsonBody)) {
+                                    const errors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
+                                    throw new Error(`JSON Schema validation failed: ${errors}`);
+                                }
+                            }
+                        } catch (e: any) {
+                            e.stepResult = resultObject;
+                            throw e;
+                        }
+                    }
+                }
+
+                return resultObject;
             }
 
             case 'feed-check': {
@@ -191,26 +198,7 @@ export class TestExecutor {
                 const feedText = await feedResponse.text();
                 const doc = new DOMParser().parseFromString(feedText, 'text/xml');
 
-                if (step.params?.assertions) {
-                    for (const assertion of step.params.assertions) {
-                        if (assertion.type === 'xpath') {
-                            const nodes = xpath.select(assertion.path, doc);
-                            const nodeValue = nodes[0] ? (nodes[0] as any).textContent : null;
-
-                            if (assertion.operator === 'equals') {
-                                if (nodeValue !== assertion.value) throw new Error(`Expected XPath ${assertion.path} to equal ${assertion.value} but got ${nodeValue}`);
-                            } else if (assertion.operator === 'contains') {
-                                if (!nodeValue || !nodeValue.includes(assertion.value)) throw new Error(`Expected XPath ${assertion.path} to contain ${assertion.value} but got ${nodeValue}`);
-                            } else if (assertion.operator === 'exists') {
-                                if (!nodes || nodes.length === 0) throw new Error(`Expected XPath ${assertion.path} to exist`);
-                            }
-                        } else if (assertion.type === 'text') {
-                            if (!feedText.includes(assertion.value)) throw new Error(`Expected feed to contain text "${assertion.value}"`);
-                        }
-                    }
-                }
-
-                return {
+                const resultObject = {
                     type: 'feed-check',
                     status: feedResponse.status(),
                     headers: feedResponse.headers(),
@@ -222,6 +210,32 @@ export class TestExecutor {
                         params: mergedParams
                     }
                 };
+
+                if (step.params?.assertions) {
+                    for (const assertion of step.params.assertions) {
+                        try {
+                            if (assertion.type === 'xpath') {
+                                const nodes = xpath.select(assertion.path, doc);
+                                const nodeValue = nodes[0] ? (nodes[0] as any).textContent : null;
+
+                                if (assertion.operator === 'equals') {
+                                    if (nodeValue !== assertion.value) throw new Error(`Expected XPath ${assertion.path} to equal ${assertion.value} but got ${nodeValue}`);
+                                } else if (assertion.operator === 'contains') {
+                                    if (!nodeValue || !nodeValue.includes(assertion.value)) throw new Error(`Expected XPath ${assertion.path} to contain ${assertion.value} but got ${nodeValue}`);
+                                } else if (assertion.operator === 'exists') {
+                                    if (!nodes || nodes.length === 0) throw new Error(`Expected XPath ${assertion.path} to exist`);
+                                }
+                            } else if (assertion.type === 'text') {
+                                if (!feedText.includes(assertion.value)) throw new Error(`Expected feed to contain text "${assertion.value}"`);
+                            }
+                        } catch (e: any) {
+                            e.stepResult = resultObject;
+                            throw e;
+                        }
+                    }
+                }
+
+                return resultObject;
             }
 
             case 'click': {

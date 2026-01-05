@@ -116,40 +116,40 @@ export class PlaywrightRunner {
                 let lastStepResult: any = null;
                 let tempContext: BrowserContext | null = null;
 
-                testCaseContext.id = testCase.id;
-                testCaseContext.name = testCase.name;
-
-                if (testCase.settings) {
-                    currentSettings.headers = testCase.settings.headers || {};
-                    currentSettings.params = testCase.settings.params || {};
-                    currentSettings.allowed_domains = testCase.settings.allowed_domains || [];
-                    currentSettings.domain_settings = testCase.settings.domain_settings || {};
-                }
-
-                sourceDomain.value = null;
-                const executionMode = testCase.executionMode || 'continuous';
-
-                if (executionMode === 'separate') {
-                    tempContext = await browser.newContext(contextOptions);
-                    await this.browserManager.injectInitScripts(tempContext, browserType, device || null, emulatedAs || null);
-                    await tempContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
-                    page = await tempContext.newPage();
-                    await NetworkInterceptor.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, testCaseContext);
-                    await NetworkInterceptor.setupRouteInterception(tempContext, currentSettings, sourceDomain);
-                } else {
-                    const pages = sharedContext.pages();
-                    page = (pages.length > 0 && !pages[0].isClosed()) ? pages[0] : await sharedContext.newPage();
-                    await NetworkInterceptor.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
-                }
-
                 try {
-                    await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
-                    await page.evaluate((tn) => { (window as any).__TRACEIQ_TEST_NAME__ = tn; }, testCase.name);
-                } catch (e) { }
+                    testCaseContext.id = testCase.id;
+                    testCaseContext.name = testCase.name;
 
-                let currentContext: Page | FrameLocator = page;
+                    if (testCase.settings) {
+                        currentSettings.headers = testCase.settings.headers || {};
+                        currentSettings.params = testCase.settings.params || {};
+                        currentSettings.allowed_domains = testCase.settings.allowed_domains || [];
+                        currentSettings.domain_settings = testCase.settings.domain_settings || {};
+                    }
 
-                try {
+                    sourceDomain.value = null;
+                    const executionMode = testCase.executionMode || 'continuous';
+
+                    if (executionMode === 'separate') {
+                        tempContext = await browser.newContext(contextOptions);
+                        await this.browserManager.injectInitScripts(tempContext, browserType, device || null, emulatedAs || null);
+                        await tempContext.tracing.start({ screenshots: true, snapshots: true, sources: true });
+                        page = await tempContext.newPage();
+                        await NetworkInterceptor.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, testCaseContext);
+                        await NetworkInterceptor.setupRouteInterception(tempContext, currentSettings, sourceDomain);
+                    } else {
+                        const pages = sharedContext.pages();
+                        page = (pages.length > 0 && !pages[0].isClosed()) ? pages[0] : await sharedContext.newPage();
+                        await NetworkInterceptor.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
+                    }
+
+                    try {
+                        await page.goto('about:blank', { waitUntil: 'domcontentloaded', timeout: 5000 });
+                        await page.evaluate((tn) => { (window as any).__TRACEIQ_TEST_NAME__ = tn; }, testCase.name);
+                    } catch (e) { }
+
+                    let currentContext: Page | FrameLocator = page;
+
                     for (const step of testCase.steps) {
                         if (step.type === 'switch-frame') {
                             const frameSelector = step.selector || step.value;
@@ -175,10 +175,14 @@ export class PlaywrightRunner {
                 } catch (e: any) {
                     caseStatus = 'failed';
                     caseError = e.message;
+                    if (e.stepResult) {
+                        lastStepResult = e.stepResult;
+                    }
                 } finally {
                     const caseEndTime = Date.now();
                     executionLog.push({ testCaseId: testCase.id, testCaseName: testCase.name, startTime: caseStartTime, endTime: caseEndTime, status: caseStatus, error: caseError });
                     testResults.push({
+                        test_case_id: testCase.id,
                         test_name: testCase.name, status: caseStatus, duration_ms: caseEndTime - caseStartTime, error: caseError,
                         response_status: lastStepResult?.status, response_headers: lastStepResult?.headers, response_body: lastStepResult?.body,
                         request_headers: lastStepResult?.request?.headers, request_body: lastStepResult?.request?.body, request_url: lastStepResult?.request?.url,
@@ -195,28 +199,36 @@ export class PlaywrightRunner {
             await sharedContext.tracing.stop({ path: tracePath });
             await sharedContext.close();
 
-            const traceKey = `runs/${runId}/trace.zip`;
-            await minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
+            try {
+                if (fs.existsSync(artifactsDir)) {
+                    const traceKey = `runs/${runId}/trace.zip`;
+                    if (fs.existsSync(tracePath)) {
+                        await minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
+                    }
 
-            const files = fs.readdirSync(artifactsDir);
-            const screenshots: string[] = [];
-            for (const file of files.filter(f => f.endsWith('.png'))) {
-                const key = `runs/${runId}/screenshots/${file}`;
-                await minioClient.fPutObject(BUCKET_NAME, key, path.join(artifactsDir, file));
-                screenshots.push(key);
+                    const files = fs.readdirSync(artifactsDir);
+                    const screenshots: string[] = [];
+                    for (const file of files.filter(f => f.endsWith('.png'))) {
+                        const key = `runs/${runId}/screenshots/${file}`;
+                        await minioClient.fPutObject(BUCKET_NAME, key, path.join(artifactsDir, file));
+                        screenshots.push(key);
+                    }
+
+                    let videoKey = null;
+                    const videoFile = files.find(f => f.endsWith('.webm'));
+                    if (videoFile) {
+                        videoKey = `runs/${runId}/video.webm`;
+                        await minioClient.fPutObject(BUCKET_NAME, videoKey, path.join(artifactsDir, videoFile));
+                    }
+
+                    fs.rmSync(artifactsDir, { recursive: true, force: true });
+                }
+            } catch (cleanupError) {
+                console.error("Error during artifact cleanup:", cleanupError);
             }
-
-            let videoKey = null;
-            const videoFile = files.find(f => f.endsWith('.webm'));
-            if (videoFile) {
-                videoKey = `runs/${runId}/video.webm`;
-                await minioClient.fPutObject(BUCKET_NAME, videoKey, path.join(artifactsDir, videoFile));
-            }
-
-            fs.rmSync(artifactsDir, { recursive: true, force: true });
 
             return {
-                status, duration_ms: duration, error, trace: traceKey, video: videoKey, screenshots,
+                status, duration_ms: duration, error, trace: null, video: null, screenshots: [],
                 network_events: networkEvents, execution_log: executionLog, results: testResults
             };
         }
