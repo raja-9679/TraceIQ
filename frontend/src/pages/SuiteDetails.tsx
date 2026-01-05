@@ -24,7 +24,6 @@ import {
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 import { triggerRun, exportTestCase, importTestCase, exportTestSuite, importTestSuite, getAuditLog } from '@/lib/api';
-import { History } from 'lucide-react';
 import { ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 

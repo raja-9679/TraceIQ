@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright browsers
-# RUN playwright install --with-deps chromium
+# RUN apt-get update && playwright install --with-deps chromium && rm -rf /var/lib/apt/lists/*
 
 COPY . .
 

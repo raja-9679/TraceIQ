@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     EXECUTION_ENGINE_URL: str = "http://execution-engine:3000/run"
     BACKEND_CORS_ORIGINS: list[str] = ["*"]
+    
+    # Security
+    SECRET_KEY: str
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 # 30 minutes
 
     @property
     def cors_origins(self) -> list[str]:

@@ -10,7 +10,6 @@ import {
     X,
     User,
     Users,
-    Bell,
     ChevronDown,
     Layers,
     Plus,
@@ -198,10 +197,6 @@ export default function DashboardLayout() {
                         </div>
 
                         <div className="flex items-center space-x-4">
-                            <button className="relative text-muted-foreground hover:text-foreground">
-                                <Bell className="h-6 w-6" />
-                                <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-background" />
-                            </button>
                             <Button
                                 variant="ghost"
                                 size="icon"
