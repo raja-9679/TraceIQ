@@ -128,7 +128,7 @@ export default function WorkspacePage() {
         enabled: !!selectedWorkspaceId,
     });
 
-    const { data: workspaceInvitations, isLoading: workspaceInvitationsLoading } = useQuery<DetailedMember[]>({
+    const { data: workspaceInvitations } = useQuery<DetailedMember[]>({
         queryKey: ['workspaceInvitations', selectedWorkspaceId],
         queryFn: () => getWorkspaceInvitations(selectedWorkspaceId!),
         enabled: !!selectedWorkspaceId,
