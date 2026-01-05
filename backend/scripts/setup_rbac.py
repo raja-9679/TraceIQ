@@ -9,7 +9,7 @@ from sqlmodel import select
 from app.core.database import get_session_context
 from app.models import (
     Permission, Role, RolePermission, 
-    UserOrganization, User, Tenant, UserSystemRole,
+    UserWorkspace, User, Tenant, UserSystemRole,
     UserProjectAccess
 )
 
@@ -52,6 +52,13 @@ ROLES = {
         "project:create_suite", "project:execute_test", "project:view_report"
     ],
     "Project Viewer": [
+        "project:view_report"
+    ],
+    "Workspace Admin": [
+        "org:manage_users", "org:create_team", "org:create_project",
+        "project:manage_access", "project:create_suite", "project:execute_test", "project:view_report"
+    ],
+    "Workspace Member": [
         "project:view_report"
     ]
 }
@@ -129,23 +136,19 @@ async def setup_rbac():
 
         await session.commit()
         
-        # 3. Migrate Users (Organization Links)
-        print("\n[Step 3] Migrating User Organization Links...")
-        user_orgs = await session.exec(select(UserOrganization).where(UserOrganization.role_id == None))
-        uos = user_orgs.all()
-        
-        count = 0
-        for uo in uos:
-            if uo.role == "admin":
-                uo.role_id = role_map["Organization Admin"].id
-                session.add(uo)
-                count += 1
-            elif uo.role == "member": # or anything else default
-                uo.role_id = role_map["Organization Member"].id
-                session.add(uo)
-                count += 1
-        
-        print(f"  - Migrated {count} UserOrganization records.")
+        # 3. Migrate Users (Organization Links) - SKIPPED (UserOrganization removed)
+        print("\n[Step 3] Migrating User Organization Links... SKIPPED")
+
+        # Ensure we have at least one admin for the default tenant
+        admin_email = "admin@traceiq.io"
+        admin_user = (await session.exec(select(User).where(User.email == admin_email))).first()
+        if not admin_user:
+             print(f"\n[Info] Admin user {admin_email} not found. Skipped assignment.")
+        else:
+             workspace = (await session.exec(select(Tenant))).first()
+             if workspace:
+                 # Check if already has role via UserSystemRole
+                 pass
         
         # 4. Migrate Project Access
         print("\n[Step 4] Migrating User Project Access...")

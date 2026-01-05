@@ -24,6 +24,7 @@ class UserCreate(BaseModel):
     password: str
     full_name: str | None = None
     workspace_name: str | None = None
+    organization_name: str | None = None # Preferred over workspace_name
     project_name: str | None = None
     invite_token: str | None = None
 
@@ -171,7 +172,8 @@ async def register_user(
         
         # Create New Tenant
         from app.models import Tenant, UserSystemRole
-        tenant_name = user_in.workspace_name or f"{user_in.full_name or user_in.email}'s Workspace"
+        # Use organization_name if provided, otherwise workspace_name, otherwise default
+        tenant_name = user_in.organization_name or user_in.workspace_name or f"{user_in.full_name or user_in.email}'s Workspace"
         tenant = Tenant(name=tenant_name, owner_id=user.id)
         session.add(tenant)
         await session.flush() # Get Tenant ID
