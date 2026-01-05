@@ -2,7 +2,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from app.core.database import init_db
 from app.core.storage import minio_client
-from app.api import endpoints, auth, settings
+from app.api import auth, settings, workspaces, projects, admin
+from app.api.endpoints import test_suites, test_cases, test_runs
+from app.core.config import settings as core_settings
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -18,15 +20,20 @@ app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
+    allow_origins=[str(origin) for origin in core_settings.BACKEND_CORS_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(endpoints.router, prefix="/api")
+app.include_router(test_suites.router, prefix="/api", tags=["suites"])
+app.include_router(test_cases.router, prefix="/api", tags=["cases"])
+app.include_router(test_runs.router, prefix="/api", tags=["runs"])
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(settings.router, prefix="/api", tags=["settings"])
+app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
+app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
+app.include_router(projects.router, prefix="/api", tags=["projects"])
+app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 
 @app.get("/health")
 def health_check():

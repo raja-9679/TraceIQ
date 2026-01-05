@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, triggerRun, exportTestSuite, importTestSuite } from '@/lib/api';
+import { api, triggerRun, exportTestSuite, importTestSuite, getProjects } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, Play, FolderOpen, FileText, Download, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Play, FolderOpen, FileText, Download, Upload, ShieldCheck, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -14,6 +14,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
+import { usePermission } from "@/hooks/usePermission";
+
 export default function TestSuites() {
     const queryClient = useQueryClient();
     const [newSuiteName, setNewSuiteName] = useState('');
@@ -22,9 +24,37 @@ export default function TestSuites() {
     const [showCreateDialog, setShowCreateDialog] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
 
+    const [activeProjectId, setActiveProjectId] = useState<number | null>(() => {
+        const saved = localStorage.getItem('activeProjectId');
+        return saved ? parseInt(saved) : null;
+    });
+
+    useEffect(() => {
+        const handleProjectChange = () => {
+            const saved = localStorage.getItem('activeProjectId');
+            setActiveProjectId(saved ? parseInt(saved) : null);
+        };
+        window.addEventListener('projectChanged', handleProjectChange);
+        return () => window.removeEventListener('projectChanged', handleProjectChange);
+    }, []);
+
+    const { data: projects } = useQuery({
+        queryKey: ['projects'],
+        queryFn: () => getProjects()
+    });
+
+    const activeProject = projects?.find(p => p.id === activeProjectId);
+    const { can } = usePermission();
+
+    // Legacy checks replaced by RBAC
+    // const isEditor = activeProject?.access_level === 'admin' || activeProject?.access_level === 'editor';
+    // const isAdmin = activeProject?.access_level === 'admin';
+
     const { data: suites, isLoading } = useQuery({
-        queryKey: ['suites'],
-        queryFn: () => api.get('/suites').then(res => res.data.filter((s: any) => !s.parent_id))
+        queryKey: ['suites', activeProjectId],
+        queryFn: () => api.get('/suites', { params: { project_id: activeProjectId } })
+            .then(res => res.data.filter((s: any) => !s.parent_id)),
+        enabled: !!activeProjectId
     });
 
     const filteredSuites = suites?.filter((suite: any) =>
@@ -33,12 +63,16 @@ export default function TestSuites() {
     );
 
     const createSuite = useMutation({
-        mutationFn: (data: { name: string; description?: string; execution_mode: string }) => api.post('/suites', data),
+        mutationFn: (data: { name: string; description?: string; execution_mode: string; project_id: number }) => api.post('/suites', data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['suites'] });
             setNewSuiteName('');
             setNewSuiteDesc('');
             setShowCreateDialog(false);
+            toast.success('Suite created successfully');
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.detail || 'Failed to create suite');
         }
     });
 
@@ -49,18 +83,19 @@ export default function TestSuites() {
         onSuccess: () => {
             navigate('/runs');
         },
-        onError: (error) => {
+        onError: (error: any) => {
             console.error("Failed to start run:", error);
-            // Optional: Add toast notification here
+            toast.error(error.response?.data?.detail || "Failed to start run");
         }
     });
 
     const handleCreate = () => {
-        if (newSuiteName.trim()) {
+        if (newSuiteName.trim() && activeProjectId) {
             createSuite.mutate({
                 name: newSuiteName,
                 description: newSuiteDesc || undefined,
-                execution_mode: newExecutionMode
+                execution_mode: newExecutionMode,
+                project_id: activeProjectId
             });
         }
     };
@@ -103,11 +138,22 @@ export default function TestSuites() {
 
     if (isLoading) return <div className="p-8">Loading suites...</div>;
 
+    const canUpdateProject = activeProjectId ? can("project:create_suite", { projectId: activeProjectId, workspaceId: activeProject?.workspace_id }) : false;
+    const canExecuteTest = activeProjectId ? can("project:execute_test", { projectId: activeProjectId, workspaceId: activeProject?.workspace_id }) : false;
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-3xl font-bold text-gray-900">Test Suites</h1>
+                    <h1 className="text-3xl font-bold text-gray-900">
+                        Test Suites
+                        {activeProject && (
+                            <span className="ml-3 text-lg font-normal text-gray-500 bg-gray-100 px-3 py-1 rounded-full inline-flex items-center">
+                                <ShieldCheck className="h-4 w-4 mr-2 text-primary" />
+                                {activeProject.name} ({activeProject.access_level})
+                            </span>
+                        )}
+                    </h1>
                     <p className="text-gray-500 mt-1">Organize and manage your test collections</p>
                 </div>
                 <div className="flex gap-4">
@@ -125,12 +171,13 @@ export default function TestSuites() {
                             onChange={handleImportSuite}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                             title="Import Suite"
+                            disabled={!canUpdateProject}
                         />
-                        <Button variant="outline">
+                        <Button variant="outline" disabled={!canUpdateProject}>
                             <Upload className="mr-2 h-4 w-4" /> Import Suite
                         </Button>
                     </div>
-                    <Button onClick={() => setShowCreateDialog(true)}>
+                    <Button onClick={() => setShowCreateDialog(true)} disabled={!canUpdateProject}>
                         <Plus className="mr-2 h-4 w-4" /> Create Suite
                     </Button>
                 </div>
@@ -261,7 +308,8 @@ export default function TestSuites() {
                                     size="sm"
                                     className="flex-1"
                                     onClick={() => runMutation.mutate(suite.id)}
-                                    disabled={runMutation.isPending}
+                                    disabled={runMutation.isPending || !canExecuteTest}
+                                    title={!canExecuteTest ? "Permissions required to run tests" : ""}
                                 >
                                     <Play className="mr-1 h-3 w-3" />
                                     {runMutation.isPending ? 'Starting...' : 'Run'}
@@ -273,13 +321,23 @@ export default function TestSuites() {
             </div>
 
             {(!suites || suites.length === 0) && !showCreateDialog && (
-                <Card className="p-12 text-center">
-                    <FolderOpen className="h-16 w-16 mx-auto text-gray-300 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No test suites yet</h3>
-                    <p className="text-gray-500 mb-6">Get started by creating your first test suite</p>
-                    <Button onClick={() => setShowCreateDialog(true)}>
-                        <Plus className="mr-2 h-4 w-4" /> Create Your First Suite
-                    </Button>
+                <Card className="p-12 text-center h-[400px] flex flex-col items-center justify-center">
+                    {!activeProjectId ? (
+                        <>
+                            <AlertCircle className="h-16 w-16 mx-auto text-yellow-500 mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">No Project Selected</h3>
+                            <p className="text-gray-500 mb-6 max-w-sm">Please select a project from the top bar to view or create test suites.</p>
+                        </>
+                    ) : (
+                        <>
+                            <FolderOpen className="h-16 w-16 mx-auto text-gray-300 mb-4" />
+                            <h3 className="text-lg font-medium text-gray-900 mb-2">No test suites yet</h3>
+                            <p className="text-gray-500 mb-6">Get started by creating your first test suite in <strong>{activeProject?.name}</strong></p>
+                            <Button onClick={() => setShowCreateDialog(true)} disabled={!canUpdateProject}>
+                                <Plus className="mr-2 h-4 w-4" /> Create Your First Suite
+                            </Button>
+                        </>
+                    )}
                 </Card>
             )}
         </div>
