@@ -88,7 +88,7 @@ export default function DashboardLayout() {
                 <div className="flex flex-col h-full">
                     {/* Logo */}
                     <div className="flex items-center justify-between h-16 px-6 border-b border-border">
-                        <h1 className="text-xl font-bold text-foreground">QI Platform</h1>
+                        <h1 className="text-xl font-bold text-foreground">TiQ Platform</h1>
                         <button
                             onClick={() => setSidebarOpen(false)}
                             className="lg:hidden text-muted-foreground hover:text-foreground"
