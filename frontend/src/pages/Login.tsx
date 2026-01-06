@@ -78,10 +78,10 @@ export default function Login() {
             formData.append('username', data.email);
             formData.append('password', data.password);
 
-            const response = await axios.post("http://localhost:8000/api/auth/login", formData);
+            const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, formData);
             const { access_token } = response.data;
 
-            const userResponse = await axios.get("http://localhost:8000/api/auth/me", {
+            const userResponse = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
                 headers: { Authorization: `Bearer ${access_token}` }
             });
 
@@ -385,7 +385,7 @@ export default function Login() {
                             <div className="mt-8 text-center flex items-center justify-center gap-2">
                                 <span className="text-sm text-zinc-500">New here?</span>
                                 <Link to="/signup" className="text-sm font-medium text-zinc-900 hover:text-indigo-600 transition-colors">
-                                    Start 14-day free trial
+                                    Sign UP
                                 </Link>
                             </div>
                         </motion.div>
