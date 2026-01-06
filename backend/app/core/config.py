@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str
     CELERY_RESULT_BACKEND: str
     MINIO_ENDPOINT: str
-    MINIO_PUBLIC_URL: str = "http://localhost:9000"
+    MINIO_PUBLIC_URL: str = "https://traceiqstore.thehindu.co.in"
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     MINIO_BUCKET_NAME: str = "test-artifacts"
