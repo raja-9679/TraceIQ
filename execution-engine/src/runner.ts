@@ -106,6 +106,11 @@ export class PlaywrightRunner {
         let executionLog: any[] = [];
         let testResults: any[] = [];
 
+        // Defined at function scope to be available in finally block and return
+        let traceKey: string | null = null;
+        let videoKey: string | null = null;
+        let screenshots: string[] = [];
+
         try {
             if (!testCases || testCases.length === 0) throw new Error("No test cases provided");
 
@@ -203,20 +208,20 @@ export class PlaywrightRunner {
 
             try {
                 if (fs.existsSync(artifactsDir)) {
-                    const traceKey = `runs/${runId}/trace.zip`;
+                    traceKey = `runs/${runId}/trace.zip`;
                     if (fs.existsSync(tracePath)) {
                         await minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
+                    } else {
+                        traceKey = null;
                     }
 
                     const files = fs.readdirSync(artifactsDir);
-                    const screenshots: string[] = [];
                     for (const file of files.filter(f => f.endsWith('.png'))) {
                         const key = `runs/${runId}/screenshots/${file}`;
                         await minioClient.fPutObject(BUCKET_NAME, key, path.join(artifactsDir, file));
                         screenshots.push(key);
                     }
 
-                    let videoKey = null;
                     const videoFile = files.find(f => f.endsWith('.webm'));
                     if (videoFile) {
                         videoKey = `runs/${runId}/video.webm`;
@@ -230,9 +235,11 @@ export class PlaywrightRunner {
             }
 
             return {
-                status, duration_ms: duration, error, trace: null, video: null, screenshots: [],
+                status, duration_ms: duration, error, trace: traceKey, video: videoKey, screenshots: screenshots,
                 network_events: networkEvents, execution_log: executionLog, results: testResults
             };
         }
+
     }
 }
+
