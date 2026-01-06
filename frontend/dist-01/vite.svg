@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4F46E5;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#7C3AED;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Outer Circle/Background shape -->
+  <rect x="10" y="10" width="80" height="80" rx="20" fill="url(#grad1)" />
+  
+  <!-- "T" Trace Line / Pulse -->
+  <path d="M30 40 H70 M50 40 V75" stroke="white" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Small dot/IQ accent -->
+  <circle cx="70" cy="30" r="5" fill="#EF4444" />
+</svg>
