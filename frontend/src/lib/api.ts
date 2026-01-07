@@ -1,7 +1,7 @@
 import axios from "axios";
 
 export const api = axios.create({
-    baseURL: "http://localhost:8000/api",
+    baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
 });
 
 api.interceptors.request.use((config) => {
@@ -320,7 +320,7 @@ export const getWorkspaceMembersDetailed = async (wsId: number): Promise<Detaile
 };
 
 export const inviteUserToWorkspace = async (wsId: number, email: string, role: string): Promise<void> => {
-    const response = await api.post(`/workspaces/${wsId}/invitations`, { email, role });
+    await api.post(`/workspaces/${wsId}/invitations`, { email, role });
 };
 
 export const inviteUserToProject = async (projectId: number, email: string, role: string): Promise<void> => {

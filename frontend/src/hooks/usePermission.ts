@@ -11,7 +11,7 @@ export function usePermission() {
     const can = (action: string, context?: { workspaceId?: number; projectId?: number }) => {
         if (!permissions) return false;
 
-        const [scope, act] = action.split(':');
+        const [scope] = action.split(':');
 
         // 1. Check System Permissions (Global)
         // If exact match
