@@ -24,7 +24,7 @@ class MinioClient:
         # So we must use the external hostname here for signatures to match user's browser requests.
         self.s3_public = boto3.client(
             "s3",
-            endpoint_url="http://localhost:9000", 
+            endpoint_url=settings.MINIO_PUBLIC_URL, 
             aws_access_key_id=settings.MINIO_ACCESS_KEY,
             aws_secret_access_key=settings.MINIO_SECRET_KEY,
             config=Config(signature_version="s3v4"),
