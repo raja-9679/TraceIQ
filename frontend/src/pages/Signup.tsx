@@ -45,14 +45,14 @@ export default function Signup() {
                 payload.invite_token = inviteToken;
             }
 
-            const registerResponse = await axios.post("http://localhost:8000/api/auth/register", payload);
+            const registerResponse = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/register`, payload);
 
             // Login automatically after registration
             const formData = new FormData();
             formData.append('username', data.email);
             formData.append('password', data.password);
 
-            const loginResponse = await axios.post("http://localhost:8000/api/auth/login", formData);
+            const loginResponse = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, formData);
             const { access_token } = loginResponse.data;
 
             login(access_token, registerResponse.data);

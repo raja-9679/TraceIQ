@@ -8,12 +8,13 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from app.core.database import get_session
+from app.core.config import settings
 from app.models import User
 
-# Configuration - In production these should be in env vars
-SECRET_KEY = "your-secret-key-here-keep-it-secret"
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
+# Configuration
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")

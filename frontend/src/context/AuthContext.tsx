@@ -30,7 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     // Configure axios default header
                     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
                     // Validate token and get user info
-                    const response = await axios.get("http://localhost:8000/api/auth/me");
+                    const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/auth/me`);
                     setUser(response.data);
                 } catch (error) {
                     console.error("Auth initialization failed", error);
