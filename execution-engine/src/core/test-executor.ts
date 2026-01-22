@@ -369,6 +369,82 @@ export class TestExecutor {
                 break;
             }
 
+            case 'carousel-find': {
+                const targetSelector = step.selector;
+                const nextButtonSelector = step.value;
+                const maxSwipes = step.params?.max_swipes || 10;
+
+                let found = false;
+                for (let i = 0; i < maxSwipes; i++) {
+                    const target = getLocator(targetSelector);
+                    if (await target.isVisible().catch(() => false)) {
+                        found = true;
+                        break;
+                    }
+                    console.log(`  [Carousel] Target not visible, clicking next (${i + 1}/${maxSwipes})`);
+                    const nextBtn = getLocator(nextButtonSelector);
+                    if (await nextBtn.isVisible()) {
+                        await nextBtn.click();
+                        await page.waitForTimeout(500);
+                    } else {
+                        throw new Error(`Carousel next button '${nextButtonSelector}' not found/visible`);
+                    }
+                }
+                if (!found) {
+                    const target = getLocator(targetSelector);
+                    if (await target.isVisible().catch(() => false)) {
+                        found = true;
+                    } else {
+                        throw new Error(`Could not find target '${targetSelector}' in carousel after ${maxSwipes} attempts`);
+                    }
+                }
+                break;
+            }
+
+            case 'verify-nth-child': {
+                const parentSelector = step.selector;
+                const index = parseInt(step.value || '0');
+                const expectedText = step.params?.text;
+
+                const elements = getLocator(parentSelector);
+                const count = await elements.count();
+
+                if (index < 0 || index >= count) {
+                    // Note: count is 0 if none found, which is index out of bounds 0 >= 0
+                    throw new Error(`Index ${index} out of bounds (found ${count} elements for '${parentSelector}')`);
+                }
+
+                const child = elements.nth(index);
+                if (expectedText) {
+                    await child.waitFor({ state: 'visible', timeout: 30000 });
+                    const text = await child.textContent();
+                    if (!text?.includes(expectedText)) {
+                        throw new Error(`Expected nth-child(${index}) to contain "${expectedText}" but got "${text}"`);
+                    }
+                }
+                break;
+            }
+
+            case 'count-children': {
+                const parentSelector = step.selector;
+                const expectedCount = parseInt(step.value || '0');
+                const operator = step.params?.operator || 'equals';
+
+                if (expectedCount > 0) {
+                    try {
+                        await context.locator(parentSelector).first().waitFor({ state: 'attached', timeout: 5000 });
+                    } catch (e) { }
+                }
+
+                const count = await context.locator(parentSelector).count();
+                console.log(`  [Count] Found ${count} elements matching '${parentSelector}'`);
+
+                if (operator === 'equals' && count !== expectedCount) throw new Error(`Expected ${expectedCount} children, found ${count}`);
+                if (operator === 'gte' && count < expectedCount) throw new Error(`Expected at least ${expectedCount} children, found ${count}`);
+                if (operator === 'lte' && count > expectedCount) throw new Error(`Expected at most ${expectedCount} children, found ${count}`);
+                break;
+            }
+
             default:
                 if (step.type === 'switch-frame') break; // Handled in the main loop
                 console.warn(`Unknown step type: ${step.type}`);
