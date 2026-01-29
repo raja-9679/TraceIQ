@@ -4,6 +4,7 @@ import * as xpath from 'xpath';
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import * as path from 'path';
+import { spawn } from 'child_process';
 
 export class TestExecutor {
     public static async executeStep(
@@ -23,13 +24,29 @@ export class TestExecutor {
             }
         };
 
+        const resolve = (val: any): any => {
+            if (typeof val === 'string' && testCaseContext?.variables) {
+                return val.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
+                    return testCaseContext.variables[key] !== undefined ? String(testCaseContext.variables[key]) : `{{${key}}}`;
+                });
+            }
+            // Simple recursion for objects/arrays (shallow for headers/params is usually enough, but let's go one level deep if needed)
+            if (val && typeof val === 'object') {
+                if (Array.isArray(val)) return val.map(item => resolve(item));
+                const newObj: any = {};
+                for (const k in val) newObj[k] = resolve(val[k]);
+                return newObj;
+            }
+            return val;
+        };
+
         const getLocator = (selector: string) => {
             return context.locator(selector).first();
         };
 
         switch (step.type) {
             case 'goto': {
-                let url = step.value || step.selector || 'about:blank';
+                let url = resolve(step.value || step.selector) || 'about:blank';
                 if (globalSettings?.params && Object.keys(globalSettings.params).length > 0) {
                     try {
                         const urlObj = new URL(url);
@@ -63,10 +80,10 @@ export class TestExecutor {
 
             case 'http-request': {
                 const method = step.params?.method || 'GET';
-                const reqUrl = step.value || step.selector;
-                const stepHeaders = step.params?.headers || {};
-                const stepParams = step.params?.params || {};
-                const body = step.params?.body;
+                const reqUrl = resolve(step.value || step.selector);
+                const stepHeaders = resolve(step.params?.headers || {});
+                const stepParams = resolve(step.params?.params || {});
+                const body = resolve(step.params?.body);
 
                 const mergedHeaders = { ...globalSettings.headers, ...stepHeaders };
                 const mergedParams = { ...globalSettings.params, ...stepParams };
@@ -442,6 +459,166 @@ export class TestExecutor {
                 if (operator === 'equals' && count !== expectedCount) throw new Error(`Expected ${expectedCount} children, found ${count}`);
                 if (operator === 'gte' && count < expectedCount) throw new Error(`Expected at least ${expectedCount} children, found ${count}`);
                 if (operator === 'lte' && count > expectedCount) throw new Error(`Expected at most ${expectedCount} children, found ${count}`);
+                break;
+            }
+
+            case 'extract-value': {
+                const selector = step.selector;
+                const variableName = step.value;
+                if (!selector || !variableName) throw new Error("Extract Value requires both a selector and a variable name");
+
+                const locator = getLocator(selector);
+                await locator.waitFor({ state: 'attached', timeout: 30000 });
+                const text = await locator.textContent();
+
+                if (testCaseContext && testCaseContext.variables) {
+                    testCaseContext.variables[variableName] = text?.trim();
+                    console.log(`  [Extract] Stored '${variableName}': ${testCaseContext.variables[variableName]}`);
+                }
+                break;
+            }
+
+            case 'run-script': {
+                const language = step.params?.language || 'javascript';
+                const script = step.params?.body || step.value;
+
+                if (language === 'javascript') {
+                    // Execute in browser context
+                    const vars = testCaseContext?.variables || {};
+                    const result = await page.evaluate(({ code, variables }) => {
+                        // Create a function from the string that accepts 'variables'
+                        return new Function('variables', code)(variables);
+                    }, { code: script, variables: vars });
+                    console.log(`  [Script-JS] Result:`, result);
+
+                    if (step.params?.variableName && testCaseContext?.variables) {
+                        testCaseContext.variables[step.params.variableName] = result;
+                    }
+                } else if (language === 'python') {
+                    // Execute in runner environment
+                    const wrapper = `
+import sys
+import json
+import io
+import contextlib
+
+def run(context):
+${script.split('\n').map((line: string) => '    ' + line).join('\n')}
+
+if __name__ == "__main__":
+    try:
+        input_data = sys.stdin.read()
+        context = json.loads(input_data)
+        
+        f = io.StringIO()
+        with contextlib.redirect_stdout(f):
+             result = run(context)
+        captured_stdout = f.getvalue()
+        
+        print(json.dumps({"status": "success", "result": result, "logs": captured_stdout}))
+    except Exception as e:
+        print(json.dumps({"status": "error", "message": str(e)}))
+`;
+                    const child = spawn('python3', ['-c', wrapper]);
+
+                    const inputContext = {
+                        variables: testCaseContext?.variables || {}
+                    };
+
+                    let stdout = '';
+                    let stderr = '';
+
+                    child.stdout.on('data', (data) => stdout += data.toString());
+                    child.stderr.on('data', (data) => stderr += data.toString());
+                    child.stdin.write(JSON.stringify(inputContext));
+                    child.stdin.end();
+
+                    await new Promise((resolve, reject) => {
+                        child.on('error', (err) => {
+                            reject(new Error(`Failed to start Python process: ${err.message}`));
+                        });
+
+                        child.on('close', (code) => {
+                            if (code !== 0) {
+                                reject(new Error(`Python script exited with code ${code}. Stderr: ${stderr}`));
+                            } else {
+                                try {
+                                    const response = JSON.parse(stdout.trim());
+                                    if (response.status === 'error') {
+                                        reject(new Error(`Script Error: ${response.message}`));
+                                    } else {
+                                        if (response.logs) {
+                                            console.log(`  [Script-Py Logs]:\n${response.logs}`);
+                                        }
+                                        console.log(`  [Script-Py] Result:`, response.result);
+                                        if (step.params?.variableName && testCaseContext?.variables) {
+                                            testCaseContext.variables[step.params.variableName] = response.result;
+                                        }
+                                        resolve(response.result);
+                                    }
+                                } catch (e) {
+                                    reject(new Error(`Failed to parse Python output: ${stdout}\nStderr: ${stderr}`));
+                                }
+                            }
+                        });
+                    });
+                }
+                break;
+            }
+
+            case 'assert': {
+                const selector = step.selector;
+                const source = step.params?.source || 'text';
+                const operator = step.params?.operator || 'equals';
+                let expectedValue = resolve(step.value);
+                const attributeName = step.params?.attribute;
+
+                if (!selector) throw new Error("Assertion requires a selector");
+
+                const locator = getLocator(selector);
+
+                // Wait for element (unless we are checking count and expect 0)
+                if (source !== 'count') {
+                    await locator.waitFor({ state: 'attached', timeout: 30000 });
+                }
+
+                let actualValue: any;
+
+                if (source === 'text') {
+                    actualValue = (await locator.textContent())?.trim();
+                } else if (source === 'value') {
+                    actualValue = await locator.inputValue();
+                } else if (source === 'attribute') {
+                    if (!attributeName) throw new Error("Attribute name required for attribute assertion");
+                    actualValue = await locator.getAttribute(attributeName);
+                } else if (source === 'count') {
+                    actualValue = await context.locator(selector).count();
+                }
+
+                console.log(`  [Assert] ${source} of '${selector}' is '${actualValue}'. Checking ${operator} '${expectedValue}'`);
+
+                if (operator === 'equals') {
+                    if (String(actualValue) !== String(expectedValue)) {
+                        throw new Error(`Assertion Failed: Expected ${source} to equal '${expectedValue}', but got '${actualValue}'`);
+                    }
+                } else if (operator === 'contains') {
+                    if (!String(actualValue).includes(String(expectedValue))) {
+                        throw new Error(`Assertion Failed: Expected ${source} to contain '${expectedValue}', but got '${actualValue}'`);
+                    }
+                } else if (operator === 'matches') {
+                    const regex = new RegExp(String(expectedValue));
+                    if (!regex.test(String(actualValue))) {
+                        throw new Error(`Assertion Failed: Expected ${source} to match regex '${expectedValue}', but got '${actualValue}'`);
+                    }
+                } else if (operator === 'gt') {
+                    if (Number(actualValue) <= Number(expectedValue)) {
+                        throw new Error(`Assertion Failed: Expected ${source} (${actualValue}) to be > ${expectedValue}`);
+                    }
+                } else if (operator === 'lt') {
+                    if (Number(actualValue) >= Number(expectedValue)) {
+                        throw new Error(`Assertion Failed: Expected ${source} (${actualValue}) to be < ${expectedValue}`);
+                    }
+                }
                 break;
             }
 
