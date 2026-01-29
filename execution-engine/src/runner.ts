@@ -81,7 +81,7 @@ export class PlaywrightRunner {
         const sharedContext = await browser.newContext(contextOptions);
         const requestStartTimes = new Map<string, number>();
         const networkEvents: any[] = [];
-        const testCaseContext = { id: null as number | null, name: null as string | null };
+        const testCaseContext = { id: null as number | null, name: null as string | null, variables: {} as Record<string, any> };
         const sourceDomain = { value: null as string | null };
 
         await NetworkInterceptor.setupNetworkListeners(sharedContext, requestStartTimes, networkEvents, testCaseContext);
@@ -124,6 +124,7 @@ export class PlaywrightRunner {
                 try {
                     testCaseContext.id = testCase.id;
                     testCaseContext.name = testCase.name;
+                    testCaseContext.variables = {};
 
                     if (testCase.settings) {
                         currentSettings.headers = testCase.settings.headers || {};
@@ -142,9 +143,13 @@ export class PlaywrightRunner {
                         page = await tempContext.newPage();
                         await NetworkInterceptor.setupNetworkListeners(tempContext, requestStartTimes, networkEvents, testCaseContext);
                         await NetworkInterceptor.setupRouteInterception(tempContext, currentSettings, sourceDomain);
+                        page.on('console', msg => console.log(`  [Browser-Console]: ${msg.text()}`));
                     } else {
                         const pages = sharedContext.pages();
                         page = (pages.length > 0 && !pages[0].isClosed()) ? pages[0] : await sharedContext.newPage();
+                        // Clear previous listeners to avoid duplicates if reusing page
+                        page.removeAllListeners('console');
+                        page.on('console', msg => console.log(`  [Browser-Console]: ${msg.text()}`));
                         await NetworkInterceptor.setupRouteInterception(sharedContext, currentSettings, sourceDomain);
                     }
 
