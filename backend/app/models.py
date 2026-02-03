@@ -126,6 +126,7 @@ class TestStatus(str, Enum):
 class ExecutionMode(str, Enum):
     CONTINUOUS = "continuous"
     SEPARATE = "separate"
+    PARALLEL = "parallel"
 
 class TestSuiteBase(SQLModel):
     name: str

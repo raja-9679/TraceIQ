@@ -205,4 +205,134 @@ class TestService:
         if suite:
             await session.delete(suite)
 
+    @staticmethod
+    async def collect_cases_recursive(suite_id: int, session: AsyncSession) -> List[TestCase]:
+        cases = []
+        # Explicit query to avoid async lazy load issues
+        result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
+        cases.extend(result.all())
+            
+        result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
+        subs = result.all()
+        for sub in subs:
+            if sub.execution_mode == ExecutionMode.SEPARATE:
+                continue
+            cases.extend(await TestService.collect_cases_recursive(sub.id, session))
+        return cases
+
+    @staticmethod
+    async def process_test_run_result(run_id: int, result_data: Dict[str, Any], session: AsyncSession):
+        run = await session.get(TestRun, run_id)
+        if not run:
+            print(f"Error: Run {run_id} not found during result processing")
+            return
+
+        # Update Run Fields
+        run.status = TestStatus.PASSED if result_data.get("status") == "passed" else TestStatus.FAILED
+        run.duration_ms = result_data.get("duration_ms")
+        run.error_message = result_data.get("error")
+        run.trace_url = result_data.get("trace")
+        run.video_url = result_data.get("video")
+        run.screenshots = result_data.get("screenshots", [])
+        run.response_status = result_data.get("response_status")
+        run.request_headers = result_data.get("request_headers")
+        run.response_headers = result_data.get("response_headers")
+        run.network_events = result_data.get("network_events")
+        run.execution_log = result_data.get("execution_log")
+        
+        # Calculate Stats
+        test_results = result_data.get("results", [])
+        results_by_id = {}
+        results_by_name = {}
+        for res in test_results:
+            if res.get("test_case_id"):
+                results_by_id[res.get("test_case_id")] = res
+            results_by_name[res.get("test_name")] = res
+            
+        passed_count = 0
+        failed_count = 0
+
+        # Determine expected cases
+        if run.test_case_id:
+            case = await session.get(TestCase, run.test_case_id)
+            cases_to_run = [case] if case else []
+        else:
+            cases_to_run = await TestService.collect_cases_recursive(run.test_suite_id, session)
+
+        # Clear existing results (idempotency)
+        existing_results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
+        for res in existing_results.all():
+            await session.delete(res)
+
+        for case in cases_to_run:
+            case_res = results_by_id.get(case.id) or results_by_name.get(case.name)
+            
+            if case_res:
+                status = TestStatus.PASSED if case_res.get("status") == "passed" else TestStatus.FAILED
+                if status == TestStatus.PASSED:
+                    passed_count += 1
+                else:
+                    failed_count += 1
+                    
+                test_result = TestCaseResult(
+                    test_run_id=run.id,
+                    test_name=case.name,
+                    status=status,
+                    duration_ms=case_res.get("duration_ms", 0),
+                    error_message=case_res.get("error"),
+                    trace_url=case_res.get("trace"),
+                    video_url=case_res.get("video"),
+                    screenshots=case_res.get("screenshots", []),
+                    response_status=case_res.get("response_status"),
+                    response_headers=case_res.get("response_headers"),
+                    response_body=case_res.get("response_body"),
+                    request_headers=case_res.get("request_headers"),
+                    request_body=case_res.get("request_body"),
+                    request_url=case_res.get("request_url"),
+                    request_method=case_res.get("request_method"),
+                    request_params=case_res.get("request_params")
+                )
+                session.add(test_result)
+            else:
+                # Skipped/Error
+                failed_count += 1
+                test_result = TestCaseResult(
+                    test_run_id=run.id,
+                    test_name=case.name,
+                    status=TestStatus.FAILED,
+                    duration_ms=0,
+                    error_message="Test execution skipped or crashed before completion"
+                )
+                session.add(test_result)
+
+        run.total_tests = len(cases_to_run)
+        run.passed_tests = passed_count
+        run.failed_tests = failed_count
+        
+        if failed_count > 0:
+            run.status = TestStatus.FAILED
+        elif run.error_message:
+             run.status = TestStatus.FAILED
+        else:
+            run.status = TestStatus.PASSED
+
+        session.add(run)
+        await session.commit()
+
+        # Publish Real-time Update
+        try:
+            from app.core.redis import RedisClient
+            import json
+            redis = RedisClient.get_instance()
+            payload = {
+                "run_id": run.id,
+                "status": run.status,
+                "passed_tests": run.passed_tests,
+                "failed_tests": run.failed_tests,
+                "video_url": run.video_url
+            }
+            await redis.publish(f"run:{run.id}", json.dumps(payload))
+        except Exception as e:
+            print(f"Failed to publish redis event for run {run.id}: {e}")
+
 test_service = TestService()
