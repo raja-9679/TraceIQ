@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from app.core.database import init_db
 from app.core.storage import minio_client
 from app.api import auth, settings, workspaces, projects, admin
-from app.api.endpoints import test_suites, test_cases, test_runs
+from app.api.endpoints import test_suites, test_cases, test_runs, websockets
 from app.core.config import settings as core_settings
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 
 @app.get("/health")
 def health_check():

@@ -1,2 +1,4 @@
 docker compose --env-file env.prod -f docker-compose.prod.yml up -d --build
 docker compose --env-file env.local -f docker-compose.yml up -d --build
+
+docker compose -f ../infrastructure/docker-compose.yml exec -u postgres db psql -d traceiq_db -c "ALTER TYPE executionmode ADD VALUE 'parallel';"
