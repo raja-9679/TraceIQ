@@ -1,14 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { getRun, getArtifactUrl } from "@/lib/api";
 import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 
 export default function TestRunDetails() {
     const { runId: idParam } = useParams<{ runId: string }>();
     const runId = parseInt(idParam || "0");
     const isValidRunId = !isNaN(runId) && runId > 0;
+    const queryClient = useQueryClient();
 
     const [showReqHeaders, setShowReqHeaders] = useState(false);
     const [showRespHeaders, setShowRespHeaders] = useState(false);
@@ -20,6 +21,43 @@ export default function TestRunDetails() {
         queryFn: () => getRun(runId),
         enabled: isValidRunId,
     });
+
+    // WebSocket for Real-time Updates
+    useEffect(() => {
+        if (!isValidRunId) return;
+        // If run is already finished, no need to connect (unless you want to watch for potential post-run updates, but unlikely)
+        if (run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error') return;
+
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+        // Convert http(s) to ws(s)
+        const wsUrl = baseUrl.replace(/^http/, 'ws') + `/ws/runs/${runId}`;
+
+        console.log("Connecting to WebSocket:", wsUrl);
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log("WebSocket Connected");
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log("WS Update:", data);
+                // Invalidate query to trigger refetch of full run data
+                queryClient.invalidateQueries({ queryKey: ["run", runId] });
+            } catch (e) {
+                console.error("Error parsing WS message:", e);
+            }
+        };
+
+        ws.onerror = (e) => console.error("WebSocket Error:", e);
+
+        return () => {
+            if (ws.readyState === 1 || ws.readyState === 0) {
+                ws.close();
+            }
+        };
+    }, [runId, isValidRunId, run?.status, queryClient]);
 
     const { data: traceUrl } = useQuery({
         queryKey: ["trace", run?.trace_url],

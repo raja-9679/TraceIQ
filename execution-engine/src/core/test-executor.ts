@@ -259,9 +259,10 @@ export class TestExecutor {
                 const clickSelector = step.selector || step.value;
                 if (clickSelector) {
                     const locator = getLocator(clickSelector);
-                    await locator.waitFor({ state: 'visible', timeout: 80000 });
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                    await locator.waitFor({ state: 'visible', timeout });
                     await moveMouseTo(locator);
-                    await locator.click();
+                    await locator.click({ timeout });
                 }
                 break;
             }
@@ -269,9 +270,10 @@ export class TestExecutor {
             case 'fill':
                 if (step.selector) {
                     const locator = getLocator(step.selector);
-                    await locator.waitFor({ state: 'visible', timeout: 80000 });
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                    await locator.waitFor({ state: 'visible', timeout });
                     await moveMouseTo(locator);
-                    await locator.fill(step.value || '');
+                    await locator.fill(step.value || '', { timeout });
                 }
                 break;
 
@@ -279,9 +281,10 @@ export class TestExecutor {
                 const checkSelector = step.selector || step.value;
                 if (checkSelector) {
                     const locator = getLocator(checkSelector);
-                    await locator.waitFor({ state: 'visible', timeout: 80000 });
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                    await locator.waitFor({ state: 'visible', timeout });
                     await moveMouseTo(locator);
-                    await locator.check();
+                    await locator.check({ timeout });
                 }
                 break;
             }
@@ -289,10 +292,11 @@ export class TestExecutor {
             case 'expect-visible': {
                 const visibleSelector = step.selector || step.value;
                 if (visibleSelector) {
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
                     if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout: 80000 });
+                        await (context as Page).waitForSelector(visibleSelector, { state: 'visible', timeout });
                     } else {
-                        await getLocator(visibleSelector).waitFor({ state: 'visible', timeout: 80000 });
+                        await getLocator(visibleSelector).waitFor({ state: 'visible', timeout });
                     }
                 }
                 break;
@@ -301,10 +305,11 @@ export class TestExecutor {
             case 'wait-for-selector': {
                 const waitSelector = step.selector || step.value;
                 if (waitSelector) {
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
                     if ('waitForSelector' in context) {
-                        await (context as Page).waitForSelector(waitSelector, { state: 'attached', timeout: 80000 });
+                        await (context as Page).waitForSelector(waitSelector, { state: 'attached', timeout });
                     } else {
-                        await getLocator(waitSelector).waitFor({ state: 'attached', timeout: 80000 });
+                        await getLocator(waitSelector).waitFor({ state: 'attached', timeout });
                     }
                 }
                 break;
@@ -382,7 +387,15 @@ export class TestExecutor {
 
             case 'wait-timeout': {
                 const timeout = parseInt(step.value || step.selector || '1000');
-                await page.waitForTimeout(timeout);
+                try {
+                    await page.waitForTimeout(timeout);
+                } catch (err: any) {
+                    // Page might be closed during parallel execution
+                    if (err.message?.includes('Target page, context or browser has been closed')) {
+                        throw new Error('Test execution interrupted: browser context was closed');
+                    }
+                    throw err;
+                }
                 break;
             }
 
@@ -402,7 +415,14 @@ export class TestExecutor {
                     const nextBtn = getLocator(nextButtonSelector);
                     if (await nextBtn.isVisible()) {
                         await nextBtn.click();
-                        await page.waitForTimeout(500);
+                        try {
+                            await page.waitForTimeout(500);
+                        } catch (err: any) {
+                            // Ignore timeout errors if page is closed
+                            if (!err.message?.includes('Target page, context or browser has been closed')) {
+                                throw err;
+                            }
+                        }
                     } else {
                         throw new Error(`Carousel next button '${nextButtonSelector}' not found/visible`);
                     }
