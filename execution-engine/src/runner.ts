@@ -5,6 +5,8 @@ import * as path from 'path';
 import { BrowserManager } from './core/browser-manager';
 import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
+import { calculateOptimalConcurrency } from './utils/concurrency-utils';
+
 
 const MinioClient = (Minio as any).Client || Minio;
 
@@ -45,6 +47,36 @@ export class PlaywrightRunner {
         let status = 'passed';
         let error: string | null = null;
         const startTime = Date.now();
+
+        // Helper function to send progressive updates after each test completes
+        const sendProgressiveUpdate = async (testCaseId: number, testName: string, caseStatus: string, duration: number, caseError: string | null, caseVideo: string | null) => {
+            if (!callbackUrl) return;
+
+            try {
+                const progressPayload = {
+                    type: 'progress',
+                    test_case_id: testCaseId,
+                    test_name: testName,
+                    status: caseStatus,
+                    duration_ms: duration,
+                    error: caseError,
+                    video_path: caseVideo
+                };
+
+                await fetch(callbackUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(webhookSecret ? { 'X-TraceIQ-Secret': webhookSecret } : {})
+                    },
+                    body: JSON.stringify(progressPayload)
+                });
+
+                console.log(`[Progress] Sent update for test: ${testName} (${caseStatus})`);
+            } catch (err: any) {
+                console.error(`[Progress] Failed to send update for ${testName}:`, err.message);
+            }
+        };
 
         // Prepare shared context if needed (continuous mode)
         let sharedContext: BrowserContext | null = null;
@@ -187,6 +219,16 @@ export class PlaywrightRunner {
                         video_path: caseVideo // Temporary field for internal use
                     });
 
+                    // Send progressive update immediately after test completes
+                    await sendProgressiveUpdate(
+                        testCase.id,
+                        testCase.name,
+                        caseStatus,
+                        caseEndTime - caseStartTime,
+                        caseError,
+                        caseVideo
+                    );
+
                     if (closeContext) {
                         // Stop tracing before closing
                         try {
@@ -206,9 +248,19 @@ export class PlaywrightRunner {
             }; // End runSingleCase
 
             if (executionMode === 'parallel') {
-                console.log("Running test cases in PARALLEL");
-                // Run all in parallel, each gets its own context
-                await Promise.all(testCases.map(tc => runSingleCase(tc, false)));
+                const concurrencyLimit = calculateOptimalConcurrency();
+                console.log(`Running test cases in PARALLEL with concurrency limit: ${concurrencyLimit}`);
+                console.log(`Total test cases: ${testCases.length}`);
+
+                // Run in batches to limit concurrent browser contexts
+                const totalBatches = Math.ceil(testCases.length / concurrencyLimit);
+                for (let i = 0; i < testCases.length; i += concurrencyLimit) {
+                    const batch = testCases.slice(i, i + concurrencyLimit);
+                    const batchNumber = Math.floor(i / concurrencyLimit) + 1;
+                    console.log(`Executing batch ${batchNumber}/${totalBatches} (${batch.length} test cases)`);
+                    await Promise.all(batch.map(tc => runSingleCase(tc, false)));
+                }
+
             } else {
                 console.log("Running test cases CONTINUOUSLY (Sequential)");
                 // Create shared context once
@@ -317,6 +369,7 @@ export class PlaywrightRunner {
             }
 
             const finalResult = {
+                type: 'complete',  // Mark as final webhook for backend processing
                 status, duration_ms: duration, error, trace: traceKey, video: videoKey, screenshots: screenshots,
                 network_events: networkEvents, execution_log: executionLog, results: testResults
             };
