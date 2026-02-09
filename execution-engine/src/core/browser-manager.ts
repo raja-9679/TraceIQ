@@ -28,7 +28,21 @@ export class BrowserManager {
                 default:
                     this.browser = await chromium.launch({
                         headless: true,
-                        args: ['--no-sandbox', '--disable-setuid-sandbox']
+                        args: [
+                            '--no-sandbox',
+                            '--disable-setuid-sandbox',
+                            '--disable-dev-shm-usage',
+                            '--disable-gpu',
+                            '--disable-software-rasterizer',
+                            '--disable-webgl',
+                            '--disable-webgl2',
+                            '--max-active-webgl-contexts=8',
+                            '--disable-accelerated-2d-canvas',
+                            '--disable-accelerated-video-decode',
+                            '--disable-background-timer-throttling',
+                            '--disable-backgrounding-occluded-windows',
+                            '--disable-renderer-backgrounding'
+                        ]
                     });
                     break;
             }
@@ -179,7 +193,7 @@ export class BrowserManager {
             // Wait for body to exist
             if (document.body) {
                 initElements();
-            } else {
+            } else if (document.documentElement) {
                 const observer = new MutationObserver(() => {
                     if (document.body) {
                         observer.disconnect();
@@ -187,6 +201,9 @@ export class BrowserManager {
                     }
                 });
                 observer.observe(document.documentElement, { childList: true });
+            } else {
+                // Fallback: wait for DOMContentLoaded
+                document.addEventListener('DOMContentLoaded', initElements);
             }
         }, { browserType, deviceName: deviceName || null, emulatedAs: emulatedAs || null });
     }

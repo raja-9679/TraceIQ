@@ -227,6 +227,86 @@ class TestService:
             print(f"Error: Run {run_id} not found during result processing")
             return
 
+        webhook_type = result_data.get("type", "complete")
+        
+        # Handle progressive updates (individual test completions)
+        if webhook_type == "progress":
+            await TestService._process_progressive_update(run, result_data, session)
+            return
+        
+        # Handle final completion (existing logic)
+        await TestService._process_final_result(run, result_data, session)
+
+    @staticmethod
+    async def _process_progressive_update(run: TestRun, result_data: Dict[str, Any], session: AsyncSession):
+        """Process a single test case completion in real-time"""
+        test_case_id = result_data.get("test_case_id")
+        test_name = result_data.get("test_name")
+        
+        # Check if result already exists (idempotency)
+        existing = await session.exec(
+            select(TestCaseResult).where(
+                TestCaseResult.test_run_id == run.id,
+                TestCaseResult.test_name == test_name
+            )
+        )
+        existing_result = existing.first()
+        
+        status = TestStatus.PASSED if result_data.get("status") == "passed" else TestStatus.FAILED
+        
+        if existing_result:
+            # Update existing
+            existing_result.status = status
+            existing_result.duration_ms = result_data.get("duration_ms", 0)
+            existing_result.error_message = result_data.get("error")
+            session.add(existing_result)
+        else:
+            # Create new
+            test_result = TestCaseResult(
+                test_run_id=run.id,
+                test_name=test_name,
+                status=status,
+                duration_ms=result_data.get("duration_ms", 0),
+                error_message=result_data.get("error")
+            )
+            session.add(test_result)
+        
+        # Update run progress counts
+        results = await session.exec(
+            select(TestCaseResult).where(TestCaseResult.test_run_id == run.id)
+        )
+        all_results = results.all()
+        
+        run.passed_tests = sum(1 for r in all_results if r.status == TestStatus.PASSED)
+        run.failed_tests = sum(1 for r in all_results if r.status == TestStatus.FAILED)
+        run.status = TestStatus.RUNNING  # Keep as running until final webhook
+        
+        session.add(run)
+        await session.commit()
+        
+        # Publish real-time update
+        try:
+            from app.core.redis import RedisClient
+            import json
+            redis = RedisClient.get_instance()
+            payload = {
+                "run_id": run.id,
+                "type": "progress",
+                "status": run.status,
+                "passed_tests": run.passed_tests,
+                "failed_tests": run.failed_tests,
+                "total_tests": run.total_tests,
+                "latest_test": test_name,
+                "latest_status": result_data.get("status")
+            }
+            await redis.publish(f"run:{run.id}", json.dumps(payload))
+            print(f"[Progress] Published update for run {run.id}: {test_name} ({result_data.get('status')})")
+        except Exception as e:
+            print(f"Failed to publish progress event for run {run.id}: {e}")
+
+    @staticmethod
+    async def _process_final_result(run: TestRun, result_data: Dict[str, Any], session: AsyncSession):
+        """Process final completion with full results"""
         # Update Run Fields
         run.status = TestStatus.PASSED if result_data.get("status") == "passed" else TestStatus.FAILED
         run.duration_ms = result_data.get("duration_ms")
@@ -260,7 +340,7 @@ class TestService:
             cases_to_run = await TestService.collect_cases_recursive(run.test_suite_id, session)
 
         # Clear existing results (idempotency)
-        existing_results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
+        existing_results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
         for res in existing_results.all():
             await session.delete(res)
 
@@ -326,12 +406,15 @@ class TestService:
             redis = RedisClient.get_instance()
             payload = {
                 "run_id": run.id,
+                "type": "complete",
                 "status": run.status,
                 "passed_tests": run.passed_tests,
                 "failed_tests": run.failed_tests,
+                "total_tests": run.total_tests,
                 "video_url": run.video_url
             }
             await redis.publish(f"run:{run.id}", json.dumps(payload))
+            print(f"[Complete] Published final update for run {run.id}")
         except Exception as e:
             print(f"Failed to publish redis event for run {run.id}: {e}")
 
