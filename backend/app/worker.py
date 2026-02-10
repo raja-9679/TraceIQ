@@ -1,103 +1,227 @@
+"""
+Test Execution Worker - Dispatches test runs to execution workers
+
+Architecture:
+- CONTINUOUS mode: Single-engine execution with shared browser context
+- SEPARATE mode: Distributed workers, one test per worker (complete isolation)
+"""
 from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models import TestRun, TestStatus, ExecutionMode
 import requests
-import time
+import json
+import redis
 
 # Use sync engine for Celery worker
-# Remove +asyncpg from URL for sync engine
 sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
-sync_engine = create_engine(sync_db_url, echo=True)
+sync_engine = create_engine(sync_db_url, echo=False)
 
+# Redis client for job dispatching
+redis_client = redis.from_url(
+    settings.CELERY_BROKER_URL, decode_responses=True)
+
+# Legacy execution engine URL (for CONTINUOUS mode)
 EXECUTION_ENGINE_URL = settings.EXECUTION_ENGINE_URL
+
+# Feature flag for new architecture
+USE_DISTRIBUTED_EXECUTION = getattr(
+    settings, 'USE_DISTRIBUTED_EXECUTION', True)
+
 
 @celery_app.task(name="app.worker.run_test_suite")
 def run_test_suite(run_id: int):
+    """
+    Main entry point for test execution.
+    Routes to appropriate execution strategy based on execution mode.
+    """
     with Session(sync_engine) as session:
         run = session.get(TestRun, run_id)
         if not run:
-            print(f"Run {run_id} not found")
+            print(f"[Worker] Run {run_id} not found")
             return
-        
-        print(f"Starting run {run_id}")
-        print(f"DEBUG: Run attributes: {run}")
-        try:
-             print(f"DEBUG: run.browser = {run.browser}")
-        except Exception as e:
-             print(f"DEBUG: Could not access run.browser: {e}")
-        
+
+        print(f"[Worker] Starting run {run_id}")
+
         run.status = TestStatus.RUNNING
         session.add(run)
         session.commit()
-        
+
         try:
             from app.models import TestSuite, TestCase
             from app.services.test_service import test_service
-            
-            # Filter cases if specific case_id is requested
+
+            # Load test cases
             if run.test_case_id:
                 case = session.get(TestCase, run.test_case_id)
                 if not case:
                     raise Exception(f"Test Case {run.test_case_id} not found")
                 cases_to_run = [case]
             else:
-                # Load all cases recursively (Sync)
-                cases_to_run = test_service.collect_cases_recursive_sync(run.test_suite_id, session)
+                cases_to_run = test_service.collect_cases_recursive_sync(
+                    run.test_suite_id, session)
 
-            # Serialize test cases
-            test_cases_data = []
-            for case in cases_to_run:
-                case_settings = test_service.get_effective_settings_sync(case.test_suite_id, session)
-                
-                test_cases_data.append({
-                    "id": case.id,
-                    "name": case.name,
-                    "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps],
-                    "settings": case_settings,
-                })
+            if not cases_to_run:
+                raise Exception("No test cases found to execute")
 
-            # Fetch Suite Execution Mode
+            # Get execution mode
             suite = session.get(TestSuite, run.test_suite_id)
-            execution_mode = suite.execution_mode.value if suite else "continuous"
+            execution_mode = suite.execution_mode if suite else ExecutionMode.CONTINUOUS
 
-            print(f"DEBUG: Found {len(cases_to_run)} cases. Execution Mode: {execution_mode}. Sending async request.")
+            # Get effective settings
+            effective_settings = test_service.get_effective_settings_sync(
+                run.test_suite_id, session)
 
-            # Construct Callback URL (Internal Docker Network)
-            # Assuming backend is reachable at 'backend' hostname in docker-compose network
-            callback_url = f"http://backend:8000/api/runs/{run_id}/webhook"
+            # Update total tests count
+            run.total_tests = len(cases_to_run)
+            session.add(run)
+            session.commit()
 
-            payload = {
-                "runId": run_id,
-                "testCases": test_cases_data,
-                "browser": run.browser,
-                "device": run.device,
-                "executionMode": execution_mode,
-                "globalSettings": {
-                    "headers": run.request_headers or {},
-                    "params": run.request_params or {},
-                    "allowed_domains": run.allowed_domains or [],
-                    "domain_settings": run.domain_settings or {}
-                },
-                "callbackUrl": callback_url,
-                "webhookSecret": settings.SECRET_KEY
-            }
-            
-            # Call Node.js Execution Engine (Fire and Forget)
-            # Short timeout because we expect immediate 202
-            response = requests.post(EXECUTION_ENGINE_URL, json=payload, timeout=10)
-            
-            if response.status_code in [200, 202]:
-                print(f"Execution request accepted for run {run_id}")
+            print(
+                f"[Worker] Run {run_id}: {len(cases_to_run)} cases, mode={execution_mode.value}")
+
+            # Route to appropriate execution strategy
+            if USE_DISTRIBUTED_EXECUTION and execution_mode == ExecutionMode.SEPARATE:
+                # SEPARATE mode: Distributed workers, one test per worker
+                dispatch_separate_jobs(
+                    run, cases_to_run, effective_settings, session)
             else:
-                raise Exception(f"Execution Engine rejected request: {response.status_code} {response.text}")
-                
+                # CONTINUOUS mode: Single-engine execution with shared browser
+                dispatch_legacy_execution(
+                    run, cases_to_run, effective_settings, execution_mode)
+
         except Exception as e:
-            print(f"Error in run {run_id}: {e}")
+            print(f"[Worker] Error in run {run_id}: {e}")
+            import traceback
+            traceback.print_exc()
             run.status = TestStatus.ERROR
             run.error_message = str(e)
-        
-        session.add(run)
-        session.commit()
-        print(f"Finished run {run_id} with status {run.status}")
+            session.add(run)
+            session.commit()
+
+
+def dispatch_separate_jobs(run: TestRun, cases: list, settings: dict, session: Session):
+    """
+    Dispatch individual jobs for SEPARATE mode via Redis stream.
+    Each test case gets its own isolated worker for complete independence.
+    """
+    import uuid
+    from datetime import datetime
+
+    print(f"[Worker] Dispatching {len(cases)} separate jobs for run {run.id}")
+
+    jobs_stream = 'jobs:pending'
+    job_ids = []
+
+    # Ensure consumer group exists
+    try:
+        redis_client.xgroup_create(
+            jobs_stream, 'execution-workers', id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+
+    # Use pipeline for atomic batch insert
+    pipe = redis_client.pipeline()
+
+    for case in cases:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+
+        job = {
+            'job_id': job_id,
+            'run_id': run.id,
+            'test_case_id': case.id,
+            'test_case': {
+                'id': case.id,
+                'name': case.name,
+                'steps': [
+                    step.dict() if hasattr(step, 'dict') else step
+                    for step in case.steps
+                ]
+            },
+            'browser': run.browser,
+            'device': run.device,
+            'settings': {
+                'headers': settings.get('headers', {}),
+                'params': settings.get('params', {}),
+                'allowed_domains': settings.get('allowed_domains', []),
+                'domain_settings': settings.get('domain_settings', {})
+            },
+            'created_at': datetime.utcnow().isoformat(),
+            'retry_count': 0
+        }
+
+        # Add job to stream
+        pipe.xadd(
+            jobs_stream,
+            {
+                'job_id': job_id,
+                'run_id': str(run.id),
+                'payload': json.dumps(job)
+            }
+        )
+        # Track job in run's job set
+        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+
+    # Initialize run progress tracking
+    pipe.hset(f'runs:{run.id}:progress', mapping={
+        'total': len(cases),
+        'completed': 0,
+        'passed': 0,
+        'failed': 0,
+        'status': 'running'
+    })
+
+    pipe.execute()
+
+    print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, execution_mode: ExecutionMode):
+    """
+    Legacy execution via single execution engine.
+    Used for CONTINUOUS mode where tests share browser context.
+    """
+    from app.services.test_service import test_service
+
+    # Serialize test cases
+    test_cases_data = []
+    for case in cases:
+        test_cases_data.append({
+            "id": case.id,
+            "name": case.name,
+            "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps],
+            "settings": settings,
+        })
+
+    # Construct callback URL
+    callback_url = f"http://backend:8000/api/runs/{run.id}/webhook"
+
+    payload = {
+        "runId": run.id,
+        "testCases": test_cases_data,
+        "browser": run.browser,
+        "device": run.device,
+        "executionMode": execution_mode.value,
+        "globalSettings": {
+            "headers": run.request_headers or {},
+            "params": run.request_params or {},
+            "allowed_domains": run.allowed_domains or [],
+            "domain_settings": run.domain_settings or {}
+        },
+        "callbackUrl": callback_url,
+        "webhookSecret": settings.SECRET_KEY if hasattr(settings, 'SECRET_KEY') else None
+    }
+
+    print(f"[Worker] Dispatching legacy execution for run {run.id}")
+
+    # Call Node.js Execution Engine
+    response = requests.post(EXECUTION_ENGINE_URL, json=payload, timeout=10)
+
+    if response.status_code in [200, 202]:
+        print(f"[Worker] Legacy execution accepted for run {run.id}")
+    else:
+        raise Exception(
+            f"Execution Engine rejected: {response.status_code} {response.text}")

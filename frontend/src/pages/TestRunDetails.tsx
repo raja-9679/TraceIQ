@@ -1,9 +1,10 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { getRun, getArtifactUrl } from "@/lib/api";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check } from "lucide-react";
+import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
+import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
+import { toast } from "sonner";
 
 export default function TestRunDetails() {
     const { runId: idParam } = useParams<{ runId: string }>();
@@ -15,6 +16,7 @@ export default function TestRunDetails() {
     const [showRespHeaders, setShowRespHeaders] = useState(false);
     const [testSearchTerm, setTestSearchTerm] = useState('');
     const [isTestCasesExpanded, setIsTestCasesExpanded] = useState(false);
+    const [showForceCompleteDialog, setShowForceCompleteDialog] = useState(false);
 
     const { data: run, isLoading } = useQuery({
         queryKey: ["run", runId],
@@ -71,6 +73,25 @@ export default function TestRunDetails() {
         enabled: !!run?.video_url,
     });
 
+    // Force complete mutation
+    const forceCompleteMutation = useMutation({
+        mutationFn: () => forceCompleteRun(runId, "error", "Manually completed by administrator"),
+        onSuccess: () => {
+            toast.success("Test run marked as complete");
+            queryClient.invalidateQueries({ queryKey: ["run", runId] });
+            setShowForceCompleteDialog(false);
+        },
+        onError: (error: any) => {
+            toast.error("Failed to complete test run", {
+                description: error.response?.data?.detail || "An error occurred"
+            });
+        }
+    });
+
+    // Check if test is stuck (running for more than 10 minutes)
+    const isStuckTest = run?.status === "running" && run?.created_at &&
+        (new Date().getTime() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
+
     if (!isValidRunId) return <div className="p-4">Invalid Run ID</div>;
     if (isLoading) return <div className="p-4">Loading...</div>;
     if (!run) return <div className="p-4">Run not found</div>;
@@ -95,6 +116,54 @@ export default function TestRunDetails() {
                     </p>
                 </div>
             </div>
+
+            {/* Stuck Test Warning Banner */}
+            {isStuckTest && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle size={20} className="text-yellow-600 mt-0.5 shrink-0" />
+                        <div className="flex-1">
+                            <h3 className="text-yellow-800 font-semibold">Test May Be Stuck</h3>
+                            <p className="text-yellow-700 text-sm mt-1">
+                                This test has been running for more than 10 minutes. It may have encountered an issue.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowForceCompleteDialog(true)}
+                            className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm font-medium shrink-0"
+                        >
+                            Force Complete
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Force Complete Confirmation Dialog */}
+            {showForceCompleteDialog && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForceCompleteDialog(false)}>
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Force Complete Test Run?</h3>
+                        <p className="text-gray-600 text-sm mb-4">
+                            This will mark the test run as ERROR and stop waiting for completion. This action cannot be undone.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setShowForceCompleteDialog(false)}
+                                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => forceCompleteMutation.mutate()}
+                                disabled={forceCompleteMutation.isPending}
+                                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
+                            >
+                                {forceCompleteMutation.isPending ? "Processing..." : "Force Complete"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {run.results && run.results.length > 0 && (() => {
                 const passedCount = run.results.filter(r => r.status === 'passed').length;
