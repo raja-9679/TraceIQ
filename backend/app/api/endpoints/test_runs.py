@@ -371,3 +371,65 @@ async def process_webhook(
          
     await test_service.process_test_run_result(run_id, payload, session)
     return {"status": "received"}
+
+
+@router.post("/runs/{run_id}/force-complete")
+async def force_complete_test_run(
+    run_id: int,
+    status: Optional[TestStatus] = TestStatus.ERROR,
+    error_message: Optional[str] = "Manually marked as complete by administrator",
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Manually force-complete a stuck test run.
+    Requires EDITOR permission on the project.
+    """
+    # Get the test run
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Test run not found")
+    
+    # Check if user has EDITOR access to the project
+    if not await access_service.has_project_access(current_user.id, run.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="You do not have permission to modify this test run")
+    
+    # Check if test is already in a final state
+    if run.status in [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Test run is already in final state: {run.status}"
+        )
+    
+    # Update the test run
+    from datetime import datetime
+    run.status = status
+    run.error_message = error_message
+    run.updated_at = datetime.utcnow()
+    
+    session.add(run)
+    
+    # Log the manual intervention in audit log
+    audit_log = AuditLog(
+        user_id=current_user.id,
+        workspace_id=current_user.workspace_id,
+        action="force_complete_test_run",
+        resource_type="test_run",
+        resource_id=run_id,
+        details={
+            "status": status.value,
+            "error_message": error_message,
+            "previous_status": TestStatus.RUNNING.value
+        }
+    )
+    session.add(audit_log)
+    
+    await session.commit()
+    await session.refresh(run)
+    
+    return {
+        "status": "success",
+        "run_id": run_id,
+        "new_status": run.status,
+        "message": "Test run manually completed"
+    }

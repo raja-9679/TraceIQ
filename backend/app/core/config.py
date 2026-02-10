@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30 # 30 minutes
+    
+    # Webhook Queue Configuration
+    REDIS_WEBHOOK_QUEUE: str = "webhook:results"
+    REDIS_WEBHOOK_FAILED_QUEUE: str = "webhook:failed"
+    WEBHOOK_PROCESSOR_INTERVAL: int = 10  # seconds
+    WEBHOOK_MAX_RETRIES: int = 3
+    TEST_TIMEOUT_MINUTES: int = 30  # timeout for stuck tests
 
     @property
     def cors_origins(self) -> list[str]:
