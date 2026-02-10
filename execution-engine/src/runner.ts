@@ -2,6 +2,7 @@ import { Browser, BrowserContext, devices, Page, FrameLocator } from 'playwright
 import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
+import Redis from 'ioredis';
 import { BrowserManager } from './core/browser-manager';
 import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
@@ -19,6 +20,23 @@ const minioClient = new MinioClient({
 });
 
 const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
+
+// Redis client for webhook queue
+const redisClient = new Redis({
+    host: process.env.REDIS_HOST || 'redis',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    db: parseInt(process.env.REDIS_DB || '0'),
+    retryStrategy: (times: number) => {
+        const delay = Math.min(times * 50, 2000);
+        return delay;
+    },
+    maxRetriesPerRequest: 3
+});
+
+const WEBHOOK_QUEUE = process.env.REDIS_WEBHOOK_QUEUE || 'webhook:results';
+
+redisClient.on('connect', () => console.log('Redis connected for webhook queue'));
+redisClient.on('error', (err: Error) => console.error('Redis connection error:', err));
 
 export class PlaywrightRunner {
     private browserManager = new BrowserManager();
@@ -374,20 +392,37 @@ export class PlaywrightRunner {
                 network_events: networkEvents, execution_log: executionLog, results: testResults
             };
 
-            if (callbackUrl) {
-                try {
-                    console.log(`Sending callback to ${callbackUrl}`);
-                    await fetch(callbackUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(webhookSecret ? { 'X-TraceIQ-Secret': webhookSecret } : {})
-                        },
-                        body: JSON.stringify(finalResult)
-                    });
-                    console.log('Callback sent successfully');
-                } catch (cbError) {
-                    console.error('Failed to send callback:', cbError);
+            // Publish to Redis queue (primary method)
+            try {
+                const webhookPayload = {
+                    runId,
+                    callbackUrl,
+                    webhookSecret,
+                    result: finalResult,
+                    timestamp: Date.now()
+                };
+
+                await redisClient.lpush(WEBHOOK_QUEUE, JSON.stringify(webhookPayload));
+                console.log(`[Redis] Published webhook to queue for run ${runId}`);
+            } catch (redisError) {
+                console.error(`[Redis] Failed to publish to queue:`, redisError);
+
+                // Fallback to HTTP webhook if Redis fails
+                if (callbackUrl) {
+                    try {
+                        console.log(`[Fallback] Sending HTTP callback to ${callbackUrl}`);
+                        await fetch(callbackUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                ...(webhookSecret ? { 'X-TraceIQ-Secret': webhookSecret } : {})
+                            },
+                            body: JSON.stringify(finalResult)
+                        });
+                        console.log('[Fallback] HTTP callback sent successfully');
+                    } catch (cbError) {
+                        console.error('[Fallback] HTTP callback also failed:', cbError);
+                    }
                 }
             }
             return finalResult;

@@ -435,3 +435,15 @@ export const getMyPermissions = async (): Promise<UserPermissions> => {
     const response = await api.get("/auth/permissions");
     return response.data;
 };
+
+export const forceCompleteRun = async (
+    runId: number,
+    status: "passed" | "failed" | "error" = "error",
+    errorMessage: string = "Manually marked as complete by administrator"
+): Promise<any> => {
+    const response = await api.post(`/runs/${runId}/force-complete`, {
+        status,
+        error_message: errorMessage
+    });
+    return response.data;
+};

@@ -1,11 +1,11 @@
-version: '3.3'
+version: '3.8'
 
 services:
   postgres:
     image: postgres:15-alpine
     environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: quality_intelligence
     ports:
       - "5432:5432"
@@ -18,6 +18,9 @@ services:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
     networks:
       - qip_network
 
@@ -25,8 +28,8 @@ services:
     image: minio/minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -45,17 +48,16 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/quality_intelligence
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/quality_intelligence
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM:-HS256}
-      # - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
-      # - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-["*"]}
+      - USE_DISTRIBUTED_EXECUTION=true
     depends_on:
       - postgres
       - redis
@@ -67,16 +69,62 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    command: celery -A app.core.celery_app worker --loglevel=info -Q main-queue
+    command: celery -A app.core.celery_app worker --loglevel=info -Q main-queue -c 4
     volumes:
       - ../backend:/app
     environment:
-      - DATABASE_URL=postgresql+asyncpg://user:password@postgres:5432/quality_intelligence
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/quality_intelligence
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - MINIO_ENDPOINT=minio:9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - USE_DISTRIBUTED_EXECUTION=true
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    networks:
+      - qip_network
+
+  # Result aggregator for distributed execution
+  celery_aggregator:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue -c 2
+    volumes:
+      - ../backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/quality_intelligence
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - qip_network
+
+  celery_beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app beat --loglevel=info
+    volumes:
+      - ../backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/quality_intelligence
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
     depends_on:
@@ -86,6 +134,39 @@ services:
     networks:
       - qip_network
 
+  # ==========================================================================
+  # Execution Workers (NEW - Distributed Architecture)
+  # ==========================================================================
+  # Scale with: docker compose --env-file env.local up -d --scale execution-worker=5
+  execution-worker:
+    build:
+      context: ../execution-engine
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_JOBS_STREAM=jobs:pending
+      - REDIS_RESULTS_STREAM=jobs:results
+      - REDIS_CONSUMER_GROUP=execution-workers
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=test-artifacts
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEFAULT_TIMEOUT=${DEFAULT_TIMEOUT:-30000}
+      - WORKER_IDLE_TIMEOUT=300000
+      - MAX_JOBS_BEFORE_RESTART=50
+      - ARTIFACTS_DIR=/tmp/artifacts
+    depends_on:
+      - redis
+      - minio
+    networks:
+      - qip_network
+    shm_size: '1gb'
+    deploy:
+      replicas: 2
+
+  # Legacy execution engine (for CONTINUOUS mode - shared browser context)
   execution-engine:
     build:
       context: ../execution-engine
@@ -99,22 +180,28 @@ services:
     environment:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
-      - MINIO_ACCESS_KEY=minioadmin
-      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_WEBHOOK_QUEUE=webhook:results
+      - DEFAULT_TIMEOUT=${DEFAULT_TIMEOUT:-30000}
     depends_on:
       - minio
+      - redis
     networks:
       - qip_network
+    shm_size: '2gb'
 
-  # add pgadmin for db management
   pgadmin:
     image: dpage/pgadmin4
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "8014:80" # Changed from 8013 to 8014 to avoid conflict with flow-service
+      - "8014:80"
     depends_on:
       - postgres
     networks:
@@ -126,4 +213,5 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
   minio_data:
