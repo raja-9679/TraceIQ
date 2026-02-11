@@ -35,6 +35,7 @@ export interface TestRun {
     passed_tests: number;
     failed_tests: number;
     duration_ms: number | null;
+    test_suite_id: number;
     suite_name?: string;
     test_case_name?: string;
     trace_url?: string;
