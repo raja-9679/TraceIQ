@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,27 +11,186 @@ import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// Helper to get draft key for localStorage
+const getDraftKey = (suiteId: string | undefined, caseId: string | undefined) => {
+    return caseId ? `testBuilder_draft_edit_${caseId}` : `testBuilder_draft_new_${suiteId}`;
+};
+
+// Helper to save draft to localStorage
+const saveDraft = (key: string, data: { testName: string; steps: TestStep[] }) => {
+    try {
+        localStorage.setItem(key, JSON.stringify({ ...data, timestamp: Date.now() }));
+    } catch (e) {
+        console.warn('Failed to save draft:', e);
+    }
+};
+
+// Helper to load draft from localStorage
+const loadDraft = (key: string): { testName: string; steps: TestStep[]; timestamp: number } | null => {
+    try {
+        const data = localStorage.getItem(key);
+        if (data) {
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.warn('Failed to load draft:', e);
+    }
+    return null;
+};
+
+// Helper to clear draft from localStorage
+const clearDraft = (key: string) => {
+    try {
+        localStorage.removeItem(key);
+    } catch (e) {
+        console.warn('Failed to clear draft:', e);
+    }
+};
+
 export default function TestBuilder() {
     const { suiteId, caseId } = useParams();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const isEditing = !!caseId;
+    const draftKey = getDraftKey(suiteId, caseId);
 
     const [testName, setTestName] = useState('');
     const [steps, setSteps] = useState<TestStep[]>([]);
+    const [isDirty, setIsDirty] = useState(false);
+    const [originalData, setOriginalData] = useState<{ testName: string; steps: TestStep[] } | null>(null);
+    const initialLoadDone = useRef(false);
+    const serverDataLoaded = useRef(false);
 
     // Load existing data if editing
-    useQuery({
+    const { data: serverData } = useQuery({
         queryKey: ['testCase', caseId],
         queryFn: async () => {
             if (!caseId) return null;
             const data = await getTestCase(parseInt(caseId));
-            setTestName(data.name);
-            setSteps(data.steps || []);
             return data;
         },
         enabled: isEditing
     });
+
+    // Initialize state from server data or draft
+    useEffect(() => {
+        if (initialLoadDone.current) return;
+
+        const draft = loadDraft(draftKey);
+
+        if (isEditing && serverData) {
+            // Editing mode: check for draft
+            serverDataLoaded.current = true;
+            setOriginalData({ testName: serverData.name, steps: serverData.steps || [] });
+
+            if (draft && draft.timestamp) {
+                // We have a draft - ask user if they want to restore it
+                const draftAge = Date.now() - draft.timestamp;
+                const draftAgeMinutes = Math.floor(draftAge / 60000);
+                
+                if (draftAgeMinutes < 60) { // Only restore drafts less than 1 hour old
+                    // Check if draft is different from server data
+                    const isDraftDifferent = 
+                        draft.testName !== serverData.name || 
+                        JSON.stringify(draft.steps) !== JSON.stringify(serverData.steps || []);
+                    
+                    if (isDraftDifferent) {
+                        toast.info(`Restored unsaved changes from ${draftAgeMinutes} minute(s) ago`, {
+                            action: {
+                                label: 'Discard',
+                                onClick: () => {
+                                    clearDraft(draftKey);
+                                    setTestName(serverData.name);
+                                    setSteps(serverData.steps || []);
+                                    setIsDirty(false);
+                                    toast.success('Draft discarded');
+                                }
+                            },
+                            duration: 10000
+                        });
+                        setTestName(draft.testName);
+                        setSteps(draft.steps);
+                        setIsDirty(true);
+                        initialLoadDone.current = true;
+                        return;
+                    }
+                }
+                clearDraft(draftKey); // Clear old or identical draft
+            }
+
+            setTestName(serverData.name);
+            setSteps(serverData.steps || []);
+            initialLoadDone.current = true;
+        } else if (!isEditing) {
+            // New test case mode: check for draft
+            if (draft && draft.timestamp) {
+                const draftAge = Date.now() - draft.timestamp;
+                const draftAgeMinutes = Math.floor(draftAge / 60000);
+                
+                if (draftAgeMinutes < 60 && (draft.testName || draft.steps.length > 0)) {
+                    toast.info(`Restored unsaved draft from ${draftAgeMinutes} minute(s) ago`, {
+                        action: {
+                            label: 'Discard',
+                            onClick: () => {
+                                clearDraft(draftKey);
+                                setTestName('');
+                                setSteps([]);
+                                setIsDirty(false);
+                                toast.success('Draft discarded');
+                            }
+                        },
+                        duration: 10000
+                    });
+                    setTestName(draft.testName);
+                    setSteps(draft.steps);
+                    setIsDirty(true);
+                } else {
+                    clearDraft(draftKey);
+                }
+            }
+            setOriginalData({ testName: '', steps: [] });
+            initialLoadDone.current = true;
+        }
+    }, [isEditing, serverData, draftKey]);
+
+    // Auto-save draft when data changes
+    useEffect(() => {
+        if (!initialLoadDone.current) return;
+
+        // Check if data is dirty
+        const currentData = { testName, steps };
+        const isChanged = originalData && (
+            currentData.testName !== originalData.testName ||
+            JSON.stringify(currentData.steps) !== JSON.stringify(originalData.steps)
+        );
+
+        setIsDirty(!!isChanged);
+
+        // Save draft if dirty
+        if (isChanged) {
+            saveDraft(draftKey, currentData);
+        }
+    }, [testName, steps, originalData, draftKey]);
+
+    // Warn user before leaving with unsaved changes
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+                return e.returnValue;
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isDirty]);
+
+    // Clear draft on successful save
+    const clearDraftOnSave = useCallback(() => {
+        clearDraft(draftKey);
+        setIsDirty(false);
+    }, [draftKey]);
 
     const addStep = (type: TestStep['type'] = 'goto') => {
         const newStep: TestStep = {
@@ -91,6 +250,7 @@ export default function TestBuilder() {
             }
         },
         onSuccess: () => {
+            clearDraftOnSave();
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
             toast.success(isEditing ? 'Test case updated successfully' : 'Test case created successfully');
             navigate(`/suites/${suiteId}`);
@@ -99,6 +259,17 @@ export default function TestBuilder() {
             toast.error(error?.response?.data?.detail || 'Failed to save test case');
         }
     });
+
+    const handleCancel = () => {
+        if (isDirty) {
+            if (window.confirm('You have unsaved changes. Are you sure you want to leave? Your draft will be saved.')) {
+                navigate(-1);
+            }
+        } else {
+            clearDraft(draftKey);
+            navigate(-1);
+        }
+    };
 
     return (
         <motion.div
@@ -109,10 +280,10 @@ export default function TestBuilder() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">{isEditing ? 'Edit Test Case' : 'Create Test Case'}</h1>
-                    <p className="text-gray-500">Design your automated test sequence</p>
+                    <p className="text-gray-500">Design your automated test sequence{isDirty && <span className="text-amber-600 ml-2">(unsaved changes)</span>}</p>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => navigate(-1)}>Cancel</Button>
+                    <Button variant="outline" onClick={handleCancel}>Cancel</Button>
                     <Button onClick={() => saveMutation.mutate()} disabled={!testName || steps.length === 0 || saveMutation.isPending}>
                         {saveMutation.isPending ? (
                             <>

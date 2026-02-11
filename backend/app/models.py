@@ -298,6 +298,8 @@ class TestRunBase(SQLModel):
     browser: str = Field(default="chromium")
     device: Optional[str] = Field(default=None)
     user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    # AI-powered analysis of test failures (populated by controller)
+    ai_analysis: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
 
 class UserRead(SQLModel):

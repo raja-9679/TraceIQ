@@ -2,15 +2,31 @@ import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 
 // Types for job queue system
+// Single test case structure
+export interface TestCase {
+    id: number;
+    name: string;
+    steps: any[];
+}
+
+// Job can be either:
+// 1. Single test case (original SEPARATE mode): has test_case_id and test_case
+// 2. Multi-test continuous job (hybrid mode): has execution_mode='continuous' and test_cases[]
 export interface TestJob {
     job_id: string;
     run_id: number;
-    test_case_id: number;
-    test_case: {
-        id: number;
-        name: string;
-        steps: any[];
-    };
+    
+    // For single test case jobs
+    test_case_id?: number;
+    test_case?: TestCase;
+    
+    // For multi-test continuous jobs (sub-suite execution)
+    execution_mode?: 'continuous' | 'separate';
+    unit_type?: 'sub_suite' | 'test_case';
+    unit_id?: number;
+    unit_name?: string;
+    test_cases?: TestCase[];
+    
     browser: string;
     device?: string;
     settings: {
@@ -23,24 +39,50 @@ export interface TestJob {
     retry_count?: number;
 }
 
-export interface JobResult {
-    job_id: string;
-    run_id: number;
+// Result for a single test case within a job
+export interface TestCaseResult {
     test_case_id: number;
     test_name: string;
     status: 'passed' | 'failed' | 'error';
     duration_ms: number;
     error?: string;
-    artifacts: {
-        video?: string;
-        trace?: string;
-        screenshots: string[];
-    };
     response_data?: {
         status?: number;
         headers?: Record<string, string>;
         body?: string;
     };
+    video?: string;  // Per-case video for continuous jobs
+}
+
+// Job result - can contain single or multiple test results
+export interface JobResult {
+    job_id: string;
+    run_id: number;
+    
+    // For single test case jobs (backward compatibility)
+    test_case_id?: number;
+    test_name?: string;
+    status: 'passed' | 'failed' | 'error';
+    duration_ms: number;
+    error?: string;
+    
+    // Artifacts at job level
+    artifacts: {
+        video?: string;
+        trace?: string;
+        screenshots: string[];
+    };
+    
+    // For single test jobs
+    response_data?: {
+        status?: number;
+        headers?: Record<string, string>;
+        body?: string;
+    };
+    
+    // For multi-test continuous jobs
+    test_results?: TestCaseResult[];
+    
     network_events: any[];
     completed_at: string;
 }
@@ -274,12 +316,27 @@ export class JobQueue {
         );
 
         // Update run progress
+        // For multi-test continuous jobs, count each test result separately
         const progressKey = `runs:${result.run_id}:progress`;
-        pipeline.hincrby(progressKey, 'completed', 1);
-        if (result.status === 'passed') {
-            pipeline.hincrby(progressKey, 'passed', 1);
+        
+        if (result.test_results && result.test_results.length > 0) {
+            // Multi-test continuous job - count each test individually
+            const passedCount = result.test_results.filter(r => r.status === 'passed').length;
+            const failedCount = result.test_results.filter(r => r.status !== 'passed').length;
+            
+            pipeline.hincrby(progressKey, 'completed', result.test_results.length);
+            pipeline.hincrby(progressKey, 'passed', passedCount);
+            pipeline.hincrby(progressKey, 'failed', failedCount);
+            
+            console.log(`[JobQueue] Continuous job ${result.job_id} completed: ${passedCount} passed, ${failedCount} failed`);
         } else {
-            pipeline.hincrby(progressKey, 'failed', 1);
+            // Single test job - original behavior
+            pipeline.hincrby(progressKey, 'completed', 1);
+            if (result.status === 'passed') {
+                pipeline.hincrby(progressKey, 'passed', 1);
+            } else {
+                pipeline.hincrby(progressKey, 'failed', 1);
+            }
         }
 
         await pipeline.exec();

@@ -1,20 +1,26 @@
 /**
- * Execution Worker - Processes ONE test job at a time with complete isolation
+ * Execution Worker - Processes test jobs with complete isolation
  * 
- * This worker:
- * 1. Claims a job from Redis stream
- * 2. Launches isolated browser context
- * 3. Executes single test case
- * 4. Uploads artifacts to MinIO
- * 5. Publishes result
- * 6. Repeats or exits based on configuration
+ * This worker supports two modes:
+ * 1. Single test case jobs (original SEPARATE mode)
+ * 2. Multi-test continuous jobs (hybrid mode - sub-suite execution)
+ * 
+ * For single test jobs:
+ *   - Launches isolated browser context
+ *   - Executes single test case
+ *   - Uploads artifacts and publishes result
+ * 
+ * For continuous jobs:
+ *   - Launches shared browser context
+ *   - Executes multiple tests sequentially
+ *   - Uploads combined artifacts and publishes individual results
  */
 
 import { Browser, BrowserContext, Page, FrameLocator, devices } from 'playwright';
 import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
-import { JobQueue, TestJob, JobResult, getJobQueue } from './core/job-queue';
+import { JobQueue, TestJob, JobResult, TestCase, TestCaseResult, getJobQueue } from './core/job-queue';
 import { BrowserManager } from './core/browser-manager';
 import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
@@ -114,9 +120,32 @@ class ExecutionWorker {
     }
 
     /**
-     * Execute a single test job with complete isolation
+     * Execute a test job - routes to appropriate handler based on job type
      */
     private async executeJob(job: TestJob): Promise<JobResult> {
+        // Check if this is a multi-test continuous job
+        if (job.execution_mode === 'continuous' && job.test_cases && job.test_cases.length > 0) {
+            console.log(`[Worker] Executing continuous job ${job.job_id} with ${job.test_cases.length} tests`);
+            return this.executeContinuousJob(job);
+        }
+        
+        // Single test case job (original behavior)
+        console.log(`[Worker] Executing single test job ${job.job_id}`);
+        return this.executeSingleTestJob(job);
+    }
+
+    /**
+     * Execute a single test job with complete isolation
+     */
+    private async executeSingleTestJob(job: TestJob): Promise<JobResult> {
+        // Validate that job has test_case (required for single test jobs)
+        if (!job.test_case || !job.test_case_id) {
+            throw new Error(`Invalid single test job ${job.job_id}: missing test_case or test_case_id`);
+        }
+        
+        const testCase = job.test_case;
+        const testCaseId = job.test_case_id;
+        
         const startTime = Date.now();
         const artifactsDir = path.join(ARTIFACTS_BASE_DIR, job.job_id);
         
@@ -172,8 +201,8 @@ class ExecutionWorker {
             // Setup network interception
             const requestStartTimes = new Map<string, number>();
             const contextData = { 
-                id: job.test_case_id, 
-                name: job.test_case.name, 
+                id: testCaseId, 
+                name: testCase.name, 
                 variables: {} 
             };
             const sourceDomain = { value: null as string | null };
@@ -196,7 +225,7 @@ class ExecutionWorker {
 
             // Log console messages
             page.on('console', msg => {
-                console.log(`  [Browser] [${job.test_case.name}]: ${msg.text()}`);
+                console.log(`  [Browser] [${testCase.name}]: ${msg.text()}`);
             });
 
             // Initialize page
@@ -205,7 +234,7 @@ class ExecutionWorker {
                 await page.evaluate((name) => {
                     (window as any).__TRACEIQ_TEST_NAME__ = name;
                     (window as any).__TRACEIQ_JOB_ID__ = name;
-                }, job.test_case.name);
+                }, testCase.name);
             } catch (e) {
                 // Ignore navigation errors on about:blank
             }
@@ -214,7 +243,7 @@ class ExecutionWorker {
             let currentContext: Page | FrameLocator = page;
             let lastStepResult: any = null;
 
-            for (const step of job.test_case.steps) {
+            for (const step of testCase.steps) {
                 try {
                     if (step.type === 'switch-frame') {
                         currentContext = await this.handleFrameSwitch(
@@ -322,13 +351,270 @@ class ExecutionWorker {
         return {
             job_id: job.job_id,
             run_id: job.run_id,
-            test_case_id: job.test_case_id,
-            test_name: job.test_case.name,
+            test_case_id: testCaseId,
+            test_name: testCase.name,
             status,
             duration_ms: duration,
             error: errorMessage,
             artifacts,
             response_data: responseData,
+            network_events: networkEvents,
+            completed_at: new Date().toISOString()
+        };
+    }
+
+    /**
+     * Execute a continuous job with multiple test cases in shared browser
+     * This is used for sub-suite execution in hybrid mode
+     */
+    private async executeContinuousJob(job: TestJob): Promise<JobResult> {
+        const startTime = Date.now();
+        const artifactsDir = path.join(ARTIFACTS_BASE_DIR, job.job_id);
+        
+        // Create isolated artifacts directory
+        fs.mkdirSync(artifactsDir, { recursive: true });
+        
+        let browser: Browser | null = null;
+        let sharedContext: BrowserContext | null = null;
+        
+        const networkEvents: any[] = [];
+        const testResults: TestCaseResult[] = [];
+        let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
+        let overallError: string | undefined;
+        let videoPath: string | null = null;
+        let tracePath: string | null = null;
+
+        try {
+            // Launch browser
+            browser = await this.browserManager.start(job.browser);
+            
+            // Prepare context options with video recording
+            const contextOptions: any = {
+                recordVideo: { 
+                    dir: artifactsDir, 
+                    size: { width: 1280, height: 720 } 
+                }
+            };
+
+            // Apply device emulation if specified
+            let emulatedAs: string | null = null;
+            if (job.device) {
+                const deviceConfig = this.getDeviceConfig(job.device, job.browser);
+                if (deviceConfig) {
+                    Object.assign(contextOptions, deviceConfig.options);
+                    emulatedAs = deviceConfig.emulatedAs;
+                }
+            }
+
+            // Create shared context for all tests
+            sharedContext = await browser.newContext(contextOptions);
+            await this.browserManager.injectInitScripts(sharedContext, job.browser, job.device || null, emulatedAs);
+            
+            // Start tracing for entire suite
+            await sharedContext.tracing.start({ 
+                screenshots: true, 
+                snapshots: true, 
+                sources: true 
+            });
+
+            // Setup shared network listeners
+            const sharedRequestStartTimes = new Map<string, number>();
+            const sharedContextData = { 
+                id: job.unit_id || 0, 
+                name: job.unit_name || 'continuous-job', 
+                variables: {} 
+            };
+            const sourceDomain = { value: null as string | null };
+
+            await NetworkInterceptor.setupNetworkListeners(
+                sharedContext, 
+                sharedRequestStartTimes, 
+                networkEvents, 
+                sharedContextData
+            );
+            await NetworkInterceptor.setupRouteInterception(
+                sharedContext, 
+                job.settings, 
+                sourceDomain
+            );
+
+            // Create shared page
+            let page = await sharedContext.newPage();
+            page.setDefaultTimeout(parseInt(process.env.DEFAULT_TIMEOUT || '30000'));
+
+            // Log console messages
+            page.on('console', msg => {
+                console.log(`  [Browser] [${job.unit_name}]: ${msg.text()}`);
+            });
+
+            // Execute each test case sequentially
+            for (const testCase of job.test_cases!) {
+                const caseStartTime = Date.now();
+                let caseStatus: 'passed' | 'failed' | 'error' = 'passed';
+                let caseError: string | undefined;
+                let responseData: any = undefined;
+
+                // Update context data for this test case
+                sharedContextData.id = testCase.id;
+                sharedContextData.name = testCase.name;
+
+                console.log(`[Worker] Executing test case: ${testCase.name}`);
+
+                try {
+                    // Initialize page for this test
+                    try {
+                        await page.evaluate((name) => {
+                            (window as any).__TRACEIQ_TEST_NAME__ = name;
+                        }, testCase.name);
+                    } catch (e) {
+                        // Ignore if page is in unexpected state
+                    }
+
+                    // Execute test steps
+                    let currentContext: Page | FrameLocator = page;
+                    let lastStepResult: any = null;
+
+                    for (const step of testCase.steps) {
+                        try {
+                            if (step.type === 'switch-frame') {
+                                currentContext = await this.handleFrameSwitch(
+                                    page, 
+                                    currentContext, 
+                                    step
+                                );
+                            } else {
+                                const stepResponse = await TestExecutor.executeStep(
+                                    page, 
+                                    currentContext, 
+                                    step, 
+                                    job.settings, 
+                                    sharedContextData
+                                );
+                                if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
+                                    lastStepResult = stepResponse;
+                                }
+                            }
+                        } catch (stepErr: any) {
+                            if (stepErr.stepResult) {
+                                lastStepResult = stepErr.stepResult;
+                            }
+                            throw stepErr;
+                        }
+                    }
+
+                    // Capture response data if available
+                    if (lastStepResult) {
+                        responseData = {
+                            status: lastStepResult.status,
+                            headers: lastStepResult.headers,
+                            body: lastStepResult.body
+                        };
+                    }
+
+                } catch (err: any) {
+                    caseStatus = 'failed';
+                    caseError = err.message;
+                    overallStatus = 'failed';
+                    console.error(`[Worker] Test case failed: ${testCase.name} - ${err.message}`);
+                    
+                    // Take screenshot on failure
+                    if (page && !page.isClosed()) {
+                        try {
+                            const screenshotPath = path.join(artifactsDir, `failure-${testCase.id}.png`);
+                            await page.screenshot({ path: screenshotPath, fullPage: true });
+                        } catch (screenshotErr) {
+                            console.warn('[Worker] Failed to capture failure screenshot');
+                        }
+                    }
+                }
+
+                const caseDuration = Date.now() - caseStartTime;
+
+                // Record test result
+                testResults.push({
+                    test_case_id: testCase.id,
+                    test_name: testCase.name,
+                    status: caseStatus,
+                    duration_ms: caseDuration,
+                    error: caseError,
+                    response_data: responseData
+                });
+
+                console.log(`[Worker] Completed test case: ${testCase.name} (${caseStatus}, ${caseDuration}ms)`);
+            }
+
+        } catch (err: any) {
+            overallStatus = 'error';
+            overallError = err.message;
+            console.error(`[Worker] Continuous job failed: ${err.message}`);
+        } finally {
+            // Stop tracing and save
+            if (sharedContext) {
+                try {
+                    tracePath = path.join(artifactsDir, 'trace.zip');
+                    await sharedContext.tracing.stop({ path: tracePath });
+                } catch (traceErr) {
+                    console.warn('[Worker] Failed to save trace');
+                    tracePath = null;
+                }
+
+                // Get video path before closing context
+                const pages = sharedContext.pages();
+                if (pages.length > 0) {
+                    try {
+                        const video = pages[0].video();
+                        if (video) {
+                            videoPath = await video.path();
+                        }
+                    } catch (videoErr) {
+                        console.warn('[Worker] Failed to get video path');
+                    }
+                }
+
+                // Close shared context
+                try {
+                    await sharedContext.close();
+                } catch (e) {
+                    // Ignore close errors
+                }
+            }
+            
+            await this.browserManager.stop();
+        }
+
+        const duration = Date.now() - startTime;
+
+        // Upload artifacts to MinIO
+        const artifacts = await this.uploadArtifacts(
+            job.run_id,
+            job.job_id,
+            artifactsDir,
+            videoPath,
+            tracePath
+        );
+
+        // Cleanup local artifacts
+        try {
+            fs.rmSync(artifactsDir, { recursive: true, force: true });
+        } catch (cleanupErr) {
+            console.warn('[Worker] Failed to cleanup artifacts directory');
+        }
+
+        // Determine first failure for backward compatibility
+        const firstFailure = testResults.find(r => r.status !== 'passed');
+
+        return {
+            job_id: job.job_id,
+            run_id: job.run_id,
+            // For continuous jobs, report first test as primary (for backward compat)
+            test_case_id: testResults[0]?.test_case_id,
+            test_name: job.unit_name || testResults[0]?.test_name,
+            status: overallStatus,
+            duration_ms: duration,
+            error: overallError || firstFailure?.error,
+            artifacts,
+            // Include all test results for proper aggregation
+            test_results: testResults,
             network_events: networkEvents,
             completed_at: new Date().toISOString()
         };

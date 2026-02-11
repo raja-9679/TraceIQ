@@ -83,9 +83,18 @@ def run_test_suite(run_id: int):
 
             # Route to appropriate execution strategy
             if USE_DISTRIBUTED_EXECUTION and execution_mode == ExecutionMode.SEPARATE:
-                # SEPARATE mode: Distributed workers, one test per worker
-                dispatch_separate_jobs(
-                    run, cases_to_run, effective_settings, session)
+                # SEPARATE mode: Dispatch execution units (sub-suites run as groups)
+                # This enables: parent=SEPARATE, sub-suites=CONTINUOUS within workers
+                execution_units = test_service.collect_execution_units_sync(
+                    run.test_suite_id, session)
+
+                if execution_units:
+                    dispatch_separate_jobs(
+                        run, execution_units, effective_settings, session)
+                else:
+                    # Fallback: no sub-structure, dispatch cases individually
+                    dispatch_separate_jobs_legacy(
+                        run, cases_to_run, effective_settings, session)
             else:
                 # CONTINUOUS mode: Single-engine execution with shared browser
                 dispatch_legacy_execution(
@@ -101,10 +110,140 @@ def run_test_suite(run_id: int):
             session.commit()
 
 
-def dispatch_separate_jobs(run: TestRun, cases: list, settings: dict, session: Session):
+def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, session: Session):
     """
-    Dispatch individual jobs for SEPARATE mode via Redis stream.
-    Each test case gets its own isolated worker for complete independence.
+    Dispatch jobs for SEPARATE mode via Redis stream.
+
+    Each execution unit becomes one job:
+    - Single test case → one worker runs one test
+    - Sub-suite → one worker runs all tests in that sub-suite CONTINUOUSLY
+
+    This enables hierarchical execution:
+    - Parent suite in SEPARATE mode spawns parallel jobs
+    - Each sub-suite runs its tests sequentially in a shared browser
+    """
+    import uuid
+    from datetime import datetime
+
+    print(
+        f"[Worker] Dispatching {len(execution_units)} execution units for run {run.id}")
+
+    jobs_stream = 'jobs:pending'
+    job_ids = []
+    total_test_count = 0
+
+    # Ensure consumer group exists
+    try:
+        redis_client.xgroup_create(
+            jobs_stream, 'execution-workers', id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+
+    # Use pipeline for atomic batch insert
+    pipe = redis_client.pipeline()
+
+    for unit in execution_units:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+
+        test_cases = unit['test_cases']
+        total_test_count += len(test_cases)
+
+        # Determine execution mode for this job
+        # Sub-suites run their tests continuously (shared browser)
+        is_continuous = unit['type'] == 'sub_suite' and len(test_cases) > 1
+
+        if is_continuous:
+            # Multi-test job: runs continuously in shared browser
+            job = {
+                'job_id': job_id,
+                'run_id': run.id,
+                'execution_mode': 'continuous',
+                'unit_type': unit['type'],
+                'unit_id': unit['id'],
+                'unit_name': unit['name'],
+                'test_cases': [
+                    {
+                        'id': case.id,
+                        'name': case.name,
+                        'steps': [
+                            step.dict() if hasattr(step, 'dict') else step
+                            for step in case.steps
+                        ]
+                    }
+                    for case in test_cases
+                ],
+                'browser': run.browser,
+                'device': run.device,
+                'settings': {
+                    'headers': settings.get('headers', {}),
+                    'params': settings.get('params', {}),
+                    'allowed_domains': settings.get('allowed_domains', []),
+                    'domain_settings': settings.get('domain_settings', {})
+                },
+                'created_at': datetime.utcnow().isoformat(),
+                'retry_count': 0
+            }
+        else:
+            # Single test job
+            case = test_cases[0]
+            job = {
+                'job_id': job_id,
+                'run_id': run.id,
+                'test_case_id': case.id,
+                'test_case': {
+                    'id': case.id,
+                    'name': case.name,
+                    'steps': [
+                        step.dict() if hasattr(step, 'dict') else step
+                        for step in case.steps
+                    ]
+                },
+                'browser': run.browser,
+                'device': run.device,
+                'settings': {
+                    'headers': settings.get('headers', {}),
+                    'params': settings.get('params', {}),
+                    'allowed_domains': settings.get('allowed_domains', []),
+                    'domain_settings': settings.get('domain_settings', {})
+                },
+                'created_at': datetime.utcnow().isoformat(),
+                'retry_count': 0
+            }
+
+        # Add job to stream
+        pipe.xadd(
+            jobs_stream,
+            {
+                'job_id': job_id,
+                'run_id': str(run.id),
+                'payload': json.dumps(job)
+            }
+        )
+        # Track job in run's job set
+        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+
+    # Initialize run progress tracking
+    # Track by total test cases, not jobs (for accurate progress)
+    pipe.hset(f'runs:{run.id}:progress', mapping={
+        'total': total_test_count,
+        'completed': 0,
+        'passed': 0,
+        'failed': 0,
+        'status': 'running'
+    })
+
+    pipe.execute()
+
+    print(
+        f"[Worker] Dispatched {len(job_ids)} jobs ({total_test_count} total tests) for run {run.id}")
+
+
+def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, session: Session):
+    """
+    Legacy dispatch: one job per test case (original SEPARATE mode behavior).
+    Used when suite has no sub-structure.
     """
     import uuid
     from datetime import datetime

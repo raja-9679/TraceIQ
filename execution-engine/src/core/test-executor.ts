@@ -80,7 +80,7 @@ export class TestExecutor {
 
             case 'http-request': {
                 const method = step.params?.method || 'GET';
-                const reqUrl = resolve(step.value || step.selector);
+                const rawUrl = resolve(step.value || step.selector);
                 const stepHeaders = resolve(step.params?.headers || {});
                 const stepParams = resolve(step.params?.params || {});
                 const body = resolve(step.params?.body);
@@ -88,171 +88,275 @@ export class TestExecutor {
                 const mergedHeaders = { ...globalSettings.headers, ...stepHeaders };
                 const mergedParams = { ...globalSettings.params, ...stepParams };
 
-                console.log(`  [API] ${method} ${reqUrl} (Headers: ${Object.keys(mergedHeaders).length}, Params: ${Object.keys(mergedParams).length})`);
-
-                let apiResponse;
-                let actualRequestHeaders = mergedHeaders;
-                let actualRequestUrl = reqUrl;
-                const requestHandler = async (request: any) => {
-                    try {
-                        const requestUrl = request.url();
-                        if ((requestUrl === reqUrl || requestUrl.split('?')[0] === reqUrl.split('?')[0]) &&
-                            request.method() === method) {
-                            actualRequestHeaders = await request.allHeaders();
-                            actualRequestUrl = requestUrl;
-                            console.log(`    [API] Captured actual request URL: ${actualRequestUrl}`);
-                        }
-                    } catch (e) { }
-                };
-
-                page.context().on('request', requestHandler);
-                try {
-                    apiResponse = await page.request.fetch(reqUrl, {
-                        method,
-                        headers: mergedHeaders,
-                        params: mergedParams,
-                        data: body,
-                        timeout: 30000
-                    });
-                } finally {
-                    page.context().off('request', requestHandler);
+                // Support comma-separated URLs for batch checking with same schema/assertions
+                const urls = rawUrl.split(',').map((u: string) => u.trim()).filter((u: string) => u);
+                
+                if (urls.length === 0) {
+                    throw new Error('No valid URL provided for http-request');
                 }
 
-                const status = apiResponse.status();
-                const apiHeaders = apiResponse.headers();
-                const respBody = await apiResponse.text();
-                let jsonBody;
-                try { jsonBody = JSON.parse(respBody); } catch (e) { }
+                // For single URL, use original behavior
+                // For multiple URLs, run same assertions on all and collect results
+                const allResults: any[] = [];
+                const errors: string[] = [];
 
-                const resultObject = {
-                    type: 'http-request',
-                    status,
-                    headers: apiHeaders,
-                    body: respBody,
-                    request: {
-                        url: actualRequestUrl,
-                        method,
-                        headers: actualRequestHeaders,
-                        params: mergedParams,
-                        body
-                    }
-                };
+                for (const reqUrl of urls) {
+                    console.log(`  [API] ${method} ${reqUrl} (Headers: ${Object.keys(mergedHeaders).length}, Params: ${Object.keys(mergedParams).length})${urls.length > 1 ? ` [${allResults.length + 1}/${urls.length}]` : ''}`);
 
-                if (step.params?.assertions) {
-                    for (const assertion of step.params.assertions) {
+                    let apiResponse;
+                    let actualRequestHeaders = mergedHeaders;
+                    let actualRequestUrl = reqUrl;
+                    const requestHandler = async (request: any) => {
                         try {
-                            if (assertion.type === 'status') {
-                                if (status !== parseInt(assertion.value)) {
-                                    throw new Error(`Expected status ${assertion.value} but got ${status}`);
-                                }
-                            } else if (assertion.type === 'json-path') {
-                                if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
-                                const pathParts = assertion.path.split('.');
-                                let current = jsonBody;
-                                for (const part of pathParts) {
-                                    if (current === undefined || current === null) break;
-                                    current = current[part];
-                                }
-                                if (assertion.operator === 'equals') {
-                                    if (String(current) !== String(assertion.value)) {
-                                        throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
-                                    }
-                                } else if (assertion.operator === 'contains') {
-                                    if (!String(current).includes(String(assertion.value))) {
-                                        throw new Error(`Expected ${assertion.path} to contain ${assertion.value} but got ${current}`);
-                                    }
-                                }
-                            } else if (assertion.type === 'json-schema') {
-                                if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
-                                const ajv = new Ajv({ allErrors: true });
-                                addFormats(ajv);
-                                const schema = JSON.parse(assertion.value || '{}');
-                                const validate = ajv.compile(schema);
-                                if (!validate(jsonBody)) {
-                                    const errors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
-                                    throw new Error(`JSON Schema validation failed: ${errors}`);
-                                }
+                            const requestUrl = request.url();
+                            if ((requestUrl === reqUrl || requestUrl.split('?')[0] === reqUrl.split('?')[0]) &&
+                                request.method() === method) {
+                                actualRequestHeaders = await request.allHeaders();
+                                actualRequestUrl = requestUrl;
                             }
-                        } catch (e: any) {
-                            e.stepResult = resultObject;
-                            throw e;
+                        } catch (e) { }
+                    };
+
+                    page.context().on('request', requestHandler);
+                    try {
+                        apiResponse = await page.request.fetch(reqUrl, {
+                            method,
+                            headers: mergedHeaders,
+                            params: mergedParams,
+                            data: body,
+                            timeout: 30000
+                        });
+                    } finally {
+                        page.context().off('request', requestHandler);
+                    }
+
+                    const status = apiResponse.status();
+                    const apiHeaders = apiResponse.headers();
+                    const respBody = await apiResponse.text();
+                    let jsonBody;
+                    try { jsonBody = JSON.parse(respBody); } catch (e) { }
+
+                    const resultObject: any = {
+                        type: 'http-request',
+                        url: reqUrl,
+                        status,
+                        headers: apiHeaders,
+                        body: respBody,
+                        request: {
+                            url: actualRequestUrl,
+                            method,
+                            headers: actualRequestHeaders,
+                            params: mergedParams,
+                            body
+                        }
+                    };
+
+                    // Run assertions for this URL
+                    if (step.params?.assertions) {
+                        for (const assertion of step.params.assertions) {
+                            try {
+                                if (assertion.type === 'status') {
+                                    if (status !== parseInt(assertion.value)) {
+                                        throw new Error(`Expected status ${assertion.value} but got ${status}`);
+                                    }
+                                } else if (assertion.type === 'json-path') {
+                                    if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
+                                    const pathParts = assertion.path.split('.');
+                                    let current = jsonBody;
+                                    for (const part of pathParts) {
+                                        if (current === undefined || current === null) break;
+                                        current = current[part];
+                                    }
+                                    if (assertion.operator === 'equals') {
+                                        if (String(current) !== String(assertion.value)) {
+                                            throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
+                                        }
+                                    } else if (assertion.operator === 'contains') {
+                                        if (!String(current).includes(String(assertion.value))) {
+                                            throw new Error(`Expected ${assertion.path} to contain ${assertion.value} but got ${current}`);
+                                        }
+                                    }
+                                } else if (assertion.type === 'json-schema') {
+                                    if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
+                                    const ajv = new Ajv({ allErrors: true });
+                                    addFormats(ajv);
+                                    const schema = JSON.parse(assertion.value || '{}');
+                                    const validate = ajv.compile(schema);
+                                    if (!validate(jsonBody)) {
+                                        const schemaErrors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
+                                        throw new Error(`JSON Schema validation failed: ${schemaErrors}`);
+                                    }
+                                }
+                            } catch (e: any) {
+                                errors.push(`[${reqUrl}] ${e.message}`);
+                                resultObject.error = e.message;
+                            }
                         }
                     }
+
+                    allResults.push(resultObject);
                 }
 
-                return resultObject;
+                // If multiple URLs, return combined result
+                if (urls.length > 1) {
+                    const combinedResult = {
+                        type: 'http-request-batch',
+                        totalUrls: urls.length,
+                        successCount: allResults.filter(r => !r.error).length,
+                        failedCount: allResults.filter(r => r.error).length,
+                        results: allResults,
+                        // Use first result for backward compatibility
+                        status: allResults[0]?.status,
+                        headers: allResults[0]?.headers,
+                        body: allResults[0]?.body,
+                        request: allResults[0]?.request
+                    };
+
+                    if (errors.length > 0) {
+                        const err = new Error(`${errors.length} URL(s) failed validation:\n${errors.join('\n')}`);
+                        (err as any).stepResult = combinedResult;
+                        throw err;
+                    }
+
+                    return combinedResult;
+                }
+
+                // Single URL - original behavior
+                if (errors.length > 0) {
+                    const err = new Error(errors[0]);
+                    (err as any).stepResult = allResults[0];
+                    throw err;
+                }
+
+                return allResults[0];
             }
 
             case 'feed-check': {
-                const feedUrl = step.value || step.selector;
+                const rawFeedUrl = step.value || step.selector;
                 const mergedHeaders = { ...globalSettings.headers };
                 const mergedParams = { ...globalSettings.params };
 
-                console.log(`  [Feed] Checking ${feedUrl}`);
-
-                let feedResponse;
-                let actualRequestHeaders = mergedHeaders;
-                let actualRequestUrl = feedUrl;
-                const requestHandler = async (request: any) => {
-                    try {
-                        const requestUrl = request.url();
-                        if ((requestUrl === feedUrl || requestUrl.split('?')[0] === feedUrl.split('?')[0]) && request.method() === 'GET') {
-                            actualRequestHeaders = await request.allHeaders();
-                            actualRequestUrl = requestUrl;
-                        }
-                    } catch (e) { }
-                };
-
-                page.context().on('request', requestHandler);
-                try {
-                    feedResponse = await page.request.get(feedUrl, { headers: mergedHeaders, params: mergedParams });
-                } finally {
-                    page.context().off('request', requestHandler);
+                // Support comma-separated URLs for batch checking with same assertions
+                const feedUrls = rawFeedUrl.split(',').map((u: string) => u.trim()).filter((u: string) => u);
+                
+                if (feedUrls.length === 0) {
+                    throw new Error('No valid URL provided for feed-check');
                 }
 
-                if (!feedResponse.ok()) throw new Error(`Failed to fetch feed: ${feedResponse.status()}`);
+                const allResults: any[] = [];
+                const errors: string[] = [];
 
-                const feedText = await feedResponse.text();
-                const doc = new DOMParser().parseFromString(feedText, 'text/xml');
+                for (const feedUrl of feedUrls) {
+                    console.log(`  [Feed] Checking ${feedUrl}${feedUrls.length > 1 ? ` [${allResults.length + 1}/${feedUrls.length}]` : ''}`);
 
-                const resultObject = {
-                    type: 'feed-check',
-                    status: feedResponse.status(),
-                    headers: feedResponse.headers(),
-                    body: feedText,
-                    request: {
-                        url: actualRequestUrl,
-                        method: 'GET',
-                        headers: actualRequestHeaders,
-                        params: mergedParams
-                    }
-                };
-
-                if (step.params?.assertions) {
-                    for (const assertion of step.params.assertions) {
+                    let feedResponse;
+                    let actualRequestHeaders = mergedHeaders;
+                    let actualRequestUrl = feedUrl;
+                    const requestHandler = async (request: any) => {
                         try {
-                            if (assertion.type === 'xpath') {
-                                const nodes = xpath.select(assertion.path, doc);
-                                const nodeValue = nodes[0] ? (nodes[0] as any).textContent : null;
-
-                                if (assertion.operator === 'equals') {
-                                    if (nodeValue !== assertion.value) throw new Error(`Expected XPath ${assertion.path} to equal ${assertion.value} but got ${nodeValue}`);
-                                } else if (assertion.operator === 'contains') {
-                                    if (!nodeValue || !nodeValue.includes(assertion.value)) throw new Error(`Expected XPath ${assertion.path} to contain ${assertion.value} but got ${nodeValue}`);
-                                } else if (assertion.operator === 'exists') {
-                                    if (!nodes || nodes.length === 0) throw new Error(`Expected XPath ${assertion.path} to exist`);
-                                }
-                            } else if (assertion.type === 'text') {
-                                if (!feedText.includes(assertion.value)) throw new Error(`Expected feed to contain text "${assertion.value}"`);
+                            const requestUrl = request.url();
+                            if ((requestUrl === feedUrl || requestUrl.split('?')[0] === feedUrl.split('?')[0]) && request.method() === 'GET') {
+                                actualRequestHeaders = await request.allHeaders();
+                                actualRequestUrl = requestUrl;
                             }
-                        } catch (e: any) {
-                            e.stepResult = resultObject;
-                            throw e;
+                        } catch (e) { }
+                    };
+
+                    page.context().on('request', requestHandler);
+                    try {
+                        feedResponse = await page.request.get(feedUrl, { headers: mergedHeaders, params: mergedParams });
+                    } finally {
+                        page.context().off('request', requestHandler);
+                    }
+
+                    if (!feedResponse.ok()) {
+                        errors.push(`[${feedUrl}] Failed to fetch feed: ${feedResponse.status()}`);
+                        allResults.push({
+                            type: 'feed-check',
+                            url: feedUrl,
+                            status: feedResponse.status(),
+                            error: `Failed to fetch feed: ${feedResponse.status()}`
+                        });
+                        continue;
+                    }
+
+                    const feedText = await feedResponse.text();
+                    const doc = new DOMParser().parseFromString(feedText, 'text/xml');
+
+                    const resultObject: any = {
+                        type: 'feed-check',
+                        url: feedUrl,
+                        status: feedResponse.status(),
+                        headers: feedResponse.headers(),
+                        body: feedText,
+                        request: {
+                            url: actualRequestUrl,
+                            method: 'GET',
+                            headers: actualRequestHeaders,
+                            params: mergedParams
+                        }
+                    };
+
+                    // Run assertions for this feed URL
+                    if (step.params?.assertions) {
+                        for (const assertion of step.params.assertions) {
+                            try {
+                                if (assertion.type === 'xpath') {
+                                    const nodes = xpath.select(assertion.path, doc);
+                                    const nodeValue = nodes[0] ? (nodes[0] as any).textContent : null;
+
+                                    if (assertion.operator === 'equals') {
+                                        if (nodeValue !== assertion.value) throw new Error(`Expected XPath ${assertion.path} to equal ${assertion.value} but got ${nodeValue}`);
+                                    } else if (assertion.operator === 'contains') {
+                                        if (!nodeValue || !nodeValue.includes(assertion.value)) throw new Error(`Expected XPath ${assertion.path} to contain ${assertion.value} but got ${nodeValue}`);
+                                    } else if (assertion.operator === 'exists') {
+                                        if (!nodes || nodes.length === 0) throw new Error(`Expected XPath ${assertion.path} to exist`);
+                                    }
+                                } else if (assertion.type === 'text') {
+                                    if (!feedText.includes(assertion.value)) throw new Error(`Expected feed to contain text "${assertion.value}"`);
+                                }
+                            } catch (e: any) {
+                                errors.push(`[${feedUrl}] ${e.message}`);
+                                resultObject.error = e.message;
+                            }
                         }
                     }
+
+                    allResults.push(resultObject);
                 }
 
-                return resultObject;
+                // If multiple URLs, return combined result
+                if (feedUrls.length > 1) {
+                    const combinedResult = {
+                        type: 'feed-check-batch',
+                        totalUrls: feedUrls.length,
+                        successCount: allResults.filter(r => !r.error).length,
+                        failedCount: allResults.filter(r => r.error).length,
+                        results: allResults,
+                        // Use first result for backward compatibility
+                        status: allResults[0]?.status,
+                        headers: allResults[0]?.headers,
+                        body: allResults[0]?.body,
+                        request: allResults[0]?.request
+                    };
+
+                    if (errors.length > 0) {
+                        const err = new Error(`${errors.length} feed URL(s) failed validation:\n${errors.join('\n')}`);
+                        (err as any).stepResult = combinedResult;
+                        throw err;
+                    }
+
+                    return combinedResult;
+                }
+
+                // Single URL - original behavior
+                if (errors.length > 0) {
+                    const err = new Error(errors[0]);
+                    (err as any).stepResult = allResults[0];
+                    throw err;
+                }
+
+                return allResults[0];
             }
 
             case 'click': {

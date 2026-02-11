@@ -319,9 +319,14 @@ export default function TestMatrix() {
                                         <td className="py-4 px-4 text-sm text-gray-900">
                                             <div className="max-w-xs">
                                                 {run.suite_name && (
-                                                    <div className="font-medium truncate" title={run.suite_name}>
+                                                    <Link 
+                                                        to={`/suites/${run.test_suite_id}`}
+                                                        className="font-medium truncate text-primary hover:underline block"
+                                                        title={`Go to ${run.suite_name}`}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
                                                         {run.suite_name}
-                                                    </div>
+                                                    </Link>
                                                 )}
                                                 {run.test_case_name && (
                                                     <div className="text-xs text-gray-500 truncate" title={run.test_case_name}>
