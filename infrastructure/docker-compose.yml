@@ -190,7 +190,7 @@ services:
       - qip_network
     shm_size: '1gb'
     deploy:
-      replicas: 2
+      replicas: 4
 
   # Legacy execution engine (for CONTINUOUS mode - shared browser context)
   execution-engine:
@@ -209,11 +209,13 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_URL=redis://redis:6379/0
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=0
       - REDIS_WEBHOOK_QUEUE=webhook:results
-      - DEFAULT_TIMEOUT=${DEFAULT_TIMEOUT:-30000}
+      - DEFAULT_TIMEOUT=${DEFAULT_TIMEOUT:-60000}
+      - MAX_CONCURRENT_RUNS=3
     depends_on:
       - minio
       - redis

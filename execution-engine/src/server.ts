@@ -5,7 +5,12 @@
  * 1. Controller/Coordinator for distributed execution
  * 2. Metrics and monitoring API
  * 3. Optional AI analysis (results sent to Backend)
- * 4. Legacy execution endpoint (for CONTINUOUS mode if needed)
+ * 4. Legacy execution endpoint (DEPRECATED - only for fallback)
+ * 
+ * PRIMARY ARCHITECTURE:
+ * - All test cases are dispatched to Redis queue by backend
+ * - Execution workers pull jobs one at a time from queue
+ * - This ensures true parallel execution based on worker count
  * 
  * NOTE: Notifications (email, Slack) are handled by Backend
  * because it has access to user preferences and DB.
@@ -22,6 +27,43 @@ import { AIAnalyzer } from './controller/ai-analyzer';
 const app = express();
 const port = process.env.PORT || 3000;
 const runner = new PlaywrightRunner();
+
+// Concurrency control for legacy /run endpoint
+const MAX_CONCURRENT_RUNS = parseInt(process.env.MAX_CONCURRENT_RUNS || '3', 10);
+let activeRuns = 0;
+const pendingQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
+
+async function acquireRunSlot(): Promise<void> {
+    if (activeRuns < MAX_CONCURRENT_RUNS) {
+        activeRuns++;
+        return Promise.resolve();
+    }
+    // Queue the request
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            const idx = pendingQueue.findIndex(p => p.resolve === resolve);
+            if (idx !== -1) pendingQueue.splice(idx, 1);
+            reject(new Error('Queue timeout: too many pending runs'));
+        }, 300000); // 5 minute queue timeout
+        
+        pendingQueue.push({
+            resolve: () => {
+                clearTimeout(timeout);
+                activeRuns++;
+                resolve();
+            },
+            reject
+        });
+    });
+}
+
+function releaseRunSlot(): void {
+    activeRuns--;
+    if (pendingQueue.length > 0 && activeRuns < MAX_CONCURRENT_RUNS) {
+        const next = pendingQueue.shift();
+        if (next) next.resolve();
+    }
+}
 
 // Initialize controller components
 const controller = new ExecutionController();
@@ -140,28 +182,48 @@ app.get('/health', (req, res) => {
 
 // ============================================
 // LEGACY EXECUTION ENDPOINT (CONTINUOUS MODE)
+// With concurrency control to prevent resource exhaustion
 // ============================================
 
 app.post('/run', async (req, res) => {
     const { runId, testCases, browser, globalSettings, device, executionMode, callbackUrl, webhookSecret } = req.body;
     console.log(`Received run request for runId: ${runId}`);
-    console.log(`Test Cases received: ${JSON.stringify(testCases)}`);
+    console.log(`Test Cases count: ${testCases?.length || 0}`);
     console.log(`Browser: ${browser}`);
     console.log(`Device: ${device || 'Desktop'}`);
     console.log(`Execution Mode: ${executionMode}`);
-    console.log(`Callback URL: ${callbackUrl}`);
-    console.log(`Global Settings: ${JSON.stringify(globalSettings)}`);
+    console.log(`Active runs: ${activeRuns}/${MAX_CONCURRENT_RUNS}, Queue: ${pendingQueue.length}`);
+    
     if (!runId) {
         return res.status(400).json({ error: 'runId is required' });
     }
 
     try {
-        // Run in background (Fire and Forget)
+        // Try to acquire a run slot (may queue if at capacity)
+        try {
+            await acquireRunSlot();
+            console.log(`[Concurrency] Run ${runId} acquired slot (active: ${activeRuns}/${MAX_CONCURRENT_RUNS})`);
+        } catch (queueErr: any) {
+            console.error(`[Concurrency] Run ${runId} rejected: ${queueErr.message}`);
+            return res.status(503).json({ 
+                error: 'Service overloaded', 
+                message: queueErr.message,
+                activeRuns,
+                queueSize: pendingQueue.length
+            });
+        }
+
+        // Run in background with slot release
         runner.runTest(runId, testCases, browser, globalSettings, device, executionMode, callbackUrl, webhookSecret)
-            .catch(err => console.error(`Error in async test run ${runId}:`, err));
+            .catch(err => console.error(`Error in async test run ${runId}:`, err))
+            .finally(() => {
+                releaseRunSlot();
+                console.log(`[Concurrency] Run ${runId} released slot (active: ${activeRuns}/${MAX_CONCURRENT_RUNS})`);
+            });
 
         res.status(202).json({ status: 'accepted', message: 'Test execution started', runId });
     } catch (e: any) {
+        releaseRunSlot();
         res.status(500).json({ error: e.message });
     }
 });
