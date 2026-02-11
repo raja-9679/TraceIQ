@@ -199,6 +199,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
             status = status_map.get(test_res.get(
                 'status', 'error'), TestStatus.ERROR)
             response_data = test_res.get('response_data', {})
+            request_data = response_data.get(
+                'request', {}) if response_data else {}
 
             # Check for existing result (idempotency)
             existing = session.exec(
@@ -219,6 +221,11 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 existing.response_status = response_data.get('status')
                 existing.response_headers = response_data.get('headers')
                 existing.response_body = response_data.get('body')
+                existing.request_headers = request_data.get('headers')
+                existing.request_body = request_data.get('body')
+                existing.request_url = request_data.get('url')
+                existing.request_method = request_data.get('method')
+                existing.request_params = request_data.get('params')
                 session.add(existing)
             else:
                 # Create new result
@@ -233,7 +240,12 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     screenshots=artifacts.get('screenshots', []),
                     response_status=response_data.get('status'),
                     response_headers=response_data.get('headers'),
-                    response_body=response_data.get('body')
+                    response_body=response_data.get('body'),
+                    request_headers=request_data.get('headers'),
+                    request_body=request_data.get('body'),
+                    request_url=request_data.get('url'),
+                    request_method=request_data.get('method'),
+                    request_params=request_data.get('params')
                 )
                 session.add(test_result)
 
@@ -298,6 +310,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
 
         artifacts = result.get('artifacts', {})
         response_data = result.get('response_data', {})
+        request_data = response_data.get(
+            'request', {}) if response_data else {}
         network_events = result.get('network_events', [])
 
         if existing:
@@ -311,6 +325,11 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             existing.response_status = response_data.get('status')
             existing.response_headers = response_data.get('headers')
             existing.response_body = response_data.get('body')
+            existing.request_headers = request_data.get('headers')
+            existing.request_body = request_data.get('body')
+            existing.request_url = request_data.get('url')
+            existing.request_method = request_data.get('method')
+            existing.request_params = request_data.get('params')
             session.add(existing)
         else:
             # Create new result
@@ -325,7 +344,12 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 screenshots=artifacts.get('screenshots', []),
                 response_status=response_data.get('status'),
                 response_headers=response_data.get('headers'),
-                response_body=response_data.get('body')
+                response_body=response_data.get('body'),
+                request_headers=request_data.get('headers'),
+                request_body=request_data.get('body'),
+                request_url=request_data.get('url'),
+                request_method=request_data.get('method'),
+                request_params=request_data.get('params')
             )
             session.add(test_result)
 

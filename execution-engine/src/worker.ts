@@ -164,6 +164,7 @@ class ExecutionWorker {
         let responseData: any = undefined;
         let videoPath: string | null = null;
         let tracePath: string | null = null;
+        let lastStepResult: any = null;
 
         try {
             // Launch browser
@@ -241,7 +242,6 @@ class ExecutionWorker {
 
             // Execute test steps
             let currentContext: Page | FrameLocator = page;
-            let lastStepResult: any = null;
 
             for (const step of testCase.steps) {
                 try {
@@ -276,7 +276,8 @@ class ExecutionWorker {
                 responseData = {
                     status: lastStepResult.status,
                     headers: lastStepResult.headers,
-                    body: lastStepResult.body
+                    body: lastStepResult.body,
+                    request: lastStepResult.request
                 };
             }
 
@@ -284,6 +285,24 @@ class ExecutionWorker {
             status = 'failed';
             errorMessage = err.message;
             console.error(`[Worker] Test failed: ${err.message}`);
+
+            // Capture response data from failed step if available
+            if (err.stepResult) {
+                responseData = {
+                    status: err.stepResult.status,
+                    headers: err.stepResult.headers,
+                    body: err.stepResult.body,
+                    request: err.stepResult.request
+                };
+            } else if (lastStepResult) {
+                // Use last successful step result if available
+                responseData = {
+                    status: lastStepResult.status,
+                    headers: lastStepResult.headers,
+                    body: lastStepResult.body,
+                    request: lastStepResult.request
+                };
+            }
             
             // Take screenshot on failure
             if (page && !page.isClosed()) {
@@ -453,12 +472,38 @@ class ExecutionWorker {
                 let caseStatus: 'passed' | 'failed' | 'error' = 'passed';
                 let caseError: string | undefined;
                 let responseData: any = undefined;
+                let lastStepResult: any = null;
 
                 // Update context data for this test case
                 sharedContextData.id = testCase.id;
                 sharedContextData.name = testCase.name;
 
                 console.log(`[Worker] Executing test case: ${testCase.name}`);
+
+                // Check if page is still valid, create new one if closed
+                if (page.isClosed()) {
+                    console.log(`[Worker] Page was closed, creating new page for: ${testCase.name}`);
+                    try {
+                        page = await sharedContext.newPage();
+                        page.setDefaultTimeout(parseInt(process.env.DEFAULT_TIMEOUT || '30000'));
+                        page.on('console', msg => {
+                            console.log(`  [Browser] [${job.unit_name}]: ${msg.text()}`);
+                        });
+                    } catch (pageErr: any) {
+                        console.error(`[Worker] Failed to create new page: ${pageErr.message}`);
+                        // Record error and continue to next test
+                        testResults.push({
+                            test_case_id: testCase.id,
+                            test_name: testCase.name,
+                            status: 'error',
+                            duration_ms: Date.now() - caseStartTime,
+                            error: `Failed to create page: ${pageErr.message}`,
+                            response_data: undefined
+                        });
+                        overallStatus = 'failed';
+                        continue;
+                    }
+                }
 
                 try {
                     // Initialize page for this test
@@ -472,7 +517,6 @@ class ExecutionWorker {
 
                     // Execute test steps
                     let currentContext: Page | FrameLocator = page;
-                    let lastStepResult: any = null;
 
                     for (const step of testCase.steps) {
                         try {
@@ -507,7 +551,8 @@ class ExecutionWorker {
                         responseData = {
                             status: lastStepResult.status,
                             headers: lastStepResult.headers,
-                            body: lastStepResult.body
+                            body: lastStepResult.body,
+                            request: lastStepResult.request
                         };
                     }
 
@@ -516,6 +561,23 @@ class ExecutionWorker {
                     caseError = err.message;
                     overallStatus = 'failed';
                     console.error(`[Worker] Test case failed: ${testCase.name} - ${err.message}`);
+
+                    // Capture response data from failed step if available
+                    if (err.stepResult) {
+                        responseData = {
+                            status: err.stepResult.status,
+                            headers: err.stepResult.headers,
+                            body: err.stepResult.body,
+                            request: err.stepResult.request
+                        };
+                    } else if (lastStepResult) {
+                        responseData = {
+                            status: lastStepResult.status,
+                            headers: lastStepResult.headers,
+                            body: lastStepResult.body,
+                            request: lastStepResult.request
+                        };
+                    }
                     
                     // Take screenshot on failure
                     if (page && !page.isClosed()) {

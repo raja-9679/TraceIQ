@@ -44,6 +44,9 @@ export class TestExecutor {
             return context.locator(selector).first();
         };
 
+        // Get timeout from environment with sensible default for slow pages
+        const gotoTimeout = parseInt(process.env.DEFAULT_TIMEOUT || '60000', 10);
+
         switch (step.type) {
             case 'goto': {
                 let url = resolve(step.value || step.selector) || 'about:blank';
@@ -66,13 +69,21 @@ export class TestExecutor {
 
                 while (attempts < maxAttempts) {
                     try {
-                        await page.goto(url, { waitUntil, timeout: 30000 });
+                        // Check if page is closed before attempting navigation
+                        if (page.isClosed()) {
+                            throw new Error('Page has been closed - cannot navigate');
+                        }
+                        await page.goto(url, { waitUntil, timeout: gotoTimeout });
                         break;
-                    } catch (e) {
+                    } catch (e: any) {
                         attempts++;
                         console.warn(`  Goto attempt ${attempts} failed: ${e}`);
+                        // Don't retry if page/context is closed - it's unrecoverable
+                        if (e.message?.includes('closed') || e.message?.includes('Target page') || e.message?.includes('context')) {
+                            throw e;
+                        }
                         if (attempts === maxAttempts) throw e;
-                        await new Promise(r => setTimeout(r, 1000));
+                        await new Promise(r => setTimeout(r, 2000)); // Increased retry delay
                     }
                 }
                 break;
@@ -178,13 +189,74 @@ export class TestExecutor {
                                     }
                                 } else if (assertion.type === 'json-schema') {
                                     if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-schema assertion");
-                                    const ajv = new Ajv({ allErrors: true });
+                                    const ajv = new Ajv({ 
+                                        allErrors: true, 
+                                        strict: false,
+                                        // Don't remove additional properties, just validate what's defined
+                                        removeAdditional: false,
+                                        // Allow additional properties by default unless explicitly set
+                                        // This prevents errors when response has extra fields not in schema
+                                    });
                                     addFormats(ajv);
-                                    const schema = JSON.parse(assertion.value || '{}');
+                                    let schema = JSON.parse(assertion.value || '{}');
+                                    
+                                    // Transform schema to:
+                                    // 1. Add additionalProperties: true to all objects
+                                    // 2. For non-required fields, allow null as a valid type
+                                    const transformSchema = (obj: any, requiredFields: string[] = []): any => {
+                                        if (obj && typeof obj === 'object') {
+                                            // Add additionalProperties: true if not set
+                                            if (obj.type === 'object' && obj.properties && obj.additionalProperties === undefined) {
+                                                obj.additionalProperties = true;
+                                            }
+                                            
+                                            // Get required fields for this object level
+                                            const required = obj.required || [];
+                                            
+                                            // Recurse into properties
+                                            if (obj.properties) {
+                                                for (const key of Object.keys(obj.properties)) {
+                                                    const prop = obj.properties[key];
+                                                    
+                                                    // If field is NOT required, allow null type
+                                                    if (!required.includes(key) && prop.type && !Array.isArray(prop.type)) {
+                                                        // Convert single type to array including null
+                                                        prop.type = [prop.type, 'null'];
+                                                    }
+                                                    
+                                                    transformSchema(prop, prop.required || []);
+                                                }
+                                            }
+                                            // Recurse into array items
+                                            if (obj.items) {
+                                                transformSchema(obj.items, obj.items.required || []);
+                                            }
+                                        }
+                                        return obj;
+                                    };
+                                    schema = transformSchema(schema, schema.required || []);
+                                    
                                     const validate = ajv.compile(schema);
                                     if (!validate(jsonBody)) {
-                                        const schemaErrors = validate.errors?.map((e: any) => `${e.instancePath} ${e.message}`).join(', ');
-                                        throw new Error(`JSON Schema validation failed: ${schemaErrors}`);
+                                        // Filter errors to show only meaningful ones
+                                        const errors = validate.errors?.filter((e: any) => {
+                                            // Skip additional properties errors since we allow them by default
+                                            if (e.keyword === 'additionalProperties') return false;
+                                            return true;
+                                        });
+                                        
+                                        if (errors && errors.length > 0) {
+                                            const schemaErrors = errors.map((e: any) => {
+                                                if (e.keyword === 'required') {
+                                                    return `Missing required field: "${e.params?.missingProperty}" at ${e.instancePath || 'root'}`;
+                                                } else if (e.keyword === 'type') {
+                                                    const path = e.instancePath || 'root';
+                                                    return `"${path}": expected ${e.params?.type}`;
+                                                }
+                                                return `${e.instancePath || 'root'} ${e.message}`;
+                                            }).join(', ');
+                                            throw new Error(`JSON Schema validation failed: ${schemaErrors}`);
+                                        }
                                     }
                                 }
                             } catch (e: any) {
@@ -233,8 +305,12 @@ export class TestExecutor {
 
             case 'feed-check': {
                 const rawFeedUrl = step.value || step.selector;
-                const mergedHeaders = { ...globalSettings.headers };
-                const mergedParams = { ...globalSettings.params };
+                const stepHeaders = resolve(step.params?.headers || {});
+                const stepParams = resolve(step.params?.params || {});
+                
+                // Merge suite/global headers with step-level headers (step headers override)
+                const mergedHeaders = { ...globalSettings.headers, ...stepHeaders };
+                const mergedParams = { ...globalSettings.params, ...stepParams };
 
                 // Support comma-separated URLs for batch checking with same assertions
                 const feedUrls = rawFeedUrl.split(',').map((u: string) => u.trim()).filter((u: string) => u);
