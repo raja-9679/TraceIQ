@@ -49,6 +49,24 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
     const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
     const [localBody, setLocalBody] = React.useState(step.params?.body || '');
 
+    // Sync local state when step.params changes from parent (e.g., when loading a test case)
+    React.useEffect(() => {
+        const newHeaders = JSON.stringify(step.params?.headers || {}, null, 2);
+        const newParams = JSON.stringify(step.params?.params || {}, null, 2);
+        const newBody = step.params?.body || '';
+        
+        // Only update if different to avoid cursor jumps while typing
+        if (newHeaders !== localHeaders && newHeaders !== '{}') {
+            setLocalHeaders(newHeaders);
+        }
+        if (newParams !== localParams && newParams !== '{}') {
+            setLocalParams(newParams);
+        }
+        if (newBody !== localBody) {
+            setLocalBody(newBody);
+        }
+    }, [step.params?.headers, step.params?.params, step.params?.body]);
+
     const updateParams = (key: string, value: any) => {
         const newParams = { ...(step.params || {}), [key]: value };
         updateStep(step.id, 'params', newParams);
@@ -335,8 +353,18 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                     updateParams('headers', parsed);
                                                 } catch (err) { /* ignore invalid JSON while typing */ }
                                             }}
+                                            onBlur={() => {
+                                                // Ensure valid JSON is saved on blur, or revert to empty object
+                                                try {
+                                                    const parsed = JSON.parse(localHeaders);
+                                                    updateParams('headers', parsed);
+                                                } catch (err) {
+                                                    // If invalid JSON, keep current step.params.headers
+                                                    setLocalHeaders(JSON.stringify(step.params?.headers || {}, null, 2));
+                                                }
+                                            }}
                                         />
-                                        <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level headers</p>
+                                        <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level headers (step headers override)</p>
                                     </div>
                                     <div>
                                         <label className="text-xs font-medium text-gray-500 mb-1 block">Query Parameters (JSON)</label>
@@ -351,8 +379,18 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                     updateParams('params', parsed);
                                                 } catch (err) { /* ignore invalid JSON while typing */ }
                                             }}
+                                            onBlur={() => {
+                                                // Ensure valid JSON is saved on blur, or revert to empty object
+                                                try {
+                                                    const parsed = JSON.parse(localParams);
+                                                    updateParams('params', parsed);
+                                                } catch (err) {
+                                                    // If invalid JSON, keep current step.params.params
+                                                    setLocalParams(JSON.stringify(step.params?.params || {}, null, 2));
+                                                }
+                                            }}
                                         />
-                                        <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level parameters</p>
+                                        <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level parameters (step params override)</p>
                                     </div>
                                 </div>
                             )}
