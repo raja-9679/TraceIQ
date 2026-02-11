@@ -97,6 +97,174 @@ def process_single_result(result: Dict[str, Any]):
     """Process a single job result and update database"""
     run_id = result.get('run_id')
     job_id = result.get('job_id')
+
+    # Check if this is a multi-test continuous job result
+    test_results = result.get('test_results')
+
+    if test_results and len(test_results) > 0:
+        # Multi-test continuous job - process each test result
+        process_continuous_job_result(run_id, job_id, result, test_results)
+    else:
+        # Single test job - original behavior
+        process_single_test_result(run_id, job_id, result)
+
+
+def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str], session: Session):
+    """Update run status and progress from Redis progress tracking"""
+    if not progress:
+        return
+
+    run.total_tests = int(progress.get('total', run.total_tests))
+    run.passed_tests = int(progress.get('passed', 0))
+    run.failed_tests = int(progress.get('failed', 0))
+
+    # Check if run is complete
+    completed = int(progress.get('completed', 0))
+    total = int(progress.get('total', 0))
+
+    if completed >= total and total > 0:
+        # All jobs complete - finalize run
+        if run.failed_tests > 0:
+            run.status = TestStatus.FAILED
+        else:
+            run.status = TestStatus.PASSED
+
+        # Calculate wall-clock duration (actual elapsed time)
+        # This reflects parallel execution - NOT sum of individual test times
+        from datetime import datetime, timezone
+        if run.created_at:
+            # Handle timezone-aware vs naive datetime
+            now = datetime.now(
+                timezone.utc) if run.created_at.tzinfo else datetime.utcnow()
+            run.duration_ms = int(
+                (now - run.created_at).total_seconds() * 1000)
+
+        # Get results for artifact copying
+        results = session.exec(
+            select(TestCaseResult).where(
+                TestCaseResult.test_run_id == run_id)
+        ).all()
+
+        # Copy video/trace from results to run level
+        if len(results) == 1 and results[0]:
+            if results[0].video_url and not run.video_url:
+                run.video_url = results[0].video_url
+            if results[0].trace_url and not run.trace_url:
+                run.trace_url = results[0].trace_url
+        elif len(results) > 1:
+            # For multi-test runs, use the first result's artifacts as run-level
+            first_with_video = next(
+                (r for r in results if r.video_url), None)
+            first_with_trace = next(
+                (r for r in results if r.trace_url), None)
+            if first_with_video and not run.video_url:
+                run.video_url = first_with_video.video_url
+            if first_with_trace and not run.trace_url:
+                run.trace_url = first_with_trace.trace_url
+
+        print(
+            f"[Aggregator] Run {run_id} completed: {run.passed_tests} passed, {run.failed_tests} failed, duration={run.duration_ms}ms")
+    else:
+        run.status = TestStatus.RUNNING
+
+
+def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, Any], test_results: list):
+    """Process a continuous job result with multiple test cases"""
+    if not run_id:
+        print(f"[Aggregator] Missing run_id in continuous result: {job_id}")
+        return
+
+    with Session(sync_engine) as session:
+        # Get the test run
+        run = session.get(TestRun, run_id)
+        if not run:
+            print(f"[Aggregator] Run {run_id} not found")
+            return
+
+        status_map = {
+            'passed': TestStatus.PASSED,
+            'failed': TestStatus.FAILED,
+            'error': TestStatus.ERROR
+        }
+
+        # Job-level artifacts (shared video/trace for all tests in this job)
+        artifacts = result.get('artifacts', {})
+        job_video = artifacts.get('video')
+        job_trace = artifacts.get('trace')
+        network_events = result.get('network_events', [])
+
+        # Process each test result in the job
+        for test_res in test_results:
+            test_name = test_res.get('test_name')
+            status = status_map.get(test_res.get(
+                'status', 'error'), TestStatus.ERROR)
+            response_data = test_res.get('response_data', {})
+
+            # Check for existing result (idempotency)
+            existing = session.exec(
+                select(TestCaseResult).where(
+                    TestCaseResult.test_run_id == run_id,
+                    TestCaseResult.test_name == test_name
+                )
+            ).first()
+
+            if existing:
+                # Update existing result
+                existing.status = status
+                existing.duration_ms = test_res.get('duration_ms', 0)
+                existing.error_message = test_res.get('error')
+                # Use job-level video/trace for all tests (shared browser)
+                existing.video_url = job_video
+                existing.trace_url = job_trace
+                existing.response_status = response_data.get('status')
+                existing.response_headers = response_data.get('headers')
+                existing.response_body = response_data.get('body')
+                session.add(existing)
+            else:
+                # Create new result
+                test_result = TestCaseResult(
+                    test_run_id=run_id,
+                    test_name=test_name,
+                    status=status,
+                    duration_ms=test_res.get('duration_ms', 0),
+                    error_message=test_res.get('error'),
+                    video_url=job_video,
+                    trace_url=job_trace,
+                    screenshots=artifacts.get('screenshots', []),
+                    response_status=response_data.get('status'),
+                    response_headers=response_data.get('headers'),
+                    response_body=response_data.get('body')
+                )
+                session.add(test_result)
+
+        # Update run with network events (tagged by test name already)
+        if network_events:
+            existing_events = run.network_events or []
+            run.network_events = existing_events + network_events
+
+        # Update run progress from Redis
+        progress = redis_client.hgetall(f'runs:{run_id}:progress')
+        update_run_from_progress(run, run_id, progress, session)
+
+        session.add(run)
+        session.commit()
+
+        # Publish real-time update for each test
+        for test_res in test_results:
+            publish_progress_update(run_id, {
+                'run_id': run_id,
+                'type': 'progress' if run.status == TestStatus.RUNNING else 'complete',
+                'status': run.status.value,
+                'passed_tests': run.passed_tests,
+                'failed_tests': run.failed_tests,
+                'total_tests': run.total_tests,
+                'latest_test': test_res.get('test_name'),
+                'latest_status': test_res.get('status')
+            })
+
+
+def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any]):
+    """Process a single test job result (original behavior)"""
     test_case_id = result.get('test_case_id')
     test_name = result.get('test_name')
 
@@ -171,53 +339,7 @@ def process_single_result(result: Dict[str, Any]):
 
         # Update run progress from Redis
         progress = redis_client.hgetall(f'runs:{run_id}:progress')
-
-        if progress:
-            run.total_tests = int(progress.get('total', run.total_tests))
-            run.passed_tests = int(progress.get('passed', 0))
-            run.failed_tests = int(progress.get('failed', 0))
-
-            # Check if run is complete
-            completed = int(progress.get('completed', 0))
-            total = int(progress.get('total', 0))
-
-            if completed >= total and total > 0:
-                # All jobs complete - finalize run
-                if run.failed_tests > 0:
-                    run.status = TestStatus.FAILED
-                else:
-                    run.status = TestStatus.PASSED
-
-                # Calculate total duration
-                results = session.exec(
-                    select(TestCaseResult).where(
-                        TestCaseResult.test_run_id == run_id)
-                ).all()
-                run.duration_ms = sum(r.duration_ms or 0 for r in results)
-
-                # For single-test runs, copy video/trace from result to run level
-                # This ensures consistent UI display for both CONTINUOUS and SEPARATE modes
-                if len(results) == 1 and results[0]:
-                    if results[0].video_url and not run.video_url:
-                        run.video_url = results[0].video_url
-                    if results[0].trace_url and not run.trace_url:
-                        run.trace_url = results[0].trace_url
-                elif len(results) > 1:
-                    # For multi-test runs, use the first result's artifacts as run-level
-                    # (or you could combine them, but single video makes more sense for UI)
-                    first_with_video = next(
-                        (r for r in results if r.video_url), None)
-                    first_with_trace = next(
-                        (r for r in results if r.trace_url), None)
-                    if first_with_video and not run.video_url:
-                        run.video_url = first_with_video.video_url
-                    if first_with_trace and not run.trace_url:
-                        run.trace_url = first_with_trace.trace_url
-
-                print(
-                    f"[Aggregator] Run {run_id} completed: {run.passed_tests} passed, {run.failed_tests} failed")
-            else:
-                run.status = TestStatus.RUNNING
+        update_run_from_progress(run, run_id, progress, session)
 
         session.add(run)
         session.commit()

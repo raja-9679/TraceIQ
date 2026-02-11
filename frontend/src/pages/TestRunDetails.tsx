@@ -106,7 +106,17 @@ export default function TestRunDetails() {
             <div className="flex justify-between items-start">
                 <div>
                     <h2 className="text-3xl font-bold text-gray-900">
-                        {run.suite_name || `Run #${run.id}`}
+                        {run.suite_name ? (
+                            <Link 
+                                to={`/suites/${run.test_suite_id}`}
+                                className="hover:text-primary hover:underline"
+                                title="Go to Test Suite"
+                            >
+                                {run.suite_name}
+                            </Link>
+                        ) : (
+                            `Run #${run.id}`
+                        )}
                         {run.test_case_name && (
                             <span className="text-gray-400 font-normal"> › {run.test_case_name}</span>
                         )}
@@ -213,9 +223,19 @@ export default function TestRunDetails() {
                                 <div className="space-y-3">
                                     {run.results
                                         .filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase()))
-                                        .map((result) => (
-                                            <TestCaseResultItem key={result.id} result={result} />
-                                        ))}
+                                        .map((result) => {
+                                            // Filter network events for this specific test case
+                                            const testNetworkEvents = (run.network_events || []).filter(
+                                                (event: any) => event.testCaseName === result.test_name
+                                            );
+                                            return (
+                                                <TestCaseResultItem 
+                                                    key={result.id} 
+                                                    result={result} 
+                                                    networkEvents={testNetworkEvents}
+                                                />
+                                            );
+                                        })}
                                     {run.results.filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase())).length === 0 && (
                                         <p className="text-center text-gray-500 py-4 italic text-sm">No matching test cases found</p>
                                     )}
@@ -573,17 +593,19 @@ function NetworkEventItem({ event }: { event: any, index?: number }) {
     );
 }
 
-function TestCaseResultItem({ result }: { result: any }) {
+function TestCaseResultItem({ result, networkEvents = [] }: { result: any, networkEvents?: any[] }) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showReqHeaders, setShowReqHeaders] = useState(false);
     const [showRespHeaders, setShowRespHeaders] = useState(false);
     const [showReqParams, setShowReqParams] = useState(false);
     const [showRespBody, setShowRespBody] = useState(false);
+    const [showNetworkActivity, setShowNetworkActivity] = useState(false);
 
     const hasDetails = result.response_status || result.response_body ||
         (result.response_headers && Object.keys(result.response_headers).length > 0) ||
         (result.request_headers && Object.keys(result.request_headers).length > 0) ||
-        (result.request_params && Object.keys(result.request_params).length > 0);
+        (result.request_params && Object.keys(result.request_params).length > 0) ||
+        networkEvents.length > 0;
 
     return (
         <div className={`border rounded-lg overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary shadow-md' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
@@ -744,10 +766,30 @@ function TestCaseResultItem({ result }: { result: any }) {
                                 </div>
                             )}
                         </div>
-                    ) : (
+                    ) : !networkEvents.length ? (
                         <div className="flex flex-col items-center justify-center py-6 text-gray-400 bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
                             <FileText size={24} className="mb-2 opacity-20" />
                             <p className="text-xs italic">No additional network details captured for this test case.</p>
+                        </div>
+                    ) : null}
+
+                    {/* Network Activity for this test case */}
+                    {networkEvents.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                            <button
+                                onClick={() => setShowNetworkActivity(!showNetworkActivity)}
+                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider mb-2"
+                            >
+                                {showNetworkActivity ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <span>Network Activity ({networkEvents.length} requests)</span>
+                            </button>
+                            {showNetworkActivity && (
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    {networkEvents.map((event: any, index: number) => (
+                                        <NetworkEventItem key={index} event={event} />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
