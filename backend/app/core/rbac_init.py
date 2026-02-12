@@ -22,6 +22,8 @@ INITIAL_RBAC = {
                 "project:view",
                 "project:delete",
                 "project:create_suite",
+                "project:execute_test",
+                "project:view_report",
                 "test:create",
                 "test:run",
                 "test:view"
@@ -41,6 +43,8 @@ INITIAL_RBAC = {
                 "project:view",
                 "project:delete",
                 "project:create_suite",
+                "project:execute_test",
+                "project:view_report",
                 "test:create",
                 "test:run",
                 "test:view"
@@ -63,6 +67,8 @@ INITIAL_RBAC = {
                 "project:view",
                 "project:delete",
                 "project:create_suite",
+                "project:execute_test",
+                "project:view_report",
                 "test:create",
                 "test:run",
                 "test:view"
@@ -72,6 +78,8 @@ INITIAL_RBAC = {
             "description": "Editor of a Project",
             "permissions": [
                 "project:view",
+                "project:execute_test",
+                "project:view_report",
                 "test:create",
                 "test:run",
                 "test:view"
@@ -81,32 +89,35 @@ INITIAL_RBAC = {
             "description": "Viewer of a Project",
             "permissions": [
                 "project:view",
+                "project:view_report",
                 "test:view"
             ]
         }
     }
 }
 
+
 async def init_rbac(session: AsyncSession):
     print("Initializing RBAC...")
-    
+
     # 1. Create Permissions
     all_permissions = set()
     for role_def in INITIAL_RBAC["roles"].values():
         all_permissions.update(role_def["permissions"])
-    
+
     existing_perms = (await session.exec(select(Permission))).all()
     existing_perm_map = {f"{p.scope}:{p.action}": p for p in existing_perms}
-    
+
     for perm_str in all_permissions:
         if perm_str not in existing_perm_map:
             scope, action = perm_str.split(":", 1)
-            p = Permission(scope=scope, action=action, resource=scope, description=f"Permission to {action} {scope}")
+            p = Permission(scope=scope, action=action, resource=scope,
+                           description=f"Permission to {action} {scope}")
             session.add(p)
             print(f"Created Permission: {perm_str}")
-    
+
     await session.commit()
-    
+
     # Refresh permissions map
     existing_perms = (await session.exec(select(Permission))).all()
     existing_perm_map = {f"{p.scope}:{p.action}": p for p in existing_perms}
@@ -114,7 +125,7 @@ async def init_rbac(session: AsyncSession):
     # 2. Create or Update Roles
     existing_roles = (await session.exec(select(Role))).all()
     existing_role_map = {r.name: r for r in existing_roles}
-    
+
     for role_name, role_def in INITIAL_RBAC["roles"].items():
         if role_name not in existing_role_map:
             r = Role(name=role_name, description=role_def["description"])
@@ -123,21 +134,22 @@ async def init_rbac(session: AsyncSession):
             await session.refresh(r)
             existing_role_map[role_name] = r
             print(f"Created Role: {role_name}")
-        
+
         # Always check/update permissions
         r = existing_role_map[role_name]
-        
+
         # Get current permissions for this role
         current_role_perms = await session.exec(select(RolePermission).where(RolePermission.role_id == r.id))
-        current_perm_ids = {rp.permission_id for rp in current_role_perms.all()}
-        
+        current_perm_ids = {
+            rp.permission_id for rp in current_role_perms.all()}
+
         for perm_str in role_def["permissions"]:
             perm = existing_perm_map.get(perm_str)
             if perm and perm.id not in current_perm_ids:
                 rp = RolePermission(role_id=r.id, permission_id=perm.id)
                 session.add(rp)
                 print(f"Added permission {perm_str} to Role {role_name}")
-        
+
         await session.commit()
 
     print("RBAC Initialization Complete.")
