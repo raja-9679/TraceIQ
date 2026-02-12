@@ -1,26 +1,36 @@
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from app.core.database import init_db
+from app.core.database import init_db, close_db
 from app.core.storage import minio_client
 from app.api import auth, settings, workspaces, projects, admin
-from app.api.endpoints import test_suites, test_cases, test_runs
+from app.api.endpoints import test_suites, test_cases, test_runs, websockets
 from app.core.config import settings as core_settings
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize DB
+    # Startup
+    logger.info("Starting up...")
     await init_db()
-    # Ensure MinIO bucket exists
     minio_client.ensure_bucket()
+    logger.info("Startup complete")
     yield
+    # Shutdown
+    logger.info("Shutting down...")
+    await close_db()
+    logger.info("Shutdown complete")
 
-from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in core_settings.BACKEND_CORS_ORIGINS],
+    allow_origins=[str(origin)
+                   for origin in core_settings.BACKEND_CORS_ORIGINS],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,10 +44,13 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(websockets.router, prefix="/api", tags=["websockets"])
+
 
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
 
 @app.get("/mock/bihar-election")
 def mock_bihar_election():

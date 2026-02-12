@@ -366,3 +366,31 @@ async def import_top_level_suite(suite_data: Dict[str, Any], project_id: int, se
     session.add(audit)
     await session.commit()
     return {"status": "success", "id": new_suite.id}
+
+@router.post("/suites/{suite_id}/import-suite")
+async def import_child_suite(suite_id: int, suite_data: Dict[str, Any], session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    parent_suite = await session.get(TestSuite, suite_id)
+    if not parent_suite:
+         raise HTTPException(status_code=404, detail="Parent suite not found")
+
+    if not await access_service.has_project_access(current_user.id, parent_suite.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Enforce mutual exclusivity for parent
+    result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
+    if result.first():
+        raise HTTPException(status_code=400, detail="Cannot import sub-module to a suite that contains test cases")
+    
+    # Enforce Execution Mode: Parent must be SEPARATE
+    if parent_suite.execution_mode == ExecutionMode.CONTINUOUS:
+        parent_suite.execution_mode = ExecutionMode.SEPARATE
+        parent_suite.updated_at = datetime.utcnow()
+        session.add(parent_suite)
+
+    new_suite = await create_suite_from_data(suite_data, suite_id, parent_suite.project_id, session, current_user.id)
+    await session.commit()
+    
+    audit = AuditLog(entity_type="suite", entity_id=new_suite.id, action="import", user_id=current_user.id, changes={"source": "import", "parent_id": suite_id})
+    session.add(audit)
+    await session.commit()
+    return {"status": "success", "id": new_suite.id}
