@@ -1,25 +1,65 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
-import { getRun, getArtifactUrl } from "@/lib/api";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
+import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle } from "lucide-react";
+import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
+import { toast } from "sonner";
 
 export default function TestRunDetails() {
     const { runId: idParam } = useParams<{ runId: string }>();
     const runId = parseInt(idParam || "0");
     const isValidRunId = !isNaN(runId) && runId > 0;
+    const queryClient = useQueryClient();
 
     const [showReqHeaders, setShowReqHeaders] = useState(false);
     const [showRespHeaders, setShowRespHeaders] = useState(false);
     const [testSearchTerm, setTestSearchTerm] = useState('');
     const [isTestCasesExpanded, setIsTestCasesExpanded] = useState(false);
+    const [showForceCompleteDialog, setShowForceCompleteDialog] = useState(false);
 
     const { data: run, isLoading } = useQuery({
         queryKey: ["run", runId],
         queryFn: () => getRun(runId),
         enabled: isValidRunId,
     });
+
+    // WebSocket for Real-time Updates
+    useEffect(() => {
+        if (!isValidRunId) return;
+        // If run is already finished, no need to connect (unless you want to watch for potential post-run updates, but unlikely)
+        if (run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error') return;
+
+        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
+        // Convert http(s) to ws(s)
+        const wsUrl = baseUrl.replace(/^http/, 'ws') + `/ws/runs/${runId}`;
+
+        console.log("Connecting to WebSocket:", wsUrl);
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log("WebSocket Connected");
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log("WS Update:", data);
+                // Invalidate query to trigger refetch of full run data
+                queryClient.invalidateQueries({ queryKey: ["run", runId] });
+            } catch (e) {
+                console.error("Error parsing WS message:", e);
+            }
+        };
+
+        ws.onerror = (e) => console.error("WebSocket Error:", e);
+
+        return () => {
+            if (ws.readyState === 1 || ws.readyState === 0) {
+                ws.close();
+            }
+        };
+    }, [runId, isValidRunId, run?.status, queryClient]);
 
     const { data: traceUrl } = useQuery({
         queryKey: ["trace", run?.trace_url],
@@ -32,6 +72,25 @@ export default function TestRunDetails() {
         queryFn: () => getArtifactUrl(run!.video_url!),
         enabled: !!run?.video_url,
     });
+
+    // Force complete mutation
+    const forceCompleteMutation = useMutation({
+        mutationFn: () => forceCompleteRun(runId, "error", "Manually completed by administrator"),
+        onSuccess: () => {
+            toast.success("Test run marked as complete");
+            queryClient.invalidateQueries({ queryKey: ["run", runId] });
+            setShowForceCompleteDialog(false);
+        },
+        onError: (error: any) => {
+            toast.error("Failed to complete test run", {
+                description: error.response?.data?.detail || "An error occurred"
+            });
+        }
+    });
+
+    // Check if test is stuck (running for more than 10 minutes)
+    const isStuckTest = run?.status === "running" && run?.created_at &&
+        (new Date().getTime() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
 
     if (!isValidRunId) return <div className="p-4">Invalid Run ID</div>;
     if (isLoading) return <div className="p-4">Loading...</div>;
@@ -47,7 +106,17 @@ export default function TestRunDetails() {
             <div className="flex justify-between items-start">
                 <div>
                     <h2 className="text-3xl font-bold text-gray-900">
-                        {run.suite_name || `Run #${run.id}`}
+                        {run.suite_name ? (
+                            <Link 
+                                to={`/suites/${run.test_suite_id}`}
+                                className="hover:text-primary hover:underline"
+                                title="Go to Test Suite"
+                            >
+                                {run.suite_name}
+                            </Link>
+                        ) : (
+                            `Run #${run.id}`
+                        )}
                         {run.test_case_name && (
                             <span className="text-gray-400 font-normal"> › {run.test_case_name}</span>
                         )}
@@ -57,6 +126,54 @@ export default function TestRunDetails() {
                     </p>
                 </div>
             </div>
+
+            {/* Stuck Test Warning Banner */}
+            {isStuckTest && (
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                        <AlertTriangle size={20} className="text-yellow-600 mt-0.5 shrink-0" />
+                        <div className="flex-1">
+                            <h3 className="text-yellow-800 font-semibold">Test May Be Stuck</h3>
+                            <p className="text-yellow-700 text-sm mt-1">
+                                This test has been running for more than 10 minutes. It may have encountered an issue.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setShowForceCompleteDialog(true)}
+                            className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm font-medium shrink-0"
+                        >
+                            Force Complete
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Force Complete Confirmation Dialog */}
+            {showForceCompleteDialog && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForceCompleteDialog(false)}>
+                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Force Complete Test Run?</h3>
+                        <p className="text-gray-600 text-sm mb-4">
+                            This will mark the test run as ERROR and stop waiting for completion. This action cannot be undone.
+                        </p>
+                        <div className="flex gap-3 justify-end">
+                            <button
+                                onClick={() => setShowForceCompleteDialog(false)}
+                                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => forceCompleteMutation.mutate()}
+                                disabled={forceCompleteMutation.isPending}
+                                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
+                            >
+                                {forceCompleteMutation.isPending ? "Processing..." : "Force Complete"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {run.results && run.results.length > 0 && (() => {
                 const passedCount = run.results.filter(r => r.status === 'passed').length;
@@ -106,9 +223,19 @@ export default function TestRunDetails() {
                                 <div className="space-y-3">
                                     {run.results
                                         .filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase()))
-                                        .map((result) => (
-                                            <TestCaseResultItem key={result.id} result={result} />
-                                        ))}
+                                        .map((result) => {
+                                            // Filter network events for this specific test case
+                                            const testNetworkEvents = (run.network_events || []).filter(
+                                                (event: any) => event.testCaseName === result.test_name
+                                            );
+                                            return (
+                                                <TestCaseResultItem 
+                                                    key={result.id} 
+                                                    result={result} 
+                                                    networkEvents={testNetworkEvents}
+                                                />
+                                            );
+                                        })}
                                     {run.results.filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase())).length === 0 && (
                                         <p className="text-center text-gray-500 py-4 italic text-sm">No matching test cases found</p>
                                     )}
@@ -466,17 +593,19 @@ function NetworkEventItem({ event }: { event: any, index?: number }) {
     );
 }
 
-function TestCaseResultItem({ result }: { result: any }) {
+function TestCaseResultItem({ result, networkEvents = [] }: { result: any, networkEvents?: any[] }) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [showReqHeaders, setShowReqHeaders] = useState(false);
     const [showRespHeaders, setShowRespHeaders] = useState(false);
     const [showReqParams, setShowReqParams] = useState(false);
     const [showRespBody, setShowRespBody] = useState(false);
+    const [showNetworkActivity, setShowNetworkActivity] = useState(false);
 
     const hasDetails = result.response_status || result.response_body ||
         (result.response_headers && Object.keys(result.response_headers).length > 0) ||
         (result.request_headers && Object.keys(result.request_headers).length > 0) ||
-        (result.request_params && Object.keys(result.request_params).length > 0);
+        (result.request_params && Object.keys(result.request_params).length > 0) ||
+        networkEvents.length > 0;
 
     return (
         <div className={`border rounded-lg overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary shadow-md' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
@@ -637,10 +766,30 @@ function TestCaseResultItem({ result }: { result: any }) {
                                 </div>
                             )}
                         </div>
-                    ) : (
+                    ) : !networkEvents.length ? (
                         <div className="flex flex-col items-center justify-center py-6 text-gray-400 bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
                             <FileText size={24} className="mb-2 opacity-20" />
                             <p className="text-xs italic">No additional network details captured for this test case.</p>
+                        </div>
+                    ) : null}
+
+                    {/* Network Activity for this test case */}
+                    {networkEvents.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                            <button
+                                onClick={() => setShowNetworkActivity(!showNetworkActivity)}
+                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider mb-2"
+                            >
+                                {showNetworkActivity ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                <span>Network Activity ({networkEvents.length} requests)</span>
+                            </button>
+                            {showNetworkActivity && (
+                                <div className="space-y-2 max-h-96 overflow-y-auto">
+                                    {networkEvents.map((event: any, index: number) => (
+                                        <NetworkEventItem key={index} event={event} />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

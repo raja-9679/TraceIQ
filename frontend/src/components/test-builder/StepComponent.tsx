@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-url' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'http-request' | 'feed-check';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-url' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert';
     selector?: string;
     value?: string;
     params?: {
@@ -48,6 +48,24 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
     const [localHeaders, setLocalHeaders] = React.useState(JSON.stringify(step.params?.headers || {}, null, 2));
     const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
     const [localBody, setLocalBody] = React.useState(step.params?.body || '');
+
+    // Sync local state when step.params changes from parent (e.g., when loading a test case)
+    React.useEffect(() => {
+        const newHeaders = JSON.stringify(step.params?.headers || {}, null, 2);
+        const newParams = JSON.stringify(step.params?.params || {}, null, 2);
+        const newBody = step.params?.body || '';
+        
+        // Only update if different to avoid cursor jumps while typing
+        if (newHeaders !== localHeaders && newHeaders !== '{}') {
+            setLocalHeaders(newHeaders);
+        }
+        if (newParams !== localParams && newParams !== '{}') {
+            setLocalParams(newParams);
+        }
+        if (newBody !== localBody) {
+            setLocalBody(newBody);
+        }
+    }, [step.params?.headers, step.params?.params, step.params?.body]);
 
     const updateParams = (key: string, value: any) => {
         const newParams = { ...(step.params || {}), [key]: value };
@@ -106,6 +124,10 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     <SelectItem value="wait-timeout">Wait (ms)</SelectItem>
                                     <SelectItem value="http-request">API Request</SelectItem>
                                     <SelectItem value="feed-check">Feed Check</SelectItem>
+                                    <SelectItem value="extract-value">Extract Value</SelectItem>
+                                    <SelectItem value="extract-value">Extract Value</SelectItem>
+                                    <SelectItem value="run-script">Run Script</SelectItem>
+                                    <SelectItem value="assert">Assertion</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
@@ -146,12 +168,104 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                 />
                             </div>
+                        ) : step.type === 'run-script' ? (
+                            <>
+                                <div className="col-span-2">
+                                    <Select
+                                        value={step.params?.language || 'javascript'}
+                                        onValueChange={(value) => updateParams('language', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Language" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="javascript">JavaScript</SelectItem>
+                                            <SelectItem value="python">Python</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="col-span-4">
+                                    <Input
+                                        placeholder={step.params?.language === 'python' ? "# Variables: context['variables']\n# Failure: raise Exception('Reason')\nprint('Log')\nreturn 'Result'" : "// Variables: variables['name']\n// Failure: throw new Error('Reason')\nreturn document.title;"}
+                                        value={step.value || ''}
+                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-span-3">
+                                    <Input
+                                        placeholder="Store Result in (Variable)"
+                                        value={step.params?.variableName || ''}
+                                        onChange={(e) => updateParams('variableName', e.target.value)}
+                                    />
+                                </div>
+                            </>
+                        ) : step.type === 'assert' ? (
+                            <>
+                                <div className="col-span-3">
+                                    <Input
+                                        placeholder="Selector"
+                                        value={step.selector || ''}
+                                        onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
+                                    />
+                                </div>
+                                <div className="col-span-2">
+                                    <Select
+                                        value={step.params?.source || 'text'}
+                                        onValueChange={(value) => updateParams('source', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Source" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="text">Text Content</SelectItem>
+                                            <SelectItem value="value">Input Value</SelectItem>
+                                            <SelectItem value="attribute">Attribute</SelectItem>
+                                            <SelectItem value="count">Element Count</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {step.params?.source === 'attribute' && (
+                                    <div className="col-span-2">
+                                        <Input
+                                            placeholder="Attr Name"
+                                            value={step.params?.attribute || ''}
+                                            onChange={(e) => updateParams('attribute', e.target.value)}
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="col-span-2">
+                                    <Select
+                                        value={step.params?.operator || 'equals'}
+                                        onValueChange={(value) => updateParams('operator', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Operator" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="equals">Equals</SelectItem>
+                                            <SelectItem value="contains">Contains</SelectItem>
+                                            <SelectItem value="matches">Matches (Regex)</SelectItem>
+                                            <SelectItem value="gt">Number &gt;</SelectItem>
+                                            <SelectItem value="lt">Number &lt;</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className={step.params?.source === 'attribute' ? "col-span-3" : "col-span-2"}>
+                                    <Input
+                                        placeholder="Expected Value"
+                                        value={step.value || ''}
+                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                    />
+                                </div>
+                            </>
                         ) : (
                             /* Default UI for other steps */
                             <>
                                 <div className={`${step.type === 'goto' ? 'col-span-6' :
                                     step.type === 'expect-url' ? 'col-span-9' :
-                                        (step.type === 'fill' || step.type === 'expect-text' || step.type === 'select-option') ? 'col-span-5' :
+                                        (step.type === 'fill' || step.type === 'expect-text' || step.type === 'select-option' || step.type === 'extract-value') ? 'col-span-5' :
                                             'col-span-9'
                                     }`}>
                                     <Input
@@ -166,6 +280,16 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? 'value' : 'selector'), e.target.value)}
                                     />
                                 </div>
+
+                                {step.type === 'extract-value' && (
+                                    <div className="col-span-4">
+                                        <Input
+                                            placeholder="Variable Name"
+                                            value={step.value || ''}
+                                            onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                        />
+                                    </div>
+                                )}
 
                                 {step.type === 'goto' && (
                                     <div className="col-span-3">
@@ -209,44 +333,89 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                     </div>
                 </div>
 
-                {/* Extended Configuration for API/Feed */}
-                {(step.type === 'http-request' || step.type === 'feed-check') && (
+                {/* Extended Configuration for API/Feed/Script */}
+                {(step.type === 'http-request' || step.type === 'feed-check' || step.type === 'run-script') && (
                     <div className="w-full bg-slate-50 p-4 rounded-md border border-slate-200 space-y-4">
                         <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
+                            {/* Headers & Params - Hide for Script */}
+                            {step.type !== 'run-script' && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
+                                        <textarea
+                                            className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
+                                            placeholder='{"Authorization": "Bearer token"}'
+                                            value={localHeaders}
+                                            onChange={(e) => {
+                                                setLocalHeaders(e.target.value);
+                                                try {
+                                                    const parsed = JSON.parse(e.target.value);
+                                                    updateParams('headers', parsed);
+                                                } catch (err) { /* ignore invalid JSON while typing */ }
+                                            }}
+                                            onBlur={() => {
+                                                // Ensure valid JSON is saved on blur, or revert to empty object
+                                                try {
+                                                    const parsed = JSON.parse(localHeaders);
+                                                    updateParams('headers', parsed);
+                                                } catch (err) {
+                                                    // If invalid JSON, keep current step.params.headers
+                                                    setLocalHeaders(JSON.stringify(step.params?.headers || {}, null, 2));
+                                                }
+                                            }}
+                                        />
+                                        <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level headers (step headers override)</p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Query Parameters (JSON)</label>
+                                        <textarea
+                                            className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
+                                            placeholder='{"key": "value"}'
+                                            value={localParams}
+                                            onChange={(e) => {
+                                                setLocalParams(e.target.value);
+                                                try {
+                                                    const parsed = JSON.parse(e.target.value);
+                                                    updateParams('params', parsed);
+                                                } catch (err) { /* ignore invalid JSON while typing */ }
+                                            }}
+                                            onBlur={() => {
+                                                // Ensure valid JSON is saved on blur, or revert to empty object
+                                                try {
+                                                    const parsed = JSON.parse(localParams);
+                                                    updateParams('params', parsed);
+                                                } catch (err) {
+                                                    // If invalid JSON, keep current step.params.params
+                                                    setLocalParams(JSON.stringify(step.params?.params || {}, null, 2));
+                                                }
+                                            }}
+                                        />
+                                        <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level parameters (step params override)</p>
+                                    </div>
+                                </div>
+                            )}
+
+
+
+                            {step.type === 'run-script' && (
                                 <div>
-                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
+                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Sort Code</label>
                                     <textarea
-                                        className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
-                                        placeholder='{"Authorization": "Bearer token"}'
-                                        value={localHeaders}
+                                        className="w-full h-40 p-2 text-xs font-mono border rounded-md bg-white text-slate-800"
+                                        placeholder={step.params?.language === 'python' ?
+                                            "def run(context):\n    # Access variables via context\n    # context['variables']['myVar']\n    print('Hello World')\n    return True" :
+                                            "// JavaScript code to execute in browser\nreturn document.title;"}
+                                        value={localBody} // Reuse body for script content
                                         onChange={(e) => {
-                                            setLocalHeaders(e.target.value);
-                                            try {
-                                                const parsed = JSON.parse(e.target.value);
-                                                updateParams('headers', parsed);
-                                            } catch (err) { /* ignore invalid JSON while typing */ }
+                                            setLocalBody(e.target.value);
+                                            updateParams('body', e.target.value);
                                         }}
                                     />
-                                    <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level headers</p>
+                                    <p className="text-[10px] text-gray-400 mt-1 italic">
+                                        {step.params?.language === 'python' ? "Stdout will be captured. Return values are logged." : "Return value will be captured in logs."}
+                                    </p>
                                 </div>
-                                <div>
-                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Query Parameters (JSON)</label>
-                                    <textarea
-                                        className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
-                                        placeholder='{"key": "value"}'
-                                        value={localParams}
-                                        onChange={(e) => {
-                                            setLocalParams(e.target.value);
-                                            try {
-                                                const parsed = JSON.parse(e.target.value);
-                                                updateParams('params', parsed);
-                                            } catch (err) { /* ignore invalid JSON while typing */ }
-                                        }}
-                                    />
-                                    <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level parameters</p>
-                                </div>
-                            </div>
+                            )}
 
                             {step.type === 'http-request' && (
                                 <div className="grid grid-cols-3 gap-4">
@@ -407,6 +576,6 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                     </div>
                 )}
             </CardContent>
-        </Card>
+        </Card >
     );
 };
