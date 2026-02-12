@@ -1,178 +1,461 @@
+"""
+Test Execution Worker - Dispatches test runs to execution workers
+
+Architecture:
+- CONTINUOUS mode: Single-engine execution with shared browser context
+- SEPARATE mode: Distributed workers, one test per worker (complete isolation)
+"""
 from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models import TestRun, TestStatus, ExecutionMode
 import requests
-import time
+import json
+import redis
 
 # Use sync engine for Celery worker
-# Remove +asyncpg from URL for sync engine
 sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
-sync_engine = create_engine(sync_db_url, echo=True)
+sync_engine = create_engine(sync_db_url, echo=False)
 
+# Redis client for job dispatching
+redis_client = redis.from_url(
+    settings.CELERY_BROKER_URL, decode_responses=True)
+
+# Legacy execution engine URL (for CONTINUOUS mode)
 EXECUTION_ENGINE_URL = settings.EXECUTION_ENGINE_URL
+
+# Feature flag for new architecture
+USE_DISTRIBUTED_EXECUTION = getattr(
+    settings, 'USE_DISTRIBUTED_EXECUTION', True)
+
 
 @celery_app.task(name="app.worker.run_test_suite")
 def run_test_suite(run_id: int):
+    """
+    Main entry point for test execution.
+    Routes to appropriate execution strategy based on execution mode.
+    """
     with Session(sync_engine) as session:
         run = session.get(TestRun, run_id)
         if not run:
-            print(f"Run {run_id} not found")
+            print(f"[Worker] Run {run_id} not found")
             return
-        
-        print(f"Starting run {run_id}")
-        print(f"DEBUG: Run attributes: {run}")
-        try:
-             print(f"DEBUG: run.browser = {run.browser}")
-        except Exception as e:
-             print(f"DEBUG: Could not access run.browser: {e}")
-        
+
+        print(f"[Worker] Starting run {run_id}")
+
         run.status = TestStatus.RUNNING
         session.add(run)
         session.commit()
-        
+
         try:
             from app.models import TestSuite, TestCase
             from app.services.test_service import test_service
-            
-            # Filter cases if specific case_id is requested
+
+            # Load test cases
             if run.test_case_id:
                 case = session.get(TestCase, run.test_case_id)
                 if not case:
                     raise Exception(f"Test Case {run.test_case_id} not found")
                 cases_to_run = [case]
             else:
-                # Load all cases recursively if no specific case_id (Continuous mode)
-                cases_to_run = test_service.collect_cases_recursive_sync(run.test_suite_id, session)
+                cases_to_run = test_service.collect_cases_recursive_sync(
+                    run.test_suite_id, session)
 
-            # Serialize test cases with their effective settings
-            test_cases_data = []
-            for case in cases_to_run:
-                case_settings = test_service.get_effective_settings_sync(case.test_suite_id, session)
-                
-                test_cases_data.append({
-                    "id": case.id,
-                    "name": case.name,
-                    "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps],
-                    "settings": case_settings,
-                })
+            if not cases_to_run:
+                raise Exception("No test cases found to execute")
 
-            print(f"DEBUG: Found {len(cases_to_run)} cases to run. Serialized data: {test_cases_data}")
+            # Get execution mode
+            suite = session.get(TestSuite, run.test_suite_id)
+            execution_mode = suite.execution_mode if suite else ExecutionMode.CONTINUOUS
 
-            payload = {
-                "runId": run_id,
-                "testCases": test_cases_data,
-                "browser": run.browser,
-                "device": run.device,
-                "globalSettings": {
-                    "headers": run.request_headers or {},
-                    "params": run.request_params or {},
-                    "allowed_domains": run.allowed_domains or [],
-                    "domain_settings": run.domain_settings or {}
-                }
-            }
-            
-            print(f"DEBUG: Sending payload to execution engine: {payload}")
+            # Get effective settings
+            effective_settings = test_service.get_effective_settings_sync(
+                run.test_suite_id, session)
 
-            # Call Node.js Execution Engine
-            response = requests.post(EXECUTION_ENGINE_URL, json=payload)
-            
-            if response.status_code == 200:
-                result = response.json()
-                # Update test run with results
-                run.status = TestStatus.PASSED if result.get("status") == "passed" else TestStatus.FAILED
-                run.duration_ms = result.get("duration_ms")
-                run.error_message = result.get("error")
-                run.trace_url = result.get("trace")
-                run.video_url = result.get("video")
-                run.screenshots = result.get("screenshots", [])
-                run.response_status = result.get("response_status")
-                run.request_headers = result.get("request_headers")
-                run.response_headers = result.get("response_headers")
-                run.network_events = result.get("network_events")
-                run.execution_log = result.get("execution_log") # Save execution log
-                
-                # Save individual test case results
-                from app.models import TestCaseResult
-                
-                # Clear existing results if any (for retries)
-                # session.exec(delete(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
-                
-                test_results = result.get("results", [])
-                
-                # Map results by ID (preferred) or Name (fallback)
-                results_by_id = {}
-                results_by_name = {}
-                for res in test_results:
-                    if res.get("test_case_id"):
-                        results_by_id[res.get("test_case_id")] = res
-                    results_by_name[res.get("test_name")] = res
-                
-                passed_count = 0
-                failed_count = 0
-                
-                # Create results for all expected cases
-                for case in cases_to_run:
-                    case_res = results_by_id.get(case.id) or results_by_name.get(case.name)
-                    
-                    if case_res:
-                        status = TestStatus.PASSED if case_res.get("status") == "passed" else TestStatus.FAILED
-                        if status == TestStatus.PASSED:
-                            passed_count += 1
-                        else:
-                            failed_count += 1
-                            
-                        test_result = TestCaseResult(
-                            test_run_id=run.id,
-                            test_name=case.name,
-                            status=status,
-                            duration_ms=case_res.get("duration_ms", 0),
-                            error_message=case_res.get("error"),
-                            trace_url=case_res.get("trace"),
-                            video_url=case_res.get("video"),
-                            screenshots=case_res.get("screenshots", []),
-                            response_status=case_res.get("response_status"),
-                            response_headers=case_res.get("response_headers"),
-                            response_body=case_res.get("response_body"),
-                            request_headers=case_res.get("request_headers"),
-                            request_body=case_res.get("request_body"),
-                            request_url=case_res.get("request_url"),
-                            request_method=case_res.get("request_method"),
-                            request_params=case_res.get("request_params")
-                        )
-                        session.add(test_result)
+            # Update total tests count
+            run.total_tests = len(cases_to_run)
+            session.add(run)
+            session.commit()
+
+            print(
+                f"[Worker] Run {run_id}: {len(cases_to_run)} cases, mode={execution_mode.value}")
+
+            # ALWAYS use distributed execution - dispatch ALL test cases to Redis queue
+            # Workers will pick one job at a time and process them
+            if USE_DISTRIBUTED_EXECUTION:
+                # If a specific test case was requested, dispatch only that case
+                if run.test_case_id:
+                    # Single test case execution
+                    dispatch_separate_jobs_legacy(
+                        run, cases_to_run, effective_settings, session)
+                elif execution_mode == ExecutionMode.SEPARATE:
+                    # SEPARATE mode: Check for sub-structure (sub-suites run as groups)
+                    execution_units = test_service.collect_execution_units_sync(
+                        run.test_suite_id, session)
+
+                    if execution_units:
+                        dispatch_separate_jobs(
+                            run, execution_units, effective_settings, session)
                     else:
-                        # Case was expected but not found in results -> Skipped or Error
-                        # We mark it as ERROR/FAILED so the user knows it didn't run
-                        failed_count += 1
-                        test_result = TestCaseResult(
-                            test_run_id=run.id,
-                            test_name=case.name,
-                            status=TestStatus.FAILED,
-                            duration_ms=0,
-                            error_message="Test execution skipped or crashed before completion"
-                        )
-                        session.add(test_result)
-
-                run.total_tests = len(cases_to_run)
-                run.passed_tests = passed_count
-                run.failed_tests = failed_count
-                
-                # Update main run status based on aggregated results
-                if failed_count > 0:
-                    run.status = TestStatus.FAILED
+                        # No sub-structure, dispatch all cases individually
+                        dispatch_separate_jobs_legacy(
+                            run, cases_to_run, effective_settings, session)
                 else:
-                    run.status = TestStatus.PASSED
+                    # CONTINUOUS mode: Still dispatch to Redis queue but mark jobs
+                    # so workers can run them sequentially if needed
+                    dispatch_continuous_jobs(
+                        run, cases_to_run, effective_settings, session)
             else:
-                run.status = TestStatus.ERROR
-                run.error_message = f"Execution Engine failed: {response.text}"
-                
+                # Fallback: Legacy single-engine execution (deprecated)
+                dispatch_legacy_execution(
+                    run, cases_to_run, effective_settings, execution_mode)
+
         except Exception as e:
-            print(f"Error in run {run_id}: {e}")
+            print(f"[Worker] Error in run {run_id}: {e}")
+            import traceback
+            traceback.print_exc()
             run.status = TestStatus.ERROR
             run.error_message = str(e)
-        
-        session.add(run)
-        session.commit()
-        print(f"Finished run {run_id} with status {run.status}")
+            session.add(run)
+            session.commit()
+
+
+def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, session: Session):
+    """
+    Dispatch jobs for SEPARATE mode via Redis stream.
+
+    Each execution unit becomes one job:
+    - Single test case → one worker runs one test
+    - Sub-suite → one worker runs all tests in that sub-suite CONTINUOUSLY
+
+    This enables hierarchical execution:
+    - Parent suite in SEPARATE mode spawns parallel jobs
+    - Each sub-suite runs its tests sequentially in a shared browser
+    """
+    import uuid
+    from datetime import datetime
+
+    print(
+        f"[Worker] Dispatching {len(execution_units)} execution units for run {run.id}")
+
+    jobs_stream = 'jobs:pending'
+    job_ids = []
+    total_test_count = 0
+
+    # Ensure consumer group exists
+    try:
+        redis_client.xgroup_create(
+            jobs_stream, 'execution-workers', id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+
+    # Use pipeline for atomic batch insert
+    pipe = redis_client.pipeline()
+
+    for unit in execution_units:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+
+        test_cases = unit['test_cases']
+        total_test_count += len(test_cases)
+
+        # Determine execution mode for this job
+        # Sub-suites run their tests continuously (shared browser)
+        is_continuous = unit['type'] == 'sub_suite' and len(test_cases) > 1
+
+        if is_continuous:
+            # Multi-test job: runs continuously in shared browser
+            job = {
+                'job_id': job_id,
+                'run_id': run.id,
+                'execution_mode': 'continuous',
+                'unit_type': unit['type'],
+                'unit_id': unit['id'],
+                'unit_name': unit['name'],
+                'test_cases': [
+                    {
+                        'id': case.id,
+                        'name': case.name,
+                        'steps': [
+                            step.dict() if hasattr(step, 'dict') else step
+                            for step in case.steps
+                        ]
+                    }
+                    for case in test_cases
+                ],
+                'browser': run.browser,
+                'device': run.device,
+                'settings': {
+                    'headers': settings.get('headers', {}),
+                    'params': settings.get('params', {}),
+                    'allowed_domains': settings.get('allowed_domains', []),
+                    'domain_settings': settings.get('domain_settings', {})
+                },
+                'created_at': datetime.utcnow().isoformat(),
+                'retry_count': 0
+            }
+        else:
+            # Single test job
+            case = test_cases[0]
+            job = {
+                'job_id': job_id,
+                'run_id': run.id,
+                'test_case_id': case.id,
+                'test_case': {
+                    'id': case.id,
+                    'name': case.name,
+                    'steps': [
+                        step.dict() if hasattr(step, 'dict') else step
+                        for step in case.steps
+                    ]
+                },
+                'browser': run.browser,
+                'device': run.device,
+                'settings': {
+                    'headers': settings.get('headers', {}),
+                    'params': settings.get('params', {}),
+                    'allowed_domains': settings.get('allowed_domains', []),
+                    'domain_settings': settings.get('domain_settings', {})
+                },
+                'created_at': datetime.utcnow().isoformat(),
+                'retry_count': 0
+            }
+
+        # Add job to stream
+        pipe.xadd(
+            jobs_stream,
+            {
+                'job_id': job_id,
+                'run_id': str(run.id),
+                'payload': json.dumps(job)
+            }
+        )
+        # Track job in run's job set
+        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+
+    # Initialize run progress tracking
+    # Track by total test cases, not jobs (for accurate progress)
+    pipe.hset(f'runs:{run.id}:progress', mapping={
+        'total': total_test_count,
+        'completed': 0,
+        'passed': 0,
+        'failed': 0,
+        'status': 'running'
+    })
+
+    pipe.execute()
+
+    print(
+        f"[Worker] Dispatched {len(job_ids)} jobs ({total_test_count} total tests) for run {run.id}")
+
+
+def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, session: Session):
+    """
+    Legacy dispatch: one job per test case (original SEPARATE mode behavior).
+    Used when suite has no sub-structure.
+    """
+    import uuid
+    from datetime import datetime
+
+    print(f"[Worker] Dispatching {len(cases)} separate jobs for run {run.id}")
+
+    jobs_stream = 'jobs:pending'
+    job_ids = []
+
+    # Ensure consumer group exists
+    try:
+        redis_client.xgroup_create(
+            jobs_stream, 'execution-workers', id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+
+    # Use pipeline for atomic batch insert
+    pipe = redis_client.pipeline()
+
+    for case in cases:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+
+        job = {
+            'job_id': job_id,
+            'run_id': run.id,
+            'test_case_id': case.id,
+            'test_case': {
+                'id': case.id,
+                'name': case.name,
+                'steps': [
+                    step.dict() if hasattr(step, 'dict') else step
+                    for step in case.steps
+                ]
+            },
+            'browser': run.browser,
+            'device': run.device,
+            'settings': {
+                'headers': settings.get('headers', {}),
+                'params': settings.get('params', {}),
+                'allowed_domains': settings.get('allowed_domains', []),
+                'domain_settings': settings.get('domain_settings', {})
+            },
+            'created_at': datetime.utcnow().isoformat(),
+            'retry_count': 0
+        }
+
+        # Add job to stream
+        pipe.xadd(
+            jobs_stream,
+            {
+                'job_id': job_id,
+                'run_id': str(run.id),
+                'payload': json.dumps(job)
+            }
+        )
+        # Track job in run's job set
+        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+
+    # Initialize run progress tracking
+    pipe.hset(f'runs:{run.id}:progress', mapping={
+        'total': len(cases),
+        'completed': 0,
+        'passed': 0,
+        'failed': 0,
+        'status': 'running'
+    })
+
+    pipe.execute()
+
+    print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def dispatch_continuous_jobs(run: TestRun, cases: list, settings: dict, session: Session):
+    """
+    Dispatch CONTINUOUS mode jobs to Redis queue.
+    Each test case becomes one job, but they're tagged for the same run.
+    Workers process one job at a time - true parallel execution.
+
+    This replaces the legacy execution engine approach where all tests
+    went to a single engine causing bottleneck.
+    """
+    import uuid
+    from datetime import datetime
+
+    print(
+        f"[Worker] Dispatching {len(cases)} continuous jobs to Redis for run {run.id}")
+
+    jobs_stream = 'jobs:pending'
+    job_ids = []
+
+    # Ensure consumer group exists
+    try:
+        redis_client.xgroup_create(
+            jobs_stream, 'execution-workers', id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+
+    # Use pipeline for atomic batch insert
+    pipe = redis_client.pipeline()
+
+    for case in cases:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+
+        job = {
+            'job_id': job_id,
+            'run_id': run.id,
+            'test_case_id': case.id,
+            'test_case': {
+                'id': case.id,
+                'name': case.name,
+                'steps': [
+                    step.dict() if hasattr(step, 'dict') else step
+                    for step in case.steps
+                ]
+            },
+            'browser': run.browser,
+            'device': run.device,
+            'settings': {
+                'headers': settings.get('headers', {}),
+                'params': settings.get('params', {}),
+                'allowed_domains': settings.get('allowed_domains', []),
+                'domain_settings': settings.get('domain_settings', {})
+            },
+            'created_at': datetime.utcnow().isoformat(),
+            'retry_count': 0
+        }
+
+        # Add job to stream
+        pipe.xadd(
+            jobs_stream,
+            {
+                'job_id': job_id,
+                'run_id': str(run.id),
+                'payload': json.dumps(job)
+            }
+        )
+        # Track job in run's job set
+        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+
+    # Initialize run progress tracking
+    pipe.hset(f'runs:{run.id}:progress', mapping={
+        'total': len(cases),
+        'completed': 0,
+        'passed': 0,
+        'failed': 0,
+        'status': 'running'
+    })
+
+    pipe.execute()
+
+    print(
+        f"[Worker] Dispatched {len(job_ids)} continuous jobs to queue for run {run.id}")
+
+
+def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, execution_mode: ExecutionMode):
+    """
+    Legacy execution via single execution engine.
+    Used for CONTINUOUS mode where tests share browser context.
+    """
+    from app.services.test_service import test_service
+
+    # Serialize test cases
+    test_cases_data = []
+    for case in cases:
+        test_cases_data.append({
+            "id": case.id,
+            "name": case.name,
+            "steps": [step.dict() if hasattr(step, 'dict') else step for step in case.steps],
+            "settings": settings,
+        })
+
+    # Construct callback URL
+    callback_url = f"http://backend:8000/api/runs/{run.id}/webhook"
+
+    payload = {
+        "runId": run.id,
+        "testCases": test_cases_data,
+        "browser": run.browser,
+        "device": run.device,
+        "executionMode": execution_mode.value,
+        "globalSettings": {
+            "headers": run.request_headers or {},
+            "params": run.request_params or {},
+            "allowed_domains": run.allowed_domains or [],
+            "domain_settings": run.domain_settings or {}
+        },
+        "callbackUrl": callback_url,
+        "webhookSecret": settings.SECRET_KEY if hasattr(settings, 'SECRET_KEY') else None
+    }
+
+    print(f"[Worker] Dispatching legacy execution for run {run.id}")
+
+    # Call Node.js Execution Engine
+    response = requests.post(EXECUTION_ENGINE_URL, json=payload, timeout=10)
+
+    if response.status_code in [200, 202]:
+        print(f"[Worker] Legacy execution accepted for run {run.id}")
+    else:
+        raise Exception(
+            f"Execution Engine rejected: {response.status_code} {response.text}")

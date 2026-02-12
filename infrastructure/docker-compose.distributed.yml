@@ -1,0 +1,312 @@
+# ============================================================================
+# TraceIQ - Distributed Execution Architecture
+# ============================================================================
+# This docker-compose supports the new distributed execution model:
+# - Multiple execution workers (scalable)
+# - Redis Streams for job queue
+# - Result aggregator for combining results
+#
+# Usage:
+#   Development: docker compose -f docker-compose.distributed.yml up
+#   Scale workers: docker compose -f docker-compose.distributed.yml up --scale execution-worker=5
+# ============================================================================
+
+services:
+  # --------------------------------------------------------------------------
+  # Infrastructure Services
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-quality_intelligence}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - qip_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d quality_intelligence"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - qip_network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - qip_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Backend API
+  # --------------------------------------------------------------------------
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 10
+    stop_grace_period: 15s
+    volumes:
+      - ../backend:/app
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-quality_intelligence}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - ALGORITHM=${ALGORITHM:-HS256}
+      - USE_DISTRIBUTED_EXECUTION=true
+      # Notification Settings
+      - NOTIFICATIONS_ENABLED=${NOTIFICATIONS_ENABLED:-false}
+      - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
+      - SLACK_NOTIFICATIONS_ENABLED=${SLACK_NOTIFICATIONS_ENABLED:-false}
+      - TEAMS_NOTIFICATIONS_ENABLED=${TEAMS_NOTIFICATIONS_ENABLED:-false}
+      - NOTIFY_ON_FAILURE_ONLY=${NOTIFY_ON_FAILURE_ONLY:-true}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@traceiq.io}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - qip_network
+
+  # --------------------------------------------------------------------------
+  # Celery Workers
+  # --------------------------------------------------------------------------
+  celery_worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info -Q main-queue -c 4
+    volumes:
+      - ../backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-quality_intelligence}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SECRET_KEY=${SECRET_KEY}
+      - USE_DISTRIBUTED_EXECUTION=true
+      # Notification Settings (Celery worker sends notifications)
+      - NOTIFICATIONS_ENABLED=${NOTIFICATIONS_ENABLED:-false}
+      - EMAIL_NOTIFICATIONS_ENABLED=${EMAIL_NOTIFICATIONS_ENABLED:-false}
+      - SLACK_NOTIFICATIONS_ENABLED=${SLACK_NOTIFICATIONS_ENABLED:-false}
+      - TEAMS_NOTIFICATIONS_ENABLED=${TEAMS_NOTIFICATIONS_ENABLED:-false}
+      - NOTIFY_ON_FAILURE_ONLY=${NOTIFY_ON_FAILURE_ONLY:-true}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@traceiq.io}
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
+      - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - qip_network
+
+  # Result aggregator (separate worker for processing job results)
+  celery_aggregator:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue -c 2
+    volumes:
+      - ../backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-quality_intelligence}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - qip_network
+
+  celery_beat:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app beat --loglevel=info
+    volumes:
+      - ../backend:/app
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-quality_intelligence}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY}
+    depends_on:
+      - redis
+    networks:
+      - qip_network
+
+  # --------------------------------------------------------------------------
+  # Execution Workers (Scalable)
+  # --------------------------------------------------------------------------
+  # Each worker processes ONE test at a time with complete isolation
+  # Scale with: docker compose up --scale execution-worker=10
+  execution-worker:
+    build:
+      context: ../execution-engine
+      dockerfile: Dockerfile.worker
+    command: npm run worker
+    deploy:
+      replicas: ${WORKER_REPLICAS:-3}
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_JOBS_STREAM=jobs:pending
+      - REDIS_RESULTS_STREAM=jobs:results
+      - REDIS_CONSUMER_GROUP=execution-workers
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET_NAME=test-artifacts
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEFAULT_TIMEOUT=30000
+      - WORKER_IDLE_TIMEOUT=60000
+      - MAX_JOBS_BEFORE_RESTART=50
+      - ARTIFACTS_DIR=/tmp/artifacts
+    depends_on:
+      - redis
+      - minio
+    networks:
+      - qip_network
+    # Shared memory for Chromium
+    shm_size: '1gb'
+
+  # --------------------------------------------------------------------------
+  # Legacy Execution Engine (for CONTINUOUS mode)
+  # --------------------------------------------------------------------------
+  execution-engine:
+    build:
+      context: ../execution-engine
+      dockerfile: Dockerfile
+    command: npm run dev
+    volumes:
+      - ../execution-engine:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_WEBHOOK_QUEUE=webhook:results
+    depends_on:
+      - minio
+      - redis
+    networks:
+      - qip_network
+    shm_size: '2gb'
+
+  # --------------------------------------------------------------------------
+  # Frontend (Development Mode - uses Vite dev server)
+  # --------------------------------------------------------------------------
+  # frontend:
+  #   image: node:18-alpine
+  #   working_dir: /app
+  #   command: sh -c "npm install && npm run dev -- --host"
+  #   volumes:
+  #     - ../frontend:/app
+  #     - frontend_node_modules:/app/node_modules
+  #   ports:
+  #     - "5173:5173"
+  #   environment:
+  #     - VITE_API_BASE_URL=http://localhost:8000/api
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - qip_network
+
+  # --------------------------------------------------------------------------
+  # Admin Tools
+  # --------------------------------------------------------------------------
+  pgadmin:
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "8014:80"
+    depends_on:
+      - postgres
+    networks:
+      - qip_network
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+  frontend_node_modules:
+
+networks:
+  qip_network:
+    driver: bridge

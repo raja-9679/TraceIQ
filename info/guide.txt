@@ -1,0 +1,118 @@
+TraceIQ Codebase Analysis & Developer Guide
+1️⃣ HIGH-LEVEL ARCHITECTURE
+Logical Architecture
+TraceIQ acts as a distributed test orchestration platform. It separates the Control Plane (managing users, projects, test metadata) from the Data Plane (executing the actual browser automation).
+
+Frontend (React): The command center. Users create test cases (steps like click, fill), organize them into suites, and trigger runs. It talks REST to the Backend.
+Backend (FastAPI): The brain. It stores test definitions in Postgres, manages authentication, and dispatches execution jobs. It does not run browsers itself.
+Task Queue (Celery + Redis): The buffer. When a run is triggered, the Backend pushes a 
+run_test_suite
+ task here. This ensures the API remains responsive.
+Celery Worker: The dispatcher. It picks up tasks from Redis. It acts as a bridge, preparing the test data (resolving inheritance, settings) and sending a request to the Execution Engine.
+Execution Engine (Node.js): The muscle. A specialized microservice interacting directly with Playwright. It launches browsers, executes the step-by-step instructions, captures artifacts (video, trace), uploads them to MinIO, and returns the results.
+Storage:
+Postgres: Relational data (Users, Tenants, Projects, Test Cases, Run Results).
+MinIO: Object storage for heavy artifacts (Screenshots, Videos, Playwright Traces).
+Why this stack?
+FastAPI: High performance I/O bound API with strict typing.
+Celery/Redis: Robust background processing. handles retries and queuing.
+Node.js Execution Engine: Playwright’s native API is in Node.js, allowing for easier integration with JS-based extensions and the Playwright ecosystem.
+MinIO: S3-compatible storage creates a production-ready artifact workflow locally.
+2️⃣ DOCKER & DOCKER COMPOSE
+Services (
+infrastructure/docker-compose.yml
+)
+postgres (postgres:15-alpine):
+Port: 5432.
+Volume: postgres_data (persists DB).
+Network: qip_network.
+redis (redis:7-alpine):
+Port: 6379. Broker and result backend.
+minio (minio/minio):
+Ports: 9000 (API), 9001 (Console UI).
+Volume: minio_data.
+Creds: minioadmin / minioadmin.
+backend:
+Build: ../backend.
+Command: uvicorn app.main:app --reload.
+Env: DATABASE_URL, CELERY_BROKER_URL, MINIO_ENDPOINT.
+celery_worker:
+Build: ../backend.
+Command: celery -A app.core.celery_app worker....
+Role: Consumes from main-queue.
+execution-engine:
+Build: ../execution-engine.
+Command: npm run dev.
+Env: Needs MINIO_ENDPOINT.
+pgadmin:
+Port: 8014. Web UI for Postgres.
+Operations
+Run: docker-compose up -d --build (in infrastructure/).
+Logs: docker-compose logs -f backend.
+Scaling: docker-compose up -d --scale celery_worker=3.
+3️⃣ BACKEND (FASTAPI)
+Structure (backend/app/)
+main.py: Entry point. Sets up CORS, lifespan (DB init), and routes.
+api/: Endpoints. test_runs.py triggers execution. endpoints/ contains resource specific logic.
+core/: Configuration (config.py), Database (database.py), Celery (celery_app.py).
+models.py: SQLModel and Pydantic definitions.
+worker.py: The Celery task definition.
+Flow
+Trigger: POST /api/runs -> api/endpoints/test_runs.py.
+DB: Creates TestRun (PENDING).
+Queue: Calls run_test_suite.delay(run.id).
+4️⃣ DATABASE (POSTGRESQL)
+Schema (models.py)
+Tenancy: Tenant (Account), User.
+Organization: Workspace -> Project -> Team.
+Testing: TestSuite (Recursive folders), TestCase (JSON Steps), TestRun, TestCaseResult.
+Isolation: Queries must filter by project_id.
+Migrations
+Currently uses SQLModel.metadata.create_all in app/core/database.py.
+Recommendation: Initialize Alembic for production schema management.
+5️⃣ CELERY & REDIS
+Worker Logic (backend/app/worker.py)
+Task: run_test_suite(run_id).
+Logic:
+Fetches Run & Suite.
+Recursively collects all TestCases.
+Merges settings (headers, params).
+Sends payload to execution-engine.
+Constraint: Worker waits synchronously for Node.js response.
+6️⃣ PLAYWRIGHT AUTOMATION ENGINE
+Structure (execution-engine/)
+src/server.ts: Express server, endpoint POST /run.
+src/runner.ts: Orchestrates Browser Context, Tracing, and Video.
+src/core/test-executor.ts: Interprets JSON steps into Playwright API calls.
+Execution
+Start: Launch Browser.
+Context: Create isolated context (inject cookies/scripts).
+Loop: Iterate Test Cases -> Iterate Steps.
+Action: mapping step.type (e.g., 'click') to page.click().
+Artifacts: Zip trace, upload to MinIO.
+7️⃣ FRONTEND (REACT + NODEJS)
+Path: frontend/.
+Stack: Vite, React, React Query, Tailwind.
+State: AuthContext for JWT.
+Integration: Polling for Run Status.
+Visuals: Uses MinIO presigned URLs to display Videos/Images.
+8️⃣ AUTH, RBAC & MULTI-TENANCY
+RBAC: Role, Permission tables.
+Enforcement: access_service.py checks permissions before API actions.
+Tenancy: Soft isolation via tenant_id columns.
+9️⃣ REPORTING & OBSERVABILITY
+Traces: Stored as Zips in MinIO.
+Logs: JSON logs stored in Postgres TestCaseResult.execution_log.
+Status: Dashboard polls GET /runs.
+🔟 HOW TO ADD NEW FEATURES
+A. Add New Test Step (e.g., "Double Click")
+Frontend: Add "Double Click" option in Step Builder UI.
+Execution Engine (test-executor.ts):
+case 'dblclick':
+    await page.locator(step.selector).dblclick();
+    break;
+Backend: No change.
+B. Add Scheduling
+DB: Add Schedule model.
+Backend: Add Celery Beat to celery_app.py.
+Infra: Add celery-beat container.

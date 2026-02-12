@@ -35,6 +35,7 @@ export interface TestRun {
     passed_tests: number;
     failed_tests: number;
     duration_ms: number | null;
+    test_suite_id: number;
     suite_name?: string;
     test_case_name?: string;
     trace_url?: string;
@@ -433,5 +434,17 @@ export const getRoles = async (): Promise<Role[]> => {
 
 export const getMyPermissions = async (): Promise<UserPermissions> => {
     const response = await api.get("/auth/permissions");
+    return response.data;
+};
+
+export const forceCompleteRun = async (
+    runId: number,
+    status: "passed" | "failed" | "error" = "error",
+    errorMessage: string = "Manually marked as complete by administrator"
+): Promise<any> => {
+    const response = await api.post(`/runs/${runId}/force-complete`, {
+        status,
+        error_message: errorMessage
+    });
     return response.data;
 };

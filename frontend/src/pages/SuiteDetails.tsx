@@ -425,9 +425,11 @@ export default function SuiteDetails() {
                         }}>
                             <Edit className="h-4 w-4 text-muted-foreground hover:text-primary" />
                         </Button>
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${suite.execution_mode === 'separate'
-                            ? 'bg-purple-500/10 text-purple-600 border border-purple-200'
-                            : 'bg-blue-500/10 text-blue-600 border border-blue-200'
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${suite.execution_mode === 'parallel'
+                                ? 'bg-green-500/10 text-green-600 border border-green-200'
+                                : suite.execution_mode === 'separate'
+                                    ? 'bg-purple-500/10 text-purple-600 border border-purple-200'
+                                    : 'bg-blue-500/10 text-blue-600 border border-blue-200'
                             }`}>
                             {suite.execution_mode}
                         </span>
@@ -789,9 +791,11 @@ export default function SuiteDetails() {
                                                                     <div className="space-y-1">
                                                                         <div className="flex items-center gap-2">
                                                                             <span className="font-semibold text-foreground block tracking-tight">{sub.name}</span>
-                                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${sub.execution_mode === 'separate'
-                                                                                ? 'bg-purple-500/10 text-purple-600 border border-purple-200'
-                                                                                : 'bg-blue-500/10 text-blue-600 border border-blue-200'
+                                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${sub.execution_mode === 'parallel'
+                                                                                ? 'bg-green-500/10 text-green-600 border border-green-200'
+                                                                                : sub.execution_mode === 'separate'
+                                                                                    ? 'bg-purple-500/10 text-purple-600 border border-purple-200'
+                                                                                    : 'bg-blue-500/10 text-blue-600 border border-blue-200'
                                                                                 }`}>
                                                                                 {sub.execution_mode}
                                                                             </span>
@@ -1085,8 +1089,10 @@ export default function SuiteDetails() {
                                         <h3 className="font-semibold text-foreground">Execution Mode</h3>
                                         <p className="text-sm text-muted-foreground">
                                             {suite.execution_mode === 'continuous'
-                                                ? "Running all test cases in a single browser session."
-                                                : "Running each test case in a separate browser session."}
+                                                ? "Tests run sequentially in a single browser session (slowest, most stable)."
+                                                : suite.execution_mode === 'parallel'
+                                                    ? "Tests run in parallel with concurrency limiting (fastest, resource-optimized)."
+                                                    : "Each test runs in a separate browser session (medium speed, isolated)."}
                                         </p>
                                         {suite.sub_modules && suite.sub_modules.length > 0 && (
                                             <p className="text-xs text-amber-600 mt-1 flex items-center gap-1">
@@ -1109,6 +1115,7 @@ export default function SuiteDetails() {
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="continuous">Continuous</SelectItem>
+                                                <SelectItem value="parallel">Parallel</SelectItem>
                                                 <SelectItem value="separate">Separate</SelectItem>
                                             </SelectContent>
                                         </Select>

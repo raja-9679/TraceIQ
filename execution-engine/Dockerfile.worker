@@ -1,0 +1,36 @@
+# Dockerfile for Execution Worker
+# Optimized for running isolated test jobs
+
+FROM mcr.microsoft.com/playwright:v1.40.1-jammy
+
+WORKDIR /app
+
+# Install dependencies
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Copy source code
+COPY . .
+
+# Build TypeScript
+RUN npm run build
+
+# Install Playwright browsers
+RUN npx playwright install chromium firefox webkit
+
+# Create artifacts directory
+RUN mkdir -p /tmp/artifacts
+
+# Set environment defaults
+ENV NODE_ENV=production
+ENV ARTIFACTS_DIR=/tmp/artifacts
+ENV WORKER_IDLE_TIMEOUT=60000
+ENV MAX_JOBS_BEFORE_RESTART=50
+ENV DEFAULT_TIMEOUT=30000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD node -e "console.log('healthy')" || exit 1
+
+# Run worker
+CMD ["node", "dist/worker.js"]
