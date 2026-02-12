@@ -186,7 +186,7 @@ export default function DashboardLayout() {
                                         </DropdownMenuItem>
                                     )}
                                     <DropdownMenuSeparator />
-                                    <Link to="/organization">
+                                    <Link to="/workspace">
                                         <DropdownMenuItem>
                                             <Plus className="h-4 w-4 mr-2" />
                                             Manage Projects
