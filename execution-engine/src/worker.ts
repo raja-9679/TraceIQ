@@ -58,13 +58,13 @@ class ExecutionWorker {
      */
     async start(): Promise<void> {
         console.log('[Worker] Starting execution worker...');
-        
+
         // Initialize job queue
         await this.jobQueue.initialize();
-        
+
         // Setup graceful shutdown
         this.setupShutdownHandlers();
-        
+
         // Start processing loop
         await this.processLoop();
     }
@@ -74,12 +74,19 @@ class ExecutionWorker {
      */
     private async processLoop(): Promise<void> {
         console.log('[Worker] Entering job processing loop');
-        
+
         while (!this.isShuttingDown) {
-            // Check if we should restart (memory cleanup)
-            if (this.jobsProcessed >= MAX_JOBS_BEFORE_RESTART) {
-                console.log(`[Worker] Processed ${this.jobsProcessed} jobs, restarting for memory cleanup`);
-                break;
+            // Periodic memory cleanup (without restarting)
+            if (this.jobsProcessed > 0 && this.jobsProcessed % MAX_JOBS_BEFORE_RESTART === 0) {
+                const memBefore = process.memoryUsage();
+                console.log(`[Worker] Memory cleanup after ${this.jobsProcessed} jobs (heap: ${Math.round(memBefore.heapUsed / 1024 / 1024)}MB)`);
+
+                // Force garbage collection if available (run with --expose-gc)
+                if (global.gc) {
+                    global.gc();
+                    const memAfter = process.memoryUsage();
+                    console.log(`[Worker] GC complete (heap: ${Math.round(memAfter.heapUsed / 1024 / 1024)}MB, freed: ${Math.round((memBefore.heapUsed - memAfter.heapUsed) / 1024 / 1024)}MB)`);
+                }
             }
 
             // Reset idle timer
@@ -88,26 +95,26 @@ class ExecutionWorker {
             try {
                 // Try to claim a job
                 const claimed = await this.jobQueue.claimJob();
-                
+
                 if (!claimed) {
                     // No job available, continue waiting
                     continue;
                 }
 
                 const { streamId, job } = claimed;
-                
+
                 // Cancel idle timer while processing
                 this.cancelIdleTimer();
-                
+
                 // Process the job
                 const result = await this.executeJob(job);
-                
+
                 // Complete the job
                 await this.jobQueue.completeJob(streamId, result);
-                
+
                 this.jobsProcessed++;
                 console.log(`[Worker] Completed job ${job.job_id} (total: ${this.jobsProcessed})`);
-                
+
             } catch (err: any) {
                 console.error('[Worker] Error in processing loop:', err);
                 // Small delay before retrying
@@ -128,7 +135,7 @@ class ExecutionWorker {
             console.log(`[Worker] Executing continuous job ${job.job_id} with ${job.test_cases.length} tests`);
             return this.executeContinuousJob(job);
         }
-        
+
         // Single test case job (original behavior)
         console.log(`[Worker] Executing single test job ${job.job_id}`);
         return this.executeSingleTestJob(job);
@@ -142,23 +149,23 @@ class ExecutionWorker {
         if (!job.test_case || !job.test_case_id) {
             throw new Error(`Invalid single test job ${job.job_id}: missing test_case or test_case_id`);
         }
-        
+
         const testCase = job.test_case;
         const testCaseId = job.test_case_id;
-        
+
         const startTime = Date.now();
         const artifactsDir = path.join(ARTIFACTS_BASE_DIR, job.job_id);
-        
+
         // Create isolated artifacts directory
         fs.mkdirSync(artifactsDir, { recursive: true });
-        
+
         let browser: Browser | null = null;
         let context: BrowserContext | null = null;
         let page: Page | null = null;
-        
+
         const networkEvents: any[] = [];
         const screenshots: string[] = [];
-        
+
         let status: 'passed' | 'failed' | 'error' = 'passed';
         let errorMessage: string | undefined;
         let responseData: any = undefined;
@@ -169,12 +176,12 @@ class ExecutionWorker {
         try {
             // Launch browser
             browser = await this.browserManager.start(job.browser);
-            
+
             // Prepare context options
             const contextOptions: any = {
-                recordVideo: { 
-                    dir: artifactsDir, 
-                    size: { width: 1280, height: 720 } 
+                recordVideo: {
+                    dir: artifactsDir,
+                    size: { width: 1280, height: 720 }
                 }
             };
 
@@ -191,32 +198,32 @@ class ExecutionWorker {
             // Create isolated context
             context = await browser.newContext(contextOptions);
             await this.browserManager.injectInitScripts(context, job.browser, job.device || null, emulatedAs);
-            
+
             // Start tracing
-            await context.tracing.start({ 
-                screenshots: true, 
-                snapshots: true, 
-                sources: true 
+            await context.tracing.start({
+                screenshots: true,
+                snapshots: true,
+                sources: true
             });
 
             // Setup network interception
             const requestStartTimes = new Map<string, number>();
-            const contextData = { 
-                id: testCaseId, 
-                name: testCase.name, 
-                variables: {} 
+            const contextData = {
+                id: testCaseId,
+                name: testCase.name,
+                variables: {}
             };
             const sourceDomain = { value: null as string | null };
 
             await NetworkInterceptor.setupNetworkListeners(
-                context, 
-                requestStartTimes, 
-                networkEvents, 
+                context,
+                requestStartTimes,
+                networkEvents,
                 contextData
             );
             await NetworkInterceptor.setupRouteInterception(
-                context, 
-                job.settings, 
+                context,
+                job.settings,
                 sourceDomain
             );
 
@@ -247,16 +254,16 @@ class ExecutionWorker {
                 try {
                     if (step.type === 'switch-frame') {
                         currentContext = await this.handleFrameSwitch(
-                            page, 
-                            currentContext, 
+                            page,
+                            currentContext,
                             step
                         );
                     } else {
                         const stepResponse = await TestExecutor.executeStep(
-                            page, 
-                            currentContext, 
-                            step, 
-                            job.settings, 
+                            page,
+                            currentContext,
+                            step,
+                            job.settings,
                             contextData
                         );
                         if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
@@ -303,7 +310,7 @@ class ExecutionWorker {
                     request: lastStepResult.request
                 };
             }
-            
+
             // Take screenshot on failure
             if (page && !page.isClosed()) {
                 try {
@@ -345,7 +352,7 @@ class ExecutionWorker {
                     // Ignore close errors
                 }
             }
-            
+
             await this.browserManager.stop();
         }
 
@@ -389,13 +396,13 @@ class ExecutionWorker {
     private async executeContinuousJob(job: TestJob): Promise<JobResult> {
         const startTime = Date.now();
         const artifactsDir = path.join(ARTIFACTS_BASE_DIR, job.job_id);
-        
+
         // Create isolated artifacts directory
         fs.mkdirSync(artifactsDir, { recursive: true });
-        
+
         let browser: Browser | null = null;
         let sharedContext: BrowserContext | null = null;
-        
+
         const networkEvents: any[] = [];
         const testResults: TestCaseResult[] = [];
         let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
@@ -406,12 +413,12 @@ class ExecutionWorker {
         try {
             // Launch browser
             browser = await this.browserManager.start(job.browser);
-            
+
             // Prepare context options with video recording
             const contextOptions: any = {
-                recordVideo: { 
-                    dir: artifactsDir, 
-                    size: { width: 1280, height: 720 } 
+                recordVideo: {
+                    dir: artifactsDir,
+                    size: { width: 1280, height: 720 }
                 }
             };
 
@@ -428,32 +435,32 @@ class ExecutionWorker {
             // Create shared context for all tests
             sharedContext = await browser.newContext(contextOptions);
             await this.browserManager.injectInitScripts(sharedContext, job.browser, job.device || null, emulatedAs);
-            
+
             // Start tracing for entire suite
-            await sharedContext.tracing.start({ 
-                screenshots: true, 
-                snapshots: true, 
-                sources: true 
+            await sharedContext.tracing.start({
+                screenshots: true,
+                snapshots: true,
+                sources: true
             });
 
             // Setup shared network listeners
             const sharedRequestStartTimes = new Map<string, number>();
-            const sharedContextData = { 
-                id: job.unit_id || 0, 
-                name: job.unit_name || 'continuous-job', 
-                variables: {} 
+            const sharedContextData = {
+                id: job.unit_id || 0,
+                name: job.unit_name || 'continuous-job',
+                variables: {}
             };
             const sourceDomain = { value: null as string | null };
 
             await NetworkInterceptor.setupNetworkListeners(
-                sharedContext, 
-                sharedRequestStartTimes, 
-                networkEvents, 
+                sharedContext,
+                sharedRequestStartTimes,
+                networkEvents,
                 sharedContextData
             );
             await NetworkInterceptor.setupRouteInterception(
-                sharedContext, 
-                job.settings, 
+                sharedContext,
+                job.settings,
                 sourceDomain
             );
 
@@ -522,16 +529,16 @@ class ExecutionWorker {
                         try {
                             if (step.type === 'switch-frame') {
                                 currentContext = await this.handleFrameSwitch(
-                                    page, 
-                                    currentContext, 
+                                    page,
+                                    currentContext,
                                     step
                                 );
                             } else {
                                 const stepResponse = await TestExecutor.executeStep(
-                                    page, 
-                                    currentContext, 
-                                    step, 
-                                    job.settings, 
+                                    page,
+                                    currentContext,
+                                    step,
+                                    job.settings,
                                     sharedContextData
                                 );
                                 if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
@@ -578,7 +585,7 @@ class ExecutionWorker {
                             request: lastStepResult.request
                         };
                     }
-                    
+
                     // Take screenshot on failure
                     if (page && !page.isClosed()) {
                         try {
@@ -640,7 +647,7 @@ class ExecutionWorker {
                     // Ignore close errors
                 }
             }
-            
+
             await this.browserManager.stop();
         }
 
@@ -686,16 +693,16 @@ class ExecutionWorker {
      * Handle frame switching
      */
     private async handleFrameSwitch(
-        page: Page, 
-        currentContext: Page | FrameLocator, 
+        page: Page,
+        currentContext: Page | FrameLocator,
         step: any
     ): Promise<Page | FrameLocator> {
         const frameSelector = step.selector || step.value;
-        
+
         if (frameSelector === 'main' || frameSelector === 'top') {
             return page;
         }
-        
+
         if (frameSelector) {
             if (step.options?.strict_lifecycle) {
                 const frameElement = currentContext.locator(frameSelector).first();
@@ -708,7 +715,7 @@ class ExecutionWorker {
             }
             return currentContext.frameLocator(frameSelector);
         }
-        
+
         return currentContext;
     }
 
@@ -740,10 +747,10 @@ class ExecutionWorker {
 
         // Handle cross-browser device emulation
         if (descriptor.defaultBrowserType && descriptor.defaultBrowserType !== browserType) {
-            const isIOS = descriptor.defaultBrowserType === 'webkit' || 
-                         device.includes('iPhone') || 
-                         device.includes('iPad');
-            
+            const isIOS = descriptor.defaultBrowserType === 'webkit' ||
+                device.includes('iPhone') ||
+                device.includes('iPad');
+
             if (isIOS && browserType === 'chromium') {
                 options.userAgent = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/120.0.6099.119 Mobile/15E148 Safari/604.1';
             } else if (browserType === 'firefox') {
@@ -797,8 +804,8 @@ class ExecutionWorker {
                 for (const file of files.filter(f => f.endsWith('.png'))) {
                     const screenshotKey = `runs/${runId}/screenshots/${jobId}-${file}`;
                     await this.minioClient.fPutObject(
-                        BUCKET_NAME, 
-                        screenshotKey, 
+                        BUCKET_NAME,
+                        screenshotKey,
                         path.join(artifactsDir, file)
                     );
                     result.screenshots.push(screenshotKey);
@@ -816,7 +823,7 @@ class ExecutionWorker {
      */
     private resetIdleTimer(): void {
         this.cancelIdleTimer();
-        
+
         if (IDLE_TIMEOUT_MS > 0) {
             this.idleTimer = setTimeout(() => {
                 console.log('[Worker] Idle timeout reached, shutting down');
@@ -854,7 +861,6 @@ class ExecutionWorker {
         await this.browserManager.stop();
         await this.jobQueue.shutdown();
         console.log('[Worker] Shutdown complete');
-        process.exit(0);
     }
 
     private sleep(ms: number): Promise<void> {
