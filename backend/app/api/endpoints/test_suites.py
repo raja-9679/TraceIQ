@@ -355,7 +355,7 @@ async def export_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
     return await get_suite_export_data(suite_id, session)
 
 @router.post("/suites/import-suite")
-async def import_top_level_suite(suite_data: Dict[str, Any], project_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def import_top_level_suite(suite_data: Dict[str, Any], project_id: int = Query(...), session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     if not await access_service.has_project_access(current_user.id, project_id, session, min_role="editor"):
         raise HTTPException(status_code=403, detail="Access denied")
 

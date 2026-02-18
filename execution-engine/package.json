@@ -6,7 +6,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "worker": "node dist/worker.js",
+    "worker": "node --expose-gc dist/worker.js",
     "dev": "nodemon",
     "dev:worker": "nodemon --exec ts-node src/worker.ts"
   },
