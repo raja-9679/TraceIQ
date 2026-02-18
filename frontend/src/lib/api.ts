@@ -218,8 +218,11 @@ export const exportTestSuite = async (suiteId: number): Promise<any> => {
     return response.data;
 };
 
-export const importTestSuite = async (suiteId?: number, data?: any): Promise<any> => {
-    const url = suiteId ? `/suites/${suiteId}/import-suite` : `/suites/import-suite`;
+export const importTestSuite = async (suiteId?: number, data?: any, projectId?: number): Promise<any> => {
+    let url = suiteId ? `/suites/${suiteId}/import-suite` : `/suites/import-suite`;
+    if (!suiteId && projectId) {
+        url += `?project_id=${projectId}`;
+    }
     const response = await api.post(url, data);
     return response.data;
 };

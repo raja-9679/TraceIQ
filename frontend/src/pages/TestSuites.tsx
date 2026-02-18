@@ -125,7 +125,7 @@ export default function TestSuites() {
             try {
                 const content = e.target?.result as string;
                 const data = JSON.parse(content);
-                await importTestSuite(undefined, data);
+                await importTestSuite(undefined, data, activeProjectId ?? undefined);
                 queryClient.invalidateQueries({ queryKey: ['suites'] });
                 toast.success('Suite imported successfully');
             } catch (error) {
