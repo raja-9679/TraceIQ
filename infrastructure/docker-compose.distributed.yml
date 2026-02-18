@@ -28,7 +28,7 @@ services:
     networks:
       - qip_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d quality_intelligence"]
+      test: [ "CMD-SHELL", "pg_isready -U user -d quality_intelligence" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -43,7 +43,7 @@ services:
       - qip_network
     command: redis-server --appendonly yes
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: [ "CMD", "redis-cli", "ping" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -62,7 +62,7 @@ services:
     networks:
       - qip_network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
       interval: 30s
       timeout: 20s
       retries: 3
@@ -87,6 +87,7 @@ services:
       - MINIO_ENDPOINT=minio:9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM:-HS256}
@@ -235,6 +236,7 @@ services:
       - qip_network
     # Shared memory for Chromium
     shm_size: '1gb'
+    restart: unless-stopped
 
   # --------------------------------------------------------------------------
   # Legacy Execution Engine (for CONTINUOUS mode)
@@ -306,6 +308,7 @@ volumes:
   redis_data:
   minio_data:
   frontend_node_modules:
+
 
 networks:
   qip_network:
