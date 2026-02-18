@@ -27,11 +27,11 @@ MINIO_PUBLIC_URL=https://traceiqstore.thehindu.co.in
 # Master switch - if false, no notifications sent
 NOTIFICATIONS_ENABLED=false
 # Individual channel controls (only used if NOTIFICATIONS_ENABLED=true)
-EMAIL_NOTIFICATIONS_ENABLED=false
+EMAIL_NOTIFICATIONS_ENABLED=true
 SLACK_NOTIFICATIONS_ENABLED=false
 TEAMS_NOTIFICATIONS_ENABLED=false
 # Only notify on failures (skip passed runs)
-NOTIFY_ON_FAILURE_ONLY=false
+NOTIFY_ON_FAILURE_ONLY=true
 
 # Email (SMTP) Configuration
 SMTP_HOST=
