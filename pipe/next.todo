@@ -1,0 +1,85 @@
+TraceIQ Project Architecture & Assessment
+As your technical co-founder, I have analyzed the entire TraceIQ codebase, including the infrastructure, backend API, frontend application, and the Node.js execution engine.
+
+Here is a breakdown of the current state, trade-offs, and strategic recommendations for scaling to a production-grade SaaS.
+
+1. System Architecture Overview
+The system is a modern, distributed, microservices-oriented architecture fully containerized via Docker.
+
+1.1 Infrastructure
+PostgreSQL 15: Primary relational data store.
+Redis 7: Used as a message broker for Celery, execution job queuing (Redis Streams), and result aggregation.
+MinIO: S3-compatible object storage for storing test artifacts (videos, traces, screenshots).
+Docker Compose: Well-structured definitions with multiple profiles (dev, prod, distributed) offering scalable capabilities for execution workers.
+1.2 Backend (Python / FastAPI)
+Framework: FastAPI with Uvicorn.
+ORM: SQLModel + SQLAlchemy with AsyncPG for asynchronous database access.
+Asynchronous Processing: Celery workers handle background tasks, test execution scheduling, and result aggregation.
+Data Model: Implements a robust multi-tenant hierarchy (
+Tenant
+ -> 
+Workspace
+ -> 
+Project
+ -> 
+TestSuite
+ -> 
+TestCase
+) complete with granular RBAC (
+Role
+, 
+Permission
+, 
+UserSystemRole
+, 
+Team
+).
+1.3 Execution Engine (Node.js / Playwright)
+Framework: Express server & Redis Stream consumers (workers).
+Playwright: Handles actual browser automation (Chromium, Firefox, WebKit).
+Execution Modes: Supports continuous (shared browser context) and parallel execution.
+Artifact Management: Records video, captures network logs, handles traces, and automatically uploads these to MinIO.
+Communication: Posts progress and final results back to the backend via webhook or Redis queue.
+1.4 Frontend (React / Vite)
+Framework: React 19 + Vite (Not Next.js, as initially outlined, but a fast SPA).
+Styling: Tailwind CSS + Radix UI primitives for accessible, customizable components.
+State Management: React Query (TanStack Query) for server state and Axios for API requests. React Hook Form for form validations.
+Routing: React Router DOM.
+2. Strengths & Good Practices
+True Multi-Tenancy & RBAC: The data model deeply embeds multi-tenancy (
+Tenant
+ and 
+Workspace
+) and fine-grained access logs (
+AuditLog
+), which is critical for B2B SaaS.
+Distributed Test Execution Strategy: Utilizing Redis streams to distribute Playwright execution across scalable NodeJS worker nodes (execution-worker) prevents the Python backend from becoming a bottleneck.
+Artifact Isolation: Using MinIO ensures that heavy binaries (videos/traces) do not bloat the database and can be migrated directly to AWS S3 in production.
+Resilient Playwright Contexts: The runner manages contexts defensively, capturing traces and videos natively.
+3. Areas for Improvement & Recommendations
+To elevate this to a "production-quality, long-lived SaaS platform", I recommend focusing on the following areas:
+
+3.1 Backend & Architecture
+API Versioning: Currently, routes are prefixed with /api. We should introduce /api/v1 to allow backward compatibility as the SaaS evolves.
+Database Migrations: Alembic is present. We need to ensure zero-downtime migration strategies are documented and enforced, especially around tenant data.
+Rate Limiting & Throttling: Add Redis-backed rate limiting to the FastAPI application to prevent noisy tenants from exhausting API resources or execution queues.
+Soft Deletes: Implementing soft-deletes (e.g., deleted_at) across core models (
+Project
+, 
+TestSuite
+, 
+TestCase
+) is highly recommended for SaaS platforms to allow data recovery.
+3.2 Frontend & UI/UX
+Vite vs. Next.js: The prompt mentioned Next.js, but the frontend is currently a React Vite SPA. If SEO for public pages or Server-Side Rendering (SSR) for initial load performance is a priority, we should consider migrating to Next.js. If it remains an authenticated SPA dashboard, Vite is perfectly fine, but requires careful bundle splitting.
+SaaS Aesthetics: The code utilizes Tailwind + Radix UI ( likely shadcn/ui). We must ensure a highly polished, "Wow" factor design—using subtle glassmorphism, smooth Framer Motion micro-interactions, dark mode support, and empty states.
+Real-time Updates: The backend exposes websockets. We should ensure the frontend deeply integrates these for live test execution streaming (seeing steps execute in real-time).
+3.3 Execution Engine
+Sandboxing & Security: Currently, Playwright runs user-defined steps. We must strictly sanitize any dynamic JS evaluation (e.g., page.evaluate()) to prevent malicious tenants from accessing the host environment or MinIO secrets.
+Browser Context Leaks: Ensure that parallel execution cleans up browser contexts deterministically. Zombie Chromium processes will consume all host RAM quickly.
+4. Next Steps
+As your technical co-founder, how would you like to proceed?
+
+Feature Development: Should we implement a specific feature (e.g., Advanced AI failure analysis, Billing/Subscription scaffolding, or a specific Frontend Dashboard view)?
+Frontend Polish: Should we focus on making the frontend UI incredibly premium and "SaaS-ready"?
+Refactoring: Are there specific modules you want me to harden or migrate (like moving Vite to Next.js)?

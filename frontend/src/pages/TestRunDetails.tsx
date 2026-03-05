@@ -1,10 +1,18 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import { toast } from "sonner";
+import * as Tabs from "@radix-ui/react-tabs";
+import { motion, AnimatePresence } from "framer-motion";
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+function cn(...inputs: ClassValue[]) {
+    return twMerge(clsx(inputs));
+}
 
 export default function TestRunDetails() {
     const { runId: idParam } = useParams<{ runId: string }>();
@@ -12,10 +20,7 @@ export default function TestRunDetails() {
     const isValidRunId = !isNaN(runId) && runId > 0;
     const queryClient = useQueryClient();
 
-    const [showReqHeaders, setShowReqHeaders] = useState(false);
-    const [showRespHeaders, setShowRespHeaders] = useState(false);
     const [testSearchTerm, setTestSearchTerm] = useState('');
-    const [isTestCasesExpanded, setIsTestCasesExpanded] = useState(false);
     const [showForceCompleteDialog, setShowForceCompleteDialog] = useState(false);
 
     const { data: run, isLoading } = useQuery({
@@ -92,317 +97,390 @@ export default function TestRunDetails() {
     const isStuckTest = run?.status === "running" && run?.created_at &&
         (new Date().getTime() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
 
+    const hasIndividualVideos = run?.results?.some(r => !!r.video_url) ?? false;
+    const hasIndividualTraces = run?.results?.some(r => !!r.trace_url) ?? false;
+
     if (!isValidRunId) return <div className="p-4">Invalid Run ID</div>;
     if (isLoading) return <div className="p-4">Loading...</div>;
     if (!run) return <div className="p-4">Run not found</div>;
 
-    return (
-        <div className="space-y-6">
-            <Link to="/" className="inline-flex items-center text-gray-500 hover:text-gray-900">
-                <ArrowLeft size={16} className="mr-2" />
-                Back to Matrix
-            </Link>
+    const passedCount = run.results?.filter(r => r.status === 'passed').length || 0;
+    const failedCount = run.results?.filter(r => r.status === 'failed').length || 0;
+    const totalCount = run.results?.length || 0;
+    const passRate = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
 
-            <div className="flex justify-between items-start">
-                <div>
-                    <h2 className="text-3xl font-bold text-gray-900">
-                        {run.suite_name ? (
-                            <Link 
-                                to={`/suites/${run.test_suite_id}`}
-                                className="hover:text-primary hover:underline"
-                                title="Go to Test Suite"
-                            >
-                                {run.suite_name}
+    return (
+        <div className="space-y-8 animate-in fade-in duration-500 pb-12">
+            {/* Sticky Header */}
+            <div className="sticky top-0 z-30 -mx-6 px-6 py-4 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm transition-all">
+                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                            <Link to="/" className="hover:text-primary flex items-center gap-1 transition-colors">
+                                <ArrowLeft size={14} /> Matrix
                             </Link>
-                        ) : (
-                            `Run #${run.id}`
-                        )}
-                        {run.test_case_name && (
-                            <span className="text-gray-400 font-normal"> › {run.test_case_name}</span>
-                        )}
-                    </h2>
-                    <p className="text-gray-500 mt-1">
-                        Status: <span className="font-medium text-gray-900">{run.status}</span>
-                    </p>
+                            {run.suite_name && (
+                                <>
+                                    <span className="text-gray-300">/</span>
+                                    <Link to={`/suites/${run.test_suite_id}`} className="hover:text-primary transition-colors">
+                                        {run.suite_name}
+                                    </Link>
+                                </>
+                            )}
+                            <span className="text-gray-300">/</span>
+                            <span className="font-medium text-gray-700">Run #{run.id}</span>
+                        </div>
+                        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
+                            {run.test_case_name || run.suite_name || `Run #${run.id}`}
+                            <span className={cn(
+                                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border shadow-sm",
+                                run.status === 'passed' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                    run.status === 'failed' || run.status === 'error' ? "bg-rose-50 text-rose-700 border-rose-200" :
+                                        "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
+                            )}>
+                                {run.status === 'passed' && <CheckCircle size={14} />}
+                                {(run.status === 'failed' || run.status === 'error') && <XCircle size={14} />}
+                                {run.status === 'running' && <Activity size={14} className="animate-spin" />}
+                                {run.status}
+                            </span>
+                        </h2>
+                    </div>
+                    {isStuckTest && (
+                        <div className="flex items-center gap-3">
+                            <button
+                                onClick={() => setShowForceCompleteDialog(true)}
+                                className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all shadow-sm hover:shadow text-sm font-medium flex items-center gap-2"
+                            >
+                                <AlertTriangle size={16} /> Force Complete
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
-            {/* Stuck Test Warning Banner */}
-            {isStuckTest && (
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                        <AlertTriangle size={20} className="text-yellow-600 mt-0.5 shrink-0" />
-                        <div className="flex-1">
-                            <h3 className="text-yellow-800 font-semibold">Test May Be Stuck</h3>
-                            <p className="text-yellow-700 text-sm mt-1">
-                                This test has been running for more than 10 minutes. It may have encountered an issue.
-                            </p>
+            <div className="max-w-7xl mx-auto space-y-8">
+                {/* Metric Summary Cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center gap-3 text-gray-500 mb-2">
+                            <Clock size={18} className="text-primary" />
+                            <h3 className="text-sm font-semibold uppercase tracking-wider">Duration</h3>
                         </div>
-                        <button
-                            onClick={() => setShowForceCompleteDialog(true)}
-                            className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm font-medium shrink-0"
-                        >
-                            Force Complete
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Force Complete Confirmation Dialog */}
-            {showForceCompleteDialog && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowForceCompleteDialog(false)}>
-                    <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Force Complete Test Run?</h3>
-                        <p className="text-gray-600 text-sm mb-4">
-                            This will mark the test run as ERROR and stop waiting for completion. This action cannot be undone.
+                        <p className="text-3xl font-bold text-gray-900">
+                            {run.duration_ms ? `${(run.duration_ms / 1000).toFixed(2)}s` : '---'}
                         </p>
-                        <div className="flex gap-3 justify-end">
-                            <button
-                                onClick={() => setShowForceCompleteDialog(false)}
-                                className="px-4 py-2 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors text-sm font-medium"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={() => forceCompleteMutation.mutate()}
-                                disabled={forceCompleteMutation.isPending}
-                                className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors text-sm font-medium disabled:opacity-50"
-                            >
-                                {forceCompleteMutation.isPending ? "Processing..." : "Force Complete"}
-                            </button>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex items-center gap-3 text-gray-500 mb-2">
+                            <LayoutGrid size={18} className="text-blue-500" />
+                            <h3 className="text-sm font-semibold uppercase tracking-wider">Total Tests</h3>
+                        </div>
+                        <p className="text-3xl font-bold text-gray-900">{totalCount}</p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden sm:col-span-2">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3 text-gray-500">
+                                <Activity size={18} className={passRate === 100 ? "text-emerald-500" : "text-rose-500"} />
+                                <h3 className="text-sm font-semibold uppercase tracking-wider">Pass Rate</h3>
+                            </div>
+                            <span className={cn(
+                                "text-sm font-bold",
+                                passRate === 100 ? "text-emerald-600" : "text-rose-600"
+                            )}>{passRate}%</span>
+                        </div>
+                        <div className="w-full bg-gray-100 rounded-full h-2 mb-2 mt-4 overflow-hidden flex">
+                            {totalCount > 0 && (
+                                <>
+                                    <div className="bg-emerald-500 h-full transition-all" style={{ width: `${(passedCount / totalCount) * 100}%` }}></div>
+                                    <div className="bg-rose-500 h-full transition-all" style={{ width: `${(failedCount / totalCount) * 100}%` }}></div>
+                                </>
+                            )}
+                        </div>
+                        <div className="flex justify-between text-xs font-medium text-gray-500">
+                            <span className="text-emerald-600">{passedCount} Passed</span>
+                            <span className="text-rose-600">{failedCount} Failed</span>
                         </div>
                     </div>
                 </div>
-            )}
 
-            {run.results && run.results.length > 0 && (() => {
-                const passedCount = run.results.filter(r => r.status === 'passed').length;
-                const failedCount = run.results.filter(r => r.status === 'failed').length;
-
-                return (
-                    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
-                        <div
-                            className="p-4 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
-                            onClick={() => setIsTestCasesExpanded(!isTestCasesExpanded)}
+                {/* Main Content Tabs */}
+                <Tabs.Root defaultValue="overview" className="flex flex-col">
+                    <Tabs.List className="flex shrink-0 border-b border-gray-200 mb-6 bg-transparent">
+                        <Tabs.Trigger
+                            value="overview"
+                            className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
                         >
-                            <div className="flex items-center gap-4">
-                                <h3 className="text-gray-800 font-semibold flex items-center gap-2">
-                                    <FileText size={18} className="text-primary" />
-                                    Test Cases ({run.results.length})
+                            <LayoutGrid size={16} /> Overview
+                        </Tabs.Trigger>
+                        <Tabs.Trigger
+                            value="media"
+                            className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
+                        >
+                            <PlayCircle size={16} /> Traces
+                        </Tabs.Trigger>
+                        <Tabs.Trigger
+                            value="network"
+                            className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
+                        >
+                            <Server size={16} /> Network
+                        </Tabs.Trigger>
+                    </Tabs.List>
+
+                    <Tabs.Content value="overview" className="focus:outline-none space-y-6">
+                        {run.error_message && (
+                            <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 shadow-sm">
+                                <h3 className="text-rose-800 font-semibold flex items-center gap-2 mb-3">
+                                    <Bug size={18} /> Error Log
                                 </h3>
-                                <div className="flex items-center gap-3 text-sm">
-                                    <span className="flex items-center gap-1 text-green-600 font-medium">
-                                        <CheckCircle size={14} /> {passedCount} Passed
-                                    </span>
-                                    <span className="flex items-center gap-1 text-red-600 font-medium">
-                                        <XCircle size={14} /> {failedCount} Failed
-                                    </span>
+                                <pre className="text-sm text-rose-700 whitespace-pre-wrap font-mono bg-white/50 p-4 rounded-lg border border-rose-100/50 shadow-inner">
+                                    {run.error_message}
+                                </pre>
+                            </div>
+                        )}
+
+                        {run.ai_analysis && (
+                            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl p-5 shadow-sm">
+                                <h3 className="text-indigo-800 font-semibold flex items-center gap-2 mb-3">
+                                    <Brain size={18} className="text-indigo-600" /> AI Root Cause Analysis
+                                </h3>
+                                <div className="prose prose-sm prose-indigo max-w-none text-indigo-900 leading-relaxed">
+                                    {run.ai_analysis}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                                {isTestCasesExpanded ? <ChevronDown size={20} className="text-gray-400" /> : <ChevronRight size={20} className="text-gray-400" />}
-                            </div>
-                        </div>
+                        )}
 
-                        {isTestCasesExpanded && (
-                            <div className="p-4 border-t border-gray-100">
-                                <div className="flex items-center justify-between mb-4">
-                                    <div className="text-sm text-gray-500">
-                                        Showing {run.results.filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase())).length} of {run.results.length} test cases
-                                    </div>
+                        {run.results && run.results.length > 0 && (
+                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
+                                    <h3 className="text-gray-800 font-bold flex items-center gap-2">
+                                        <Layers size={18} className="text-primary" />
+                                        Test Cases
+                                    </h3>
                                     <div className="relative">
                                         <input
                                             type="text"
                                             placeholder="Search test cases..."
                                             value={testSearchTerm}
                                             onChange={(e) => setTestSearchTerm(e.target.value)}
-                                            className="pl-3 pr-3 py-1.5 text-sm border rounded-md w-64 focus:outline-none focus:ring-1 focus:ring-primary bg-gray-50/50"
+                                            className="pl-3 pr-3 py-2 text-sm border bg-white rounded-lg w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-sm transition-all"
                                         />
                                     </div>
                                 </div>
-                                <div className="space-y-3">
+                                <div className="divide-y divide-gray-100">
                                     {run.results
                                         .filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase()))
                                         .map((result) => {
-                                            // Filter network events for this specific test case
                                             const testNetworkEvents = (run.network_events || []).filter(
                                                 (event: any) => event.testCaseName === result.test_name
                                             );
                                             return (
-                                                <TestCaseResultItem 
-                                                    key={result.id} 
-                                                    result={result} 
+                                                <TestCaseResultItem
+                                                    key={result.id}
+                                                    result={result}
                                                     networkEvents={testNetworkEvents}
                                                 />
                                             );
                                         })}
                                     {run.results.filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase())).length === 0 && (
-                                        <p className="text-center text-gray-500 py-4 italic text-sm">No matching test cases found</p>
+                                        <div className="text-center text-gray-500 py-12 italic text-sm flex flex-col items-center">
+                                            <FileText size={32} className="text-gray-300 mb-3" />
+                                            No matching test cases found
+                                        </div>
                                     )}
                                 </div>
                             </div>
                         )}
-                    </div>
-                );
-            })()}
+                    </Tabs.Content>
 
-            {run.error_message && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <h3 className="text-red-800 font-semibold flex items-center gap-2">
-                        <FileText size={18} />
-                        Error Log
-                    </h3>
-                    <pre className="mt-2 text-sm text-red-700 whitespace-pre-wrap font-mono bg-red-100/50 p-2 rounded">
-                        {run.error_message}
-                    </pre>
-                </div>
-            )}
-
-            {run.ai_analysis && (
-                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                    <h3 className="text-purple-800 font-semibold flex items-center gap-2">
-                        <Brain size={18} />
-                        AI Root Cause Analysis
-                    </h3>
-                    <p className="mt-2 text-purple-900">{run.ai_analysis}</p>
-                </div>
-            )}
-
-            {(run.network_events && run.network_events.length > 0) ? (
-                <NetworkActivitySection events={run.network_events} />
-            ) : (run.response_status || run.request_headers) && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <h3 className="text-gray-800 font-semibold flex items-center gap-2 mb-3">
-                        <FileText size={18} />
-                        Network Details
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <p className="text-sm font-medium text-gray-500">Response Status</p>
-                            <p className={`mt-1 font-mono ${run.response_status && run.response_status >= 400 ? 'text-red-600' : 'text-green-600'}`}>
-                                {run.response_status || 'N/A'}
-                            </p>
-                        </div>
-
-                        {run.request_headers && (
-                            <div className="col-span-full border-t pt-4">
-                                <div className="flex items-center justify-between w-full mb-1">
-                                    <button
-                                        onClick={() => setShowReqHeaders(!showReqHeaders)}
-                                        className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-primary transition-colors"
-                                    >
-                                        {showReqHeaders ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                        Request Headers
-                                        <span className="text-xs font-normal text-gray-400">({Object.keys(run.request_headers).length} items)</span>
-                                    </button>
-                                    {showReqHeaders && <CopyButton text={JSON.stringify(run.request_headers, null, 2)} />}
+                    <Tabs.Content value="media" className="focus:outline-none space-y-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Individual Traces Accordions */}
+                            {hasIndividualTraces && (
+                                <div className="col-span-full space-y-4">
+                                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2 mb-4">
+                                        <Activity size={20} className="text-primary" /> Test Case Traces
+                                    </h3>
+                                    {run.results?.filter(r => r.trace_url).map(result => (
+                                        <GlobalTraceAccordion key={result.id} result={result} executionLog={run.execution_log} />
+                                    ))}
                                 </div>
-                                {showReqHeaders && (
-                                    <pre className="mt-2 text-xs bg-white p-3 rounded border overflow-x-auto font-mono text-gray-800 shadow-inner min-h-[50px]">
-                                        {Object.keys(run.request_headers).length > 0
-                                            ? JSON.stringify(run.request_headers, null, 2)
-                                            : "No request headers captured"}
-                                    </pre>
-                                )}
+                            )}
+
+                            {traceUrl && !hasIndividualTraces && (
+                                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm lg:col-span-2">
+                                    <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+                                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                                            <Activity size={16} className="text-primary" /> Trace Timeline
+                                        </h3>
+                                        <a
+                                            href={traceUrl}
+                                            download
+                                            className="text-primary hover:text-primary/80 font-medium text-xs flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-full transition-colors"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            <FileText size={14} /> Download
+                                        </a>
+                                    </div>
+                                    <div className="p-4">
+                                        <TraceTimeline url={traceUrl} executionLog={run.execution_log} />
+                                    </div>
+                                </div>
+                            )}
+
+                            {videoUrl && !hasIndividualVideos && (
+                                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm h-fit">
+                                    <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 font-semibold text-gray-800 flex items-center gap-2">
+                                        <Video size={16} className="text-primary" /> Global Recording
+                                    </div>
+                                    <video controls className="w-full bg-black aspect-video" src={videoUrl} />
+                                </div>
+                            )}
+
+                            {/* Screenshots Section */}
+                            {((run.screenshots && run.screenshots.length > 0) || (run.results && run.results.some(r => r.screenshots && r.screenshots.length > 0))) && (
+                                <div className="col-span-full bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm mt-2">
+                                    <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 font-semibold text-gray-800 flex items-center gap-2">
+                                        <LayoutGrid size={16} className="text-primary" /> Screenshots
+                                    </div>
+                                    <div className="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                                        {(() => {
+                                            const seenPaths = new Set<string>();
+                                            const screenshots: React.ReactNode[] = [];
+
+                                            run.results?.forEach(result => {
+                                                result.screenshots?.forEach((path, index) => {
+                                                    if (!seenPaths.has(path)) {
+                                                        seenPaths.add(path);
+                                                        screenshots.push(
+                                                            <ScreenshotItem key={`res-${result.id}-${index}`} path={path} title={`${result.test_name} - ${index + 1}`} />
+                                                        );
+                                                    }
+                                                });
+                                            });
+
+                                            run.screenshots?.forEach((path, index) => {
+                                                if (!seenPaths.has(path)) {
+                                                    seenPaths.add(path);
+                                                    screenshots.push(
+                                                        <ScreenshotItem key={`run-${index}`} path={path} title={`Run Screenshot ${index + 1}`} />
+                                                    );
+                                                }
+                                            });
+
+                                            return screenshots;
+                                        })()}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </Tabs.Content>
+
+                    <Tabs.Content value="network" className="focus:outline-none space-y-6">
+                        {(run.network_events && run.network_events.length > 0) ? (
+                            <NetworkActivitySection events={run.network_events} />
+                        ) : (run.response_status || run.request_headers) ? (
+                            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
+                                <h3 className="text-gray-900 font-bold flex items-center gap-2 mb-6 text-lg">
+                                    <Globe size={20} className="text-primary" /> Global Network Details
+                                </h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                                        <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Response Status</p>
+                                        <p className={`text-2xl font-mono font-bold ${run.response_status && run.response_status >= 400 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                            {run.response_status || 'N/A'}
+                                        </p>
+                                    </div>
+
+                                    {run.request_headers && (
+                                        <div className="col-span-full border-t border-gray-100 pt-6">
+                                            <div className="flex items-center justify-between w-full mb-3">
+                                                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                    Request Headers <span className="text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full text-xs">{Object.keys(run.request_headers).length}</span>
+                                                </h4>
+                                                <CopyButton text={JSON.stringify(run.request_headers, null, 2)} />
+                                            </div>
+                                            <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-xl border border-gray-800 overflow-x-auto font-mono shadow-inner max-h-96 custom-scrollbar">
+                                                {Object.keys(run.request_headers).length > 0
+                                                    ? JSON.stringify(run.request_headers, null, 2)
+                                                    : "No request headers captured"}
+                                            </pre>
+                                        </div>
+                                    )}
+
+                                    {run.response_headers && (
+                                        <div className="col-span-full border-t border-gray-100 pt-6">
+                                            <div className="flex items-center justify-between w-full mb-3">
+                                                <h4 className="flex items-center gap-2 text-sm font-bold text-gray-700 uppercase tracking-wider">
+                                                    Response Headers <span className="text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full text-xs">{Object.keys(run.response_headers).length}</span>
+                                                </h4>
+                                                <CopyButton text={JSON.stringify(run.response_headers, null, 2)} />
+                                            </div>
+                                            <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-xl border border-gray-800 overflow-x-auto font-mono shadow-inner max-h-96 custom-scrollbar">
+                                                {Object.keys(run.response_headers).length > 0
+                                                    ? JSON.stringify(run.response_headers, null, 2)
+                                                    : "No response headers captured"}
+                                            </pre>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center text-gray-500 py-12 italic text-sm flex flex-col items-center bg-gray-50 rounded-xl border border-dashed border-gray-200">
+                                <Server size={32} className="text-gray-300 mb-3" />
+                                No global network activity captured
                             </div>
                         )}
-
-                        {run.response_headers && (
-                            <div className="col-span-full border-t pt-4">
-                                <div className="flex items-center justify-between w-full mb-1">
-                                    <button
-                                        onClick={() => setShowRespHeaders(!showRespHeaders)}
-                                        className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-primary transition-colors"
-                                    >
-                                        {showRespHeaders ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                        Response Headers
-                                        <span className="text-xs font-normal text-gray-400">({Object.keys(run.response_headers).length} items)</span>
-                                    </button>
-                                    {showRespHeaders && <CopyButton text={JSON.stringify(run.response_headers, null, 2)} />}
-                                </div>
-                                {showRespHeaders && (
-                                    <pre className="mt-2 text-xs bg-white p-3 rounded border overflow-x-auto font-mono text-gray-800 shadow-inner min-h-[50px]">
-                                        {Object.keys(run.response_headers).length > 0
-                                            ? JSON.stringify(run.response_headers, null, 2)
-                                            : "No response headers captured"}
-                                    </pre>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {traceUrl && (
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                            <h3 className="font-semibold text-gray-900">Trace Timeline</h3>
-                            <a
-                                href={traceUrl}
-                                download
-                                className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                <FileText size={16} />
-                                Download Full Trace
-                            </a>
-                        </div>
-                        <TraceTimeline url={traceUrl} executionLog={run.execution_log} />
-                    </div>
-                )}
-
-                {videoUrl && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm h-fit">
-                        <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 font-medium text-sm text-gray-700 flex items-center gap-2">
-                            <Video size={16} />
-                            Test Recording
-                        </div>
-                        <video controls className="w-full bg-black" src={videoUrl} />
-                    </div>
-                )}
-
-                {/* Screenshots Section */}
-                {((run.screenshots && run.screenshots.length > 0) || (run.results && run.results.some(r => r.screenshots && r.screenshots.length > 0))) && (
-                    <div className="col-span-full border border-gray-200 rounded-lg overflow-hidden shadow-sm mt-6">
-                        <div className="bg-gray-50 border-b border-gray-200 px-4 py-2 font-medium text-sm text-gray-700 flex items-center gap-2">
-                            <FileText size={16} />
-                            Screenshots
-                        </div>
-                        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                            {(() => {
-                                const seenPaths = new Set<string>();
-                                const screenshots: React.ReactNode[] = [];
-
-                                // Result Level Screenshots (Prioritize these as they have test names)
-                                run.results?.forEach(result => {
-                                    result.screenshots?.forEach((path, index) => {
-                                        if (!seenPaths.has(path)) {
-                                            seenPaths.add(path);
-                                            screenshots.push(
-                                                <ScreenshotItem key={`res-${result.id}-${index}`} path={path} title={`${result.test_name} - ${index + 1}`} />
-                                            );
-                                        }
-                                    });
-                                });
-
-                                // Run Level Screenshots
-                                run.screenshots?.forEach((path, index) => {
-                                    if (!seenPaths.has(path)) {
-                                        seenPaths.add(path);
-                                        screenshots.push(
-                                            <ScreenshotItem key={`run-${index}`} path={path} title={`Run Screenshot ${index + 1}`} />
-                                        );
-                                    }
-                                });
-
-                                return screenshots;
-                            })()}
-                        </div>
-                    </div>
-                )}
+                    </Tabs.Content>
+                </Tabs.Root>
             </div>
+
+            {/* Force Complete Dialog */}
+            <AnimatePresence>
+                {showForceCompleteDialog && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+                        onClick={() => setShowForceCompleteDialog(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-4">
+                                <AlertTriangle size={24} className="text-rose-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Force Complete Test Run?</h3>
+                            <p className="text-gray-500 text-sm mb-6 leading-relaxed">
+                                This will mark the test run as ERROR and stop waiting for completion. This action cannot be undone.
+                            </p>
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={() => setShowForceCompleteDialog(false)}
+                                    className="px-5 py-2.5 rounded-lg font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => forceCompleteMutation.mutate()}
+                                    disabled={forceCompleteMutation.isPending}
+                                    className="px-5 py-2.5 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {forceCompleteMutation.isPending ? <Activity size={16} className="animate-spin" /> : null}
+                                    {forceCompleteMutation.isPending ? "Processing..." : "Force Complete"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -593,207 +671,271 @@ function NetworkEventItem({ event }: { event: any, index?: number }) {
     );
 }
 
+function unwrapJson(str: string) {
+    try {
+        const parsed = JSON.parse(str);
+        return JSON.stringify(parsed, null, 2);
+    } catch {
+        return str;
+    }
+}
+
 function TestCaseResultItem({ result, networkEvents = [] }: { result: any, networkEvents?: any[] }) {
     const [isExpanded, setIsExpanded] = useState(false);
-    const [showReqHeaders, setShowReqHeaders] = useState(false);
-    const [showRespHeaders, setShowRespHeaders] = useState(false);
-    const [showReqParams, setShowReqParams] = useState(false);
-    const [showRespBody, setShowRespBody] = useState(false);
-    const [showNetworkActivity, setShowNetworkActivity] = useState(false);
 
-    const hasDetails = result.response_status || result.response_body ||
-        (result.response_headers && Object.keys(result.response_headers).length > 0) ||
-        (result.request_headers && Object.keys(result.request_headers).length > 0) ||
-        (result.request_params && Object.keys(result.request_params).length > 0) ||
-        networkEvents.length > 0;
+    const { data: testVideoUrl } = useQuery({
+        queryKey: ["video", result.video_url],
+        queryFn: () => getArtifactUrl(result.video_url),
+        enabled: !!result.video_url && isExpanded,
+    });
+
+    const { data: testTraceUrl } = useQuery({
+        queryKey: ["trace", result.trace_url],
+        queryFn: () => getArtifactUrl(result.trace_url),
+        enabled: !!result.trace_url && isExpanded,
+    });
+
+    const isError = result.status === 'failed' || result.status === 'error';
 
     return (
-        <div className={`border rounded-lg overflow-hidden transition-all duration-200 ${isExpanded ? 'border-primary shadow-md' : 'border-gray-200 hover:border-gray-300 bg-white'}`}>
+        <div className={cn(
+            "group transition-all duration-300 bg-white",
+            isExpanded ? "m-4 rounded-xl border border-gray-200 shadow-sm" : "border-b border-gray-100 last:border-0 hover:bg-gray-50/80"
+        )}>
             <div
-                className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${isExpanded ? 'bg-primary/5' : 'bg-gray-50/50 hover:bg-gray-50'}`}
+                className={cn(
+                    "flex items-center justify-between p-4 cursor-pointer select-none",
+                    isExpanded && "bg-gray-50/50 rounded-t-xl"
+                )}
                 onClick={() => setIsExpanded(!isExpanded)}
             >
-                <div className="flex items-center gap-3 min-w-0 flex-1 mr-4">
-                    <span className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${result.status === 'passed' ? 'bg-green-500' :
-                        result.status === 'failed' ? 'bg-red-500' :
-                            'bg-gray-400'
-                        }`} />
-                    <span className="font-semibold text-sm text-gray-800 truncate" title={result.test_name}>{result.test_name}</span>
+                <div className="flex items-center gap-4 flex-1 min-w-0 pr-4">
+                    <div className={cn(
+                        "w-2.5 h-2.5 rounded-full shadow-sm shrink-0",
+                        result.status === 'passed' ? "bg-emerald-500 shadow-emerald-200" :
+                            isError ? "bg-rose-500 shadow-rose-200" :
+                                "bg-gray-400"
+                    )} />
+                    <span className={cn(
+                        "font-semibold text-sm truncate",
+                        isExpanded ? "text-primary" : "text-gray-800"
+                    )} title={result.test_name}>
+                        {result.test_name}
+                    </span>
                 </div>
-                <div className="flex items-center gap-4 text-sm shrink-0">
-                    <span className="text-gray-500 font-mono text-xs">{Math.round(result.duration_ms)}ms</span>
-                    <span className={`font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded ${result.status === 'passed' ? 'bg-green-100 text-green-700' :
-                        result.status === 'failed' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-700'
-                        }`}>
+                <div className="flex items-center gap-6 shrink-0">
+                    <span className="text-gray-400 font-mono text-xs hidden sm:block">
+                        {Math.round(result.duration_ms)}ms
+                    </span>
+                    <span className={cn(
+                        "font-bold uppercase text-[10px] tracking-wider px-3 py-1 rounded-full border",
+                        result.status === 'passed' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
+                            isError ? "bg-rose-50 text-rose-700 border-rose-100" :
+                                "bg-gray-50 text-gray-700 border-gray-200"
+                    )}>
                         {result.status}
                     </span>
-                    {isExpanded ? <ChevronDown size={18} className="text-primary" /> : <ChevronRight size={18} className="text-gray-400" />}
+                    <div className={cn(
+                        "w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300",
+                        isExpanded ? "bg-white shadow-sm rotate-180 text-primary border border-gray-200" : "text-gray-400 group-hover:text-gray-600"
+                    )}>
+                        <ChevronDown size={18} />
+                    </div>
                 </div>
             </div>
 
-            {isExpanded && (
-                <div className="p-4 border-t border-gray-100 space-y-4 animate-in slide-in-from-top-2 duration-200 bg-white">
-                    {result.error_message && (
-                        <div className="bg-red-50 border border-red-100 rounded-lg p-3">
-                            <p className="text-[10px] font-bold text-red-800 mb-1 uppercase tracking-wider">Error Details</p>
-                            <pre className="text-xs text-red-700 whitespace-pre-wrap font-mono leading-relaxed">{result.error_message}</pre>
-                        </div>
-                    )}
+            <AnimatePresence>
+                {isExpanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.2, ease: "easeInOut" }}
+                        className="overflow-hidden border-t border-gray-100"
+                    >
+                        <div className="p-5 space-y-6">
+                            {result.error_message && (
+                                <div className="bg-rose-50 border border-rose-100 rounded-xl p-4">
+                                    <p className="text-[10px] font-bold text-rose-800 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Bug size={14} /> Error Details
+                                    </p>
+                                    <pre className="text-xs text-rose-700 whitespace-pre-wrap font-mono leading-relaxed custom-scrollbar max-h-48 overflow-y-auto">
+                                        {result.error_message}
+                                    </pre>
+                                </div>
+                            )}
 
-                    {hasDetails ? (
-                        <div className="space-y-4">
-                            <div className="flex flex-wrap gap-6 items-start">
-                                {result.response_status && (
-                                    <div>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Status</p>
-                                        <p className={`text-sm font-mono font-bold ${result.response_status >= 400 ? 'text-red-600' : 'text-green-600'}`}>
-                                            {result.response_status}
-                                        </p>
-                                    </div>
-                                )}
-                                {result.request_method && (
-                                    <div>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Method</p>
-                                        <p className="text-sm font-mono font-bold text-gray-700">{result.request_method}</p>
-                                    </div>
-                                )}
-                                {result.request_url && (
-                                    <div className="flex-1 min-w-[200px]">
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Request URL</p>
-                                        <p className="text-xs font-mono text-gray-600 break-all bg-gray-50 p-1.5 rounded border border-gray-100">{result.request_url}</p>
-                                    </div>
-                                )}
-                            </div>
+                            <Tabs.Root defaultValue="details" className="flex flex-col">
+                                <Tabs.List className="flex shrink-0 border-b border-gray-200 mb-5 overflow-x-auto custom-scrollbar pb-px">
+                                    <Tabs.Trigger
+                                        value="details"
+                                        className="px-4 py-2 text-xs font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none whitespace-nowrap"
+                                    >
+                                        Details & Body
+                                    </Tabs.Trigger>
+                                    <Tabs.Trigger
+                                        value="headers"
+                                        className="px-4 py-2 text-xs font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none whitespace-nowrap"
+                                    >
+                                        Headers
+                                    </Tabs.Trigger>
+                                    {(testVideoUrl || testTraceUrl || (result.screenshots?.length > 0)) && (
+                                        <Tabs.Trigger
+                                            value="media"
+                                            className="px-4 py-2 text-xs font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none whitespace-nowrap"
+                                        >
+                                            Media & Traces
+                                        </Tabs.Trigger>
+                                    )}
+                                    {networkEvents.length > 0 && (
+                                        <Tabs.Trigger
+                                            value="network"
+                                            className="px-4 py-2 text-xs font-bold text-gray-500 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider flex items-center gap-1.5 outline-none whitespace-nowrap"
+                                        >
+                                            Network <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full text-[9px]">{networkEvents.length}</span>
+                                        </Tabs.Trigger>
+                                    )}
+                                </Tabs.List>
 
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                                {/* Request Headers */}
-                                {result.request_headers && Object.keys(result.request_headers).length > 0 && (
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between w-full mb-1">
-                                            <button
-                                                onClick={() => setShowReqHeaders(!showReqHeaders)}
-                                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider"
-                                            >
-                                                {showReqHeaders ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                                <span>Request Headers ({Object.keys(result.request_headers).length})</span>
-                                            </button>
-                                            {showReqHeaders && <CopyButton text={JSON.stringify(result.request_headers, null, 2)} />}
-                                        </div>
-                                        {showReqHeaders && (
-                                            <pre className="text-[10px] bg-gray-50 p-2.5 rounded-lg border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-inner max-h-48">
-                                                {JSON.stringify(result.request_headers, null, 2)}
-                                            </pre>
+                                <Tabs.Content value="details" className="focus:outline-none space-y-6">
+                                    <div className="flex flex-wrap gap-6 items-start bg-gray-50/50 p-4 rounded-xl border border-gray-100">
+                                        {result.response_status && (
+                                            <div>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Status</p>
+                                                <p className={cn("text-justify font-mono font-bold text-lg", result.response_status >= 400 ? 'text-rose-600' : 'text-emerald-600')}>
+                                                    {result.response_status}
+                                                </p>
+                                            </div>
+                                        )}
+                                        {result.request_method && (
+                                            <div>
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Method</p>
+                                                <p className="text-sm font-mono font-bold text-gray-700 bg-white px-2 py-1 rounded shadow-sm border border-gray-200">{result.request_method}</p>
+                                            </div>
+                                        )}
+                                        {result.request_url && (
+                                            <div className="flex-1 min-w-[200px]">
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Request URL</p>
+                                                <p className="text-xs font-mono text-gray-600 break-all bg-white p-2 rounded shadow-sm border border-gray-200">{result.request_url}</p>
+                                            </div>
                                         )}
                                     </div>
-                                )}
 
-                                {/* Request Params */}
-                                {result.request_params && Object.keys(result.request_params).length > 0 && (
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between w-full mb-1">
-                                            <button
-                                                onClick={() => setShowReqParams(!showReqParams)}
-                                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider"
-                                            >
-                                                {showReqParams ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                                <span>Query Parameters ({Object.keys(result.request_params).length})</span>
-                                            </button>
-                                            {showReqParams && <CopyButton text={JSON.stringify(result.request_params, null, 2)} />}
+                                    {result.response_body && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Response Body</span>
+                                                <CopyButton text={unwrapJson(result.response_body)} />
+                                            </div>
+                                            <pre className="text-xs bg-[#0d1117] text-gray-100 p-4 rounded-xl border border-gray-800 overflow-x-auto font-mono shadow-inner max-h-96 custom-scrollbar">
+                                                {unwrapJson(result.response_body)}
+                                            </pre>
                                         </div>
-                                        {showReqParams && (
-                                            <pre className="text-[10px] bg-gray-50 p-2.5 rounded-lg border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-inner max-h-48">
+                                    )}
+
+                                    {result.request_body && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Request Body</span>
+                                                <CopyButton text={unwrapJson(result.request_body)} />
+                                            </div>
+                                            <pre className="text-xs bg-[#0d1117] text-gray-100 p-4 rounded-xl border border-gray-800 overflow-x-auto font-mono shadow-inner max-h-96 custom-scrollbar">
+                                                {unwrapJson(result.request_body)}
+                                            </pre>
+                                        </div>
+                                    )}
+                                    {result.request_params && Object.keys(result.request_params).length > 0 && (
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between w-full">
+                                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Query Parameters</span>
+                                                <CopyButton text={JSON.stringify(result.request_params, null, 2)} />
+                                            </div>
+                                            <pre className="text-[10px] bg-white p-3 rounded-xl border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-sm max-h-48">
                                                 {JSON.stringify(result.request_params, null, 2)}
                                             </pre>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Response Headers */}
-                                {result.response_headers && Object.keys(result.response_headers).length > 0 && (
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between w-full mb-1">
-                                            <button
-                                                onClick={() => setShowRespHeaders(!showRespHeaders)}
-                                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider"
-                                            >
-                                                {showRespHeaders ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                                <span>Response Headers ({Object.keys(result.response_headers).length})</span>
-                                            </button>
-                                            {showRespHeaders && <CopyButton text={JSON.stringify(result.response_headers, null, 2)} />}
                                         </div>
-                                        {showRespHeaders && (
-                                            <pre className="text-[10px] bg-gray-50 p-2.5 rounded-lg border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-inner max-h-48">
-                                                {JSON.stringify(result.response_headers, null, 2)}
-                                            </pre>
+                                    )}
+                                </Tabs.Content>
+
+                                <Tabs.Content value="headers" className="focus:outline-none space-y-6">
+                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                        {result.request_headers && Object.keys(result.request_headers).length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between w-full">
+                                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Request Headers</span>
+                                                    <CopyButton text={JSON.stringify(result.request_headers, null, 2)} />
+                                                </div>
+                                                <pre className="text-[10px] bg-white p-4 rounded-xl border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-sm max-h-96 custom-scrollbar">
+                                                    {JSON.stringify(result.request_headers, null, 2)}
+                                                </pre>
+                                            </div>
+                                        )}
+
+                                        {result.response_headers && Object.keys(result.response_headers).length > 0 && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between w-full">
+                                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Response Headers</span>
+                                                    <CopyButton text={JSON.stringify(result.response_headers, null, 2)} />
+                                                </div>
+                                                <pre className="text-[10px] bg-white p-4 rounded-xl border border-gray-200 overflow-x-auto font-mono text-gray-700 shadow-sm max-h-96 custom-scrollbar">
+                                                    {JSON.stringify(result.response_headers, null, 2)}
+                                                </pre>
+                                            </div>
                                         )}
                                     </div>
-                                )}
-                            </div>
+                                </Tabs.Content>
 
-                            {/* Response Body */}
-                            {result.response_body && (
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between w-full mb-1">
-                                        <button
-                                            onClick={() => setShowRespBody(!showRespBody)}
-                                            className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider"
-                                        >
-                                            {showRespBody ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                            <span>Response Body</span>
-                                        </button>
-                                        {showRespBody && <CopyButton text={(() => {
-                                            try {
-                                                const parsed = JSON.parse(result.response_body);
-                                                return JSON.stringify(parsed, null, 2);
-                                            } catch (e) {
-                                                return result.response_body;
-                                            }
-                                        })()} />}
-                                    </div>
-                                    {showRespBody && (
-                                        <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-lg border border-gray-800 overflow-x-auto font-mono shadow-lg max-h-96 custom-scrollbar">
-                                            {(() => {
-                                                try {
-                                                    const parsed = JSON.parse(result.response_body);
-                                                    return JSON.stringify(parsed, null, 2);
-                                                } catch (e) {
-                                                    return result.response_body;
-                                                }
-                                            })()}
-                                        </pre>
+                                <Tabs.Content value="media" className="focus:outline-none space-y-6">
+                                    {testTraceUrl && (
+                                        <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm bg-white">
+                                            <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+                                                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                                                    <Activity size={16} className="text-primary" /> Trace Timeline
+                                                </h3>
+                                                <a
+                                                    href={testTraceUrl}
+                                                    download
+                                                    className="text-primary hover:text-primary/80 font-medium text-xs flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-full transition-colors"
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                >
+                                                    <FileText size={14} /> Download
+                                                </a>
+                                            </div>
+                                            <div className="p-4">
+                                                <TraceTimeline url={testTraceUrl} />
+                                            </div>
+                                        </div>
                                     )}
-                                </div>
-                            )}
-                        </div>
-                    ) : !networkEvents.length ? (
-                        <div className="flex flex-col items-center justify-center py-6 text-gray-400 bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
-                            <FileText size={24} className="mb-2 opacity-20" />
-                            <p className="text-xs italic">No additional network details captured for this test case.</p>
-                        </div>
-                    ) : null}
+                                    {testVideoUrl && (
+                                        <div className="space-y-2">
+                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Test Recording</span>
+                                            <div className="border border-gray-200 rounded-xl overflow-hidden bg-black shadow-sm">
+                                                <video controls className="w-full max-h-[500px]" src={testVideoUrl} />
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {result.screenshots?.map((path: string, i: number) => (
+                                            <ScreenshotItem key={i} path={path} title={`Screenshot ${i + 1}`} />
+                                        ))}
+                                    </div>
+                                </Tabs.Content>
 
-                    {/* Network Activity for this test case */}
-                    {networkEvents.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                            <button
-                                onClick={() => setShowNetworkActivity(!showNetworkActivity)}
-                                className="flex items-center gap-2 text-[10px] font-bold text-gray-500 hover:text-primary transition-colors uppercase tracking-wider mb-2"
-                            >
-                                {showNetworkActivity ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                <span>Network Activity ({networkEvents.length} requests)</span>
-                            </button>
-                            {showNetworkActivity && (
-                                <div className="space-y-2 max-h-96 overflow-y-auto">
-                                    {networkEvents.map((event: any, index: number) => (
-                                        <NetworkEventItem key={index} event={event} />
-                                    ))}
-                                </div>
-                            )}
+                                {networkEvents.length > 0 && (
+                                    <Tabs.Content value="network" className="focus:outline-none">
+                                        <div className="space-y-3 max-h-[500px] overflow-y-auto custom-scrollbar pr-2">
+                                            {networkEvents.map((event: any, index: number) => (
+                                                <NetworkEventItem key={`net-${index}`} event={event} />
+                                            ))}
+                                        </div>
+                                    </Tabs.Content>
+                                )}
+                            </Tabs.Root>
                         </div>
-                    )}
-                </div>
-            )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
 }
@@ -854,5 +996,70 @@ function CopyButton({ text }: { text: string }) {
                 </>
             )}
         </button>
+    );
+}
+
+function GlobalTraceAccordion({ result, executionLog }: { result: any, executionLog?: any[] }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+
+    // Always call the hook (even if not expanded, the query won't fire until enabled is true)
+    const { data: testTraceUrl } = useQuery({
+        queryKey: ["trace", result.trace_url],
+        queryFn: () => getArtifactUrl(result.trace_url),
+        enabled: !!result.trace_url && isExpanded,
+    });
+
+    return (
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+            <button
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="w-full bg-gray-50 hover:bg-gray-100 border-b border-gray-200 px-5 py-3 flex items-center justify-between transition-colors outline-none"
+            >
+                <div className="flex items-center gap-3">
+                    <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm", result.status === 'passed' ? "bg-emerald-500 shadow-emerald-200" : result.status === 'failed' || result.status === 'error' ? "bg-rose-500 shadow-rose-200" : "bg-gray-400")} />
+                    <span className="font-semibold text-gray-800 truncate" title={result.test_name}>{result.test_name}</span>
+                </div>
+                <div className="flex items-center gap-4 text-gray-500 shrink-0">
+                    <span className="text-xs font-mono bg-white px-2 py-1 rounded shadow-sm border border-gray-200">
+                        {Math.round(result.duration_ms)}ms
+                    </span>
+                    {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                </div>
+            </button>
+
+            <AnimatePresence>
+                {isExpanded && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden"
+                    >
+                        <div className="p-4 bg-white border-t border-gray-100">
+                            {testTraceUrl ? (
+                                <div className="border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+                                    <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+                                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                                            <Activity size={16} className="text-primary" /> Trace Timeline
+                                        </h3>
+                                        <a href={testTraceUrl} download className="text-primary hover:text-primary/80 font-medium text-xs flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-full transition-colors" target="_blank" rel="noreferrer">
+                                            <FileText size={14} /> Download
+                                        </a>
+                                    </div>
+                                    <div className="p-4">
+                                        <TraceTimeline url={testTraceUrl} executionLog={executionLog} />
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="p-8 text-center text-gray-500 flex flex-col items-center border border-dashed border-gray-200 rounded-xl bg-gray-50/50">
+                                    <Activity className="animate-spin mb-3 text-primary" size={24} />
+                                    <span>Loading trace file...</span>
+                                </div>
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
     );
 }

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getRuns, deleteRun, deleteRuns } from "@/lib/api";
+import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Eye, Clock, CheckCircle2, XCircle, AlertCircle, Trash2, MoreHorizontal, Search } from "lucide-react";
@@ -319,7 +320,7 @@ export default function TestMatrix() {
                                         <td className="py-4 px-4 text-sm text-gray-900">
                                             <div className="max-w-xs">
                                                 {run.suite_name && (
-                                                    <Link 
+                                                    <Link
                                                         to={`/suites/${run.test_suite_id}`}
                                                         className="font-medium truncate text-primary hover:underline block"
                                                         title={`Go to ${run.suite_name}`}
@@ -374,7 +375,7 @@ export default function TestMatrix() {
                                             {run.duration_ms ? `${(run.duration_ms / 1000).toFixed(2)}s` : "-"}
                                         </td>
                                         <td className="py-4 px-4 text-sm text-gray-600">
-                                            {new Date(run.created_at).toLocaleString()}
+                                            {formatDate(run.created_at)}
                                         </td>
                                         <td className="py-4 px-4 flex gap-2">
                                             <Link to={`/runs/${run.id}`}>

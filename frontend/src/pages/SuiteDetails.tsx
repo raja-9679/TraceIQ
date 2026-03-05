@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { api, getSettings, updateTestSuite } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -426,10 +427,10 @@ export default function SuiteDetails() {
                             <Edit className="h-4 w-4 text-muted-foreground hover:text-primary" />
                         </Button>
                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase font-bold tracking-wider ${suite.execution_mode === 'parallel'
-                                ? 'bg-green-500/10 text-green-600 border border-green-200'
-                                : suite.execution_mode === 'separate'
-                                    ? 'bg-purple-500/10 text-purple-600 border border-purple-200'
-                                    : 'bg-blue-500/10 text-blue-600 border border-blue-200'
+                            ? 'bg-green-500/10 text-green-600 border border-green-200'
+                            : suite.execution_mode === 'separate'
+                                ? 'bg-purple-500/10 text-purple-600 border border-purple-200'
+                                : 'bg-blue-500/10 text-blue-600 border border-blue-200'
                             }`}>
                             {suite.execution_mode}
                         </span>
@@ -1564,7 +1565,7 @@ export default function SuiteDetails() {
                                                         </span>
                                                     </div>
                                                     <span className="text-xs text-gray-500">
-                                                        {new Date(log.timestamp).toLocaleString()}
+                                                        {formatDate(log.timestamp)}
                                                     </span>
                                                 </div>
                                                 {log.changes && Object.keys(log.changes).length > 0 && (
