@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, triggerRun, exportTestSuite, importTestSuite, getProjects } from '@/lib/api';
+import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Play, FolderOpen, FileText, Download, Upload, ShieldCheck, AlertCircle } from 'lucide-react';
@@ -283,7 +284,7 @@ export default function TestSuites() {
                             </div>
                             <div className="flex items-center justify-between text-xs text-gray-400 pt-2 border-t border-gray-100">
                                 <span>
-                                    Created {new Date(suite.created_at).toLocaleDateString()}
+                                    Created {formatDate(suite.created_at)}
                                 </span>
                                 {suite.created_by_name && (
                                     <span title={`Updated by ${suite.updated_by_name || suite.created_by_name}`}>
