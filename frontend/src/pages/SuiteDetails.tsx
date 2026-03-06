@@ -330,22 +330,23 @@ export default function SuiteDetails() {
     const handleImportCase = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const content = e.target?.result as string;
-                const data = JSON.parse(content);
-                await importTestCase(Number(suiteId), data);
-                queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
-                toast.success('Test case imported successfully');
-            } catch (error) {
-                toast.error('Failed to import test case');
-            }
-        };
-        reader.readAsText(file);
-        // Reset input
         event.target.value = '';
+
+        try {
+            const content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+            const data = JSON.parse(content);
+            await importTestCase(Number(suiteId), data);
+            queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
+            toast.success('Test case imported successfully');
+        } catch (error: any) {
+            const msg = error?.response?.data?.detail || error?.message || 'Failed to import test case';
+            toast.error(msg);
+        }
     };
 
     const handleExportSuite = async () => {
@@ -367,22 +368,30 @@ export default function SuiteDetails() {
     const handleImportSuite = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
+        // Reset input immediately so the same file can be re-selected if needed
+        event.target.value = '';
 
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const content = e.target?.result as string;
-                const data = JSON.parse(content);
-                await importTestSuite(Number(suiteId), data);
-                queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
-                toast.success('Module imported successfully');
-            } catch (error) {
+        try {
+            const content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+            const data = JSON.parse(content);
+            await importTestSuite(Number(suiteId), data);
+            queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
+            toast.success('Module imported successfully');
+        } catch (error: any) {
+            console.error('[ImportSuite] caught:', error?.response?.status, error?.response?.data);
+            const responseData = error?.response?.data;
+            const detail = responseData?.detail ?? responseData ?? error?.message;
+            if (detail && typeof detail === 'string') {
+                toast.error('Import failed', { description: detail, duration: 8000 });
+            } else {
                 toast.error('Failed to import module');
             }
-        };
-        reader.readAsText(file);
-        // Reset input
-        event.target.value = '';
+        }
     };
 
     if (isLoading) return <div>Loading suite...</div>;
@@ -753,9 +762,27 @@ export default function SuiteDetails() {
                                             <FolderOpen className="h-5 w-5 text-primary" />
                                             Sub-Modules ({suite.sub_modules.length})
                                         </h2>
-                                        <Button variant="outline" size="sm" onClick={() => setShowSubModuleDialog(true)} className="h-8">
-                                            <Plus className="mr-2 h-3.5 w-3.5" /> Add Module
-                                        </Button>
+                                        <div className="flex items-center gap-2">
+                                            {can("project:manage", { projectId, workspaceId }) && (
+                                                <Button variant="outline" size="sm" onClick={() => setShowSubModuleDialog(true)} className="h-8">
+                                                    <Plus className="mr-2 h-3.5 w-3.5" /> Add Module
+                                                </Button>
+                                            )}
+                                            {can("project:manage", { projectId, workspaceId }) && (
+                                                <div className="relative">
+                                                    <input
+                                                        type="file"
+                                                        accept=".json"
+                                                        onChange={handleImportSuite}
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                                        title="Import Module"
+                                                    />
+                                                    <Button variant="outline" size="sm" className="h-8">
+                                                        <Upload className="mr-2 h-3.5 w-3.5" /> Import Module
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <motion.div
                                         key={suiteId}

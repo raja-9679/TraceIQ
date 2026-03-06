@@ -26,7 +26,17 @@ class Settings(BaseSettings):
     REDIS_WEBHOOK_FAILED_QUEUE: str = "webhook:failed"
     WEBHOOK_PROCESSOR_INTERVAL: int = 10  # seconds
     WEBHOOK_MAX_RETRIES: int = 3
-    TEST_TIMEOUT_MINUTES: int = 30  # timeout for stuck tests
+    TEST_TIMEOUT_MINUTES: int = 30  # timeout for stuck tests (legacy cleanup task)
+
+    # How long since the last job result arrived before a run is considered "stuck".
+    # A run actively receiving results is NOT considered stuck even if it has been
+    # running for hours. Default: 15 minutes of inactivity.
+    STALE_RUN_INACTIVITY_MINUTES: int = 15
+
+    # Absolute maximum wall-clock duration any single run is allowed to stay in
+    # RUNNING state, regardless of activity. Prevents zombie runs from lingering
+    # forever. Default: 6 hours.
+    MAX_RUN_DURATION_HOURS: int = 6
 
     # Notification Settings
     # Master switch - if false, no notifications are sent regardless of other settings

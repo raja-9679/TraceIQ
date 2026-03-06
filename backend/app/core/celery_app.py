@@ -39,7 +39,7 @@ celery_app.conf.beat_schedule = {
     },
     'check-stale-runs': {
         'task': 'app.tasks.result_aggregator.check_stale_runs',
-        'schedule': 60.0,  # Every minute
+        'schedule': 300.0,  # Every 5 minutes (was 60s - too aggressive for large suites)
     },
 }
 
