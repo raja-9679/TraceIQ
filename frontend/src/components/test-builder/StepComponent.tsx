@@ -1,8 +1,7 @@
 import React from 'react';
-import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, GripVertical, ArrowUp, ArrowDown, PlusCircle } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -89,261 +88,263 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
         updateParams('assertions', currentAssertions);
     };
 
-    return (
-        <Card className="mb-4 relative group hover:border-primary/50 transition-colors">
-            <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-300 cursor-move opacity-0 group-hover:opacity-100 transition-opacity">
-                <GripVertical size={20} />
-            </div>
-            <CardContent className="p-4 pl-10 flex flex-col gap-4">
-                <div className="flex items-start gap-4 w-full">
-                    <div className="flex-1 grid grid-cols-12 gap-4">
-                        {/* Action Type */}
-                        <div className="col-span-3">
-                            <Select
-                                value={step.type}
-                                onValueChange={(value) => updateStep(step.id, 'type', value)}
-                            >
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="Select action" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="goto">Go to URL</SelectItem>
-                                    <SelectItem value="click">Click</SelectItem>
-                                    <SelectItem value="fill">Fill Input</SelectItem>
-                                    <SelectItem value="check">Check Box</SelectItem>
-                                    <SelectItem value="switch-frame">Switch Frame</SelectItem>
-                                    <SelectItem value="expect-visible">Expect Visible</SelectItem>
-                                    <SelectItem value="expect-hidden">Expect Hidden</SelectItem>
-                                    <SelectItem value="expect-text">Expect Text</SelectItem>
-                                    <SelectItem value="expect-url">Expect URL</SelectItem>
-                                    <SelectItem value="hover">Hover</SelectItem>
-                                    <SelectItem value="select-option">Select Option</SelectItem>
-                                    <SelectItem value="press-key">Press Key</SelectItem>
-                                    <SelectItem value="screenshot">Take Screenshot</SelectItem>
-                                    <SelectItem value="scroll-to">Scroll To</SelectItem>
-                                    <SelectItem value="wait-timeout">Wait (ms)</SelectItem>
-                                    <SelectItem value="http-request">API Request</SelectItem>
-                                    <SelectItem value="feed-check">Feed Check</SelectItem>
-                                    <SelectItem value="extract-value">Extract Value</SelectItem>
-                                    <SelectItem value="extract-value">Extract Value</SelectItem>
-                                    <SelectItem value="run-script">Run Script</SelectItem>
-                                    <SelectItem value="assert">Assertion</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+    // Helper to get styling and icons per step type
+    const getStepMeta = (type: string) => {
+        switch (type) {
+            case 'goto': return { border: 'border-emerald-200', bg: 'bg-emerald-50 text-emerald-600', hue: 'emerald', icon: <Link2 size={18} />, label: 'Navigate' };
+            case 'click': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointerClick size={18} />, label: 'Click' };
+            case 'fill': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <TextCursorInput size={18} />, label: 'Fill Input' };
+            case 'check': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <CheckSquare size={18} />, label: 'Check Box' };
+            case 'expect-visible': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Eye size={18} />, label: 'Expect Visible' };
+            case 'expect-hidden': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
+            case 'expect-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Search size={18} />, label: 'Expect Text' };
+            case 'expect-url': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect URL' };
+            case 'hover': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
+            case 'press-key': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
+            case 'http-request': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <FileJson size={18} />, label: 'API Request' };
+            case 'feed-check': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Rss size={18} />, label: 'Feed Check' };
+            case 'run-script': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Code2 size={18} />, label: 'Run Script' };
+            case 'assert': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <CheckCircle2 size={18} />, label: 'Assertion' };
+            default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
+        }
+    };
 
-                        {/* Dynamic Fields based on Type */}
+    const meta = getStepMeta(step.type);
+
+    return (
+        <div className="relative group transition-all duration-300">
+            {/* Timeline Connectors & Number Badge */}
+            <div className="absolute left-[8px] sm:left-[24px] top-6 bottom-0 w-0.5 bg-slate-200 transition-colors group-hover:bg-indigo-100 -z-10 group-last:hidden" />
+            <div className="absolute left-0 sm:left-4 top-5 w-6 h-6 rounded-full bg-white border-2 border-slate-200 flex items-center justify-center shadow-sm z-10 transition-transform group-hover:scale-110 group-hover:border-indigo-400 group-hover:text-indigo-600 font-bold text-[10px] text-slate-400">
+                {index + 1}
+            </div>
+
+            {/* Main Node Card */}
+            <div className={`ml-8 sm:ml-[60px] bg-white rounded-2xl border ${meta.border} shadow-sm transition-all hover:shadow-md hover:border-${meta.hue}-300 group overflow-visible relative`}>
+                {/* Node Header & Core Inputs */}
+                <div className={`flex flex-col md:flex-row p-1.5 gap-2 relative bg-gradient-to-r from-${meta.hue}-50/30 to-white rounded-t-2xl md:rounded-2xl`}>
+                    {/* Action Selector Badge */}
+                    <div className="relative w-full md:w-48 shrink-0">
+                        <Select
+                            value={step.type}
+                            onValueChange={(value) => updateStep(step.id, 'type', value)}
+                        >
+                            <SelectTrigger className={`w-full h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm flex items-center px-4 hover:bg-slate-50 transition-colors`}>
+                                <div className={`w-8 h-8 rounded-lg ${meta.bg} flex items-center justify-center mr-3 shrink-0`}>
+                                    {meta.icon}
+                                </div>
+                                <span className="font-bold text-slate-700 truncate text-left">{meta.label}</span>
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[400px]">
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Navigation & Context</div>
+                                <SelectItem value="goto"><div className="flex items-center gap-2"><Link2 size={14} className="text-emerald-500"/> Go to URL</div></SelectItem>
+                                <SelectItem value="switch-frame"><div className="flex items-center gap-2"><SplitSquareHorizontal size={14} className="text-emerald-500"/> Switch Frame</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Interactions</div>
+                                <SelectItem value="click"><div className="flex items-center gap-2"><MousePointerClick size={14} className="text-indigo-500"/> Click Element</div></SelectItem>
+                                <SelectItem value="fill"><div className="flex items-center gap-2"><TextCursorInput size={14} className="text-indigo-500"/> Fill Input</div></SelectItem>
+                                <SelectItem value="check"><div className="flex items-center gap-2"><CheckSquare size={14} className="text-indigo-500"/> Check Box</div></SelectItem>
+                                <SelectItem value="hover"><div className="flex items-center gap-2"><MousePointer2 size={14} className="text-indigo-500"/> Hover</div></SelectItem>
+                                <SelectItem value="press-key"><div className="flex items-center gap-2"><Keyboard size={14} className="text-indigo-500"/> Press Key</div></SelectItem>
+                                <SelectItem value="scroll-to"><div className="flex items-center gap-2"><ArrowDownToLine size={14} className="text-indigo-500"/> Scroll To</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Assertions</div>
+                                <SelectItem value="expect-visible"><div className="flex items-center gap-2"><Eye size={14} className="text-cyan-500"/> Expect Visible</div></SelectItem>
+                                <SelectItem value="expect-hidden"><div className="flex items-center gap-2"><EyeOff size={14} className="text-cyan-500"/> Expect Hidden</div></SelectItem>
+                                <SelectItem value="expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-cyan-500"/> Expect Text</div></SelectItem>
+                                <SelectItem value="expect-url"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect URL</div></SelectItem>
+                                <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
+                                <SelectItem value="http-request"><div className="flex items-center gap-2"><FileJson size={14} className="text-amber-500"/> API Request</div></SelectItem>
+                                <SelectItem value="feed-check"><div className="flex items-center gap-2"><Rss size={14} className="text-amber-500"/> Feed Check</div></SelectItem>
+                                <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
+                                <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
+                                <SelectItem value="run-script"><div className="flex items-center gap-2"><Code2 size={14} className="text-rose-500"/> Run Script</div></SelectItem>
+                                <SelectItem value="screenshot"><div className="flex items-center gap-2"><Camera size={14} className="text-rose-500"/> Take Screenshot</div></SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Inputs Area */}
+                    <div className="flex-1 flex flex-col sm:flex-row gap-2">
                         {step.type === 'http-request' ? (
                             <>
-                                <div className="col-span-2">
-                                    <Select
-                                        value={step.params?.method || 'GET'}
-                                        onValueChange={(value) => updateParams('method', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Method" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="GET">GET</SelectItem>
-                                            <SelectItem value="POST">POST</SelectItem>
-                                            <SelectItem value="PUT">PUT</SelectItem>
-                                            <SelectItem value="DELETE">DELETE</SelectItem>
-                                            <SelectItem value="PATCH">PATCH</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="col-span-7">
-                                    <Input
-                                        placeholder="API URL (e.g., https://api.example.com/users)"
-                                        value={step.value || ''}
-                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                    />
-                                </div>
-                            </>
-                        ) : step.type === 'feed-check' ? (
-                            <div className="col-span-9">
+                                <Select
+                                    value={step.params?.method || 'GET'}
+                                    onValueChange={(value) => updateParams('method', value)}
+                                >
+                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm font-mono font-bold text-${meta.hue}-600`}>
+                                        <SelectValue placeholder="Method" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="GET">GET</SelectItem>
+                                        <SelectItem value="POST">POST</SelectItem>
+                                        <SelectItem value="PUT">PUT</SelectItem>
+                                        <SelectItem value="DELETE">DELETE</SelectItem>
+                                        <SelectItem value="PATCH">PATCH</SelectItem>
+                                    </SelectContent>
+                                </Select>
                                 <Input
-                                    placeholder="Feed URL (RSS/Atom/XML)"
+                                    placeholder="API Endpoint (e.g. https://api.example.com/v1/users)"
                                     value={step.value || ''}
                                     onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                    className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
-                            </div>
+                            </>
+                        ) : step.type === 'feed-check' ? (
+                            <Input
+                                placeholder="Feed URL (RSS/Atom/JSON)"
+                                value={step.value || ''}
+                                onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                className={`w-full min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                            />
                         ) : step.type === 'run-script' ? (
                             <>
-                                <div className="col-span-2">
-                                    <Select
-                                        value={step.params?.language || 'javascript'}
-                                        onValueChange={(value) => updateParams('language', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Language" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="javascript">JavaScript</SelectItem>
-                                            <SelectItem value="python">Python</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className="col-span-4">
-                                    <Input
-                                        placeholder={step.params?.language === 'python' ? "# Variables: context['variables']\n# Failure: raise Exception('Reason')\nprint('Log')\nreturn 'Result'" : "// Variables: variables['name']\n// Failure: throw new Error('Reason')\nreturn document.title;"}
-                                        value={step.value || ''}
-                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                    />
-                                </div>
-                                <div className="col-span-3">
-                                    <Input
-                                        placeholder="Store Result in (Variable)"
-                                        value={step.params?.variableName || ''}
-                                        onChange={(e) => updateParams('variableName', e.target.value)}
-                                    />
-                                </div>
+                                <Select
+                                    value={step.params?.language || 'javascript'}
+                                    onValueChange={(value) => updateParams('language', value)}
+                                >
+                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm font-mono font-bold text-slate-700`}>
+                                        <SelectValue placeholder="Lang" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="javascript">Node.js</SelectItem>
+                                        <SelectItem value="python">Python</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Input
+                                    placeholder="Inline script snippet (optional)"
+                                    value={step.value || ''}
+                                    onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                    className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono text-slate-500 italic`}
+                                />
+                                <Input
+                                    placeholder="Store in var..."
+                                    value={step.params?.variableName || ''}
+                                    onChange={(e) => updateParams('variableName', e.target.value)}
+                                    className={`w-32 shrink-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                />
                             </>
                         ) : step.type === 'assert' ? (
-                            <>
-                                <div className="col-span-3">
-                                    <Input
-                                        placeholder="Selector"
-                                        value={step.selector || ''}
-                                        onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
-                                    />
-                                </div>
-                                <div className="col-span-2">
-                                    <Select
-                                        value={step.params?.source || 'text'}
-                                        onValueChange={(value) => updateParams('source', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Source" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="text">Text Content</SelectItem>
-                                            <SelectItem value="value">Input Value</SelectItem>
-                                            <SelectItem value="attribute">Attribute</SelectItem>
-                                            <SelectItem value="count">Element Count</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
+                            <div className="flex-1 flex gap-2 w-full flex-wrap sm:flex-nowrap">
+                                <Input
+                                    placeholder="Selector/Location"
+                                    value={step.selector || ''}
+                                    onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
+                                    className={`flex-1 min-w-[150px] h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono text-sm`}
+                                />
+                                <Select
+                                    value={step.params?.source || 'text'}
+                                    onValueChange={(value) => updateParams('source', value)}
+                                >
+                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm font-bold text-slate-700`}>
+                                        <SelectValue placeholder="Source" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="text">Text Content</SelectItem>
+                                        <SelectItem value="value">Input Value</SelectItem>
+                                        <SelectItem value="attribute">Attribute</SelectItem>
+                                        <SelectItem value="count">Count</SelectItem>
+                                    </SelectContent>
+                                </Select>
 
                                 {step.params?.source === 'attribute' && (
-                                    <div className="col-span-2">
-                                        <Input
-                                            placeholder="Attr Name"
-                                            value={step.params?.attribute || ''}
-                                            onChange={(e) => updateParams('attribute', e.target.value)}
-                                        />
-                                    </div>
+                                    <Input
+                                        placeholder="Attr"
+                                        value={step.params?.attribute || ''}
+                                        onChange={(e) => updateParams('attribute', e.target.value)}
+                                        className={`w-28 shrink-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                    />
                                 )}
 
-                                <div className="col-span-2">
-                                    <Select
-                                        value={step.params?.operator || 'equals'}
-                                        onValueChange={(value) => updateParams('operator', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Operator" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="equals">Equals</SelectItem>
-                                            <SelectItem value="contains">Contains</SelectItem>
-                                            <SelectItem value="matches">Matches (Regex)</SelectItem>
-                                            <SelectItem value="gt">Number &gt;</SelectItem>
-                                            <SelectItem value="lt">Number &lt;</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                <div className={step.params?.source === 'attribute' ? "col-span-3" : "col-span-2"}>
-                                    <Input
-                                        placeholder="Expected Value"
-                                        value={step.value || ''}
-                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                    />
-                                </div>
-                            </>
+                                <Select
+                                    value={step.params?.operator || 'equals'}
+                                    onValueChange={(value) => updateParams('operator', value)}
+                                >
+                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm font-bold text-slate-700`}>
+                                        <SelectValue placeholder="Op" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="equals">Equals</SelectItem>
+                                        <SelectItem value="contains">Contains</SelectItem>
+                                        <SelectItem value="matches">Regex</SelectItem>
+                                        <SelectItem value="gt">Greater &gt;</SelectItem>
+                                        <SelectItem value="lt">Less &lt;</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                
+                                <Input
+                                    placeholder="Expected"
+                                    value={step.value || ''}
+                                    onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                    className={`flex-1 min-w-[100px] h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-emerald-50 text-emerald-700 font-bold px-4`}
+                                />
+                            </div>
                         ) : (
                             /* Default UI for other steps */
-                            <>
-                                <div className={`${step.type === 'goto' ? 'col-span-6' :
-                                    step.type === 'expect-url' ? 'col-span-9' :
-                                        (step.type === 'fill' || step.type === 'expect-text' || step.type === 'select-option' || step.type === 'extract-value') ? 'col-span-5' :
-                                            'col-span-9'
-                                    }`}>
-                                    <Input
-                                        placeholder={
-                                            step.type === 'goto' ? "https://example.com" :
-                                                step.type === 'press-key' ? "Key (e.g., Enter)" :
-                                                    step.type === 'wait-timeout' ? "Timeout in ms" :
-                                                        step.type === 'screenshot' ? "Screenshot name" :
-                                                            "Selector (e.g., #submit-btn)"
-                                        }
-                                        value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? step.value : step.selector) || ''}
-                                        onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? 'value' : 'selector'), e.target.value)}
-                                    />
-                                </div>
+                            <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
+                                <Input
+                                    placeholder={
+                                        step.type === 'goto' ? "https://example.com" :
+                                            step.type === 'press-key' ? "Key (e.g., Enter)" :
+                                                step.type === 'wait-timeout' ? "Timeout in ms" :
+                                                    step.type === 'screenshot' ? "Screenshot name" :
+                                                        "Selector (e.g., #submit-btn)"
+                                    }
+                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? step.value : step.selector) || ''}
+                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? 'value' : 'selector'), e.target.value)}
+                                    className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                />
 
                                 {step.type === 'extract-value' && (
-                                    <div className="col-span-4">
-                                        <Input
-                                            placeholder="Variable Name"
-                                            value={step.value || ''}
-                                            onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                        />
-                                    </div>
+                                    <Input
+                                        placeholder="Variable Name"
+                                        value={step.value || ''}
+                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                        className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                    />
                                 )}
 
                                 {step.type === 'goto' && (
-                                    <div className="col-span-3">
-                                        <Select
-                                            value={step.params?.wait_until || 'domcontentloaded'}
-                                            onValueChange={(value) => updateParams('wait_until', value)}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Wait Until" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="domcontentloaded">DOM Loaded</SelectItem>
-                                                <SelectItem value="load">Fully Loaded</SelectItem>
-                                                <SelectItem value="networkidle">Network Idle</SelectItem>
-                                                <SelectItem value="commit">Commit</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                    <Select
+                                        value={step.params?.wait_until || 'domcontentloaded'}
+                                        onValueChange={(value) => updateParams('wait_until', value)}
+                                    >
+                                        <SelectTrigger className={`w-36 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm text-slate-600`}>
+                                            <SelectValue placeholder="Wait Until" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="domcontentloaded">DOM Loaded</SelectItem>
+                                            <SelectItem value="load">Fully Loaded</SelectItem>
+                                            <SelectItem value="networkidle">Network Idle</SelectItem>
+                                            <SelectItem value="commit">Commit</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 )}
 
                                 {(step.type === 'fill' || step.type === 'expect-text' || step.type === 'select-option') && (
-                                    <div className="col-span-4">
-                                        <Input
-                                            placeholder={step.type === 'fill' ? "Value to type" : step.type === 'select-option' ? "Option value" : "Expected text"}
-                                            value={step.value || ''}
-                                            onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                        />
-                                    </div>
+                                    <Input
+                                        placeholder={step.type === 'fill' ? "Value to format" : step.type === 'select-option' ? "Option value" : "Expected text"}
+                                        value={step.value || ''}
+                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                        className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                    />
                                 )}
-                            </>
+                            </div>
                         )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => moveStep(index, 'up')} disabled={isFirst}><ArrowUp size={16} /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => moveStep(index, 'down')} disabled={isLast}><ArrowDown size={16} /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => insertStep(index)}><PlusCircle size={16} /></Button>
-                        <div className="w-px h-6 bg-gray-200 mx-1"></div>
-                        <Button variant="ghost" size="icon" className="text-red-500" onClick={() => removeStep(step.id)}><Trash2 size={18} /></Button>
                     </div>
                 </div>
 
                 {/* Extended Configuration for API/Feed/Script */}
                 {(step.type === 'http-request' || step.type === 'feed-check' || step.type === 'run-script') && (
-                    <div className="w-full bg-slate-50 p-4 rounded-md border border-slate-200 space-y-4">
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 space-y-4 rounded-b-2xl">
                         <div className="space-y-4">
                             {/* Headers & Params - Hide for Script */}
                             {step.type !== 'run-script' && (
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
-                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Headers (JSON)</label>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><FileJson size={14} className="text-amber-500" /> Headers</label>
                                         <textarea
-                                            className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
+                                            className="w-full h-24 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-emerald-600 placeholder:text-slate-400 transition-colors shadow-inner drop-shadow-sm resize-none"
                                             placeholder='{"Authorization": "Bearer token"}'
                                             value={localHeaders}
                                             onChange={(e) => {
@@ -367,10 +368,10 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         <p className="text-[10px] text-gray-400 mt-1 italic">Merged with module-level headers (step headers override)</p>
                                     </div>
                                     <div>
-                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Query Parameters (JSON)</label>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Link2 size={14} className="text-amber-500" /> Query Parameters</label>
                                         <textarea
-                                            className="w-full h-24 p-2 text-xs font-mono border rounded-md bg-white"
-                                            placeholder='{"key": "value"}'
+                                            className="w-full h-24 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-indigo-600 placeholder:text-slate-400 transition-colors shadow-inner drop-shadow-sm resize-none"
+                                            placeholder='{"page": "1"}'
                                             value={localParams}
                                             onChange={(e) => {
                                                 setLocalParams(e.target.value);
@@ -399,9 +400,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
 
                             {step.type === 'run-script' && (
                                 <div>
-                                    <label className="text-xs font-medium text-gray-500 mb-1 block">Sort Code</label>
+                                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Code2 size={14} className="text-rose-500" /> Source Code</label>
                                     <textarea
-                                        className="w-full h-40 p-2 text-xs font-mono border rounded-md bg-white text-slate-800"
+                                        className="w-full h-40 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-rose-500/50 rounded-xl bg-white text-rose-600 placeholder:text-slate-400 transition-colors shadow-inner drop-shadow-sm resize-none"
                                         placeholder={step.params?.language === 'python' ?
                                             "def run(context):\n    # Access variables via context\n    # context['variables']['myVar']\n    print('Hello World')\n    return True" :
                                             "// JavaScript code to execute in browser\nreturn document.title;"}
@@ -420,12 +421,12 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             {step.type === 'http-request' && (
                                 <div className="grid grid-cols-3 gap-4">
                                     <div className="col-span-1">
-                                        <label className="text-xs font-medium text-gray-500 mb-1 block">Response Format</label>
+                                        <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">Response</label>
                                         <Select
                                             value={step.params?.response_format || 'json'}
                                             onValueChange={(value) => updateParams('response_format', value)}
                                         >
-                                            <SelectTrigger className="h-8 text-xs bg-white">
+                                            <SelectTrigger className="h-10 text-xs bg-white border-slate-200 text-slate-700 font-medium shadow-sm rounded-lg">
                                                 <SelectValue placeholder="Format" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -437,9 +438,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     </div>
                                     {(step.params?.method && step.params.method !== 'GET') && (
                                         <div className="col-span-2">
-                                            <label className="text-xs font-medium text-gray-500 mb-1 block">Request Body</label>
+                                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">Payload Body</label>
                                             <textarea
-                                                className="w-full h-20 p-2 text-xs font-mono border rounded-md bg-white"
+                                                className="w-full h-24 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-slate-700 placeholder:text-slate-400 transition-colors shadow-inner drop-shadow-sm resize-none"
                                                 placeholder="Request Body (JSON/Text)"
                                                 value={localBody}
                                                 onChange={(e) => {
@@ -453,9 +454,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             )}
                         </div>
 
-                        <div>
-                            <div className="flex items-center justify-between mb-2">
-                                <label className="text-xs font-medium text-gray-500">Assertions</label>
+                        <div className="pt-4 border-t border-slate-200">
+                            <div className="flex items-center justify-between mb-4">
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center gap-1.5"><CheckCircle2 size={14} className="text-cyan-500" /> Lifecycle Assertions</label>
                                 <div className="flex gap-2">
                                     {(step.type === 'feed-check' || (step.type === 'http-request' && step.params?.response_format === 'xml')) && (
                                         <FeedAssertionGeneratorModal
@@ -471,17 +472,17 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             }}
                                         />
                                     )}
-                                    <Button variant="outline" size="sm" className="h-6 text-xs" onClick={addAssertion}>+ Add Assertion</Button>
+                                    <Button variant="outline" size="sm" className="h-8 text-xs bg-white border-indigo-200 text-indigo-600 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors border-dashed" onClick={addAssertion}><PlusCircle className="mr-1.5 h-3.5 w-3.5"/> Assertion</Button>
                                 </div>
                             </div>
-                            <div className="space-y-2">
+                            <div className="space-y-3">
                                 {step.params?.assertions?.map((assertion: any, idx: number) => (
-                                    <div key={idx} className="flex items-center gap-2">
+                                    <div key={idx} className="flex flex-wrap sm:flex-nowrap items-center gap-2 bg-slate-50/50 p-2 rounded-xl border border-slate-200 shadow-sm">
                                         <Select
                                             value={assertion.type}
                                             onValueChange={(val) => updateAssertion(idx, 'type', val)}
                                         >
-                                            <SelectTrigger className="w-[120px] h-8 text-xs">
+                                            <SelectTrigger className="w-full sm:w-[130px] shrink-0 h-10 border-slate-200 bg-white text-slate-700 rounded-lg shadow-sm font-medium">
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -510,40 +511,38 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
 
                                         {(assertion.type === 'json-path' || assertion.type === 'xpath') && (
                                             <Input
-                                                className="h-8 text-xs flex-1"
-                                                placeholder={assertion.type === 'json-path' ? "Path (e.g. data.id)" : "XPath (e.g. //title)"}
+                                                className="h-10 border-slate-200 bg-white text-slate-700 font-mono text-sm placeholder:text-slate-400 rounded-lg min-w-0 flex-[2] font-medium shadow-sm"
+                                                placeholder={assertion.type === 'json-path' ? "e.g. data.id" : "e.g. //title"}
                                                 value={assertion.path || ''}
                                                 onChange={(e) => updateAssertion(idx, 'path', e.target.value)}
                                             />
                                         )}
 
                                         {assertion.type === 'json-schema' ? (
-                                            <div className="flex-1 space-y-2">
+                                            <div className="flex-1 min-w-[200px] flex items-start gap-2">
                                                 <textarea
-                                                    className="w-full h-20 p-2 text-xs font-mono border rounded-md"
-                                                    placeholder='{"type": "object", "properties": {...}}'
+                                                    className="flex-1 w-full h-10 min-h-[40px] p-2 text-xs font-mono font-medium border border-slate-200 bg-white text-slate-700 rounded-lg resize-y focus:outline-none focus:border-cyan-500/50 shadow-sm"
+                                                    placeholder='{"type": "object"}'
                                                     value={assertion.value || ''}
                                                     onChange={(e) => updateAssertion(idx, 'value', e.target.value)}
                                                 />
-                                                <div className="flex justify-end">
-                                                    <SchemaGeneratorModal
-                                                        onGenerate={(schema) => updateAssertion(idx, 'value', schema)}
-                                                    />
-                                                </div>
+                                                <SchemaGeneratorModal
+                                                    onGenerate={(schema) => updateAssertion(idx, 'value', schema)}
+                                                />
                                             </div>
                                         ) : (
-                                            <>
+                                            <div className="flex-1 flex gap-2 min-w-[200px]">
                                                 <Select
                                                     value={assertion.operator || 'equals'}
                                                     onValueChange={(val) => updateAssertion(idx, 'operator', val)}
                                                 >
-                                                    <SelectTrigger className="w-[100px] h-8 text-xs">
+                                                    <SelectTrigger className="w-[110px] shrink-0 h-10 border-slate-200 bg-white text-slate-700 rounded-lg font-bold shadow-sm">
                                                         <SelectValue />
                                                     </SelectTrigger>
                                                     <SelectContent>
                                                         <SelectItem value="equals">Equals</SelectItem>
                                                         <SelectItem value="contains">Contains</SelectItem>
-                                                        <SelectItem value="matches">Matches (Regex)</SelectItem>
+                                                        <SelectItem value="matches">Regex</SelectItem>
                                                         {(assertion.type === 'json-path' || assertion.type === 'xpath') && (
                                                             <>
                                                                 <SelectItem value="exists">Exists</SelectItem>
@@ -554,28 +553,41 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                 </Select>
 
                                                 <Input
-                                                    className="h-8 text-xs flex-1"
-                                                    placeholder="Expected Value"
+                                                    className="h-10 border-slate-200 bg-white font-bold text-emerald-600 font-mono text-sm placeholder:text-slate-400 rounded-lg min-w-0 flex-1 disabled:opacity-50 shadow-sm"
+                                                    placeholder="Expected"
                                                     value={assertion.value || ''}
                                                     onChange={(e) => updateAssertion(idx, 'value', e.target.value)}
                                                     disabled={assertion.operator === 'exists' || assertion.operator === 'optional'}
                                                 />
-                                            </>
+                                            </div>
                                         )}
 
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => removeAssertion(idx)}>
+                                        <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors" onClick={() => removeAssertion(idx)}>
                                             <Trash2 size={14} />
                                         </Button>
                                     </div>
                                 ))}
                                 {(!step.params?.assertions || step.params.assertions.length === 0) && (
-                                    <div className="text-xs text-gray-400 italic">No assertions defined.</div>
+                                    <div className="text-xs text-slate-500 italic bg-slate-100/50 p-4 rounded-xl border border-dashed border-slate-200 text-center">No lifecycle assertions defined. API status checks automatically default to 200 without assertion records.</div>
                                 )}
                             </div>
                         </div>
                     </div>
                 )}
-            </CardContent>
-        </Card >
+            </div>
+
+            {/* Quick Actions overlay via group hover - Dropped below step to avoid input overlap */}
+            <div className="absolute -bottom-4 right-4 items-center flex pointer-events-none z-30 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0">
+                <div className="bg-slate-900 border border-slate-700 shadow-xl rounded-full px-2 py-1 flex flex-row items-center gap-1 pointer-events-auto transform transition-transform">
+                    <Button variant="ghost" size="icon" title="Move Up" onClick={() => moveStep(index, 'up')} disabled={isFirst} className="h-7 w-7 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"><ArrowUp size={14} /></Button>
+                    <div className="h-4 w-px bg-slate-700 my-auto mx-0.5" />
+                    <Button variant="ghost" size="icon" title="Move Down" onClick={() => moveStep(index, 'down')} disabled={isLast} className="h-7 w-7 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"><ArrowDown size={14} /></Button>
+                    <div className="h-4 w-px bg-slate-700 my-auto mx-0.5" />
+                    <Button variant="ghost" size="icon" title="Insert Step Below" onClick={() => insertStep(index)} className="h-7 w-7 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-700"><CheckSquare size={14} className="rotate-180" /></Button>
+                    <div className="h-4 w-px bg-slate-700 my-auto mx-0.5" />
+                    <Button variant="ghost" size="icon" title="Delete Step" onClick={() => removeStep(step.id)} className="h-7 w-7 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-700"><Trash2 size={13} /></Button>
+                </div>
+            </div>
+        </div>
     );
 };
