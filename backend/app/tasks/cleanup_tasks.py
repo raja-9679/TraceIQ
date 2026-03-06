@@ -12,7 +12,7 @@ from sqlmodel import create_engine
 sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
 sync_engine = create_engine(sync_db_url, echo=True)
 
-TIMEOUT_MINUTES = getattr(settings, 'TEST_TIMEOUT_MINUTES', 30)
+TIMEOUT_MINUTES = getattr(settings, 'STALE_RUN_INACTIVITY_MINUTES', 15)
 
 
 @celery_app.task(name="app.tasks.cleanup_tasks.cleanup_stuck_tests")

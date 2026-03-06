@@ -120,21 +120,29 @@ export default function TestSuites() {
     const handleImportSuite = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
         if (!file) return;
+        event.target.value = '';
 
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const content = e.target?.result as string;
-                const data = JSON.parse(content);
-                await importTestSuite(undefined, data, activeProjectId ?? undefined);
-                queryClient.invalidateQueries({ queryKey: ['suites'] });
-                toast.success('Suite imported successfully');
-            } catch (error) {
+        try {
+            const content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target?.result as string);
+                reader.onerror = () => reject(new Error('Failed to read file'));
+                reader.readAsText(file);
+            });
+            const data = JSON.parse(content);
+            await importTestSuite(undefined, data, activeProjectId ?? undefined);
+            queryClient.invalidateQueries({ queryKey: ['suites'] });
+            toast.success('Suite imported successfully');
+        } catch (error: any) {
+            console.error('[ImportSuiteRoot] error:', error);
+            const responseData = error?.response?.data;
+            const detail = responseData?.detail ?? responseData ?? error?.message;
+            if (detail && typeof detail === 'string') {
+                toast.error('Import failed', { description: detail, duration: 8000 });
+            } else {
                 toast.error('Failed to import suite');
             }
-        };
-        reader.readAsText(file);
-        event.target.value = '';
+        }
     };
 
     if (isLoading) return <div className="p-8">Loading suites...</div>;
