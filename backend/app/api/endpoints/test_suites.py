@@ -291,13 +291,33 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
     await session.commit()
     return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted"}
 
-async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], project_id: int, session: AsyncSession, user_id: int):
+async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], project_id: int, session: AsyncSession, user_id: int, check_clash: bool = True):
+    suite_name = data.get("name", "Imported Suite")
+
+    if check_clash:
+        # Name-clash check: reject if a sibling module with this name already exists
+        query = select(TestSuite).where(
+            TestSuite.name == suite_name,
+            TestSuite.project_id == project_id,
+        )
+        if parent_id is None:
+            query = query.where(TestSuite.parent_id.is_(None))
+        else:
+            query = query.where(TestSuite.parent_id == parent_id)
+        
+        clash_result = await session.exec(query)
+        if clash_result.first():
+            raise HTTPException(
+                status_code=409,
+                detail=f"A module named '{suite_name}' already exists here. Import cancelled to avoid overwriting existing data."
+            )
+
     execution_mode = data.get("execution_mode", ExecutionMode.CONTINUOUS)
     if data.get("sub_modules"):
         execution_mode = ExecutionMode.SEPARATE
 
     new_suite = TestSuite(
-        name=data.get("name", "Imported Suite"),
+        name=suite_name,
         description=data.get("description"),
         execution_mode=execution_mode,
         settings=data.get("settings", {"headers": {}, "params": {}}),
@@ -309,7 +329,7 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
     )
     session.add(new_suite)
     await session.flush()
-    
+
     for case_data in data.get("test_cases", []):
         new_case = TestCase(
             name=case_data.get("name"),
@@ -320,10 +340,10 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
             updated_by_id=user_id
         )
         session.add(new_case)
-        
+
     for sub_data in data.get("sub_modules", []):
-        await create_suite_from_data(sub_data, new_suite.id, project_id, session, user_id)
-        
+        await create_suite_from_data(sub_data, new_suite.id, project_id, session, user_id, check_clash=False)
+
     return new_suite
 
 async def get_suite_export_data(suite_id: int, session: AsyncSession):

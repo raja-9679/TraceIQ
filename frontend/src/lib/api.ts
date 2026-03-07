@@ -56,6 +56,8 @@ export interface TestRun {
         status: "pending" | "running" | "passed" | "failed" | "error";
         duration_ms: number;
         error_message?: string;
+        video_url?: string;
+        trace_url?: string;
         screenshots?: string[];
         response_status?: number;
         response_headers?: Record<string, string>;

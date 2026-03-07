@@ -252,6 +252,15 @@ export class JobQueue {
         
         // Update run status to running
         await this.redis.hset(`runs:${job.run_id}:progress`, 'status', 'running');
+
+        // Record the first time any worker picks up a job for this run.
+        // HSETNX is idempotent: only writes if the field doesn't exist yet,
+        // so parallel workers racing to pick up jobs won't overwrite it.
+        await this.redis.hsetnx(
+            `runs:${job.run_id}:progress`,
+            'worker_started_at',
+            new Date().toISOString()
+        );
         
         return { streamId, job };
     }

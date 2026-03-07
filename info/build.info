@@ -8,3 +8,8 @@ docker compose -f ../infrastructure/docker-compose.yml exec -u postgres db psql 
 
 
 docker exec infrastructure-postgres-1 psql -U user -d quality_intelligence -c "ALTER TABLE testrun ADD COLUMN IF NOT EXISTS ai_analysis JSON;"
+
+# deelet volume and build only one service
+docker compose -f docker-compose.distributed.yml rm -f -v backend && \
+docker compose -f docker-compose.distributed.yml build backend && \
+docker compose -f docker-compose.distributed.yml up -d backend

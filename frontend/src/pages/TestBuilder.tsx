@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Plus, Save, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson } from "lucide-react";
 import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -275,16 +273,34 @@ export default function TestBuilder() {
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-4xl mx-auto space-y-6"
+            className="w-full"
         >
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-gray-900">{isEditing ? 'Edit Test Case' : 'Create Test Case'}</h1>
-                    <p className="text-gray-500">Design your automated test sequence{isDirty && <span className="text-amber-600 ml-2">(unsaved changes)</span>}</p>
+            {/* ── Sticky Frosted Header ── */}
+            <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm mb-8 -mx-6 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
+                <div className="flex items-center gap-4 flex-1">
+                    <Button variant="ghost" size="icon" onClick={handleCancel} className="shrink-0 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full h-10 w-10">
+                        <ArrowLeft className="h-5 w-5" />
+                    </Button>
+                    <div className="flex-1 max-w-2xl">
+                        <p className="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-1 ml-1">{isEditing ? 'Edit Test Case' : 'New Test Case'}</p>
+                        <Input
+                            placeholder="Enter Test Case Name..."
+                            value={testName}
+                            onChange={(e) => setTestName(e.target.value)}
+                            className="text-2xl font-black text-slate-900 border-none shadow-none bg-transparent hover:bg-slate-50 focus-visible:ring-indigo-500 rounded-xl px-2 h-12 transition-colors placeholder:text-slate-300"
+                        />
+                    </div>
                 </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleCancel}>Cancel</Button>
-                    <Button onClick={() => saveMutation.mutate()} disabled={!testName || steps.length === 0 || saveMutation.isPending}>
+                <div className="flex items-center gap-3 shrink-0">
+                    {isDirty && <span className="text-xs font-bold font-mono text-amber-500 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 mr-2 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div> Unsaved Changes</span>}
+                    <Button variant="outline" onClick={handleCancel} className="rounded-xl font-semibold text-slate-700 bg-white hover:bg-slate-50 border-slate-200 shadow-sm h-11 px-6 transition-all hidden sm:flex">
+                        Cancel
+                    </Button>
+                    <Button 
+                        onClick={() => saveMutation.mutate()} 
+                        disabled={!testName || steps.length === 0 || saveMutation.isPending}
+                        className="rounded-xl font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 h-11 px-8 transition-all"
+                    >
                         {saveMutation.isPending ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -299,77 +315,86 @@ export default function TestBuilder() {
                 </div>
             </div>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Test Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor="name">Test Name</Label>
-                        <Input
-                            id="name"
-                            placeholder="e.g., Verify Login Flow"
-                            value={testName}
-                            onChange={(e) => setTestName(e.target.value)}
-                        />
+            <div className="max-w-4xl mx-auto pb-24">
+                {/* ── Test Steps Canvas ── */}
+                <div className="mb-10">
+                    <div className="flex items-center justify-between mb-8 px-2">
+                        <div>
+                            <h2 className="text-2xl font-extrabold text-slate-900">Execution Timeline</h2>
+                            <p className="text-slate-500 text-sm mt-1">Design the sequence of actions and assertions.</p>
+                        </div>
                     </div>
-                </CardContent>
-            </Card>
 
-            <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-semibold">Test Steps</h2>
-                    <div className="flex gap-2">
-                        <Button variant="secondary" size="sm" onClick={() => addStep('goto')}>+ URL</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('click')}>+ Click</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('fill')}>+ Fill</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('expect-visible')}>+ Assert</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('hover')}>+ Hover</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('press-key')}>+ Key</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('http-request')}>+ API</Button>
-                        <Button variant="secondary" size="sm" onClick={() => addStep('feed-check')}>+ Feed</Button>
+                    <div className="relative pl-4 md:pl-10">
+                        {/* Vertical Timeline Line */}
+                        {steps.length > 0 && (
+                            <div className="absolute left-[39px] md:left-[63px] top-6 bottom-0 w-0.5 bg-slate-200 shadow-inner rounded-full" />
+                        )}
+
+                        {steps.length === 0 ? (
+                            <div className="text-center py-20 px-6 rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                                <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-sm border border-slate-100">
+                                    <Plus className="h-8 w-8 text-slate-300" />
+                                </div>
+                                <h3 className="text-lg font-bold text-slate-700 mb-1">No execution steps</h3>
+                                <p className="text-slate-500 max-w-sm mx-auto">Start building your test case by adding a navigation step below.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6">
+                                <AnimatePresence mode='popLayout'>
+                                    {steps.map((step, index) => (
+                                        <motion.div
+                                            key={step.id}
+                                            layout
+                                            initial={{ opacity: 0, x: -20, scale: 0.95 }}
+                                            animate={{ opacity: 1, x: 0, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.95, filter: 'blur(4px)' }}
+                                            transition={{ duration: 0.2 }}
+                                        >
+                                            <StepComponent
+                                                step={step}
+                                                index={index}
+                                                updateStep={updateStep}
+                                                removeStep={removeStep}
+                                                moveStep={moveStep}
+                                                insertStep={insertStep}
+                                                isFirst={index === 0}
+                                                isLast={index === steps.length - 1}
+                                            />
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                            </div>
+                        )}
                     </div>
                 </div>
 
-                <div className="bg-gray-50 p-4 rounded-lg min-h-[200px] border border-dashed border-gray-300">
-                    {steps.length === 0 ? (
-                        <div className="text-center py-10 text-gray-400">
-                            No steps added yet. Start by adding a "Go to URL" step.
-                        </div>
-                    ) : (
-                        <AnimatePresence mode='popLayout'>
-                            {steps.map((step, index) => (
-                                <motion.div
-                                    key={step.id}
-                                    layout
-                                    initial={{ opacity: 0, x: -20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: 20 }}
-                                >
-                                    <StepComponent
-                                        step={step}
-                                        index={index}
-                                        updateStep={updateStep}
-                                        removeStep={removeStep}
-                                        moveStep={moveStep}
-                                        insertStep={insertStep}
-                                        isFirst={index === 0}
-                                        isLast={index === steps.length - 1}
-                                    />
-                                </motion.div>
-                            ))}
-                        </AnimatePresence>
-                    )}
-
-                    <Button
-                        variant="outline"
-                        className="w-full mt-4 border-dashed"
-                        onClick={() => addStep()}
-                    >
-                        <Plus className="mr-2 h-4 w-4" /> Add Next Step
-                    </Button>
+                {/* ── Add Step Floating Bar ── */}
+                <div className="fixed sm:sticky bottom-6 sm:bottom-8 left-1/2 sm:left-auto sm:translate-x-0 -translate-x-1/2 z-30 w-full sm:w-auto px-4 sm:px-0 pointer-events-none">
+                    <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800 p-2 sm:p-2.5 rounded-3xl sm:rounded-full shadow-2xl flex flex-wrap sm:flex-nowrap justify-center gap-1.5 sm:gap-2 max-w-full sm:max-w-fit mx-auto pointer-events-auto">
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('goto')}>
+                            <Link2 className="mr-1.5 sm:mr-2 h-4 w-4 text-emerald-400" /> Navigate
+                        </Button>
+                        <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('click')}>
+                            <MousePointerClick className="mr-1.5 sm:mr-2 h-4 w-4 text-indigo-400" /> Click
+                        </Button>
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('fill')}>
+                            <TextCursorInput className="mr-1.5 sm:mr-2 h-4 w-4 text-indigo-400" /> Fill
+                        </Button>
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('expect-visible')}>
+                            <CheckCircle2 className="mr-1.5 sm:mr-2 h-4 w-4 text-cyan-400" /> Assert
+                        </Button>
+                        <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('http-request')}>
+                            <FileJson className="mr-1.5 sm:mr-2 h-4 w-4 text-amber-400" /> API
+                        </Button>
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('run-script')}>
+                            <Code2 className="mr-1.5 sm:mr-2 h-4 w-4 text-rose-400" /> Script
+                        </Button>
+                    </div>
                 </div>
             </div>
-        </motion.div >
+        </motion.div>
     );
 }
