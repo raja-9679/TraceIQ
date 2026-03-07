@@ -6,8 +6,21 @@ This Celery task:
 2. Creates TestCaseResult records
 3. Updates TestRun progress and status
 4. Publishes real-time updates via WebSocket
+
+Staleness Detection Strategy
+----------------------------
+A run is considered "stuck" ONLY if no new job result has arrived within
+STALE_RUN_INACTIVITY_MINUTES (default 15 min). Large suites (700+ tests)
+may legitimately run for hours if the worker pool is small — they must NOT
+be killed purely based on wall-clock age.
+
+Every time a result is processed, we record `last_progress_at` in Redis:
+    HSET runs:{id}:progress last_progress_at <iso-timestamp>
+
+check_stale_runs() reads this field to decide whether a run is inactive.
 """
 import json
+from datetime import datetime
 from typing import Dict, Any, Optional
 import redis
 from sqlmodel import Session, create_engine, select
@@ -126,18 +139,35 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
         # All jobs complete - finalize run
         if run.failed_tests > 0:
             run.status = TestStatus.FAILED
+            # Clear stale timeout error_message; the real failures are in
+            # individual TestCaseResult records.
+            run.error_message = None
         else:
             run.status = TestStatus.PASSED
+            # Clear any stale error_message (e.g. from a previous timeout
+            # marking by check_stale_runs that was later resolved by
+            # arriving results).
+            run.error_message = None
 
-        # Calculate wall-clock duration (actual elapsed time)
-        # This reflects parallel execution - NOT sum of individual test times
+        # Calculate wall-clock duration from when the first worker actually
+        # picked up a job (worker_started_at), not from queue dispatch time
+        # (created_at). Falls back to created_at if the field is absent.
         from datetime import datetime, timezone
-        if run.created_at:
+        worker_started_str = progress.get('worker_started_at') if progress else None
+        start_ref = None
+        if worker_started_str:
+            try:
+                start_ref = datetime.fromisoformat(worker_started_str)
+            except ValueError:
+                start_ref = None
+        if start_ref is None and run.created_at:
+            start_ref = run.created_at
+        if start_ref is not None:
             # Handle timezone-aware vs naive datetime
             now = datetime.now(
-                timezone.utc) if run.created_at.tzinfo else datetime.utcnow()
+                timezone.utc) if getattr(start_ref, 'tzinfo', None) else datetime.utcnow()
             run.duration_ms = int(
-                (now - run.created_at).total_seconds() * 1000)
+                (now - start_ref).total_seconds() * 1000)
 
         # Get results for artifact copying
         results = session.exec(
@@ -254,6 +284,14 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
             existing_events = run.network_events or []
             run.network_events = existing_events + network_events
 
+        # Record last-activity timestamp so check_stale_runs() knows this run
+        # is still progressing (prevents false timeout on large suites)
+        redis_client.hset(
+            f'runs:{run_id}:progress',
+            'last_progress_at',
+            datetime.utcnow().isoformat()
+        )
+
         # Update run progress from Redis
         progress = redis_client.hgetall(f'runs:{run_id}:progress')
         update_run_from_progress(run, run_id, progress, session)
@@ -361,6 +399,14 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 event['testCaseName'] = test_name
             run.network_events = existing_events + network_events
 
+        # Record last-activity timestamp so check_stale_runs() knows this run
+        # is still progressing (prevents false timeout on large suites)
+        redis_client.hset(
+            f'runs:{run_id}:progress',
+            'last_progress_at',
+            datetime.utcnow().isoformat()
+        )
+
         # Update run progress from Redis
         progress = redis_client.hgetall(f'runs:{run_id}:progress')
         update_run_from_progress(run, run_id, progress, session)
@@ -392,61 +438,139 @@ def publish_progress_update(run_id: int, payload: Dict[str, Any]):
 @celery_app.task(name="app.tasks.result_aggregator.check_stale_runs")
 def check_stale_runs():
     """
-    Check for runs that have stale progress (jobs not completing).
-    Runs periodically to detect and handle stuck runs.
+    Check for runs that have stale progress (no new results arriving).
+
+    A run is only considered "stuck" if:
+      1. No job result has arrived within STALE_RUN_INACTIVITY_MINUTES, OR
+      2. The run has been RUNNING longer than MAX_RUN_DURATION_HOURS (hard cap).
+
+    IMPORTANT: A run with 700+ test cases legitimately takes hours. We must NOT
+    kill it just because it is old — only kill it if progress has STOPPED.
     """
-    from datetime import datetime, timedelta
+    from datetime import timedelta
+
+    inactivity_minutes = getattr(settings, 'STALE_RUN_INACTIVITY_MINUTES', 15)
+    max_hours = getattr(settings, 'MAX_RUN_DURATION_HOURS', 6)
+
+    inactivity_cutoff = datetime.utcnow() - timedelta(minutes=inactivity_minutes)
+    absolute_cutoff = datetime.utcnow() - timedelta(hours=max_hours)
 
     with Session(sync_engine) as session:
-        # Find runs that are RUNNING but haven't had updates in 10 minutes
-        cutoff = datetime.utcnow() - timedelta(minutes=10)
-
-        stale_runs = session.exec(
-            select(TestRun).where(
-                TestRun.status == TestStatus.RUNNING,
-                TestRun.created_at < cutoff
-            )
+        # Load all currently RUNNING runs — no created_at filter so we can
+        # apply nuanced logic per-run based on their Redis progress data.
+        running_runs = session.exec(
+            select(TestRun).where(TestRun.status == TestStatus.RUNNING)
         ).all()
 
-        for run in stale_runs:
-            # Check Redis progress
+        killed = 0
+        for run in running_runs:
             progress = redis_client.hgetall(f'runs:{run.id}:progress')
 
-            if not progress:
-                # No progress tracking - likely old run
-                run.status = TestStatus.ERROR
-                run.error_message = "Test execution timed out - no progress data"
-                session.add(run)
-                print(
-                    f"[Aggregator] Marked run {run.id} as ERROR (no progress)")
+            # Case 1: Absolute hard-cap exceeded — kill regardless of activity
+            if run.created_at and run.created_at < absolute_cutoff:
+                _mark_run_timeout(
+                    run, progress, session,
+                    reason=f"exceeded maximum run duration ({max_hours}h hard cap)"
+                )
+                killed += 1
                 continue
 
+            # Case 2: No Redis progress data at all
+            if not progress:
+                # Only kill if the run was created more than inactivity_minutes ago
+                # (gives the dispatcher time to write the progress hash after creation)
+                if run.created_at and run.created_at < inactivity_cutoff:
+                    _mark_run_timeout(
+                        run, progress, session,
+                        reason="no progress data found in Redis"
+                    )
+                    killed += 1
+                continue
+
+            # Case 3: Has progress data — check last_progress_at timestamp
+            last_progress_str = progress.get('last_progress_at')
             completed = int(progress.get('completed', 0))
             total = int(progress.get('total', 0))
 
-            if completed < total:
-                # Some jobs haven't completed
-                run.status = TestStatus.ERROR
-                run.error_message = f"Test execution timed out - {completed}/{total} jobs completed"
-                run.total_tests = total
-                run.passed_tests = int(progress.get('passed', 0))
-                run.failed_tests = int(progress.get(
-                    'failed', 0)) + (total - completed)
-                session.add(run)
-                print(
-                    f"[Aggregator] Marked run {run.id} as ERROR (timeout: {completed}/{total})")
+            # If all jobs completed but run is still RUNNING, the aggregator
+            # update_run_from_progress() will handle finalizing it on the next
+            # process_job_results() cycle. Don't interfere here.
+            if total > 0 and completed >= total:
+                continue
 
-        session.commit()
+            if last_progress_str:
+                try:
+                    last_progress_at = datetime.fromisoformat(last_progress_str)
+                except ValueError:
+                    last_progress_at = None
+
+                if last_progress_at and last_progress_at < inactivity_cutoff:
+                    # Progress has stalled — real timeout
+                    _mark_run_timeout(
+                        run, progress, session,
+                        reason=f"no job results received for {inactivity_minutes}+ minutes"
+                    )
+                    killed += 1
+                # else: last progress was recent — run is healthy, skip
+            else:
+                # last_progress_at not yet recorded (first result not arrived yet).
+                # If a worker has already picked up a job (worker_started_at is set),
+                # use that as the activity baseline so we don't false-timeout a run
+                # that is legitimately waiting in a busy queue.
+                # If no worker has touched the run yet, fall back to created_at.
+                worker_started_str = progress.get('worker_started_at')
+                baseline = None
+                if worker_started_str:
+                    try:
+                        baseline = datetime.fromisoformat(worker_started_str)
+                    except ValueError:
+                        pass
+                if baseline is None:
+                    baseline = run.created_at
+                if baseline and baseline < inactivity_cutoff:
+                    _mark_run_timeout(
+                        run, progress, session,
+                        reason="no initial results arrived within expected time"
+                    )
+                    killed += 1
+
+        if killed > 0:
+            session.commit()
+            print(f"[Aggregator] Marked {killed} stale run(s) as ERROR")
+        else:
+            print(f"[Aggregator] check_stale_runs: {len(running_runs)} running, all healthy")
 
 
-# Register tasks with Celery Beat
-celery_app.conf.beat_schedule.update({
-    'process-job-results': {
-        'task': 'app.tasks.result_aggregator.process_job_results',
-        'schedule': 2.0,  # Every 2 seconds
-    },
-    'check-stale-runs': {
-        'task': 'app.tasks.result_aggregator.check_stale_runs',
-        'schedule': 60.0,  # Every minute
-    },
-})
+def _mark_run_timeout(
+    run: TestRun,
+    progress: Optional[Dict[str, str]],
+    session: Session,
+    reason: str
+):
+    """
+    Mark a run as ERROR due to timeout/staleness.
+    Includes partial progress counts from Redis if available.
+    """
+    completed = int(progress.get('completed', 0)) if progress else 0
+    total = int(progress.get('total', run.total_tests or 0)) if progress else (run.total_tests or 0)
+    passed = int(progress.get('passed', 0)) if progress else run.passed_tests
+    failed = int(progress.get('failed', 0)) if progress else run.failed_tests
+
+    run.status = TestStatus.ERROR
+    run.error_message = (
+        f"Test execution timed out ({reason}). "
+        f"{completed}/{total} jobs completed before timeout."
+    )
+    if total > 0:
+        run.total_tests = total
+        run.passed_tests = passed
+        # Count incomplete jobs as failures
+        run.failed_tests = failed + max(0, total - completed)
+
+    session.add(run)
+    print(f"[Aggregator] Run {run.id} → ERROR: {reason} ({completed}/{total} completed)")
+
+
+# NOTE: Beat schedule is registered in app/core/celery_app.py.
+# Do NOT add beat_schedule.update() here — it would create duplicate entries
+# and the last registration silently overrides the first.
