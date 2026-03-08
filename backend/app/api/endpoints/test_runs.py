@@ -238,19 +238,34 @@ async def get_runs(
     count_result = await session.exec(count_query)
     total = count_result.one()
 
-    # Get paginated runs with eager loaded results and user
+    from sqlalchemy.orm import defer
+    
+    # Get paginated runs without heavyweight results
     query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(
-        offset).options(selectinload(TestRun.results), selectinload(TestRun.user))
+        offset).options(
+            selectinload(TestRun.user),
+            defer(TestRun.network_events),
+            defer(TestRun.execution_log),
+            defer(TestRun.screenshots),
+            defer(TestRun.request_headers),
+            defer(TestRun.response_headers),
+            defer(TestRun.request_params),
+            defer(TestRun.allowed_domains),
+            defer(TestRun.domain_settings),
+            defer(TestRun.ai_analysis)
+        )
     result = await session.exec(query)
     runs = result.all()
+    
+    # Expunge to prevent accidental lazy loading
+    for r in runs:
+        session.expunge(r)
 
     return {
         "runs": [
             TestRunRead(
-                **run.model_dump(),
-                results=[TestCaseResultRead.model_validate(
-                    r) for r in run.results],
-                user=run.user
+                **{k: v for k, v in run.__dict__.items() if not k.startswith('_')},
+                results=[],
             ) for run in runs
         ],
         "total": total,
