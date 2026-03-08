@@ -822,6 +822,89 @@ if __name__ == "__main__":
                 break;
             }
 
+            case 'amp-validate': {
+                const ampUrl = resolve(step.value || step.selector);
+                if (!ampUrl) throw new Error('No URL provided for AMP validation');
+
+                console.log(`  [AMP] Validating: ${ampUrl}`);
+
+                // Fetch the page HTML
+                let ampResponse;
+                try {
+                    ampResponse = await page.request.get(ampUrl, { timeout: 30000 });
+                } catch (fetchErr: any) {
+                    throw new Error(`Failed to fetch URL for AMP validation: ${fetchErr.message}`);
+                }
+
+                if (!ampResponse.ok()) {
+                    const errResult = {
+                        type: 'amp-validate',
+                        url: ampUrl,
+                        amp_status: 'FAIL',
+                        http_status: ampResponse.status(),
+                        errors: [{ severity: 'ERROR', line: 0, col: 0, message: `HTTP ${ampResponse.status()} - Failed to fetch page`, specUrl: '', code: 'HTTP_ERROR' }],
+                        warnings: [],
+                        error_count: 1,
+                        warning_count: 0,
+                        request: { url: ampUrl, method: 'GET' }
+                    };
+                    const err = new Error(`AMP Validation failed: HTTP ${ampResponse.status()}`);
+                    (err as any).stepResult = errResult;
+                    throw err;
+                }
+
+                const htmlContent = await ampResponse.text();
+
+                // Run AMP validator
+                const amphtmlValidator = require('amphtml-validator');
+                const validator = await amphtmlValidator.getInstance();
+                const validationResult = validator.validateString(htmlContent);
+
+                // Categorize issues
+                const errors: any[] = [];
+                const warnings: any[] = [];
+
+                for (const issue of validationResult.errors) {
+                    const entry = {
+                        severity: issue.severity,
+                        line: issue.line,
+                        col: issue.col,
+                        message: issue.message,
+                        specUrl: issue.specUrl || '',
+                        code: issue.code || ''
+                    };
+                    if (issue.severity === 'ERROR') {
+                        errors.push(entry);
+                    } else {
+                        warnings.push(entry);
+                    }
+                }
+
+                const ampStatus = validationResult.status; // 'PASS' or 'FAIL'
+                console.log(`  [AMP] Result: ${ampStatus} (${errors.length} errors, ${warnings.length} warnings)`);
+
+                const resultObject = {
+                    type: 'amp-validate',
+                    url: ampUrl,
+                    amp_status: ampStatus,
+                    http_status: ampResponse.status(),
+                    errors,
+                    warnings,
+                    error_count: errors.length,
+                    warning_count: warnings.length,
+                    request: { url: ampUrl, method: 'GET' }
+                };
+
+                if (ampStatus === 'FAIL') {
+                    const topErrors = errors.slice(0, 5).map(e => `Line ${e.line}: ${e.message}`).join('\n');
+                    const err = new Error(`AMP Validation failed with ${errors.length} error(s):\n${topErrors}`);
+                    (err as any).stepResult = resultObject;
+                    throw err;
+                }
+
+                return resultObject;
+            }
+
             default:
                 if (step.type === 'switch-frame') break; // Handled in the main loop
                 console.warn(`Unknown step type: ${step.type}`);

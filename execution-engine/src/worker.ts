@@ -266,7 +266,7 @@ class ExecutionWorker {
                             job.settings,
                             contextData
                         );
-                        if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
+                        if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                             lastStepResult = stepResponse;
                         }
                     }
@@ -541,7 +541,7 @@ class ExecutionWorker {
                                     job.settings,
                                     sharedContextData
                                 );
-                                if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check')) {
+                                if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                                     lastStepResult = stepResponse;
                                 }
                             }
