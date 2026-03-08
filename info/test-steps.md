@@ -95,6 +95,18 @@ This document provides a comprehensive guide to all available test step types in
 
 ---
 
+## Validation Steps
+
+### **AMP Validate** (`amp-validate`)
+- **Description**: Validates a URL against Google's AMP specification using the official `amphtml-validator`. Reports pass/fail status with detailed errors and warnings.
+- **Inputs**:
+  - **Value**: The URL of the AMP page to validate (e.g., `https://example.com/amp/article`).
+- **Output**: Structured result with `amp_status` (PASS/FAIL), `errors[]`, `warnings[]`, each with `severity`, `line`, `col`, `message`, `specUrl`, and `code`.
+- **Behavior**: If validation fails (has errors), the step is marked as failed and the error details are stored.
+- **Example**: `amp-validate` -> `https://www.example.com/amp/my-article`
+
+---
+
 ## Utility Steps
 
 ### **Take Screenshot** (`screenshot`)
