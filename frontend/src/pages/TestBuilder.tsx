@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson } from "lucide-react";
+import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson, Zap } from "lucide-react";
 import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -388,6 +388,9 @@ export default function TestBuilder() {
                         <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
                         <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('http-request')}>
                             <FileJson className="mr-1.5 sm:mr-2 h-4 w-4 text-amber-400" /> API
+                        </Button>
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('amp-validate')}>
+                            <Zap className="mr-1.5 sm:mr-2 h-4 w-4 text-violet-400" /> AMP
                         </Button>
                         <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('run-script')}>
                             <Code2 className="mr-1.5 sm:mr-2 h-4 w-4 text-rose-400" /> Script

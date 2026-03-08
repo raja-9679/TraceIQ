@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link } from "react-router-dom";
 import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe } from "lucide-react";
+import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import { toast } from "sonner";
@@ -821,17 +821,123 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                         )}
                                     </div>
 
-                                    {result.response_body && (
-                                        <div className="space-y-2">
-                                            <div className="flex items-center justify-between w-full">
-                                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Response Body</span>
-                                                <CopyButton text={unwrapJson(result.response_body)} />
+                                    {result.response_body && (() => {
+                                        // Check if this is AMP validation data
+                                        try {
+                                            const ampData = JSON.parse(result.response_body);
+                                            if (ampData?.type === 'amp-validate' && ampData?.amp_status) {
+                                                const isPass = ampData.amp_status === 'PASS';
+                                                return (
+                                                    <div className="space-y-4">
+                                                        {/* AMP Summary Card */}
+                                                        <div className={`flex items-center gap-4 p-4 rounded-xl border ${isPass ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isPass ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                                                                <Zap size={24} className={isPass ? 'text-emerald-600' : 'text-rose-600'} />
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className={`text-lg font-bold ${isPass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                                        AMP {ampData.amp_status}
+                                                                    </span>
+                                                                    {isPass ? <CheckCircle size={18} className="text-emerald-500" /> : <XCircle size={18} className="text-rose-500" />}
+                                                                </div>
+                                                                <p className="text-xs text-gray-500 font-mono mt-0.5 truncate" title={ampData.url}>{ampData.url}</p>
+                                                            </div>
+                                                            <div className="flex gap-4 shrink-0">
+                                                                {ampData.error_count > 0 && (
+                                                                    <div className="text-center">
+                                                                        <p className="text-2xl font-bold text-rose-600">{ampData.error_count}</p>
+                                                                        <p className="text-[10px] font-bold text-rose-400 uppercase">Errors</p>
+                                                                    </div>
+                                                                )}
+                                                                {ampData.warning_count > 0 && (
+                                                                    <div className="text-center">
+                                                                        <p className="text-2xl font-bold text-amber-600">{ampData.warning_count}</p>
+                                                                        <p className="text-[10px] font-bold text-amber-400 uppercase">Warnings</p>
+                                                                    </div>
+                                                                )}
+                                                                {ampData.error_count === 0 && ampData.warning_count === 0 && (
+                                                                    <div className="text-center">
+                                                                        <p className="text-2xl font-bold text-emerald-600">✓</p>
+                                                                        <p className="text-[10px] font-bold text-emerald-400 uppercase">Clean</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Errors List */}
+                                                        {ampData.errors?.length > 0 && (
+                                                            <div className="space-y-2">
+                                                                <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Errors ({ampData.errors.length})</span>
+                                                                <div className="space-y-1.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
+                                                                    {ampData.errors.map((issue: any, i: number) => (
+                                                                        <div key={`err-${i}`} className="flex items-start gap-3 p-3 bg-rose-50/50 border border-rose-100 rounded-lg text-sm">
+                                                                            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-rose-100 text-rose-700 rounded">ERR</span>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className="text-gray-800 text-xs leading-relaxed">{issue.message}</p>
+                                                                                <div className="flex items-center gap-3 mt-1.5">
+                                                                                    {(issue.line > 0 || issue.col > 0) && (
+                                                                                        <span className="text-[10px] font-mono text-gray-400">Line {issue.line}:{issue.col}</span>
+                                                                                    )}
+                                                                                    {issue.code && <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{issue.code}</span>}
+                                                                                    {issue.specUrl && (
+                                                                                        <a href={issue.specUrl} target="_blank" rel="noreferrer" className="text-[10px] text-violet-500 hover:text-violet-700 flex items-center gap-0.5 transition-colors">
+                                                                                            <ExternalLink size={10} /> Spec
+                                                                                        </a>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Warnings List */}
+                                                        {ampData.warnings?.length > 0 && (
+                                                            <div className="space-y-2">
+                                                                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">Warnings ({ampData.warnings.length})</span>
+                                                                <div className="space-y-1.5 max-h-60 overflow-y-auto custom-scrollbar pr-1">
+                                                                    {ampData.warnings.map((issue: any, i: number) => (
+                                                                        <div key={`warn-${i}`} className="flex items-start gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-lg text-sm">
+                                                                            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-amber-100 text-amber-700 rounded">WARN</span>
+                                                                            <div className="flex-1 min-w-0">
+                                                                                <p className="text-gray-800 text-xs leading-relaxed">{issue.message}</p>
+                                                                                <div className="flex items-center gap-3 mt-1.5">
+                                                                                    {(issue.line > 0 || issue.col > 0) && (
+                                                                                        <span className="text-[10px] font-mono text-gray-400">Line {issue.line}:{issue.col}</span>
+                                                                                    )}
+                                                                                    {issue.code && <span className="text-[10px] font-mono text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">{issue.code}</span>}
+                                                                                    {issue.specUrl && (
+                                                                                        <a href={issue.specUrl} target="_blank" rel="noreferrer" className="text-[10px] text-violet-500 hover:text-violet-700 flex items-center gap-0.5 transition-colors">
+                                                                                            <ExternalLink size={10} /> Spec
+                                                                                        </a>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                        } catch { /* Not JSON or not AMP data, fall through */ }
+
+                                        // Default: show raw response body
+                                        return (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center justify-between w-full">
+                                                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Response Body</span>
+                                                    <CopyButton text={unwrapJson(result.response_body)} />
+                                                </div>
+                                                <pre className="text-xs bg-[#0d1117] text-gray-100 p-4 rounded-xl border border-gray-800 overflow-x-auto font-mono shadow-inner max-h-96 custom-scrollbar">
+                                                    {unwrapJson(result.response_body)}
+                                                </pre>
                                             </div>
-                                            <pre className="text-xs bg-[#0d1117] text-gray-100 p-4 rounded-xl border border-gray-800 overflow-x-auto font-mono shadow-inner max-h-96 custom-scrollbar">
-                                                {unwrapJson(result.response_body)}
-                                            </pre>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
 
                                     {result.request_body && (
                                         <div className="space-y-2">
