@@ -8,7 +8,7 @@ import {
     MoreHorizontal, Search, Activity, X, ChevronLeft,
     ChevronRight, ChevronsLeft, ChevronsRight, Globe, Hash
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
     AlertDialog,
@@ -72,6 +72,7 @@ function StatusBadge({ status }: { status: string }) {
 /* ── Main Component ── */
 export default function TestMatrix() {
     const queryClient = useQueryClient();
+    const navigate = useNavigate();
     const [selectedRuns, setSelectedRuns] = useState<number[]>([]);
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [runToDelete, setRunToDelete] = useState<number | null>(null);
@@ -341,7 +342,7 @@ export default function TestMatrix() {
                                 "group bg-white border rounded-[1.25rem] shadow-sm hover:shadow-md transition-all relative overflow-hidden flex flex-col sm:flex-row sm:items-center p-1 cursor-pointer",
                                 selectedRuns.includes(run.id) ? "border-indigo-300 bg-indigo-50/10" : "border-slate-200 hover:border-slate-300"
                             )}
-                            onClick={() => { /* Wait to open until link is clicked to avoid accidental navigation */ }}
+                            onClick={() => navigate(`/runs/${run.id}`)}
                         >
                             {/* Content Grid */}
                             <div className="px-5 py-4 shrink-0 border-r border-slate-50" onClick={(e) => { e.stopPropagation(); toggleSelectRun(run.id); }}>

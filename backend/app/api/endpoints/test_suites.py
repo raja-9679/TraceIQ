@@ -163,16 +163,56 @@ async def list_test_suites(
         )
     )
     suites = result.all()
+    
+    if not suites:
+        return []
+
+    # Fast in-memory counting (resolves N+1 queries)
+    project_ids = list({s.project_id for s in suites if s.project_id})
+    
+    all_s_result = await session.exec(select(TestSuite.id, TestSuite.parent_id).where(TestSuite.project_id.in_(project_ids)))
+    all_suites_data = all_s_result.all()
+    
+    from collections import defaultdict
+    children_map = defaultdict(list)
+    for s_id, p_id in all_suites_data:
+        if p_id:
+            children_map[p_id].append(s_id)
+            
+    c_count_result = await session.exec(
+        select(TestCase.test_suite_id, func.count(TestCase.id))
+        .where(TestCase.project_id.in_(project_ids))
+        .group_by(TestCase.test_suite_id)
+    )
+    direct_case_counts = {row[0]: row[1] for row in c_count_result.all()}
+    
+    memo = {}
+    def fast_count_recursive(s_id: int):
+        if s_id in memo:
+            return memo[s_id]
+        
+        c_count = direct_case_counts.get(s_id, 0)
+        subs = children_map.get(s_id, [])
+        s_count = len(subs)
+        
+        for child_id in subs:
+            child_c, child_s = fast_count_recursive(child_id)
+            c_count += child_c
+            s_count += child_s
+            
+        memo[s_id] = (c_count, s_count)
+        return memo[s_id]
+
     resp_suites = []
     for suite in suites:
-        total_cases, total_subs = await test_service.count_recursive_items(suite.id, session)
+        total_cases, total_subs = fast_count_recursive(suite.id)
         resp = TestSuiteReadWithChildren.model_validate(suite)
         resp.total_test_cases = total_cases
         resp.total_sub_modules = total_subs
         
         if resp.sub_modules:
             for sub in resp.sub_modules:
-                sub_cases, sub_subs = await test_service.count_recursive_items(sub.id, session)
+                sub_cases, sub_subs = fast_count_recursive(sub.id)
                 sub.total_test_cases = sub_cases
                 sub.total_sub_modules = sub_subs
                 
