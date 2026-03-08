@@ -10,7 +10,8 @@ celery_app = Celery(
         "app.worker",
         "app.tasks.webhook_tasks",
         "app.tasks.cleanup_tasks",
-        "app.tasks.result_aggregator"  # New distributed execution aggregator
+        "app.tasks.result_aggregator",  # New distributed execution aggregator
+        "app.tasks.schedule_tasks"      # Cron test scheduler task
     ]
 )
 
@@ -19,7 +20,8 @@ celery_app.conf.task_routes = {
     "app.tasks.webhook_tasks.process_webhook_queue": "main-queue",
     "app.tasks.cleanup_tasks.cleanup_stuck_tests": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
-    "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue"
+    "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
+    "app.tasks.schedule_tasks.process_test_schedules": "main-queue"
 }
 
 # Configure Celery Beat schedule for periodic tasks
@@ -41,6 +43,10 @@ celery_app.conf.beat_schedule = {
         'task': 'app.tasks.result_aggregator.check_stale_runs',
         'schedule': 300.0,  # Every 5 minutes (was 60s - too aggressive for large suites)
     },
+    'process-test-schedules': {
+        'task': 'app.tasks.schedule_tasks.process_test_schedules',
+        'schedule': 60.0, # Run every minute
+    }
 }
 
 celery_app.conf.timezone = 'UTC'
