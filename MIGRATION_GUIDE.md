@@ -1,119 +1,77 @@
-# Alembic Migration: Add Parallel Execution Mode
+# Database Migration Guide: TraceIQ
 
-## Migration Details
-- **Revision ID**: `5108734f9b51`
-- **Migration File**: `alembic/versions/5108734f9b51_add_parallel_to_execution_mode.py`
-- **Purpose**: Add `parallel` value to the `executionmode` PostgreSQL enum
+This document outlines the standard procedure for managing database schema changes using Alembic, as well as providing raw SQL fallbacks for emergency manual interventions.
 
-## Running the Migration
+## Standard Procedure (Alembic)
 
-### Step 1: Update alembic.ini with your database URL
+When you make changes to `backend/app/models.py`, you must generate and apply a new database migration.
 
-Edit `alembic.ini` and update the database URL (line 63):
+### 1. Generate the Migration Script
 
-```ini
-# Change this line:
-sqlalchemy.url = driver://user:pass@localhost/dbname
-
-# To your actual database URL, for example:
-sqlalchemy.url = postgresql://user:password@localhost:5432/quality_intelligence
-```
-
-Or use environment variable override:
+Run this from the `/backend` directory to auto-generate a new migration script based on changes in `models.py`:
 
 ```bash
-export DATABASE_URL="postgresql://user:password@localhost:5432/quality_intelligence"
+cd backend
+alembic revision --autogenerate -m "descriptive_name_of_your_change"
 ```
 
-### Step 2: Run the migration
+Review the generated file in `backend/alembic/versions/` to ensure it correctly captures the intended schema modifications.
 
-From the **root directory** of your project:
+### 2. Apply the Migration
 
-```bash
-# Upgrade to latest
-alembic upgrade head
-
-# Or if using Docker:
-docker compose -f infrastructure/docker-compose.yml exec backend alembic upgrade head
-```
-
-### Step 3: Restart services
-
-**IMPORTANT**: After running the migration, restart your backend services:
+To apply the migration to your local database or production database, run:
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml restart backend celery_worker
-```
-
-## Verification
-
-Check that the migration was applied:
-
-```bash
-# Check current revision
-alembic current
-
-# Expected output: 5108734f9b51 (head)
-
-# Verify enum values in database
-docker compose -f infrastructure/docker-compose.yml exec postgres psql -U user -d quality_intelligence -c "SELECT enum_range(NULL::executionmode);"
-
-# Expected output: {continuous,separate,parallel}
-```
-
-## Migration Features
-
-### Idempotent
-The migration checks if `parallel` already exists before adding it, so it's safe to run multiple times.
-
-### Downgrade Support
-The migration includes a downgrade function, but note:
-- PostgreSQL does not support removing enum values directly
-- Downgrade will fail if any rows use `execution_mode='parallel'`
-- Manual intervention required for true downgrade
-
-## Troubleshooting
-
-### Error: "relation 'test_suite' does not exist"
-This means your database schema hasn't been initialized yet. Run:
-```bash
-# Initialize database schema first
-docker compose -f infrastructure/docker-compose.yml exec backend python -c "from app.core.database import init_db; import asyncio; asyncio.run(init_db())"
-
-# Then run migration
+cd backend
 alembic upgrade head
 ```
 
-### Error: "enum label 'parallel' already exists"
-The migration has already been applied. This is safe to ignore, or you can check:
+### 3. Rollback (If Needed)
+
+If an issue occurs, you can rollback to a previous state:
+
 ```bash
-alembic current
+# Rollback one step
+alembic downgrade -1
+
+# Rollback to specific revision
+alembic downgrade <revision_id>
 ```
 
-### Services still don't recognize 'parallel'
-Make sure you restarted the backend services after running the migration:
+---
+
+## 🚨 Emergency Manual Approvals (Raw SQL) 🚨
+
+In emergency situations where Alembic is unavailable or migrations fail, use raw SQL directly against the PostgreSQL instance.
+
+*Note: Ensure you record any manual changes and reconcile them with Alembic later by updating the alembic_version table.*
+
 ```bash
-docker compose -f infrastructure/docker-compose.yml restart backend celery_worker
+docker exec -it <postgres-container> psql -U <user> -d <db_name>
 ```
 
-## Alternative: Manual SQL
-
-If you prefer to run the SQL directly:
+### Table definitions from `models.py` for TestSchedule:
 
 ```sql
--- Connect to your database
-psql -U user -d quality_intelligence
+CREATE TABLE testschedule (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR NOT NULL,
+    description VARCHAR,
+    project_id INTEGER NOT NULL REFERENCES project(id),
+    test_suite_id INTEGER REFERENCES testsuite(id),
+    test_case_id INTEGER REFERENCES testcase(id),
+    browser VARCHAR NOT NULL DEFAULT 'chromium',
+    device VARCHAR,
+    cron_expression VARCHAR NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
+    next_run_at TIMESTAMP WITHOUT TIME ZONE,
+    last_run_at TIMESTAMP WITHOUT TIME ZONE,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT now(),
+    created_by_id INTEGER REFERENCES users(id),
+    updated_by_id INTEGER REFERENCES users(id)
+);
 
--- Add the enum value
-ALTER TYPE executionmode ADD VALUE IF NOT EXISTS 'parallel';
-
--- Verify
-SELECT enum_range(NULL::executionmode);
+-- Indexing for performance
+CREATE INDEX ix_testschedule_project_id ON testschedule (project_id);
 ```
-
-## Related Files
-
-- Migration: [5108734f9b51_add_parallel_to_execution_mode.py](file:///home/raja/Documents/repos/TraceIQ/alembic/versions/5108734f9b51_add_parallel_to_execution_mode.py)
-- Backend Model: [backend/app/models.py](file:///home/raja/Documents/repos/TraceIQ/backend/app/models.py)
-- Worker: [backend/app/worker.py](file:///home/raja/Documents/repos/TraceIQ/backend/app/worker.py)
-- Execution Engine: [execution-engine/src/runner.ts](file:///home/raja/Documents/repos/TraceIQ/execution-engine/src/runner.ts)
