@@ -56,7 +56,8 @@ class MinioClient:
                 }
             )
         except Exception as e:
-            print(f"Failed to set CORS: {e}")
+            if "NotImplemented" not in str(e):
+                print(f"Failed to set CORS: {e}")
 
     def upload_file(self, file_path: str, object_name: str):
         self.s3.upload_file(file_path, self.bucket, object_name)
