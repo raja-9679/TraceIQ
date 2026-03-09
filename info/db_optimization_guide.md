@@ -10,6 +10,9 @@ The database currently has only primary key indexes. Every `WHERE`, `JOIN`, and 
 **Option A: Using the SQL file**
 ```bash
 psql -U <your_db_user> -d <your_db_name> -f add_indexes.sql
+
+# docker exec -i 7870da627f4d psql -U user -d quality_intelligence < ../info/add_indexes.sql
+
 ```
 <!-- psql -U user -d quality_intelligence -f /home/raja/Documents/repos/public/TraceIQ/info/add_indexes.sql -->
 
