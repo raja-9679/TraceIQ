@@ -56,6 +56,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     ports:
       # Expose MinIO API so frontend can download presigned artifact URLs
       - "9000:9000"
