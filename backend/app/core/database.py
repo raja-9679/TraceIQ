@@ -32,7 +32,8 @@ async def close_db():
 async def init_db():
     async with engine.begin() as conn:
         # In production, use Alembic. For now, create tables directly.
-        await conn.run_sync(SQLModel.metadata.create_all)
+        # await conn.run_sync(SQLModel.metadata.create_all)
+        pass
 
     # Initialize RBAC
     from app.core.rbac_init import init_rbac
