@@ -6,17 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScheduleModal } from "@/components/ScheduleModal";
 import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import {
-    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History 
+    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History
 } from 'lucide-react';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from 'sonner';
@@ -42,10 +42,10 @@ const tabVariants: Variants = {
 function ExecModeBadge({ mode }: { mode: string }) {
     const isPurple = mode === 'separate';
     const isGreen = mode === 'parallel';
-    
+
     let colors = 'bg-indigo-50 text-indigo-700 border-indigo-200';
     let iconColor = 'text-indigo-500';
-    
+
     if (isPurple) {
         colors = 'bg-purple-50 text-purple-700 border-purple-200';
         iconColor = 'text-purple-500';
@@ -206,8 +206,8 @@ export default function SuiteDetails() {
     });
 
     const runTestCaseMutation = useMutation({
-        mutationFn: (caseId: number) => api.post(`/cases/${caseId}/run`),
-        onSuccess: (response) => { navigate(`/runs/${response.data.id}`); },
+        mutationFn: (caseId: number) => triggerRun(Number(suiteId), caseId),
+        onSuccess: () => { navigate('/runs'); },
         onError: (error: any) => { toast.error(error.response?.data?.detail || "Failed to start run for this test case"); }
     });
 
@@ -265,8 +265,8 @@ export default function SuiteDetails() {
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
             toast.success('Sub-module imported successfully');
         } catch (error: any) {
-             const responseData = error?.response?.data;
-             const detail = responseData?.detail ?? responseData ?? error?.message;
+            const responseData = error?.response?.data;
+            const detail = responseData?.detail ?? responseData ?? error?.message;
             toast.error('Import failed', { description: typeof detail === 'string' ? detail : 'Unknown error', duration: 8000 });
         }
     };
@@ -287,8 +287,8 @@ export default function SuiteDetails() {
             queryClient.invalidateQueries({ queryKey: ['suite', suiteId] });
             toast.success('Test Case imported successfully');
         } catch (error: any) {
-             const responseData = error?.response?.data;
-             const detail = responseData?.detail ?? responseData ?? error?.message;
+            const responseData = error?.response?.data;
+            const detail = responseData?.detail ?? responseData ?? error?.message;
             toast.error('Import failed', { description: typeof detail === 'string' ? detail : 'Unknown error', duration: 8000 });
         }
     };
@@ -350,7 +350,7 @@ export default function SuiteDetails() {
         ? suite.sub_modules.filter((sub: any) =>
             sub.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (sub.description && sub.description.toLowerCase().includes(searchTerm.toLowerCase()))
-          )
+        )
         : [];
 
     // Filter test cases
@@ -372,7 +372,7 @@ export default function SuiteDetails() {
                             </>
                         )}
                     </div>
-                    
+
                     <div className="flex items-center gap-4">
                         <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 shadow-inner">
                             <FolderOpen className="h-7 w-7 text-indigo-600" />
@@ -404,7 +404,7 @@ export default function SuiteDetails() {
                         <Download className="mr-2 h-4 w-4 text-slate-400" /> Export
                     </Button>
                     {can("test:execute", { projectId, workspaceId }) && (
-                        <Button 
+                        <Button
                             onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}
                             className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-md h-11 px-5 transition-all font-semibold"
                         >
@@ -425,7 +425,7 @@ export default function SuiteDetails() {
 
             {/* ── Main Layout (Sidebar + Content) ── */}
             <div className="flex flex-col xl:flex-row gap-8 items-start">
-                
+
                 {/* ── Tabs Navigation Vertical Sidebar ── */}
                 <div className="w-full xl:w-64 shrink-0 bg-white rounded-3xl border border-slate-200 shadow-sm p-3 xl:sticky xl:top-[180px]">
                     <div className="flex flex-row xl:flex-col gap-1.5 overflow-x-auto xl:overflow-visible pb-2 xl:pb-0 scrollbar-hide">
@@ -460,8 +460,8 @@ export default function SuiteDetails() {
                             <span className="font-extrabold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-md">{suite.total_test_cases || 0}</span>
                         </div>
                         <div className="pt-4 border-t border-slate-100">
-                             <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Execution Mode</div>
-                             <ExecModeBadge mode={suite.execution_mode} />
+                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Execution Mode</div>
+                            <ExecModeBadge mode={suite.execution_mode} />
                         </div>
                     </div>
                 </div>
@@ -482,8 +482,8 @@ export default function SuiteDetails() {
                                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-6">
                                     <div className="relative w-full sm:w-80">
                                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                        <Input 
-                                            placeholder="Search items..." 
+                                        <Input
+                                            placeholder="Search items..."
                                             className="pl-9 bg-slate-50/50 border-slate-200 shadow-inner rounded-xl focus-visible:ring-indigo-500 h-10 w-full"
                                             value={searchTerm}
                                             onChange={(e) => setSearchTerm(e.target.value)}
@@ -491,17 +491,17 @@ export default function SuiteDetails() {
                                     </div>
                                     <div className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-4">
                                         <div className="flex bg-slate-50 rounded-xl border border-slate-200 p-1 shrink-0 h-10">
-                                            <Button 
-                                                variant="ghost" 
-                                                size="sm" 
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
                                                 className={`px-3 py-1 h-full rounded-lg text-xs font-bold ${viewMode === 'card' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
                                                 onClick={() => setViewMode('card')}
                                             >
                                                 <LayoutGrid className="w-3.5 h-3.5 mr-1.5" /> Cards
                                             </Button>
-                                            <Button 
-                                                variant="ghost" 
-                                                size="sm" 
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
                                                 className={`px-3 py-1 h-full rounded-lg text-xs font-bold ${viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
                                                 onClick={() => setViewMode('list')}
                                             >
@@ -535,7 +535,7 @@ export default function SuiteDetails() {
                                         </div>
 
                                         {filteredSubModules.length === 0 ? (
-                                             <div className="text-center py-8 text-slate-400 text-sm italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">No sub-modules found matching "{searchTerm}".</div>
+                                            <div className="text-center py-8 text-slate-400 text-sm italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">No sub-modules found matching "{searchTerm}".</div>
                                         ) : viewMode === 'card' ? (
                                             <motion.div
                                                 className="grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3"
@@ -561,31 +561,31 @@ export default function SuiteDetails() {
                                                                     <h3 className="font-bold text-slate-900 text-lg pr-4 group-hover:text-indigo-600 transition-colors">{sub.name}</h3>
                                                                     <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">{sub.description}</p>
                                                                 </div>
-                                                                    <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100">
-                                                                        <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
-                                                                            <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-slate-300" /> {sub.total_test_cases || 0}</span>
-                                                                            <span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-slate-300" /> {sub.total_sub_modules || 0}</span>
-                                                                        </div>
-                                                                        <div className="flex items-center gap-2">
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="icon" 
-                                                                                className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all z-10" 
-                                                                                onClick={(e) => { e.stopPropagation(); setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }} 
-                                                                                title="Schedule Module"
-                                                                            >
-                                                                                <CalendarClock className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                            <Button 
-                                                                                variant="ghost" 
-                                                                                size="sm" 
-                                                                                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold transition-all shadow-sm z-10" 
-                                                                                onClick={(e) => { e.stopPropagation(); runMutation.mutate(sub.id); }} 
-                                                                            >
-                                                                                <Play className="h-3 w-3" fill="currentColor" /> Run
-                                                                            </Button>
-                                                                        </div>
+                                                                <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100">
+                                                                    <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
+                                                                        <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-slate-300" /> {sub.total_test_cases || 0}</span>
+                                                                        <span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-slate-300" /> {sub.total_sub_modules || 0}</span>
                                                                     </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all z-10"
+                                                                            onClick={(e) => { e.stopPropagation(); setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
+                                                                            title="Schedule Module"
+                                                                        >
+                                                                            <CalendarClock className="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold transition-all shadow-sm z-10"
+                                                                            onClick={(e) => { e.stopPropagation(); runMutation.mutate(sub.id); }}
+                                                                        >
+                                                                            <Play className="h-3 w-3" fill="currentColor" /> Run
+                                                                        </Button>
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </motion.div>
@@ -617,20 +617,20 @@ export default function SuiteDetails() {
                                                                 </TableCell>
                                                                 <TableCell className="py-3 text-right">
                                                                     <div className="flex justify-end items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="icon" 
-                                                                            className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" 
-                                                                            onClick={(e) => { e.stopPropagation(); setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }} 
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                                                            onClick={(e) => { e.stopPropagation(); setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
                                                                             title="Schedule Module"
                                                                         >
                                                                             <CalendarClock className="h-3.5 w-3.5" />
                                                                         </Button>
-                                                                        <Button 
-                                                                            variant="ghost" 
-                                                                            size="icon" 
-                                                                            className="h-8 w-8 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" 
-                                                                            onClick={(e) => { e.stopPropagation(); runMutation.mutate(sub.id); }} 
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-8 w-8 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
+                                                                            onClick={(e) => { e.stopPropagation(); runMutation.mutate(sub.id); }}
                                                                             title="Run Module"
                                                                             disabled={runMutation.isPending}
                                                                         >
@@ -662,7 +662,7 @@ export default function SuiteDetails() {
                                                 Test Cases
                                                 <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-sm">{filteredTestCases.length}</span>
                                             </h2>
-                                            
+
                                             <div className="flex gap-2">
                                                 {can("test:create", { projectId, workspaceId }) && (
                                                     <div className="relative">
@@ -696,7 +696,7 @@ export default function SuiteDetails() {
                                                 </Button>
                                             </div>
                                         ) : filteredTestCases.length === 0 ? (
-                                             <div className="text-center py-8 text-slate-400 text-sm italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">No test cases found matching "{searchTerm}".</div>
+                                            <div className="text-center py-8 text-slate-400 text-sm italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">No test cases found matching "{searchTerm}".</div>
                                         ) : viewMode === 'card' ? (
                                             <motion.div
                                                 className="grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3"
@@ -737,8 +737,8 @@ export default function SuiteDetails() {
 
                                                                 {/* Card Actions overlaying bottom */}
                                                                 <div className="pt-4 mt-auto border-t border-slate-100 flex items-center justify-between">
-                                                                     <div className="flex gap-1.5">
-                                                                         <button onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:z-10 transition-colors border hover:border-indigo-200" title="Schedule">
+                                                                    <div className="flex gap-1.5">
+                                                                        <button onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:z-10 transition-colors border hover:border-indigo-200" title="Schedule">
                                                                             <CalendarClock className="h-3.5 w-3.5" />
                                                                         </button>
                                                                         {can("test:create", { projectId, workspaceId }) && (
@@ -765,7 +765,7 @@ export default function SuiteDetails() {
                                                 ))}
                                             </motion.div>
                                         ) : (
-                                              <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                                            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                                                 <Table>
                                                     <TableHeader className="bg-slate-50/50">
                                                         <TableRow className="border-slate-100 hover:bg-transparent">
@@ -803,9 +803,9 @@ export default function SuiteDetails() {
                                                                             <Download className="h-3.5 w-3.5" />
                                                                         </Button>
                                                                         {can("test:create", { projectId, workspaceId }) && (
-                                                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"  onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} title="Delete">
-                                                                                 <Trash2 className="h-3.5 w-3.5" />
-                                                                             </Button>
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg" onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} title="Delete">
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </Button>
                                                                         )}
                                                                     </div>
                                                                 </TableCell>
@@ -813,7 +813,7 @@ export default function SuiteDetails() {
                                                         ))}
                                                     </TableBody>
                                                 </Table>
-                                              </div>
+                                            </div>
                                         )}
                                     </div>
                                 )}
@@ -937,9 +937,9 @@ export default function SuiteDetails() {
                                                     <div key={idx} className="flex gap-2 items-center group/item">
                                                         <input disabled value={key} className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-700 shadow-sm" />
                                                         <input disabled value={value} className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 shadow-sm" />
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
                                                             className="w-10 h-10 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 shrink-0 transition-all focus:opacity-100"
                                                             onClick={() => {
                                                                 const newHeaders = { ...suite.settings.headers };
@@ -955,7 +955,7 @@ export default function SuiteDetails() {
                                                     <div className="text-center py-6 text-sm text-slate-400 font-medium">No custom headers configured.</div>
                                                 )}
                                             </div>
-                                            
+
                                             <div className="pt-4 border-t border-slate-100 mt-auto">
                                                 <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                                                     <input
@@ -964,16 +964,16 @@ export default function SuiteDetails() {
                                                         placeholder="Key (e.g. Authorization)"
                                                         className="flex-1 min-w-0 px-3.5 py-2.5 border border-slate-200 bg-white shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400 font-medium"
                                                         onKeyDown={(e) => {
-                                                             if (e.key === 'Enter' && headerKey && headerVal) {
-                                                                 const currentSettings = suite.settings || { headers: {}, params: {} };
-                                                                 handleUpdateSettings({
-                                                                     ...currentSettings,
-                                                                     headers: { ...(currentSettings.headers || {}), [headerKey]: headerVal }
-                                                                 }, suite.inherit_settings, `Header '${headerKey}' added`);
-                                                                 setHeaderKey('');
-                                                                 setHeaderVal('');
-                                                             }
-                                                         }}
+                                                            if (e.key === 'Enter' && headerKey && headerVal) {
+                                                                const currentSettings = suite.settings || { headers: {}, params: {} };
+                                                                handleUpdateSettings({
+                                                                    ...currentSettings,
+                                                                    headers: { ...(currentSettings.headers || {}), [headerKey]: headerVal }
+                                                                }, suite.inherit_settings, `Header '${headerKey}' added`);
+                                                                setHeaderKey('');
+                                                                setHeaderVal('');
+                                                            }
+                                                        }}
                                                     />
                                                     <input
                                                         value={headerVal}
@@ -981,18 +981,18 @@ export default function SuiteDetails() {
                                                         placeholder="Value"
                                                         className="flex-1 min-w-0 px-3.5 py-2.5 border border-slate-200 bg-white shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400 font-medium"
                                                         onKeyDown={(e) => {
-                                                             if (e.key === 'Enter' && headerKey && headerVal) {
-                                                                 const currentSettings = suite.settings || { headers: {}, params: {} };
-                                                                 handleUpdateSettings({
-                                                                     ...currentSettings,
-                                                                     headers: { ...(currentSettings.headers || {}), [headerKey]: headerVal }
-                                                                 }, suite.inherit_settings, `Header '${headerKey}' added`);
-                                                                 setHeaderKey('');
-                                                                 setHeaderVal('');
-                                                             }
-                                                         }}
+                                                            if (e.key === 'Enter' && headerKey && headerVal) {
+                                                                const currentSettings = suite.settings || { headers: {}, params: {} };
+                                                                handleUpdateSettings({
+                                                                    ...currentSettings,
+                                                                    headers: { ...(currentSettings.headers || {}), [headerKey]: headerVal }
+                                                                }, suite.inherit_settings, `Header '${headerKey}' added`);
+                                                                setHeaderKey('');
+                                                                setHeaderVal('');
+                                                            }
+                                                        }}
                                                     />
-                                                    <Button 
+                                                    <Button
                                                         className="rounded-xl px-5 h-[42px] shadow-sm font-bold tracking-wide shrink-0 bg-slate-900 hover:bg-slate-800 text-white border-transparent w-full sm:w-auto transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                         disabled={!headerKey || !headerVal}
                                                         onClick={() => {
@@ -1039,9 +1039,9 @@ export default function SuiteDetails() {
                                                     <div key={idx} className="flex gap-2 items-center group/item">
                                                         <input disabled value={key} className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-700 shadow-sm" />
                                                         <input disabled value={value} className="flex-1 min-w-0 px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-600 shadow-sm" />
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
                                                             className="w-10 h-10 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 shrink-0 transition-all focus:opacity-100"
                                                             onClick={() => {
                                                                 const newParams = { ...suite.settings.params };
@@ -1057,7 +1057,7 @@ export default function SuiteDetails() {
                                                     <div className="text-center py-6 text-sm text-slate-400 font-medium">No custom parameters configured.</div>
                                                 )}
                                             </div>
-                                            
+
                                             <div className="pt-4 border-t border-slate-100 mt-auto">
                                                 <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
                                                     <input
@@ -1066,16 +1066,16 @@ export default function SuiteDetails() {
                                                         placeholder="Key (e.g. ?user_id=)"
                                                         className="flex-1 min-w-0 px-3.5 py-2.5 border border-slate-200 bg-white shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-slate-400 font-medium"
                                                         onKeyDown={(e) => {
-                                                             if (e.key === 'Enter' && paramKey && paramVal) {
-                                                                 const currentSettings = suite.settings || { headers: {}, params: {} };
-                                                                 handleUpdateSettings({
-                                                                     ...currentSettings,
-                                                                     params: { ...(currentSettings.params || {}), [paramKey]: paramVal }
-                                                                 }, suite.inherit_settings, `Parameter '${paramKey}' added`);
-                                                                 setParamKey('');
-                                                                 setParamVal('');
-                                                             }
-                                                         }}
+                                                            if (e.key === 'Enter' && paramKey && paramVal) {
+                                                                const currentSettings = suite.settings || { headers: {}, params: {} };
+                                                                handleUpdateSettings({
+                                                                    ...currentSettings,
+                                                                    params: { ...(currentSettings.params || {}), [paramKey]: paramVal }
+                                                                }, suite.inherit_settings, `Parameter '${paramKey}' added`);
+                                                                setParamKey('');
+                                                                setParamVal('');
+                                                            }
+                                                        }}
                                                     />
                                                     <input
                                                         value={paramVal}
@@ -1083,18 +1083,18 @@ export default function SuiteDetails() {
                                                         placeholder="Value"
                                                         className="flex-1 min-w-0 px-3.5 py-2.5 border border-slate-200 bg-white shadow-sm rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all placeholder:text-slate-400 font-medium"
                                                         onKeyDown={(e) => {
-                                                             if (e.key === 'Enter' && paramKey && paramVal) {
-                                                                 const currentSettings = suite.settings || { headers: {}, params: {} };
-                                                                 handleUpdateSettings({
-                                                                     ...currentSettings,
-                                                                     params: { ...(currentSettings.params || {}), [paramKey]: paramVal }
-                                                                 }, suite.inherit_settings, `Parameter '${paramKey}' added`);
-                                                                 setParamKey('');
-                                                                 setParamVal('');
-                                                             }
-                                                         }}
+                                                            if (e.key === 'Enter' && paramKey && paramVal) {
+                                                                const currentSettings = suite.settings || { headers: {}, params: {} };
+                                                                handleUpdateSettings({
+                                                                    ...currentSettings,
+                                                                    params: { ...(currentSettings.params || {}), [paramKey]: paramVal }
+                                                                }, suite.inherit_settings, `Parameter '${paramKey}' added`);
+                                                                setParamKey('');
+                                                                setParamVal('');
+                                                            }
+                                                        }}
                                                     />
-                                                    <Button 
+                                                    <Button
                                                         className="rounded-xl px-5 h-[42px] shadow-sm font-bold tracking-wide shrink-0 bg-slate-900 hover:bg-slate-800 text-white border-transparent w-full sm:w-auto transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                                         disabled={!paramKey || !paramVal}
                                                         onClick={() => {
@@ -1199,9 +1199,9 @@ export default function SuiteDetails() {
                                                                 /> Params
                                                             </label>
                                                         </div>
-                                                        <Button 
-                                                            variant="ghost" 
-                                                            size="icon" 
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
                                                             className="w-10 h-10 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 shrink-0 self-end sm:self-auto transition-all focus:opacity-100"
                                                             onClick={() => {
                                                                 const newDomains = suite.settings.allowed_domains.filter((_: any, i: number) => i !== idx);
@@ -1217,7 +1217,7 @@ export default function SuiteDetails() {
                                                 <div className="text-center py-6 text-sm text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">No domains allowed yet.</div>
                                             )}
                                         </div>
-                                        
+
                                         <div className="pt-4 border-t border-slate-100 mt-2">
                                             <div className="flex gap-3 items-center">
                                                 <div className="relative flex-1">
@@ -1248,7 +1248,7 @@ export default function SuiteDetails() {
                                                         }}
                                                     />
                                                 </div>
-                                                <Button 
+                                                <Button
                                                     className="rounded-xl px-5 shadow-sm font-bold tracking-wide flex items-center shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white"
                                                     onClick={() => {
                                                         const input = document.getElementById('new-domain-input') as HTMLInputElement;
@@ -1292,9 +1292,9 @@ export default function SuiteDetails() {
                                                         <Globe className="h-4 w-4 text-slate-400" />
                                                         {domain}
                                                     </h4>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="icon" 
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
                                                         className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 h-8 w-8 rounded-lg"
                                                         onClick={() => {
                                                             const newDSettings = { ...suite.settings.domain_settings };
@@ -1304,7 +1304,7 @@ export default function SuiteDetails() {
                                                         <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
-                                                
+
                                                 {/* Domain Headers */}
                                                 <div className="space-y-3">
                                                     <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest pl-1">Headers</h5>
@@ -1399,9 +1399,9 @@ export default function SuiteDetails() {
 
                                             </div>
                                         ))}
-                                        
+
                                         {(!suite.settings?.domain_settings || Object.keys(suite.settings.domain_settings).length === 0) && (
-                                             <div className="text-center py-6 text-sm text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">No domain-specific overrides added yet.</div>
+                                            <div className="text-center py-6 text-sm text-slate-400 font-medium bg-slate-50/50 rounded-xl border border-dashed border-slate-200">No domain-specific overrides added yet.</div>
                                         )}
 
                                         <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center">
@@ -1434,7 +1434,7 @@ export default function SuiteDetails() {
                                                     }}
                                                 />
                                             </div>
-                                            <Button 
+                                            <Button
                                                 className="rounded-xl px-5 h-[42px] shadow-sm font-bold tracking-wide flex items-center shrink-0 w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white"
                                                 onClick={() => {
                                                     const input = document.getElementById('new-domain-setting-input') as HTMLInputElement;
@@ -1572,11 +1572,11 @@ export default function SuiteDetails() {
             {/* ── Rename Dialog, SubModule Dialog, Delete Dialogs ── */}
             <AnimatePresence>
                 {showSubModuleDialog && (
-                    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
                             <h3 className="text-xl font-bold mb-4">Create Sub-Module</h3>
-                            <Input placeholder="Name" value={newModuleName} onChange={(e) => setNewModuleName(e.target.value)} className="mb-4"/>
-                            <Input placeholder="Description (Optional)" value={newModuleDesc} onChange={(e) => setNewModuleDesc(e.target.value)} className="mb-4"/>
+                            <Input placeholder="Name" value={newModuleName} onChange={(e) => setNewModuleName(e.target.value)} className="mb-4" />
+                            <Input placeholder="Description (Optional)" value={newModuleDesc} onChange={(e) => setNewModuleDesc(e.target.value)} className="mb-4" />
                             <div className="flex gap-2 justify-end">
                                 <Button variant="outline" onClick={() => setShowSubModuleDialog(false)}>Cancel</Button>
                                 <Button onClick={handleCreateSubModule} disabled={!newModuleName.trim() || createSubModule.isPending}>Create</Button>
@@ -1584,12 +1584,12 @@ export default function SuiteDetails() {
                         </div>
                     </motion.div>
                 )}
-                 {showRenameDialog && (
-                    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
+                {showRenameDialog && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
                             <h3 className="text-xl font-bold mb-4">Rename Module</h3>
-                            <Input placeholder="Name" value={renameName} onChange={(e) => setRenameName(e.target.value)} className="mb-4"/>
-                            <Input placeholder="Description" value={renameDesc} onChange={(e) => setRenameDesc(e.target.value)} className="mb-4"/>
+                            <Input placeholder="Name" value={renameName} onChange={(e) => setRenameName(e.target.value)} className="mb-4" />
+                            <Input placeholder="Description" value={renameDesc} onChange={(e) => setRenameDesc(e.target.value)} className="mb-4" />
                             <div className="flex gap-2 justify-end">
                                 <Button variant="outline" onClick={() => setShowRenameDialog(false)}>Cancel</Button>
                                 <Button onClick={handleRenameSuite} disabled={!renameName.trim() || renameSuite.isPending}>Save</Button>
@@ -1597,8 +1597,8 @@ export default function SuiteDetails() {
                         </div>
                     </motion.div>
                 )}
-                 {showDeleteSuiteDialog && suiteToDelete && (
-                    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
+                {showDeleteSuiteDialog && suiteToDelete && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-md">
                             <h3 className="text-xl font-bold mb-4 text-red-600">Delete Module?</h3>
                             <p className="text-sm text-slate-600 mb-6">
@@ -1618,7 +1618,7 @@ export default function SuiteDetails() {
                     </motion.div>
                 )}
                 {showDeleteTestCaseDialog && testCaseToDelete && (
-                    <motion.div initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-gray-900/50 flex items-center justify-center p-4 z-50">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-md">
                             <h3 className="text-xl font-bold mb-4 text-red-600">Delete Test Case?</h3>
                             <p className="text-sm text-slate-600 mb-6">
