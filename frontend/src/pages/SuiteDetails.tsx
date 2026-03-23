@@ -576,6 +576,17 @@ export default function SuiteDetails() {
                                                                         >
                                                                             <CalendarClock className="h-3.5 w-3.5" />
                                                                         </Button>
+                                                                        {can("project:manage", { projectId, workspaceId }) && (
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all z-10"
+                                                                                onClick={(e) => { e.stopPropagation(); setSuiteToDelete({ id: sub.id, name: sub.name }); setShowDeleteSuiteDialog(true); }}
+                                                                                title="Delete Module"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </Button>
+                                                                        )}
                                                                         <Button
                                                                             variant="ghost"
                                                                             size="sm"
@@ -636,6 +647,17 @@ export default function SuiteDetails() {
                                                                         >
                                                                             <Play className="h-3.5 w-3.5" fill="currentColor" />
                                                                         </Button>
+                                                                        {can("project:manage", { projectId, workspaceId }) && (
+                                                                            <Button
+                                                                                variant="ghost"
+                                                                                size="icon"
+                                                                                className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                                                                                onClick={(e) => { e.stopPropagation(); setSuiteToDelete({ id: sub.id, name: sub.name }); setShowDeleteSuiteDialog(true); }}
+                                                                                title="Delete Module"
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </Button>
+                                                                        )}
                                                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={(e) => { e.stopPropagation(); navigate(`/suites/${sub.id}`); }} title="Open Module">
                                                                             <ChevronRight className="h-4 w-4" />
                                                                         </Button>
