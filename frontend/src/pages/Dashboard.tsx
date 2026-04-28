@@ -12,7 +12,7 @@ export default function Dashboard() {
     const { data: runsData, isLoading } = useQuery({
         queryKey: ['runs'],
         queryFn: () => getRuns(),
-        refetchInterval: 2000,
+        refetchInterval: 15000,
     });
 
     const runs = runsData?.runs || [];
