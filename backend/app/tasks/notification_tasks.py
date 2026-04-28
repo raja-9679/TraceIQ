@@ -265,12 +265,24 @@ def get_email_recipients(run: TestRun, settings_dict: Dict[str, Any], session: S
 def build_email_body(content: Dict[str, Any]) -> Dict[str, str]:
     """
     Build plain text and HTML email body.
+    User-controlled strings are html.escape()'d before being embedded in HTML.
     """
+    import html as html_lib
+
+    # Escape all user-controlled strings used in HTML
+    safe_title = html_lib.escape(str(content.get('title', '')))
+    safe_suite_name = html_lib.escape(str(content.get('suite_name', '')))
+    safe_error = html_lib.escape(str(content['error_message'])) if content.get('error_message') else None
+
+    ai = content.get('ai_analysis')
+    safe_ai_summary = html_lib.escape(str(ai.get('summary', 'No analysis available'))) if ai else None
+    safe_ai_suggestions = [html_lib.escape(str(s)) for s in (ai.get('suggestions', [])[:3] if ai else [])]
+
     text = f"""
 Test Run Report
 ===============
 
-Suite: {content['suite_name']}
+Suite: {content.get('suite_name', '')}
 Status: {content['status'].upper()}
 Results: {content['passed']}/{content['total']} passed ({content['pass_rate']:.1f}%)
 Duration: {content['duration_ms']/1000:.1f}s
@@ -280,21 +292,21 @@ Duration: {content['duration_ms']/1000:.1f}s
     if content['failed'] > 0 and content.get('error_message'):
         text += f"Error: {content['error_message']}\n\n"
 
-    if content.get('ai_analysis'):
-        ai = content['ai_analysis']
+    if ai:
         text += f"AI Analysis\n-----------\n{ai.get('summary', 'No analysis available')}\n\n"
         if ai.get('suggestions'):
             text += "Suggestions:\n"
             for suggestion in ai['suggestions'][:3]:
                 text += f"  • {suggestion}\n"
 
+    header_color = '#22c55e' if content['status'] == 'passed' else '#ef4444'
     html = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .header {{ background: {'#22c55e' if content['status'] == 'passed' else '#ef4444'}; color: white; padding: 15px; border-radius: 8px; }}
+        .header {{ background: {header_color}; color: white; padding: 15px; border-radius: 8px; }}
         .stats {{ display: flex; gap: 20px; margin: 20px 0; }}
         .stat {{ background: #f3f4f6; padding: 15px; border-radius: 8px; text-align: center; }}
         .stat-value {{ font-size: 24px; font-weight: bold; }}
@@ -303,9 +315,9 @@ Duration: {content['duration_ms']/1000:.1f}s
 </head>
 <body>
     <div class="header">
-        <h1>{content['title']}</h1>
+        <h1>{safe_title}</h1>
     </div>
-    
+
     <div class="stats">
         <div class="stat">
             <div class="stat-value">{content['passed']}</div>
@@ -326,19 +338,18 @@ Duration: {content['duration_ms']/1000:.1f}s
     </div>
 """
 
-    if content.get('error_message'):
-        html += f'<div style="background: #fee2e2; padding: 15px; border-radius: 8px;"><strong>Error:</strong> {content["error_message"]}</div>'
+    if safe_error:
+        html += f'<div style="background: #fee2e2; padding: 15px; border-radius: 8px;"><strong>Error:</strong> {safe_error}</div>'
 
-    if content.get('ai_analysis'):
-        ai = content['ai_analysis']
+    if ai and safe_ai_summary:
         html += f"""
     <div class="ai-section">
-        <h3>🤖 AI Analysis</h3>
-        <p>{ai.get('summary', 'No analysis available')}</p>
+        <h3>AI Analysis</h3>
+        <p>{safe_ai_summary}</p>
 """
-        if ai.get('suggestions'):
+        if safe_ai_suggestions:
             html += "<h4>Suggestions:</h4><ul>"
-            for suggestion in ai['suggestions'][:3]:
+            for suggestion in safe_ai_suggestions:
                 html += f"<li>{suggestion}</li>"
             html += "</ul>"
         html += "</div>"

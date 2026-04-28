@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useDebounce } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Calendar, Clock, PlayCircle, StopCircle, Trash2, AlertCircle, RefreshCw, Pen,
@@ -26,6 +27,7 @@ export default function Schedules() {
   const [editTarget, setEditTarget] = useState<TestSchedule | null>(null);
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   useEffect(() => {
     const handleProjectChange = () => {
@@ -80,15 +82,15 @@ export default function Schedules() {
 
   const filteredSchedules = useMemo(() => {
     if (!schedules) return [];
-    if (!searchQuery.trim()) return schedules;
-    
-    const lowerQuery = searchQuery.toLowerCase();
-    return schedules.filter((schedule: TestSchedule) => 
-      schedule.name.toLowerCase().includes(lowerQuery) || 
+    if (!debouncedSearch.trim()) return schedules;
+
+    const lowerQuery = debouncedSearch.toLowerCase();
+    return schedules.filter((schedule: TestSchedule) =>
+      schedule.name.toLowerCase().includes(lowerQuery) ||
       (schedule.description && schedule.description.toLowerCase().includes(lowerQuery)) ||
       schedule.cron_expression.toLowerCase().includes(lowerQuery)
     );
-  }, [schedules, searchQuery]);
+  }, [schedules, debouncedSearch]);
 
   if (isLoading) return <div className="p-8 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-8 h-8" /></div>;
 

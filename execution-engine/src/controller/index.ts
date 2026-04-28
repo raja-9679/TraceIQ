@@ -118,11 +118,12 @@ export class ExecutionController {
         const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
         
         try {
+            const webhookSecret = process.env.WEBHOOK_SECRET;
             const response = await fetch(`${backendUrl}/api/runs/${runId}/finalize`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Internal-Service': 'execution-controller'
+                    ...(webhookSecret ? { 'X-TraceIQ-Secret': webhookSecret } : {})
                 },
                 body: JSON.stringify(curatedResults)
             });

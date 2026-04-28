@@ -5,22 +5,21 @@ from sqlalchemy.orm import sessionmaker
 from app.core.config import settings
 from contextlib import asynccontextmanager
 
-# SQLite optimization: Enable WAL mode for concurrency
-from sqlalchemy import event
-
-# Patch for async engine event listening
-import sqlite3
-
 # Connection pool settings to prevent hanging connections
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=False,  # Reduce log noise
+    echo=False,
     future=True,
     pool_size=5,
     max_overflow=10,
-    pool_timeout=30,  # Wait max 30s for connection
-    pool_recycle=1800,  # Recycle connections after 30 minutes
-    pool_pre_ping=True,  # Check connection health before use
+    pool_timeout=30,
+    pool_recycle=1800,
+    pool_pre_ping=True,
+)
+
+# Module-level sessionmaker — created once, reused for every request.
+async_session_factory = sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
 )
 
 
@@ -37,29 +36,16 @@ async def init_db():
 
     # Initialize RBAC
     from app.core.rbac_init import init_rbac
-    async with engine.begin() as conn:
-        # We need a session, not just a connection for init_rbac because it uses SQLModel objects
-        pass
-
-    # To use session, we need to use the sessionmaker
-    async_session = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session() as session:
+    async with async_session_factory() as session:
         await init_rbac(session)
 
 
 async def get_session() -> AsyncSession:
-    async_session = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with async_session() as session:
+    async with async_session_factory() as session:
         yield session
 
 
 @asynccontextmanager
 async def get_session_context() -> AsyncSession:
-    async_session = sessionmaker(
-        engine, class_=AsyncSession, expire_on_commit=False
-    )
-    async with async_session() as session:
+    async with async_session_factory() as session:
         yield session

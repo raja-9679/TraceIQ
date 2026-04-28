@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Security
     SECRET_KEY: str
+    WEBHOOK_SECRET: Optional[str] = None  # Dedicated secret for webhook/finalize endpoints; falls back to SECRET_KEY
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 30 minutes
 

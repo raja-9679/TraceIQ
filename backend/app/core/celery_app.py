@@ -50,3 +50,8 @@ celery_app.conf.beat_schedule = {
 }
 
 celery_app.conf.timezone = 'UTC'
+
+# Global task time limits — soft limit raises SoftTimeLimitExceeded so tasks
+# can clean up; hard limit sends SIGKILL if the task is still running after it.
+celery_app.conf.task_soft_time_limit = 3600   # 1 hour
+celery_app.conf.task_time_limit = 3900        # 5 min grace period beyond soft limit
