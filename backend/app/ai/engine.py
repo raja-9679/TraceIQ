@@ -1,50 +1,36 @@
-from openai import OpenAI
-from app.core.config import settings
+"""AI engine — failure analysis + selector healing.
 
-# Initialize client only if key is present
-client = OpenAI(api_key=settings.OPENAI_API_KEY) if settings.OPENAI_API_KEY else None
+Refactored to call through `app.ai.providers.provider` so the backing LLM
+(OpenAI / Anthropic / null-stub) is chosen at process start via env vars.
+"""
+from app.ai.providers import provider
+
 
 class AIEngine:
     def analyze_failure(self, error_log: str, dom_snapshot: str) -> str:
-        if not client:
-            return "AI Analysis unavailable (No API Key)"
-            
-        prompt = f"""
-        Analyze the following test failure:
-        Error: {error_log}
-        DOM Snapshot (snippet): {dom_snapshot[:2000]}...
-        
-        Explain why the test failed in simple terms.
-        """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            return f"AI Analysis failed: {str(e)}"
+        if provider.name == "null":
+            return "AI Analysis unavailable (no LLM provider configured)"
+
+        prompt = (
+            "Analyze the following UI test failure and explain in plain English "
+            "what likely went wrong.\n\n"
+            f"Error:\n{error_log}\n\n"
+            f"DOM snapshot (truncated):\n{dom_snapshot[:2000]}"
+        )
+        result = provider.complete(prompt, max_tokens=512)
+        return result or "AI Analysis unavailable (provider returned empty)"
 
     def heal_selector(self, broken_selector: str, dom_snapshot: str) -> str:
-        if not client:
+        if provider.name == "null":
             return ""
-            
-        prompt = f"""
-        The selector '{broken_selector}' failed to find an element.
-        Here is the DOM snapshot:
-        {dom_snapshot}
-        
-        Find the element that most likely corresponds to the broken selector.
-        Return ONLY the new selector.
-        """
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"AI Healing failed: {e}")
-            return ""
+
+        prompt = (
+            f"The selector '{broken_selector}' did not match any element.\n"
+            "Given the DOM snapshot below, return ONLY the most likely "
+            "corrected selector (CSS or XPath). No explanation.\n\n"
+            f"{dom_snapshot}"
+        )
+        return provider.complete(prompt, max_tokens=128)
+
 
 ai_engine = AIEngine()

@@ -104,6 +104,13 @@ def run_test_suite(run_id: int):
                         # No sub-structure, dispatch all cases individually
                         dispatch_cases_to_queue(
                             run, cases_to_run, effective_settings, session)
+                elif execution_mode == ExecutionMode.PARALLEL:
+                    # PARALLEL mode: one job per test case, scheduled with a
+                    # parallelism hint so workers know they can fan out
+                    # aggressively. This is the path AI agents firing many
+                    # runs use for fastest feedback.
+                    dispatch_parallel_jobs(
+                        run, cases_to_run, effective_settings, session)
                 else:
                     # CONTINUOUS mode: dispatch each case as an independent job
                     dispatch_cases_to_queue(
@@ -325,6 +332,86 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     pipe.execute()
 
     print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: Session):
+    """PARALLEL execution dispatch — one job per case, tagged with parallel mode.
+
+    Behaves identically to `dispatch_cases_to_queue` from the Redis-stream
+    perspective (one job per case) but tags each job with
+    `execution_mode='parallel'` and a `parallelism` hint so consumers can
+    schedule fan-out concurrency. PARALLEL_MAX_CONCURRENCY caps the hint
+    (defaults to total cases — workers may still serialize if at capacity).
+    """
+    import os
+    import uuid
+    from datetime import datetime
+
+    parallelism = min(
+        len(cases),
+        int(os.getenv("PARALLEL_MAX_CONCURRENCY", str(len(cases) or 1))),
+    )
+    print(
+        f"[Worker] Dispatching {len(cases)} PARALLEL jobs (parallelism hint={parallelism}) for run {run.id}"
+    )
+
+    jobs_stream = 'jobs:pending'
+    try:
+        redis_client.xgroup_create(jobs_stream, 'execution-workers', id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+
+    pipe = redis_client.pipeline()
+    job_ids = []
+    for case in cases:
+        job_id = str(uuid.uuid4())
+        job_ids.append(job_id)
+        job = {
+            'job_id': job_id,
+            'run_id': run.id,
+            'execution_mode': 'parallel',
+            'parallelism': parallelism,
+            'test_case_id': case.id,
+            'test_case': {
+                'id': case.id,
+                'name': case.name,
+                'steps': [
+                    step.dict() if hasattr(step, 'dict') else step
+                    for step in case.steps
+                ]
+            },
+            'browser': run.browser,
+            'device': run.device,
+            'settings': {
+                'headers': settings.get('headers', {}),
+                'params': settings.get('params', {}),
+                'allowed_domains': settings.get('allowed_domains', []),
+                'domain_settings': settings.get('domain_settings', {})
+            },
+            'created_at': datetime.utcnow().isoformat(),
+            'retry_count': 0,
+        }
+        pipe.xadd(
+            jobs_stream,
+            {
+                'job_id': job_id,
+                'run_id': str(run.id),
+                'payload': json.dumps(job),
+            },
+        )
+        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+
+    pipe.hset(f'runs:{run.id}:progress', mapping={
+        'total': len(cases),
+        'completed': 0,
+        'passed': 0,
+        'failed': 0,
+        'status': 'running',
+        'execution_mode': 'parallel',
+    })
+    pipe.execute()
+    print(f"[Worker] Dispatched {len(job_ids)} PARALLEL jobs for run {run.id}")
 
 
 def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, execution_mode: ExecutionMode):

@@ -556,6 +556,21 @@ export class TestExecutor {
                 break;
             }
 
+            case 'expect-visual-match': {
+                // Phase B scaffold — full perceptual-diff pipeline deferred (see
+                // SCOPE_NOTES.md). Today this step captures a candidate
+                // screenshot to the artifact directory so a downstream
+                // baseline-comparison job can pick it up. The actual diff
+                // against a stored `VisualBaseline` is not yet wired.
+                const stepId = step.id || `visual-${Date.now()}`;
+                const videoPathVisual = await page.video()?.path();
+                const candidateDir = videoPathVisual ? path.dirname(videoPathVisual) : '/tmp';
+                const candidatePath = path.join(candidateDir, `visual-${stepId}.png`);
+                await page.screenshot({ path: candidatePath, fullPage: true });
+                console.log(`[visual-match] candidate captured at ${candidatePath} (TODO: compare to baseline)`);
+                break;
+            }
+
             case 'scroll-to': {
                 const scrollSelector = step.selector || step.value;
                 if (scrollSelector) {

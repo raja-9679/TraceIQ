@@ -17,5 +17,6 @@ passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.3.0
 croniter==2.0.2
 slowapi==0.1.9
+anthropic==0.39.0
 
 alembic==1.13.1
