@@ -177,6 +177,9 @@ async def generate_case(
             ai_confidence=0.7,
             last_human_reviewed_at=datetime.utcnow(),
             last_human_reviewed_by_id=principal.user.id,
+            # Phase E: provenance.
+            created_by_agent_id=principal.agent_id,
+            agent_session_id=principal.agent_session_id,
         )
         session.add(case)
         await session.commit()
@@ -196,6 +199,9 @@ async def generate_case(
         rationale=body.description[:500],
         ai_confidence=0.7,
         agent_id=principal.agent_id,
+        # Phase E: provenance.
+        created_by_agent_id=principal.agent_id,
+        agent_session_id=principal.agent_session_id,
     )
     session.add(proposal)
     await session.commit()
@@ -269,6 +275,9 @@ async def cases_from_openapi(
                 project_id=suite.project_id,
                 created_by_id=principal.user.id,
                 updated_by_id=principal.user.id,
+                # Phase E: stamp provenance.
+                created_by_agent_id=principal.agent_id,
+                agent_session_id=principal.agent_session_id,
             )
             session.add(case)
             created.append({"operation_id": op_id, "name": case.name})

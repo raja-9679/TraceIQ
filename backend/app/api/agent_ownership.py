@@ -356,6 +356,10 @@ async def create_proposal(
         rationale=body.rationale,
         ai_confidence=body.ai_confidence,
         agent_id=principal.agent_id,
+        # Phase E: provenance — sets together so the reviewer can later
+        # auto-approve "same agent, same session" delete proposals.
+        created_by_agent_id=principal.agent_id,
+        agent_session_id=principal.agent_session_id,
     )
     session.add(proposal)
     await session.commit()
@@ -460,6 +464,10 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
             ai_confidence=proposal.ai_confidence,
             last_human_reviewed_at=datetime.utcnow(),
             last_human_reviewed_by_id=user_id,
+            # Phase E: inherit provenance from the proposal so an accepted
+            # CREATE keeps the agent_session_id chain unbroken.
+            created_by_agent_id=proposal.created_by_agent_id or proposal.agent_id,
+            agent_session_id=proposal.agent_session_id,
         )
         session.add(case)
         return
