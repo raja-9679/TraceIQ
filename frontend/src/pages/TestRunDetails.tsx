@@ -60,9 +60,7 @@ export default function TestRunDetails() {
         ws.onerror = (e) => console.error("WebSocket Error:", e);
 
         return () => {
-            if (ws.readyState === 1 || ws.readyState === 0) {
-                ws.close();
-            }
+            ws.close();
         };
     }, [runId, isValidRunId, run?.status, queryClient]);
 

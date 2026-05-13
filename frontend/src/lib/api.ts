@@ -1,7 +1,9 @@
 import axios from "axios";
+import { toast } from "sonner";
 
 export const api = axios.create({
     baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
+    timeout: 30000,
 });
 
 api.interceptors.request.use((config) => {
@@ -12,12 +14,15 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
-import { toast } from "sonner";
-
 api.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response && error.response.status === 403) {
+        if (error.response?.status === 401) {
+            // Token expired or invalid — clear local session and redirect to login.
+            localStorage.removeItem("token");
+            delete axios.defaults.headers.common["Authorization"];
+            window.location.href = "/login";
+        } else if (error.response?.status === 403) {
             toast.error("Permission Denied", {
                 description: error.response.data.detail || "You do not have permission to perform this action.",
                 duration: 5000,
