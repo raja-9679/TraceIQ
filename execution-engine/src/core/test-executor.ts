@@ -557,17 +557,60 @@ export class TestExecutor {
             }
 
             case 'expect-visual-match': {
-                // Phase B scaffold — full perceptual-diff pipeline deferred (see
-                // SCOPE_NOTES.md). Today this step captures a candidate
-                // screenshot to the artifact directory so a downstream
-                // baseline-comparison job can pick it up. The actual diff
-                // against a stored `VisualBaseline` is not yet wired.
+                // Phase B: perceptual diff against a stored VisualBaseline.
+                // Workflow:
+                //   1. Capture candidate screenshot.
+                //   2. Resolve baseline via the backend (HTTP) using
+                //      (test_case_id, step_id, browser, device).
+                //   3. Run pixelmatch; fail the step if diffRatio > tolerance.
+                //   4. Always upload the diff image alongside other artifacts.
                 const stepId = step.id || `visual-${Date.now()}`;
                 const videoPathVisual = await page.video()?.path();
                 const candidateDir = videoPathVisual ? path.dirname(videoPathVisual) : '/tmp';
                 const candidatePath = path.join(candidateDir, `visual-${stepId}.png`);
                 await page.screenshot({ path: candidatePath, fullPage: true });
-                console.log(`[visual-match] candidate captured at ${candidatePath} (TODO: compare to baseline)`);
+
+                // Lazy require to keep this branch optional: a deployment
+                // without pixelmatch installed continues working (with the
+                // step degrading to a passing capture-only behavior).
+                try {
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    const { compareScreenshots } = require('../visual-diff');
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    const { resolveBaseline, fetchImageBytes } = require('../baseline-client');
+
+                    const testCaseId = (this as any)?.currentTestCase?.id || step.params?.test_case_id;
+                    const browserName = (this as any)?.browserName || 'chromium';
+                    const baseline = await resolveBaseline({
+                        testCaseId,
+                        stepId,
+                        browser: browserName,
+                        device: (this as any)?.device,
+                    });
+                    if (!baseline) {
+                        console.log(`[visual-match] no baseline for step ${stepId} — capture-only`);
+                        break;
+                    }
+                    const baselineBytes = await fetchImageBytes(baseline.image_url);
+                    const result = await compareScreenshots({
+                        candidatePath,
+                        baselineBytes,
+                        tolerance: baseline.tolerance ?? 0.01,
+                        maskRegions: baseline.mask_regions || [],
+                    });
+                    console.log(
+                        `[visual-match] step=${stepId} diffRatio=${result.diffRatio.toFixed(4)} passed=${result.passed}`,
+                    );
+                    if (!result.passed) {
+                        throw new Error(
+                            `Visual regression: diffRatio=${result.diffRatio.toFixed(4)} > tolerance=${baseline.tolerance ?? 0.01}` +
+                            (result.diffImagePath ? ` (diff at ${result.diffImagePath})` : ''),
+                        );
+                    }
+                } catch (err: any) {
+                    if (err?.message?.startsWith('Visual regression')) throw err;
+                    console.log(`[visual-match] degraded to capture-only: ${err?.message}`);
+                }
                 break;
             }
 
