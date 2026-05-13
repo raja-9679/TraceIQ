@@ -40,8 +40,20 @@ For the authoritative end-to-end picture, see `ARCHITECTURE.md`.
 - ✅ **Deployment-comparison runs**: `baseline_run_id` + `target_url` on `TestRun`. New `POST /api/runs/comparison` endpoint; `GET /api/runs/{id}/comparison` returns side-by-side delta.
 - ✅ **Browser-recorder Chrome extension**: MV3 scaffold at `integrations/browser-recorder/` (manifest, content script, background SW, popup). Records goto/click/fill/press-key; POSTs to `/api/cases` with `X-API-Key`.
 
-### Schema migration
+### Phase D — Agent owns the test suite
+- ✅ **TestCase agent-ownership fields**: `code_paths` (JSON array), `is_ai_authored`, `ai_confidence`, `last_human_reviewed_at`, `last_human_reviewed_by_id`.
+- ✅ **`Workspace.ai_generation_limit_daily`** (default 100) — per-workspace cap enforced via Redis counter. Returns 429 when exhausted.
+- ✅ **`CaseProposal` queue**: agents submit create/update/delete/move proposals; humans accept or reject via `/api/case-proposals/{id}/{accept,reject}`. Accepted proposals are applied (creating, patching, deleting, or moving cases). API keys CANNOT accept/reject — humans only.
+- ✅ **Impact analysis**: `POST /api/runs/impact-analysis` — path-prefix and glob matching of `changed_files` against `TestCase.code_paths`. Returns matched cases + unmatched files (gap candidates).
+- ✅ **App surface**: `GET /api/apps/{project_id}/surface` — suite tree with case counts, routes covered (distinct goto URLs), code-paths covered, recent runs, case counts (total / AI-authored / human-reviewed / with-code_paths).
+- ✅ **Case run history**: `GET /api/cases/{case_id}/run-history` — last N runs touching a given case, with pass/fail summary.
+- ✅ **Propose-vs-direct mode on `/api/cases/generate`**: API key callers are forced to `mode=propose`. Humans default to `direct` but may opt into `propose` for review-trail.
+- ✅ **Tautology detector**: Celery task `scan_for_tautologies` gated by `TAUTOLOGY_DETECTOR_ENABLED=true` — flags AI-authored, never-reviewed cases that have passed N consecutive runs in <500 ms.
+- ✅ **MCP tools added**: `discover_app_surface`, `select_tests_for_diff`, `get_run_history`, `create_suite`, `propose_create_case`, `propose_update_case`, `propose_delete_case`, `set_code_paths`, `generate_case_proposal`.
+
+### Schema migrations
 - ✅ Alembic migration `d6f9a3b4c5d6_phase_b_c.py` adds `persona`, `selectorhealproposal`, `flakerecord` tables and `testrun.{baseline_run_id, target_url, persona_id}` + `testcaseresult.{retry_count, confidence, is_flaky}` columns.
+- ✅ Alembic migration `e7a1b2c3d4e5_phase_d.py` adds `caseproposal` table, `caseproposalaction` enum, `testcase.{code_paths, is_ai_authored, ai_confidence, last_human_reviewed_at, last_human_reviewed_by_id}`, and `workspace.ai_generation_limit_daily`.
 
 ### Documentation
 - ✅ `ARCHITECTURE.md` — comprehensive system doc (services, data model, lifecycle, auth, AI integration, RBAC, extension points, ops, glossary).
@@ -68,17 +80,26 @@ These items either require significant frontend work, external products, or desi
 - **Visual baseline approval UI** — baselines today are created via API only. A "promote this candidate to baseline" UI is needed for human-in-the-loop adoption.
 
 ### Phase C polish
-- **Coverage gap detection** — design open. Inputs: PR diff (paths or AST), test suites, route → test mapping. Output: warn or auto-draft. Belongs in the GitHub Action plus a backend endpoint.
+- **Coverage gap detection** — partially shipped via Phase D's `impact-analysis` endpoint (returns unmatched files). The "auto-draft a test for unmatched files" pipeline is open: an agent must explicitly call `generate_case_proposal` on each unmatched file. Possible next step: a server-side "auto-propose for every unmatched file" mode.
 - **Continuous prod validation** — already possible via the cron `TestSchedule` model + a `target_url`-bearing comparison run; needs a UI to set up the recurring schedule.
 - **Recorder fidelity** — drag-drop, iframe interactions, hover-only flows, network capture. Today's recorder is goto/click/fill/press-key only.
+
+### Phase D polish
+- **Frontend UI for the proposal queue** — endpoints exist but there's no React page. The "Inbox" view should show pending proposals with a side-by-side diff (current case vs. proposed), accept/reject buttons, and a quick "regenerate" action. This is the single most impactful UI gap blocking real-world Phase D use.
+- **GitHub Action integration with impact analysis** — the existing action triggers a full suite run; it should call `select_tests_for_diff` first and run only the matched cases (with a fallback to the full suite for safety).
+- **Coverage-based impact analysis (replaces path-prefix)** — instrument the worker so per-file coverage data is captured during each run, then store it on `TestCaseResult` or a separate `CaseCoverage` table. Match diffs against actual coverage instead of self-reported `code_paths`. Much more accurate; ~weeks of work.
+- **Auto-apply policy** — currently every proposal needs a human. A `Workspace.auto_apply_threshold: float` would let high-confidence proposals (e.g. `ai_confidence ≥ 0.95`) auto-merge. Risky; ship UI first.
+- **Run-history per case** is currently best-effort: it matches `TestCaseResult.test_name == case.name`. If two cases share a name across suites it conflates results. Fix is to backfill `TestCaseResult.test_case_id` (column doesn't exist yet) and update the worker to emit it.
+- **Bulk impact analysis** — the current endpoint processes one diff per call; a high-PR-volume org may want batched analysis.
 
 ---
 
 ## Migration & rollout notes
 
-- Two new migrations apply on top of `b2c4e6f8a0d1`:
+- Three new migrations apply on top of `b2c4e6f8a0d1`:
   1. `c5d8f1a2b3c4_ai_agent_integration` — Phase A
   2. `d6f9a3b4c5d6_phase_b_c` — Phase B/C
+  3. `e7a1b2c3d4e5_phase_d` — Phase D (caseproposal, agent-ownership cols)
   Run `alembic upgrade head` before deploying this branch.
 - `triggered_by` defaults to `'human'` for existing rows (server-side default).
 - `retry_count` defaults to 0, `is_flaky` to false — existing `testcaseresult` rows backfill cleanly.
@@ -113,3 +134,9 @@ End-to-end items that need the live cluster (mark complete after staging deploy)
 14. `POST /api/cases/from-openapi` with a small public schema (e.g. petstore); confirm cases are created.
 15. `POST /api/runs/comparison` with a baseline; confirm a comparison run is created with `baseline_run_id` set and the comparison endpoint returns deltas.
 16. Browser recorder: load unpacked, record three clicks on a site, save; confirm `/api/cases` receives them.
+17. Phase D — discover_app_surface: `GET /api/apps/{id}/surface` returns the project's suite tree, routes covered, and case counts.
+18. Phase D — impact analysis: `POST /api/runs/impact-analysis` with a known changed file matches a case whose `code_paths` covers it; an unmatched file is surfaced under `unmatched_files`.
+19. Phase D — proposal queue: with an API key, `POST /api/cases/generate` with no `mode` defaults to propose; returns a CaseProposal id. Human accepts via `POST /api/case-proposals/{id}/accept`; the resulting case has `is_ai_authored=true` and `last_human_reviewed_at` set.
+20. Phase D — API keys CANNOT accept proposals: hitting `/api/case-proposals/{id}/accept` with `X-API-Key` returns 403.
+21. Phase D — budget cap: set `Workspace.ai_generation_limit_daily=1` and fire two `/api/cases/generate` calls; second returns 429.
+22. Phase D — tautology detector (manual): set `TAUTOLOGY_DETECTOR_ENABLED=true`, run the beat task or call `app.tasks.tautology_tasks.scan_for_tautologies.delay()`, confirm a `CaseProposal` is generated for an AI-authored case with N consecutive sub-500-ms passes.

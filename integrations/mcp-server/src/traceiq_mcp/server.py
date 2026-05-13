@@ -143,6 +143,153 @@ async def list_tools() -> List[Tool]:
                 "required": ["run_id"],
             },
         ),
+
+        # ---------- Phase D — agent ownership ----------
+        Tool(
+            name="discover_app_surface",
+            description=(
+                "Return what's currently tested in a TraceIQ project: suite tree, "
+                "routes covered (distinct goto URLs), code-path coverage, recent runs, "
+                "and case counts (total, AI-authored, human-reviewed). Use this before "
+                "proposing new test cases so you don't duplicate existing ones."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {"project_id": {"type": "integer"}},
+                "required": ["project_id"],
+            },
+        ),
+        Tool(
+            name="select_tests_for_diff",
+            description=(
+                "Given a list of files changed in a PR, return the subset of test "
+                "cases that should run for that diff (based on each case's "
+                "`code_paths` field). The response also lists files that are NOT "
+                "covered by any test — these are candidates for new cases."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "changed_files": {"type": "array", "items": {"type": "string"}},
+                    "include_no_code_paths": {"type": "boolean", "default": False},
+                },
+                "required": ["project_id", "changed_files"],
+            },
+        ),
+        Tool(
+            name="get_run_history",
+            description="Return the last N runs that exercised a specific test case, with summary counts (passes, failures, last failure timestamp).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "case_id": {"type": "integer"},
+                    "limit": {"type": "integer", "default": 30},
+                },
+                "required": ["case_id"],
+            },
+        ),
+        Tool(
+            name="create_suite",
+            description="Create a new test suite under a project (optionally nested under a parent suite). Agents should use this only after `discover_app_surface` confirms a suitable home doesn't already exist.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "parent_id": {"type": "integer"},
+                    "execution_mode": {"type": "string", "enum": ["continuous", "separate", "parallel"]},
+                    "description": {"type": "string"},
+                },
+                "required": ["project_id", "name"],
+            },
+        ),
+        Tool(
+            name="propose_create_case",
+            description=(
+                "Propose creating a new TestCase. Goes into the human-review queue "
+                "(CaseProposal) — nothing is created until a reviewer accepts. Use "
+                "this for any case authored from a description; selectors generated "
+                "without observing the real app are notoriously brittle."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "test_suite_id": {"type": "integer"},
+                    "name": {"type": "string"},
+                    "steps": {"type": "array"},
+                    "code_paths": {"type": "array", "items": {"type": "string"}},
+                    "rationale": {"type": "string"},
+                    "ai_confidence": {"type": "number"},
+                },
+                "required": ["project_id", "test_suite_id", "name", "steps"],
+            },
+        ),
+        Tool(
+            name="propose_update_case",
+            description="Propose updating an existing TestCase (name, steps, code_paths). Queued for human review.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "target_case_id": {"type": "integer"},
+                    "patch": {"type": "object"},
+                    "rationale": {"type": "string"},
+                    "ai_confidence": {"type": "number"},
+                },
+                "required": ["project_id", "target_case_id", "patch"],
+            },
+        ),
+        Tool(
+            name="propose_delete_case",
+            description="Propose deleting an obsolete TestCase. Queued for human review.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "target_case_id": {"type": "integer"},
+                    "rationale": {"type": "string"},
+                },
+                "required": ["project_id", "target_case_id", "rationale"],
+            },
+        ),
+        Tool(
+            name="set_code_paths",
+            description=(
+                "Set the `code_paths` array on a TestCase — the file prefixes / globs "
+                "that this case exercises. Used by `select_tests_for_diff`. Patterns "
+                "may be bare prefixes (e.g. 'frontend/src/Checkout/') or globs."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "case_id": {"type": "integer"},
+                    "code_paths": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["case_id", "code_paths"],
+            },
+        ),
+        Tool(
+            name="generate_case_proposal",
+            description=(
+                "LLM-generate a TestCase from a natural-language description and "
+                "enqueue it as a CaseProposal for human review. Use when no existing "
+                "case covers the change and you need a starting draft. The reviewer "
+                "edits and accepts."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "description": {"type": "string"},
+                    "test_suite_id": {"type": "integer"},
+                    "target_url": {"type": "string"},
+                    "case_name": {"type": "string"},
+                    "code_paths": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["description", "test_suite_id"],
+            },
+        ),
     ]
 
 
@@ -203,6 +350,90 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             await asyncio.sleep(interval)
             elapsed += interval
         return [TextContent(type="text", text=_format_run_summary(last))]
+
+    # ---------- Phase D ----------
+    if name == "discover_app_surface":
+        data = await client.discover_app_surface(arguments["project_id"])
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "select_tests_for_diff":
+        data = await client.select_tests_for_diff(
+            project_id=arguments["project_id"],
+            changed_files=arguments["changed_files"],
+            include_no_code_paths=arguments.get("include_no_code_paths", False),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "get_run_history":
+        data = await client.get_run_history(
+            case_id=arguments["case_id"],
+            limit=int(arguments.get("limit", 30)),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "create_suite":
+        data = await client.create_suite(
+            project_id=arguments["project_id"],
+            name=arguments["name"],
+            parent_id=arguments.get("parent_id"),
+            execution_mode=arguments.get("execution_mode"),
+            description=arguments.get("description"),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "propose_create_case":
+        data = await client.propose_case(
+            project_id=arguments["project_id"],
+            action="create",
+            test_suite_id=arguments["test_suite_id"],
+            payload={
+                "name": arguments["name"],
+                "steps": arguments["steps"],
+                "code_paths": arguments.get("code_paths") or [],
+            },
+            rationale=arguments.get("rationale"),
+            ai_confidence=float(arguments.get("ai_confidence", 0.5)),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "propose_update_case":
+        data = await client.propose_case(
+            project_id=arguments["project_id"],
+            action="update",
+            target_case_id=arguments["target_case_id"],
+            payload=arguments["patch"],
+            rationale=arguments.get("rationale"),
+            ai_confidence=float(arguments.get("ai_confidence", 0.5)),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "propose_delete_case":
+        data = await client.propose_case(
+            project_id=arguments["project_id"],
+            action="delete",
+            target_case_id=arguments["target_case_id"],
+            payload={"reason": arguments["rationale"]},
+            rationale=arguments["rationale"],
+            ai_confidence=1.0,
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "set_code_paths":
+        data = await client.update_case(
+            case_id=arguments["case_id"],
+            code_paths=arguments["code_paths"],
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "generate_case_proposal":
+        data = await client.generate_case_proposal(
+            description=arguments["description"],
+            test_suite_id=arguments["test_suite_id"],
+            target_url=arguments.get("target_url"),
+            case_name=arguments.get("case_name"),
+            code_paths=arguments.get("code_paths"),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
 
     raise ValueError(f"Unknown tool: {name}")
 

@@ -18,8 +18,10 @@ generator's output is treated as a draft, not a contract.
 from __future__ import annotations
 
 import json
+import os
 import re
 import uuid
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -32,13 +34,54 @@ from app.core.database import get_session
 from app.models import (
     CaseFromOpenAPIRequest,
     CaseGenerationRequest,
+    CaseProposal,
+    CaseProposalAction,
+    Project,
     TestCase,
     TestCaseRead,
     TestSuite,
+    Workspace,
 )
 from app.services.access_service import access_service
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Phase D: AI-generation budget cap
+# ---------------------------------------------------------------------------
+async def _check_and_consume_ai_budget(workspace_id: int, session: AsyncSession) -> None:
+    """Enforce a per-workspace daily cap on AI-generation calls.
+
+    Uses a Redis counter `workspace:{id}:ai_gen:{YYYY-MM-DD}`. Fails open
+    (allows the call) if Redis is unreachable — generation is best-effort
+    and the cap is a guardrail against runaway spend, not a hard SLO.
+    """
+    workspace = await session.get(Workspace, workspace_id)
+    if not workspace:
+        return
+    limit = workspace.ai_generation_limit_daily or 0
+    if limit <= 0:
+        return  # unlimited
+    try:
+        import redis.asyncio as redis
+        from app.core.config import settings as _settings
+        r = redis.from_url(_settings.CELERY_BROKER_URL, decode_responses=True)
+        key = f"workspace:{workspace_id}:ai_gen:{datetime.utcnow():%Y-%m-%d}"
+        used = await r.incr(key)
+        if used == 1:
+            await r.expire(key, 60 * 60 * 36)  # 36h TTL covers day boundary
+        await r.close()
+        if used > limit:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Workspace daily AI generation cap reached ({limit}). "
+                       "Raise `ai_generation_limit_daily` on the workspace or wait until UTC midnight.",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"[CaseGeneration] budget check failed open: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -56,12 +99,23 @@ _GENERATION_SYSTEM = (
 )
 
 
-@router.post("/cases/generate", response_model=TestCaseRead)
+@router.post("/cases/generate")
 async def generate_case(
     body: CaseGenerationRequest,
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
-) -> TestCaseRead:
+):
+    """Generate a draft TestCase via the LLM.
+
+    Phase D — mode selection:
+      • `direct`  → create the case immediately. Allowed only when the caller
+                    is a human (JWT) with editor role. API keys cannot use this.
+      • `propose` → enqueue a CaseProposal for human review. Default for API
+                    key callers; available to humans who want a review trail.
+
+    The response shape differs by mode: `direct` returns a TestCaseRead;
+    `propose` returns a CaseProposalRead-like dict.
+    """
     suite = await session.get(TestSuite, body.test_suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Test suite not found")
@@ -75,6 +129,21 @@ async def generate_case(
             status_code=400,
             detail="No LLM provider configured. Set OPENAI_API_KEY or ANTHROPIC_API_KEY.",
         )
+
+    # Resolve mode + enforce that API keys never write directly.
+    mode = (body.mode or ("propose" if principal.is_api_caller else "direct")).lower()
+    if mode not in ("direct", "propose"):
+        raise HTTPException(status_code=400, detail="mode must be 'direct' or 'propose'")
+    if mode == "direct" and principal.is_api_caller:
+        raise HTTPException(
+            status_code=403,
+            detail="API keys cannot create cases directly. Use mode='propose'.",
+        )
+
+    # Resolve the project's workspace + enforce budget cap.
+    project = await session.get(Project, suite.project_id)
+    if project:
+        await _check_and_consume_ai_budget(project.workspace_id, session)
 
     prompt = (
         f"Description: {body.description}\n"
@@ -92,18 +161,51 @@ async def generate_case(
             detail=f"LLM returned no parseable steps. Raw response: {raw[:200]}",
         )
 
-    case = TestCase(
-        name=body.case_name or _slug_from_description(body.description),
-        steps=steps,
-        test_suite_id=body.test_suite_id,
+    case_name = body.case_name or _slug_from_description(body.description)
+    code_paths = body.code_paths or []
+
+    if mode == "direct":
+        case = TestCase(
+            name=case_name,
+            steps=steps,
+            test_suite_id=body.test_suite_id,
+            project_id=suite.project_id,
+            created_by_id=principal.user.id,
+            updated_by_id=principal.user.id,
+            code_paths=code_paths,
+            is_ai_authored=True,
+            ai_confidence=0.7,
+            last_human_reviewed_at=datetime.utcnow(),
+            last_human_reviewed_by_id=principal.user.id,
+        )
+        session.add(case)
+        await session.commit()
+        await session.refresh(case)
+        return TestCaseRead(**case.model_dump())
+
+    # mode == "propose"
+    proposal = CaseProposal(
         project_id=suite.project_id,
-        created_by_id=principal.user.id,
-        updated_by_id=principal.user.id,
+        test_suite_id=body.test_suite_id,
+        action=CaseProposalAction.CREATE,
+        payload={
+            "name": case_name,
+            "steps": steps,
+            "code_paths": code_paths,
+        },
+        rationale=body.description[:500],
+        ai_confidence=0.7,
+        agent_id=principal.agent_id,
     )
-    session.add(case)
+    session.add(proposal)
     await session.commit()
-    await session.refresh(case)
-    return TestCaseRead(**case.model_dump())
+    await session.refresh(proposal)
+    return {
+        "mode": "propose",
+        "proposal_id": proposal.id,
+        "status": proposal.status,
+        "review_endpoint": f"/api/case-proposals/{proposal.id}/accept",
+    }
 
 
 # ---------------------------------------------------------------------------
