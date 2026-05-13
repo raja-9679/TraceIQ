@@ -3,7 +3,15 @@ from datetime import datetime
 from sqlmodel import select
 from celery import shared_task
 from app.core.database import get_session_context
-from app.models import TestSchedule, TestSuite, TestCase, TestRun, TestStatus, ExecutionMode
+from app.models import (
+    ExecutionMode,
+    RunTrigger,
+    TestCase,
+    TestRun,
+    TestSchedule,
+    TestStatus,
+    TestSuite,
+)
 from app.services.test_service import test_service
 from croniter import croniter
 
@@ -66,7 +74,9 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 domain_settings=effective_settings.get("domain_settings", {}),
                 browser=target_browser,
                 device=target_device,
-                user_id=schedule.created_by_id  # Blame the run on the schedule creator
+                user_id=schedule.created_by_id,  # Blame the run on the schedule creator
+                triggered_by=RunTrigger.SCHEDULE,
+                agent_id=f"schedule:{schedule.id}",
             )
             session.add(run)
             await session.flush()
@@ -105,7 +115,9 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                             domain_settings=current_effective_settings.get("domain_settings", {}),
                             browser=target_browser,
                             device=target_device,
-                            user_id=schedule.created_by_id
+                            user_id=schedule.created_by_id,
+                            triggered_by=RunTrigger.SCHEDULE,
+                            agent_id=f"schedule:{schedule.id}",
                         )
                         session.add(run)
                         await session.flush()
@@ -130,7 +142,9 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                         domain_settings=current_effective_settings.get("domain_settings", {}),
                         browser=target_browser,
                         device=target_device,
-                        user_id=schedule.created_by_id
+                        user_id=schedule.created_by_id,
+                        triggered_by=RunTrigger.SCHEDULE,
+                        agent_id=f"schedule:{schedule.id}",
                     )
                     session.add(run)
                     await session.flush()
