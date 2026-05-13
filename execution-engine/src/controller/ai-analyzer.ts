@@ -46,12 +46,12 @@ export enum ErrorType {
     UNKNOWN = 'unknown'
 }
 
+import { provider as llmProvider } from '../llm-provider';
+
 export class AIAnalyzer {
-    private openaiApiKey: string | null;
     private enabled: boolean;
 
     constructor() {
-        this.openaiApiKey = process.env.OPENAI_API_KEY || null;
         this.enabled = process.env.AI_ANALYSIS_ENABLED === 'true';
     }
 
@@ -62,12 +62,12 @@ export class AIAnalyzer {
         console.log(`[AIAnalyzer] Analyzing failures for run ${runId}`);
 
         const failedResults = results.filter(r => r.status !== 'passed');
-        
+
         // Basic analysis (always available)
         const basicAnalysis = this.performBasicAnalysis(runId, failedResults);
 
-        // AI-powered analysis (if enabled and API key available)
-        if (this.enabled && this.openaiApiKey) {
+        // AI-powered analysis (if enabled and an LLM provider is configured)
+        if (this.enabled && llmProvider.name !== 'null') {
             try {
                 const aiEnhancedAnalysis = await this.performAIAnalysis(runId, failedResults, basicAnalysis);
                 return aiEnhancedAnalysis;
@@ -123,48 +123,20 @@ export class AIAnalyzer {
     }
 
     /**
-     * AI-powered analysis using OpenAI
+     * AI-powered analysis via the configured LLM provider (OpenAI or Anthropic).
      */
     private async performAIAnalysis(
-        runId: number, 
-        failedResults: any[], 
+        runId: number,
+        failedResults: any[],
         basicAnalysis: FailureAnalysis
     ): Promise<FailureAnalysis> {
-        
+
         const prompt = this.buildAnalysisPrompt(failedResults);
-        
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.openaiApiKey}`
-            },
-            body: JSON.stringify({
-                model: 'gpt-4',
-                messages: [
-                    {
-                        role: 'system',
-                        content: `You are an expert test automation engineer analyzing test failures. 
-                        Provide concise, actionable analysis of test failures.
-                        Focus on identifying root causes and suggesting specific fixes.
-                        Format your response as JSON matching the FailureAnalysis interface.`
-                    },
-                    {
-                        role: 'user',
-                        content: prompt
-                    }
-                ],
-                temperature: 0.3,
-                max_tokens: 2000
-            })
-        });
+        const system = `You are an expert test automation engineer analyzing test failures.
+Provide concise, actionable analysis. Focus on identifying root causes and suggesting specific fixes.
+Format your response as JSON matching the FailureAnalysis interface.`;
 
-        if (!response.ok) {
-            throw new Error(`OpenAI API error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const aiContent = data.choices[0]?.message?.content;
+        const aiContent = await llmProvider.complete(prompt, { system, maxTokens: 2000 });
 
         if (aiContent) {
             try {

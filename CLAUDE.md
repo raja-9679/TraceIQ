@@ -58,14 +58,22 @@ docker compose logs -f execution-worker
 # Local dev without Docker (requires postgres/redis/minio running)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Celery worker
+# Celery worker (main queue)
 celery -A app.core.celery_app worker --loglevel=info -Q main-queue
+
+# Celery aggregator worker (separate queue for result aggregation)
+celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue
+
+# Celery beat (scheduled tasks)
+celery -A app.core.celery_app beat --loglevel=info
 
 # Run tests
 pytest
 
-# Run a single test file
+# Run a single test file (tests live at tests/ root, tests/e2e/, or tests/integration/)
 pytest tests/test_stale_run_detection.py
+pytest tests/e2e/test_parallel_execution.py
+pytest tests/integration/test_async_execution.py
 
 # Database migrations
 alembic revision --autogenerate -m "description"
@@ -77,7 +85,9 @@ alembic upgrade head
 ```bash
 npm run dev          # Hot-reload dev server at http://localhost:5173
 npm run build        # Production build
+npm run build:local  # Build with local env
 npm run build:dev    # Build for dev environment
+npm run build:prod   # Build with production mode
 npm run lint         # ESLint
 ```
 
@@ -135,8 +145,14 @@ backend/app/
 ├── main.py               # FastAPI app, router registration, lifespan hooks
 ├── models.py             # All SQLModel ORM models + Pydantic schemas
 ├── worker.py             # Celery task: run_test_suite, dispatch functions
+├── settings_models.py    # Pydantic settings models for inheritance
 ├── api/
-│   ├── auth.py           # JWT login/register/refresh
+│   ├── auth.py           # JWT login/register/refresh; refresh token issuance
+│   ├── admin.py          # Tenant-admin user/assignment endpoints
+│   ├── settings.py       # Settings endpoints
+│   ├── api_keys.py       # Workspace API key CRUD (service accounts)
+│   ├── workspace_webhooks.py  # Outbound webhook registry
+│   ├── visual_baselines.py    # Visual regression baselines (Phase B scaffold)
 │   ├── workspaces.py     # Workspace + team + invite management
 │   ├── projects.py       # Project CRUD
 │   └── endpoints/
@@ -145,13 +161,27 @@ backend/app/
 │       ├── test_runs.py  # Run lifecycle: create, webhook, finalize, force-complete
 │       ├── schedules.py
 │       └── websockets.py
+├── ai/                   # OpenAI / Anthropic failure analysis + heal
+│   ├── providers.py      # LLMProvider abstraction (OpenAI / Anthropic / Null)
+│   ├── engine.py         # AIEngine using the provider abstraction
+│   └── trace_parser.py
+├── runner/               # In-process Playwright runner (Celery path)
+│   ├── browser_manager.py
+│   ├── runner.py
+│   └── smart_page.py
+├── schemas/              # Pydantic request/response schemas
 ├── core/
 │   ├── config.py         # Pydantic settings (all env vars)
+│   ├── auth.py           # JWT/API-key principal, password hashing, token gen
 │   ├── database.py       # Async SQLAlchemy engine + session
 │   ├── celery_app.py     # Celery config + beat schedule
+│   ├── limiter.py        # Rate limiting (slowapi)
+│   ├── rbac_init.py      # Bootstraps default roles/permissions
+│   ├── redis.py
 │   └── storage.py        # MinIO client wrapper
 ├── services/
 │   ├── access_service.py # RBAC access checks
+│   ├── rbac_service.py   # Role/permission lookups
 │   ├── job_dispatcher.py # Redis Streams job dispatch
 │   ├── test_service.py   # Recursive case collection, settings inheritance
 │   └── workspace_service.py
@@ -159,6 +189,8 @@ backend/app/
     ├── cleanup_tasks.py       # Stale run cleanup (Celery beat)
     ├── notification_tasks.py  # Email / Slack / Teams
     ├── result_aggregator.py   # Aggregates distributed results
+    ├── schedule_tasks.py      # Cron-driven suite scheduling
+    ├── outbound_webhook_tasks.py  # Fan-out registered workspace webhooks on run events
     └── webhook_tasks.py       # Processes engine webhooks
 ```
 
@@ -166,7 +198,7 @@ backend/app/
 
 ## Frontend structure
 
-React 18 + Vite + TypeScript + TanStack Query + React Router v6 + Tailwind CSS + shadcn/ui.
+React 19 + Vite + TypeScript + TanStack Query + React Router v7 + Tailwind CSS + shadcn/ui.
 
 JWT is stored in `AuthContext` and attached as `Authorization: Bearer` on all requests via `src/lib/api.ts`.
 
@@ -193,6 +225,21 @@ execution-engine/src/
 Step execution switch lives in `runner.ts`. Supported step types: `goto`, `click`, `fill`, `check`, `expect`, `http-request`, `feed-check`, `hover`, `screenshot`.
 
 ---
+
+## AI-agent integration surface (Phase A)
+
+TraceIQ exposes integration points so AI coding agents can trigger and consume regression runs:
+
+- **API key auth** — `POST /api/workspaces/{id}/api-keys` mints a `tiq_...` key. Pass via `X-API-Key` header on any endpoint; `get_current_principal` accepts either JWT or API key.
+- **Git context on runs** — `POST /api/runs` accepts a JSON body with `git_commit`, `git_branch`, `git_pr_url`, `git_repo`, `triggered_by`, `agent_id`. These are stored on `TestRun` and surfaced in the finalize webhook payload.
+- **Refresh tokens** — `POST /api/auth/refresh` (rotation-on-use). Family-based revocation on token replay.
+- **Outbound webhooks** — `POST /api/workspaces/{id}/webhooks`. HMAC-SHA256 signed (`X-TraceIQ-Signature`). Fan-out happens in `app.tasks.outbound_webhook_tasks.dispatch_run_webhooks`.
+- **LLM provider abstraction** — `app/ai/providers.py` (Python) and `execution-engine/src/llm-provider.ts` (TS). Switch via `LLM_PROVIDER=anthropic|openai` + `LLM_MODEL=...`.
+- **PARALLEL execution mode** — fully routed through `dispatch_parallel_jobs` in `app/worker.py`. Tune fan-out via `PARALLEL_MAX_CONCURRENCY`.
+- **MCP server** — `integrations/mcp-server/`. Wires Claude Code / Cursor to TraceIQ as a tool.
+- **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
+
+See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of
 

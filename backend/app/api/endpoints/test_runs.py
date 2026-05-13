@@ -1,20 +1,61 @@
 from typing import List, Optional, Union, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Header
+from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
-from app.core.auth import get_current_user
+from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
 from app.core.storage import minio_client
 from app.services.test_service import test_service
 from app.services.access_service import access_service
 from app.models import (
     User, AuditLog, AuditLogRead, Project, UserWorkspace, UserTeam, UserProjectAccess,
     TeamProjectAccess, TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode,
-    TestCaseResult, TestCaseResultRead
+    TestCaseResult, TestCaseResultRead, RunTrigger
 )
 
 router = APIRouter()
+
+
+class RunCreateContext(BaseModel):
+    """Optional change-context attached to a run.
+
+    AI agents and CI systems POST this body when triggering a regression
+    check; humans triggering a run from the UI leave it empty.
+    """
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    git_pr_url: Optional[str] = None
+    git_repo: Optional[str] = None
+    triggered_by: Optional[RunTrigger] = None
+    agent_id: Optional[str] = None
+
+
+def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
+    """Compute the run-level fields that are constant across all created runs."""
+    ctx = body or RunCreateContext()
+    # If the call came in via an API key, default `triggered_by` to api_agent.
+    # Explicit body value still wins so a CI system that authenticates with
+    # an API key can label its runs as `ci`.
+    if ctx.triggered_by is not None:
+        triggered_by = ctx.triggered_by
+    elif principal.is_api_caller:
+        triggered_by = RunTrigger.API_AGENT
+    else:
+        triggered_by = RunTrigger.HUMAN
+
+    agent_id = ctx.agent_id or principal.agent_id
+    api_key_id = principal.api_key.id if principal.api_key else None
+    return {
+        "git_commit": ctx.git_commit,
+        "git_branch": ctx.git_branch,
+        "git_pr_url": ctx.git_pr_url,
+        "git_repo": ctx.git_repo,
+        "triggered_by": triggered_by,
+        "agent_id": agent_id,
+        "api_key_id": api_key_id,
+    }
 
 
 @router.post("/runs", response_model=Union[TestRunRead, List[TestRunRead]])
@@ -23,9 +64,12 @@ async def create_run(
     case_id: Optional[int] = None,
     browser: List[str] = Query(["chromium"]),
     device: Optional[List[str]] = Query(None),
+    context: Optional[RunCreateContext] = Body(None),
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user)
+    principal: AuthPrincipal = Depends(get_current_principal),
 ):
+    current_user = principal.user
+    run_defaults = _build_run_defaults(principal, context)
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
@@ -79,7 +123,8 @@ async def create_run(
                                     "domain_settings", {}),
                                 browser=target_browser,
                                 device=target_device,
-                                user_id=current_user.id
+                                user_id=current_user.id,
+                                **run_defaults,
                             )
                             session.add(run)
                             await session.flush()
@@ -111,7 +156,8 @@ async def create_run(
                                 "domain_settings", {}),
                             browser=target_browser,
                             device=target_device,
-                            user_id=current_user.id
+                            user_id=current_user.id,
+                            **run_defaults,
                         )
                         session.add(run)
                         await session.flush()
@@ -152,7 +198,8 @@ async def create_run(
                             "domain_settings", {}),
                         browser=target_browser,
                         device=target_device,
-                        user_id=current_user.id
+                        user_id=current_user.id,
+                        **run_defaults,
                     )
                     session.add(run)
                     await session.flush()
@@ -196,6 +243,10 @@ async def get_runs(
     status: Optional[str] = None,
     browser: Optional[str] = None,
     device: Optional[str] = None,
+    git_commit: Optional[str] = None,
+    git_branch: Optional[str] = None,
+    triggered_by: Optional[str] = None,
+    agent_id: Optional[str] = None,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user)
 ):
@@ -233,6 +284,14 @@ async def get_runs(
         query = query.where(TestRun.browser == browser)
     if device:
         query = query.where(TestRun.device == device)
+    if git_commit:
+        query = query.where(TestRun.git_commit == git_commit)
+    if git_branch:
+        query = query.where(TestRun.git_branch == git_branch)
+    if triggered_by:
+        query = query.where(TestRun.triggered_by == triggered_by)
+    if agent_id:
+        query = query.where(TestRun.agent_id == agent_id)
 
     # Get total count with filters
     count_query = select(func.count()).select_from(query.subquery())
@@ -478,6 +537,15 @@ async def finalize_test_run(
         print(
             f"[Finalize] Failed to queue notifications for run {run_id}: {e}")
         # Don't fail the request - notifications are best-effort
+
+    # Fan-out workspace-registered outbound webhooks (CI bots, agent callbacks).
+    # Best-effort; failures inside the task do not affect the run.
+    try:
+        from app.tasks.outbound_webhook_tasks import dispatch_run_webhooks
+        dispatch_run_webhooks.delay(run_id)
+        print(f"[Finalize] Queued outbound webhooks for run {run_id}")
+    except Exception as e:
+        print(f"[Finalize] Failed to queue outbound webhooks for run {run_id}: {e}")
 
     return {"status": "finalized", "run_id": run_id}
 
