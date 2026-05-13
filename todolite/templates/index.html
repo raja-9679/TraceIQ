@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TodoLite</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="hidden min-h-screen flex items-center justify-center px-4">
+        <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+            <h1 class="text-2xl font-semibold text-center mb-1">TodoLite</h1>
+            <p class="text-sm text-slate-500 text-center mb-6">Sign in to your tasks</p>
+
+            <form id="login-form" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1" for="login-username">Username</label>
+                    <input
+                        id="login-username"
+                        name="username"
+                        type="text"
+                        autocomplete="username"
+                        required
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+                    />
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-slate-600 mb-1" for="login-password">Password</label>
+                    <input
+                        id="login-password"
+                        name="password"
+                        type="password"
+                        autocomplete="current-password"
+                        required
+                        class="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+                    />
+                </div>
+                <button
+                    id="login-submit"
+                    type="submit"
+                    class="w-full rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 text-sm transition"
+                >
+                    Sign in
+                </button>
+                <p
+                    id="login-error"
+                    class="hidden text-sm text-red-600 text-center"
+                    role="alert"
+                ></p>
+            </form>
+
+            <p class="mt-6 text-xs text-slate-400 text-center">
+                Try <span class="font-mono">alice / wonderland</span> or
+                <span class="font-mono">bob / builder</span>
+            </p>
+        </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="hidden max-w-2xl mx-auto px-4 py-10">
+        <header class="flex items-center justify-between mb-8">
+            <h1 class="text-2xl font-semibold">TodoLite</h1>
+            <div class="flex items-center gap-3 text-sm">
+                <span id="current-user" class="text-slate-600"></span>
+                <button
+                    id="logout"
+                    class="rounded-lg border border-slate-300 hover:bg-slate-100 px-3 py-1.5 text-sm transition"
+                >
+                    Log out
+                </button>
+            </div>
+        </header>
+
+        <form id="todo-form" class="flex gap-2 mb-6">
+            <input
+                id="todo-input"
+                type="text"
+                placeholder="What needs doing?"
+                autocomplete="off"
+                class="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+            />
+            <select
+                id="todo-priority"
+                class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400"
+            >
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+            </select>
+            <button
+                id="todo-create-button"
+                type="submit"
+                class="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-medium transition"
+            >
+                Add
+            </button>
+        </form>
+
+        <ul id="todo-list" class="space-y-2"></ul>
+        <p id="empty-state" class="hidden text-center text-sm text-slate-400 py-12">
+            No tasks yet. Add one above.
+        </p>
+    </div>
+
+    <script>
+        (function () {
+            const $ = (id) => document.getElementById(id);
+            const loginScreen = $("login-screen");
+            const dashboard = $("dashboard");
+            const loginForm = $("login-form");
+            const loginError = $("login-error");
+            const todoForm = $("todo-form");
+            const todoInput = $("todo-input");
+            const todoList = $("todo-list");
+            const emptyState = $("empty-state");
+            const logoutBtn = $("logout");
+            const currentUserEl = $("current-user");
+
+            // ----------------------------------------------------------------
+            // Routing — show login or dashboard based on /api/me
+            // ----------------------------------------------------------------
+            async function bootstrap() {
+                try {
+                    const res = await fetch("/api/me", { credentials: "include" });
+                    if (res.ok) {
+                        const data = await res.json();
+                        showDashboard(data.username);
+                        await refreshTodos();
+                    } else {
+                        showLogin();
+                    }
+                } catch (err) {
+                    console.error("bootstrap failed", err);
+                    showLogin();
+                }
+            }
+
+            function showLogin() {
+                loginScreen.classList.remove("hidden");
+                dashboard.classList.add("hidden");
+                loginError.classList.add("hidden");
+                loginError.textContent = "";
+            }
+
+            function showDashboard(username) {
+                loginScreen.classList.add("hidden");
+                dashboard.classList.remove("hidden");
+                currentUserEl.textContent = username;
+            }
+
+            // ----------------------------------------------------------------
+            // Login
+            // ----------------------------------------------------------------
+            loginForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                loginError.classList.add("hidden");
+                const username = $("login-username").value.trim();
+                const password = $("login-password").value;
+                const body = new URLSearchParams({ username, password });
+                try {
+                    const res = await fetch("/api/auth/login", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body,
+                        credentials: "include",
+                    });
+                    if (!res.ok) {
+                        const data = await res.json().catch(() => ({ detail: "Login failed" }));
+                        loginError.textContent = data.detail || "Invalid username or password";
+                        loginError.classList.remove("hidden");
+                        return;
+                    }
+                    const data = await res.json();
+                    showDashboard(data.username);
+                    await refreshTodos();
+                } catch (err) {
+                    loginError.textContent = "Network error. Try again.";
+                    loginError.classList.remove("hidden");
+                }
+            });
+
+            // ----------------------------------------------------------------
+            // Logout
+            // ----------------------------------------------------------------
+            logoutBtn.addEventListener("click", async () => {
+                await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+                $("login-username").value = "";
+                $("login-password").value = "";
+                showLogin();
+            });
+
+            // ----------------------------------------------------------------
+            // Todo CRUD
+            // ----------------------------------------------------------------
+            async function refreshTodos() {
+                const res = await fetch("/api/todos", { credentials: "include" });
+                if (!res.ok) return;
+                const todos = await res.json();
+                renderTodos(todos);
+            }
+
+            function renderTodos(todos) {
+                todoList.innerHTML = "";
+                if (!todos.length) {
+                    emptyState.classList.remove("hidden");
+                    return;
+                }
+                emptyState.classList.add("hidden");
+                for (const t of todos) {
+                    const li = document.createElement("li");
+                    li.dataset.testid = "todo-item";
+                    li.dataset.todoId = t.id;
+                    li.className =
+                        "flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2";
+
+                    const cb = document.createElement("input");
+                    cb.type = "checkbox";
+                    cb.checked = !!t.done;
+                    cb.dataset.testid = "todo-toggle";
+                    cb.className = "h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500";
+                    cb.addEventListener("change", () => toggleTodo(t.id, cb.checked));
+
+                    const label = document.createElement("span");
+                    label.dataset.testid = "todo-text";
+                    label.className =
+                        "flex-1 text-sm " + (t.done ? "line-through text-slate-400" : "text-slate-900");
+                    label.textContent = t.text;
+
+                    const badge = document.createElement("span");
+                    badge.dataset.testid = "todo-priority";
+                    badge.dataset.priority = t.priority || "medium";
+                    const priorityClasses = {
+                        low: "bg-slate-100 text-slate-600 ring-slate-200",
+                        medium: "bg-amber-50 text-amber-700 ring-amber-200",
+                        high: "bg-red-50 text-red-700 ring-red-200",
+                    };
+                    badge.className =
+                        "text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ring-1 ring-inset " +
+                        (priorityClasses[t.priority] || priorityClasses.medium);
+                    badge.textContent = t.priority || "medium";
+
+                    const del = document.createElement("button");
+                    del.type = "button";
+                    del.dataset.testid = "todo-delete";
+                    del.className =
+                        "text-slate-400 hover:text-red-600 transition text-sm px-2 py-1 rounded";
+                    del.textContent = "✕";
+                    del.title = "Delete";
+                    del.addEventListener("click", () => deleteTodo(t.id));
+
+                    li.append(cb, label, badge, del);
+                    todoList.appendChild(li);
+                }
+            }
+
+            const todoPriority = $("todo-priority");
+
+            todoForm.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                const text = todoInput.value.trim();
+                if (!text) return;
+                const priority = todoPriority.value || "medium";
+                const res = await fetch("/api/todos", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ text, priority }),
+                });
+                if (res.ok) {
+                    todoInput.value = "";
+                    todoPriority.value = "medium";
+                    await refreshTodos();
+                }
+            });
+
+            async function toggleTodo(id, done) {
+                await fetch(`/api/todos/${id}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ done }),
+                });
+                await refreshTodos();
+            }
+
+            async function deleteTodo(id) {
+                await fetch(`/api/todos/${id}`, { method: "DELETE", credentials: "include" });
+                await refreshTodos();
+            }
+
+            // Boot
+            bootstrap();
+        })();
+    </script>
+</body>
+</html>
