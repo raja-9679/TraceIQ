@@ -1,0 +1,62 @@
+name: 'TraceIQ Regression Run'
+description: 'Run TraceIQ regression tests against a code change and gate the PR on the result.'
+author: 'TraceIQ'
+branding:
+  icon: 'check-circle'
+  color: 'blue'
+
+inputs:
+  base-url:
+    description: 'TraceIQ base URL, e.g. https://traceiq.example.com'
+    required: true
+  api-key:
+    description: 'TraceIQ workspace API key (tiq_...). Use a repo secret.'
+    required: true
+  suite-id:
+    description: 'TraceIQ test suite ID to run.'
+    required: true
+  case-id:
+    description: 'Optional. Run only this test case.'
+    required: false
+  browser:
+    description: 'Comma-separated browsers (default: chromium).'
+    required: false
+    default: 'chromium'
+  agent-id:
+    description: 'Identifier for the agent/system triggering the run. Defaults to "github-action".'
+    required: false
+    default: 'github-action'
+  triggered-by:
+    description: 'One of human|schedule|api_agent|ci|webhook. Defaults to "ci".'
+    required: false
+    default: 'ci'
+  poll-interval-seconds:
+    description: 'How often to poll for run completion.'
+    required: false
+    default: '10'
+  timeout-seconds:
+    description: 'Maximum time to wait for the run to finish.'
+    required: false
+    default: '1800'
+  fail-on:
+    description: 'Exit non-zero on these statuses (comma-separated). Default: failed,error.'
+    required: false
+    default: 'failed,error'
+  post-pr-comment:
+    description: 'Post a summary comment on the triggering PR (requires GITHUB_TOKEN).'
+    required: false
+    default: 'true'
+
+outputs:
+  run-id:
+    description: 'TraceIQ run ID(s) that were created.'
+  status:
+    description: 'Final status of the run.'
+  passed:
+    description: 'Number of passed test cases.'
+  failed:
+    description: 'Number of failed test cases.'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
