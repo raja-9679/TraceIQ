@@ -48,7 +48,7 @@ def upgrade() -> None:
     ))
     op.get_bind().execute(sa.text(
         'CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_user_email '
-        'ON "user" (email)'
+        'ON users (email)'
     ))
 
 

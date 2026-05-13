@@ -9,7 +9,7 @@ from app.core.limiter import limiter
 from app.api import (
     api_keys, auth, settings, workspaces, projects, admin,
     workspace_webhooks, visual_baselines, personas, heal_proposals,
-    flake_records, case_generation, comparison_runs,
+    flake_records, case_generation, comparison_runs, agent_ownership,
 )
 from app.api.endpoints import test_suites, test_cases, test_runs, websockets, schedules
 from app.core.config import settings as core_settings
@@ -62,6 +62,7 @@ app.include_router(heal_proposals.router, prefix="/api", tags=["heal-proposals"]
 app.include_router(flake_records.router, prefix="/api", tags=["flakes"])
 app.include_router(case_generation.router, prefix="/api", tags=["case-generation"])
 app.include_router(comparison_runs.router, prefix="/api", tags=["comparison-runs"])
+app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 
 
 @app.get("/health")
