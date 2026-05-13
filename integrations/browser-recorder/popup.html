@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>TraceIQ Recorder</title>
+    <style>
+        body { font: 13px system-ui, sans-serif; padding: 12px; width: 320px; }
+        h1 { font-size: 14px; margin: 0 0 8px; }
+        label { display: block; margin: 6px 0 2px; color: #555; }
+        input, button { width: 100%; padding: 6px; box-sizing: border-box; font: inherit; }
+        button { margin-top: 8px; cursor: pointer; }
+        .row { display: flex; gap: 6px; }
+        .row > * { flex: 1; }
+        #status { margin-top: 8px; padding: 6px; border-radius: 4px; background: #f3f4f6; min-height: 18px; }
+        .ok { color: #0a7d2e; }
+        .err { color: #b00020; }
+    </style>
+</head>
+<body>
+    <h1>TraceIQ Recorder</h1>
+
+    <label>Base URL</label>
+    <input id="base-url" placeholder="https://traceiq.example.com" />
+
+    <label>API key</label>
+    <input id="api-key" placeholder="tiq_..." type="password" />
+
+    <label>Suite ID</label>
+    <input id="suite-id" placeholder="e.g. 42" />
+
+    <label>Case name</label>
+    <input id="case-name" placeholder="Checkout journey" />
+
+    <div class="row">
+        <button id="toggle">Start recording</button>
+        <button id="save">Save to TraceIQ</button>
+    </div>
+    <button id="clear">Clear steps</button>
+
+    <div id="status">No recording in progress.</div>
+
+    <script src="popup.js"></script>
+</body>
+</html>

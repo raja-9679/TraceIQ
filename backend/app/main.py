@@ -6,7 +6,11 @@ from slowapi.errors import RateLimitExceeded
 from app.core.database import init_db, close_db
 from app.core.storage import minio_client
 from app.core.limiter import limiter
-from app.api import api_keys, auth, settings, workspaces, projects, admin, workspace_webhooks, visual_baselines
+from app.api import (
+    api_keys, auth, settings, workspaces, projects, admin,
+    workspace_webhooks, visual_baselines, personas, heal_proposals,
+    flake_records, case_generation, comparison_runs,
+)
 from app.api.endpoints import test_suites, test_cases, test_runs, websockets, schedules
 from app.core.config import settings as core_settings
 import logging
@@ -53,6 +57,11 @@ app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"]
 app.include_router(api_keys.router, prefix="/api", tags=["api-keys"])
 app.include_router(workspace_webhooks.router, prefix="/api", tags=["webhooks"])
 app.include_router(visual_baselines.router, prefix="/api", tags=["visual-baselines"])
+app.include_router(personas.router, prefix="/api", tags=["personas"])
+app.include_router(heal_proposals.router, prefix="/api", tags=["heal-proposals"])
+app.include_router(flake_records.router, prefix="/api", tags=["flakes"])
+app.include_router(case_generation.router, prefix="/api", tags=["case-generation"])
+app.include_router(comparison_runs.router, prefix="/api", tags=["comparison-runs"])
 
 
 @app.get("/health")

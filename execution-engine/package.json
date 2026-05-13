@@ -28,7 +28,9 @@
     "playwright": "^1.40.1",
     "uuid": "^9.0.1",
     "xpath": "^0.0.32",
-    "nodemailer": "^6.9.8"
+    "nodemailer": "^6.9.8",
+    "pixelmatch": "^5.3.0",
+    "pngjs": "^7.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

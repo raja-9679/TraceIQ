@@ -18,5 +18,6 @@ python-jose[cryptography]==3.3.0
 croniter==2.0.2
 slowapi==0.1.9
 anthropic==0.39.0
+PyYAML==6.0.1
 
 alembic==1.13.1
