@@ -432,6 +432,7 @@ alembic revision --autogenerate -m "your change"
 
 Current migration chain (newest first):
 ```
+f8b3c4d5e6f7  phase_e                                    (created_by_agent_id + agent_session_id on testsuite/testcase/caseproposal)
 e7a1b2c3d4e5  phase_d                                    (caseproposal table, TestCase agent-ownership cols, workspace daily AI cap)
 d6f9a3b4c5d6  phase_b_c                                  (personas, heal proposals, flake records, comparison cols)
 c5d8f1a2b3c4  ai_agent_integration                       (api keys, refresh tokens, webhooks, visual baselines, git context, run trigger)
@@ -596,7 +597,20 @@ Phase D turns the agent from "test runner client" into "test suite editor with r
 | `set_code_paths` | Update which files a case claims to exercise |
 | `generate_case_proposal` | LLM-generate a draft → propose mode |
 
-### 13.5 Open follow-ups for the agent layer
+### 13.5 Phase E — Mode-1 MCP completion (agent has source-code access)
+
+Phase E makes the MCP tool surface complete enough that an agent with
+source-code access (Claude Code editing the app + writing its tests) can
+operate without external context. Adds:
+
+- **Provenance fields.** `created_by_agent_id` + `agent_session_id` on `testsuite`, `testcase`, `caseproposal`. Sourced from `X-Agent-Id` + `X-Agent-Session-Id` headers, set by `AuthPrincipal`. Lets the agent (and human reviewer) tell "this entity was created by ME, this session" apart from older state.
+- **Read tools.** `list_cases`, `get_case`, `get_suite`, `list_case_proposals`, `describe_step_types` — so the agent enumerates existing coverage before proposing duplicates, and grounds its step JSON in the runner's actual contract.
+- **Structural writes.** `delete_suite` (with full FK-aware cascade through `recursive_delete_suite` — same pattern as the `delete_case` fix; 409s on referencing `TestSchedule` rows).
+- **Bulk ops.** `bulk_propose_cases` (submit N proposals in one round-trip; per-item result) and `bulk_set_code_paths` (mass-retrofit `code_paths` from a `{case_id → [paths]}` map).
+- **Reference content.** `GET /api/step-types` (hand-curated catalog of every step type the runner supports, with examples + gotchas) and `GET /api/agent-guide` (serves `AGENT_GUIDE.md` content). MCP tools `describe_step_types` + `get_authoring_guide` wrap these.
+- **AGENT_GUIDE.md.** Sarvajna-anchored agent runbook in `integrations/mcp-server/AGENT_GUIDE.md` (canonical) and `backend/app/AGENT_GUIDE.md` (bundled into the image). 12 sections: mental model, session flow, code-path discipline, step authoring (with five concrete pitfalls), assertion patterns, suite-organization conventions, auth via Personas, worker → app reachability, delete policy, end-to-end Sarvajna walk-through, cheat sheet, anti-patterns. Designed so a fresh agent reads it once and authors correct cases without re-discovering hard-won lessons.
+
+### 13.6 Open follow-ups for the agent layer
 
 See `SCOPE_NOTES.md`. The most impactful unfinished items:
 

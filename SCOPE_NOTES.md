@@ -84,6 +84,15 @@ These items either require significant frontend work, external products, or desi
 - **Continuous prod validation** — already possible via the cron `TestSchedule` model + a `target_url`-bearing comparison run; needs a UI to set up the recurring schedule.
 - **Recorder fidelity** — drag-drop, iframe interactions, hover-only flows, network capture. Today's recorder is goto/click/fill/press-key only.
 
+### Phase F (future) — Mode-2 discovery + server-side codebase analysis
+
+Explicitly NOT built in Phase E. The MCP design doesn't preclude them — they can ship later without touching what's shipped now.
+
+- **Mode-2 discovery tools** for agents that have ONLY a URL + token (no source-code access). `fetch_openapi`, `probe_api_endpoint`, `probe_ui_route`, `crawl_ui`, `register_app_credential`. Backend-side (token never leaves TraceIQ; uses execution-workers' existing Playwright + network reach).
+- **Server-side codebase tools** for richer Mode-1 helpers: `find_untested_code(project_id, code_globs[])`, `derive_routes_from_fastapi(code_root)`, etc. Lets the server help with "which files have no test coverage." Requires TraceIQ to have a code-mount path (deployment-specific); keep optional.
+- **Auto-approval policy** for self-created entities. With `created_by_agent_id` + `agent_session_id` shipped, a workspace can opt into "auto-accept delete proposals where the proposal's agent_session_id matches the entity's." Risky default; ship UI first.
+- **`describe_step_types` source-of-truth check.** CI script that parses `execution-engine/src/core/test-executor.ts` and warns when the curated list in `agent_reference.py` diverges from the runner.
+
 ### Phase D polish
 - **Frontend UI for the proposal queue** — endpoints exist but there's no React page. The "Inbox" view should show pending proposals with a side-by-side diff (current case vs. proposed), accept/reject buttons, and a quick "regenerate" action. This is the single most impactful UI gap blocking real-world Phase D use.
 - **GitHub Action integration with impact analysis** — the existing action triggers a full suite run; it should call `select_tests_for_diff` first and run only the matched cases (with a fallback to the full suite for safety).
@@ -94,12 +103,23 @@ These items either require significant frontend work, external products, or desi
 
 ---
 
+## Phase E — Mode-1 MCP completion (agent has source-code access)
+
+- ✅ **Provenance fields.** `created_by_agent_id` + `agent_session_id` (indexed) on `testsuite`, `testcase`, `caseproposal`. Backed by `X-Agent-Id` + `X-Agent-Session-Id` headers; threaded through every create endpoint (suites, cases, generation, openapi-import, agent-ownership proposals).
+- ✅ **MCP read tools.** `list_cases`, `get_case`, `get_suite`, `list_case_proposals`, `describe_step_types`, `get_authoring_guide` — backed by existing or new REST endpoints (`/api/step-types`, `/api/agent-guide`).
+- ✅ **MCP structural writes.** `delete_suite` (with FK-aware cascade in `recursive_delete_suite`; 409 on referencing schedules).
+- ✅ **Bulk ops.** `POST /api/cases/bulk-propose` (N proposals → N per-item results), `POST /api/cases/bulk-set-code-paths` (`{case_id: [paths]}` atomic-per-row).
+- ✅ **Step-type catalog.** Hand-curated list of 25 step types with shapes + examples + gotchas in `agent_reference.py`. Source of truth for what the runner supports.
+- ✅ **AGENT_GUIDE.md** at `integrations/mcp-server/AGENT_GUIDE.md` (canonical) + `backend/app/AGENT_GUIDE.md` (bundled). 12 sections, Sarvajna-anchored, includes 5 well-documented pitfalls (`feed-check` shape, `json-path` prefix, `fill` on `<select>`, `expect-url` glob, `wait-for-selector` during redirect).
+- ✅ Alembic migration `f8b3c4d5e6f7_phase_e.py`.
+
 ## Migration & rollout notes
 
-- Three new migrations apply on top of `b2c4e6f8a0d1`:
+- Four new migrations apply on top of `b2c4e6f8a0d1`:
   1. `c5d8f1a2b3c4_ai_agent_integration` — Phase A
   2. `d6f9a3b4c5d6_phase_b_c` — Phase B/C
   3. `e7a1b2c3d4e5_phase_d` — Phase D (caseproposal, agent-ownership cols)
+  4. `f8b3c4d5e6f7_phase_e` — Phase E (agent provenance cols)
   Run `alembic upgrade head` before deploying this branch.
 - `triggered_by` defaults to `'human'` for existing rows (server-side default).
 - `retry_count` defaults to 0, `is_flaky` to false — existing `testcaseresult` rows backfill cleanly.

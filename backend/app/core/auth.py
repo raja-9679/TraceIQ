@@ -95,14 +95,28 @@ class AuthPrincipal:
     endpoints continue to enforce per-user RBAC unchanged. When `api_key`
     is set, the call came in via service-account auth and `triggered_by`
     on derived runs should be `api_agent`.
+
+    Phase E adds `agent_session_id`: an arbitrary UUID the agent mints
+    once per "session" (one Claude Code conversation, one CI run, etc.)
+    and sends on every request via `X-Agent-Session-Id`. Lets the server
+    distinguish "this entity was created this session by me" from
+    "this entity was created earlier by something else" — drives the
+    delete-policy split (auto-delete own work, ask user otherwise).
     """
 
-    __slots__ = ("user", "api_key", "agent_id")
+    __slots__ = ("user", "api_key", "agent_id", "agent_session_id")
 
-    def __init__(self, user: User, api_key: Optional[ApiKey] = None, agent_id: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        user: User,
+        api_key: Optional[ApiKey] = None,
+        agent_id: Optional[str] = None,
+        agent_session_id: Optional[str] = None,
+    ) -> None:
         self.user = user
         self.api_key = api_key
         self.agent_id = agent_id
+        self.agent_session_id = agent_session_id
 
     @property
     def is_api_caller(self) -> bool:
@@ -166,17 +180,28 @@ async def get_current_principal(
     """
     api_key_raw = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
     agent_id = request.headers.get("X-Agent-Id") or request.headers.get("x-agent-id")
+    # Phase E — session id is caller-supplied so the agent can correlate
+    # everything it touches in one logical run.
+    agent_session_id = (
+        request.headers.get("X-Agent-Session-Id")
+        or request.headers.get("x-agent-session-id")
+    )
 
     if api_key_raw:
         principal = await _principal_from_api_key(api_key_raw, session, agent_id)
         if principal:
+            principal.agent_session_id = agent_session_id
             return principal
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     if token:
         user = await _user_from_jwt(token, session)
         if user:
-            return AuthPrincipal(user=user)
+            return AuthPrincipal(
+                user=user,
+                agent_id=agent_id,
+                agent_session_id=agent_session_id,
+            )
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
