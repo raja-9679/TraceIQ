@@ -231,6 +231,13 @@ class TestStep(BaseModel):
     selector: Optional[str] = None
     value: Optional[str] = None
     params: Optional[dict] = None
+    # Phase B: semantic-selector layer. `intent` is a natural-language
+    # description of what the step should target (e.g. "primary checkout
+    # button"). The runner first tries `selector`; on miss it falls back to
+    # an LLM-based resolver using `intent` + DOM snapshot. `intent` is the
+    # durable contract; `selector` is disposable and may be auto-rewritten
+    # by proactive healing.
+    intent: Optional[str] = None
 
 
 class TestCaseBase(SQLModel):
@@ -327,6 +334,15 @@ class TestRunBase(SQLModel):
     # column added separately to keep the legacy/agent path migration-friendly).
     api_key_id: Optional[int] = Field(default=None)
 
+    # Phase C: deployment-comparison primitive. Setting baseline_run_id makes
+    # this a comparison run — same suite, possibly different `target_url`,
+    # results compared against the baseline run's results.
+    baseline_run_id: Optional[int] = Field(default=None)
+    target_url: Optional[str] = Field(default=None)
+    # Optional persona injected at runtime so the run executes "as" a
+    # specific user (logged-in, admin, etc.). Phase B feature.
+    persona_id: Optional[int] = Field(default=None)
+
 
 class UserRead(SQLModel):
     id: int
@@ -396,6 +412,11 @@ class TestCaseResult(SQLModel, table=True):
     request_method: Optional[str] = Field(default=None)
     request_params: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     ai_analysis: Optional[str] = None
+
+    # Phase B: smart retry + flake separation.
+    retry_count: int = Field(default=0)
+    confidence: Optional[float] = Field(default=None)  # 0.0–1.0; how sure we are the failure is real
+    is_flaky: bool = Field(default=False)
 
     test_run: TestRun = Relationship(back_populates="results")
 
@@ -663,3 +684,149 @@ class VisualBaselineRead(SQLModel):
     image_url: str
     tolerance: float
     created_at: datetime
+
+
+# =============================================================================
+# Phase B — Resilience: personas, proactive healing, flake quarantine
+# =============================================================================
+
+
+class Persona(SQLModel, table=True):
+    """Reusable session artifact — cookies / localStorage / auth headers — so
+    tests don't have to re-execute fragile login flows on every run.
+
+    `session_state` mirrors Playwright's `storageState` shape so it can be
+    handed directly to `browser.newContext({ storageState })`.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id")
+    name: str
+    description: Optional[str] = None
+    # Storage state JSON (Playwright shape): { cookies: [...], origins: [...] }.
+    session_state: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Auth headers to merge into every request initiated by this persona.
+    auth_headers: Optional[dict] = Field(default={}, sa_column=Column(JSON))
+    # Optional auto-login recipe: a list of steps the runner executes once,
+    # then captures storageState as a refreshed session_state.
+    login_steps: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
+    refresh_after_hours: Optional[int] = Field(default=24)
+    last_refreshed_at: Optional[datetime] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PersonaCreate(SQLModel):
+    workspace_id: int
+    name: str
+    description: Optional[str] = None
+    project_id: Optional[int] = None
+    session_state: Optional[dict] = None
+    auth_headers: Optional[dict] = None
+    login_steps: Optional[List[dict]] = None
+    refresh_after_hours: Optional[int] = 24
+
+
+class PersonaRead(SQLModel):
+    id: int
+    workspace_id: int
+    project_id: Optional[int]
+    name: str
+    description: Optional[str]
+    auth_headers: Optional[dict]
+    refresh_after_hours: Optional[int]
+    last_refreshed_at: Optional[datetime]
+    created_at: datetime
+    updated_at: datetime
+
+
+class SelectorHealProposal(SQLModel, table=True):
+    """Proactive selector-heal proposal generated after a successful run.
+
+    The post-run beat task diffs the stored `step.selector` against the DOM
+    captured during execution. If the LLM concludes that the same `intent`
+    now maps to a different selector with high confidence, it inserts a
+    proposal. A reviewer (human or auto-apply policy) decides whether to
+    accept it.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    step_id: str = Field(index=True)
+    old_selector: Optional[str] = None
+    new_selector: str
+    intent: Optional[str] = None
+    confidence: float = Field(default=0.0)
+    rationale: Optional[str] = None
+    source_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id")
+    status: str = Field(default="pending")  # pending | accepted | rejected | auto_applied
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    decided_at: Optional[datetime] = Field(default=None)
+    decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
+class SelectorHealProposalRead(SQLModel):
+    id: int
+    test_case_id: int
+    step_id: str
+    old_selector: Optional[str]
+    new_selector: str
+    intent: Optional[str]
+    confidence: float
+    rationale: Optional[str]
+    source_run_id: Optional[int]
+    status: str
+    created_at: datetime
+
+
+class FlakeRecord(SQLModel, table=True):
+    """Per (test_case, step) flake-tracking row.
+
+    A test is flagged flaky when its recent retry stream shows alternating
+    pass/fail under identical conditions. Quarantined flakes are skipped at
+    dispatch time so they don't gate AI-agent regressions.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    step_id: Optional[str] = Field(default=None, index=True)
+    flake_score: float = Field(default=0.0)  # 0.0 = stable, 1.0 = pure flake
+    is_quarantined: bool = Field(default=False, index=True)
+    first_observed_at: datetime = Field(default_factory=datetime.utcnow)
+    last_observed_at: datetime = Field(default_factory=datetime.utcnow)
+    sample_count: int = Field(default=0)
+    last_failure_message: Optional[str] = None
+
+
+# =============================================================================
+# Phase C — Coverage: AI-driven case generation, comparison runs
+# =============================================================================
+
+
+class CaseGenerationRequest(SQLModel):
+    """Input for POST /api/cases/generate (test-from-intent)."""
+    description: str
+    target_url: Optional[str] = None
+    test_suite_id: int
+    case_name: Optional[str] = None
+
+
+class CaseFromOpenAPIRequest(SQLModel):
+    """Input for POST /api/cases/from-openapi (test-from-schema)."""
+    schema_url: Optional[str] = None
+    schema_inline: Optional[dict] = None
+    test_suite_id: int
+    base_url: Optional[str] = None
+    operations: Optional[List[str]] = None  # specific operationIds to cover
+
+
+class ComparisonRunRequest(SQLModel):
+    """Input for POST /api/runs/comparison.
+
+    Re-runs the same suite that produced `baseline_run_id` against a new
+    `target_url` (typically a staging env), so functional + visual deltas
+    can be surfaced.
+    """
+    baseline_run_id: int
+    target_url: str
+    browser: Optional[str] = "chromium"
+    device: Optional[str] = None

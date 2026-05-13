@@ -68,6 +68,11 @@ def run_test_suite(run_id: int):
             if not cases_to_run:
                 raise Exception("No test cases found to execute")
 
+            # Phase B: drop quarantined test cases before dispatch so flaky
+            # tests don't gate AI-agent regressions. The flake records live
+            # at the test_case level; sub-step granularity is informational.
+            cases_to_run = _filter_quarantined(cases_to_run, session)
+
             # Get execution mode
             suite = session.get(TestSuite, run.test_suite_id)
             execution_mode = suite.execution_mode if suite else ExecutionMode.CONTINUOUS
@@ -332,6 +337,35 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     pipe.execute()
 
     print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def _filter_quarantined(cases: list, session: Session) -> list:
+    """Drop test cases whose FlakeRecord is currently quarantined.
+
+    Idempotent + safe: if the flakerecord table is missing or unreachable,
+    returns the original list and logs once.
+    """
+    if not cases:
+        return cases
+    try:
+        from sqlmodel import select as _select
+        from app.models import FlakeRecord
+        case_ids = [c.id for c in cases]
+        stmt = _select(FlakeRecord.test_case_id).where(
+            FlakeRecord.test_case_id.in_(case_ids),
+            FlakeRecord.is_quarantined == True,  # noqa: E712
+        )
+        quarantined = {row for row in session.exec(stmt)}
+        if not quarantined:
+            return cases
+        filtered = [c for c in cases if c.id not in quarantined]
+        skipped = len(cases) - len(filtered)
+        if skipped:
+            print(f"[Worker] Skipping {skipped} quarantined test case(s)")
+        return filtered
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Worker] flake filter failed (continuing without): {exc}")
+        return cases
 
 
 def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: Session):

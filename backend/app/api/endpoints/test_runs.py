@@ -547,6 +547,14 @@ async def finalize_test_run(
     except Exception as e:
         print(f"[Finalize] Failed to queue outbound webhooks for run {run_id}: {e}")
 
+    # Phase B: proactive selector-heal pass. Best-effort; only fires when
+    # PROACTIVE_HEAL_ENABLED=true and an LLM provider is configured.
+    try:
+        from app.tasks.heal_tasks import propose_selector_heals_for_run
+        propose_selector_heals_for_run.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue heal proposals for run {run_id}: {e}")
+
     return {"status": "finalized", "run_id": run_id}
 
 
