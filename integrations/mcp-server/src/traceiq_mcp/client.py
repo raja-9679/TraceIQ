@@ -13,11 +13,22 @@ class TraceIQClient:
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         agent_id: Optional[str] = None,
+        agent_session_id: Optional[str] = None,
         timeout: float = 30.0,
     ) -> None:
         self.base_url = (base_url or os.environ.get("TRACEIQ_BASE_URL", "")).rstrip("/")
         self.api_key = api_key or os.environ.get("TRACEIQ_API_KEY", "")
         self.agent_id = agent_id or os.environ.get("TRACEIQ_AGENT_ID")
+        # Phase E: per-session identifier. Lets the server tell creates from
+        # the same agent session apart from older creates. Default: mint a
+        # fresh UUID per client instance — one per Claude Code conversation
+        # is the typical lifespan.
+        import uuid as _uuid
+        self.agent_session_id = (
+            agent_session_id
+            or os.environ.get("TRACEIQ_AGENT_SESSION_ID")
+            or str(_uuid.uuid4())
+        )
         if not self.base_url or not self.api_key:
             raise RuntimeError(
                 "TraceIQClient: TRACEIQ_BASE_URL and TRACEIQ_API_KEY must be set"
@@ -29,6 +40,7 @@ class TraceIQClient:
             "X-API-Key": self.api_key,
             "Accept": "application/json",
             "User-Agent": "TraceIQ-MCP/0.1.0",
+            "X-Agent-Session-Id": self.agent_session_id,
         }
         if self.agent_id:
             h["X-Agent-Id"] = self.agent_id
@@ -212,4 +224,64 @@ class TraceIQClient:
                 "code_paths": code_paths,
                 "mode": "propose",
             },
+        )
+
+    # ------------------------------------------------------------------
+    # Phase E — read, write, bulk, reference
+    # ------------------------------------------------------------------
+
+    async def list_cases(self, project_id: int, test_suite_id: Optional[int] = None) -> List[Dict[str, Any]]:  # noqa: F811
+        params: Dict[str, Any] = {"project_id": project_id}
+        if test_suite_id is not None:
+            params["test_suite_id"] = test_suite_id
+        return await self._request("GET", "/api/cases", params=params)
+
+    async def get_case(self, case_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/cases/{case_id}")
+
+    async def get_suite(self, suite_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/suites/{suite_id}")
+
+    async def list_case_proposals(
+        self,
+        project_id: Optional[int] = None,
+        status: Optional[str] = "pending",
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        params: Dict[str, Any] = {"limit": limit}
+        if project_id is not None:
+            params["project_id"] = project_id
+        if status is not None:
+            params["status"] = status
+        return await self._request("GET", "/api/case-proposals", params=params)
+
+    async def describe_step_types(self) -> Dict[str, Any]:
+        return await self._request("GET", "/api/step-types")
+
+    async def get_authoring_guide(self) -> Dict[str, Any]:
+        return await self._request("GET", "/api/agent-guide")
+
+    async def delete_suite(self, suite_id: int) -> Dict[str, Any]:  # noqa: F811
+        return await self._request("DELETE", f"/api/suites/{suite_id}")
+
+    async def bulk_propose_cases(
+        self,
+        project_id: int,
+        proposals: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/cases/bulk-propose",
+            json={"project_id": project_id, "proposals": proposals},
+        )
+
+    async def bulk_set_code_paths(
+        self,
+        project_id: int,
+        mapping: Dict[int, List[str]],
+    ) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/cases/bulk-set-code-paths",
+            json={"project_id": project_id, "mapping": mapping},
         )

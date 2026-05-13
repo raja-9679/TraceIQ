@@ -5,7 +5,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
-from app.core.auth import get_current_user
+from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
 from app.services.test_service import test_service
 from app.services.access_service import access_service
 from app.services.rbac_service import rbac_service
@@ -17,7 +17,12 @@ from app.models import (
 router = APIRouter()
 
 @router.post("/suites", response_model=TestSuiteReadWithChildren)
-async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def create_test_suite(
+    suite: TestSuite,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    current_user = principal.user
     # If no project_id provided, try to find a default project for the user
     if not suite.project_id:
         org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
@@ -75,6 +80,9 @@ async def create_test_suite(suite: TestSuite, session: AsyncSession = Depends(ge
 
     suite.created_by_id = current_user.id
     suite.updated_by_id = current_user.id
+    # Phase E: stamp agent provenance from headers if present.
+    suite.created_by_agent_id = principal.agent_id
+    suite.agent_session_id = principal.agent_session_id
     session.add(suite)
     await session.commit()
     await session.refresh(suite)
@@ -319,17 +327,56 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
-    
+
     # Check project access - ADMIN required for deleting modules
     if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You cannot delete suites in this project")
-    
+
+    # Phase E: 409 if any TestSchedule references this suite or any sub-suite
+    # under it. Same product principle as delete_case: schedules are
+    # user-configured artifacts and should not silently break.
+    from app.models import TestSchedule
+    descendant_ids = await _collect_descendant_suite_ids(suite_id, session)
+    sched_result = await session.exec(
+        select(TestSchedule).where(TestSchedule.test_suite_id.in_(descendant_ids))
+    )
+    referencing_schedules = sched_result.all()
+    if referencing_schedules:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "Cannot delete: suite (or a sub-suite under it) is referenced by one or more schedules",
+                "schedule_ids": [s.id for s in referencing_schedules],
+                "affected_suite_ids": descendant_ids,
+                "remedy": "Delete or update the schedule(s) to remove the reference, then retry.",
+            },
+        )
+
     await test_service.recursive_delete_suite(suite_id, session)
-    
+
     audit = AuditLog(entity_type="suite", entity_id=suite_id, action="delete", user_id=current_user.id, changes={})
     session.add(audit)
     await session.commit()
-    return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted"}
+    return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted",
+            "suites_deleted": len(descendant_ids)}
+
+
+async def _collect_descendant_suite_ids(root_id: int, session: AsyncSession) -> List[int]:
+    """BFS over the suite tree starting at root_id. Returns root + all descendants."""
+    collected: List[int] = [root_id]
+    frontier = [root_id]
+    while frontier:
+        next_frontier: List[int] = []
+        res = await session.exec(
+            select(TestSuite.id).where(TestSuite.parent_id.in_(frontier))
+        )
+        children = list(res.all())
+        if not children:
+            break
+        collected.extend(children)
+        next_frontier = children
+        frontier = next_frontier
+    return collected
 
 async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int], project_id: int, session: AsyncSession, user_id: int, check_clash: bool = True):
     suite_name = data.get("name", "Imported Suite")

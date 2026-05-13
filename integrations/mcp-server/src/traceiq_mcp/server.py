@@ -290,6 +290,148 @@ async def list_tools() -> List[Tool]:
                 "required": ["description", "test_suite_id"],
             },
         ),
+
+        # ---------- Phase E — reads, structural writes, bulk, reference ----------
+        Tool(
+            name="get_authoring_guide",
+            description=(
+                "Return the AGENT_GUIDE.md content — TraceIQ's authoritative "
+                "reference for how to author test suites and cases. Read this at "
+                "the start of every session before proposing anything. Covers "
+                "step-type shapes, suite organization conventions, code_paths "
+                "globs, persona/auth setup, and the most common authoring "
+                "pitfalls."
+            ),
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        Tool(
+            name="describe_step_types",
+            description=(
+                "Catalogue of every step type the runner supports, with the "
+                "expected `params` shape, an example, and notes on common "
+                "gotchas (e.g. `fill` doesn't work on <select>; `wait-for-selector` "
+                "blocks on in-flight navigations). Use this whenever you're "
+                "constructing a `steps` array."
+            ),
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        Tool(
+            name="list_cases",
+            description=(
+                "List test cases in a project, optionally filtered by suite. "
+                "Use BEFORE proposing a new case to check whether one already "
+                "exists — avoids duplicates."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "test_suite_id": {"type": "integer", "description": "Optional; limits to a specific suite."},
+                },
+                "required": ["project_id"],
+            },
+        ),
+        Tool(
+            name="get_case",
+            description="Fetch a single TestCase with full steps + code_paths. Use before proposing an UPDATE so the agent can construct a diff.",
+            inputSchema={
+                "type": "object",
+                "properties": {"case_id": {"type": "integer"}},
+                "required": ["case_id"],
+            },
+        ),
+        Tool(
+            name="get_suite",
+            description="Fetch a single TestSuite (name, parent_id, execution_mode, settings).",
+            inputSchema={
+                "type": "object",
+                "properties": {"suite_id": {"type": "integer"}},
+                "required": ["suite_id"],
+            },
+        ),
+        Tool(
+            name="list_case_proposals",
+            description=(
+                "List CaseProposal rows. Use this to see your own pending work "
+                "queue and avoid re-submitting the same proposal."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "status": {"type": "string", "enum": ["pending", "accepted", "rejected"], "default": "pending"},
+                    "limit": {"type": "integer", "default": 100},
+                },
+            },
+        ),
+        Tool(
+            name="delete_suite",
+            description=(
+                "Delete a TestSuite and all of its contents (cases + sub-suites). "
+                "Cascades correctly through Phase B/C/D dependents. Returns 409 if "
+                "a TestSchedule references this suite or any sub-suite. "
+                "Policy: only delete suites YOU created this session — for "
+                "pre-existing suites, ask the human user first."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {"suite_id": {"type": "integer"}},
+                "required": ["suite_id"],
+            },
+        ),
+        Tool(
+            name="bulk_propose_cases",
+            description=(
+                "Submit MANY CaseProposals in a single round-trip. Best-effort: a "
+                "single bad item doesn't reject the rest. Each item is returned "
+                "with its index + status. Use when generating coverage for a "
+                "whole feature or all OpenAPI operations at once."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "proposals": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "project_id": {"type": "integer"},
+                                "test_suite_id": {"type": "integer"},
+                                "target_case_id": {"type": "integer"},
+                                "action": {"type": "string", "enum": ["create", "update", "delete", "move"]},
+                                "payload": {"type": "object"},
+                                "rationale": {"type": "string"},
+                                "ai_confidence": {"type": "number"},
+                            },
+                            "required": ["project_id", "action"],
+                        },
+                    },
+                },
+                "required": ["project_id", "proposals"],
+            },
+        ),
+        Tool(
+            name="bulk_set_code_paths",
+            description=(
+                "Set `code_paths` on MANY existing cases in one call. Use after "
+                "walking source code locally to map every case to the files it "
+                "exercises. Cases outside the caller's project are silently "
+                "skipped."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "mapping": {
+                        "type": "object",
+                        "additionalProperties": {"type": "array", "items": {"type": "string"}},
+                        "description": "Object mapping case_id → array of code path strings",
+                    },
+                },
+                "required": ["project_id", "mapping"],
+            },
+        ),
     ]
 
 
@@ -432,6 +574,56 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             target_url=arguments.get("target_url"),
             case_name=arguments.get("case_name"),
             code_paths=arguments.get("code_paths"),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    # ---------- Phase E ----------
+    if name == "get_authoring_guide":
+        data = await client.get_authoring_guide()
+        return [TextContent(type="text", text=data.get("guide", "(guide unavailable)"))]
+
+    if name == "describe_step_types":
+        data = await client.describe_step_types()
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "list_cases":
+        data = await client.list_cases(
+            project_id=arguments["project_id"],
+            test_suite_id=arguments.get("test_suite_id"),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "get_case":
+        data = await client.get_case(arguments["case_id"])
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "get_suite":
+        data = await client.get_suite(arguments["suite_id"])
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "list_case_proposals":
+        data = await client.list_case_proposals(
+            project_id=arguments.get("project_id"),
+            status=arguments.get("status", "pending"),
+            limit=int(arguments.get("limit", 100)),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "delete_suite":
+        data = await client.delete_suite(arguments["suite_id"])
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "bulk_propose_cases":
+        data = await client.bulk_propose_cases(
+            project_id=arguments["project_id"],
+            proposals=arguments["proposals"],
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "bulk_set_code_paths":
+        data = await client.bulk_set_code_paths(
+            project_id=arguments["project_id"],
+            mapping=arguments["mapping"],
         )
         return [TextContent(type="text", text=json.dumps(data, indent=2))]
 

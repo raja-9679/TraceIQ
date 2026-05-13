@@ -204,7 +204,10 @@ class TestService:
                 )
             )
             for run_id in suite_run_ids:
-                minio_client.delete_run_artifacts(run_id)
+                try:
+                    minio_client.delete_run_artifacts(run_id)
+                except Exception as exc:  # noqa: BLE001
+                    print(f"[DeleteSuite] MinIO cleanup for run {run_id} failed (continuing): {exc}")
             await session.exec(
                 sql_delete(TestRun).where(TestRun.id.in_(suite_run_ids))
             )
@@ -226,10 +229,31 @@ class TestService:
                     )
                 )
                 for run_id in case_run_ids:
-                    minio_client.delete_run_artifacts(run_id)
+                    try:
+                        minio_client.delete_run_artifacts(run_id)
+                    except Exception as exc:  # noqa: BLE001
+                        print(f"[DeleteSuite] MinIO cleanup for run {run_id} failed (continuing): {exc}")
                 await session.exec(
                     sql_delete(TestRun).where(TestRun.id.in_(case_run_ids))
                 )
+
+            # Phase B/C/D dependents keyed by case id (mirrors the
+            # delete_case handler fix). Same idea: bulk-delete the
+            # rows that have FKs into testcase before we can drop the
+            # cases themselves.
+            from app.models import (
+                VisualBaseline,
+                FlakeRecord,
+                SelectorHealProposal,
+                CaseProposal,
+                UserTestCaseAccess,
+            )
+            await session.exec(sql_delete(VisualBaseline).where(VisualBaseline.test_case_id.in_(case_ids)))
+            await session.exec(sql_delete(FlakeRecord).where(FlakeRecord.test_case_id.in_(case_ids)))
+            await session.exec(sql_delete(SelectorHealProposal).where(SelectorHealProposal.test_case_id.in_(case_ids)))
+            await session.exec(sql_delete(CaseProposal).where(CaseProposal.target_case_id.in_(case_ids)))
+            await session.exec(sql_delete(UserTestCaseAccess).where(UserTestCaseAccess.test_case_id.in_(case_ids)))
+
             await session.exec(
                 sql_delete(TestCase).where(TestCase.id.in_(case_ids))
             )

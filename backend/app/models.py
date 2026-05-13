@@ -182,6 +182,13 @@ class TestSuiteBase(SQLModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    # Phase E: agent provenance. created_by_agent_id is the free-form
+    # X-Agent-Id header value of the caller at create time; agent_session_id
+    # is the X-Agent-Session-Id (a UUID the agent mints once per session).
+    # Lets policies and audits distinguish "an agent made this in session X"
+    # from "a human made this".
+    created_by_agent_id: Optional[str] = Field(default=None)
+    agent_session_id: Optional[str] = Field(default=None, index=True)
 
 
 class TestSuite(TestSuiteBase, table=True):
@@ -255,6 +262,10 @@ class TestCaseBase(SQLModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+    # Phase E: agent provenance (see TestSuiteBase for shape + intent).
+    created_by_agent_id: Optional[str] = Field(default=None)
+    agent_session_id: Optional[str] = Field(default=None, index=True)
 
     # Phase D: agent-ownership metadata.
     # `code_paths` is a list of file-path prefixes (or glob patterns) this
@@ -903,6 +914,11 @@ class CaseProposal(SQLModel, table=True):
     decided_at: Optional[datetime] = Field(default=None)
     decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     decision_note: Optional[str] = None
+    # Phase E: agent session this proposal belongs to. Lets the reviewer (or
+    # an auto-approval policy) tell whether a delete proposal targets an
+    # entity the same agent created in the same session.
+    created_by_agent_id: Optional[str] = Field(default=None)
+    agent_session_id: Optional[str] = Field(default=None, index=True)
 
 
 class CaseProposalRead(SQLModel):

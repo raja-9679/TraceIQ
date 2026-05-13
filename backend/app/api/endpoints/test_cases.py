@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
-from app.core.auth import get_current_user
+from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
 from app.core.storage import minio_client
 from app.services.access_service import access_service
 from app.services.rbac_service import rbac_service
@@ -15,11 +15,17 @@ from app.models import (
 router = APIRouter()
 
 @router.post("/suites/{suite_id}/cases", response_model=TestCaseRead)
-async def create_test_case(suite_id: int, case: TestCase, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def create_test_case(
+    suite_id: int,
+    case: TestCase,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    current_user = principal.user
     suite = await session.get(TestSuite, suite_id)
     if not suite:
         raise HTTPException(status_code=404, detail="Suite not found")
-    
+
     # Check project access
     if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You cannot create test cases in this project")
@@ -33,6 +39,9 @@ async def create_test_case(suite_id: int, case: TestCase, session: AsyncSession 
     case.project_id = suite.project_id
     case.created_by_id = current_user.id
     case.updated_by_id = current_user.id
+    # Phase E: agent provenance.
+    case.created_by_agent_id = principal.agent_id
+    case.agent_session_id = principal.agent_session_id
     session.add(case)
     await session.commit()
     await session.refresh(case)
