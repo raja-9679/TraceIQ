@@ -32,9 +32,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     // Validate token and get user info
                     const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/auth/me`);
                     setUser(response.data);
-                } catch (error) {
-                    console.error("Auth initialization failed", error);
-                    logout();
+                } catch (error: any) {
+                    // Only clear the session on a definitive authentication
+                    // rejection (401). Network errors or server outages should
+                    // not log the user out — they will retry on next load.
+                    if (error?.response?.status === 401) {
+                        logout();
+                    } else {
+                        console.error("Auth initialization failed", error);
+                    }
                 }
             }
             setIsLoading(false);

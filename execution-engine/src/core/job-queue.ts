@@ -52,6 +52,7 @@ export interface TestCaseResult {
         body?: string;
     };
     video?: string;  // Per-case video for continuous jobs
+    network_events?: any[];  // Network events captured during this test case
 }
 
 // Job result - can contain single or multiple test results
@@ -286,19 +287,21 @@ export class JobQueue {
             const [streamId, fields] = claimed[0];
             const payload = this.parseStreamFields(fields);
             const job = JSON.parse(payload.payload) as TestJob;
-            
-            // Increment retry count
-            job.retry_count = (job.retry_count || 0) + 1;
-            
+
+            // Atomically increment and read retry count from Redis so it
+            // survives worker crashes (in-memory increment is lost on crash).
+            const retryCount = await this.redis.hincrby('jobs:retries', job.job_id, 1);
+            job.retry_count = retryCount;
+
             console.log(`[JobQueue] Claimed abandoned job ${job.job_id} (retry #${job.retry_count})`);
-            
+
             // Check if max retries exceeded
             if (job.retry_count > 3) {
                 console.log(`[JobQueue] Job ${job.job_id} exceeded max retries, moving to dead letter`);
                 await this.moveToDeadLetter(streamId, job, 'Max retries exceeded');
                 return null;
             }
-            
+
             return { streamId, job };
         } catch (err) {
             // No abandoned jobs
@@ -314,6 +317,9 @@ export class JobQueue {
 
         // Acknowledge the job
         pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+
+        // Clean up per-job retry counter (no longer needed once complete)
+        pipeline.hdel('jobs:retries', result.job_id);
 
         // Publish result
         pipeline.xadd(
@@ -379,12 +385,28 @@ export class JobQueue {
     }
 
     /**
+     * Check the dead-letter queue length and log a warning if it is non-empty.
+     * Call this periodically from the worker loop so ops teams see the alert.
+     */
+    async checkDeadLetterQueue(): Promise<void> {
+        try {
+            const dlqLength = await this.redis.xlen('jobs:dead-letter');
+            if (dlqLength > 0) {
+                console.error(`[JobQueue] ALERT: dead-letter queue has ${dlqLength} unprocessed job(s). Investigate jobs:dead-letter stream.`);
+            }
+        } catch (err) {
+            // Non-fatal; stream may not exist yet
+        }
+    }
+
+    /**
      * Move failed job to dead letter queue
      */
     private async moveToDeadLetter(streamId: string, job: TestJob, error: string): Promise<void> {
         const pipeline = this.redis.pipeline();
-        
+
         pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+        pipeline.hdel('jobs:retries', job.job_id);
         pipeline.xadd(
             'jobs:dead-letter',
             '*',

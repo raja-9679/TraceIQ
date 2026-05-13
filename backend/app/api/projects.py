@@ -85,11 +85,49 @@ async def list_projects(workspace_id: Optional[int] = None, session: AsyncSessio
     result = await session.exec(combined_query)
     projects = result.all()
     
+    # --- BATCHED ACCESS RESOLUTION ---
+    project_roles = {p.id: None for p in projects}
+    project_ids = list(project_roles.keys())
+    
+    if project_ids:
+        # 1. Workspace Admin Role (level 3)
+        ws_admin_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(
+            Project.id.in_(project_ids),
+            UserWorkspace.user_id == current_user.id,
+            UserWorkspace.role == "admin"
+        )
+        for pid in (await session.exec(ws_admin_stmt)).all():
+            project_roles[pid] = "admin"
+            
+        remaining_pids = [pid for pid, role in project_roles.items() if role != "admin"]
+        
+        if remaining_pids:
+            role_map = {"admin": 3, "editor": 2, "viewer": 1}
+            
+            # 2. Direct User Access
+            user_access_stmt = select(UserProjectAccess.project_id, UserProjectAccess.access_level).where(
+                UserProjectAccess.project_id.in_(remaining_pids),
+                UserProjectAccess.user_id == current_user.id
+            )
+            for ua_pid, ua_role in (await session.exec(user_access_stmt)).all():
+                current_role = project_roles[ua_pid]
+                if not current_role or role_map.get(ua_role, 0) > role_map.get(current_role, 0):
+                    project_roles[ua_pid] = ua_role
+                    
+            # 3. Team Access
+            team_access_stmt = select(TeamProjectAccess.project_id, TeamProjectAccess.access_level).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(
+                TeamProjectAccess.project_id.in_(remaining_pids),
+                UserTeam.user_id == current_user.id
+            )
+            for ta_pid, ta_role in (await session.exec(team_access_stmt)).all():
+                current_role = project_roles[ta_pid]
+                if not current_role or role_map.get(ta_role, 0) > role_map.get(current_role, 0):
+                    project_roles[ta_pid] = ta_role
+
     resp_projects = []
     for p in projects:
-        role = await access_service.get_project_role(current_user.id, p.id, session)
         pr = ProjectReadWithAccess.model_validate(p)
-        pr.access_level = role
+        pr.access_level = project_roles.get(p.id)
         resp_projects.append(pr)
         
     return resp_projects

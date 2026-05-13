@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_, and_
+from sqlalchemy import delete as sql_delete
 from sqlalchemy.orm import selectinload
 from app.models import (
     TestSuite, TestCase, TestRun, TestCaseResult,
@@ -11,6 +12,50 @@ from app.core.storage import minio_client
 from sqlmodel import Session, select
 
 
+def _normalize_domain(d) -> Optional[Dict]:
+    """Normalize an allowed_domains entry to a dict with a 'domain' key."""
+    if not d:
+        return None
+    if isinstance(d, str):
+        return {"domain": d, "headers": True, "params": False}
+    if isinstance(d, dict) and "domain" not in d:
+        return None
+    return d
+
+
+def _merge_settings(parent: Dict[str, Any], child: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge child settings on top of parent settings (child wins on conflict)."""
+    merged_headers = {**parent.get("headers", {}), **child.get("headers", {})}
+    merged_params = {**parent.get("params", {}), **child.get("params", {})}
+
+    domains_map: Dict[str, Any] = {}
+    for d in parent.get("allowed_domains", []):
+        norm = _normalize_domain(d)
+        if norm:
+            domains_map[norm["domain"]] = norm
+    for d in child.get("allowed_domains", []):
+        norm = _normalize_domain(d)
+        if norm:
+            domains_map[norm["domain"]] = norm
+
+    merged_domain_settings = {**parent.get("domain_settings", {})}
+    for domain, ds in child.get("domain_settings", {}).items():
+        if domain in merged_domain_settings:
+            merged_domain_settings[domain] = {
+                "headers": {**merged_domain_settings[domain].get("headers", {}), **ds.get("headers", {})},
+                "params": {**merged_domain_settings[domain].get("params", {}), **ds.get("params", {})}
+            }
+        else:
+            merged_domain_settings[domain] = ds
+
+    return {
+        "headers": merged_headers,
+        "params": merged_params,
+        "allowed_domains": list(domains_map.values()),
+        "domain_settings": merged_domain_settings
+    }
+
+
 class TestService:
     @staticmethod
     async def get_effective_settings(suite_id: int, session: AsyncSession) -> Dict[str, Any]:
@@ -18,62 +63,17 @@ class TestService:
         if not suite:
             return {"headers": {}, "params": {}, "allowed_domains": [], "domain_settings": {}}
 
-        current_settings = suite.settings or {"headers": {}, "params": {}}
+        current = suite.settings or {}
 
         if suite.inherit_settings and suite.parent_id:
-            parent_settings = await TestService.get_effective_settings(suite.parent_id, session)
-
-            merged_headers = {
-                **parent_settings.get("headers", {}), **current_settings.get("headers", {})}
-            merged_params = {
-                **parent_settings.get("params", {}), **current_settings.get("params", {})}
-
-            def normalize_domain(d):
-                if not d:
-                    return None
-                if isinstance(d, str):
-                    return {"domain": d, "headers": True, "params": False}
-                if isinstance(d, dict) and "domain" not in d:
-                    return None
-                return d
-
-            merged_domains_map = {}
-            for d in parent_settings.get("allowed_domains", []):
-                norm = normalize_domain(d)
-                if norm:
-                    merged_domains_map[norm["domain"]] = norm
-            for d in current_settings.get("allowed_domains", []):
-                norm = normalize_domain(d)
-                if norm:
-                    merged_domains_map[norm["domain"]] = norm
-
-            merged_domains = list(merged_domains_map.values())
-
-            parent_domain_settings = parent_settings.get("domain_settings", {})
-            current_domain_settings = current_settings.get(
-                "domain_settings", {})
-            merged_domain_settings = {**parent_domain_settings}
-            for domain, settings in current_domain_settings.items():
-                if domain in merged_domain_settings:
-                    merged_domain_settings[domain] = {
-                        "headers": {**merged_domain_settings[domain].get("headers", {}), **settings.get("headers", {})},
-                        "params": {**merged_domain_settings[domain].get("params", {}), **settings.get("params", {})}
-                    }
-                else:
-                    merged_domain_settings[domain] = settings
-
-            return {
-                "headers": merged_headers,
-                "params": merged_params,
-                "allowed_domains": merged_domains,
-                "domain_settings": merged_domain_settings
-            }
+            parent = await TestService.get_effective_settings(suite.parent_id, session)
+            return _merge_settings(parent, current)
 
         return {
-            "headers": current_settings.get("headers", {}),
-            "params": current_settings.get("params", {}),
-            "allowed_domains": current_settings.get("allowed_domains", []),
-            "domain_settings": current_settings.get("domain_settings", {})
+            "headers": current.get("headers", {}),
+            "params": current.get("params", {}),
+            "allowed_domains": current.get("allowed_domains", []),
+            "domain_settings": current.get("domain_settings", {})
         }
 
     @staticmethod
@@ -92,63 +92,17 @@ class TestService:
         if not suite:
             return {"headers": {}, "params": {}, "allowed_domains": [], "domain_settings": {}}
 
-        current_settings = suite.settings or {"headers": {}, "params": {}}
+        current = suite.settings or {}
 
         if suite.inherit_settings and suite.parent_id:
-            parent_settings = TestService.get_effective_settings_sync(
-                suite.parent_id, session)
-
-            merged_headers = {
-                **parent_settings.get("headers", {}), **current_settings.get("headers", {})}
-            merged_params = {
-                **parent_settings.get("params", {}), **current_settings.get("params", {})}
-
-            def normalize_domain(d):
-                if not d:
-                    return None
-                if isinstance(d, str):
-                    return {"domain": d, "headers": True, "params": False}
-                if isinstance(d, dict) and "domain" not in d:
-                    return None
-                return d
-
-            merged_domains_map = {}
-            for d in parent_settings.get("allowed_domains", []):
-                norm = normalize_domain(d)
-                if norm:
-                    merged_domains_map[norm["domain"]] = norm
-            for d in current_settings.get("allowed_domains", []):
-                norm = normalize_domain(d)
-                if norm:
-                    merged_domains_map[norm["domain"]] = norm
-
-            merged_domains = list(merged_domains_map.values())
-
-            parent_domain_settings = parent_settings.get("domain_settings", {})
-            current_domain_settings = current_settings.get(
-                "domain_settings", {})
-            merged_domain_settings = {**parent_domain_settings}
-            for domain, settings in current_domain_settings.items():
-                if domain in merged_domain_settings:
-                    merged_domain_settings[domain] = {
-                        "headers": {**merged_domain_settings[domain].get("headers", {}), **settings.get("headers", {})},
-                        "params": {**merged_domain_settings[domain].get("params", {}), **settings.get("params", {})}
-                    }
-                else:
-                    merged_domain_settings[domain] = settings
-
-            return {
-                "headers": merged_headers,
-                "params": merged_params,
-                "allowed_domains": merged_domains,
-                "domain_settings": merged_domain_settings
-            }
+            parent = TestService.get_effective_settings_sync(suite.parent_id, session)
+            return _merge_settings(parent, current)
 
         return {
-            "headers": current_settings.get("headers", {}),
-            "params": current_settings.get("params", {}),
-            "allowed_domains": current_settings.get("allowed_domains", []),
-            "domain_settings": current_settings.get("domain_settings", {})
+            "headers": current.get("headers", {}),
+            "params": current.get("params", {}),
+            "allowed_domains": current.get("allowed_domains", []),
+            "domain_settings": current.get("domain_settings", {})
         }
 
     @staticmethod
@@ -238,34 +192,52 @@ class TestService:
 
     @staticmethod
     async def recursive_delete_suite(suite_id: int, session: AsyncSession):
-        # 1. Delete Runs
-        result = await session.exec(select(TestRun).where(TestRun.test_suite_id == suite_id))
-        runs = result.all()
-        for run in runs:
-            # Delete results
-            results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-            for res in results.all():
-                await session.delete(res)
+        # 1. Delete runs (and their results) attached to this suite directly
+        run_rows = await session.exec(
+            select(TestRun.id).where(TestRun.test_suite_id == suite_id)
+        )
+        suite_run_ids = run_rows.all()
+        if suite_run_ids:
+            await session.exec(
+                sql_delete(TestCaseResult).where(
+                    TestCaseResult.test_run_id.in_(suite_run_ids)
+                )
+            )
+            for run_id in suite_run_ids:
+                minio_client.delete_run_artifacts(run_id)
+            await session.exec(
+                sql_delete(TestRun).where(TestRun.id.in_(suite_run_ids))
+            )
 
-            minio_client.delete_run_artifacts(run.id)
-            await session.delete(run)
-
-        # 2. Delete Cases
-        result = await session.exec(select(TestCase).where(TestCase.test_suite_id == suite_id))
-        cases = result.all()
-        for case in cases:
-            result_runs = await session.exec(select(TestRun).where(TestRun.test_case_id == case.id))
-            for run in result_runs.all():
-                results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-                for res in results.all():
-                    await session.delete(res)
-
-                minio_client.delete_run_artifacts(run.id)
-                await session.delete(run)
-            await session.delete(case)
+        # 2. Delete cases (and their associated runs/results) belonging to this suite
+        case_rows = await session.exec(
+            select(TestCase.id).where(TestCase.test_suite_id == suite_id)
+        )
+        case_ids = case_rows.all()
+        if case_ids:
+            case_run_rows = await session.exec(
+                select(TestRun.id).where(TestRun.test_case_id.in_(case_ids))
+            )
+            case_run_ids = case_run_rows.all()
+            if case_run_ids:
+                await session.exec(
+                    sql_delete(TestCaseResult).where(
+                        TestCaseResult.test_run_id.in_(case_run_ids)
+                    )
+                )
+                for run_id in case_run_ids:
+                    minio_client.delete_run_artifacts(run_id)
+                await session.exec(
+                    sql_delete(TestRun).where(TestRun.id.in_(case_run_ids))
+                )
+            await session.exec(
+                sql_delete(TestCase).where(TestCase.id.in_(case_ids))
+            )
 
         # 3. Recurse for sub-modules
-        result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
+        result = await session.exec(
+            select(TestSuite).where(TestSuite.parent_id == suite_id)
+        )
         sub_modules = result.all()
         for sub in sub_modules:
             await TestService.recursive_delete_suite(sub.id, session)
@@ -414,10 +386,10 @@ class TestService:
         else:
             cases_to_run = await TestService.collect_cases_recursive(run.test_suite_id, session)
 
-        # Clear existing results (idempotency)
-        existing_results = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-        for res in existing_results.all():
-            await session.delete(res)
+        # Clear existing results (idempotency) — bulk delete, not row-by-row
+        await session.exec(
+            sql_delete(TestCaseResult).where(TestCaseResult.test_run_id == run.id)
+        )
 
         for case in cases_to_run:
             case_res = results_by_id.get(

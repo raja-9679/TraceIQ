@@ -399,6 +399,50 @@ class User(SQLModel, table=True):
     last_login_at: Optional[datetime] = Field(default=None)
 
 
+class TestScheduleBase(SQLModel):
+    name: str
+    description: Optional[str] = None
+    project_id: int = Field(foreign_key="project.id")
+    test_suite_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    browser: str = Field(default="chromium")
+    device: Optional[str] = Field(default=None)
+    cron_expression: str
+    is_active: bool = Field(default=True)
+    next_run_at: Optional[datetime] = Field(default=None)
+    last_run_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
+class TestSchedule(TestScheduleBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project: Optional["Project"] = Relationship()
+    test_suite: Optional["TestSuite"] = Relationship()
+    test_case: Optional["TestCase"] = Relationship()
+    created_by: Optional["User"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "TestSchedule.created_by_id"}
+    )
+    updated_by: Optional["User"] = Relationship(
+        sa_relationship_kwargs={"foreign_keys": "TestSchedule.updated_by_id"}
+    )
+
+
+class TestScheduleRead(TestScheduleBase):
+    id: int
+
+
+class TestScheduleUpdate(SQLModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    cron_expression: Optional[str] = None
+    is_active: Optional[bool] = None
+    browser: Optional[str] = None
+    device: Optional[str] = None
+
+
 class AuditLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     entity_type: str  # 'suite', 'case', 'workspace', 'team', 'project'
