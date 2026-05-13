@@ -1,0 +1,36 @@
+# TodoLite — runs as a sibling stack on TraceIQ's network so execution-worker
+# can reach http://todolite:8080. Start TraceIQ first (so the network exists),
+# then `docker compose up -d` from this directory.
+
+services:
+  todolite:
+    build: .
+    container_name: todolite
+    environment:
+      - TODOLITE_SECRET=todolite-dev-secret-not-for-prod
+      - TODOLITE_DB=/data/todolite.db
+    volumes:
+      - todolite_data:/data
+    ports:
+      - "8080:8080"
+    networks:
+      - default
+      - traceiq
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+volumes:
+  todolite_data:
+
+networks:
+  default:
+  # Reference TraceIQ's existing docker-compose network. It must already exist
+  # (start TraceIQ before TodoLite). Inside the network, this service is
+  # reachable at http://todolite:8080 from any other attached container.
+  traceiq:
+    name: infrastructure_qip_network
+    external: true
