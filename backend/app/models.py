@@ -100,6 +100,9 @@ class Workspace(SQLModel, table=True):
     tenant_id: Optional[int] = Field(default=None, foreign_key="tenant.id")
     tenant: Optional[Tenant] = Relationship(back_populates="workspaces")
 
+    # Phase D: daily cap on AI-driven test generation calls. 0 = unlimited.
+    ai_generation_limit_daily: int = Field(default=100)
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -252,6 +255,19 @@ class TestCaseBase(SQLModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+    # Phase D: agent-ownership metadata.
+    # `code_paths` is a list of file-path prefixes (or glob patterns) this
+    # test exercises. The impact-analysis endpoint matches PR-changed files
+    # against this list to decide which cases to run for a given diff.
+    code_paths: Optional[List[str]] = Field(default=[], sa_column=Column(JSON))
+    # `is_ai_authored` is set true for any case created by an AI agent (via
+    # /api/cases/generate or the proposal queue). Combined with run history,
+    # the tautology detector uses this to surface suspect tests.
+    is_ai_authored: bool = Field(default=False)
+    ai_confidence: Optional[float] = Field(default=None)
+    last_human_reviewed_at: Optional[datetime] = Field(default=None)
+    last_human_reviewed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 class TestCase(TestCaseBase, table=True):
@@ -808,6 +824,11 @@ class CaseGenerationRequest(SQLModel):
     target_url: Optional[str] = None
     test_suite_id: int
     case_name: Optional[str] = None
+    # Phase D: "propose" enqueues a CaseProposal for human review;
+    # "direct" creates the case immediately (admin/editor only). Default
+    # depends on caller — API-key (agent) callers are forced to "propose".
+    mode: Optional[str] = None  # "direct" | "propose"
+    code_paths: Optional[List[str]] = None
 
 
 class CaseFromOpenAPIRequest(SQLModel):
@@ -830,3 +851,106 @@ class ComparisonRunRequest(SQLModel):
     target_url: str
     browser: Optional[str] = "chromium"
     device: Optional[str] = None
+
+
+# =============================================================================
+# Phase D — Agent owns the test suite
+# =============================================================================
+
+
+class CaseProposalAction(str, Enum):
+    """Verb for a CaseProposal — what should happen if accepted."""
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    MOVE = "move"
+
+
+class CaseProposal(SQLModel, table=True):
+    """Agent-proposed change to a test case, awaiting human review.
+
+    Mirrors the SelectorHealProposal pattern: agents do not write directly
+    to TestCase rows; they queue proposals that a human (or, with a
+    workspace-level auto-approve threshold, the system) accepts.
+
+    On accept, the action is applied: a new TestCase is created, or an
+    existing one is updated / deleted / moved.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    # For CREATE: the target suite to put the new case in.
+    # For UPDATE / DELETE / MOVE: identifies the existing case.
+    test_suite_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
+    target_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    action: CaseProposalAction = Field(
+        sa_column=Column(SAEnum(
+            CaseProposalAction, name="caseproposalaction",
+            values_callable=lambda obj: [e.value for e in obj],
+        )),
+    )
+    # Free-form proposed payload. Interpretation depends on `action`:
+    #   CREATE: { name, steps, code_paths, intent }
+    #   UPDATE: { name?, steps?, code_paths?, ... }
+    #   DELETE: { reason }
+    #   MOVE:   { new_test_suite_id }
+    payload: Optional[dict] = Field(default={}, sa_column=Column(JSON))
+    rationale: Optional[str] = None
+    ai_confidence: float = Field(default=0.0)
+    agent_id: Optional[str] = None
+    source_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id")
+    status: str = Field(default="pending", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    decided_at: Optional[datetime] = Field(default=None)
+    decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    decision_note: Optional[str] = None
+
+
+class CaseProposalRead(SQLModel):
+    id: int
+    project_id: int
+    test_suite_id: Optional[int]
+    target_case_id: Optional[int]
+    action: str
+    payload: Optional[dict]
+    rationale: Optional[str]
+    ai_confidence: float
+    agent_id: Optional[str]
+    source_run_id: Optional[int]
+    status: str
+    created_at: datetime
+    decided_at: Optional[datetime]
+
+
+class CaseProposalCreate(SQLModel):
+    project_id: int
+    test_suite_id: Optional[int] = None
+    target_case_id: Optional[int] = None
+    action: CaseProposalAction
+    payload: Optional[dict] = None
+    rationale: Optional[str] = None
+    ai_confidence: float = 0.0
+
+
+class ImpactAnalysisRequest(SQLModel):
+    """Input for POST /api/runs/impact-analysis.
+
+    Given a set of file paths that changed in a PR, return the subset of
+    test cases that exercise those paths (per their `code_paths` field).
+    """
+    project_id: int
+    changed_files: List[str]
+    include_no_code_paths: bool = False  # if True, also list cases without code_paths
+
+
+class ImpactedCase(SQLModel):
+    id: int
+    name: str
+    test_suite_id: Optional[int]
+    is_ai_authored: bool
+    matched_paths: List[str]
+
+
+class ImpactAnalysisResponse(SQLModel):
+    matched_cases: List[ImpactedCase]
+    cases_without_code_paths: int
+    unmatched_files: List[str]

@@ -98,3 +98,118 @@ class TraceIQClient:
 
     async def get_artifact_url(self, object_path: str) -> Dict[str, Any]:
         return await self._request("GET", f"/api/artifacts/{object_path}")
+
+    # ------------------------------------------------------------------
+    # Phase D — agent ownership tools
+    # ------------------------------------------------------------------
+
+    async def list_suites(self, project_id: int) -> List[Dict[str, Any]]:  # noqa: F811 (override)
+        return await self._request("GET", "/api/suites", params={"project_id": project_id})
+
+    async def create_suite(
+        self,
+        project_id: int,
+        name: str,
+        parent_id: Optional[int] = None,
+        execution_mode: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        body = {
+            "name": name,
+            "project_id": project_id,
+            "parent_id": parent_id,
+            "execution_mode": execution_mode,
+            "description": description,
+        }
+        body = {k: v for k, v in body.items() if v is not None}
+        return await self._request("POST", "/api/suites", json=body)
+
+    async def update_suite(self, suite_id: int, **fields: Any) -> Dict[str, Any]:
+        return await self._request("PATCH", f"/api/suites/{suite_id}", json=fields)
+
+    async def move_suite(self, suite_id: int, new_parent_id: Optional[int]) -> Dict[str, Any]:
+        return await self._request(
+            "POST", f"/api/suites/{suite_id}/move", json={"parent_id": new_parent_id}
+        )
+
+    async def delete_suite(self, suite_id: int) -> Dict[str, Any]:
+        return await self._request("DELETE", f"/api/suites/{suite_id}")
+
+    async def list_cases(self, project_id: int, test_suite_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        params: Dict[str, Any] = {"project_id": project_id}
+        if test_suite_id is not None:
+            params["test_suite_id"] = test_suite_id
+        return await self._request("GET", "/api/cases", params=params)
+
+    async def update_case(self, case_id: int, **fields: Any) -> Dict[str, Any]:
+        return await self._request("PATCH", f"/api/cases/{case_id}", json=fields)
+
+    async def delete_case(self, case_id: int) -> Dict[str, Any]:
+        return await self._request("DELETE", f"/api/cases/{case_id}")
+
+    async def get_run_history(self, case_id: int, limit: int = 30) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/cases/{case_id}/run-history", params={"limit": limit})
+
+    async def discover_app_surface(self, project_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/apps/{project_id}/surface")
+
+    async def select_tests_for_diff(
+        self,
+        project_id: int,
+        changed_files: List[str],
+        include_no_code_paths: bool = False,
+    ) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/runs/impact-analysis",
+            json={
+                "project_id": project_id,
+                "changed_files": changed_files,
+                "include_no_code_paths": include_no_code_paths,
+            },
+        )
+
+    async def propose_case(
+        self,
+        project_id: int,
+        action: str,
+        test_suite_id: Optional[int] = None,
+        target_case_id: Optional[int] = None,
+        payload: Optional[Dict[str, Any]] = None,
+        rationale: Optional[str] = None,
+        ai_confidence: float = 0.0,
+    ) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/case-proposals",
+            json={
+                "project_id": project_id,
+                "action": action,
+                "test_suite_id": test_suite_id,
+                "target_case_id": target_case_id,
+                "payload": payload or {},
+                "rationale": rationale,
+                "ai_confidence": ai_confidence,
+            },
+        )
+
+    async def generate_case_proposal(
+        self,
+        description: str,
+        test_suite_id: int,
+        target_url: Optional[str] = None,
+        case_name: Optional[str] = None,
+        code_paths: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/cases/generate",
+            json={
+                "description": description,
+                "test_suite_id": test_suite_id,
+                "target_url": target_url,
+                "case_name": case_name,
+                "code_paths": code_paths,
+                "mode": "propose",
+            },
+        )

@@ -166,6 +166,20 @@ These don't all have dedicated tables — they're field additions or generation 
 - `POST /api/cases/generate` — test-from-intent (LLM generates steps from a natural-language description).
 - `POST /api/cases/from-openapi` — schema-driven generation (one `TestCase` per documented operation).
 
+### 5.6 Agent-ownership primitives (Phase D)
+
+These let an AI agent *own* the test suite rather than just call it. Additive across `TestCase`, `Workspace`, plus one new table:
+
+| Field / table | Purpose |
+|---|---|
+| `TestCase.code_paths` (JSON array) | File-path prefixes / globs the case exercises. Powers impact analysis on PR diffs. |
+| `TestCase.is_ai_authored`, `ai_confidence` | Provenance + the agent's own confidence. Tautology detector targets the unreviewed subset. |
+| `TestCase.last_human_reviewed_at`, `last_human_reviewed_by_id` | When a human last approved this case (via the proposal queue or a direct edit). |
+| `Workspace.ai_generation_limit_daily` | Per-workspace cap on AI-driven case-generation calls. Enforced via Redis counter. |
+| `CaseProposal` (new) | Agent-proposed change to a case (create / update / delete / move). Awaits human accept/reject — *nothing is auto-applied*. |
+
+The full agent-ownership lifecycle is in §13.5 below.
+
 ---
 
 ## 6. End-to-end run lifecycle
@@ -418,6 +432,7 @@ alembic revision --autogenerate -m "your change"
 
 Current migration chain (newest first):
 ```
+e7a1b2c3d4e5  phase_d                                    (caseproposal table, TestCase agent-ownership cols, workspace daily AI cap)
 d6f9a3b4c5d6  phase_b_c                                  (personas, heal proposals, flake records, comparison cols)
 c5d8f1a2b3c4  ai_agent_integration                       (api keys, refresh tokens, webhooks, visual baselines, git context, run trigger)
 b2c4e6f8a0d1  backfill_role_id_from_string_fields        (RBAC migration)
@@ -518,7 +533,70 @@ Run finishes; ai_analysis dict populated by execution-engine controller
                      and the loop repeats.
 ```
 
-### 13.4 Open follow-ups for the agent layer
+### 13.4 Agent owns the test suite (Phase D)
+
+Phase D turns the agent from "test runner client" into "test suite editor with review." Three new ideas:
+
+1. **Code-path tagging.** Every `TestCase` gets a `code_paths: string[]` field listing the file prefixes / globs it exercises. The matching rule: a path entry can be a bare prefix (`"frontend/src/Checkout/"`) or an fnmatch glob (`"backend/app/api/**/*.py"`).
+2. **Impact analysis.** `POST /api/runs/impact-analysis` takes a list of changed files (a PR diff), matches each against every case's `code_paths`, and returns the subset of cases that should run for that diff — plus unmatched files (candidates for new cases). Agents call this *first* on every PR.
+3. **Proposal queue, not direct writes.** Agents do not write `TestCase` rows directly. They submit `CaseProposal` rows (`action ∈ {create, update, delete, move}`); a human accepts/rejects through `POST /api/case-proposals/{id}/{accept,reject}`. Mirror of the `SelectorHealProposal` pattern.
+
+#### Recommended agent workflow for a new feature
+
+```
+1.  Agent observes a PR diff:
+        modified files: [
+          "frontend/src/Checkout/PaymentForm.tsx",
+          "backend/app/api/orders.py"
+        ]
+
+2.  Agent calls discover_app_surface(project_id) to learn what's already tested.
+
+3.  Agent calls select_tests_for_diff(project_id, changed_files):
+        → returns matched_cases: [case 17, case 41]
+        → returns unmatched_files: ["backend/app/api/orders.py"]   ← gap
+
+4.  Agent calls run_suite(suite_id) restricted to {17, 41}.
+        → posts results back to the PR.
+
+5.  For the gap, agent calls generate_case_proposal(
+        description="Verify orders.py accepts split shipping",
+        test_suite_id=...,
+        code_paths=["backend/app/api/orders.py"]
+    )
+        → returns CaseProposal #88 in "pending" status.
+
+6.  Agent comments on the PR:
+        "Coverage gap: backend/app/api/orders.py is not exercised by any test.
+         I drafted CaseProposal #88. A reviewer can accept it at
+         /api/case-proposals/88/accept."
+
+7.  Human reviews + accepts. The new case has is_ai_authored=true and
+    last_human_reviewed_at=now() — it's now part of the gating suite.
+```
+
+#### Guard rails
+
+- **Budget cap.** `Workspace.ai_generation_limit_daily` (default 100) caps `/api/cases/generate` calls per workspace per UTC day. Enforced via a Redis counter; the request returns 429 when exhausted.
+- **API keys cannot write directly.** `mode="direct"` on `/api/cases/generate` is rejected for API-key callers; they always go through `mode="propose"`.
+- **API keys cannot accept/reject proposals.** Forces a human in the loop.
+- **Tautology detector.** Beat task (`app.tasks.tautology_tasks.scan_for_tautologies`, gated by `TAUTOLOGY_DETECTOR_ENABLED=true`) flags AI-authored cases that have passed N consecutive runs in <500 ms without ever being human-reviewed — surfaces them as `update` proposals for human attention.
+
+#### MCP tools added in Phase D
+
+| Tool | Purpose |
+|---|---|
+| `discover_app_surface` | Suite tree + route coverage + recent runs + gap counts |
+| `select_tests_for_diff` | Map changed files to tests; surface unmatched files |
+| `get_run_history` | Recent run results for a single case |
+| `create_suite` | Add a new suite (parent-nested) |
+| `propose_create_case` | Submit a draft test case for human review |
+| `propose_update_case` | Patch an existing case |
+| `propose_delete_case` | Mark a case obsolete |
+| `set_code_paths` | Update which files a case claims to exercise |
+| `generate_case_proposal` | LLM-generate a draft → propose mode |
+
+### 13.5 Open follow-ups for the agent layer
 
 See `SCOPE_NOTES.md`. The most impactful unfinished items:
 
