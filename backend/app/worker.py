@@ -29,6 +29,9 @@ EXECUTION_ENGINE_URL = settings.EXECUTION_ENGINE_URL
 USE_DISTRIBUTED_EXECUTION = getattr(
     settings, 'USE_DISTRIBUTED_EXECUTION', True)
 
+# Webhook secret for internal service-to-service calls
+_WEBHOOK_SECRET = getattr(settings, 'WEBHOOK_SECRET', None) or settings.SECRET_KEY
+
 
 @celery_app.task(name="app.worker.run_test_suite")
 def run_test_suite(run_id: int):
@@ -87,7 +90,7 @@ def run_test_suite(run_id: int):
                 # If a specific test case was requested, dispatch only that case
                 if run.test_case_id:
                     # Single test case execution
-                    dispatch_separate_jobs_legacy(
+                    dispatch_cases_to_queue(
                         run, cases_to_run, effective_settings, session)
                 elif execution_mode == ExecutionMode.SEPARATE:
                     # SEPARATE mode: Check for sub-structure (sub-suites run as groups)
@@ -99,12 +102,11 @@ def run_test_suite(run_id: int):
                             run, execution_units, effective_settings, session)
                     else:
                         # No sub-structure, dispatch all cases individually
-                        dispatch_separate_jobs_legacy(
+                        dispatch_cases_to_queue(
                             run, cases_to_run, effective_settings, session)
                 else:
-                    # CONTINUOUS mode: Still dispatch to Redis queue but mark jobs
-                    # so workers can run them sequentially if needed
-                    dispatch_continuous_jobs(
+                    # CONTINUOUS mode: dispatch each case as an independent job
+                    dispatch_cases_to_queue(
                         run, cases_to_run, effective_settings, session)
             else:
                 # Fallback: Legacy single-engine execution (deprecated)
@@ -251,15 +253,15 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
         f"[Worker] Dispatched {len(job_ids)} jobs ({total_test_count} total tests) for run {run.id}")
 
 
-def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, session: Session):
+def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: Session):
     """
-    Legacy dispatch: one job per test case (original SEPARATE mode behavior).
-    Used when suite has no sub-structure.
+    Dispatch one Redis-stream job per test case (used for both SEPARATE and
+    CONTINUOUS modes when there is no sub-suite structure to exploit).
     """
     import uuid
     from datetime import datetime
 
-    print(f"[Worker] Dispatching {len(cases)} separate jobs for run {run.id}")
+    print(f"[Worker] Dispatching {len(cases)} jobs to queue for run {run.id}")
 
     jobs_stream = 'jobs:pending'
     job_ids = []
@@ -272,7 +274,6 @@ def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, ses
         if 'BUSYGROUP' not in str(e):
             raise
 
-    # Use pipeline for atomic batch insert
     pipe = redis_client.pipeline()
 
     for case in cases:
@@ -303,7 +304,6 @@ def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, ses
             'retry_count': 0
         }
 
-        # Add job to stream
         pipe.xadd(
             jobs_stream,
             {
@@ -312,10 +312,8 @@ def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, ses
                 'payload': json.dumps(job)
             }
         )
-        # Track job in run's job set
         pipe.sadd(f'runs:{run.id}:job_ids', job_id)
 
-    # Initialize run progress tracking
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(cases),
         'completed': 0,
@@ -327,90 +325,6 @@ def dispatch_separate_jobs_legacy(run: TestRun, cases: list, settings: dict, ses
     pipe.execute()
 
     print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
-
-
-def dispatch_continuous_jobs(run: TestRun, cases: list, settings: dict, session: Session):
-    """
-    Dispatch CONTINUOUS mode jobs to Redis queue.
-    Each test case becomes one job, but they're tagged for the same run.
-    Workers process one job at a time - true parallel execution.
-
-    This replaces the legacy execution engine approach where all tests
-    went to a single engine causing bottleneck.
-    """
-    import uuid
-    from datetime import datetime
-
-    print(
-        f"[Worker] Dispatching {len(cases)} continuous jobs to Redis for run {run.id}")
-
-    jobs_stream = 'jobs:pending'
-    job_ids = []
-
-    # Ensure consumer group exists
-    try:
-        redis_client.xgroup_create(
-            jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
-
-    # Use pipeline for atomic batch insert
-    pipe = redis_client.pipeline()
-
-    for case in cases:
-        job_id = str(uuid.uuid4())
-        job_ids.append(job_id)
-
-        job = {
-            'job_id': job_id,
-            'run_id': run.id,
-            'test_case_id': case.id,
-            'test_case': {
-                'id': case.id,
-                'name': case.name,
-                'steps': [
-                    step.dict() if hasattr(step, 'dict') else step
-                    for step in case.steps
-                ]
-            },
-            'browser': run.browser,
-            'device': run.device,
-            'settings': {
-                'headers': settings.get('headers', {}),
-                'params': settings.get('params', {}),
-                'allowed_domains': settings.get('allowed_domains', []),
-                'domain_settings': settings.get('domain_settings', {})
-            },
-            'created_at': datetime.utcnow().isoformat(),
-            'retry_count': 0
-        }
-
-        # Add job to stream
-        pipe.xadd(
-            jobs_stream,
-            {
-                'job_id': job_id,
-                'run_id': str(run.id),
-                'payload': json.dumps(job)
-            }
-        )
-        # Track job in run's job set
-        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
-
-    # Initialize run progress tracking
-    pipe.hset(f'runs:{run.id}:progress', mapping={
-        'total': len(cases),
-        'completed': 0,
-        'passed': 0,
-        'failed': 0,
-        'status': 'running'
-    })
-
-    pipe.execute()
-
-    print(
-        f"[Worker] Dispatched {len(job_ids)} continuous jobs to queue for run {run.id}")
 
 
 def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, execution_mode: ExecutionMode):
@@ -446,7 +360,7 @@ def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, executi
             "domain_settings": run.domain_settings or {}
         },
         "callbackUrl": callback_url,
-        "webhookSecret": settings.SECRET_KEY if hasattr(settings, 'SECRET_KEY') else None
+        "webhookSecret": _WEBHOOK_SECRET
     }
 
     print(f"[Worker] Dispatching legacy execution for run {run.id}")

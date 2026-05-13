@@ -10,7 +10,8 @@ from app.services.test_service import test_service
 from app.services.access_service import access_service
 from app.models import (
     User, AuditLog, AuditLogRead, Project, UserWorkspace, UserTeam, UserProjectAccess,
-    TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode, TestCaseResult, TestCaseResultRead
+    TeamProjectAccess, TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode,
+    TestCaseResult, TestCaseResultRead
 )
 
 router = APIRouter()
@@ -238,19 +239,34 @@ async def get_runs(
     count_result = await session.exec(count_query)
     total = count_result.one()
 
-    # Get paginated runs with eager loaded results and user
+    from sqlalchemy.orm import defer
+    
+    # Get paginated runs without heavyweight results
     query = query.order_by(TestRun.created_at.desc()).limit(limit).offset(
-        offset).options(selectinload(TestRun.results), selectinload(TestRun.user))
+        offset).options(
+            selectinload(TestRun.user),
+            defer(TestRun.network_events),
+            defer(TestRun.execution_log),
+            defer(TestRun.screenshots),
+            defer(TestRun.request_headers),
+            defer(TestRun.response_headers),
+            defer(TestRun.request_params),
+            defer(TestRun.allowed_domains),
+            defer(TestRun.domain_settings),
+            defer(TestRun.ai_analysis)
+        )
     result = await session.exec(query)
     runs = result.all()
+    
+    # Expunge to prevent accidental lazy loading
+    for r in runs:
+        session.expunge(r)
 
     return {
         "runs": [
             TestRunRead(
-                **run.model_dump(),
-                results=[TestCaseResultRead.model_validate(
-                    r) for r in run.results],
-                user=run.user
+                **{k: v for k, v in run.__dict__.items() if not k.startswith('_')},
+                results=[],
             ) for run in runs
         ],
         "total": total,
@@ -321,12 +337,23 @@ async def delete_runs(
     current_user: User = Depends(get_current_user)
 ):
     if all:
-        # Delete all runs
-        result = await session.exec(select(TestRun))
+        # Scope to projects the current user has access to — never delete across all tenants
+        org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
+        team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
+        user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
+
+        result = await session.exec(
+            select(TestRun).where(
+                or_(
+                    TestRun.project_id.in_(org_stmt),
+                    TestRun.project_id.in_(team_stmt),
+                    TestRun.project_id.in_(user_stmt),
+                )
+            )
+        )
         runs = result.all()
         for run in runs:
             minio_client.delete_run_artifacts(run.id)
-            # Delete associated TestCaseResults
             result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
             for res in result_cases.all():
                 await session.delete(res)
@@ -394,13 +421,13 @@ async def process_webhook(
     x_traceiq_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_session)
 ):
-    from app.core.config import settings
-    # Optional Security Check: Execution Engine should send this header if configured
-    if settings.SECRET_KEY and x_traceiq_secret and x_traceiq_secret != settings.SECRET_KEY:
-        print("Warning: Webhook received with invalid secret")
-        # Proceeding for now to avoid breaking if config unmatched, but strictly should 403.
-        # For production refactor, I'll log and assume internal trust for now.
-        pass
+    import logging
+    from app.core.config import settings as _cfg
+    _logger = logging.getLogger(__name__)
+    expected = _cfg.WEBHOOK_SECRET or _cfg.SECRET_KEY
+    if not x_traceiq_secret or x_traceiq_secret != expected:
+        _logger.warning("[Webhook] Rejected request with invalid or missing secret for run %s", run_id)
+        raise HTTPException(status_code=403, detail="Invalid or missing webhook secret")
 
     await test_service.process_test_run_result(run_id, payload, session)
     return {"status": "received"}
@@ -410,7 +437,7 @@ async def process_webhook(
 async def finalize_test_run(
     run_id: int,
     payload: Dict[str, Any],
-    x_internal_service: Optional[str] = Header(None),
+    x_traceiq_secret: Optional[str] = Header(None),
     session: AsyncSession = Depends(get_session)
 ):
     """
@@ -421,11 +448,13 @@ async def finalize_test_run(
     1. Storing AI analysis to DB
     2. Triggering notifications based on user preferences
     """
-    # Verify internal service call
-    if x_internal_service != 'execution-controller':
-        print(
-            f"Warning: finalize called without proper header. Service: {x_internal_service}")
-        # Allow for now but log
+    import logging
+    from app.core.config import settings as _cfg
+    _logger = logging.getLogger(__name__)
+    expected = _cfg.WEBHOOK_SECRET or _cfg.SECRET_KEY
+    if not x_traceiq_secret or x_traceiq_secret != expected:
+        _logger.warning("[Finalize] Rejected request with invalid or missing secret for run %s", run_id)
+        raise HTTPException(status_code=403, detail="Internal service access only")
 
     run = await session.get(TestRun, run_id)
     if not run:

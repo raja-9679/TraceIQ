@@ -4,7 +4,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ArrowRight, Code2, Globe, Database, Rocket, Users, Lock, Check } from "lucide-react";
+import { Loader2, ArrowRight, Code2, Globe, Database, Rocket, Users, Lock, Check, Sparkles } from "lucide-react";
 
 export default function Signup() {
     const { login } = useAuth();
@@ -112,6 +112,11 @@ export default function Signup() {
             icon: Lock,
             title: "Secure by Design",
             desc: "Single Sign-On (SSO), Audit Logs, and Private Cloud options available."
+        },
+        {
+            icon: Sparkles,
+            title: "AI-Powered Debugging",
+            desc: "Leverage AI to instantly identify root causes and generate bug fixes."
         }
     ];
 
@@ -164,7 +169,7 @@ export default function Signup() {
     return (
         <div className="min-h-screen w-full flex bg-[#FAFAFA] text-zinc-900 font-inter relative overflow-hidden">
             {/* Background Flow Diagram */}
-            <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+            <div className="absolute inset-0 z-0 overflow-hidden">
                 <svg className="w-full h-full opacity-[0.05]">
                     <defs>
                         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -186,6 +191,8 @@ export default function Signup() {
                                     stroke="#64748B"
                                     strokeWidth="2"
                                     strokeOpacity="0.8"
+                                    whileHover={{ strokeWidth: 4, stroke: "#3B82F6", strokeOpacity: 1 }}
+                                    className="cursor-crosshair transition-all"
                                 />
                                 <motion.circle
                                     r="3"
@@ -207,7 +214,8 @@ export default function Signup() {
                 {nodes.map((node) => (
                     <motion.div
                         key={node.id}
-                        className={`absolute flex items-center justify-center px-3 py-1.5 rounded-full border text-[10px] font-mono shadow-sm transition-colors duration-500 opacity-30
+                        whileHover={{ scale: 1.15, opacity: 1, zIndex: 50 }}
+                        className={`absolute flex items-center justify-center px-3 py-1.5 rounded-full border text-[10px] font-mono shadow-sm transition-colors duration-500 opacity-40 cursor-default hover:shadow-lg
                             ${node.status === 'success' ? 'bg-blue-50 border-blue-200 text-blue-700' :
                                 node.status === 'running' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
                                     'bg-zinc-50 border-zinc-200 text-zinc-500'}

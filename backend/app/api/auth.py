@@ -1,12 +1,13 @@
 from typing import Any
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from typing import List, Optional
 
 from app.core.database import get_session
+from app.core.limiter import limiter
 from app.core.auth import (
     create_access_token,
     get_password_hash,
@@ -51,7 +52,9 @@ async def get_my_permissions(
     return PermissionsResponse(**perms_map)
 
 @router.post("/login", response_model=Token)
+@limiter.limit("10/minute")
 async def login_for_access_token(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: AsyncSession = Depends(get_session)
 ) -> Any:
@@ -76,7 +79,9 @@ async def login_for_access_token(
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/register", response_model=UserRead)
+@limiter.limit("5/minute")
 async def register_user(
+    request: Request,
     user_in: UserCreate,
     session: AsyncSession = Depends(get_session)
 ) -> Any:

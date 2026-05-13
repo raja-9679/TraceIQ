@@ -4,7 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ArrowRight, LayoutGrid, Check, X, AlertTriangle, Terminal, Zap, Shield, Workflow } from "lucide-react";
+import { Loader2, ArrowRight, LayoutGrid, Check, X, AlertTriangle, Terminal, Zap, Shield, Workflow, Sparkles } from "lucide-react";
 
 export default function Login() {
     const { login } = useAuth();
@@ -155,6 +155,11 @@ export default function Login() {
             icon: Workflow,
             title: "Visual Flow Builder",
             desc: "Design complex automation flows with our intuitive drag-and-drop interface."
+        },
+        {
+            icon: Sparkles,
+            title: "AI-Powered Debugging",
+            desc: "Instantly identify test failures and auto-generate bug fixes using advanced AI analysis."
         }
     ];
 
@@ -189,7 +194,7 @@ export default function Login() {
             </motion.div>
 
             {/* Background Flow Diagram */}
-            <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none">
+            <div className="absolute inset-0 z-0 overflow-hidden">
                 <svg className="w-full h-full opacity-[0.06]">
                     <defs>
                         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -211,6 +216,8 @@ export default function Login() {
                                     stroke="#64748B"
                                     strokeWidth="2"
                                     strokeOpacity="0.6"
+                                    whileHover={{ strokeWidth: 4, stroke: "#6366F1", strokeOpacity: 1 }}
+                                    className="cursor-crosshair transition-all"
                                 />
                                 {/* Fast Moving Data Packets */}
                                 <motion.circle
@@ -234,7 +241,8 @@ export default function Login() {
                     <motion.div
                         key={node.id}
                         layout
-                        className={`absolute flex items-center justify-center px-3 py-1.5 rounded-full border text-[10px] font-mono shadow-sm transition-colors duration-500 opacity-30
+                        whileHover={{ scale: 1.15, opacity: 1, zIndex: 50 }}
+                        className={`absolute flex items-center justify-center px-3 py-1.5 rounded-full border text-[10px] font-mono shadow-sm transition-colors duration-500 opacity-40 cursor-default hover:shadow-lg
                             ${node.status === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
                                 node.status === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
                                     node.status === 'running' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :

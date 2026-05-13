@@ -10,7 +10,7 @@ from sqlmodel import create_engine
 
 # Use sync engine for Celery worker
 sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
-sync_engine = create_engine(sync_db_url, echo=True)
+sync_engine = create_engine(sync_db_url, echo=False)
 
 TIMEOUT_MINUTES = getattr(settings, 'STALE_RUN_INACTIVITY_MINUTES', 15)
 
