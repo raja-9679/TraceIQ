@@ -7,8 +7,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: quality_intelligence
-    ports:
-      - "5432:5432"
+    # No host port mapping — Postgres is reached only by other containers on
+    # qip_network as `postgres:5432`. To run psql from the host, use:
+    #   docker exec -it infrastructure-postgres-1 psql -U user -d quality_intelligence
+    # Or attach pgadmin (already wired) at http://localhost:8014.
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -16,8 +18,9 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    # No host port mapping — Redis is reached only by other containers on
+    # qip_network as `redis:6379`. To debug from the host, run:
+    #   docker exec -it infrastructure-redis-1 redis-cli
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -223,6 +226,23 @@ services:
     networks:
       - qip_network
     shm_size: '2gb'
+
+  mcp-server:
+    build:
+      context: ../integrations/mcp-server
+      dockerfile: Dockerfile
+    ports:
+      - "8088:8088"
+    environment:
+      # Points to the backend container — no API key here, each client passes their own
+      TRACEIQ_BASE_URL: http://backend:8000
+      MCP_HTTP_PORT: "8088"
+      LOG_LEVEL: info
+    depends_on:
+      - backend
+    networks:
+      - qip_network
+    restart: unless-stopped
 
   pgadmin:
     image: dpage/pgadmin4
