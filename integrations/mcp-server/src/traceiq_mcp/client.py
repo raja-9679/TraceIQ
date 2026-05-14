@@ -68,6 +68,21 @@ class TraceIQClient:
     # API surface used by the MCP tools
     # ------------------------------------------------------------------
 
+    async def list_workspaces(self) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/api/workspaces")
+
+    async def create_project(
+        self,
+        workspace_id: int,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            "/api/projects",
+            json={"workspace_id": workspace_id, "name": name, "description": description},
+        )
+
     async def list_projects(self) -> List[Dict[str, Any]]:
         return await self._request("GET", "/api/projects")
 

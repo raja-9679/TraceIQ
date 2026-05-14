@@ -84,6 +84,34 @@ These items either require significant frontend work, external products, or desi
 - **Continuous prod validation** — already possible via the cron `TestSchedule` model + a `target_url`-bearing comparison run; needs a UI to set up the recurring schedule.
 - **Recorder fidelity** — drag-drop, iframe interactions, hover-only flows, network capture. Today's recorder is goto/click/fill/press-key only.
 
+### Local development bridge — prerequisite for SaaS commercial use
+
+The core agent-development loop is:
+1. Agent writes code locally → local dev server starts (e.g. `localhost:3000`)
+2. Agent creates / updates TraceIQ test cases via MCP (with `code_paths`)
+3. Agent triggers a run → passes/fails
+4. Agent calls impact analysis → TraceIQ identifies other affected cases
+5. Agent runs regression tests for those cases too
+6. All green → safe to commit / open PR
+
+This loop is exactly what Mode 1 was designed for. **The gap is step 3**: TraceIQ's execution workers run on the server and cannot reach `localhost` on the developer's machine. Until this is solved, TraceIQ can only test apps that are already deployed somewhere (staging, prod) — useful, but it misses the highest-value moment: catching regressions before the commit.
+
+**Chosen approach: local execution worker with HTTP polling.**
+- Ship a thin `traceiq-worker` CLI (likely `npx traceiq-worker`) the developer runs alongside their dev server.
+- Instead of connecting to Redis directly (internal to the server), the local worker **polls the TraceIQ API** for pending jobs assigned to a `local_worker_id` the developer registers at workspace setup.
+- Worker runs Playwright against `localhost`; POSTs results back to TraceIQ over HTTPS.
+- TraceIQ server stays fully closed — only the public REST API is needed.
+- Agent (Claude Code or similar) can auto-start the local worker as part of its dev-loop setup.
+
+**Why not tunnel (ngrok / Cloudflare)?**
+Tunnel approach works today with zero TraceIQ changes, but exposes the local dev server publicly — uncomfortable for internal, unreleased, or credential-bearing apps. Local worker keeps everything local.
+
+**Not built yet.** Requires:
+- New `local_worker_id` / `local_worker_token` concept on Workspace (similar to API keys)
+- Job-polling endpoint on the TraceIQ backend (`GET /api/jobs/poll?worker_id=...`) that returns the next pending job for a given local worker
+- Worker picks up execution mode from the job; existing Playwright runner code reuses as-is
+- Result POST-back uses the existing `/api/runs/{id}/webhook` + `/api/runs/{id}/finalize` flow unchanged
+
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 
 Explicitly NOT built in Phase E. The MCP design doesn't preclude them — they can ship later without touching what's shipped now.
