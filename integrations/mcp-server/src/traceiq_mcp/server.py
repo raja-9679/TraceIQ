@@ -22,7 +22,13 @@ TERMINAL_STATUSES = {"passed", "failed", "error"}
 
 
 def _new_client() -> TraceIQClient:
-    return TraceIQClient()
+    from traceiq_mcp._context import get_request_api_key
+    req_key = get_request_api_key()
+    if req_key:
+        # HTTP transport: use the per-request key from the client's X-API-Key header.
+        # TRACEIQ_BASE_URL still comes from env (set on the Docker service).
+        return TraceIQClient(api_key=req_key)
+    return TraceIQClient()  # stdio: reads TRACEIQ_BASE_URL + TRACEIQ_API_KEY from env
 
 
 def _format_run_summary(run: Dict[str, Any]) -> str:
@@ -54,6 +60,24 @@ server = Server("traceiq")
 @server.list_tools()
 async def list_tools() -> List[Tool]:
     return [
+        Tool(
+            name="list_workspaces",
+            description="List TraceIQ workspaces the agent's API key can access. Call this first to get a workspace_id before creating a project.",
+            inputSchema={"type": "object", "properties": {}, "required": []},
+        ),
+        Tool(
+            name="create_project",
+            description="Create a new TraceIQ project inside a workspace. Returns the project id needed for all subsequent suite and case operations.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "integer", "description": "ID of the workspace to create the project in. Get this from list_workspaces."},
+                    "name": {"type": "string", "description": "Human-readable project name (e.g. 'My App')."},
+                    "description": {"type": "string", "description": "Optional short description of the project."},
+                },
+                "required": ["workspace_id", "name"],
+            },
+        ),
         Tool(
             name="list_projects",
             description="List TraceIQ projects this agent can see.",
@@ -438,6 +462,18 @@ async def list_tools() -> List[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     client = _new_client()
+    if name == "list_workspaces":
+        data = await client.list_workspaces()
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
+    if name == "create_project":
+        data = await client.create_project(
+            workspace_id=arguments["workspace_id"],
+            name=arguments["name"],
+            description=arguments.get("description"),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
     if name == "list_projects":
         data = await client.list_projects()
         return [TextContent(type="text", text=json.dumps(data, indent=2))]
