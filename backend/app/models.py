@@ -287,6 +287,10 @@ class TestCaseBase(SQLModel):
     is_auth_setup: bool = Field(default=False)
     use_auth_session: bool = Field(default=True)
 
+    # Data-driven tests: a list of row objects. At dispatch the case expands
+    # into one execution per row; steps reference values as {{data.KEY}}.
+    dataset: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+
 
 class TestCase(TestCaseBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -313,6 +317,7 @@ class TestCaseUpdate(SQLModel):
     project_id: Optional[int] = None
     is_auth_setup: Optional[bool] = None
     use_auth_session: Optional[bool] = None
+    dataset: Optional[List[dict]] = None
 
 
 class ProjectEnvironment(SQLModel, table=True):

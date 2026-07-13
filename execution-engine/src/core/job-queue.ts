@@ -12,6 +12,10 @@ export interface TestCase {
     // starting from the stored state (e.g. login-flow tests).
     is_auth_setup?: boolean;
     use_auth_session?: boolean;
+    // Data-driven expansion: the dataset row for this execution and its
+    // index (the name is already suffixed "[row N]" by the backend).
+    data_row?: Record<string, any>;
+    row_index?: number;
 }
 
 // Job can be either:
