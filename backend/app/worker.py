@@ -81,6 +81,17 @@ def run_test_suite(run_id: int):
             effective_settings = test_service.get_effective_settings_sync(
                 run.test_suite_id, session)
 
+            # Inject the project's stored auth session (Playwright
+            # storageState) so cases start already logged in. Workers skip
+            # it for auth-setup cases and cases with use_auth_session=False.
+            auth_project_id = run.project_id or (
+                cases_to_run[0].project_id if cases_to_run else None)
+            auth_state = _load_auth_state(auth_project_id, session)
+            if auth_state:
+                effective_settings['storage_state'] = auth_state
+                print(f"[Worker] Run {run_id}: injecting stored auth session "
+                      f"for project {auth_project_id}")
+
             # Update total tests count
             run.total_tests = len(cases_to_run)
             session.add(run)
@@ -133,6 +144,54 @@ def run_test_suite(run_id: int):
             run.error_message = str(e)
             session.add(run)
             session.commit()
+
+
+def _case_payload(case) -> dict:
+    """Serializable job payload for one test case, incl. auth-session flags."""
+    return {
+        'id': case.id,
+        'name': case.name,
+        'steps': [
+            step.dict() if hasattr(step, 'dict') else step
+            for step in case.steps
+        ],
+        'is_auth_setup': getattr(case, 'is_auth_setup', False),
+        'use_auth_session': getattr(case, 'use_auth_session', True),
+    }
+
+
+def _settings_payload(settings: dict) -> dict:
+    """The per-job settings sub-dict shared by every dispatch path."""
+    payload = {
+        'headers': settings.get('headers', {}),
+        'params': settings.get('params', {}),
+        'allowed_domains': settings.get('allowed_domains', []),
+        'domain_settings': settings.get('domain_settings', {}),
+    }
+    if settings.get('storage_state'):
+        payload['storage_state'] = settings['storage_state']
+    return payload
+
+
+def _load_auth_state(project_id, session):
+    """Return the project's stored Playwright storageState if fresh, else None."""
+    if not project_id:
+        return None
+    from datetime import datetime
+    from sqlmodel import select
+    from app.models import AuthSession
+
+    auth = session.exec(
+        select(AuthSession).where(AuthSession.project_id == project_id)
+    ).first()
+    if not auth or not auth.storage_state:
+        return None
+    age_seconds = (datetime.utcnow() - auth.captured_at).total_seconds()
+    if age_seconds > auth.max_age_minutes * 60:
+        print(f"[Worker] Auth session for project {project_id} is stale "
+              f"({int(age_seconds // 60)} min old) — dispatching without it")
+        return None
+    return auth.storage_state
 
 
 def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, session: Session):
@@ -188,25 +247,10 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 'unit_type': unit['type'],
                 'unit_id': unit['id'],
                 'unit_name': unit['name'],
-                'test_cases': [
-                    {
-                        'id': case.id,
-                        'name': case.name,
-                        'steps': [
-                            step.dict() if hasattr(step, 'dict') else step
-                            for step in case.steps
-                        ]
-                    }
-                    for case in test_cases
-                ],
+                'test_cases': [_case_payload(case) for case in test_cases],
                 'browser': run.browser,
                 'device': run.device,
-                'settings': {
-                    'headers': settings.get('headers', {}),
-                    'params': settings.get('params', {}),
-                    'allowed_domains': settings.get('allowed_domains', []),
-                    'domain_settings': settings.get('domain_settings', {})
-                },
+                'settings': _settings_payload(settings),
                 'created_at': datetime.utcnow().isoformat(),
                 'retry_count': 0
             }
@@ -217,22 +261,10 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 'job_id': job_id,
                 'run_id': run.id,
                 'test_case_id': case.id,
-                'test_case': {
-                    'id': case.id,
-                    'name': case.name,
-                    'steps': [
-                        step.dict() if hasattr(step, 'dict') else step
-                        for step in case.steps
-                    ]
-                },
+                'test_case': _case_payload(case),
                 'browser': run.browser,
                 'device': run.device,
-                'settings': {
-                    'headers': settings.get('headers', {}),
-                    'params': settings.get('params', {}),
-                    'allowed_domains': settings.get('allowed_domains', []),
-                    'domain_settings': settings.get('domain_settings', {})
-                },
+                'settings': _settings_payload(settings),
                 'created_at': datetime.utcnow().isoformat(),
                 'retry_count': 0
             }
@@ -296,22 +328,10 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'job_id': job_id,
             'run_id': run.id,
             'test_case_id': case.id,
-            'test_case': {
-                'id': case.id,
-                'name': case.name,
-                'steps': [
-                    step.dict() if hasattr(step, 'dict') else step
-                    for step in case.steps
-                ]
-            },
+            'test_case': _case_payload(case),
             'browser': run.browser,
             'device': run.device,
-            'settings': {
-                'headers': settings.get('headers', {}),
-                'params': settings.get('params', {}),
-                'allowed_domains': settings.get('allowed_domains', []),
-                'domain_settings': settings.get('domain_settings', {})
-            },
+            'settings': _settings_payload(settings),
             'created_at': datetime.utcnow().isoformat(),
             'retry_count': 0
         }
@@ -407,22 +427,10 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'execution_mode': 'parallel',
             'parallelism': parallelism,
             'test_case_id': case.id,
-            'test_case': {
-                'id': case.id,
-                'name': case.name,
-                'steps': [
-                    step.dict() if hasattr(step, 'dict') else step
-                    for step in case.steps
-                ]
-            },
+            'test_case': _case_payload(case),
             'browser': run.browser,
             'device': run.device,
-            'settings': {
-                'headers': settings.get('headers', {}),
-                'params': settings.get('params', {}),
-                'allowed_domains': settings.get('allowed_domains', []),
-                'domain_settings': settings.get('domain_settings', {})
-            },
+            'settings': _settings_payload(settings),
             'created_at': datetime.utcnow().isoformat(),
             'retry_count': 0,
         }
