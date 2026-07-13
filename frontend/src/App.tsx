@@ -5,6 +5,8 @@ import Dashboard from "@/pages/Dashboard";
 import TestMatrix from "@/pages/TestMatrix";
 import TestRunDetails from "@/pages/TestRunDetails";
 import Schedules from "@/pages/Schedules";
+import Proposals from "@/pages/Proposals";
+import VisualReview from "@/pages/VisualReview";
 import TestSuites from "@/pages/TestSuites";
 import SuiteDetails from "@/pages/SuiteDetails";
 import Login from "@/pages/Login";
@@ -36,6 +38,8 @@ function App() {
                 <Route path="suites" element={<TestSuites />} />
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="schedules" element={<Schedules />} />
+                <Route path="proposals" element={<Proposals />} />
+                <Route path="visual-review" element={<VisualReview />} />
                 <Route path="suites/:suiteId/builder" element={<TestBuilder />} />
                 <Route path="suites/:suiteId/cases/:caseId/edit" element={<TestBuilder />} />
                 <Route path="workspace" element={<WorkspacePage />} />
