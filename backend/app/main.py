@@ -10,7 +10,7 @@ from app.api import (
     api_keys, auth, settings, workspaces, projects, admin,
     workspace_webhooks, visual_baselines, personas, heal_proposals,
     flake_records, case_generation, comparison_runs, agent_ownership,
-    agent_reference, environments,
+    agent_reference, environments, analytics,
 )
 from app.api.endpoints import test_suites, test_cases, test_runs, websockets, schedules
 from app.core.config import settings as core_settings
@@ -66,6 +66,7 @@ app.include_router(comparison_runs.router, prefix="/api", tags=["comparison-runs
 app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 app.include_router(agent_reference.router, prefix="/api", tags=["agent-reference"])
 app.include_router(environments.router, prefix="/api", tags=["environments"])
+app.include_router(analytics.router, prefix="/api", tags=["analytics"])
 
 
 @app.get("/health")

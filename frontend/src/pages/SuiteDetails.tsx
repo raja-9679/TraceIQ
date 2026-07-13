@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getAuditLog } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,6 +38,30 @@ const tabVariants: Variants = {
     visible: { opacity: 1, y: 0, transition: { duration: 0.2 } },
     exit: { opacity: 0, y: 5, transition: { duration: 0.1 } }
 };
+
+interface FlakinessEntry {
+    test_case_id: number;
+    name: string;
+    flake_score: number;
+    is_quarantined: boolean;
+    sample_count: number;
+    recent_failures: number;
+}
+
+function FlakinessBadge({ flake }: { flake: FlakinessEntry }) {
+    const scorePct = (flake.flake_score * 100).toFixed(0);
+    return (
+        <span
+            title={`Flake score: ${scorePct}% over ${flake.sample_count} recent runs${flake.is_quarantined ? ' — QUARANTINED (skipped at dispatch)' : ' — not quarantined'}`}
+            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border shrink-0 cursor-help ${flake.is_quarantined
+                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'}`}
+        >
+            <AlertCircle size={10} />
+            {flake.is_quarantined ? 'Quarantined' : `Flaky ${scorePct}%`}
+        </span>
+    );
+}
 
 function ExecModeBadge({ mode }: { mode: string }) {
     const isPurple = mode === 'separate';
@@ -129,6 +153,23 @@ export default function SuiteDetails() {
         queryFn: () => getAuditLog('suite', Number(suiteId)),
         enabled: !!suiteId && activeTab === 'audit'
     });
+
+    // Flakiness (fetched once per project); mapped by test_case_id below.
+    const flakinessProjectId = suite?.project_id ?? activeProjectId;
+    const { data: flakinessData } = useQuery<FlakinessEntry[]>({
+        queryKey: ['flakiness', flakinessProjectId],
+        queryFn: () => api.get(`/analytics/projects/${flakinessProjectId}/flakiness`).then(res => res.data),
+        enabled: !!flakinessProjectId,
+        staleTime: 60000,
+    });
+
+    const flakeByCaseId = useMemo(() => {
+        const map = new Map<number, FlakinessEntry>();
+        (flakinessData || []).forEach((f) => {
+            if (f.flake_score >= 0.15) map.set(f.test_case_id, f);
+        });
+        return map;
+    }, [flakinessData]);
 
     const createSubModule = useMutation({
         mutationFn: (data: { name: string; description?: string; parent_id: number; project_id: number }) =>
@@ -736,6 +777,7 @@ export default function SuiteDetails() {
                                                                         <FileText className="h-5 w-5" />
                                                                     </div>
                                                                     <h3 className="font-extrabold text-slate-900 text-base truncate group-hover:text-emerald-700 transition-colors">{tc.name}</h3>
+                                                                    {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
                                                                 </div>
 
                                                                 {/* Summary of steps */}
@@ -803,6 +845,7 @@ export default function SuiteDetails() {
                                                                     <div className="flex items-center gap-3">
                                                                         <FileText className="h-4 w-4 text-emerald-500" />
                                                                         <span className="font-bold text-slate-700 group-hover:text-emerald-700 text-sm">{tc.name}</span>
+                                                                        {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
                                                                     </div>
                                                                 </TableCell>
                                                                 <TableCell className="py-3">

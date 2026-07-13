@@ -1,19 +1,54 @@
 import { useQuery } from '@tanstack/react-query';
-import { getRuns } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { api, getRuns } from '@/lib/api';
 import { CheckCircle2, XCircle, Clock, TrendingUp, Activity, ChevronRight, PlayCircle, BarChart3, TestTube } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, Variants } from 'framer-motion';
 import { cn, formatDate } from '@/lib/utils';
 import { useAuth } from '@/context/AuthContext';
 
+interface TrendBucket {
+    date: string;
+    total_runs: number;
+    passed: number;
+    failed: number;
+    pass_rate: number | null;
+    avg_duration_ms: number | null;
+}
+
 export default function Dashboard() {
     const { user } = useAuth();
     const navigate = useNavigate();
+
+    // Same active-project convention as Proposals.tsx / SuiteDetails.tsx
+    const [activeProjectId, setActiveProjectId] = useState<number | null>(() => {
+        const saved = localStorage.getItem('activeProjectId');
+        return saved ? parseInt(saved) : null;
+    });
+    useEffect(() => {
+        const handleProjectChange = () => {
+            const saved = localStorage.getItem('activeProjectId');
+            setActiveProjectId(saved ? parseInt(saved) : null);
+        };
+        window.addEventListener('projectChanged', handleProjectChange);
+        return () => window.removeEventListener('projectChanged', handleProjectChange);
+    }, []);
+
     const { data: runsData, isLoading } = useQuery({
         queryKey: ['runs'],
         queryFn: () => getRuns(),
         refetchInterval: 15000,
     });
+
+    const { data: trendsData } = useQuery({
+        queryKey: ['project-trends', activeProjectId],
+        queryFn: () => api.get(`/analytics/projects/${activeProjectId}/trends`, { params: { days: 14 } }).then(res => res.data),
+        enabled: !!activeProjectId,
+        refetchInterval: 60000,
+    });
+
+    const trendBuckets: TrendBucket[] = trendsData?.buckets || [];
+    const todayBucket = trendBuckets.length > 0 ? trendBuckets[trendBuckets.length - 1] : null;
 
     const runs = runsData?.runs || [];
     const stats = {
@@ -23,7 +58,15 @@ export default function Dashboard() {
         running: runs.filter(r => r.status === 'running').length,
     };
 
-    const passRate = stats.total > 0 ? ((stats.passed / stats.total) * 100).toFixed(1) : '0.0';
+    // Pass rate: prefer today's server-side daily aggregate (correct across
+    // ALL runs). The old computation divided first-page pass counts by the
+    // server-wide total, which understated the rate as soon as history
+    // exceeded one page — keep it only as a fallback (over the fetched page,
+    // not the server total) when no project trends are available.
+    const completedOnPage = stats.passed + stats.failed;
+    const passRate = todayBucket && todayBucket.pass_rate !== null
+        ? todayBucket.pass_rate.toFixed(1)
+        : (completedOnPage > 0 ? ((stats.passed / completedOnPage) * 100).toFixed(1) : '0.0');
 
     const containerVariants: Variants = {
         hidden: { opacity: 0 },
@@ -136,7 +179,7 @@ export default function Dashboard() {
                 <MetricCard
                     title="Passed"
                     value={stats.passed.toString()}
-                    subtitle={`${passRate}% pass rate`}
+                    subtitle={`${passRate}% pass rate${todayBucket && todayBucket.pass_rate !== null ? ' today' : ''}`}
                     icon={<CheckCircle2 size={22} className="text-emerald-700" />}
                     iconBg="bg-emerald-100"
                     trend="up"
@@ -158,6 +201,55 @@ export default function Dashboard() {
                     isSpinning={stats.running > 0}
                 />
             </motion.div>
+
+            {/* 14-day Pass Rate Trend */}
+            {activeProjectId && trendBuckets.length > 0 && (
+                <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
+                    <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                        <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                            <TrendingUp size={20} className="text-primary" /> Pass Rate — Last 14 Days
+                        </h2>
+                        {todayBucket && todayBucket.pass_rate !== null && (
+                            <span className={cn(
+                                "text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full border",
+                                todayBucket.pass_rate >= 90 ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                                    todayBucket.pass_rate >= 60 ? "bg-amber-50 text-amber-700 border-amber-200" :
+                                        "bg-rose-50 text-rose-700 border-rose-200"
+                            )}>
+                                Today: {todayBucket.pass_rate.toFixed(1)}%
+                            </span>
+                        )}
+                    </div>
+                    <div className="p-6">
+                        <div className="flex items-end gap-1.5 sm:gap-2 h-36">
+                            {trendBuckets.map((b) => {
+                                const hasData = b.pass_rate !== null;
+                                const height = hasData ? Math.max(4, b.pass_rate as number) : 4;
+                                return (
+                                    <div key={b.date} className="flex-1 flex flex-col items-center justify-end h-full group relative">
+                                        <div
+                                            className={cn(
+                                                "w-full rounded-t-md transition-all duration-300",
+                                                !hasData ? "bg-gray-100" :
+                                                    (b.pass_rate as number) >= 90 ? "bg-emerald-400 group-hover:bg-emerald-500" :
+                                                        (b.pass_rate as number) >= 60 ? "bg-amber-400 group-hover:bg-amber-500" :
+                                                            "bg-rose-400 group-hover:bg-rose-500"
+                                            )}
+                                            style={{ height: `${height}%` }}
+                                            title={hasData
+                                                ? `${b.date}: ${(b.pass_rate as number).toFixed(1)}% pass rate (${b.passed} passed / ${b.failed} failed of ${b.total_runs} runs)`
+                                                : `${b.date}: no completed runs`}
+                                        />
+                                        <span className="text-[9px] font-mono text-gray-400 mt-1.5 rotate-0 whitespace-nowrap">
+                                            {b.date.slice(5)}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Recent Runs Table / List */}
             <motion.div variants={itemVariants} className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">

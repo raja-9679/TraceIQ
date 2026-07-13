@@ -251,8 +251,126 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
 
         print(
             f"[Aggregator] Run {run_id} completed: {run.passed_tests} passed, {run.failed_tests} failed, duration={run.duration_ms}ms")
+
+        # Update per-case flake scores now that the run is finalized.
+        # Never allowed to break aggregation — fully guarded internally.
+        _update_flake_scores(run, run_id, session)
     else:
         run.status = TestStatus.RUNNING
+
+
+def _update_flake_scores(run: TestRun, run_id: int, session: Session):
+    """Recompute flake scores for every test case touched by a finished run.
+
+    For each TestCaseResult of the run, resolve its TestCase (run.test_case_id
+    when the run targeted a single case, otherwise TestCase looked up by name)
+    and score the last 20 completed results for that test name:
+
+        flake_score = pass<->fail alternations / (window - 1)
+
+    A perfectly stable test (all pass or all fail) scores 0.0; a test that
+    flips on every run scores 1.0. The score is upserted into the case-level
+    FlakeRecord (step_id=None). Auto-quarantine at score >= 0.4 with at least
+    6 samples; auto-release when the score drops below 0.15.
+
+    Wrapped in try/except so scoring can never break result aggregation.
+    """
+    FLAKE_WINDOW = 20
+    QUARANTINE_SCORE = 0.4
+    QUARANTINE_MIN_SAMPLES = 6
+    RELEASE_SCORE = 0.15
+
+    try:
+        from app.models import FlakeRecord
+
+        results = session.exec(
+            select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)
+        ).all()
+
+        scored_case_ids = set()
+        for res in results:
+            # Resolve the TestCase behind this result
+            test_case = None
+            if run.test_case_id:
+                test_case = session.get(TestCase, run.test_case_id)
+            if test_case is None:
+                stmt = select(TestCase).where(
+                    TestCase.name == res.test_name,
+                    TestCase.test_suite_id == run.test_suite_id)
+                test_case = session.exec(stmt).first()
+            if test_case is None and run.project_id:
+                stmt = select(TestCase).where(
+                    TestCase.name == res.test_name,
+                    TestCase.project_id == run.project_id)
+                test_case = session.exec(stmt).first()
+            if test_case is None or test_case.id in scored_case_ids:
+                continue
+            scored_case_ids.add(test_case.id)
+
+            # Last N completed results for this test name across runs
+            history_stmt = (
+                select(TestCaseResult)
+                .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+                .where(
+                    TestCaseResult.test_name == res.test_name,
+                    TestCaseResult.status.in_(
+                        [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]),
+                )
+                .order_by(TestCaseResult.id.desc())
+                .limit(FLAKE_WINDOW)
+            )
+            if run.project_id:
+                history_stmt = history_stmt.where(
+                    TestRun.project_id == run.project_id)
+            history = session.exec(history_stmt).all()
+
+            sample_count = len(history)
+            if sample_count >= 2:
+                outcomes = [h.status == TestStatus.PASSED for h in history]
+                alternations = sum(
+                    1 for a, b in zip(outcomes, outcomes[1:]) if a != b)
+                flake_score = alternations / (sample_count - 1)
+            else:
+                flake_score = 0.0
+
+            last_failure = next(
+                (h.error_message for h in history
+                 if h.status != TestStatus.PASSED and h.error_message),
+                None)
+
+            record = session.exec(
+                select(FlakeRecord).where(
+                    FlakeRecord.test_case_id == test_case.id,
+                    FlakeRecord.step_id.is_(None))
+            ).first()
+            if record is None:
+                record = FlakeRecord(test_case_id=test_case.id, step_id=None)
+
+            record.flake_score = round(flake_score, 4)
+            record.sample_count = sample_count
+            if last_failure:
+                record.last_failure_message = last_failure[:2000]
+            record.last_observed_at = datetime.utcnow()
+
+            if flake_score >= QUARANTINE_SCORE and sample_count >= QUARANTINE_MIN_SAMPLES:
+                if not record.is_quarantined:
+                    print(f"[Aggregator] Auto-quarantining case {test_case.id} "
+                          f"('{res.test_name}') — flake_score={flake_score:.2f} "
+                          f"over {sample_count} samples")
+                record.is_quarantined = True
+            elif flake_score < RELEASE_SCORE and record.is_quarantined:
+                print(f"[Aggregator] Releasing case {test_case.id} "
+                      f"('{res.test_name}') from quarantine — "
+                      f"flake_score={flake_score:.2f}")
+                record.is_quarantined = False
+
+            session.add(record)
+
+        if scored_case_ids:
+            print(f"[Aggregator] Updated flake scores for "
+                  f"{len(scored_case_ids)} case(s) after run {run_id}")
+    except Exception as e:
+        print(f"[Aggregator] Flake scoring failed for run {run_id}: {e}")
 
 
 def _persist_heal_suggestions(result: Dict[str, Any]):
