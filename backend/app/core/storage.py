@@ -63,6 +63,23 @@ class MinioClient:
         self.s3.upload_file(file_path, self.bucket, object_name)
         return object_name
 
+    def copy_object(self, source_key: str, dest_key: str):
+        """Server-side copy within the bucket (used to promote a run's
+        candidate screenshot into a durable baseline object)."""
+        self.s3.copy_object(
+            Bucket=self.bucket,
+            CopySource={"Bucket": self.bucket, "Key": source_key},
+            Key=dest_key,
+        )
+        return dest_key
+
+    def object_exists(self, object_name: str) -> bool:
+        try:
+            self.s3.head_object(Bucket=self.bucket, Key=object_name)
+            return True
+        except Exception:
+            return False
+
     def get_presigned_url(self, object_name: str, expiration=3600):
         # Use the public client to generate URLs relative to localhost
         url = self.s3_public.generate_presigned_url(

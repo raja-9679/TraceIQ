@@ -78,20 +78,18 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
 
   const acceptMutation = useMutation({
     mutationFn: async () => {
-      if (!data?.artifacts?.candidateKey) throw new Error('No candidate screenshot available');
-      // Exchange the candidate object key for a fetchable URL, pin it as the
-      // new baseline, then retire the old baseline row.
-      const imageUrl = await resolveImageUrl(data.artifacts.candidateKey);
-      await visualBaselinesApi.create({
+      if (!data?.artifacts?.runId) throw new Error('No candidate screenshot available');
+      // Durable promotion: the backend copies the run's candidate screenshot
+      // into a stable baseline object (survives artifact cleanup / URL expiry)
+      // and upserts the baseline row for this case/step/browser/device.
+      await visualBaselinesApi.promote({
         test_case_id: baseline.test_case_id,
         step_id: baseline.step_id,
-        image_url: imageUrl,
+        run_id: data.artifacts.runId,
         browser: baseline.browser,
         device: baseline.device,
-        viewport: baseline.viewport,
         tolerance: baseline.tolerance,
       });
-      await visualBaselinesApi.delete(baseline.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visual-baselines'] });
@@ -234,8 +232,8 @@ export default function VisualReview() {
   }, []);
 
   const { data: baselines, isLoading, error } = useQuery({
-    queryKey: ['visual-baselines'],
-    queryFn: () => visualBaselinesApi.list(),
+    queryKey: ['visual-baselines', projectId],
+    queryFn: () => visualBaselinesApi.list(projectId ? { projectId } : undefined),
   });
 
   // Resolve case info for each unique baseline case so we can show names and
