@@ -25,7 +25,8 @@ function lruGet(key: string): string | undefined {
 function lruSet(key: string, value: string): void {
     if (healCache.has(key)) healCache.delete(key);
     if (healCache.size >= CACHE_MAX_SIZE) {
-        healCache.delete(healCache.keys().next().value);
+        const oldest = healCache.keys().next().value;
+        if (oldest !== undefined) healCache.delete(oldest);
     }
     healCache.set(key, value);
 }
