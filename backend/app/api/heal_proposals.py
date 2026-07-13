@@ -42,6 +42,7 @@ def _to_read(p: SelectorHealProposal) -> SelectorHealProposalRead:
 async def list_proposals(
     status: Optional[str] = "pending",
     test_case_id: Optional[int] = None,
+    project_id: Optional[int] = None,
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> List[SelectorHealProposalRead]:
@@ -50,6 +51,10 @@ async def list_proposals(
         query = query.where(SelectorHealProposal.status == status)
     if test_case_id is not None:
         query = query.where(SelectorHealProposal.test_case_id == test_case_id)
+    if project_id is not None:
+        # Scope to a project by joining through the proposal's test case.
+        query = query.join(TestCase, TestCase.id == SelectorHealProposal.test_case_id).where(
+            TestCase.project_id == project_id)
     res = await session.exec(query.order_by(SelectorHealProposal.created_at.desc()).limit(200))
     return [_to_read(p) for p in res.all()]
 

@@ -27,17 +27,35 @@ export interface VisualBaselineCreate {
     mask_regions?: Array<{ x: number; y: number; width: number; height: number }>;
 }
 
+export interface PromoteBaselineRequest {
+    test_case_id: number;
+    step_id: string;
+    run_id: number;
+    browser?: string;
+    device?: string | null;
+    tolerance?: number;
+    mask_regions?: Record<string, unknown>[] | null;
+}
+
 export const visualBaselinesApi = {
-    list: async (testCaseId?: number, stepId?: string): Promise<VisualBaseline[]> => {
+    list: async (opts?: { testCaseId?: number; stepId?: string; projectId?: number }): Promise<VisualBaseline[]> => {
         const params = new URLSearchParams();
-        if (testCaseId) params.append('test_case_id', testCaseId.toString());
-        if (stepId) params.append('step_id', stepId);
+        if (opts?.testCaseId) params.append('test_case_id', opts.testCaseId.toString());
+        if (opts?.stepId) params.append('step_id', opts.stepId);
+        if (opts?.projectId) params.append('project_id', opts.projectId.toString());
         const response = await api.get(`/visual-baselines?${params.toString()}`);
         return response.data;
     },
 
     create: async (data: VisualBaselineCreate): Promise<VisualBaseline> => {
         const response = await api.post('/visual-baselines', data);
+        return response.data;
+    },
+
+    // Durable promotion: copies a run's candidate screenshot into a stable
+    // baseline object server-side (survives artifact cleanup / URL expiry).
+    promote: async (data: PromoteBaselineRequest): Promise<VisualBaseline> => {
+        const response = await api.post('/visual-baselines/promote', data);
         return response.data;
     },
 
