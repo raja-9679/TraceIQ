@@ -161,6 +161,23 @@ In steps:
 Author credentials as `{{secret.ADMIN_PASSWORD}}`, never as literals —
 step JSON is stored, diffed, and shown in proposals.
 
+### Mode 2 — testing an app you have no source for
+
+`discover_app_surface` (Mode 1) summarizes what's *already tested* from
+existing cases. `crawl_app_surface` (Mode 2) is different: give it a
+live `base_url` and it BFS-crawls the same-origin app — with no source
+access — and returns the interactable surface (forms + inputs, buttons,
+internal links) per page. Runs authenticated when the project has a
+stored auth session. Use it to propose smoke tests for a deployed
+third-party or staging app:
+
+1. `crawl_app_surface(project_id, base_url, max_pages)` → surface map.
+2. For each meaningful form/flow, `propose_create_case` with steps that
+   fill the discovered inputs and assert on the resulting page.
+
+Budget with `max_pages` (default 10, hard cap 50). The crawl skips
+assets and logout links.
+
 ### Data-driven tests — one case, many rows
 
 Set `dataset` on a case to a JSON array of row objects:

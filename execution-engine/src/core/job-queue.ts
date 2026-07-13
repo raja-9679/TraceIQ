@@ -458,6 +458,20 @@ export class JobQueue {
     }
 
     /**
+     * Ack a discovery (Mode-2 crawl) job and publish its result under a
+     * dedicated key the backend polls. Discovery jobs are not test runs, so
+     * they never touch run-progress counters.
+     */
+    async completeDiscoveryJob(streamId: string, jobId: string, discoveryId: string, result: any): Promise<void> {
+        const pipeline = this.redis.pipeline();
+        pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+        pipeline.hdel('jobs:retries', jobId);
+        // 10-minute TTL — the backend long-poll picks it up well within that.
+        pipeline.set(`discovery:result:${discoveryId}`, JSON.stringify(result), 'EX', 600);
+        await pipeline.exec();
+    }
+
+    /**
      * Get current progress for a run
      */
     async getRunProgress(runId: number): Promise<RunProgress | null> {

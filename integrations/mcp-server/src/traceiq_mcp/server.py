@@ -188,6 +188,26 @@ async def list_tools() -> List[Tool]:
             },
         ),
         Tool(
+            name="crawl_app_surface",
+            description=(
+                "Mode-2 (URL-only) discovery: crawl a LIVE application you have no "
+                "source access to and return its interactable surface — forms (with "
+                "inputs), buttons, and internal links per page. Use this to propose "
+                "smoke tests for a deployed app when you cannot read its code. Runs "
+                "authenticated if the project has a stored auth session. Budget the "
+                "crawl with max_pages (default 10)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "project_id": {"type": "integer"},
+                    "base_url": {"type": "string", "description": "Entry URL to crawl from (same-origin only)."},
+                    "max_pages": {"type": "integer", "description": "Max pages to visit (default 10, hard cap 50)."},
+                },
+                "required": ["project_id", "base_url"],
+            },
+        ),
+        Tool(
             name="select_tests_for_diff",
             description=(
                 "Given a list of files changed in a PR, return the subset of test "
@@ -535,6 +555,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         return [TextContent(type="text", text=_format_run_summary(last))]
 
     # ---------- Phase D ----------
+    if name == "crawl_app_surface":
+        data = await client.crawl_app_surface(
+            arguments["project_id"],
+            arguments["base_url"],
+            int(arguments.get("max_pages", 10)),
+        )
+        return [TextContent(type="text", text=json.dumps(data, indent=2))]
+
     if name == "discover_app_surface":
         data = await client.discover_app_surface(arguments["project_id"])
         return [TextContent(type="text", text=json.dumps(data, indent=2))]

@@ -228,6 +228,84 @@ async def app_surface(
     }
 
 
+@router.post("/apps/{project_id}/discover")
+async def crawl_app_surface(
+    project_id: int,
+    body: Dict[str, Any] = Body(...),
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+) -> Dict[str, Any]:
+    """Mode-2 (URL-only) discovery: crawl a live app the agent has no source
+    for and return its interactable surface (forms, buttons, internal links).
+
+    Body: {"base_url": "https://app...", "max_pages": 10}. Dispatches a
+    discovery job to the worker pool and long-polls for the result. If the
+    project has a fresh auth session, the crawl runs authenticated.
+    """
+    import asyncio
+    import json
+    import uuid
+
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if not await access_service.has_project_access(principal.user.id, project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Editor access required")
+
+    base_url = (body or {}).get("base_url")
+    if not base_url:
+        raise HTTPException(status_code=400, detail="base_url is required")
+    max_pages = int((body or {}).get("max_pages", 10))
+
+    import redis as _redis
+    from app.core.config import settings as _settings
+    from app.models import AuthSession
+
+    rc = _redis.from_url(_settings.CELERY_BROKER_URL, decode_responses=True)
+
+    # Authenticated crawl when a fresh session exists.
+    storage_state = None
+    auth_res = await session.exec(select(AuthSession).where(AuthSession.project_id == project_id))
+    auth = auth_res.first()
+    if auth and auth.storage_state:
+        age_min = (datetime.utcnow() - auth.captured_at).total_seconds() / 60
+        if age_min < auth.max_age_minutes:
+            storage_state = auth.storage_state
+
+    discovery_id = str(uuid.uuid4())
+    job = {
+        "job_id": discovery_id,
+        "discovery_id": discovery_id,
+        "job_type": "discovery",
+        "run_id": 0,
+        "base_url": base_url,
+        "max_pages": max_pages,
+        "browser": "chromium",
+        "settings": {"storage_state": storage_state} if storage_state else {},
+    }
+    try:
+        rc.xgroup_create("jobs:pending", "execution-workers", id="0", mkstream=True)
+    except _redis.ResponseError as e:
+        if "BUSYGROUP" not in str(e):
+            raise
+    rc.xadd("jobs:pending", {"job_id": discovery_id, "run_id": "0", "payload": json.dumps(job)})
+
+    # Long-poll for the worker result (cap ~90s).
+    result_key = f"discovery:result:{discovery_id}"
+    for _ in range(90):
+        raw = rc.get(result_key)
+        if raw:
+            rc.delete(result_key)
+            return json.loads(raw)
+        await asyncio.sleep(1)
+
+    return {
+        "status": "pending",
+        "discovery_id": discovery_id,
+        "detail": "Crawl still running; retry get with this discovery_id or increase max_pages budget.",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Case run history — last N runs touching a given case
 # ---------------------------------------------------------------------------
