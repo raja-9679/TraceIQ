@@ -1,0 +1,5 @@
+# The repo-level .gitignore excludes dist/, but this action MUST commit its
+# compiled bundle: GitHub runs dist/index.js directly on the runner, without
+# an npm install. Re-include it here (child .gitignore rules take precedence).
+!dist/
+node_modules/
