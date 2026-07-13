@@ -159,6 +159,14 @@ class ExecutionWorker {
                 // Cancel idle timer while processing
                 this.cancelIdleTimer();
 
+                // Mode-2 discovery jobs are not test runs: crawl and stash the
+                // result under its own Redis key, bypassing run-progress.
+                if ((job as any).job_type === 'discovery') {
+                    await this.handleDiscoveryJob(streamId, job as any);
+                    this.jobsProcessed++;
+                    continue;
+                }
+
                 // Process the job with a hard wall-clock timeout.
                 const timeout = new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${MAX_JOB_DURATION_MS}ms)`)), MAX_JOB_DURATION_MS)
@@ -180,6 +188,32 @@ class ExecutionWorker {
 
         console.log('[Worker] Exiting processing loop');
         await this.shutdown();
+    }
+
+    /**
+     * Handle a Mode-2 discovery (URL-only crawl) job.
+     */
+    private async handleDiscoveryJob(streamId: string, job: any): Promise<void> {
+        const discoveryId = job.discovery_id || job.job_id;
+        console.log(`[Worker] Discovery job ${discoveryId}: crawling ${job.base_url}`);
+        let result: any;
+        try {
+            const { crawlSurface } = require('./discovery');
+            const browser = await this.browserManager.start(job.browser || 'chromium');
+            try {
+                result = await crawlSurface(browser, {
+                    base_url: job.base_url,
+                    max_pages: job.max_pages,
+                    storage_state: job.settings?.storage_state,
+                });
+            } finally {
+                await this.browserManager.stop();
+            }
+        } catch (err: any) {
+            result = { status: 'error', base_url: job.base_url, pages: [], pages_visited: 0, pages_skipped: 0, error: err.message };
+        }
+        await this.jobQueue.completeDiscoveryJob(streamId, job.job_id, discoveryId, result);
+        console.log(`[Worker] Discovery job ${discoveryId} done: ${result.pages_visited} page(s)`);
     }
 
     /**

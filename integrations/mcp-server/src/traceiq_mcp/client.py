@@ -47,7 +47,9 @@ class TraceIQClient:
         return h
 
     async def _request(self, method: str, path: str, **kw) -> Any:
-        async with httpx.AsyncClient(timeout=self._timeout) as client:
+        # Allow a per-call timeout override (e.g. long-polling crawl).
+        req_timeout = kw.pop("timeout", self._timeout)
+        async with httpx.AsyncClient(timeout=req_timeout) as client:
             resp = await client.request(
                 method,
                 f"{self.base_url}{path}",
@@ -181,6 +183,14 @@ class TraceIQClient:
 
     async def discover_app_surface(self, project_id: int) -> Dict[str, Any]:
         return await self._request("GET", f"/api/apps/{project_id}/surface")
+
+    async def crawl_app_surface(self, project_id: int, base_url: str, max_pages: int = 10) -> Dict[str, Any]:
+        return await self._request(
+            "POST",
+            f"/api/apps/{project_id}/discover",
+            json={"base_url": base_url, "max_pages": max_pages},
+            timeout=120.0,
+        )
 
     async def select_tests_for_diff(
         self,
