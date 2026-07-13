@@ -25,10 +25,26 @@ export class TestExecutor {
         };
 
         const resolve = (val: any): any => {
-            if (typeof val === 'string' && testCaseContext?.variables) {
-                return val.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => {
-                    return testCaseContext.variables[key] !== undefined ? String(testCaseContext.variables[key]) : `{{${key}}}`;
-                });
+            if (typeof val === 'string') {
+                let out = val;
+                // {{env.KEY}} — environment variables, {{secret.KEY}} — project
+                // secrets: both dispatched in job settings by the backend.
+                const envVars = globalSettings?.environment?.variables;
+                if (envVars) {
+                    out = out.replace(/\{\{\s*env\.(\w+)\s*\}\}/g, (_: string, key: string) =>
+                        envVars[key] !== undefined ? String(envVars[key]) : `{{env.${key}}}`);
+                }
+                const secrets = globalSettings?.secrets;
+                if (secrets) {
+                    out = out.replace(/\{\{\s*secret\.(\w+)\s*\}\}/g, (_: string, key: string) =>
+                        secrets[key] !== undefined ? String(secrets[key]) : `{{secret.${key}}}`);
+                }
+                // {{name}} — runtime variables from extract-value / scripts.
+                if (testCaseContext?.variables) {
+                    out = out.replace(/\{\{\s*(\w+)\s*\}\}/g, (_: string, key: string) =>
+                        testCaseContext.variables[key] !== undefined ? String(testCaseContext.variables[key]) : `{{${key}}}`);
+                }
+                return out;
             }
             // Simple recursion for objects/arrays (shallow for headers/params is usually enough, but let's go one level deep if needed)
             if (val && typeof val === 'object') {
@@ -50,6 +66,11 @@ export class TestExecutor {
         switch (step.type) {
             case 'goto': {
                 let url = resolve(step.value || step.selector) || 'about:blank';
+                // Relative URL + environment base_url → environment-portable suites.
+                if (url.startsWith('/') && globalSettings?.environment?.base_url) {
+                    url = String(globalSettings.environment.base_url).replace(/\/$/, '') + url;
+                    console.log(`  Resolved relative URL against environment base_url: ${url}`);
+                }
                 if (globalSettings?.params && Object.keys(globalSettings.params).length > 0) {
                     try {
                         const urlObj = new URL(url);

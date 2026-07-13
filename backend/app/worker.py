@@ -92,6 +92,16 @@ def run_test_suite(run_id: int):
                 print(f"[Worker] Run {run_id}: injecting stored auth session "
                       f"for project {auth_project_id}")
 
+            # Environment ({{env.X}}, base_url) + decrypted secrets
+            # ({{secret.X}}) for worker-side interpolation.
+            environment = _load_environment(run, auth_project_id, session)
+            if environment:
+                effective_settings['environment'] = environment
+                print(f"[Worker] Run {run_id}: environment '{environment['name']}'")
+            secrets = _load_secrets(auth_project_id, session)
+            if secrets:
+                effective_settings['secrets'] = secrets
+
             # Update total tests count
             run.total_tests = len(cases_to_run)
             session.add(run)
@@ -170,7 +180,53 @@ def _settings_payload(settings: dict) -> dict:
     }
     if settings.get('storage_state'):
         payload['storage_state'] = settings['storage_state']
+    if settings.get('environment'):
+        payload['environment'] = settings['environment']
+    if settings.get('secrets'):
+        payload['secrets'] = settings['secrets']
     return payload
+
+
+def _load_environment(run, project_id, session):
+    """The run's pinned environment, or the project default, as a payload dict."""
+    from sqlmodel import select
+    from app.models import ProjectEnvironment
+
+    env = None
+    if getattr(run, 'environment_id', None):
+        env = session.get(ProjectEnvironment, run.environment_id)
+    elif project_id:
+        env = session.exec(
+            select(ProjectEnvironment).where(
+                ProjectEnvironment.project_id == project_id,
+                ProjectEnvironment.is_default == True)  # noqa: E712
+        ).first()
+    if not env:
+        return None
+    return {
+        'name': env.name,
+        'base_url': env.base_url,
+        'variables': env.variables or {},
+    }
+
+
+def _load_secrets(project_id, session):
+    """Decrypted project secrets for {{secret.KEY}} interpolation on workers."""
+    if not project_id:
+        return None
+    from sqlmodel import select
+    from app.models import ProjectSecret
+    from app.core.secrets import decrypt_secret
+
+    out = {}
+    for s in session.exec(
+            select(ProjectSecret).where(ProjectSecret.project_id == project_id)).all():
+        try:
+            out[s.key] = decrypt_secret(s.value_encrypted)
+        except Exception as e:
+            print(f"[Worker] Could not decrypt secret '{s.key}' "
+                  f"(SECRET_KEY rotated?): {e}")
+    return out or None
 
 
 def _load_auth_state(project_id, session):

@@ -100,6 +100,7 @@ class TraceIQClient:
         git_pr_url: Optional[str] = None,
         git_repo: Optional[str] = None,
         triggered_by: Optional[str] = None,
+        environment_id: Optional[int] = None,
     ) -> Any:
         params: Dict[str, Any] = {"suite_id": suite_id}
         if case_id is not None:
@@ -115,6 +116,7 @@ class TraceIQClient:
             "git_repo": git_repo,
             "triggered_by": triggered_by,
             "agent_id": self.agent_id,
+            "environment_id": environment_id,
         }
         # Strip None so the server applies defaults.
         body = {k: v for k, v in body.items() if v is not None}

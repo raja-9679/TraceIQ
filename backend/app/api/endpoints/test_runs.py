@@ -30,6 +30,9 @@ class RunCreateContext(BaseModel):
     git_repo: Optional[str] = None
     triggered_by: Optional[RunTrigger] = None
     agent_id: Optional[str] = None
+    # Run against a specific ProjectEnvironment; None uses the project's
+    # default environment (if one is configured).
+    environment_id: Optional[int] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -81,6 +84,17 @@ async def create_run(
 
     # Get effective settings for this suite
     effective_settings = await test_service.get_effective_settings(suite_id, session)
+
+    # Pin the run to a specific environment when requested; the dispatcher
+    # falls back to the project's default environment when this is None.
+    if context and context.environment_id:
+        from app.models import ProjectEnvironment
+        env = await session.get(ProjectEnvironment, context.environment_id)
+        if not env or env.project_id != suite.project_id:
+            raise HTTPException(
+                status_code=400,
+                detail="environment_id does not belong to this project")
+        run_defaults["environment_id"] = context.environment_id
 
     # Normalize devices list
     target_devices = device if device else [None]
