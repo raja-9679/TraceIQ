@@ -150,6 +150,51 @@ async def get_project_members(project_id: int, session: AsyncSession = Depends(g
         
     return await workspace_service.get_project_members(project_id, session)
 
+@router.get("/projects/{project_id}/auth-session")
+async def get_auth_session_status(project_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """Metadata about the project's stored auth session (never the raw state —
+    it contains live cookies/tokens)."""
+    from datetime import datetime
+    from sqlmodel import select
+    from app.models import AuthSession
+
+    role = await access_service.get_project_role(current_user.id, project_id, session)
+    if not role:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    result = await session.exec(select(AuthSession).where(AuthSession.project_id == project_id))
+    auth = result.first()
+    if not auth:
+        return {"exists": False}
+    age_minutes = int((datetime.utcnow() - auth.captured_at).total_seconds() // 60)
+    return {
+        "exists": True,
+        "captured_at": auth.captured_at,
+        "captured_by_case_id": auth.captured_by_case_id,
+        "age_minutes": age_minutes,
+        "max_age_minutes": auth.max_age_minutes,
+        "fresh": age_minutes < auth.max_age_minutes,
+    }
+
+
+@router.delete("/projects/{project_id}/auth-session")
+async def delete_auth_session(project_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """Drop the stored auth session; the next auth-setup run recreates it."""
+    from sqlmodel import select
+    from app.models import AuthSession
+
+    role = await access_service.get_project_role(current_user.id, project_id, session)
+    if not role:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    result = await session.exec(select(AuthSession).where(AuthSession.project_id == project_id))
+    auth = result.first()
+    if auth:
+        await session.delete(auth)
+        await session.commit()
+    return {"status": "deleted" if auth else "not_found"}
+
+
 @router.delete("/projects/{project_id}")
 async def delete_project(project_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Check if user has permission to delete project

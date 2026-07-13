@@ -182,6 +182,7 @@ class ExecutionWorker {
         let videoPath: string | null = null;
         let tracePath: string | null = null;
         let lastStepResult: any = null;
+        let capturedAuthState: any = null;
 
         try {
             // Launch browser
@@ -203,6 +204,13 @@ class ExecutionWorker {
                     Object.assign(contextOptions, deviceConfig.options);
                     emulatedAs = deviceConfig.emulatedAs;
                 }
+            }
+
+            // Start from the project's stored auth session (storageState) unless
+            // this case is the auth-setup case itself or has opted out.
+            if (job.settings?.storage_state && testCase.use_auth_session !== false && !testCase.is_auth_setup) {
+                contextOptions.storageState = job.settings.storage_state;
+                console.log(`[Worker] Using stored auth session for "${testCase.name}"`);
             }
 
             // Create isolated context
@@ -301,6 +309,17 @@ class ExecutionWorker {
                 };
             }
 
+            // Auth-setup case succeeded: capture the logged-in storageState so
+            // the backend can persist it for the project's later runs.
+            if (testCase.is_auth_setup && context) {
+                try {
+                    capturedAuthState = await (page && !page.isClosed() ? page.context() : context).storageState();
+                    console.log(`[Worker] Captured auth session state from "${testCase.name}"`);
+                } catch (authErr: any) {
+                    console.warn(`[Worker] Failed to capture auth state: ${authErr.message}`);
+                }
+            }
+
         } catch (err: any) {
             status = 'failed';
             errorMessage = err.message;
@@ -392,6 +411,7 @@ class ExecutionWorker {
             artifacts,
             response_data: responseData,
             network_events: networkEvents,
+            ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             completed_at: new Date().toISOString()
         };
     }
@@ -416,6 +436,8 @@ class ExecutionWorker {
         let overallError: string | undefined;
         let videoPath: string | null = null;
         let tracePath: string | null = null;
+        let capturedAuthState: any = null;
+        let capturedAuthCaseId: number | undefined;
 
         try {
             // Launch browser
@@ -437,6 +459,14 @@ class ExecutionWorker {
                     Object.assign(contextOptions, deviceConfig.options);
                     emulatedAs = deviceConfig.emulatedAs;
                 }
+            }
+
+            // Start from the project's stored auth session unless this job
+            // includes the auth-setup case itself (it must exercise the real
+            // login) — shared context, so the choice is job-level.
+            if (job.settings?.storage_state && !job.test_cases?.some((c: any) => c.is_auth_setup)) {
+                contextOptions.storageState = job.settings.storage_state;
+                console.log(`[Worker] Using stored auth session for continuous job "${job.unit_name}"`);
             }
 
             // Create shared context for all tests
@@ -577,6 +607,18 @@ class ExecutionWorker {
                         };
                     }
 
+                    // Auth-setup case passed inside a continuous job: capture
+                    // the logged-in storageState for the backend to persist.
+                    if ((testCase as any).is_auth_setup && sharedContext) {
+                        try {
+                            capturedAuthState = await sharedContext.storageState();
+                            capturedAuthCaseId = testCase.id;
+                            console.log(`[Worker] Captured auth session state from "${testCase.name}"`);
+                        } catch (authErr: any) {
+                            console.warn(`[Worker] Failed to capture auth state: ${authErr.message}`);
+                        }
+                    }
+
                 } catch (err: any) {
                     caseStatus = 'failed';
                     caseError = err.message;
@@ -695,6 +737,7 @@ class ExecutionWorker {
             // Include all test results for proper aggregation
             test_results: testResults,
             network_events: networkEvents,
+            ...(capturedAuthState ? { auth_state: capturedAuthState, auth_case_id: capturedAuthCaseId } : {}),
             completed_at: new Date().toISOString()
         };
     }

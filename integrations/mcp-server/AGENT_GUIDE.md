@@ -121,6 +121,25 @@ browser event carries its own trigger:
   inline fixtures travel with the test case and need nothing
   pre-provisioned on the worker.
 
+### Auth sessions — stop scripting login into every case
+
+Mark exactly one case per project as the **auth setup case**
+(`is_auth_setup: true` on the case). Its steps perform the real login.
+When it passes, the worker captures the browser's storageState
+(cookies + localStorage) and TraceIQ stores it for the project. Every
+later run injects that state, so cases start **already logged in** —
+do not begin cases with login steps.
+
+- A case that must exercise the real login flow sets
+  `use_auth_session: false` and starts from a clean browser.
+- The stored session expires after `max_age_minutes` (default 720).
+  Re-run the auth-setup case to refresh it; check freshness at
+  `GET /api/projects/{id}/auth-session` (metadata only — the raw state
+  is never exposed).
+- If tests suddenly fail on auth-walled pages, the stored session
+  likely expired mid-window: re-run the auth-setup case first, then
+  re-run the failures.
+
 ### Pitfall 1 — `feed-check` is a fetch+assert, NOT a pure assertion
 
 ❌ This pattern **does not work**:
