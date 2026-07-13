@@ -243,9 +243,51 @@ export default function TestRunDetails() {
                                 <h3 className="text-indigo-800 font-semibold flex items-center gap-2 mb-3">
                                     <Brain size={18} className="text-indigo-600" /> AI Root Cause Analysis
                                 </h3>
-                                <div className="prose prose-sm prose-indigo max-w-none text-indigo-900 leading-relaxed">
-                                    {run.ai_analysis}
-                                </div>
+                                {(() => {
+                                    const analysis: any = run.ai_analysis;
+                                    // Typed RunFailureAnalysis (schema_version >= 1) vs legacy freeform text
+                                    if (typeof analysis === 'object' && analysis?.schema_version) {
+                                        const categoryStyles: Record<string, string> = {
+                                            app_bug: 'bg-rose-100 text-rose-700 border-rose-200',
+                                            test_bug: 'bg-amber-100 text-amber-700 border-amber-200',
+                                            environment: 'bg-sky-100 text-sky-700 border-sky-200',
+                                            flake: 'bg-slate-100 text-slate-600 border-slate-200',
+                                            unknown: 'bg-slate-100 text-slate-500 border-slate-200',
+                                        };
+                                        return (
+                                            <div className="space-y-3">
+                                                <p className="text-sm text-indigo-900 leading-relaxed">{analysis.summary}</p>
+                                                {(analysis.reports || []).map((r: any, i: number) => (
+                                                    <div key={i} className="bg-white/70 border border-indigo-100 rounded-lg p-3 space-y-1.5">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${categoryStyles[r.root_cause_category] || categoryStyles.unknown}`}>
+                                                                {(r.root_cause_category || 'unknown').replace('_', ' ')}
+                                                            </span>
+                                                            {typeof r.confidence === 'number' && (
+                                                                <span className="text-[11px] font-mono text-indigo-400">{Math.round(r.confidence * 100)}% confidence</span>
+                                                            )}
+                                                            {r.analyzed_by && (
+                                                                <span className="text-[11px] font-mono text-indigo-300">{r.analyzed_by}</span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-sm font-semibold text-indigo-900">{r.summary}</p>
+                                                        {r.details && <p className="text-xs text-indigo-700">{r.details}</p>}
+                                                        {r.suggested_fix && (
+                                                            <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1.5">
+                                                                <span className="font-bold">Suggested fix{r.fix_target && r.fix_target !== 'none' ? ` (${r.fix_target})` : ''}:</span> {r.suggested_fix}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div className="prose prose-sm prose-indigo max-w-none text-indigo-900 leading-relaxed">
+                                            {typeof analysis === 'string' ? analysis : JSON.stringify(analysis, null, 2)}
+                                        </div>
+                                    );
+                                })()}
                             </div>
                         )}
 
