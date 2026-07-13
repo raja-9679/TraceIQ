@@ -85,6 +85,17 @@ export interface JobResult {
     auth_state?: any;
     auth_case_id?: number;
 
+    // Reactive selector-heal suggestions gathered on selector failures; the
+    // backend persists them as pending SelectorHealProposal rows.
+    heal_suggestions?: Array<{
+        test_case_id: number;
+        step_id: string;
+        old_selector: string;
+        new_selector: string;
+        matches: number;
+        intent?: string | null;
+    }>;
+
     // Artifacts at job level
     artifacts: {
         video?: string;
