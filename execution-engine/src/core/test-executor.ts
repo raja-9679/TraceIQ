@@ -780,6 +780,15 @@ export class TestExecutor {
                         testCaseContext.variables[step.params.variableName] = result;
                     }
                 } else if (language === 'python') {
+                    // Python scripts run arbitrary code in the worker container,
+                    // so they are OFF by default. Enable per-deployment only when
+                    // test authors are trusted (ALLOW_PYTHON_SCRIPTS=true).
+                    if (process.env.ALLOW_PYTHON_SCRIPTS !== 'true') {
+                        throw new Error(
+                            "run-script 'python' is disabled on this worker "
+                            + "(set ALLOW_PYTHON_SCRIPTS=true to enable). Use the "
+                            + "'javascript' language, which runs sandboxed in the page.");
+                    }
                     // Execute in runner environment
                     const wrapper = `
 import sys
@@ -804,7 +813,15 @@ if __name__ == "__main__":
     except Exception as e:
         print(json.dumps({"status": "error", "message": str(e)}))
 `;
-                    const child = spawn('python3', ['-c', wrapper]);
+                    // Strip infrastructure credentials from the child's env so a
+                    // script can't exfiltrate MinIO/Redis/LLM keys even when enabled.
+                    const scrubbedEnv = { ...process.env };
+                    for (const k of Object.keys(scrubbedEnv)) {
+                        if (/MINIO|REDIS|SECRET|OPENAI|ANTHROPIC|API_KEY|PASSWORD|TOKEN|WEBHOOK/i.test(k)) {
+                            delete scrubbedEnv[k];
+                        }
+                    }
+                    const child = spawn('python3', ['-c', wrapper], { env: scrubbedEnv });
 
                     const inputContext = {
                         variables: testCaseContext?.variables || {}

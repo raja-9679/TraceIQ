@@ -36,8 +36,11 @@ export default function TestRunDetails() {
         if (run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error') return;
 
         const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
-        // Convert http(s) to ws(s)
-        const wsUrl = baseUrl.replace(/^http/, 'ws') + `/ws/runs/${runId}`;
+        // Convert http(s) to ws(s). The JWT goes as a query param because
+        // browsers can't set headers on a WebSocket; the server authorizes
+        // against the run's project before accepting.
+        const token = localStorage.getItem("token");
+        const wsUrl = baseUrl.replace(/^http/, 'ws') + `/ws/runs/${runId}` + (token ? `?token=${encodeURIComponent(token)}` : '');
 
         console.log("Connecting to WebSocket:", wsUrl);
         const ws = new WebSocket(wsUrl);
