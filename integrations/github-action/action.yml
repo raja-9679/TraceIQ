@@ -18,6 +18,19 @@ inputs:
   case-id:
     description: 'Optional. Run only this test case.'
     required: false
+  project-id:
+    description: >-
+      Optional TraceIQ project ID. When set (and running on a pull request
+      with a github-token), the action runs impact analysis on the PR's
+      changed files and reports which test cases the diff touches — and why —
+      in the PR comment.
+    required: false
+  github-token:
+    description: >-
+      Token used to read the PR diff (for impact analysis) and post/update
+      the summary comment. Defaults to the workflow token.
+    required: false
+    default: ${{ github.token }}
   browser:
     description: 'Comma-separated browsers (default: chromium).'
     required: false
@@ -39,11 +52,16 @@ inputs:
     required: false
     default: '1800'
   fail-on:
-    description: 'Exit non-zero on these statuses (comma-separated). Default: failed,error.'
+    description: >-
+      Quality gate. "failures" (default) fails the step when any run ends in
+      failed/error or times out; "none" never fails the step (report-only).
     required: false
-    default: 'failed,error'
+    default: 'failures'
   post-pr-comment:
-    description: 'Post a summary comment on the triggering PR (requires GITHUB_TOKEN).'
+    description: >-
+      Post (or update) a summary comment on the triggering PR. Requires a
+      github-token with pull-requests: write. The comment is idempotent — a
+      hidden marker lets the action update its previous comment on re-runs.
     required: false
     default: 'true'
 
