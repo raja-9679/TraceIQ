@@ -14,7 +14,9 @@ import {
     Layers,
     Plus,
     UserCog,
-    CalendarClock
+    CalendarClock,
+    GitPullRequestArrow,
+    Images
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -34,6 +36,8 @@ const navigation = [
     { name: 'Test Suites', href: '/suites', icon: FolderTree },
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
     { name: 'Schedules', href: '/schedules', icon: CalendarClock },
+    { name: 'Proposals', href: '/proposals', icon: GitPullRequestArrow },
+    { name: 'Visual Review', href: '/visual-review', icon: Images },
     { name: 'Users', href: '/users', icon: User },
     { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
     { name: 'Workspace', href: '/workspace', icon: Users },
