@@ -11,7 +11,14 @@ celery_app = Celery(
         "app.tasks.webhook_tasks",
         "app.tasks.cleanup_tasks",
         "app.tasks.result_aggregator",  # New distributed execution aggregator
-        "app.tasks.schedule_tasks"      # Cron test scheduler task
+        "app.tasks.schedule_tasks",     # Cron test scheduler task
+        "app.tasks.analysis_tasks",     # Typed failure analysis on failed runs
+        # Phase B–E task modules (were missing from include, so their tasks
+        # never registered on workers):
+        "app.tasks.heal_tasks",
+        "app.tasks.tautology_tasks",
+        "app.tasks.persona_tasks",
+        "app.tasks.outbound_webhook_tasks",
     ]
 )
 

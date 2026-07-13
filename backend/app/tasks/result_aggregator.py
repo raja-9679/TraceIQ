@@ -189,6 +189,13 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
             # Clear stale timeout error_message; the real failures are in
             # individual TestCaseResult records.
             run.error_message = None
+            # Kick off typed failure analysis (heuristic always; LLM when a
+            # provider is configured). Fire-and-forget.
+            try:
+                from app.tasks.analysis_tasks import analyze_run_failures
+                analyze_run_failures.delay(run_id)
+            except Exception as e:
+                print(f"[Aggregator] Could not queue failure analysis: {e}")
         else:
             run.status = TestStatus.PASSED
             # Clear any stale error_message (e.g. from a previous timeout
