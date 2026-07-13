@@ -116,6 +116,9 @@ def process_single_result(result: Dict[str, Any]):
     # continuous results.
     _persist_auth_state(result)
 
+    # Persist reactive selector-heal suggestions as pending proposals.
+    _persist_heal_suggestions(result)
+
     # Check if this is a multi-test continuous job result
     test_results = result.get('test_results')
 
@@ -250,6 +253,59 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
             f"[Aggregator] Run {run_id} completed: {run.passed_tests} passed, {run.failed_tests} failed, duration={run.duration_ms}ms")
     else:
         run.status = TestStatus.RUNNING
+
+
+def _persist_heal_suggestions(result: Dict[str, Any]):
+    """Insert worker heal suggestions as pending SelectorHealProposal rows.
+
+    Dedupes on (test_case_id, step_id, new_selector) against existing
+    pending proposals so a repeatedly failing selector doesn't flood the
+    queue on every run."""
+    suggestions = result.get('heal_suggestions') or []
+    if not suggestions:
+        return
+
+    from app.models import SelectorHealProposal
+
+    try:
+        with Session(sync_engine) as session:
+            created = 0
+            for s in suggestions[:10]:
+                if not s.get('test_case_id') or not s.get('new_selector'):
+                    continue
+                existing = session.exec(
+                    select(SelectorHealProposal).where(
+                        SelectorHealProposal.test_case_id == s['test_case_id'],
+                        SelectorHealProposal.step_id == (s.get('step_id') or ''),
+                        SelectorHealProposal.new_selector == s['new_selector'],
+                        SelectorHealProposal.status == 'pending',
+                    )
+                ).first()
+                if existing:
+                    continue
+                matches = int(s.get('matches') or 0)
+                session.add(SelectorHealProposal(
+                    test_case_id=s['test_case_id'],
+                    step_id=s.get('step_id') or '',
+                    old_selector=s.get('old_selector'),
+                    new_selector=s['new_selector'],
+                    intent=s.get('intent'),
+                    # A healed selector that matches exactly one element in the
+                    # failing DOM is a much stronger candidate.
+                    confidence=0.75 if matches == 1 else (0.5 if matches > 1 else 0.25),
+                    rationale=(
+                        f"Reactive heal after step failure in run {result.get('run_id')}: "
+                        f"proposed selector matched {matches} element(s) in the live DOM."),
+                    source_run_id=result.get('run_id'),
+                    status='pending',
+                ))
+                created += 1
+            if created:
+                session.commit()
+                print(f"[Aggregator] Stored {created} heal proposal(s) "
+                      f"from run {result.get('run_id')}")
+    except Exception as e:
+        print(f"[Aggregator] Failed to persist heal suggestions: {e}")
 
 
 def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, Any], test_results: list):
