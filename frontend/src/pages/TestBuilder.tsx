@@ -54,6 +54,8 @@ export default function TestBuilder() {
 
     const [testName, setTestName] = useState('');
     const [steps, setSteps] = useState<TestStep[]>([]);
+    const [isAuthSetup, setIsAuthSetup] = useState(false);
+    const [useAuthSession, setUseAuthSession] = useState(true);
     const [isDirty, setIsDirty] = useState(false);
     const [originalData, setOriginalData] = useState<{ testName: string; steps: TestStep[] } | null>(null);
     const initialLoadDone = useRef(false);
@@ -80,6 +82,8 @@ export default function TestBuilder() {
             // Editing mode: check for draft
             serverDataLoaded.current = true;
             setOriginalData({ testName: serverData.name, steps: serverData.steps || [] });
+            setIsAuthSetup(!!serverData.is_auth_setup);
+            setUseAuthSession(serverData.use_auth_session !== false);
 
             if (draft && draft.timestamp) {
                 // We have a draft - ask user if they want to restore it
@@ -237,7 +241,9 @@ export default function TestBuilder() {
             const payload = {
                 name: testName,
                 test_suite_id: parseInt(suiteId || '0'),
-                steps: steps
+                steps: steps,
+                is_auth_setup: isAuthSetup,
+                use_auth_session: useAuthSession
             };
 
             if (isEditing && caseId) {
@@ -292,6 +298,16 @@ export default function TestBuilder() {
                     </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="A passing run of this case captures the logged-in session (cookies + storage) and stores it for the project. Other cases then start already logged in.">
+                        <input type="checkbox" checked={isAuthSetup} onChange={(e) => { setIsAuthSetup(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
+                        Auth setup case
+                    </label>
+                    {!isAuthSetup && (
+                        <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="Uncheck for tests that must exercise the real login flow — they will start from a clean, logged-out browser.">
+                            <input type="checkbox" checked={useAuthSession} onChange={(e) => { setUseAuthSession(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
+                            Use auth session
+                        </label>
+                    )}
                     {isDirty && <span className="text-xs font-bold font-mono text-amber-500 bg-amber-50 px-3 py-1.5 rounded-full border border-amber-200 mr-2 flex items-center gap-1.5"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></div> Unsaved Changes</span>}
                     <Button variant="outline" onClick={handleCancel} className="rounded-xl font-semibold text-slate-700 bg-white hover:bg-slate-50 border-slate-200 shadow-sm h-11 px-6 transition-all hidden sm:flex">
                         Cancel

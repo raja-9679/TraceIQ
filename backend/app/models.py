@@ -280,6 +280,13 @@ class TestCaseBase(SQLModel):
     last_human_reviewed_at: Optional[datetime] = Field(default=None)
     last_human_reviewed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
+    # Auth sessions: `is_auth_setup` marks the case whose successful run
+    # captures the project's Playwright storageState (it always runs without
+    # a stored session). `use_auth_session` lets a case opt out of starting
+    # from the stored session (e.g. tests of the login flow itself).
+    is_auth_setup: bool = Field(default=False)
+    use_auth_session: bool = Field(default=True)
+
 
 class TestCase(TestCaseBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -304,6 +311,25 @@ class TestCaseUpdate(SQLModel):
     steps: Optional[List[TestStep]] = None
     test_suite_id: Optional[int] = None
     project_id: Optional[int] = None
+    is_auth_setup: Optional[bool] = None
+    use_auth_session: Optional[bool] = None
+
+
+class AuthSession(SQLModel, table=True):
+    """Reusable Playwright storageState (cookies + localStorage) per project.
+
+    Captured from the project's auth-setup case on a successful run and
+    injected into browser contexts of later runs so tests start already
+    logged in. The raw state is never exposed through the read API — only
+    metadata (age/freshness) is."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", unique=True, index=True)
+    storage_state: dict = Field(default={}, sa_column=Column(JSON))
+    captured_by_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    captured_at: datetime = Field(default_factory=datetime.utcnow)
+    # After this many minutes the state is considered stale and is no longer
+    # injected; re-run the auth-setup case to refresh it.
+    max_age_minutes: int = Field(default=720)
 
 
 class TestRunBase(SQLModel):

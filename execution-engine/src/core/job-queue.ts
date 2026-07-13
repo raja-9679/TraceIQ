@@ -7,6 +7,11 @@ export interface TestCase {
     id: number;
     name: string;
     steps: any[];
+    // Auth sessions: a passing run of an auth-setup case captures the
+    // context's storageState; use_auth_session=false opts a case out of
+    // starting from the stored state (e.g. login-flow tests).
+    is_auth_setup?: boolean;
+    use_auth_session?: boolean;
 }
 
 // Job can be either:
@@ -34,6 +39,9 @@ export interface TestJob {
         params: Record<string, string>;
         allowed_domains: any[];
         domain_settings: Record<string, any>;
+        // Playwright storageState injected by the backend when the project
+        // has a fresh AuthSession.
+        storage_state?: any;
     };
     created_at: string;
     retry_count?: number;
@@ -66,7 +74,13 @@ export interface JobResult {
     status: 'passed' | 'failed' | 'error';
     duration_ms: number;
     error?: string;
-    
+
+    // Playwright storageState captured by a passing auth-setup case; the
+    // backend persists it as the project's AuthSession. auth_case_id names
+    // the capturing case when the job ran multiple cases (continuous mode).
+    auth_state?: any;
+    auth_case_id?: number;
+
     // Artifacts at job level
     artifacts: {
         video?: string;

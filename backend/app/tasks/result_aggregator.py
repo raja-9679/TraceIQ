@@ -111,6 +111,11 @@ def process_single_result(result: Dict[str, Any]):
     run_id = result.get('run_id')
     job_id = result.get('job_id')
 
+    # Persist a captured auth session (storageState) if the job ran a
+    # passing auth-setup case. Job-level field in both single and
+    # continuous results.
+    _persist_auth_state(result)
+
     # Check if this is a multi-test continuous job result
     test_results = result.get('test_results')
 
@@ -120,6 +125,48 @@ def process_single_result(result: Dict[str, Any]):
     else:
         # Single test job - original behavior
         process_single_test_result(run_id, job_id, result)
+
+
+def _persist_auth_state(result: Dict[str, Any]):
+    """Upsert the project's AuthSession from a worker-captured storageState."""
+    auth_state = result.get('auth_state')
+    if not auth_state:
+        return
+
+    case_id = result.get('auth_case_id') or result.get('test_case_id')
+    if not case_id:
+        return
+
+    from datetime import datetime
+    from app.models import TestCase, AuthSession
+
+    try:
+        with Session(sync_engine) as session:
+            case = session.get(TestCase, case_id)
+            if not case or not case.project_id:
+                print(f"[Aggregator] auth_state received but case {case_id} "
+                      f"has no project — skipped")
+                return
+            auth = session.exec(
+                select(AuthSession).where(
+                    AuthSession.project_id == case.project_id)
+            ).first()
+            if auth:
+                auth.storage_state = auth_state
+                auth.captured_by_case_id = case.id
+                auth.captured_at = datetime.utcnow()
+            else:
+                auth = AuthSession(
+                    project_id=case.project_id,
+                    storage_state=auth_state,
+                    captured_by_case_id=case.id,
+                )
+            session.add(auth)
+            session.commit()
+            print(f"[Aggregator] Stored auth session for project "
+                  f"{case.project_id} (captured by case {case.id})")
+    except Exception as e:
+        print(f"[Aggregator] Failed to persist auth session: {e}")
 
 
 def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str], session: Session):
