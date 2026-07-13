@@ -453,7 +453,23 @@ async def delete_runs(
 
 
 @router.get("/artifacts/{object_name:path}")
-async def get_artifact_url(object_name: str, current_user: User = Depends(get_current_user)):
+async def get_artifact_url(
+    object_name: str,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    # Artifact keys are laid out as runs/{run_id}/... — scope access to the
+    # run's project so a signed URL can't be minted for another tenant's
+    # traces/videos (which contain response bodies and headers).
+    import re
+    m = re.match(r"^runs/(\d+)/", object_name)
+    if not m:
+        raise HTTPException(status_code=400, detail="Unrecognized artifact path")
+    run = await session.get(TestRun, int(m.group(1)))
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not await access_service.has_project_access(current_user.id, run.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
     url = minio_client.get_presigned_url(object_name)
     return {"url": url}
 

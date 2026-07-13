@@ -60,11 +60,26 @@ flowmind-frontend/.next/
 # node dependencies
 node_modules/
 
-# Local environment variables
-.env.local
-.env*.local
+# Environment variables — never commit real secrets. Templates (*.example)
+# are the only env files that belong in git.
+.env
+.env.*
+!.env.example
+env.dev
+env.local
+env.prod
+env_backup.prod
+env_prod_back.env
+infrastructure/.env
+infrastructure/env.*
+!infrastructure/env.*.example
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+# Build artifacts / packaging
+*.egg-info/
+traceiq_frontend_*.zip
+__pycache__/
+*.pyc
