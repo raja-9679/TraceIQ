@@ -6,6 +6,7 @@ import TestMatrix from "@/pages/TestMatrix";
 import TestRunDetails from "@/pages/TestRunDetails";
 import Schedules from "@/pages/Schedules";
 import Proposals from "@/pages/Proposals";
+import Environments from "@/pages/Environments";
 import VisualReview from "@/pages/VisualReview";
 import TestSuites from "@/pages/TestSuites";
 import SuiteDetails from "@/pages/SuiteDetails";
@@ -39,6 +40,7 @@ function App() {
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="schedules" element={<Schedules />} />
                 <Route path="proposals" element={<Proposals />} />
+                <Route path="environments" element={<Environments />} />
                 <Route path="visual-review" element={<VisualReview />} />
                 <Route path="suites/:suiteId/builder" element={<TestBuilder />} />
                 <Route path="suites/:suiteId/cases/:caseId/edit" element={<TestBuilder />} />

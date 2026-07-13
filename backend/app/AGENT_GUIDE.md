@@ -140,6 +140,27 @@ do not begin cases with login steps.
   likely expired mid-window: re-run the auth-setup case first, then
   re-run the failures.
 
+### Environments and secrets — never hardcode URLs or credentials
+
+Projects define named environments (`GET/POST
+/api/projects/{id}/environments`): a `base_url` plus non-sensitive
+`variables`. Sensitive values go into write-only secrets (`PUT
+/api/projects/{id}/secrets` with `{key, value}`; reads return key names
+only).
+
+In steps:
+
+- `{"type": "goto", "value": "/dashboard"}` — relative URLs resolve
+  against the environment's `base_url`, so one suite runs on dev,
+  staging, and prod unchanged.
+- `{{env.KEY}}` interpolates an environment variable,
+  `{{secret.KEY}}` a secret — in step values, headers, params, bodies.
+- `run_suite` accepts `environment_id`; omitted, the project's default
+  environment applies.
+
+Author credentials as `{{secret.ADMIN_PASSWORD}}`, never as literals —
+step JSON is stored, diffed, and shown in proposals.
+
 ### Pitfall 1 — `feed-check` is a fetch+assert, NOT a pure assertion
 
 ❌ This pattern **does not work**:
