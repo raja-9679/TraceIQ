@@ -114,6 +114,10 @@ async def list_tools() -> List[Tool]:
                         "type": "string",
                         "enum": ["human", "schedule", "api_agent", "ci", "webhook"],
                     },
+                    "environment_id": {
+                        "type": "integer",
+                        "description": "Optional ProjectEnvironment id to run against; defaults to the project's default environment.",
+                    },
                 },
                 "required": ["suite_id"],
             },
@@ -493,6 +497,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             git_pr_url=arguments.get("git_pr_url"),
             git_repo=arguments.get("git_repo"),
             triggered_by=arguments.get("triggered_by"),
+            environment_id=arguments.get("environment_id"),
         )
         return [TextContent(type="text", text=json.dumps(data, indent=2))]
 

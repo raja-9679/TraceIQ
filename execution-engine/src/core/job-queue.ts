@@ -42,6 +42,10 @@ export interface TestJob {
         // Playwright storageState injected by the backend when the project
         // has a fresh AuthSession.
         storage_state?: any;
+        // Environment ({{env.X}}, base_url for relative gotos) and decrypted
+        // project secrets ({{secret.X}}), dispatched by the backend.
+        environment?: { name: string; base_url?: string; variables: Record<string, any> };
+        secrets?: Record<string, string>;
     };
     created_at: string;
     retry_count?: number;

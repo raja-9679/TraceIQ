@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, String, Enum as SAEnum
+from sqlalchemy import Column, JSON, String, Enum as SAEnum, UniqueConstraint
 from enum import Enum
 
 # Import settings models
@@ -315,6 +315,39 @@ class TestCaseUpdate(SQLModel):
     use_auth_session: Optional[bool] = None
 
 
+class ProjectEnvironment(SQLModel, table=True):
+    """A named deployment target for a project (dev/staging/prod).
+
+    `variables` are non-sensitive key-values referenced in steps as
+    `{{env.KEY}}`. `base_url` is prefixed onto relative goto URLs so one
+    suite can run against any environment. Sensitive values belong in
+    ProjectSecret, not here."""
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_projectenvironment_project_name"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    base_url: Optional[str] = Field(default=None)
+    variables: dict = Field(default={}, sa_column=Column(JSON))
+    is_default: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ProjectSecret(SQLModel, table=True):
+    """Write-only secret referenced in steps as `{{secret.KEY}}`.
+
+    Encrypted at rest (Fernet, key derived from SECRET_KEY). The read API
+    only ever returns key names; plaintext is decrypted at dispatch time
+    and travels only inside the job payload to workers."""
+    __table_args__ = (UniqueConstraint("project_id", "key", name="uq_projectsecret_project_key"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    key: str
+    value_encrypted: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class AuthSession(SQLModel, table=True):
     """Reusable Playwright storageState (cookies + localStorage) per project.
 
@@ -366,6 +399,10 @@ class TestRunBase(SQLModel):
     browser: str = Field(default="chromium")
     device: Optional[str] = Field(default=None)
     user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    # Which ProjectEnvironment this run executed against (None = project
+    # default environment, or none configured).
+    environment_id: Optional[int] = Field(
+        default=None, foreign_key="projectenvironment.id")
     # AI-powered analysis of test failures (populated by controller)
     ai_analysis: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
