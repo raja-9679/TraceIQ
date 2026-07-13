@@ -1,7 +1,7 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -14,7 +14,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-url' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
     selector?: string;
     value?: string;
     params?: {
@@ -95,6 +95,16 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'click': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointerClick size={18} />, label: 'Click' };
             case 'fill': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <TextCursorInput size={18} />, label: 'Fill Input' };
             case 'check': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <CheckSquare size={18} />, label: 'Check Box' };
+            case 'uncheck': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Square size={18} />, label: 'Uncheck Box' };
+            case 'double-click': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointerClick size={18} />, label: 'Double Click' };
+            case 'right-click': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Right Click' };
+            case 'drag-and-drop': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Move size={18} />, label: 'Drag & Drop' };
+            case 'upload-file': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Upload size={18} />, label: 'Upload File' };
+            case 'download-file': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Download size={18} />, label: 'Download File' };
+            case 'handle-dialog': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MessageSquare size={18} />, label: 'Handle Dialog' };
+            case 'switch-tab': return { border: 'border-emerald-200', bg: 'bg-emerald-50 text-emerald-600', hue: 'emerald', icon: <ExternalLink size={18} />, label: 'Switch Tab' };
+            case 'wait-for-response': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Activity size={18} />, label: 'Wait For Response' };
+            case 'expect-not-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <SearchX size={18} />, label: 'Expect Not Text' };
             case 'expect-visible': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Eye size={18} />, label: 'Expect Visible' };
             case 'expect-hidden': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
             case 'expect-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Search size={18} />, label: 'Expect Text' };
@@ -140,10 +150,18 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Navigation & Context</div>
                                 <SelectItem value="goto"><div className="flex items-center gap-2"><Link2 size={14} className="text-emerald-500"/> Go to URL</div></SelectItem>
                                 <SelectItem value="switch-frame"><div className="flex items-center gap-2"><SplitSquareHorizontal size={14} className="text-emerald-500"/> Switch Frame</div></SelectItem>
+                                <SelectItem value="switch-tab"><div className="flex items-center gap-2"><ExternalLink size={14} className="text-emerald-500"/> Switch Tab</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Interactions</div>
                                 <SelectItem value="click"><div className="flex items-center gap-2"><MousePointerClick size={14} className="text-indigo-500"/> Click Element</div></SelectItem>
                                 <SelectItem value="fill"><div className="flex items-center gap-2"><TextCursorInput size={14} className="text-indigo-500"/> Fill Input</div></SelectItem>
                                 <SelectItem value="check"><div className="flex items-center gap-2"><CheckSquare size={14} className="text-indigo-500"/> Check Box</div></SelectItem>
+                                <SelectItem value="uncheck"><div className="flex items-center gap-2"><Square size={14} className="text-indigo-500"/> Uncheck Box</div></SelectItem>
+                                <SelectItem value="double-click"><div className="flex items-center gap-2"><MousePointerClick size={14} className="text-indigo-500"/> Double Click</div></SelectItem>
+                                <SelectItem value="right-click"><div className="flex items-center gap-2"><MousePointer2 size={14} className="text-indigo-500"/> Right Click</div></SelectItem>
+                                <SelectItem value="drag-and-drop"><div className="flex items-center gap-2"><Move size={14} className="text-indigo-500"/> Drag & Drop</div></SelectItem>
+                                <SelectItem value="upload-file"><div className="flex items-center gap-2"><Upload size={14} className="text-indigo-500"/> Upload File</div></SelectItem>
+                                <SelectItem value="download-file"><div className="flex items-center gap-2"><Download size={14} className="text-indigo-500"/> Download File</div></SelectItem>
+                                <SelectItem value="handle-dialog"><div className="flex items-center gap-2"><MessageSquare size={14} className="text-indigo-500"/> Handle Dialog</div></SelectItem>
                                 <SelectItem value="hover"><div className="flex items-center gap-2"><MousePointer2 size={14} className="text-indigo-500"/> Hover</div></SelectItem>
                                 <SelectItem value="press-key"><div className="flex items-center gap-2"><Keyboard size={14} className="text-indigo-500"/> Press Key</div></SelectItem>
                                 <SelectItem value="scroll-to"><div className="flex items-center gap-2"><ArrowDownToLine size={14} className="text-indigo-500"/> Scroll To</div></SelectItem>
@@ -151,6 +169,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="expect-visible"><div className="flex items-center gap-2"><Eye size={14} className="text-cyan-500"/> Expect Visible</div></SelectItem>
                                 <SelectItem value="expect-hidden"><div className="flex items-center gap-2"><EyeOff size={14} className="text-cyan-500"/> Expect Hidden</div></SelectItem>
                                 <SelectItem value="expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-cyan-500"/> Expect Text</div></SelectItem>
+                                <SelectItem value="expect-not-text"><div className="flex items-center gap-2"><SearchX size={14} className="text-cyan-500"/> Expect Not Text</div></SelectItem>
                                 <SelectItem value="expect-url"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect URL</div></SelectItem>
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
@@ -160,6 +179,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
+                                <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
                                 <SelectItem value="run-script"><div className="flex items-center gap-2"><Code2 size={14} className="text-rose-500"/> Run Script</div></SelectItem>
                                 <SelectItem value="screenshot"><div className="flex items-center gap-2"><Camera size={14} className="text-rose-500"/> Take Screenshot</div></SelectItem>
                             </SelectContent>
@@ -297,10 +317,13 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             step.type === 'press-key' ? "Key (e.g., Enter)" :
                                                 step.type === 'wait-timeout' ? "Timeout in ms" :
                                                     step.type === 'screenshot' ? "Screenshot name" :
-                                                        "Selector (e.g., #submit-btn)"
+                                                        step.type === 'switch-tab' ? "'latest', tab index, or URL substring" :
+                                                            step.type === 'wait-for-response' ? "URL substring (e.g., /api/search)" :
+                                                                step.type === 'download-file' ? "(optional) trigger selector" :
+                                                                    "Selector (e.g., #submit-btn)"
                                     }
-                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? step.value : step.selector) || ''}
-                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' ? 'value' : 'selector'), e.target.value)}
+                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
+                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
                                     className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
 
@@ -330,11 +353,68 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     </Select>
                                 )}
 
-                                {(step.type === 'fill' || step.type === 'expect-text' || step.type === 'select-option') && (
+                                {(step.type === 'fill' || step.type === 'expect-text' || step.type === 'expect-not-text' || step.type === 'select-option' || step.type === 'drag-and-drop' || step.type === 'upload-file') && (
                                     <Input
-                                        placeholder={step.type === 'fill' ? "Value to format" : step.type === 'select-option' ? "Option value" : "Expected text"}
+                                        placeholder={
+                                            step.type === 'fill' ? "Value to format" :
+                                                step.type === 'select-option' ? "Option value" :
+                                                    step.type === 'drag-and-drop' ? "Target selector" :
+                                                        step.type === 'upload-file' ? "Worker file path(s) (optional)" :
+                                                            step.type === 'expect-not-text' ? "Text that must be absent" :
+                                                                "Expected text"
+                                        }
                                         value={step.value || ''}
                                         onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                        className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                    />
+                                )}
+
+                                {step.type === 'handle-dialog' && (
+                                    <>
+                                        <Select
+                                            value={step.params?.action || 'accept'}
+                                            onValueChange={(value) => updateParams('action', value)}
+                                        >
+                                            <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm text-slate-600`}>
+                                                <SelectValue placeholder="Action" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="accept">Accept</SelectItem>
+                                                <SelectItem value="dismiss">Dismiss</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Input
+                                            placeholder="Prompt text (optional)"
+                                            value={step.params?.prompt_text || ''}
+                                            onChange={(e) => updateParams('prompt_text', e.target.value)}
+                                            className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                        />
+                                    </>
+                                )}
+
+                                {(step.type === 'switch-tab' || step.type === 'wait-for-response') && (
+                                    <Input
+                                        placeholder="Trigger selector (optional click)"
+                                        value={step.params?.trigger_selector || ''}
+                                        onChange={(e) => updateParams('trigger_selector', e.target.value)}
+                                        className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                    />
+                                )}
+
+                                {step.type === 'wait-for-response' && (
+                                    <Input
+                                        placeholder="Status (optional)"
+                                        value={step.params?.status || ''}
+                                        onChange={(e) => updateParams('status', e.target.value)}
+                                        className={`w-28 shrink-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                    />
+                                )}
+
+                                {step.type === 'download-file' && (
+                                    <Input
+                                        placeholder="Filename contains (optional)"
+                                        value={step.params?.filename_contains || ''}
+                                        onChange={(e) => updateParams('filename_contains', e.target.value)}
                                         className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
                                     />
                                 )}
