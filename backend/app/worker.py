@@ -156,11 +156,17 @@ def run_test_suite(run_id: int):
             session.commit()
 
 
-def _case_payload(case) -> dict:
-    """Serializable job payload for one test case, incl. auth-session flags."""
-    return {
+def _case_payload(case, row_index=None, data_row=None) -> dict:
+    """Serializable job payload for one test case, incl. auth-session flags.
+
+    For data-driven cases, `row_index`/`data_row` identify the expansion;
+    the name is suffixed so each row aggregates as its own result."""
+    name = case.name
+    if row_index is not None:
+        name = f"{case.name} [row {row_index + 1}]"
+    payload = {
         'id': case.id,
-        'name': case.name,
+        'name': name,
         'steps': [
             step.dict() if hasattr(step, 'dict') else step
             for step in case.steps
@@ -168,6 +174,26 @@ def _case_payload(case) -> dict:
         'is_auth_setup': getattr(case, 'is_auth_setup', False),
         'use_auth_session': getattr(case, 'use_auth_session', True),
     }
+    if data_row is not None:
+        payload['data_row'] = data_row
+        payload['row_index'] = row_index
+    return payload
+
+
+def _expand_cases(cases: list) -> list:
+    """Expand data-driven cases into (case, row_index, data_row) tuples.
+
+    Cases without a dataset yield a single (case, None, None) entry."""
+    expanded = []
+    for case in cases:
+        rows = getattr(case, 'dataset', None) or []
+        dict_rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
+        if dict_rows:
+            for i, row in enumerate(dict_rows):
+                expanded.append((case, i, row))
+        else:
+            expanded.append((case, None, None))
+    return expanded
 
 
 def _settings_payload(settings: dict) -> dict:
@@ -284,58 +310,64 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
     pipe = redis_client.pipeline()
 
     for unit in execution_units:
-        job_id = str(uuid.uuid4())
-        job_ids.append(job_id)
-
         test_cases = unit['test_cases']
-        total_test_count += len(test_cases)
+        # Data-driven cases expand into one execution per dataset row.
+        expanded = _expand_cases(test_cases)
+        total_test_count += len(expanded)
 
         # Determine execution mode for this job
         # Sub-suites run their tests continuously (shared browser)
-        is_continuous = unit['type'] == 'sub_suite' and len(test_cases) > 1
+        is_continuous = unit['type'] == 'sub_suite' and len(expanded) > 1
 
         if is_continuous:
             # Multi-test job: runs continuously in shared browser
-            job = {
+            job_id = str(uuid.uuid4())
+            job_ids.append(job_id)
+            jobs = [{
                 'job_id': job_id,
                 'run_id': run.id,
                 'execution_mode': 'continuous',
                 'unit_type': unit['type'],
                 'unit_id': unit['id'],
                 'unit_name': unit['name'],
-                'test_cases': [_case_payload(case) for case in test_cases],
+                'test_cases': [
+                    _case_payload(case, idx, row) for case, idx, row in expanded
+                ],
                 'browser': run.browser,
                 'device': run.device,
                 'settings': _settings_payload(settings),
                 'created_at': datetime.utcnow().isoformat(),
                 'retry_count': 0
-            }
+            }]
         else:
-            # Single test job
-            case = test_cases[0]
-            job = {
-                'job_id': job_id,
-                'run_id': run.id,
-                'test_case_id': case.id,
-                'test_case': _case_payload(case),
-                'browser': run.browser,
-                'device': run.device,
-                'settings': _settings_payload(settings),
-                'created_at': datetime.utcnow().isoformat(),
-                'retry_count': 0
-            }
+            # One job per (case, dataset-row) expansion
+            jobs = []
+            for case, idx, row in expanded:
+                job_id = str(uuid.uuid4())
+                job_ids.append(job_id)
+                jobs.append({
+                    'job_id': job_id,
+                    'run_id': run.id,
+                    'test_case_id': case.id,
+                    'test_case': _case_payload(case, idx, row),
+                    'browser': run.browser,
+                    'device': run.device,
+                    'settings': _settings_payload(settings),
+                    'created_at': datetime.utcnow().isoformat(),
+                    'retry_count': 0
+                })
 
-        # Add job to stream
-        pipe.xadd(
-            jobs_stream,
-            {
-                'job_id': job_id,
-                'run_id': str(run.id),
-                'payload': json.dumps(job)
-            }
-        )
-        # Track job in run's job set
-        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+        for job in jobs:
+            pipe.xadd(
+                jobs_stream,
+                {
+                    'job_id': job['job_id'],
+                    'run_id': str(run.id),
+                    'payload': json.dumps(job)
+                }
+            )
+            # Track job in run's job set
+            pipe.sadd(f'runs:{run.id}:job_ids', job['job_id'])
 
     # Initialize run progress tracking
     # Track by total test cases, not jobs (for accurate progress)
@@ -376,7 +408,8 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
 
     pipe = redis_client.pipeline()
 
-    for case in cases:
+    expanded = _expand_cases(cases)
+    for case, row_idx, data_row in expanded:
         job_id = str(uuid.uuid4())
         job_ids.append(job_id)
 
@@ -384,7 +417,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'job_id': job_id,
             'run_id': run.id,
             'test_case_id': case.id,
-            'test_case': _case_payload(case),
+            'test_case': _case_payload(case, row_idx, data_row),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),
@@ -403,7 +436,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
         pipe.sadd(f'runs:{run.id}:job_ids', job_id)
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
-        'total': len(cases),
+        'total': len(expanded),
         'completed': 0,
         'passed': 0,
         'failed': 0,
@@ -474,7 +507,8 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
 
     pipe = redis_client.pipeline()
     job_ids = []
-    for case in cases:
+    expanded = _expand_cases(cases)
+    for case, row_idx, data_row in expanded:
         job_id = str(uuid.uuid4())
         job_ids.append(job_id)
         job = {
@@ -483,7 +517,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'execution_mode': 'parallel',
             'parallelism': parallelism,
             'test_case_id': case.id,
-            'test_case': _case_payload(case),
+            'test_case': _case_payload(case, row_idx, data_row),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),
@@ -501,7 +535,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
         pipe.sadd(f'runs:{run.id}:job_ids', job_id)
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
-        'total': len(cases),
+        'total': len(expanded),
         'completed': 0,
         'passed': 0,
         'failed': 0,

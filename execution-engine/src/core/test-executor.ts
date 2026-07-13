@@ -39,6 +39,12 @@ export class TestExecutor {
                     out = out.replace(/\{\{\s*secret\.(\w+)\s*\}\}/g, (_: string, key: string) =>
                         secrets[key] !== undefined ? String(secrets[key]) : `{{secret.${key}}}`);
                 }
+                // {{data.KEY}} — the current data-driven dataset row.
+                const dataRow = testCaseContext?.data;
+                if (dataRow) {
+                    out = out.replace(/\{\{\s*data\.(\w+)\s*\}\}/g, (_: string, key: string) =>
+                        dataRow[key] !== undefined ? String(dataRow[key]) : `{{data.${key}}}`);
+                }
                 // {{name}} — runtime variables from extract-value / scripts.
                 if (testCaseContext?.variables) {
                     out = out.replace(/\{\{\s*(\w+)\s*\}\}/g, (_: string, key: string) =>
