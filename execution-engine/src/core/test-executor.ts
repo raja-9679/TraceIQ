@@ -963,6 +963,235 @@ if __name__ == "__main__":
                 return resultObject;
             }
 
+            case 'double-click': {
+                const sel = step.selector || step.value;
+                if (sel) {
+                    const locator = getLocator(sel);
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                    await locator.waitFor({ state: 'visible', timeout });
+                    await moveMouseTo(locator);
+                    await locator.dblclick({ timeout });
+                }
+                break;
+            }
+
+            case 'right-click': {
+                const sel = step.selector || step.value;
+                if (sel) {
+                    const locator = getLocator(sel);
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                    await locator.waitFor({ state: 'visible', timeout });
+                    await moveMouseTo(locator);
+                    await locator.click({ button: 'right', timeout });
+                }
+                break;
+            }
+
+            case 'uncheck': {
+                const sel = step.selector || step.value;
+                if (sel) {
+                    const locator = getLocator(sel);
+                    const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                    await locator.waitFor({ state: 'visible', timeout });
+                    await moveMouseTo(locator);
+                    await locator.uncheck({ timeout });
+                }
+                break;
+            }
+
+            case 'drag-and-drop': {
+                // selector = source element, value = target element selector
+                const sourceSel = step.selector;
+                const targetSel = resolve(step.value);
+                if (!sourceSel || !targetSel) throw new Error('drag-and-drop requires selector (source) and value (target selector)');
+                const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                const source = getLocator(sourceSel);
+                const target = getLocator(targetSel);
+                await source.waitFor({ state: 'visible', timeout });
+                await target.waitFor({ state: 'visible', timeout });
+                await source.dragTo(target, { timeout });
+                break;
+            }
+
+            case 'upload-file': {
+                // Two modes:
+                //  1. params.files: [{name, content_base64}] — agent-friendly inline fixtures,
+                //     written to a temp dir on the worker and attached.
+                //  2. value: comma-separated worker-local paths (pre-mounted fixture files).
+                const sel = step.selector;
+                if (!sel) throw new Error('upload-file requires a selector for the file input');
+                const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                const locator = getLocator(sel);
+                await locator.waitFor({ state: 'attached', timeout });
+
+                const inlineFiles = step.params?.files;
+                if (Array.isArray(inlineFiles) && inlineFiles.length > 0) {
+                    const fs = require('fs');
+                    const os = require('os');
+                    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'traceiq-upload-'));
+                    const filePaths: string[] = [];
+                    for (const f of inlineFiles) {
+                        if (!f?.name) throw new Error('upload-file: each entry in params.files needs a name');
+                        const safeName = path.basename(String(f.name));
+                        const filePath = path.join(tmpDir, safeName);
+                        const content = f.content_base64 !== undefined
+                            ? Buffer.from(String(f.content_base64), 'base64')
+                            : Buffer.from(String(f.content ?? ''), 'utf-8');
+                        fs.writeFileSync(filePath, content);
+                        filePaths.push(filePath);
+                    }
+                    await locator.setInputFiles(filePaths, { timeout });
+                    console.log(`  [Upload] Attached ${filePaths.length} inline file(s)`);
+                } else if (step.value) {
+                    const filePaths = String(resolve(step.value)).split(',').map((p: string) => p.trim()).filter(Boolean);
+                    await locator.setInputFiles(filePaths, { timeout });
+                    console.log(`  [Upload] Attached ${filePaths.length} file(s) from worker paths`);
+                } else {
+                    throw new Error('upload-file requires params.files (inline) or value (worker-local path)');
+                }
+                break;
+            }
+
+            case 'download-file': {
+                // Waits for a download event. Optional params.trigger_selector is clicked
+                // to start the download (steps are sequential, so the trigger must be
+                // part of this step to overlap with the wait).
+                const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                const triggerSel = step.params?.trigger_selector || step.selector;
+                const downloadPromise = page.waitForEvent('download', { timeout });
+                if (triggerSel) {
+                    const trigger = getLocator(triggerSel);
+                    await trigger.waitFor({ state: 'visible', timeout });
+                    await trigger.click({ timeout });
+                }
+                const download = await downloadPromise;
+                const suggested = download.suggestedFilename();
+
+                const expectContains = resolve(step.params?.filename_contains);
+                if (expectContains && !suggested.includes(String(expectContains))) {
+                    throw new Error(`Downloaded file "${suggested}" does not contain expected "${expectContains}"`);
+                }
+
+                // Save alongside other artifacts so it is uploaded with the run.
+                const videoPath = await page.video()?.path();
+                const saveDir = videoPath ? path.dirname(videoPath) : '/tmp';
+                const savePath = path.join(saveDir, `download-${path.basename(suggested)}`);
+                await download.saveAs(savePath);
+                console.log(`  [Download] Saved "${suggested}" to ${savePath}`);
+
+                if (step.params?.variableName && testCaseContext?.variables) {
+                    testCaseContext.variables[step.params.variableName] = suggested;
+                }
+                break;
+            }
+
+            case 'handle-dialog': {
+                // Arms a one-shot handler for the NEXT dialog (alert/confirm/prompt).
+                // Place this step BEFORE the step that triggers the dialog.
+                // params.action: 'accept' (default) | 'dismiss'
+                // params.prompt_text: text typed into prompt() dialogs before accepting
+                // params.variableName: stores the dialog message for later assertion
+                const action = step.params?.action || 'accept';
+                const promptText = resolve(step.params?.prompt_text);
+                const variableName = step.params?.variableName;
+                page.once('dialog', async (dialog) => {
+                    console.log(`  [Dialog] ${dialog.type()}: "${dialog.message()}" -> ${action}`);
+                    if (variableName && testCaseContext?.variables) {
+                        testCaseContext.variables[variableName] = dialog.message();
+                    }
+                    try {
+                        if (action === 'dismiss') {
+                            await dialog.dismiss();
+                        } else {
+                            await dialog.accept(promptText !== undefined && promptText !== null ? String(promptText) : undefined);
+                        }
+                    } catch (e: any) {
+                        console.warn(`  [Dialog] handler error: ${e.message}`);
+                    }
+                });
+                break;
+            }
+
+            case 'switch-tab': {
+                // Switches the active page for subsequent steps. Returns a marker the
+                // step loop uses to swap its `page` reference (like switch-frame).
+                // value: 'latest' | 'new' | 1-based index | URL substring
+                // params.trigger_selector: clicked to open the popup/new tab (overlapped wait)
+                const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                const target = String(resolve(step.value ?? 'latest')).trim();
+                const triggerSel = step.params?.trigger_selector;
+                let newPage: Page | undefined;
+
+                if (triggerSel) {
+                    const popupPromise = page.context().waitForEvent('page', { timeout });
+                    const trigger = getLocator(triggerSel);
+                    await trigger.waitFor({ state: 'visible', timeout });
+                    await trigger.click({ timeout });
+                    newPage = await popupPromise;
+                    await newPage.waitForLoadState('domcontentloaded', { timeout }).catch(() => { });
+                } else {
+                    const pages = page.context().pages();
+                    if (target === 'latest' || target === 'new') {
+                        newPage = pages[pages.length - 1];
+                    } else if (/^\d+$/.test(target)) {
+                        const idx = parseInt(target) - 1;
+                        if (idx < 0 || idx >= pages.length) throw new Error(`switch-tab: index ${target} out of range (${pages.length} tabs open)`);
+                        newPage = pages[idx];
+                    } else {
+                        newPage = pages.find(p => p.url().includes(target));
+                        if (!newPage) throw new Error(`switch-tab: no open tab with URL containing "${target}" (${pages.map(p => p.url()).join(', ')})`);
+                    }
+                }
+
+                if (!newPage) throw new Error('switch-tab: could not resolve target tab');
+                newPage.setDefaultTimeout(parseInt(process.env.DEFAULT_TIMEOUT || '30000'));
+                await newPage.bringToFront().catch(() => { });
+                console.log(`  [Tab] Switched to: ${newPage.url()}`);
+                return { __switchToPage: newPage };
+            }
+
+            case 'wait-for-response': {
+                // Waits for a network response whose URL contains `value`.
+                // params.status: expected HTTP status (optional)
+                // params.trigger_selector: clicked after arming the wait, so the
+                //   triggering request and the wait overlap (optional)
+                const urlPart = String(resolve(step.value || step.selector) || '').trim();
+                if (!urlPart) throw new Error('wait-for-response requires a URL substring in value');
+                const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                const expectedStatus = step.params?.status ? parseInt(String(step.params.status)) : undefined;
+
+                const responsePromise = page.waitForResponse(
+                    (resp) => resp.url().includes(urlPart) && (expectedStatus === undefined || resp.status() === expectedStatus),
+                    { timeout }
+                );
+                if (step.params?.trigger_selector) {
+                    const trigger = getLocator(step.params.trigger_selector);
+                    await trigger.waitFor({ state: 'visible', timeout });
+                    await trigger.click({ timeout });
+                }
+                const resp = await responsePromise;
+                console.log(`  [Network] Matched response ${resp.status()} ${resp.url()}`);
+                if (step.params?.variableName && testCaseContext?.variables) {
+                    testCaseContext.variables[step.params.variableName] = String(resp.status());
+                }
+                break;
+            }
+
+            case 'expect-not-text': {
+                // Asserts the element's text does NOT contain value. The element must
+                // exist; use expect-hidden to assert absence of the element itself.
+                if (!step.selector || step.value === undefined) throw new Error('expect-not-text requires selector and value');
+                const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
+                const locator = getLocator(step.selector);
+                await locator.waitFor({ state: 'attached', timeout });
+                const text = (await locator.textContent()) || '';
+                const forbidden = String(resolve(step.value));
+                if (text.includes(forbidden)) {
+                    throw new Error(`Expected text "${forbidden}" to be absent from "${step.selector}", but it is present`);
+                }
+                break;
+            }
+
             default:
                 if (step.type === 'switch-frame') break; // Handled in the main loop
                 console.warn(`Unknown step type: ${step.type}`);
