@@ -88,6 +88,97 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "params": {"selector": "Element to scroll into view"},
     },
     {
+        "type": "check",
+        "category": "interaction",
+        "params": {"selector": "Checkbox / radio to check"},
+        "example": {"id": "<uuid>", "type": "check", "selector": "#accept-terms"},
+    },
+    {
+        "type": "uncheck",
+        "category": "interaction",
+        "params": {"selector": "Checkbox to uncheck"},
+        "example": {"id": "<uuid>", "type": "uncheck", "selector": "#newsletter-opt-in"},
+    },
+    {
+        "type": "double-click",
+        "category": "interaction",
+        "params": {"selector": "Element to double-click"},
+        "example": {"id": "<uuid>", "type": "double-click", "selector": ".file-row[data-name='report.pdf']"},
+    },
+    {
+        "type": "right-click",
+        "category": "interaction",
+        "params": {"selector": "Element to right-click (opens context menus)"},
+        "example": {"id": "<uuid>", "type": "right-click", "selector": ".tree-node"},
+    },
+    {
+        "type": "drag-and-drop",
+        "category": "interaction",
+        "params": {"selector": "Source element", "value": "Target element selector"},
+        "example": {"id": "<uuid>", "type": "drag-and-drop", "selector": ".card[data-id='7']", "value": ".column[data-status='done']"},
+    },
+    {
+        "type": "upload-file",
+        "category": "interaction",
+        "params": {
+            "selector": "The <input type=file> element",
+            "params.files": "Inline fixtures: [{name, content_base64}] written to a temp dir on the worker",
+            "value": "Alternative: comma-separated worker-local file paths (pre-mounted fixtures)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "upload-file",
+            "selector": "input[type=file]",
+            "params": {"files": [{"name": "avatar.png", "content_base64": "<base64>"}]},
+        },
+        "notes": "Prefer params.files — inline base64 fixtures travel with the test case and need nothing on the worker.",
+    },
+    {
+        "type": "download-file",
+        "category": "interaction",
+        "params": {
+            "params.trigger_selector": "Element clicked to start the download (required in practice — steps are sequential, so the trigger must overlap the wait)",
+            "params.filename_contains": "Assert the suggested filename contains this substring (optional)",
+            "params.variableName": "Store the downloaded filename in this variable (optional)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "download-file",
+            "params": {"trigger_selector": "#export-csv", "filename_contains": ".csv"},
+        },
+        "notes": "The file is saved with the run's artifacts.",
+    },
+    {
+        "type": "handle-dialog",
+        "category": "interaction",
+        "params": {
+            "params.action": "'accept' (default) or 'dismiss'",
+            "params.prompt_text": "Text typed into prompt() dialogs before accepting (optional)",
+            "params.variableName": "Store the dialog message for a later assert (optional)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "handle-dialog",
+            "params": {"action": "accept"},
+        },
+        "notes": "Arms a one-shot handler for the NEXT dialog — place this step BEFORE the click that triggers the alert/confirm/prompt. Without it, Playwright auto-dismisses dialogs.",
+    },
+    {
+        "type": "switch-tab",
+        "category": "navigation",
+        "params": {
+            "value": "'latest' | 1-based tab index | URL substring",
+            "params.trigger_selector": "Element clicked to open the popup/new tab; the step waits for the new page (optional)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "switch-tab",
+            "value": "latest",
+            "params": {"trigger_selector": "a[target=_blank]"},
+        },
+        "notes": "Subsequent steps run against the switched-to tab. Use `switch-tab` with value '1' to return to the first tab.",
+    },
+    {
         "type": "wait-for-selector",
         "category": "wait",
         "params": {"selector": "Selector to wait for"},
@@ -98,6 +189,23 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "category": "wait",
         "params": {"value": "Milliseconds to wait (string)"},
         "example": {"id": "<uuid>", "type": "wait-timeout", "value": "1500"},
+    },
+    {
+        "type": "wait-for-response",
+        "category": "wait",
+        "params": {
+            "value": "URL substring the response must contain",
+            "params.status": "Expected HTTP status of the matching response (optional)",
+            "params.trigger_selector": "Element clicked AFTER arming the wait, so the request it fires is caught (optional)",
+            "params.variableName": "Store the matched response status (optional)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "wait-for-response",
+            "value": "/api/search",
+            "params": {"status": 200, "trigger_selector": "#search-btn"},
+        },
+        "notes": "Prefer this over wait-timeout for XHR-driven UIs. Use trigger_selector when a click fires the request — sequential steps cannot overlap otherwise.",
     },
     {
         "type": "expect-visible",
@@ -113,6 +221,13 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "type": "expect-text",
         "category": "assertion",
         "params": {"selector": "Element to check", "value": "Expected text (default: exact match)"},
+    },
+    {
+        "type": "expect-not-text",
+        "category": "assertion",
+        "params": {"selector": "Element to check (must exist)", "value": "Text that must be ABSENT from the element"},
+        "example": {"id": "<uuid>", "type": "expect-not-text", "selector": ".todo-list", "value": "Deleted item"},
+        "notes": "The element itself must exist; to assert an element is gone entirely use expect-hidden.",
     },
     {
         "type": "expect-url",

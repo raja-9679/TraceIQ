@@ -204,7 +204,10 @@ export class PlaywrightRunner {
                                 }
                             } else {
                                 const stepResponse = await TestExecutor.executeStep(page, currentContext, step, caseSettings, localContextData);
-                                if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
+                                if (stepResponse?.__switchToPage) {
+                                    page = stepResponse.__switchToPage;
+                                    currentContext = page;
+                                } else if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                                     lastStepResult = stepResponse;
                                 }
                             }

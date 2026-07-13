@@ -106,6 +106,21 @@ Call `describe_step_types` for the full catalogue. The five gotchas that
 caught me when authoring against Sarvajna are spelled out here so you
 don't repeat them.
 
+### Event-driven steps use an arm-before-trigger pattern
+
+Steps run strictly sequentially, so anything that must *overlap* a
+browser event carries its own trigger:
+
+- `handle-dialog` — place it **before** the click that fires the
+  alert/confirm/prompt; it arms a one-shot handler for the next dialog.
+- `download-file` / `wait-for-response` / `switch-tab` — pass
+  `params.trigger_selector`; the step arms its wait first, then clicks
+  the trigger itself. A separate `click` step before the wait step will
+  race and usually lose the event.
+- `upload-file` — prefer `params.files: [{name, content_base64}]`;
+  inline fixtures travel with the test case and need nothing
+  pre-provisioned on the worker.
+
 ### Pitfall 1 — `feed-check` is a fetch+assert, NOT a pure assertion
 
 ❌ This pattern **does not work**:
