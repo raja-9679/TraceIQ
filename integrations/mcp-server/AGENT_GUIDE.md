@@ -161,6 +161,23 @@ In steps:
 Author credentials as `{{secret.ADMIN_PASSWORD}}`, never as literals —
 step JSON is stored, diffed, and shown in proposals.
 
+### Data-driven tests — one case, many rows
+
+Set `dataset` on a case to a JSON array of row objects:
+
+```jsonc
+"dataset": [
+  {"query": "election results", "expect": "Bihar"},
+  {"query": "cricket score", "expect": "India"}
+]
+```
+
+At dispatch the case expands into one execution per row (results appear
+as `Case name [row 1]`, `[row 2]`, …). Steps reference row values as
+`{{data.query}}` in any value/header/param/body. Generating edge-case
+rows is usually cheaper and more maintainable than generating N nearly
+identical cases.
+
 ### Pitfall 1 — `feed-check` is a fetch+assert, NOT a pure assertion
 
 ❌ This pattern **does not work**:

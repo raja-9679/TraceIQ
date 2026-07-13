@@ -56,6 +56,8 @@ export default function TestBuilder() {
     const [steps, setSteps] = useState<TestStep[]>([]);
     const [isAuthSetup, setIsAuthSetup] = useState(false);
     const [useAuthSession, setUseAuthSession] = useState(true);
+    const [datasetText, setDatasetText] = useState('');
+    const [showDataset, setShowDataset] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
     const [originalData, setOriginalData] = useState<{ testName: string; steps: TestStep[] } | null>(null);
     const initialLoadDone = useRef(false);
@@ -84,6 +86,10 @@ export default function TestBuilder() {
             setOriginalData({ testName: serverData.name, steps: serverData.steps || [] });
             setIsAuthSetup(!!serverData.is_auth_setup);
             setUseAuthSession(serverData.use_auth_session !== false);
+            if (serverData.dataset && Array.isArray(serverData.dataset) && serverData.dataset.length > 0) {
+                setDatasetText(JSON.stringify(serverData.dataset, null, 2));
+                setShowDataset(true);
+            }
 
             if (draft && draft.timestamp) {
                 // We have a draft - ask user if they want to restore it
@@ -238,12 +244,27 @@ export default function TestBuilder() {
 
     const saveMutation = useMutation({
         mutationFn: async () => {
+            let dataset: Record<string, unknown>[] | null = null;
+            if (datasetText.trim()) {
+                let parsed: unknown;
+                try {
+                    parsed = JSON.parse(datasetText);
+                } catch {
+                    throw new Error('Dataset is not valid JSON');
+                }
+                if (!Array.isArray(parsed) || parsed.some(r => typeof r !== 'object' || r === null || Array.isArray(r))) {
+                    throw new Error('Dataset must be a JSON array of objects, e.g. [{"user": "a"}, {"user": "b"}]');
+                }
+                dataset = parsed as Record<string, unknown>[];
+            }
+
             const payload = {
                 name: testName,
                 test_suite_id: parseInt(suiteId || '0'),
                 steps: steps,
                 is_auth_setup: isAuthSetup,
-                use_auth_session: useAuthSession
+                use_auth_session: useAuthSession,
+                dataset: dataset
             };
 
             if (isEditing && caseId) {
@@ -260,7 +281,7 @@ export default function TestBuilder() {
             navigate(`/suites/${suiteId}`);
         },
         onError: (error: any) => {
-            toast.error(error?.response?.data?.detail || 'Failed to save test case');
+            toast.error(error?.response?.data?.detail || error?.message || 'Failed to save test case');
         }
     });
 
@@ -298,6 +319,14 @@ export default function TestBuilder() {
                     </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => setShowDataset(!showDataset)}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${datasetText.trim() ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                        title="Run this case once per dataset row; reference values in steps as {{data.KEY}}"
+                    >
+                        Dataset{datasetText.trim() ? ' ✓' : ''}
+                    </button>
                     <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="A passing run of this case captures the logged-in session (cookies + storage) and stores it for the project. Other cases then start already logged in.">
                         <input type="checkbox" checked={isAuthSetup} onChange={(e) => { setIsAuthSetup(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
                         Auth setup case
@@ -332,6 +361,26 @@ export default function TestBuilder() {
             </div>
 
             <div className="max-w-4xl mx-auto pb-24">
+                {/* ── Data-driven dataset panel ── */}
+                {showDataset && (
+                    <div className="mb-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-bold text-indigo-800">Dataset (data-driven runs)</h3>
+                            <button type="button" onClick={() => { setDatasetText(''); setIsDirty(true); }} className="text-xs text-slate-500 hover:text-rose-600">Clear</button>
+                        </div>
+                        <p className="text-xs text-slate-600 mb-3">
+                            A JSON array of row objects. The case runs once per row; reference values in any step as <code className="bg-white px-1 rounded">{'{{data.KEY}}'}</code>. Leave empty for a normal single run.
+                        </p>
+                        <textarea
+                            value={datasetText}
+                            onChange={(e) => { setDatasetText(e.target.value); setIsDirty(true); }}
+                            placeholder={'[\n  {"query": "election results", "expect": "Bihar"},\n  {"query": "cricket score", "expect": "India"}\n]'}
+                            spellCheck={false}
+                            className="w-full h-40 rounded-xl border border-indigo-200 bg-white p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+                        />
+                    </div>
+                )}
+
                 {/* ── Test Steps Canvas ── */}
                 <div className="mb-10">
                     <div className="flex items-center justify-between mb-8 px-2">
