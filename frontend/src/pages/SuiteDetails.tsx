@@ -5,11 +5,12 @@ import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getAudi
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScheduleModal } from "@/components/ScheduleModal";
+import { GenerateCaseDialog } from "@/components/GenerateCaseDialog";
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import {
-    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History
+    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles
 } from 'lucide-react';
 import {
     Select,
@@ -118,6 +119,9 @@ export default function SuiteDetails() {
 
     // Dialog state
     const [showSubModuleDialog, setShowSubModuleDialog] = useState(false);
+    const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+    // Feature flag from Settings → General → AI Test Generation (off by default)
+    const aiGenerationEnabled = localStorage.getItem('traceiq.ui.aiGeneration') === 'on';
     const [newModuleName, setNewModuleName] = useState('');
     const [newModuleDesc, setNewModuleDesc] = useState('');
 
@@ -740,9 +744,16 @@ export default function SuiteDetails() {
                                                     Run All
                                                 </Button>
                                                 {can("test:create", { projectId, workspaceId }) && (
-                                                    <Button size="sm" onClick={() => navigate(`/suites/${suiteId}/builder`)} className="rounded-xl border-slate-200 text-slate-700 bg-white shadow-sm h-9 px-3 hover:bg-slate-50 font-medium">
-                                                        <Plus className="mr-1.5 h-4 w-4" /> Add Case
-                                                    </Button>
+                                                    <>
+                                                        {aiGenerationEnabled && (
+                                                            <Button size="sm" onClick={() => setShowGenerateDialog(true)} className="rounded-xl border-slate-200 text-indigo-700 bg-indigo-50 shadow-sm h-9 px-3 hover:bg-indigo-100 font-medium">
+                                                                <Sparkles className="mr-1.5 h-4 w-4" /> Generate
+                                                            </Button>
+                                                        )}
+                                                        <Button size="sm" onClick={() => navigate(`/suites/${suiteId}/builder`)} className="rounded-xl border-slate-200 text-slate-700 bg-white shadow-sm h-9 px-3 hover:bg-slate-50 font-medium">
+                                                            <Plus className="mr-1.5 h-4 w-4" /> Add Case
+                                                        </Button>
+                                                    </>
                                                 )}
                                             </div>
                                         </div>
@@ -1711,6 +1722,12 @@ export default function SuiteDetails() {
                 testSuiteId={scheduleTarget?.suiteId}
                 testCaseId={scheduleTarget?.caseId}
                 targetName={`${scheduleTarget?.name}`}
+            />
+
+            <GenerateCaseDialog
+                suiteId={Number(suiteId)}
+                open={showGenerateDialog}
+                onOpenChange={setShowGenerateDialog}
             />
         </div>
     );
