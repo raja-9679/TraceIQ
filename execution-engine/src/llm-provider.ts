@@ -1,9 +1,13 @@
 // LLM provider abstraction for the execution engine.
 //
 // Selects a backing provider based on env vars at module load:
-//   LLM_PROVIDER=openai|anthropic  (explicit)
+//   LLM_PROVIDER=anthropic|openai|gemini|ollama|openai-compatible  (explicit)
 //   ANTHROPIC_API_KEY              (implicit → anthropic)
+//   GEMINI_API_KEY                 (implicit → gemini)
 //   OPENAI_API_KEY                 (implicit → openai)
+//   OLLAMA_BASE_URL                (implicit → ollama; local + free, no key)
+// Gemini, Ollama, and openai-compatible (Groq/OpenRouter/LM Studio/vLLM via
+// LLM_BASE_URL + LLM_API_KEY) all reuse the OpenAI client with a base URL.
 // Falls back to a null provider that returns "" so callers don't have to
 // guard every call on key-present checks.
 
@@ -12,15 +16,18 @@ export interface LLMProvider {
     complete(prompt: string, opts?: { system?: string; maxTokens?: number }): Promise<string>;
 }
 
-class OpenAIProvider implements LLMProvider {
-    name = 'openai';
+// Any OpenAI-wire-compatible endpoint: OpenAI, Gemini (compat endpoint),
+// Ollama, Groq, OpenRouter, LM Studio, vLLM.
+class OpenAICompatibleProvider implements LLMProvider {
+    name: string;
     private client: any;
     private model: string;
 
-    constructor(apiKey: string, model: string) {
+    constructor(name: string, apiKey: string, model: string, baseURL?: string) {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const OpenAI = require('openai').default;
-        this.client = new OpenAI({ apiKey });
+        this.name = name;
+        this.client = baseURL ? new OpenAI({ apiKey, baseURL }) : new OpenAI({ apiKey });
         this.model = model;
     }
 
@@ -36,11 +43,13 @@ class OpenAIProvider implements LLMProvider {
             });
             return (resp.choices[0].message.content || '').trim();
         } catch (err) {
-            console.error('[LLM] OpenAI call failed:', err);
+            console.error(`[LLM] ${this.name} call failed:`, err);
             return '';
         }
     }
 }
+
+const GEMINI_OPENAI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
 
 class AnthropicProvider implements LLMProvider {
     name = 'anthropic';
@@ -89,12 +98,34 @@ export function pickProvider(): LLMProvider {
                 console.warn('[LLM] LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY missing; using null provider');
                 return new NullProvider();
             }
-            return new AnthropicProvider(key, model || 'claude-opus-4-7');
+            return new AnthropicProvider(key, model || 'claude-opus-4-8');
+        }
+        if (explicit === 'gemini' || (!explicit && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY))) {
+            const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+            if (!key) {
+                console.warn('[LLM] LLM_PROVIDER=gemini but GEMINI_API_KEY missing; using null provider');
+                return new NullProvider();
+            }
+            return new OpenAICompatibleProvider('gemini', key, model || 'gemini-2.0-flash', GEMINI_OPENAI_BASE_URL);
         }
         if (explicit === 'openai' || (!explicit && process.env.OPENAI_API_KEY)) {
             const key = process.env.OPENAI_API_KEY;
             if (!key) return new NullProvider();
-            return new OpenAIProvider(key, model || 'gpt-4o');
+            return new OpenAICompatibleProvider('openai', key, model || 'gpt-4o');
+        }
+        if (explicit === 'ollama' || (!explicit && process.env.OLLAMA_BASE_URL)) {
+            // Local + free, no API key. From inside Docker use
+            // OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+            const baseURL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1';
+            return new OpenAICompatibleProvider('ollama', 'ollama', model || 'llama3.1', baseURL);
+        }
+        if (explicit === 'openai-compatible' || explicit === 'custom') {
+            const baseURL = process.env.LLM_BASE_URL;
+            if (!baseURL || !model) {
+                console.warn('[LLM] LLM_PROVIDER=openai-compatible needs LLM_BASE_URL and LLM_MODEL; using null provider');
+                return new NullProvider();
+            }
+            return new OpenAICompatibleProvider('openai-compatible', process.env.LLM_API_KEY || 'not-needed', model, baseURL);
         }
     } catch (err) {
         console.error('[LLM] Provider init failed; using null provider:', err);
