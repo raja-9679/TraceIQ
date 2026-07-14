@@ -97,6 +97,16 @@ class MinioClient:
         )
         return url
 
+    def get_internal_presigned_url(self, object_name: str, expiration=3600):
+        """Presigned URL against the internal endpoint (minio:9000) — for
+        consumers on the docker network (workers); the public URL's
+        localhost host is unreachable from inside containers."""
+        return self.s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": object_name},
+            ExpiresIn=expiration,
+        )
+
     def delete_run_artifacts(self, run_id: int):
         """Delete all artifacts associated with a run ID (prefix match)"""
         try:

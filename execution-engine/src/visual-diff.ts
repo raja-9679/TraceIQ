@@ -67,17 +67,26 @@ export async function compareScreenshots(opts: {
         };
     }
 
-    const candidate = PNG.sync.read(candidateBuf);
-    const baseline = PNG.sync.read(opts.baselineBytes);
+    let candidate = PNG.sync.read(candidateBuf);
+    let baseline = PNG.sync.read(opts.baselineBytes);
 
+    // Dimension mismatch (common for full-page shots — page height varies
+    // between visits): pad both onto a common white canvas so pixelmatch can
+    // still run and produce a diff image; the extra region reads as diff.
+    let sizeNote: string | undefined;
     if (candidate.width !== baseline.width || candidate.height !== baseline.height) {
-        return {
-            passed: false,
-            diffRatio: 1,
-            totalPixels: 0,
-            diffPixels: 0,
-            error: `dimension mismatch: baseline=${baseline.width}x${baseline.height} candidate=${candidate.width}x${candidate.height}`,
+        sizeNote = `dimension mismatch: baseline=${baseline.width}x${baseline.height} candidate=${candidate.width}x${candidate.height} (compared on padded canvas)`;
+        const w = Math.max(candidate.width, baseline.width);
+        const h = Math.max(candidate.height, baseline.height);
+        const pad = (src: any) => {
+            if (src.width === w && src.height === h) return src;
+            const out = new PNG({ width: w, height: h });
+            out.data.fill(255); // white, opaque
+            PNG.bitblt(src, out, 0, 0, src.width, src.height, 0, 0);
+            return out;
         };
+        candidate = pad(candidate);
+        baseline = pad(baseline);
     }
 
     const { width, height } = candidate;
@@ -122,5 +131,6 @@ export async function compareScreenshots(opts: {
         totalPixels: total,
         diffPixels,
         diffImagePath: diffPath,
+        error: sizeNote,
     };
 }

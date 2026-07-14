@@ -311,6 +311,8 @@ class ExecutionWorker {
             const contextData = {
                 id: testCaseId,
                 name: testCase.name,
+                browser: job.browser || 'chromium',
+                device: job.device || null,
                 variables: {},
                 // Data-driven row for this expansion; steps read {{data.KEY}}
                 data: (testCase as any).data_row || {}

@@ -606,13 +606,15 @@ export class TestExecutor {
                     // eslint-disable-next-line @typescript-eslint/no-var-requires
                     const { resolveBaseline, fetchImageBytes } = require('../baseline-client');
 
-                    const testCaseId = (this as any)?.currentTestCase?.id || step.params?.test_case_id;
-                    const browserName = (this as any)?.browserName || 'chromium';
+                    // executeStep is static — the case id/browser come from the
+                    // per-case context the worker builds, not from `this`.
+                    const testCaseId = testCaseContext?.id || step.params?.test_case_id;
+                    const browserName = testCaseContext?.browser || 'chromium';
                     const baseline = await resolveBaseline({
                         testCaseId,
                         stepId,
                         browser: browserName,
-                        device: (this as any)?.device,
+                        device: testCaseContext?.device,
                     });
                     if (!baseline) {
                         console.log(`[visual-match] no baseline for step ${stepId} — capture-only`);
