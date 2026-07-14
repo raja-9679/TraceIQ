@@ -83,3 +83,6 @@ yarn-error.log*
 traceiq_frontend_*.zip
 __pycache__/
 *.pyc
+
+# Celery beat runtime state
+backend/celerybeat-schedule
