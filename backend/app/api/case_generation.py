@@ -25,6 +25,8 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
+from html.parser import HTMLParser
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -145,14 +147,47 @@ async def generate_case(
     if project:
         await _check_and_consume_ai_budget(project.workspace_id, session)
 
-    prompt = (
-        f"Description: {body.description}\n"
-        f"Target URL: {body.target_url or '(none provided)'}\n\n"
-        "Generate the steps needed to verify the described user journey. "
-        "Begin with a `goto` step if a target URL is provided. End with an "
-        "`expect-visible` or `expect-text` step that proves the journey "
-        "succeeded."
-    )
+    # Probe the target URL so selectors/assertions are grounded in what the
+    # page/endpoint actually serves, instead of hallucinated from the
+    # description alone.
+    kind, target_context = ("", "")
+    if body.target_url:
+        kind, target_context = await _fetch_target_context(body.target_url)
+
+    if kind == "html":
+        prompt = (
+            f"Description: {body.description}\n"
+            f"Target URL: {body.target_url}\n\n"
+            "Below are the interactive elements extracted from a live fetch of the "
+            "target page. Build selectors ONLY from these real elements — prefer "
+            "#id, [data-testid=...], [name=...], then text-based selectors. Never "
+            "invent an id or class that is not listed.\n\n"
+            f"{target_context}\n\n"
+            "Generate the steps needed to verify the described user journey. "
+            "Begin with a `goto` step to the target URL. End with an "
+            "`expect-visible` or `expect-text` step that proves the journey succeeded."
+        )
+    elif kind in ("json", "feed"):
+        step_type = "http-request" if kind == "json" else "feed-check"
+        prompt = (
+            f"Description: {body.description}\n"
+            f"Target URL: {body.target_url}\n\n"
+            f"The target URL serves {'JSON (an API endpoint)' if kind == 'json' else 'an XML/RSS/Atom feed'}, "
+            "not an HTML page. Below is the actual response from a live probe. "
+            f"Generate `{step_type}` steps whose assertions are grounded in this real "
+            "response shape — assert on fields/paths that actually exist. Do NOT "
+            "generate browser steps like goto/click/fill.\n\n"
+            f"{target_context}"
+        )
+    else:
+        prompt = (
+            f"Description: {body.description}\n"
+            f"Target URL: {body.target_url or '(none provided)'}\n\n"
+            "Generate the steps needed to verify the described user journey. "
+            "Begin with a `goto` step if a target URL is provided. End with an "
+            "`expect-visible` or `expect-text` step that proves the journey "
+            "succeeded."
+        )
     raw = llm_provider.complete(prompt, system=_GENERATION_SYSTEM, max_tokens=1500)
     steps = _parse_steps_payload(raw)
     if not steps:
@@ -289,6 +324,120 @@ async def cases_from_openapi(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+async def _fetch_target_context(url: str) -> tuple:
+    """Probe the target URL and return (kind, context) for prompt grounding.
+
+    kind: "html" (distilled interactive DOM) | "json" (pretty response) |
+    "feed" (raw XML head) | "" (probe failed — caller falls back to the
+    ungrounded prompt).
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, verify=False) as client:
+            resp = await client.get(url, headers={"User-Agent": "TraceIQ-CaseGenerator/1.0"})
+    except Exception as exc:  # noqa: BLE001 — probe is best-effort
+        print(f"[case-gen] probe of {url} failed: {exc}")
+        return "", ""
+
+    ctype = resp.headers.get("content-type", "").lower()
+    body = resp.text or ""
+    head = body.lstrip()[:1]
+
+    if "json" in ctype or (head in ("{", "[") and "html" not in ctype):
+        try:
+            pretty = json.dumps(resp.json(), indent=1, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pretty = body
+        return "json", f"HTTP {resp.status_code}  content-type: {ctype}\n{pretty[:3000]}"
+    if any(t in ctype for t in ("xml", "rss", "atom")) or body.lstrip().startswith("<?xml"):
+        return "feed", f"HTTP {resp.status_code}  content-type: {ctype}\n{body[:3000]}"
+    if "html" in ctype or "<html" in body[:1000].lower():
+        distilled = _distill_dom(body)
+        # Empty distillation (e.g. a JS-only shell page) → fall back to the
+        # ungrounded prompt rather than promising elements we don't have.
+        return ("html", distilled) if distilled else ("", "")
+    return "", ""
+
+
+class _InteractiveElementCollector(HTMLParser):
+    """Extracts interactive/landmark elements with the attributes that make
+    good selectors, so the LLM grounds selectors in the real page."""
+
+    _CAPTURE = {"a", "button", "input", "select", "textarea", "form", "label",
+                "h1", "h2", "h3"}
+    _ATTRS = ("id", "name", "type", "placeholder", "data-testid", "role",
+              "aria-label", "value", "href", "action", "for")
+    _MAX_ELEMENTS = 120
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.lines: List[str] = []
+        self._open: Optional[Dict[str, Any]] = None
+        self._skip_depth = 0  # inside <script>/<style>
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag in ("script", "style", "svg", "noscript"):
+            self._skip_depth += 1
+            return
+        if self._skip_depth or len(self.lines) >= self._MAX_ELEMENTS or tag not in self._CAPTURE:
+            return
+        attr_map = dict(attrs)
+        parts = [tag]
+        for key in self._ATTRS:
+            val = (attr_map.get(key) or "").strip()
+            if val:
+                parts.append(f'{key}="{val[:80]}"')
+        classes = (attr_map.get("class") or "").split()
+        if classes:
+            parts.append(f'class="{" ".join(classes[:3])}"')
+        self._flush()
+        self._open = {"desc": " ".join(parts), "text": []}
+        # inputs are void elements — no text will follow
+        if tag == "input":
+            self._flush()
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in ("script", "style", "svg", "noscript"):
+            self._skip_depth = max(0, self._skip_depth - 1)
+            return
+        if tag in self._CAPTURE:
+            self._flush()
+
+    def handle_data(self, data: str) -> None:
+        if self._open is not None and not self._skip_depth:
+            text = data.strip()
+            if text:
+                self._open["text"].append(text)
+
+    def _flush(self) -> None:
+        if self._open is None:
+            return
+        text = " ".join(self._open["text"])[:100]
+        line = f'<{self._open["desc"]}>'
+        if text:
+            line += f" text={text!r}"
+        self.lines.append(line)
+        self._open = None
+
+    def close(self) -> None:  # noqa: D102
+        self._flush()
+        super().close()
+
+
+def _distill_dom(html: str) -> str:
+    """Reduce a page to a compact list of its interactive elements (~5KB max)
+    so it fits small-model context windows."""
+    collector = _InteractiveElementCollector()
+    try:
+        collector.feed(html)
+        collector.close()
+    except Exception as exc:  # noqa: BLE001 — malformed HTML must not 500 the endpoint
+        print(f"[case-gen] DOM distillation failed: {exc}")
+    if not collector.lines:
+        return ""
+    out = "\n".join(collector.lines)
+    return out[:5000]
+
 
 def _parse_steps_payload(raw: str) -> List[Dict[str, Any]]:
     if not raw:
