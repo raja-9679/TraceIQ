@@ -1,7 +1,8 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair } from "lucide-react";
+import { ElementPickerDialog } from './ElementPickerDialog';
 import {
     Select,
     SelectContent,
@@ -14,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
     selector?: string;
     value?: string;
     params?: {
@@ -41,9 +42,12 @@ interface StepComponentProps {
     insertStep: (index: number) => void;
     isFirst: boolean;
     isLast: boolean;
+    /** URL prefilled into the element picker (usually the case's goto step) */
+    pickerUrl?: string;
 }
 
-export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast }) => {
+export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast, pickerUrl }) => {
+    const [showPicker, setShowPicker] = React.useState(false);
     const [localHeaders, setLocalHeaders] = React.useState(JSON.stringify(step.params?.headers || {}, null, 2));
     const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
     const [localBody, setLocalBody] = React.useState(step.params?.body || '');
@@ -109,6 +113,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'expect-hidden': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
             case 'expect-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Search size={18} />, label: 'Expect Text' };
             case 'expect-url': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect URL' };
+            case 'expect-visual-match': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Camera size={18} />, label: 'Visual Match' };
             case 'hover': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
             case 'press-key': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
             case 'http-request': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <FileJson size={18} />, label: 'API Request' };
@@ -116,6 +121,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'run-script': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Code2 size={18} />, label: 'Run Script' };
             case 'assert': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <CheckCircle2 size={18} />, label: 'Assertion' };
             case 'amp-validate': return { border: 'border-violet-200', bg: 'bg-violet-50 text-violet-600', hue: 'violet', icon: <Zap size={18} />, label: 'AMP Validate' };
+            case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
             default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
         }
     };
@@ -171,6 +177,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-cyan-500"/> Expect Text</div></SelectItem>
                                 <SelectItem value="expect-not-text"><div className="flex items-center gap-2"><SearchX size={14} className="text-cyan-500"/> Expect Not Text</div></SelectItem>
                                 <SelectItem value="expect-url"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect URL</div></SelectItem>
+                                <SelectItem value="expect-visual-match"><div className="flex items-center gap-2"><Camera size={14} className="text-cyan-500"/> Visual Match</div></SelectItem>
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
                                 <SelectItem value="http-request"><div className="flex items-center gap-2"><FileJson size={14} className="text-amber-500"/> API Request</div></SelectItem>
@@ -308,6 +315,14 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     className={`flex-1 min-w-[100px] h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-emerald-50 text-emerald-700 font-bold px-4`}
                                 />
                             </div>
+                        ) : (step.type as string) === '' ? (
+                            <div className="flex-1 min-w-0 h-12 rounded-xl px-4 flex items-center text-sm text-slate-400 italic">
+                                ← Choose an action from the dropdown to configure this step
+                            </div>
+                        ) : step.type === 'expect-visual-match' ? (
+                            <div className={`flex-1 min-w-0 h-12 rounded-xl shadow-sm bg-white px-4 flex items-center text-sm text-slate-500`}>
+                                Captures a full-page screenshot and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.
+                            </div>
                         ) : (
                             /* Default UI for other steps */
                             <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
@@ -326,6 +341,18 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
                                     className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
+
+                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        onClick={() => setShowPicker(true)}
+                                        title="Pick element from a rendered page"
+                                        className="h-12 w-12 shrink-0 rounded-xl bg-white shadow-sm text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                    >
+                                        <Crosshair size={18} />
+                                    </Button>
+                                )}
 
                                 {step.type === 'extract-value' && (
                                     <Input
@@ -677,6 +704,13 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                     <Button variant="ghost" size="icon" title="Delete Step" onClick={() => removeStep(step.id)} className="h-7 w-7 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-700"><Trash2 size={13} /></Button>
                 </div>
             </div>
+
+            <ElementPickerDialog
+                open={showPicker}
+                onOpenChange={setShowPicker}
+                initialUrl={pickerUrl}
+                onPick={(selector) => updateStep(step.id, 'selector', selector)}
+            />
         </div>
     );
 };

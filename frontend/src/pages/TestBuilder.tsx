@@ -233,7 +233,7 @@ export default function TestBuilder() {
     const insertStep = (index: number) => {
         const newStep: TestStep = {
             id: crypto.randomUUID(),
-            type: 'goto',
+            type: '' as TestStep['type'],  // blank — user picks the action from the dropdown
             selector: '',
             value: ''
         };
@@ -244,6 +244,10 @@ export default function TestBuilder() {
 
     const saveMutation = useMutation({
         mutationFn: async () => {
+            const unchosen = steps.findIndex(s => !s.type);
+            if (unchosen !== -1) {
+                throw new Error(`Step ${unchosen + 1} has no action yet — choose one from its dropdown`);
+            }
             let dataset: Record<string, unknown>[] | null = null;
             if (datasetText.trim()) {
                 let parsed: unknown;
@@ -425,6 +429,7 @@ export default function TestBuilder() {
                                                 insertStep={insertStep}
                                                 isFirst={index === 0}
                                                 isLast={index === steps.length - 1}
+                                                pickerUrl={steps.find(s => s.type === 'goto')?.value}
                                             />
                                         </motion.div>
                                     ))}
@@ -437,6 +442,10 @@ export default function TestBuilder() {
                 {/* ── Add Step Floating Bar ── */}
                 <div className="fixed sm:sticky bottom-6 sm:bottom-8 left-1/2 sm:left-auto sm:translate-x-0 -translate-x-1/2 z-30 w-full sm:w-auto px-4 sm:px-0 pointer-events-none">
                     <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-800 p-2 sm:p-2.5 rounded-3xl sm:rounded-full shadow-2xl flex flex-wrap sm:flex-nowrap justify-center gap-1.5 sm:gap-2 max-w-full sm:max-w-fit mx-auto pointer-events-auto">
+                        <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full bg-indigo-600/90 text-white hover:bg-indigo-500 hover:text-white transition-colors shrink-0 text-xs sm:text-sm font-semibold" onClick={() => addStep('' as TestStep['type'])}>
+                            <Plus className="mr-1.5 sm:mr-2 h-4 w-4" /> Step
+                        </Button>
+                        <div className="w-px h-6 bg-slate-800 my-auto hidden sm:block"></div>
                         <Button variant="ghost" className="h-10 px-3 sm:px-4 rounded-full text-slate-300 hover:text-white hover:bg-slate-800 transition-colors shrink-0 text-xs sm:text-sm" onClick={() => addStep('goto')}>
                             <Link2 className="mr-1.5 sm:mr-2 h-4 w-4 text-emerald-400" /> Navigate
                         </Button>
