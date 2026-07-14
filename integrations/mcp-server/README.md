@@ -4,6 +4,10 @@ Model Context Protocol server that exposes TraceIQ as a tool for AI coding
 agents. Agents can call TraceIQ to create test suites, trigger regression
 runs, and check results — the safety-net for AI-authored code.
 
+> **Building an app with Claude Code?** See [CLAUDE_CODE_SETUP.md](./CLAUDE_CODE_SETUP.md)
+> for copy-paste setup and the CLAUDE.md prompt that makes the agent author
+> and run TraceIQ tests for every feature it builds.
+
 Two transport modes:
 
 | Mode | When to use |
