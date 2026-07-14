@@ -26,12 +26,18 @@ class LLMProvider(Protocol):
         ...
 
 
-class OpenAIProvider:
-    name = "openai"
+class OpenAICompatibleProvider:
+    """Chat-completions provider for any OpenAI-wire-compatible endpoint.
 
-    def __init__(self, api_key: str, model: str = "gpt-4o") -> None:
+    Covers OpenAI itself plus Gemini (via Google's compat endpoint), Ollama
+    (local, free), Groq/OpenRouter free tiers, LM Studio, vLLM — anything that
+    serves POST {base_url}/chat/completions.
+    """
+
+    def __init__(self, name: str, api_key: str, model: str, base_url: Optional[str] = None) -> None:
         from openai import OpenAI
-        self._client = OpenAI(api_key=api_key)
+        self.name = name
+        self._client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
         self._model = model
 
     def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
@@ -48,14 +54,17 @@ class OpenAIProvider:
             content = resp.choices[0].message.content or ""
             return content.strip()
         except Exception as exc:  # noqa: BLE001 — provider errors must not bubble up
-            print(f"[LLM] OpenAI call failed: {exc}")
+            print(f"[LLM] {self.name} call failed: {exc}")
             return ""
+
+
+GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 class AnthropicProvider:
     name = "anthropic"
 
-    def __init__(self, api_key: str, model: str = "claude-opus-4-7") -> None:
+    def __init__(self, api_key: str, model: str = "claude-opus-4-8") -> None:
         try:
             from anthropic import Anthropic
         except ImportError as exc:
@@ -103,26 +112,56 @@ def _detect_provider_name() -> str:
         return explicit.strip().lower()
     if os.getenv("ANTHROPIC_API_KEY"):
         return "anthropic"
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        return "gemini"
     if settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY"):
         return "openai"
+    if os.getenv("OLLAMA_BASE_URL"):
+        return "ollama"
     return "null"
 
 
 def build_default_provider() -> LLMProvider:
     name = _detect_provider_name()
+    model = os.getenv("LLM_MODEL", "")
     if name == "anthropic":
         key = os.getenv("ANTHROPIC_API_KEY", "")
         if not key:
             print("[LLM] LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is empty; using null provider")
             return NullProvider()
-        model = os.getenv("LLM_MODEL", "claude-opus-4-7")
-        return AnthropicProvider(api_key=key, model=model)
+        return AnthropicProvider(api_key=key, model=model or "claude-opus-4-8")
     if name == "openai":
         key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
         if not key:
             return NullProvider()
-        model = os.getenv("LLM_MODEL", "gpt-4o")
-        return OpenAIProvider(api_key=key, model=model)
+        return OpenAICompatibleProvider("openai", api_key=key, model=model or "gpt-4o")
+    if name == "gemini":
+        # Google's OpenAI-compatible endpoint. The Gemini API has a generous
+        # free tier, so this doubles as the free hosted option.
+        key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+        if not key:
+            print("[LLM] LLM_PROVIDER=gemini but GEMINI_API_KEY is empty; using null provider")
+            return NullProvider()
+        return OpenAICompatibleProvider(
+            "gemini", api_key=key, model=model or "gemini-2.0-flash",
+            base_url=GEMINI_OPENAI_BASE_URL,
+        )
+    if name == "ollama":
+        # Local, free, no API key. From inside Docker use
+        # OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        return OpenAICompatibleProvider(
+            "ollama", api_key="ollama", model=model or "llama3.1",
+            base_url=base_url,
+        )
+    if name in ("openai-compatible", "custom"):
+        # Generic escape hatch: Groq/OpenRouter free tiers, LM Studio, vLLM…
+        base_url = os.getenv("LLM_BASE_URL", "")
+        if not base_url or not model:
+            print("[LLM] LLM_PROVIDER=openai-compatible needs LLM_BASE_URL and LLM_MODEL; using null provider")
+            return NullProvider()
+        key = os.getenv("LLM_API_KEY", "") or "not-needed"
+        return OpenAICompatibleProvider("openai-compatible", api_key=key, model=model, base_url=base_url)
     return NullProvider()
 
 
