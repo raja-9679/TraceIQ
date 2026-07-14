@@ -46,6 +46,9 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    # Lets containers reach a host-run Ollama at host.docker.internal:11434 (Linux)
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../backend:/app
     ports:
@@ -59,6 +62,14 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # LLM provider selection (anthropic | openai | gemini | ollama | openai-compatible)
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY}
       - ALGORITHM=${ALGORITHM:-HS256}
       - USE_DISTRIBUTED_EXECUTION=true
@@ -87,6 +98,8 @@ services:
       context: ../backend
       dockerfile: Dockerfile
     command: celery -A app.core.celery_app worker --loglevel=info -Q main-queue -c 4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ../backend:/app
     environment:
@@ -97,6 +110,14 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # LLM provider selection (anthropic | openai | gemini | ollama | openai-compatible)
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY}
       - USE_DISTRIBUTED_EXECUTION=true
       # Notification Settings (Celery worker sends notifications)
@@ -156,6 +177,14 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # LLM provider selection (anthropic | openai | gemini | ollama | openai-compatible)
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
       - SECRET_KEY=${SECRET_KEY}
     depends_on:
       - postgres
@@ -183,6 +212,14 @@ services:
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=test-artifacts
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # LLM provider selection (anthropic | openai | gemini | ollama | openai-compatible)
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
       - DEFAULT_TIMEOUT=${DEFAULT_TIMEOUT:-30000}
       - WORKER_IDLE_TIMEOUT=300000
       - MAX_JOBS_BEFORE_RESTART=50
@@ -193,6 +230,8 @@ services:
     networks:
       - qip_network
     shm_size: '1gb'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       replicas: 4
 
@@ -213,6 +252,14 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # LLM provider selection (anthropic | openai | gemini | ollama | openai-compatible)
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
       - REDIS_URL=redis://redis:6379/0
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -226,6 +273,8 @@ services:
     networks:
       - qip_network
     shm_size: '2gb'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   mcp-server:
     build:
