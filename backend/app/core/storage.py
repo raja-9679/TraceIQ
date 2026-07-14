@@ -73,6 +73,14 @@ class MinioClient:
         )
         return dest_key
 
+    def find_object(self, prefix: str, suffix: str):
+        """Return the first object key under prefix ending with suffix, or None."""
+        resp = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
+        for obj in resp.get("Contents", []):
+            if obj["Key"].endswith(suffix):
+                return obj["Key"]
+        return None
+
     def object_exists(self, object_name: str) -> bool:
         try:
             self.s3.head_object(Bucket=self.bucket, Key=object_name)

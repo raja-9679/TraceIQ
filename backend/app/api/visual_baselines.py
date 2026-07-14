@@ -148,9 +148,15 @@ async def promote_baseline(
 
     source_key = f"runs/{body.run_id}/screenshots/visual-{body.step_id}.png"
     if not minio_client.object_exists(source_key):
+        # Workers prefix candidate uploads with the job id
+        # (runs/{run_id}/screenshots/{job_id}-visual-{step_id}.png).
+        source_key = minio_client.find_object(
+            f"runs/{body.run_id}/screenshots/", f"visual-{body.step_id}.png")
+    if not source_key:
         raise HTTPException(
             status_code=404,
-            detail=f"No candidate screenshot at {source_key}; run the case with an expect-visual-match step first")
+            detail=f"No candidate screenshot for step {body.step_id} in run {body.run_id}; "
+                   "run the case with an expect-visual-match step first")
     dest_key = f"baselines/{body.test_case_id}/{body.step_id}/{body.browser}-{body.device or 'default'}.png"
     minio_client.copy_object(source_key, dest_key)
 
