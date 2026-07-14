@@ -22,27 +22,26 @@ export async function resolveBaseline(query: {
     browser?: string;
     device?: string;
 }): Promise<BaselineRecord | null> {
-    if (!query.testCaseId) return null;
+    if (!query.testCaseId) {
+        console.warn('[baseline-client] no testCaseId in context — cannot resolve baseline');
+        return null;
+    }
     const params = new URLSearchParams();
     params.set('test_case_id', String(query.testCaseId));
     params.set('step_id', query.stepId);
-    const url = `${BACKEND_URL}/api/visual-baselines?${params.toString()}`;
+    if (query.browser) params.set('browser', query.browser);
+    if (query.device) params.set('device', query.device);
+    const url = `${BACKEND_URL}/api/internal/visual-baselines/resolve?${params.toString()}`;
     try {
         const res = await fetch(url, {
-            headers: {
-                // The endpoints require auth; in production the worker would
-                // mint a service token. For now we lean on an internal-only
-                // mode; if unauthorized we return null and degrade gracefully.
-                'X-TraceIQ-Secret': WORKER_TOKEN,
-            },
+            headers: { 'X-Worker-Secret': WORKER_TOKEN },
         });
-        if (!res.ok) return null;
-        const items = (await res.json()) as BaselineRecord[];
-        // Prefer browser+device exact match; otherwise first hit.
-        const preferred = items.find(
-            (b) => (!query.browser || b.browser === query.browser) && (!query.device || b.device === query.device),
-        );
-        return preferred ?? items[0] ?? null;
+        if (res.status === 404) return null; // genuinely no baseline yet
+        if (!res.ok) {
+            console.warn(`[baseline-client] resolve returned ${res.status} — check WEBHOOK_SECRET on the worker`);
+            return null;
+        }
+        return (await res.json()) as BaselineRecord;
     } catch (err) {
         console.warn('[baseline-client] resolveBaseline failed:', err);
         return null;

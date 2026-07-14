@@ -11,11 +11,12 @@ Surface:
 """
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from app.core.auth import AuthPrincipal, get_current_principal
+from app.core.config import settings
 from app.core.database import get_session
 from app.models import TestCase, VisualBaseline, VisualBaselineRead
 from app.services.access_service import access_service
@@ -122,6 +123,56 @@ class PromoteBaselineRequest(BaseModel):
     device: Optional[str] = None
     tolerance: float = 0.01
     mask_regions: Optional[List[dict]] = None
+
+
+@router.get("/internal/visual-baselines/resolve")
+async def internal_resolve_baseline(
+    test_case_id: int,
+    step_id: str,
+    browser: str = "chromium",
+    device: Optional[str] = None,
+    x_worker_secret: str = Header(default=""),
+    session: AsyncSession = Depends(get_session),
+):
+    """Worker-facing baseline lookup for `expect-visual-match`.
+
+    Authenticated by the worker shared secret (WEBHOOK_SECRET, falling back
+    to SECRET_KEY) instead of a user JWT, and returns the baseline image as a
+    presigned URL against the *internal* MinIO endpoint — the public
+    localhost URL is unreachable from inside worker containers."""
+    from app.core.storage import minio_client
+
+    expected = settings.WEBHOOK_SECRET or settings.SECRET_KEY
+    if not x_worker_secret or x_worker_secret != expected:
+        raise HTTPException(status_code=403, detail="Invalid worker secret")
+
+    res = await session.exec(
+        select(VisualBaseline).where(
+            VisualBaseline.test_case_id == test_case_id,
+            VisualBaseline.step_id == step_id,
+        )
+    )
+    baselines = list(res.all())
+    if not baselines:
+        raise HTTPException(status_code=404, detail="No baseline for this step")
+    # Prefer exact browser+device match, then browser match, then first.
+    baseline = next(
+        (b for b in baselines if b.browser == browser and b.device == device),
+        next((b for b in baselines if b.browser == browser), baselines[0]),
+    )
+    image_url = baseline.image_url
+    if image_url and not image_url.startswith("http"):
+        image_url = minio_client.get_internal_presigned_url(image_url)
+    return {
+        "id": baseline.id,
+        "test_case_id": baseline.test_case_id,
+        "step_id": baseline.step_id,
+        "browser": baseline.browser,
+        "device": baseline.device,
+        "image_url": image_url,
+        "tolerance": baseline.tolerance,
+        "mask_regions": baseline.mask_regions or [],
+    }
 
 
 @router.post("/visual-baselines/promote", response_model=VisualBaselineRead)
