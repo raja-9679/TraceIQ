@@ -236,13 +236,23 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Playwright's waitForURL with a bare string does EXACT match. Use globs (`**`) for substring.",
     },
     {
+        "type": "expect-title",
+        "category": "assertion",
+        "params": {
+            "value": "Expected page title (or fragment)",
+            "params.operator": "'contains' (default) | 'equals' | 'matches' (regex)",
+        },
+        "example": {"id": "<uuid>", "type": "expect-title", "value": "Dashboard"},
+    },
+    {
         "type": "assert",
         "category": "assertion",
         "params": {
             "selector": "Element to inspect",
-            "params.source": "'text' | 'value' | 'attribute' | 'count'",
+            "params.source": "'text' | 'value' | 'attribute' | 'count' | 'css'",
             "params.operator": "'equals' | 'contains' | ...",
             "params.attribute": "Required when source='attribute'",
+            "params.property": "CSS property name, required when source='css' (compared against the computed style, e.g. 'color' -> 'rgb(255, 0, 0)')",
             "value": "Expected value",
         },
         "example": {

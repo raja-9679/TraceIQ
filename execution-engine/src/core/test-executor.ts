@@ -551,6 +551,25 @@ export class TestExecutor {
                 break;
             }
 
+            case 'expect-title': {
+                const expectedTitle = resolve(step.value || step.selector);
+                if (!expectedTitle) throw new Error('expect-title requires a value');
+                const titleOperator = step.params?.operator || 'contains';
+                const actualTitle = await page.title();
+                if (titleOperator === 'equals') {
+                    if (actualTitle !== expectedTitle) {
+                        throw new Error(`Expected title to equal "${expectedTitle}", but got "${actualTitle}"`);
+                    }
+                } else if (titleOperator === 'matches') {
+                    if (!new RegExp(expectedTitle).test(actualTitle)) {
+                        throw new Error(`Expected title to match /${expectedTitle}/, but got "${actualTitle}"`);
+                    }
+                } else if (!actualTitle.includes(expectedTitle)) {
+                    throw new Error(`Expected title to contain "${expectedTitle}", but got "${actualTitle}"`);
+                }
+                break;
+            }
+
             case 'hover': {
                 const hoverSelector = step.selector || step.value;
                 if (hoverSelector) {
@@ -897,6 +916,14 @@ if __name__ == "__main__":
                     actualValue = await locator.getAttribute(attributeName);
                 } else if (source === 'count') {
                     actualValue = await context.locator(selector).count();
+                } else if (source === 'css') {
+                    const propertyName = step.params?.property || attributeName;
+                    if (!propertyName) throw new Error("CSS property name required for css assertion (params.property)");
+                    actualValue = await locator.evaluate(
+                        (el, prop) => window.getComputedStyle(el).getPropertyValue(prop),
+                        propertyName,
+                    );
+                    actualValue = String(actualValue).trim();
                 }
 
                 console.log(`  [Assert] ${source} of '${selector}' is '${actualValue}'. Checking ${operator} '${expectedValue}'`);

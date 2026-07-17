@@ -40,6 +40,7 @@ const IDLE_TIMEOUT_MS = parseInt(process.env.WORKER_IDLE_TIMEOUT || '60000');
 const MAX_JOBS_BEFORE_RESTART = parseInt(process.env.MAX_JOBS_BEFORE_RESTART || '50');
 // Maximum wall-clock time a single job may run before it is aborted (default 10 min)
 const MAX_JOB_DURATION_MS = parseInt(process.env.MAX_JOB_DURATION_MS || '600000');
+const MAX_CONSOLE_LOG_ENTRIES = parseInt(process.env.MAX_CONSOLE_LOG_ENTRIES || '5000');
 
 class ExecutionWorker {
     private jobQueue: JobQueue;
@@ -254,6 +255,7 @@ class ExecutionWorker {
         let page: Page | null = null;
 
         const networkEvents: any[] = [];
+        const consoleLogs: any[] = [];
         const screenshots: string[] = [];
 
         let status: 'passed' | 'failed' | 'error' = 'passed';
@@ -338,6 +340,9 @@ class ExecutionWorker {
             // Log console messages
             page.on('console', msg => {
                 console.log(`  [Browser] [${testCase.name}]: ${msg.text()}`);
+                if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+                    consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: testCase.name });
+                }
             });
 
             // Initialize page
@@ -486,7 +491,9 @@ class ExecutionWorker {
             job.job_id,
             artifactsDir,
             videoPath,
-            tracePath
+            tracePath,
+            consoleLogs,
+            networkEvents
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
@@ -522,6 +529,7 @@ class ExecutionWorker {
         let sharedContext: BrowserContext | null = null;
 
         const networkEvents: any[] = [];
+        const consoleLogs: any[] = [];
         const testResults: TestCaseResult[] = [];
         let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
         let overallError: string | undefined;
@@ -602,6 +610,9 @@ class ExecutionWorker {
             // Log console messages
             page.on('console', msg => {
                 console.log(`  [Browser] [${job.unit_name}]: ${msg.text()}`);
+                if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+                    consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: sharedContextData.name });
+                }
             });
 
             // Execute each test case sequentially
@@ -632,6 +643,9 @@ class ExecutionWorker {
                         page.setDefaultTimeout(parseInt(process.env.DEFAULT_TIMEOUT || '30000'));
                         page.on('console', msg => {
                             console.log(`  [Browser] [${job.unit_name}]: ${msg.text()}`);
+                            if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+                                consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: sharedContextData.name });
+                            }
                         });
                     } catch (pageErr: any) {
                         console.error(`[Worker] Failed to create new page: ${pageErr.message}`);
@@ -817,7 +831,9 @@ class ExecutionWorker {
             job.job_id,
             artifactsDir,
             videoPath,
-            tracePath
+            tracePath,
+            consoleLogs,
+            networkEvents
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
@@ -925,9 +941,11 @@ class ExecutionWorker {
         jobId: string,
         artifactsDir: string,
         videoPath: string | null,
-        tracePath: string | null
-    ): Promise<{ video?: string; trace?: string; screenshots: string[]; uploadedLocalPaths: string[] }> {
-        const result: { video?: string; trace?: string; screenshots: string[]; uploadedLocalPaths: string[] } = {
+        tracePath: string | null,
+        consoleLogs?: any[],
+        networkEvents?: any[]
+    ): Promise<{ video?: string; trace?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
+        const result: { video?: string; trace?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
             screenshots: [],
             uploadedLocalPaths: []
         };
@@ -967,6 +985,22 @@ class ExecutionWorker {
                     result.screenshots.push(screenshotKey);
                     result.uploadedLocalPaths.push(localPath);
                 }
+            }
+
+            // Upload console + network logs as JSON artifacts
+            if (consoleLogs && consoleLogs.length) {
+                const consoleKey = `runs/${runId}/logs/${jobId}-console.json`;
+                const body = Buffer.from(JSON.stringify(consoleLogs, null, 1));
+                await this.minioClient.putObject(BUCKET_NAME, consoleKey, body, body.length, { 'Content-Type': 'application/json' });
+                result.console_log = consoleKey;
+                console.log(`[Worker] Uploaded console log: ${consoleKey}`);
+            }
+            if (networkEvents && networkEvents.length) {
+                const networkKey = `runs/${runId}/logs/${jobId}-network.json`;
+                const body = Buffer.from(JSON.stringify(networkEvents, null, 1));
+                await this.minioClient.putObject(BUCKET_NAME, networkKey, body, body.length, { 'Content-Type': 'application/json' });
+                result.network_log = networkKey;
+                console.log(`[Worker] Uploaded network log: ${networkKey}`);
             }
         } catch (err) {
             console.error('[Worker] Error uploading artifacts:', err);
