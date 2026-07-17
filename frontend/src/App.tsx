@@ -15,6 +15,9 @@ import TestSuites from "@/pages/TestSuites";
 import SuiteDetails from "@/pages/SuiteDetails";
 import Login from "@/pages/Login";
 import Signup from "@/pages/Signup";
+import ForgotPassword from "@/pages/ForgotPassword";
+import ResetPassword from "@/pages/ResetPassword";
+import VerifyEmail from "@/pages/VerifyEmail";
 import TestBuilder from "@/pages/TestBuilder";
 import Settings from "@/pages/Settings";
 import WorkspacePage from "@/pages/WorkspacePage";
@@ -33,6 +36,9 @@ function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>

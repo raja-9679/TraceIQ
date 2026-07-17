@@ -472,3 +472,41 @@ def send_teams_notification(run: TestRun, content: Dict[str, Any], settings_dict
     except Exception as e:
         logger.error(f"[Teams] Failed to send notification: {e}")
         raise
+
+
+@celery_app.task(name="app.tasks.notification_tasks.send_account_email")
+def send_account_email(to_email: str, subject: str, html_body: str, text_body: str = None):
+    """Send a transactional account email (password reset / verification).
+
+    Reuses the SMTP configuration. Best-effort: logs and returns instead of
+    raising so token creation is never rolled back by a mail failure. When SMTP
+    is unconfigured (dev), the message (including any link) is logged so flows
+    remain testable.
+    """
+    smtp_host = getattr(settings, 'SMTP_HOST', None)
+    smtp_from = getattr(settings, 'SMTP_FROM', 'noreply@traceiq.io')
+    if not smtp_host:
+        logger.warning("[Account] SMTP not configured; would send to %s: %s\n%s",
+                       to_email, subject, text_body or html_body)
+        return
+
+    try:
+        smtp_port = getattr(settings, 'SMTP_PORT', 587)
+        smtp_user = getattr(settings, 'SMTP_USER', None)
+        smtp_password = getattr(settings, 'SMTP_PASSWORD', None)
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = smtp_from
+        msg['To'] = to_email
+        msg.attach(MIMEText(text_body or '', 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            if smtp_user and smtp_password:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_from, [to_email], msg.as_string())
+        logger.info("[Account] Sent '%s' to %s", subject, to_email)
+    except Exception as e:
+        logger.error("[Account] Failed to send account email to %s: %s", to_email, e)

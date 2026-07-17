@@ -19,10 +19,54 @@ from app.core.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
-from app.models import RefreshToken, User, UserRead, Role, Permission, RolePermission
+from app.models import RefreshToken, User, UserRead, Role, Permission, RolePermission, AccountToken
+from app.core.auth import hash_refresh_token as _hash_token
+from app.core.config import settings as app_settings
 from pydantic import BaseModel
 
 router = APIRouter()
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class VerifyEmailRequest(BaseModel):
+    token: str
+
+
+def _new_account_token(user_id: int, purpose: str, ttl_hours: int) -> tuple[str, AccountToken]:
+    """Mint a single-use account token; return (raw, record). Store hash only."""
+    raw = secrets.token_urlsafe(48)
+    record = AccountToken(
+        user_id=user_id,
+        purpose=purpose,
+        hashed_token=_hash_token(raw),
+        expires_at=datetime.utcnow() + timedelta(hours=ttl_hours),
+    )
+    return raw, record
+
+
+async def _consume_account_token(raw: str, purpose: str, session: AsyncSession) -> Optional[User]:
+    """Validate + single-use-consume a token; return its User or None."""
+    res = await session.exec(
+        select(AccountToken).where(
+            AccountToken.hashed_token == _hash_token(raw),
+            AccountToken.purpose == purpose,
+        )
+    )
+    token = res.first()
+    if not token or token.used_at is not None or token.expires_at < datetime.utcnow():
+        return None
+    token.used_at = datetime.utcnow()
+    session.add(token)
+    user = (await session.exec(select(User).where(User.id == token.user_id))).first()
+    return user
 
 class UserCreate(BaseModel):
     email: str
@@ -75,6 +119,11 @@ async def login_for_access_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated",
         )
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
@@ -341,3 +390,145 @@ async def read_users_me(
     current_user: User = Depends(get_current_user)
 ) -> Any:
     return current_user
+
+
+def _send_email(to_email: str, subject: str, html: str, text: str):
+    """Queue an account email via Celery; fall back to inline send if broker down."""
+    try:
+        from app.tasks.notification_tasks import send_account_email
+        send_account_email.delay(to_email, subject, html, text)
+    except Exception:
+        try:
+            from app.tasks.notification_tasks import send_account_email
+            send_account_email(to_email, subject, html, text)
+        except Exception:
+            pass
+
+
+@router.post("/forgot-password")
+@limiter.limit("5/minute")
+async def forgot_password(
+    request: Request,
+    body: ForgotPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Start a password reset. Always returns 200 (never leaks whether the
+    email exists). If the account exists, emails a single-use reset link."""
+    user = (await session.exec(select(User).where(User.email == body.email))).first()
+    if user and user.is_active:
+        raw, record = _new_account_token(
+            user.id, "password_reset",
+            getattr(app_settings, "PASSWORD_RESET_TOKEN_EXPIRE_HOURS", 2))
+        session.add(record)
+        await session.commit()
+        link = f"{app_settings.FRONTEND_BASE_URL.rstrip('/')}/reset-password?token={raw}"
+        _send_email(
+            user.email,
+            "Reset your TraceIQ password",
+            f"<p>We received a request to reset your password.</p>"
+            f"<p><a href=\"{link}\">Reset your password</a> (link expires soon).</p>"
+            f"<p>If you didn't request this, you can ignore this email.</p>",
+            f"Reset your password: {link}",
+        )
+    return {"status": "ok", "message": "If that account exists, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+@limiter.limit("5/minute")
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Complete a password reset with a valid token. Revokes all of the user's
+    refresh tokens so existing sessions can't continue with the old password."""
+    if len(body.new_password or "") < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    user = await _consume_account_token(body.token, "password_reset", session)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+
+    user.hashed_password = get_password_hash(body.new_password)
+    session.add(user)
+
+    now = datetime.utcnow()
+    fam = await session.exec(
+        select(RefreshToken).where(
+            RefreshToken.user_id == user.id, RefreshToken.revoked_at.is_(None)))
+    for tok in fam.all():
+        tok.revoked_at = now
+        session.add(tok)
+    await session.commit()
+    return {"status": "ok", "message": "Password updated. Please log in again."}
+
+
+@router.post("/request-verification")
+@limiter.limit("5/minute")
+async def request_email_verification(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Send (or resend) an email-verification link to the current user."""
+    if current_user.is_verified:
+        return {"status": "ok", "message": "Email already verified"}
+    raw, record = _new_account_token(
+        current_user.id, "email_verification",
+        getattr(app_settings, "EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS", 48))
+    session.add(record)
+    await session.commit()
+    link = f"{app_settings.FRONTEND_BASE_URL.rstrip('/')}/verify-email?token={raw}"
+    _send_email(
+        current_user.email,
+        "Verify your TraceIQ email",
+        f"<p>Confirm your email address.</p><p><a href=\"{link}\">Verify email</a></p>",
+        f"Verify your email: {link}",
+    )
+    return {"status": "ok", "message": "Verification email sent."}
+
+
+@router.post("/verify-email")
+async def verify_email(
+    body: VerifyEmailRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Mark the user's email verified given a valid verification token."""
+    user = await _consume_account_token(body.token, "email_verification", session)
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+    user.is_verified = True
+    user.email_verified_at = datetime.utcnow()
+    session.add(user)
+    await session.commit()
+    return {"status": "ok", "message": "Email verified"}
+
+
+@router.delete("/me")
+async def delete_my_account(
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Self-serve account deactivation (GDPR).
+
+    Deactivates the account, scrubs PII from the email/name, and revokes all
+    refresh tokens. Kept as a soft delete (not a hard row delete) because the
+    user is referenced as owner/creator across tenants, suites, cases and runs;
+    hard deletion would orphan or cascade those. The account can no longer log
+    in and its personal data is removed.
+    """
+    now = datetime.utcnow()
+    # Scrub PII, keep a stable non-identifying placeholder unique per user.
+    current_user.email = f"deleted+{current_user.id}@deleted.traceiq.local"
+    current_user.full_name = "Deleted User"
+    current_user.hashed_password = get_password_hash(secrets.token_urlsafe(32))
+    current_user.is_active = False
+    session.add(current_user)
+
+    fam = await session.exec(
+        select(RefreshToken).where(
+            RefreshToken.user_id == current_user.id, RefreshToken.revoked_at.is_(None)))
+    for tok in fam.all():
+        tok.revoked_at = now
+        session.add(tok)
+    await session.commit()
+    return {"status": "ok", "message": "Account deleted"}

@@ -553,6 +553,26 @@ class User(SQLModel, table=True):
     is_active: bool = True
     last_login_at: Optional[datetime] = Field(default=None)
 
+    # Email verification. Existing users default unverified; verification is
+    # informational (login is not blocked on it) plus a resend flow.
+    is_verified: bool = Field(default=False)
+    email_verified_at: Optional[datetime] = Field(default=None)
+
+
+class AccountToken(SQLModel, table=True):
+    """Single-use token for password reset and email verification.
+
+    Only the SHA-256 hash of the raw token is stored (same scheme as
+    RefreshToken). `purpose` is 'password_reset' | 'email_verification'.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    purpose: str = Field(index=True)
+    hashed_token: str = Field(index=True, unique=True)
+    expires_at: datetime
+    used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
 
 class TestScheduleBase(SQLModel):
     name: str
