@@ -26,6 +26,7 @@ celery_app.conf.task_routes = {
     "app.worker.run_test_suite": "main-queue",
     "app.tasks.webhook_tasks.process_webhook_queue": "main-queue",
     "app.tasks.cleanup_tasks.cleanup_stuck_tests": "main-queue",
+    "app.tasks.cleanup_tasks.purge_old_runs": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue"
@@ -53,6 +54,10 @@ celery_app.conf.beat_schedule = {
     'process-test-schedules': {
         'task': 'app.tasks.schedule_tasks.process_test_schedules',
         'schedule': 60.0, # Run every minute
+    },
+    'purge-old-runs': {
+        'task': 'app.tasks.cleanup_tasks.purge_old_runs',
+        'schedule': 3600.0,  # Hourly; no-op unless RUN_RETENTION_DAYS > 0
     }
 }
 
