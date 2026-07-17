@@ -8,6 +8,9 @@ import Schedules from "@/pages/Schedules";
 import Proposals from "@/pages/Proposals";
 import Environments from "@/pages/Environments";
 import VisualReview from "@/pages/VisualReview";
+import ApiKeys from "@/pages/ApiKeys";
+import Webhooks from "@/pages/Webhooks";
+import FlakyTests from "@/pages/FlakyTests";
 import TestSuites from "@/pages/TestSuites";
 import SuiteDetails from "@/pages/SuiteDetails";
 import Login from "@/pages/Login";
@@ -42,6 +45,9 @@ function App() {
                 <Route path="proposals" element={<Proposals />} />
                 <Route path="environments" element={<Environments />} />
                 <Route path="visual-review" element={<VisualReview />} />
+                <Route path="flaky-tests" element={<FlakyTests />} />
+                <Route path="api-keys" element={<ApiKeys />} />
+                <Route path="webhooks" element={<Webhooks />} />
                 <Route path="suites/:suiteId/builder" element={<TestBuilder />} />
                 <Route path="suites/:suiteId/cases/:caseId/edit" element={<TestBuilder />} />
                 <Route path="workspace" element={<WorkspacePage />} />
