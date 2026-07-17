@@ -25,6 +25,13 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # Public URL of the frontend, used to build links in account emails
+    # (password reset / email verification).
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    # Lifetimes for single-use account tokens.
+    PASSWORD_RESET_TOKEN_EXPIRE_HOURS: int = 2
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 48
+
     # Security
     SECRET_KEY: str
     WEBHOOK_SECRET: Optional[str] = None  # Dedicated secret for webhook/finalize endpoints; falls back to SECRET_KEY

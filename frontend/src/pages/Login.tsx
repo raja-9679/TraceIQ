@@ -366,7 +366,7 @@ export default function Login() {
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
-                                            <a href="#" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-900 transition-colors">Forgot?</a>
+                                            <Link to="/forgot-password" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-900 transition-colors">Forgot?</Link>
                                         </div>
                                         <input
                                             {...register("password", { required: "Required" })}
