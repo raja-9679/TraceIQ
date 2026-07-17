@@ -103,6 +103,11 @@ class Workspace(SQLModel, table=True):
     # Phase D: daily cap on AI-driven test generation calls. 0 = unlimited.
     ai_generation_limit_daily: int = Field(default=100)
 
+    # Max number of runs that may be RUNNING concurrently across this
+    # workspace's projects. Enforced at dispatch — runs over the cap stay
+    # PENDING and are retried until a slot frees. 0 = unlimited.
+    max_concurrent_runs: int = Field(default=0)
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
