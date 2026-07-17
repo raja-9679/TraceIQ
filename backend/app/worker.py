@@ -210,6 +210,11 @@ def _settings_payload(settings: dict) -> dict:
         payload['environment'] = settings['environment']
     if settings.get('secrets'):
         payload['secrets'] = settings['secrets']
+    # Per-test retry policy (inherited from suite settings; falls back to off).
+    if settings.get('auto_retry'):
+        payload['auto_retry'] = True
+        payload['max_retries'] = int(settings.get('max_retries', 2) or 2)
+        payload['retry_backoff_ms'] = int(settings.get('retry_backoff_ms', 1000) or 1000)
     return payload
 
 
