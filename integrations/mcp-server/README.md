@@ -8,6 +8,11 @@ runs, and check results — the safety-net for AI-authored code.
 > for copy-paste setup and the CLAUDE.md prompt that makes the agent author
 > and run TraceIQ tests for every feature it builds.
 
+> **Connecting to a hosted TraceIQ?** See [SAAS_SETUP.md](./SAAS_SETUP.md) —
+> the one-token auth model and per-agent config examples (Claude Code,
+> Cursor, VS Code, Windsurf). Auth accepts `X-API-Key: tiq_...` or
+> `Authorization: Bearer tiq_...`.
+
 Two transport modes:
 
 | Mode | When to use |

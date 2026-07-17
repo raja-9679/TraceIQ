@@ -8,6 +8,7 @@ UIs for the new entities, full Playwright recorder fidelity, and a
 statistical flake model remain deferred to follow-up sessions.
 
 For the authoritative end-to-end picture, see `ARCHITECTURE.md`.
+For a full feature-coverage scorecard against a modern-platform checklist (and the prioritized roadmap derived from it), see `info/FEATURE_GAP_ANALYSIS.md`.
 
 ---
 
@@ -76,8 +77,8 @@ These items either require significant frontend work, external products, or desi
 ### Phase B polish
 - **Persona-refresh handler in execution-engine** — backend task POSTs to `<engine>/persona-refresh`; that endpoint does not exist yet. The task degrades gracefully when the engine returns 4xx.
 - **Per-step DOM capture in execution-worker** — `heal_tasks.propose_selector_heals_for_run` reads DOM from `run.execution_log[*].dom`. The worker captures DOM for some step types but not consistently per step; until it does, proactive heal proposals will rarely be generated.
-- **Statistical flake scoring** — the `flake_score` column exists; populating it (alternating-status detection over recent retries) is open.
-- **Visual baseline approval UI** — baselines today are created via API only. A "promote this candidate to baseline" UI is needed for human-in-the-loop adoption.
+- ~~**Statistical flake scoring**~~ — SHIPPED since this note was written: `result_aggregator.py` computes `flake_score` (alternation ratio over the last 20 results) with auto-quarantine ≥ 0.4 and auto-release < 0.15, backed by `FlakeRecord`.
+- **Visual baseline approval UI** — the backend promote workflow now exists (`POST /api/visual-baselines/promote` copies a run's candidate screenshot to a durable baseline); the React "promote this candidate" UI is still needed for human-in-the-loop adoption.
 
 ### Phase C polish
 - **Coverage gap detection** — partially shipped via Phase D's `impact-analysis` endpoint (returns unmatched files). The "auto-draft a test for unmatched files" pipeline is open: an agent must explicitly call `generate_case_proposal` on each unmatched file. Possible next step: a server-side "auto-propose for every unmatched file" mode.

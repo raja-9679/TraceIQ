@@ -7,9 +7,10 @@ a URL and an X-API-Key header.
   POST /mcp    — MCP Streamable-HTTP endpoint
   GET  /health — liveness probe (no auth required)
 
-Auth: every /mcp request must carry the caller's TraceIQ workspace API key
-as X-API-Key.  The key is forwarded to the TraceIQ backend for every tool
-call — no shared service account, no key storage here.
+Auth: every /mcp request must carry the caller's TraceIQ workspace API key,
+either as X-API-Key or as Authorization: Bearer <key> (for MCP clients that
+can only set the Authorization header).  The key is forwarded to the TraceIQ
+backend for every tool call — no shared service account, no key storage here.
 """
 from __future__ import annotations
 
@@ -93,7 +94,15 @@ class TraceIQMCPApp:
         headers = {k.lower(): v for k, v in scope.get("headers", [])}
         api_key = headers.get(b"x-api-key", b"").decode()
         if not api_key:
-            await _send_json(send, 401, b'{"detail":"X-API-Key header required"}')
+            auth = headers.get(b"authorization", b"").decode()
+            if auth.lower().startswith("bearer "):
+                api_key = auth[7:].strip()
+        if not api_key:
+            await _send_json(
+                send,
+                401,
+                b'{"detail":"X-API-Key header or Authorization: Bearer <api-key> required"}',
+            )
             return
 
         token = _api_key_ctx.set(api_key)
