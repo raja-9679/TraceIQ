@@ -275,6 +275,43 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Phase B. Compares against a stored VisualBaseline keyed by (test_case_id, step.id, browser, device).",
     },
     {
+        "type": "mock-response",
+        "category": "network",
+        "params": {
+            "selector": "URL glob to intercept (e.g. '**/api/user')",
+            "params.status": "HTTP status to return (default 200)",
+            "params.json": "JSON body to return (sets content-type application/json)",
+            "params.body": "Raw string body (when not JSON)",
+            "params.content_type": "Override content-type",
+            "params.headers": "Response headers object",
+        },
+        "example": {"id": "<uuid>", "type": "mock-response", "selector": "**/api/me",
+                    "params": {"status": 200, "json": {"name": "Test User"}}},
+        "notes": "Register BEFORE the goto/action that triggers the request.",
+    },
+    {
+        "type": "block-request",
+        "category": "network",
+        "params": {"selector": "URL glob to abort (e.g. '**/analytics/**')"},
+        "example": {"id": "<uuid>", "type": "block-request", "selector": "**/gtag/**"},
+    },
+    {
+        "type": "set-network-latency",
+        "category": "network",
+        "params": {"selector": "URL glob (default '**/*')", "params.ms": "Delay in ms before continuing"},
+        "example": {"id": "<uuid>", "type": "set-network-latency", "selector": "**/api/**", "params": {"ms": 2000}},
+    },
+    {
+        "type": "check-accessibility",
+        "category": "assertion",
+        "params": {
+            "params.impact": "Minimum severity that fails the step: 'minor'|'moderate'|'serious'(default)|'critical'",
+            "params.fail": "false = report-only (never throws)",
+        },
+        "example": {"id": "<uuid>", "type": "check-accessibility", "params": {"impact": "serious"}},
+        "notes": "Runs axe-core against the current page; returns a violations summary.",
+    },
+    {
         "type": "http-request",
         "category": "api",
         "params": {
