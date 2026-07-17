@@ -67,6 +67,7 @@ async def create_run(
     case_id: Optional[int] = None,
     browser: List[str] = Query(["chromium"]),
     device: Optional[List[str]] = Query(None),
+    tags: Optional[List[str]] = Query(None),
     context: Optional[RunCreateContext] = Body(None),
     session: AsyncSession = Depends(get_session),
     principal: AuthPrincipal = Depends(get_current_principal),
@@ -230,7 +231,7 @@ async def create_run(
         from app.worker import run_test_suite
         for run in created_runs:
             try:
-                run_test_suite.delay(run.id)
+                run_test_suite.delay(run.id, tags=tags)
             except Exception as e:
                 print(f"Failed to queue run {run.id}: {e}")
 

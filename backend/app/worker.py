@@ -34,10 +34,13 @@ _WEBHOOK_SECRET = getattr(settings, 'WEBHOOK_SECRET', None) or settings.SECRET_K
 
 
 @celery_app.task(name="app.worker.run_test_suite")
-def run_test_suite(run_id: int):
+def run_test_suite(run_id: int, tags: list = None):
     """
     Main entry point for test execution.
     Routes to appropriate execution strategy based on execution mode.
+
+    `tags`, when provided, restricts the run to test cases carrying at least
+    one of the given tags (tag-based run selection).
     """
     with Session(sync_engine) as session:
         run = session.get(TestRun, run_id)
@@ -72,6 +75,13 @@ def run_test_suite(run_id: int):
             # tests don't gate AI-agent regressions. The flake records live
             # at the test_case level; sub-step granularity is informational.
             cases_to_run = _filter_quarantined(cases_to_run, session)
+
+            # Tag-based run selection: keep only cases carrying a requested tag.
+            if tags:
+                cases_to_run = _filter_by_tags(cases_to_run, tags)
+                if not cases_to_run:
+                    raise Exception(
+                        f"No test cases match tags {tags}")
 
             # Get execution mode
             suite = session.get(TestSuite, run.test_suite_id)
@@ -451,6 +461,22 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     pipe.execute()
 
     print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def _filter_by_tags(cases: list, tags: list) -> list:
+    """Keep only cases carrying at least one of `tags` (case-insensitive)."""
+    wanted = {str(t).strip().lower() for t in tags if str(t).strip()}
+    if not wanted:
+        return cases
+    filtered = [
+        c for c in cases
+        if wanted & {str(t).strip().lower() for t in (getattr(c, 'tags', None) or [])}
+    ]
+    skipped = len(cases) - len(filtered)
+    if skipped:
+        print(f"[Worker] Tag filter {sorted(wanted)}: kept {len(filtered)}, "
+              f"skipped {skipped} test case(s)")
+    return filtered
 
 
 def _filter_quarantined(cases: list, session: Session) -> list:

@@ -291,6 +291,12 @@ class TestCaseBase(SQLModel):
     # into one execution per row; steps reference values as {{data.KEY}}.
     dataset: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
 
+    # Test-management metadata: free-form `tags` for filtering/organising and
+    # a coarse `priority` (e.g. "critical" | "high" | "medium" | "low"). Tags
+    # can select cases at run time (POST /api/runs?tags=smoke).
+    tags: Optional[List[str]] = Field(default=[], sa_column=Column(JSON))
+    priority: Optional[str] = Field(default=None)
+
 
 class TestCase(TestCaseBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -318,6 +324,8 @@ class TestCaseUpdate(SQLModel):
     is_auth_setup: Optional[bool] = None
     use_auth_session: Optional[bool] = None
     dataset: Optional[List[dict]] = None
+    tags: Optional[List[str]] = None
+    priority: Optional[str] = None
 
 
 class ProjectEnvironment(SQLModel, table=True):
