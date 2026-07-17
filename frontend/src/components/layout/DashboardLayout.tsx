@@ -17,7 +17,10 @@ import {
     CalendarClock,
     GitPullRequestArrow,
     Images,
-    Globe
+    Globe,
+    Activity,
+    KeyRound,
+    Webhook
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -39,7 +42,10 @@ const navigation = [
     { name: 'Schedules', href: '/schedules', icon: CalendarClock },
     { name: 'Proposals', href: '/proposals', icon: GitPullRequestArrow },
     { name: 'Visual Review', href: '/visual-review', icon: Images },
+    { name: 'Flaky Tests', href: '/flaky-tests', icon: Activity },
     { name: 'Environments', href: '/environments', icon: Globe },
+    { name: 'API Keys', href: '/api-keys', icon: KeyRound },
+    { name: 'Webhooks', href: '/webhooks', icon: Webhook },
     { name: 'Users', href: '/users', icon: User },
     { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
     { name: 'Workspace', href: '/workspace', icon: Users },
