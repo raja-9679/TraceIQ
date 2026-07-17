@@ -48,6 +48,14 @@ def run_test_suite(run_id: int, tags: list = None):
             print(f"[Worker] Run {run_id} not found")
             return
 
+        # Per-workspace concurrency cap: if the run's workspace is already at
+        # its RUNNING limit, leave this run PENDING and retry shortly. This
+        # bounds a single tenant's fan-out so it can't starve other tenants.
+        if _workspace_at_capacity(run, session):
+            print(f"[Worker] Run {run_id} deferred: workspace at concurrency cap")
+            run_test_suite.apply_async((run_id,), {'tags': tags}, countdown=30)
+            return
+
         print(f"[Worker] Starting run {run_id}")
 
         run.status = TestStatus.RUNNING
@@ -461,6 +469,42 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     pipe.execute()
 
     print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def _workspace_at_capacity(run, session: Session) -> bool:
+    """True when the run's workspace already has >= max_concurrent_runs RUNNING.
+
+    Resolves workspace via the run's project. Fails open (returns False) if the
+    cap is unset/zero or anything about the lookup goes wrong, so capacity
+    enforcement can never wedge dispatch.
+    """
+    try:
+        from sqlmodel import select as _select, func as _func
+        from app.models import Project, Workspace, TestRun as _TestRun, TestStatus as _TS
+
+        if not run.project_id:
+            return False
+        project = session.get(Project, run.project_id)
+        if not project:
+            return False
+        workspace = session.get(Workspace, project.workspace_id)
+        limit = getattr(workspace, 'max_concurrent_runs', 0) or 0
+        if limit <= 0:
+            return False
+
+        # Count RUNNING runs across every project in this workspace.
+        ws_project_ids = _select(Project.id).where(
+            Project.workspace_id == project.workspace_id)
+        running = session.exec(
+            _select(_func.count()).select_from(_TestRun).where(
+                _TestRun.status == _TS.RUNNING,
+                _TestRun.project_id.in_(ws_project_ids),
+            )
+        ).one()
+        return running >= limit
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Worker] capacity check failed (dispatching anyway): {exc}")
+        return False
 
 
 def _filter_by_tags(cases: list, tags: list) -> list:
