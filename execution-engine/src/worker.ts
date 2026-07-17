@@ -229,7 +229,34 @@ class ExecutionWorker {
 
         // Single test case job (original behavior)
         console.log(`[Worker] Executing single test job ${job.job_id}`);
-        return this.executeSingleTestJob(job);
+        return this.executeSingleTestJobWithRetry(job);
+    }
+
+    /**
+     * Run a single-test job, retrying the whole case on failure/error when the
+     * suite's auto_retry policy is enabled. Uses exponential backoff between
+     * attempts. The returned result is the last attempt's, with retry_count set
+     * to the number of retries performed (0 = passed first try).
+     */
+    private async executeSingleTestJobWithRetry(job: TestJob): Promise<JobResult> {
+        const autoRetry = job.settings?.auto_retry === true;
+        const maxRetries = autoRetry ? Math.max(0, job.settings?.max_retries ?? 2) : 0;
+        const backoffBase = job.settings?.retry_backoff_ms ?? 1000;
+
+        let attempt = 0;
+        let result = await this.executeSingleTestJob(job);
+        while (result.status !== 'passed' && attempt < maxRetries) {
+            attempt++;
+            const delay = backoffBase * Math.pow(2, attempt - 1);
+            console.log(`[Worker] Test "${result.test_name}" ${result.status}; retry ${attempt}/${maxRetries} after ${delay}ms`);
+            await new Promise(res => setTimeout(res, delay));
+            result = await this.executeSingleTestJob(job);
+        }
+        result.retry_count = attempt;
+        if (attempt > 0) {
+            console.log(`[Worker] Test "${result.test_name}" final status ${result.status} after ${attempt} retry(ies)`);
+        }
+        return result;
     }
 
     /**
