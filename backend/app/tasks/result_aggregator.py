@@ -580,6 +580,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             'request', {}) if response_data else {}
         network_events = result.get('network_events', [])
 
+        retry_count = int(result.get('retry_count', 0) or 0)
+
         if existing:
             # Update existing result
             existing.status = status
@@ -588,6 +590,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             existing.video_url = artifacts.get('video')
             existing.trace_url = artifacts.get('trace')
             existing.screenshots = artifacts.get('screenshots', [])
+            existing.retry_count = retry_count
             existing.response_status = response_data.get('status')
             existing.response_headers = response_data.get('headers')
             existing.response_body = response_data.get('body')
@@ -608,6 +611,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 video_url=artifacts.get('video'),
                 trace_url=artifacts.get('trace'),
                 screenshots=artifacts.get('screenshots', []),
+                retry_count=retry_count,
                 response_status=response_data.get('status'),
                 response_headers=response_data.get('headers'),
                 response_body=response_data.get('body'),

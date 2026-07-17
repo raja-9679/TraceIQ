@@ -50,6 +50,12 @@ export interface TestJob {
         // project secrets ({{secret.X}}), dispatched by the backend.
         environment?: { name: string; base_url?: string; variables: Record<string, any> };
         secrets?: Record<string, string>;
+        // Per-test retry policy dispatched by the backend from suite settings.
+        // When auto_retry is true a failed/errored test case is re-run up to
+        // max_retries times with exponential backoff.
+        auto_retry?: boolean;
+        max_retries?: number;
+        retry_backoff_ms?: number;
     };
     created_at: string;
     retry_count?: number;
@@ -116,8 +122,10 @@ export interface JobResult {
     
     // For multi-test continuous jobs
     test_results?: TestCaseResult[];
-    
+
     network_events: any[];
+    // Number of RETRIES performed for this test (0 = passed first attempt).
+    retry_count?: number;
     completed_at: string;
 }
 
