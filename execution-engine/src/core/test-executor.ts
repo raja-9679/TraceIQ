@@ -6,6 +6,51 @@ import addFormats from 'ajv-formats';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
+// Lightweight test-data generator for {{fake.KIND}} interpolation. Kept
+// dependency-free on purpose; covers the common kinds. Unknown kinds return
+// the token unchanged so mistakes are visible rather than silently blank.
+function generateFake(kind: string): string {
+    const rnd = (n: number) => Math.floor(Math.random() * n);
+    const pick = <T>(a: T[]): T => a[rnd(a.length)];
+    const firsts = ['alex', 'sam', 'jordan', 'taylor', 'riley', 'morgan', 'casey', 'jamie'];
+    const lasts = ['smith', 'jones', 'patel', 'kim', 'garcia', 'khan', 'lee', 'nair'];
+    const first = pick(firsts);
+    const last = pick(lasts);
+    const suffix = Date.now().toString(36) + rnd(1e6).toString(36);
+    switch (kind.toLowerCase()) {
+        case 'uuid':
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+                const r = rnd(16);
+                const v = c === 'x' ? r : (r & 0x3) | 0x8;
+                return v.toString(16);
+            });
+        case 'email':
+            return `${first}.${last}.${suffix}@example.com`;
+        case 'name':
+            return `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
+        case 'first_name':
+        case 'firstname':
+            return `${first[0].toUpperCase()}${first.slice(1)}`;
+        case 'last_name':
+        case 'lastname':
+            return `${last[0].toUpperCase()}${last.slice(1)}`;
+        case 'username':
+            return `${first}_${last}_${rnd(1000)}`;
+        case 'phone':
+            return `+1${(2000000000 + rnd(999999999)).toString().slice(0, 10)}`;
+        case 'number':
+        case 'int':
+            return String(rnd(1000000));
+        case 'date':
+            // Deterministic offset from a fixed epoch to avoid new Date() dependence.
+            return new Date(Date.now() - rnd(1e10)).toISOString().slice(0, 10);
+        case 'word':
+            return pick(['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur']);
+        default:
+            return `{{fake.${kind}}}`;
+    }
+}
+
 export class TestExecutor {
     public static async executeStep(
         page: Page,
@@ -44,6 +89,11 @@ export class TestExecutor {
                 if (dataRow) {
                     out = out.replace(/\{\{\s*data\.(\w+)\s*\}\}/g, (_: string, key: string) =>
                         dataRow[key] !== undefined ? String(dataRow[key]) : `{{data.${key}}}`);
+                }
+                // {{fake.KIND}} — generated test data (email/uuid/name/...).
+                if (out.includes('{{fake.')) {
+                    out = out.replace(/\{\{\s*fake\.(\w+)\s*\}\}/g, (_: string, kind: string) =>
+                        generateFake(kind));
                 }
                 // {{name}} — runtime variables from extract-value / scripts.
                 if (testCaseContext?.variables) {
@@ -591,6 +641,84 @@ export class TestExecutor {
                 const key = step.value || step.selector;
                 if (key) await page.keyboard.press(key);
                 break;
+            }
+
+            case 'mock-response': {
+                // Stub matching network responses. selector = URL glob/pattern;
+                // params.status/body/content_type/headers shape the response.
+                const urlPattern = step.selector || '**/*';
+                const mockStatus = step.params?.status ?? 200;
+                const contentType = step.params?.content_type
+                    || (step.params?.json !== undefined ? 'application/json' : 'text/plain');
+                const bodyRaw = step.params?.json !== undefined
+                    ? JSON.stringify(step.params.json)
+                    : resolve(step.value ?? step.params?.body ?? '');
+                await page.route(urlPattern, route => route.fulfill({
+                    status: mockStatus,
+                    contentType,
+                    headers: step.params?.headers || {},
+                    body: bodyRaw,
+                }));
+                console.log(`  [Mock] ${urlPattern} -> ${mockStatus} (${contentType})`);
+                break;
+            }
+
+            case 'block-request': {
+                // Abort matching requests (e.g. block analytics/3rd-party).
+                const blockPattern = step.selector || step.value;
+                if (!blockPattern) throw new Error('block-request requires a selector (URL pattern)');
+                await page.route(blockPattern, route => route.abort());
+                console.log(`  [Block] ${blockPattern}`);
+                break;
+            }
+
+            case 'set-network-latency': {
+                // Delay matching requests by params.ms milliseconds before
+                // continuing them (simulate slow network / spinners).
+                const latencyPattern = step.selector || '**/*';
+                const delayMs = Number(step.params?.ms ?? step.value ?? 0);
+                await page.route(latencyPattern, async route => {
+                    if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+                    await route.continue();
+                });
+                console.log(`  [Latency] ${latencyPattern} +${delayMs}ms`);
+                break;
+            }
+
+            case 'check-accessibility': {
+                // Run axe-core against the current page. params.impact filters
+                // the minimum severity that fails the step (default 'serious').
+                // params.fail=false makes it report-only (never throws).
+                let AxeBuilder: any;
+                try {
+                    AxeBuilder = require('@axe-core/playwright').default;
+                } catch (e) {
+                    console.warn('  [A11y] @axe-core/playwright not installed; skipping (report-only)');
+                    break;
+                }
+                const results = await new AxeBuilder({ page }).analyze();
+                const order: Record<string, number> = { minor: 0, moderate: 1, serious: 2, critical: 3 };
+                const threshold = order[String(step.params?.impact || 'serious')] ?? 2;
+                const blocking = (results.violations || []).filter(
+                    (v: any) => (order[v.impact as string] ?? 0) >= threshold);
+                const summary = blocking.map((v: any) => `${v.id} (${v.impact}, ${v.nodes.length})`).join('; ');
+                console.log(`  [A11y] ${results.violations.length} violation type(s); `
+                    + `${blocking.length} at/above '${step.params?.impact || 'serious'}'`);
+                const a11yResult = {
+                    type: 'check-accessibility',
+                    total_violations: results.violations.length,
+                    blocking_violations: blocking.length,
+                    violations: blocking.map((v: any) => ({
+                        id: v.id, impact: v.impact, help: v.help,
+                        nodes: v.nodes.length, helpUrl: v.helpUrl,
+                    })),
+                };
+                if (step.params?.fail !== false && blocking.length > 0) {
+                    const err: any = new Error(`Accessibility check failed: ${blocking.length} violation(s) — ${summary}`);
+                    err.stepResult = a11yResult;
+                    throw err;
+                }
+                return a11yResult;
             }
 
             case 'screenshot': {
