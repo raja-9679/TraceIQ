@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # forever. Default: 6 hours.
     MAX_RUN_DURATION_HOURS: int = 6
 
+    # Data retention: finished TestRuns (and their TestCaseResults + MinIO
+    # artifacts) older than this many days are purged by a Celery beat task.
+    # 0 disables retention (keep everything forever).
+    RUN_RETENTION_DAYS: int = 0
+    # How many runs to purge per pass, to bound each task's work.
+    RETENTION_BATCH_SIZE: int = 500
+
     # Notification Settings
     # Master switch - if false, no notifications are sent regardless of other settings
     NOTIFICATIONS_ENABLED: bool = False
