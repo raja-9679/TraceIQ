@@ -14,7 +14,16 @@ class Settings(BaseSettings):
     MINIO_BUCKET_NAME: str = "test-artifacts"
     OPENAI_API_KEY: str = ""
     EXECUTION_ENGINE_URL: str = "http://execution-engine:3000/run"
-    BACKEND_CORS_ORIGINS: list[str] = ["*"]
+    # Set in the environment as a JSON list, e.g.
+    #   BACKEND_CORS_ORIGINS=["https://app.traceiq.io","https://admin.traceiq.io"]
+    # Defaults to local dev origins — set explicitly in production. A bare "*"
+    # is honoured but forces credentials off (see cors_allow_credentials /
+    # main.py) since browsers reject wildcard-with-credentials.
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ]
 
     # Security
     SECRET_KEY: str
@@ -65,6 +74,12 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return self.BACKEND_CORS_ORIGINS
+
+    @property
+    def cors_allow_credentials(self) -> bool:
+        # Browsers reject wildcard origin with credentials; disable credentials
+        # when a wildcard is configured so the wildcard actually works.
+        return "*" not in self.BACKEND_CORS_ORIGINS
 
     class Config:
         env_file = ".env"
