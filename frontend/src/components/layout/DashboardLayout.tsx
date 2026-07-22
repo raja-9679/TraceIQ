@@ -20,7 +20,16 @@ import {
     Globe,
     Activity,
     KeyRound,
-    Webhook
+    Webhook,
+    Gauge,
+    Radio,
+    ShieldAlert,
+    FileCode2,
+    Ticket,
+    Bug,
+    BarChart3,
+    CreditCard,
+    GitMerge
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -37,8 +46,15 @@ import { useQuery } from '@tanstack/react-query';
 
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
+    { name: 'Quality', href: '/quality', icon: Gauge },
     { name: 'Test Suites', href: '/suites', icon: FolderTree },
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
+    { name: 'Monitors', href: '/monitors', icon: Radio },
+    { name: 'Security', href: '/security', icon: ShieldAlert },
+    { name: 'Triage', href: '/triage', icon: Bug },
+    { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+    { name: 'Traceability', href: '/traceability', icon: GitMerge },
+    { name: 'Import Playwright', href: '/import-playwright', icon: FileCode2 },
     { name: 'Schedules', href: '/schedules', icon: CalendarClock },
     { name: 'Proposals', href: '/proposals', icon: GitPullRequestArrow },
     { name: 'Visual Review', href: '/visual-review', icon: Images },
@@ -46,9 +62,11 @@ const navigation = [
     { name: 'Environments', href: '/environments', icon: Globe },
     { name: 'API Keys', href: '/api-keys', icon: KeyRound },
     { name: 'Webhooks', href: '/webhooks', icon: Webhook },
+    { name: 'Issue Trackers', href: '/issue-trackers', icon: Ticket },
     { name: 'Users', href: '/users', icon: User },
     { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
     { name: 'Workspace', href: '/workspace', icon: Users },
+    { name: 'Billing', href: '/billing', icon: CreditCard },
     { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

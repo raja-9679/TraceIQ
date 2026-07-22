@@ -90,6 +90,59 @@ class ExecutionWorker {
         }
     }
 
+    /**
+     * Runtime self-heal (opt-in via RUNTIME_HEAL_ENABLED): on a selector-looking
+     * failure, ask the LLM for a replacement selector and, when it UNIQUELY
+     * matches the live DOM, retry the step with it so the run recovers instead
+     * of failing on a brittle selector. Always records the old→new suggestion
+     * (via `sink`) so the fix can be made durable by a human. Returns true iff
+     * the step passed on retry.
+     */
+    private async tryRuntimeHeal(
+        page: Page | null,
+        currentContext: Page | FrameLocator,
+        step: any,
+        testCaseId: number | undefined,
+        runId: number,
+        errorMessage: string,
+        sink: any[],
+        settings: any,
+        contextData: any,
+    ): Promise<boolean> {
+        try {
+            if (process.env.RUNTIME_HEAL_ENABLED !== 'true') return false;
+            if (llmProvider.name === 'null') return false;
+            if (!step?.selector || !page || page.isClosed()) return false;
+            if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return false;
+
+            const dom = await page.content();
+            const healed = (await this.aiEngine.healSelector(step.selector, dom, runId) || '').trim();
+            if (!healed || healed === step.selector) return false;
+
+            const matches = await page.locator(healed).count().catch(() => 0);
+            const record = () => {
+                if (testCaseId) sink.push({
+                    test_case_id: testCaseId, step_id: step.id || '',
+                    old_selector: step.selector, new_selector: healed,
+                    matches, intent: step.intent || null,
+                });
+            };
+            // Only auto-apply an unambiguous match; otherwise just suggest.
+            if (matches !== 1) {
+                if (matches > 0) record();
+                return false;
+            }
+
+            await TestExecutor.executeStep(page, currentContext, { ...step, selector: healed }, settings, contextData);
+            record();
+            console.log(`[Worker] Runtime heal APPLIED: "${step.selector}" -> "${healed}" (step recovered)`);
+            return true;
+        } catch (e: any) {
+            console.warn(`[Worker] Runtime heal retry failed: ${e.message}`);
+            return false;
+        }
+    }
+
     constructor() {
         this.jobQueue = getJobQueue();
         this.browserManager = new BrowserManager();
@@ -221,6 +274,12 @@ class ExecutionWorker {
      * Execute a test job - routes to appropriate handler based on job type
      */
     private async executeJob(job: TestJob): Promise<JobResult> {
+        // Raw Playwright: run the uploaded spec verbatim, not the interpreter.
+        if (job.test_case?.executor === 'raw_playwright') {
+            console.log(`[Worker] Executing raw_playwright job ${job.job_id}`);
+            return this.executeRawPlaywrightJob(job);
+        }
+
         // Check if this is a multi-test continuous job
         if (job.execution_mode === 'continuous' && job.test_cases && job.test_cases.length > 0) {
             console.log(`[Worker] Executing continuous job ${job.job_id} with ${job.test_cases.length} tests`);
@@ -230,6 +289,55 @@ class ExecutionWorker {
         // Single test case job (original behavior)
         console.log(`[Worker] Executing single test job ${job.job_id}`);
         return this.executeSingleTestJobWithRetry(job);
+    }
+
+    /**
+     * Run an uploaded Playwright spec (executor=raw_playwright). Gated by
+     * RAW_PLAYWRIGHT_ENABLED because it executes arbitrary user code — only
+     * enable on a sandboxed, network-restricted worker image with
+     * @playwright/test + browsers installed. Results are reported at spec/test
+     * granularity via `test_results` (same shape as continuous jobs).
+     */
+    private async executeRawPlaywrightJob(job: TestJob): Promise<JobResult> {
+        const start = Date.now();
+        const tc = job.test_case;
+        const base: Omit<JobResult, 'status' | 'duration_ms'> = {
+            job_id: job.job_id,
+            run_id: job.run_id,
+            test_case_id: job.test_case_id,
+            test_name: tc?.name,
+            artifacts: { screenshots: [] },
+            network_events: [],
+            completed_at: new Date().toISOString(),
+        };
+
+        if (process.env.RAW_PLAYWRIGHT_ENABLED !== 'true') {
+            return { ...base, status: 'error', duration_ms: 0,
+                error: 'raw_playwright execution is disabled on this worker (set RAW_PLAYWRIGHT_ENABLED=true on a sandboxed worker image).' };
+        }
+        if (!tc?.raw_script) {
+            return { ...base, status: 'error', duration_ms: 0, error: 'Case has no raw_script.' };
+        }
+
+        const { runRawPlaywright } = await import('./raw-playwright-runner');
+        const baseUrl = job.settings?.environment?.base_url;
+        const res = await runRawPlaywright(tc.raw_script, { baseUrl, timeoutMs: MAX_JOB_DURATION_MS });
+
+        const test_results: TestCaseResult[] = res.tests.map((t) => ({
+            test_case_id: job.test_case_id as number,
+            test_name: t.title,
+            status: t.status,
+            duration_ms: t.duration_ms,
+            error: t.error,
+        }));
+
+        return {
+            ...base,
+            status: res.status,
+            duration_ms: res.duration_ms || (Date.now() - start),
+            error: res.error,
+            test_results,
+        };
     }
 
     /**
@@ -294,6 +402,7 @@ class ExecutionWorker {
         let capturedAuthState: any = null;
         let currentStep: any = null;
         const healSuggestions: any[] = [];
+        let healedStepCount = 0;
 
         try {
             // Launch browser
@@ -414,8 +523,21 @@ class ExecutionWorker {
                     if (stepErr.stepResult) {
                         lastStepResult = stepErr.stepResult;
                     }
+                    // Runtime self-heal: try to recover this step with an
+                    // LLM-healed selector before failing the whole test.
+                    const recovered = await this.tryRuntimeHeal(
+                        page, currentContext, step, testCaseId, job.run_id,
+                        stepErr.message, healSuggestions, job.settings, contextData);
+                    if (recovered) {
+                        healedStepCount++;
+                        continue;
+                    }
                     throw stepErr;
                 }
+            }
+
+            if (healedStepCount > 0) {
+                console.log(`[Worker] Test "${testCase.name}" passed with ${healedStepCount} runtime-healed step(s); heal proposals recorded.`);
             }
 
             // Capture response data if available

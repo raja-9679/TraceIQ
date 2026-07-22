@@ -2,7 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, String, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import Column, JSON, String, Text, Enum as SAEnum, UniqueConstraint
 from enum import Enum
 
 # Import settings models
@@ -115,6 +115,20 @@ class Project(SQLModel, table=True):
     description: Optional[str] = None
     workspace_id: int = Field(foreign_key="workspace.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Release-gate policy for this project (PLATFORM_VISION.md §5). None → the
+    # built-in DEFAULT_QUALITY_GATE is used. Shape mirrors QualityGatePolicy.
+    quality_gate_policy: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
+    # CI/PR-reporting settings (PLATFORM_VISION.md §5, item 4). None → the
+    # built-in DEFAULT_CI_SETTINGS (disabled). Opt-in and CI/VCS-agnostic:
+    # reporting is keyed off run_id, so git is optional. Shape mirrors CiSettings.
+    ci_settings: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
+    # Active security-scan settings (PLATFORM_VISION.md P-4). None → the
+    # built-in DEFAULT_SECURITY_SETTINGS (disabled). Enforces the
+    # authorized-target allowlist. Shape mirrors SecuritySettings.
+    security_settings: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
 
     # Relationships
     workspace: Workspace = Relationship(back_populates="projects")
@@ -162,6 +176,25 @@ class ExecutionMode(str, Enum):
     CONTINUOUS = "continuous"
     SEPARATE = "separate"
     PARALLEL = "parallel"
+
+
+class ExecutorType(str, Enum):
+    """Which kind of worker executes a test/run — the keystone of the
+    multi-executor platform (see PLATFORM_VISION.md §2).
+
+    A test case declares its executor; the run denormalises it at dispatch and
+    passes it in the job payload so a worker can branch. `ui_playwright` is the
+    original (and default) behaviour; everything else is a future pillar.
+
+    Persisted as a plain string (not a native DB enum) on purpose: new executor
+    types can be added here without an ALTER TYPE migration.
+    """
+    UI_PLAYWRIGHT = "ui_playwright"   # interpreted browser journey (today's core)
+    RAW_PLAYWRIGHT = "raw_playwright"  # uploaded .spec.ts run via `playwright test`
+    SELENIUM = "selenium"             # (converter target / legacy import)
+    API = "api"                       # API/contract testing
+    LOAD = "load"                     # k6/Locust performance runs (time-series result)
+    SECURITY = "security"             # ZAP/nuclei DAST scans (findings result)
 
 
 class RunTrigger(str, Enum):
@@ -259,6 +292,17 @@ class TestCaseBase(SQLModel):
     name: str
     steps: List[TestStep] = Field(
         default=[], sa_column=Column(JSON))  # List of TestSteps
+    # Which kind of worker runs this case. Defaults to the original
+    # interpreted-browser path; other values route to future executor workers
+    # (raw Playwright, load, security, …). See ExecutorType / PLATFORM_VISION.md.
+    executor: ExecutorType = Field(
+        default=ExecutorType.UI_PLAYWRIGHT,
+        sa_column=Column(String, nullable=False,
+                         server_default=ExecutorType.UI_PLAYWRIGHT.value))
+    # For executor=raw_playwright: the uploaded Playwright spec source, run
+    # verbatim via `playwright test` on the worker (not the step interpreter).
+    # NULL for step-based (ui_playwright) cases. See PLATFORM_VISION.md §4.
+    raw_script: Optional[str] = Field(default=None, sa_column=Column(Text))
     test_suite_id: Optional[int] = Field(
         default=None, foreign_key="testsuite.id")
     # Redundant but helpful for direct access
@@ -391,6 +435,12 @@ class TestRunBase(SQLModel):
         default=None, foreign_key="project.id")  # Link to project
     suite_name: Optional[str] = None
     test_case_name: Optional[str] = None
+    # Denormalised from the case(s) at dispatch so results, filtering, and the
+    # webhook payload know which executor produced this run. See ExecutorType.
+    executor: ExecutorType = Field(
+        default=ExecutorType.UI_PLAYWRIGHT,
+        sa_column=Column(String, nullable=False,
+                         server_default=ExecutorType.UI_PLAYWRIGHT.value))
     created_at: datetime = Field(default_factory=datetime.utcnow)
     status: TestStatus = Field(default=TestStatus.PENDING)
     total_tests: int = 0
@@ -491,6 +541,8 @@ class TestCaseResultRead(SQLModel):
     request_url: Optional[str] = None
     request_method: Optional[str] = None
     request_params: Optional[dict] = {}
+    result_kind: Optional[str] = None
+    result_payload: Optional[dict] = None
 
 
 class TestRunRead(TestRunBase):
@@ -526,6 +578,18 @@ class TestCaseResult(SQLModel, table=True):
     confidence: Optional[float] = Field(default=None)  # 0.0–1.0; how sure we are the failure is real
     is_flaky: bool = Field(default=False)
 
+    # Type-aware result payload for non-UI executors (see ExecutorType /
+    # PLATFORM_VISION.md §2). The step-oriented columns above describe a UI
+    # journey; load and security runs don't fit them. `result_kind` names the
+    # shape (e.g. "load", "security") and `result_payload` holds the
+    # executor-specific data (time-series metrics, findings list, …). Both are
+    # NULL for the classic ui_playwright path, keeping it backward compatible.
+    result_kind: Optional[str] = Field(default=None)
+    result_payload: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+
+    # Triage: the failure cluster this result was fingerprinted into (item 2).
+    cluster_id: Optional[int] = Field(default=None, foreign_key="failurecluster.id", index=True)
+
     test_run: TestRun = Relationship(back_populates="results")
 
 
@@ -557,6 +621,12 @@ class User(SQLModel, table=True):
     # informational (login is not blocked on it) plus a resend flow.
     is_verified: bool = Field(default=False)
     email_verified_at: Optional[datetime] = Field(default=None)
+
+    # MFA (TOTP). `mfa_secret` holds the Fernet-encrypted base32 secret; it is
+    # set at setup but MFA is only enforced once `mfa_enabled` is True (after a
+    # code is verified). See app/core/totp.py.
+    mfa_enabled: bool = Field(default=False)
+    mfa_secret: Optional[str] = Field(default=None)
 
 
 class AccountToken(SQLModel, table=True):
@@ -591,9 +661,28 @@ class TestScheduleBase(SQLModel):
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
+    # Synthetic monitoring (PLATFORM_VISION.md §5). When is_monitor=true, each
+    # scheduled run is treated as a production health check: consecutive-failure
+    # streaks drive DOWN/RECOVERY alerts and every check feeds uptime/SLA stats.
+    # These are user-configurable, so they live on the Base (create/read).
+    is_monitor: bool = Field(default=False)
+    # Fire a DOWN alert only after this many consecutive failing checks
+    # (1 = alert on the first failure). Guards against single-blip noise.
+    alert_after_failures: int = Field(default=1)
+    # Send a RECOVERY alert when a down monitor passes again.
+    alert_on_recovery: bool = Field(default=True)
+
 
 class TestSchedule(TestScheduleBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    # Monitor runtime state (server-maintained, not user input — kept off the
+    # Base so it isn't accepted in create/update payloads). Streaks and uptime
+    # are derived from MonitorCheck rows; these cache the current status and
+    # the last state we alerted on (so we alert on transitions, not every run).
+    monitor_state: Optional[str] = Field(default=None)   # "up" | "down" | None(unknown)
+    last_alert_state: Optional[str] = Field(default=None)  # last state an alert was sent for
+    last_checked_at: Optional[datetime] = Field(default=None)
+
     project: Optional["Project"] = Relationship()
     test_suite: Optional["TestSuite"] = Relationship()
     test_case: Optional["TestCase"] = Relationship()
@@ -607,6 +696,8 @@ class TestSchedule(TestScheduleBase, table=True):
 
 class TestScheduleRead(TestScheduleBase):
     id: int
+    monitor_state: Optional[str] = None
+    last_checked_at: Optional[datetime] = None
 
 
 class TestScheduleUpdate(SQLModel):
@@ -616,6 +707,256 @@ class TestScheduleUpdate(SQLModel):
     is_active: Optional[bool] = None
     browser: Optional[str] = None
     device: Optional[str] = None
+    is_monitor: Optional[bool] = None
+    alert_after_failures: Optional[int] = None
+    alert_on_recovery: Optional[bool] = None
+
+
+class MonitorCheck(SQLModel, table=True):
+    """One synthetic-monitoring health check — the outcome of a single
+    monitor-triggered run. Rows accumulate per monitor and are the source of
+    truth for uptime %, SLA windows, and the consecutive-failure streak that
+    drives alerting. See app/tasks/monitor_tasks.py."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    schedule_id: int = Field(foreign_key="testschedule.id", index=True)
+    run_id: Optional[int] = Field(default=None, foreign_key="testrun.id")
+    # The run's terminal status, stored as a plain string (not the native
+    # teststatus enum) to keep this table decoupled and the migration trivial;
+    # Pydantic coerces it back to TestStatus on read.
+    status: TestStatus = Field(sa_column=Column(String, nullable=False))
+    is_up: bool  # True iff the run passed (status == PASSED)
+    checked_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class MonitorCheckRead(SQLModel):
+    id: int
+    run_id: Optional[int] = None
+    status: TestStatus
+    is_up: bool
+    checked_at: datetime
+
+
+class MonitorStatusRead(SQLModel):
+    """Computed health snapshot for one monitor."""
+    schedule_id: int
+    name: str
+    is_active: bool
+    state: str  # "up" | "down" | "unknown"
+    consecutive_failures: int
+    total_checks: int
+    uptime_24h: Optional[float] = None  # 0–100, null when no checks in window
+    uptime_7d: Optional[float] = None
+    last_checked_at: Optional[datetime] = None
+    recent_checks: List[MonitorCheckRead] = []
+
+
+class SecurityFinding(SQLModel, table=True):
+    """A single security finding for a run (PLATFORM_VISION.md P-4).
+
+    Phase 1 populates these from passive analysis of already-captured responses
+    (scan_type="passive"); the ZAP/nuclei executors (phases 2–4) will write to
+    the same table with their own scan_type, so this is the unified findings
+    result-model. run_id has ON DELETE CASCADE (set in the migration) so
+    findings are cleaned up when a run is deleted/purged."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    # A finding attaches to a run (passive analysis) OR a SecurityScan (ZAP);
+    # both are nullable so either source works.
+    run_id: Optional[int] = Field(default=None, foreign_key="testrun.id", index=True)
+    scan_id: Optional[int] = Field(default=None, foreign_key="securityscan.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    scan_type: str = Field(default="passive")  # "passive" | "zap" | "nuclei" | …
+    category: str   # missing-header | insecure-cookie | info-disclosure | insecure-transport | dast
+    severity: str   # high | medium | low | info
+    title: str
+    description: Optional[str] = None
+    evidence: Optional[str] = None
+    target_url: Optional[str] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SecurityScan(SQLModel, table=True):
+    """An active/authenticated DAST scan of a target URL (PLATFORM_VISION.md
+    P-4, item 6). Long-running and async: created PENDING, driven to RUNNING then
+    COMPLETED/ERROR by the ZAP scan task. Findings link via scan_id."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    target_url: str
+    scan_type: str = Field(default="baseline")  # "baseline" (spider+passive) | "active"
+    authenticated: bool = Field(default=False)   # scanned with the project's stored auth session
+    status: str = Field(default="pending")       # pending | running | completed | error
+    requested_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = Field(default=None)
+    finished_at: Optional[datetime] = Field(default=None)
+    counts: Optional[dict] = Field(default=None, sa_column=Column(JSON))  # severity → count
+    error: Optional[str] = Field(default=None)
+
+
+class SecuritySettings(SQLModel):
+    """Per-project active-scan config. Disabled by default; scans are refused
+    unless the target host is on the authorized allowlist."""
+    enabled: bool = False
+    # Hostnames the project is authorized to scan. A scan target must match one.
+    allowed_domains: List[str] = []
+    # Active (attacking) scans are destructive — separate opt-in on top of the
+    # global SECURITY_ACTIVE_SCAN_ENABLED flag.
+    allow_active_scan: bool = False
+
+
+DEFAULT_SECURITY_SETTINGS = SecuritySettings()
+
+
+class SecurityScanRequest(SQLModel):
+    target_url: str
+    scan_type: str = "baseline"     # "baseline" | "active"
+    authenticated: bool = False     # use the project's stored auth session
+    # Explicit attestation that the caller is authorized to scan the target.
+    authorized: bool = False
+
+
+class SecurityFindingRead(SQLModel):
+    id: int
+    run_id: Optional[int] = None
+    scan_id: Optional[int] = None
+    scan_type: str
+    category: str
+    severity: str
+    title: str
+    description: Optional[str] = None
+    evidence: Optional[str] = None
+    target_url: Optional[str] = None
+    created_at: datetime
+
+
+class SecurityScanRead(SQLModel):
+    id: int
+    project_id: int
+    target_url: str
+    scan_type: str
+    authenticated: bool
+    status: str
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    counts: Optional[dict] = None
+    error: Optional[str] = None
+    findings: List[SecurityFindingRead] = []
+
+
+class SecurityScanResult(SQLModel):
+    """Response for a scan trigger / findings listing."""
+    run_id: int
+    scan_type: str = "passive"
+    counts: Dict[str, int] = {}
+    findings: List[SecurityFindingRead] = []
+
+
+# =============================================================================
+# Quality dashboard + release gate (PLATFORM_VISION.md §5)
+# =============================================================================
+
+
+class QualityTrendPoint(SQLModel):
+    date: str  # YYYY-MM-DD
+    runs: int
+    passed_runs: int
+    pass_rate: float  # 0–100
+
+
+class QualitySnapshot(SQLModel):
+    """Aggregated project quality across a rolling window — the unified view of
+    run health, flakiness, monitor uptime and security posture."""
+    project_id: int
+    window_days: int
+    total_runs: int
+    finished_runs: int
+    passed_runs: int
+    failed_runs: int
+    pass_rate: float  # 0–100, over finished runs
+    trend: List[QualityTrendPoint] = []
+    flaky_tests: int = 0
+    quarantined_tests: int = 0
+    monitors_total: int = 0
+    monitors_up: int = 0
+    monitors_down: int = 0
+    down_monitor_names: List[str] = []
+    security_findings: Dict[str, int] = {}  # severity → count in window
+
+
+class QualityGatePolicy(SQLModel):
+    """Thresholds a release must satisfy. Stored per-project on
+    Project.quality_gate_policy; unset fields fall back to these defaults."""
+    min_pass_rate: float = 100.0
+    max_high_severity_findings: int = 0
+    max_medium_severity_findings: Optional[int] = None  # None = no limit
+    require_monitors_up: bool = False
+
+
+class QualityGateCheck(SQLModel):
+    name: str
+    passed: bool
+    actual: str
+    threshold: str
+    detail: Optional[str] = None
+
+
+class QualityGateResult(SQLModel):
+    project_id: int
+    passed: bool
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    evaluated_run_ids: List[int] = []
+    checks: List[QualityGateCheck] = []
+
+
+DEFAULT_QUALITY_GATE = QualityGatePolicy()
+
+
+# =============================================================================
+# CI / PR reporting (PLATFORM_VISION.md §5, item 4) — CI- and VCS-agnostic
+# =============================================================================
+
+
+class CiSettings(SQLModel):
+    """Per-project CI/PR-reporting configuration. Opt-in: disabled by default so
+    teams that don't use CI (or git) are unaffected."""
+    enabled: bool = False
+    # When true, a CI consumer should treat a failed quality gate as blocking.
+    enforce_gate: bool = True
+    # Hint for VCS-based consumers (e.g. the GitHub Action) to post a PR comment.
+    # Ignored when there is no PR/VCS context — reporting still works by run_id.
+    post_pr_comment: bool = True
+
+
+DEFAULT_CI_SETTINGS = CiSettings()
+
+
+class ReportTestResult(SQLModel):
+    test_name: str
+    status: TestStatus
+    duration_ms: Optional[float] = None
+    error_message: Optional[str] = None
+    trace_url: Optional[str] = None
+
+
+class RunReport(SQLModel):
+    """A consolidated, presentation-ready report for a single run. Identified by
+    run_id (git-agnostic); the `git` block is populated only when the run
+    carries VCS context. `markdown` is ready to paste into a PR comment, Slack
+    message, or any CI log."""
+    run_id: int
+    project_id: Optional[int] = None
+    status: TestStatus
+    suite_name: Optional[str] = None
+    total_tests: int = 0
+    passed_tests: int = 0
+    failed_tests: int = 0
+    duration_ms: Optional[float] = None
+    results: List[ReportTestResult] = []
+    security: Dict[str, int] = {}          # severity → count for this run
+    git: Optional[Dict[str, Any]] = None   # {commit, branch, pr_url, repo} if present
+    gate: Optional[QualityGateResult] = None
+    markdown: str = ""
 
 
 class AuditLog(SQLModel, table=True):
@@ -1071,3 +1412,343 @@ class ImpactAnalysisResponse(SQLModel):
     matched_cases: List[ImpactedCase]
     cases_without_code_paths: int
     unmatched_files: List[str]
+
+
+# =============================================================================
+# Issue-tracker / defect integration (Jira, iTop, GitHub) — create tickets
+# from a run and attach its artifacts (trace/video/screenshots).
+# =============================================================================
+
+
+class IssueTrackerConfig(SQLModel, table=True):
+    """Workspace-scoped connection to an external tracker. The credential is
+    stored Fernet-encrypted (never returned by the API)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    provider: str                      # "jira" | "itop" | "github"
+    name: str                          # display label
+    base_url: str
+    auth_user: Optional[str] = Field(default=None)   # email/username (not secret); token-only for github
+    auth_secret_encrypted: str                        # Fernet-encrypted token/password
+    # Provider defaults: jira {project_key, issue_type}; itop {class, org_id};
+    # github {repo}. Plus optional {priority}.
+    settings: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    enabled: bool = Field(default=True)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class IssueTicket(SQLModel, table=True):
+    """A ticket created in an external tracker from a TraceIQ run/result."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    config_id: int = Field(foreign_key="issuetrackerconfig.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    run_id: Optional[int] = Field(default=None, foreign_key="testrun.id", index=True)
+    result_id: Optional[int] = Field(default=None)  # optional TestCaseResult id
+    cluster_id: Optional[int] = Field(default=None, index=True)  # optional FailureCluster id
+    provider: str
+    external_key: Optional[str] = Field(default=None)  # e.g. "PROJ-123"
+    url: Optional[str] = Field(default=None)
+    summary: str
+    status: str = Field(default="pending")  # pending | created | error
+    attachments_uploaded: int = Field(default=0)
+    attachments_total: int = Field(default=0)
+    error: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class IssueTrackerConfigCreate(SQLModel):
+    provider: str
+    name: str
+    base_url: str
+    auth_user: Optional[str] = None
+    auth_secret: str                       # plaintext; encrypted on write
+    settings: Optional[dict] = None
+    enabled: bool = True
+
+
+class IssueTrackerConfigUpdate(SQLModel):
+    name: Optional[str] = None
+    base_url: Optional[str] = None
+    auth_user: Optional[str] = None
+    auth_secret: Optional[str] = None      # only re-encrypted when provided
+    settings: Optional[dict] = None
+    enabled: Optional[bool] = None
+
+
+class IssueTrackerConfigRead(SQLModel):
+    id: int
+    workspace_id: int
+    provider: str
+    name: str
+    base_url: str
+    auth_user: Optional[str] = None
+    settings: Optional[dict] = None
+    enabled: bool
+    created_at: datetime
+    # NB: auth_secret_encrypted is deliberately never exposed.
+
+
+class IssueTicketCreate(SQLModel):
+    config_id: int
+    summary: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    result_id: Optional[int] = None
+    attach_trace: bool = True
+    attach_video: bool = True
+    attach_screenshots: bool = True
+
+
+class IssueTicketRead(SQLModel):
+    id: int
+    config_id: int
+    run_id: Optional[int] = None
+    provider: str
+    external_key: Optional[str] = None
+    url: Optional[str] = None
+    summary: str
+    status: str
+    attachments_uploaded: int
+    attachments_total: int
+    error: Optional[str] = None
+    created_at: datetime
+
+
+# =============================================================================
+# Failure triage / de-duplication (PLATFORM_VISION.md §5, item 2)
+# =============================================================================
+
+
+class FailureCluster(SQLModel, table=True):
+    """A group of failures sharing one root-cause signature within a project.
+    Failing results are fingerprinted (app/services/failure_signature.py) and
+    upserted here so one root cause is one triage item, not N."""
+    __table_args__ = (UniqueConstraint("project_id", "signature", name="uq_cluster_project_signature"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    signature: str = Field(index=True)
+    title: str
+    category: str                       # selector|timeout|assertion|network|navigation|other
+    status: str = Field(default="open")  # open|investigating|resolved|ignored
+    occurrence_count: int = Field(default=0)
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_run_id: Optional[int] = Field(default=None)
+    sample_error: Optional[str] = Field(default=None, sa_column=Column(Text))
+    assignee_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    resolution_note: Optional[str] = Field(default=None)
+    resolved_at: Optional[datetime] = Field(default=None)  # set when status→resolved (MTTR)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FailureClusterRead(SQLModel):
+    id: int
+    project_id: int
+    signature: str
+    title: str
+    category: str
+    status: str
+    occurrence_count: int
+    first_seen_at: datetime
+    last_seen_at: datetime
+    last_run_id: Optional[int] = None
+    sample_error: Optional[str] = None
+    assignee_id: Optional[int] = None
+    resolution_note: Optional[str] = None
+
+
+class FailureClusterUpdate(SQLModel):
+    status: Optional[str] = None
+    assignee_id: Optional[int] = None
+    resolution_note: Optional[str] = None
+
+
+class FailureOccurrenceRead(SQLModel):
+    result_id: int
+    run_id: int
+    test_name: str
+    status: TestStatus
+    created_at: datetime
+
+
+class FailureClusterDetail(FailureClusterRead):
+    occurrences: List[FailureOccurrenceRead] = []
+
+
+# =============================================================================
+# Scheduled quality reports (PLATFORM_VISION.md §5, item 4)
+# =============================================================================
+
+
+class ReportSchedule(SQLModel, table=True):
+    """A recurring quality report for a project: on its cron, a summary
+    (run health + effectiveness) is built and sent to the configured channels."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    cron_expression: str
+    window_days: int = Field(default=7)
+    channels: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # email|slack|teams
+    recipients: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # email addresses
+    is_active: bool = Field(default=True)
+    next_run_at: Optional[datetime] = Field(default=None)
+    last_run_at: Optional[datetime] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReportScheduleCreate(SQLModel):
+    name: str
+    cron_expression: str
+    window_days: int = 7
+    channels: Optional[List[str]] = None
+    recipients: Optional[List[str]] = None
+    is_active: bool = True
+
+
+class ReportScheduleUpdate(SQLModel):
+    name: Optional[str] = None
+    cron_expression: Optional[str] = None
+    window_days: Optional[int] = None
+    channels: Optional[List[str]] = None
+    recipients: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+
+class ReportScheduleRead(SQLModel):
+    id: int
+    project_id: int
+    name: str
+    cron_expression: str
+    window_days: int
+    channels: Optional[List[str]] = None
+    recipients: Optional[List[str]] = None
+    is_active: bool
+    next_run_at: Optional[datetime] = None
+    last_run_at: Optional[datetime] = None
+
+
+# =============================================================================
+# Billing / metering (PLATFORM_VISION.md — commercial readiness)
+# =============================================================================
+
+
+class Plan(SQLModel, table=True):
+    """A subscription plan. `limits` is a dict; 0 means unlimited for that
+    metric. Seeded (free/pro/enterprise) by the billing migration."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)  # machine key: free|pro|enterprise
+    display_name: str
+    price_cents: int = Field(default=0)
+    stripe_price_id: Optional[str] = Field(default=None)
+    limits: dict = Field(default={}, sa_column=Column(JSON))  # monthly_runs, seats, concurrent_runs, retention_days, ai_daily
+    is_active: bool = Field(default=True)
+
+
+class WorkspaceSubscription(SQLModel, table=True):
+    """One active subscription per workspace. None → the free plan."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", unique=True, index=True)
+    plan_id: int = Field(foreign_key="plan.id")
+    status: str = Field(default="active")  # active|trialing|past_due|canceled
+    current_period_start: Optional[datetime] = Field(default=None)
+    current_period_end: Optional[datetime] = Field(default=None)
+    stripe_customer_id: Optional[str] = Field(default=None)
+    stripe_subscription_id: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class UsageRecord(SQLModel, table=True):
+    """Metered usage per workspace per period per metric (e.g. runs)."""
+    __table_args__ = (UniqueConstraint("workspace_id", "period", "metric", name="uq_usage_ws_period_metric"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    period: str = Field(index=True)  # "YYYY-MM"
+    metric: str                       # "runs" | "ai_generations"
+    count: int = Field(default=0)
+
+
+class PlanRead(SQLModel):
+    id: int
+    name: str
+    display_name: str
+    price_cents: int
+    limits: dict
+    is_active: bool
+
+
+class BillingStatus(SQLModel):
+    workspace_id: int
+    plan: PlanRead
+    status: str
+    period: str
+    usage: dict           # metric -> used
+    limits: dict          # metric -> limit (0 = unlimited)
+    current_period_end: Optional[datetime] = None
+    stripe_configured: bool = False
+
+
+class MfaRecoveryCode(SQLModel, table=True):
+    """Single-use MFA backup code. Only the SHA-256 hash is stored (same scheme
+    as refresh/account tokens). Regenerated as a set; consumed at login."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    code_hash: str = Field(index=True)
+    used_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# Requirements / ticket traceability (PLATFORM_VISION.md §5, item 5)
+# Lightweight linking — NOT a full RTM (matrices rejected, gap analysis §23).
+# =============================================================================
+
+
+class RequirementLink(SQLModel, table=True):
+    """Links a test case to an external requirement/ticket (free-form ref like
+    'JIRA-123' or 'PRD-Login'). project_id is denormalised for per-project
+    rollups. `source` allows optional title resolution from a tracker later."""
+    __table_args__ = (UniqueConstraint("test_case_id", "ref", name="uq_reqlink_case_ref"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    ref: str = Field(index=True)
+    source: str = Field(default="manual")  # manual|jira|linear|github
+    title: Optional[str] = Field(default=None)
+    url: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RequirementLinkCreate(SQLModel):
+    ref: str
+    source: str = "manual"
+    title: Optional[str] = None
+    url: Optional[str] = None
+
+
+class RequirementLinkRead(SQLModel):
+    id: int
+    test_case_id: int
+    ref: str
+    source: str
+    title: Optional[str] = None
+    url: Optional[str] = None
+    created_at: datetime
+
+
+class RequirementCoverage(SQLModel):
+    """Rollup for one requirement ref within a project."""
+    ref: str
+    source: str
+    title: Optional[str] = None
+    url: Optional[str] = None
+    test_count: int
+    status: str            # passing | failing | mixed | unknown
+    passing: int
+    failing: int
+    untested: int
+    test_names: List[str] = []

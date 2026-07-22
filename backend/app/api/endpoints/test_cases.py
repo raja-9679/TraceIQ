@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
@@ -9,10 +10,64 @@ from app.core.storage import minio_client
 from app.services.access_service import access_service
 from app.services.rbac_service import rbac_service
 from app.models import (
-    User, AuditLog, TestCase, TestCaseRead, TestCaseUpdate, TestSuite, TestRun, TestCaseResult
+    User, AuditLog, TestCase, TestCaseRead, TestCaseUpdate, TestSuite, TestRun, TestCaseResult,
+    ExecutorType
 )
 
 router = APIRouter()
+
+
+class PlaywrightImportRequest(BaseModel):
+    """Import an existing Playwright spec as a raw_playwright test case."""
+    suite_id: int
+    name: str
+    script: str
+
+
+@router.post("/cases/import-playwright", response_model=TestCaseRead)
+async def import_playwright_case(
+    req: PlaywrightImportRequest,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """Create a raw_playwright case from an uploaded Playwright spec. The spec
+    runs verbatim on the worker (see PLATFORM_VISION.md §4) — no step
+    interpretation, so step-level heal/trace features don't apply. Execution is
+    gated worker-side by RAW_PLAYWRIGHT_ENABLED and requires a sandboxed worker
+    image; importing here only stores the script."""
+    current_user = principal.user
+    if not req.script or not req.script.strip():
+        raise HTTPException(status_code=400, detail="script is empty")
+
+    suite = await session.get(TestSuite, req.suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=suite.project_id):
+        raise HTTPException(status_code=403, detail="Permission denied: You cannot create test cases in this project")
+    if (await session.exec(select(TestSuite).where(TestSuite.parent_id == req.suite_id))).first():
+        raise HTTPException(status_code=400, detail="Cannot add test case to a suite that contains sub-modules")
+
+    case = TestCase(
+        name=req.name,
+        executor=ExecutorType.RAW_PLAYWRIGHT,
+        raw_script=req.script,
+        steps=[],
+        test_suite_id=req.suite_id,
+        project_id=suite.project_id,
+        created_by_id=current_user.id,
+        updated_by_id=current_user.id,
+        created_by_agent_id=principal.agent_id,
+        agent_session_id=principal.agent_session_id,
+    )
+    session.add(case)
+    await session.commit()
+    await session.refresh(case)
+
+    audit = AuditLog(entity_type="case", entity_id=case.id, action="import",
+                     user_id=current_user.id, changes={"executor": "raw_playwright", "name": req.name})
+    session.add(audit)
+    await session.commit()
+    return case
 
 @router.post("/suites/{suite_id}/cases", response_model=TestCaseRead)
 async def create_test_case(

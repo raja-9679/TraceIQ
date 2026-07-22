@@ -2,7 +2,7 @@ from typing import List, Optional, Union, Dict, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select, func, or_, and_
+from sqlmodel import select, func, or_, and_, delete
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
@@ -12,7 +12,8 @@ from app.services.access_service import access_service
 from app.models import (
     User, AuditLog, AuditLogRead, Project, UserWorkspace, UserTeam, UserProjectAccess,
     TeamProjectAccess, TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode,
-    TestCaseResult, TestCaseResultRead, RunTrigger
+    TestCaseResult, TestCaseResultRead, RunTrigger,
+    SecurityFinding, SecurityFindingRead, SecurityScanResult
 )
 
 router = APIRouter()
@@ -82,6 +83,16 @@ async def create_run(
     if not await access_service.has_project_access(current_user.id, suite.project_id, session, min_role="editor"):
         raise HTTPException(
             status_code=403, detail="You do not have permission to run tests in this project")
+
+    # Plan quota: enforce the workspace's monthly run allowance (0 = unlimited).
+    from app.services import billing as _billing
+    _ws_id = await _billing.workspace_id_for_project(session, suite.project_id)
+    if _ws_id:
+        allowed, used, limit = await _billing.check_quota(session, _ws_id, "runs")
+        if not allowed:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Monthly run quota reached ({used}/{limit}). Upgrade the workspace plan to run more.")
 
     # Get effective settings for this suite
     effective_settings = await test_service.get_effective_settings(suite_id, session)
@@ -235,6 +246,13 @@ async def create_run(
             except Exception as e:
                 print(f"Failed to queue run {run.id}: {e}")
 
+        # Meter the run against the workspace's monthly quota (best-effort).
+        if _ws_id and created_runs:
+            try:
+                await _billing.record_usage(session, _ws_id, "runs", len(created_runs))
+            except Exception as e:
+                print(f"Failed to record run usage for workspace {_ws_id}: {e}")
+
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -377,6 +395,72 @@ async def get_run(run_id: int, session: AsyncSession = Depends(get_session), cur
         traceback.print_exc()
         raise HTTPException(
             status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+
+def _severity_counts(findings) -> Dict[str, int]:
+    counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
+    for f in findings:
+        if f.severity in counts:
+            counts[f.severity] += 1
+    return counts
+
+
+@router.post("/runs/{run_id}/security-scan", response_model=SecurityScanResult)
+async def security_scan_run(run_id: int, session: AsyncSession = Depends(get_session),
+                            current_user: User = Depends(get_current_user)):
+    """Passive security scan of a run's already-captured responses (re-runnable).
+
+    Read-only against the target — it only re-analyses recorded data. Replaces
+    any prior passive findings for the run.
+    """
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not await access_service.has_project_access(current_user.id, run.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    from app.services.passive_security import analyze_run, summarize
+    findings = analyze_run(run)
+
+    await session.exec(
+        delete(SecurityFinding).where(
+            SecurityFinding.run_id == run_id,
+            SecurityFinding.scan_type == "passive"))
+    rows = []
+    for f in findings:
+        row = SecurityFinding(
+            run_id=run.id, project_id=run.project_id, scan_type="passive",
+            category=f["category"], severity=f["severity"], title=f["title"],
+            description=f["description"], evidence=f["evidence"], target_url=f["target_url"])
+        session.add(row)
+        rows.append(row)
+    await session.commit()
+    for r in rows:
+        await session.refresh(r)
+
+    return SecurityScanResult(
+        run_id=run.id, scan_type="passive", counts=summarize(findings),
+        findings=[SecurityFindingRead.model_validate(r, from_attributes=True) for r in rows])
+
+
+@router.get("/runs/{run_id}/security-findings", response_model=SecurityScanResult)
+async def get_security_findings(run_id: int, session: AsyncSession = Depends(get_session),
+                                current_user: User = Depends(get_current_user)):
+    """List stored security findings for a run (populated at finalize or on demand)."""
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not await access_service.has_project_access(current_user.id, run.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    severity_rank = {"high": 0, "medium": 1, "low": 2, "info": 3}
+    rows = (await session.exec(
+        select(SecurityFinding).where(SecurityFinding.run_id == run_id))).all()
+    rows.sort(key=lambda r: severity_rank.get(r.severity, 9))
+
+    return SecurityScanResult(
+        run_id=run_id, scan_type="passive", counts=_severity_counts(rows),
+        findings=[SecurityFindingRead.model_validate(r, from_attributes=True) for r in rows])
 
 
 @router.delete("/runs/{run_id}")
@@ -585,6 +669,30 @@ async def finalize_test_run(
         propose_selector_heals_for_run.delay(run_id)
     except Exception as e:
         print(f"[Finalize] Failed to queue heal proposals for run {run_id}: {e}")
+
+    # Synthetic monitoring: if this run belongs to a monitor schedule, record a
+    # health check and fire streak-based alerts. No-op for non-monitor runs.
+    try:
+        from app.tasks.monitor_tasks import evaluate_monitor_for_run
+        evaluate_monitor_for_run.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue monitor evaluation for run {run_id}: {e}")
+
+    # Passive security scan: analyse already-captured responses for missing
+    # security headers, insecure cookies, etc. Best-effort; read-only.
+    try:
+        from app.tasks.security_tasks import scan_run_passive
+        scan_run_passive.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue passive security scan for run {run_id}: {e}")
+
+    # Failure triage: fingerprint failing results into clusters so identical
+    # root causes de-duplicate across runs. Best-effort.
+    try:
+        from app.tasks.triage_tasks import cluster_run_failures
+        cluster_run_failures.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue failure clustering for run {run_id}: {e}")
 
     return {"status": "finalized", "run_id": run_id}
 
