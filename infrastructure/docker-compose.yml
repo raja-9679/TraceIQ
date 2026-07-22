@@ -7,10 +7,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: quality_intelligence
-    # No host port mapping — Postgres is reached only by other containers on
-    # qip_network as `postgres:5432`. To run psql from the host, use:
-    #   docker exec -it infrastructure-postgres-1 psql -U user -d quality_intelligence
-    # Or attach pgadmin (already wired) at http://localhost:8014.
+    # Host port 5433 -> container 5432 (host 5432 is taken by a native Postgres).
+    # Connect DBeaver/psql from the host at localhost:5433.
+    # Other containers still reach it on qip_network as `postgres:5432`.
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -52,7 +53,7 @@ services:
     volumes:
       - ../backend:/app
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/quality_intelligence
       - CELERY_BROKER_URL=redis://redis:6379/0
