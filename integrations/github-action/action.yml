@@ -74,6 +74,8 @@ outputs:
     description: 'Number of passed test cases.'
   failed:
     description: 'Number of failed test cases.'
+  gate-passed:
+    description: 'Whether the server-side quality gate passed (only set when project-id is provided).'
 
 runs:
   using: 'node20'

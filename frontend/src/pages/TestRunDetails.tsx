@@ -4,6 +4,7 @@ import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
 import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
+import CreateTicketDialog from "@/components/CreateTicketDialog";
 import { toast } from "sonner";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion, AnimatePresence } from "framer-motion";
@@ -146,16 +147,17 @@ export default function TestRunDetails() {
                             </span>
                         </h2>
                     </div>
-                    {isStuckTest && (
-                        <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3">
+                        <CreateTicketDialog runId={run.id} />
+                        {isStuckTest && (
                             <button
                                 onClick={() => setShowForceCompleteDialog(true)}
                                 className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all shadow-sm hover:shadow text-sm font-medium flex items-center gap-2"
                             >
                                 <AlertTriangle size={16} /> Force Complete
                             </button>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
 

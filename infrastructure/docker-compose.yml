@@ -88,6 +88,11 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@traceiq.io}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+      # Security scanning (see celery_worker for details).
+      - PASSIVE_SECURITY_SCAN_ENABLED=${PASSIVE_SECURITY_SCAN_ENABLED:-true}
+      - ZAP_API_URL=${ZAP_API_URL:-}
+      - ZAP_API_KEY=${ZAP_API_KEY:-}
+      - SECURITY_ACTIVE_SCAN_ENABLED=${SECURITY_ACTIVE_SCAN_ENABLED:-false}
     depends_on:
       - postgres
       - redis
@@ -136,6 +141,12 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@traceiq.io}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+      # Security scanning. ZAP_API_URL empty → active scans are refused (safe
+      # default). Point it at the `zap` service (--profile security) to enable.
+      - PASSIVE_SECURITY_SCAN_ENABLED=${PASSIVE_SECURITY_SCAN_ENABLED:-true}
+      - ZAP_API_URL=${ZAP_API_URL:-}
+      - ZAP_API_KEY=${ZAP_API_KEY:-}
+      - SECURITY_ACTIVE_SCAN_ENABLED=${SECURITY_ACTIVE_SCAN_ENABLED:-false}
     depends_on:
       - postgres
       - redis
@@ -231,6 +242,12 @@ services:
       - ARTIFACTS_DIR=/tmp/artifacts
       - BACKEND_URL=http://backend:8000
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # Runtime self-heal: auto-retry a failing step with an LLM-healed selector
+      # when it uniquely matches (needs an LLM provider configured above).
+      - RUNTIME_HEAL_ENABLED=${RUNTIME_HEAL_ENABLED:-false}
+      # Raw Playwright executor (item 5): run uploaded specs verbatim. Arbitrary
+      # code execution — only enable on a sandboxed worker.
+      - RAW_PLAYWRIGHT_ENABLED=${RAW_PLAYWRIGHT_ENABLED:-false}
     depends_on:
       - redis
       - minio
@@ -311,6 +328,29 @@ services:
       - "8014:80"
     depends_on:
       - postgres
+    networks:
+      - qip_network
+
+  # OWASP ZAP daemon for active/authenticated DAST (PLATFORM_VISION.md P-4).
+  # Optional + heavy: gated behind the `security` compose profile so a normal
+  # `up` does not start it. Enable with:
+  #   docker compose --profile security up -d zap
+  # then set ZAP_API_URL=http://zap:8090 (and a ZAP_API_KEY) in the env so the
+  # celery worker can reach it.
+  zap:
+    image: zaproxy/zap-stable
+    profiles: ["security"]
+    command: >-
+      zap.sh -daemon -host 0.0.0.0 -port 8090
+      -config api.disablekey=false
+      -config api.key=${ZAP_API_KEY:-changeme}
+      -config api.addrs.addr.name=.*
+      -config api.addrs.addr.regex=true
+    # No host port published — the worker/backend reach ZAP internally via
+    # zap:8090 on qip_network. (Publishing a host port clashes with other local
+    # projects; add `ports: ["8091:8090"]` if you want host access for debugging.)
+    expose:
+      - "8090"
     networks:
       - qip_network
 

@@ -40,6 +40,8 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { api, getSettings, updateSettings, getWorkspaces, type Workspace } from '@/lib/api';
+import { mfaApi } from '@/api/mfa';
+import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -259,6 +261,7 @@ export default function Settings() {
         { id: 'notifications', name: 'Notifications', icon: Bell },
         { id: 'storage', name: 'Storage & Retention', icon: Database },
         { id: 'account', name: 'Account', icon: User },
+        { id: 'security', name: 'Security (MFA)', icon: KeyRound },
     ];
 
     return (
@@ -965,6 +968,7 @@ export default function Settings() {
 
                         {/* Account Settings */}
                         {activeSection === 'account' && <AccountSection />}
+                        {activeSection === 'security' && <MfaSection />}
 
                         {/* Save/Cancel Actions */}
                         {hasUnsavedChanges && (
@@ -1350,6 +1354,115 @@ function ApiKeysSection() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+        </Card>
+    );
+}
+
+
+function RecoveryCodesPanel({ codes, onDismiss }: { codes: string[]; onDismiss: () => void }) {
+    return (
+        <div className="space-y-3 p-4 border border-amber-200 rounded-xl bg-amber-50">
+            <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-sm text-amber-800">
+                    <span className="font-semibold">Save these recovery codes now.</span> Each works once if you lose your
+                    authenticator. They won't be shown again.
+                </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                {codes.map((c) => <div key={c} className="bg-white border border-amber-200 rounded-lg px-2 py-1 text-center">{c}</div>)}
+            </div>
+            <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(codes.join('\n')); toast.success('Recovery codes copied'); }}>
+                    <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy all
+                </Button>
+                <Button size="sm" onClick={onDismiss}>I've saved them</Button>
+            </div>
+        </div>
+    );
+}
+
+function MfaSection() {
+    const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null);
+    const [code, setCode] = useState('');
+    const [disableCode, setDisableCode] = useState('');
+    const [regenCode, setRegenCode] = useState('');
+    const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+
+    const start = useMutation({
+        mutationFn: () => mfaApi.setup(),
+        onSuccess: (d) => setSetup(d),
+        onError: (e: any) => toast.error(e?.response?.data?.detail || 'Could not start MFA setup'),
+    });
+    const verify = useMutation({
+        mutationFn: () => mfaApi.verify(code),
+        onSuccess: (d) => { toast.success('MFA enabled — you\'ll be asked for a code at login'); setSetup(null); setCode(''); setRecoveryCodes(d.recovery_codes); },
+        onError: (e: any) => toast.error(e?.response?.data?.detail || 'Invalid code'),
+    });
+    const disable = useMutation({
+        mutationFn: () => mfaApi.disable(disableCode),
+        onSuccess: () => { toast.success('MFA disabled'); setDisableCode(''); setRecoveryCodes(null); },
+        onError: (e: any) => toast.error(e?.response?.data?.detail || 'Invalid code'),
+    });
+    const regen = useMutation({
+        mutationFn: () => mfaApi.regenerateRecoveryCodes(regenCode),
+        onSuccess: (d) => { toast.success('New recovery codes generated'); setRegenCode(''); setRecoveryCodes(d.recovery_codes); },
+        onError: (e: any) => toast.error(e?.response?.data?.detail || 'Invalid code'),
+    });
+
+    return (
+        <Card>
+            <CardHeader>
+                <CardTitle>Two-Factor Authentication (TOTP)</CardTitle>
+                <CardDescription>Add a second factor using an authenticator app (Google Authenticator, Authy, 1Password).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+                {recoveryCodes && <RecoveryCodesPanel codes={recoveryCodes} onDismiss={() => setRecoveryCodes(null)} />}
+
+                <div className="space-y-3">
+                    <h3 className="text-sm font-semibold text-gray-800">Enable</h3>
+                    {!setup ? (
+                        <Button variant="outline" onClick={() => start.mutate()} disabled={start.isPending}>
+                            <KeyRound className="h-4 w-4 mr-2" /> Set up authenticator
+                        </Button>
+                    ) : (
+                        <div className="space-y-3 p-4 border border-gray-200 rounded-xl bg-gray-50">
+                            <p className="text-sm text-gray-600">Scan this QR code with Google Authenticator (or Authy / 1Password), then enter the current 6-digit code to confirm.</p>
+                            <div className="flex flex-col sm:flex-row gap-4 items-start">
+                                <div className="bg-white p-3 rounded-xl border border-gray-200 shrink-0">
+                                    <QRCodeSVG value={setup.otpauth_uri} size={168} level="M" includeMargin={false} />
+                                </div>
+                                <div className="space-y-2 min-w-0">
+                                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Can't scan? Enter this key manually</p>
+                                    <div className="font-mono text-sm bg-white border border-gray-200 rounded-lg p-2 break-all">{setup.secret}</div>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 items-center pt-1">
+                                <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className="w-32 tracking-widest text-center" />
+                                <Button onClick={() => verify.mutate()} disabled={verify.isPending || code.length !== 6}>Verify &amp; enable</Button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="space-y-3 border-t border-gray-100 pt-4">
+                    <h3 className="text-sm font-semibold text-gray-800">Recovery codes</h3>
+                    <p className="text-sm text-gray-500">Regenerate backup codes (invalidates the old set). Requires a current code.</p>
+                    <div className="flex gap-2 items-center">
+                        <Input value={regenCode} onChange={(e) => setRegenCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className="w-32 tracking-widest text-center" />
+                        <Button variant="outline" onClick={() => regen.mutate()} disabled={regen.isPending || regenCode.length !== 6}>Regenerate codes</Button>
+                    </div>
+                </div>
+
+                <div className="space-y-3 border-t border-gray-100 pt-4">
+                    <h3 className="text-sm font-semibold text-gray-800">Disable</h3>
+                    <p className="text-sm text-gray-500">Enter a current code to turn MFA off.</p>
+                    <div className="flex gap-2 items-center">
+                        <Input value={disableCode} onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className="w-32 tracking-widest text-center" />
+                        <Button variant="outline" onClick={() => disable.mutate()} disabled={disable.isPending} className="text-rose-600 border-rose-200 hover:bg-rose-50">Disable MFA</Button>
+                    </div>
+                </div>
+            </CardContent>
         </Card>
     );
 }

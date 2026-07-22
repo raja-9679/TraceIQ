@@ -7,6 +7,11 @@ export interface TestCase {
     id: number;
     name: string;
     steps: any[];
+    // Which executor runs this case (keystone; PLATFORM_VISION.md §2). Absent
+    // or 'ui_playwright' → the step interpreter; 'raw_playwright' → run
+    // `raw_script` verbatim via the Playwright test runner.
+    executor?: string;
+    raw_script?: string;
     // Auth sessions: a passing run of an auth-setup case captures the
     // context's storageState; use_auth_session=false opts a case out of
     // starting from the stored state (e.g. login-flow tests).

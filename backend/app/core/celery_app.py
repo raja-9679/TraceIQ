@@ -19,6 +19,12 @@ celery_app = Celery(
         "app.tasks.tautology_tasks",
         "app.tasks.persona_tasks",
         "app.tasks.outbound_webhook_tasks",
+        "app.tasks.monitor_tasks",      # Synthetic-monitoring evaluation
+        "app.tasks.security_tasks",     # Passive security scanning
+        "app.tasks.zap_tasks",          # ZAP DAST scanning
+        "app.tasks.ticket_tasks",       # Issue-tracker ticket creation
+        "app.tasks.triage_tasks",       # Failure clustering / triage
+        "app.tasks.report_tasks",       # Scheduled quality reports
     ]
 )
 
@@ -29,7 +35,14 @@ celery_app.conf.task_routes = {
     "app.tasks.cleanup_tasks.purge_old_runs": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
-    "app.tasks.schedule_tasks.process_test_schedules": "main-queue"
+    "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
+    "app.tasks.monitor_tasks.evaluate_monitor_for_run": "main-queue",
+    "app.tasks.security_tasks.scan_run_passive": "main-queue",
+    "app.tasks.zap_tasks.run_zap_scan": "main-queue",
+    "app.tasks.ticket_tasks.create_issue_ticket": "main-queue",
+    "app.tasks.triage_tasks.cluster_run_failures": "main-queue",
+    "app.tasks.report_tasks.send_scheduled_reports": "main-queue",
+    "app.tasks.report_tasks.send_report_now": "main-queue"
 }
 
 # Configure Celery Beat schedule for periodic tasks
@@ -58,6 +71,10 @@ celery_app.conf.beat_schedule = {
     'purge-old-runs': {
         'task': 'app.tasks.cleanup_tasks.purge_old_runs',
         'schedule': 3600.0,  # Hourly; no-op unless RUN_RETENTION_DAYS > 0
+    },
+    'send-scheduled-reports': {
+        'task': 'app.tasks.report_tasks.send_scheduled_reports',
+        'schedule': 300.0,  # Every 5 min; delivers report schedules that are due
     }
 }
 
