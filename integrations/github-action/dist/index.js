@@ -31916,6 +31916,21 @@ async function getRun(baseUrl, headers, runId) {
     return await http('GET', `${baseUrl}/api/runs/${runId}`, headers);
 }
 
+// Per-project CI config (opt-in). { enabled, enforce_gate, post_pr_comment }.
+async function getCiSettings(baseUrl, headers, projectId) {
+    return await http('GET', `${baseUrl}/api/projects/${projectId}/ci-settings`, headers);
+}
+
+// Server-side quality gate. git_commit/git_branch are optional — omitted, the
+// backend evaluates the project's latest run, so this works without git too.
+async function evaluateGate(baseUrl, headers, projectId, gitCtx) {
+    const params = new URLSearchParams();
+    if (gitCtx.sha) params.set('git_commit', gitCtx.sha);
+    else if (gitCtx.branch) params.set('git_branch', gitCtx.branch);
+    const qs = params.toString();
+    return await http('GET', `${baseUrl}/api/projects/${projectId}/quality-gate${qs ? `?${qs}` : ''}`, headers);
+}
+
 async function pollUntilDone(baseUrl, headers, runId, intervalSec, timeoutSec) {
     const deadline = Date.now() + timeoutSec * 1000;
     let last = null;
@@ -32067,7 +32082,27 @@ function failureAnalysisSection(runs) {
     return ['### Failure analysis', '', ...blocks];
 }
 
-function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx }) {
+function gateSection(gate, enforced) {
+    if (!gate) return [];
+    const lines = [
+        '### Quality gate',
+        '',
+        `**${gate.passed ? ':white_check_mark: PASS' : ':x: FAIL'}**` +
+        (enforced ? '' : ' _(advisory — not enforced for this project)_'),
+        '',
+        '| Check | Result | Actual | Threshold |',
+        '| --- | --- | --- | --- |',
+    ];
+    for (const c of gate.checks || []) {
+        lines.push(
+            `| ${mdCell(c.name)} | ${c.passed ? ':white_check_mark:' : ':x:'} | ` +
+            `${mdCell(c.actual)} | ${mdCell(c.threshold)} |`,
+        );
+    }
+    return [...lines, ''];
+}
+
+function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced }) {
     const runCount = runs.filter(Boolean).length;
     const lines = [
         COMMENT_MARKER,
@@ -32077,6 +32112,7 @@ function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCt
         `${passed} passed / ${failed} failed across ${runCount} run(s)` +
         (gitCtx.sha ? ` on commit \`${gitCtx.sha.slice(0, 8)}\`` : ''),
         '',
+        ...gateSection(gate, gateEnforced),
         ...selectionSection(selection),
         '',
         ...resultsSection(runs, baseUrl),
@@ -32190,40 +32226,70 @@ async function main() {
 
         const passed = finalRuns.reduce((acc, r) => acc + (r?.passed_tests || 0), 0);
         const failed = finalRuns.reduce((acc, r) => acc + (r?.failed_tests || 0), 0);
-        const anyBad = timedOut ||
+        const runsBad = timedOut ||
             finalRuns.some((r) => FAILING.has((r?.status || '').toLowerCase()));
+
+        // --- Server-side quality gate + CI settings (both optional) --------
+        // Configurable per project and git-agnostic: the gate falls back to the
+        // latest run when no commit/branch is available. Skipped entirely when
+        // no project-id is supplied, preserving the plain run-pass/fail flow.
+        let gate = null;
+        let ciSettings = null;
+        if (projectId) {
+            try {
+                ciSettings = await getCiSettings(baseUrl, headers, projectId);
+            } catch (err) {
+                core.warning(`Could not read CI settings: ${err.message}`);
+            }
+            try {
+                gate = await evaluateGate(baseUrl, headers, projectId, gitCtx);
+            } catch (err) {
+                core.warning(`Quality gate evaluation failed: ${err.message}`);
+            }
+        }
+        // Gate blocks the job only when the project opted in (enabled) and
+        // enforces it, and the action wasn't told fail-on=none.
+        const ciEnabled = ciSettings ? ciSettings.enabled !== false : true;
+        const gateEnforced = ciEnabled && (ciSettings ? ciSettings.enforce_gate !== false : true) && !failOnNone;
+        const gateBad = !!gate && gate.passed === false;
+
+        const anyBad = runsBad || (gateBad && gateEnforced);
         const overall = anyBad ? 'failed' : 'passed';
 
         core.setOutput('status', overall);
         core.setOutput('passed', String(passed));
         core.setOutput('failed', String(failed));
+        if (gate) core.setOutput('gate-passed', String(gate.passed));
 
         // --- PR comment (idempotent via hidden marker) ---------------------
-        if (postComment && gitCtx.prNumber && octokit) {
+        // Respect the server-side post_pr_comment toggle as well as the input.
+        const commentAllowed = postComment && (ciSettings ? ciSettings.post_pr_comment !== false : true);
+        if (commentAllowed && gitCtx.prNumber && octokit) {
             try {
-                const body = buildComment({ runs: finalRuns, baseUrl, selection, overall, passed, failed, gitCtx });
+                const body = buildComment({ runs: finalRuns, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced });
                 await upsertPrComment(octokit, gitCtx.prNumber, body);
             } catch (err) {
                 core.warning(`Failed to post PR comment: ${err.message}`);
             }
-        } else if (postComment && !gitCtx.prNumber) {
+        } else if (commentAllowed && !gitCtx.prNumber) {
             core.info('Not running on a pull request; skipping PR comment.');
-        } else if (postComment && !octokit) {
+        } else if (commentAllowed && !octokit) {
             core.warning('No github-token input or GITHUB_TOKEN env; skipping PR comment.');
         }
 
-        // --- Quality gate ---------------------------------------------------
+        // --- Fail the job on regressions / gate failure --------------------
         if (overall === 'failed') {
-            const msg = timedOut
-                ? `TraceIQ run did not finish within ${timeout}s.`
-                : `TraceIQ regression failed: ${failed} test case(s) did not pass.`;
+            let msg;
+            if (timedOut) msg = `TraceIQ run did not finish within ${timeout}s.`;
+            else if (runsBad) msg = `TraceIQ regression failed: ${failed} test case(s) did not pass.`;
+            else msg = 'TraceIQ quality gate failed.';
             if (failOnNone) {
                 core.warning(`${msg} (not failing the step: fail-on=none)`);
             } else {
                 core.setFailed(msg);
             }
         } else {
-            core.info(`[TraceIQ] All runs passed (${passed} test cases).`);
+            core.info(`[TraceIQ] Passed (${passed} test cases${gate ? `, gate ${gate.passed ? 'PASS' : 'advisory'}` : ''}).`);
         }
     } catch (err) {
         core.setFailed(err.message || String(err));

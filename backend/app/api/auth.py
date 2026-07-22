@@ -4,7 +4,7 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlmodel.ext.asyncio.session import AsyncSession
-from sqlmodel import select
+from sqlmodel import select, delete
 from typing import List, Optional
 
 from app.core.database import get_session
@@ -19,9 +19,13 @@ from app.core.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
-from app.models import RefreshToken, User, UserRead, Role, Permission, RolePermission, AccountToken
+from app.models import RefreshToken, User, UserRead, Role, Permission, RolePermission, AccountToken, MfaRecoveryCode
 from app.core.auth import hash_refresh_token as _hash_token
+from app.core.auth import SECRET_KEY, ALGORITHM
 from app.core.config import settings as app_settings
+from app.core import totp
+from app.core.secrets import encrypt_secret, decrypt_secret
+from jose import jwt, JWTError
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -78,10 +82,24 @@ class UserCreate(BaseModel):
     invite_token: str | None = None
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
+    access_token: Optional[str] = None
+    token_type: str = "bearer"
     refresh_token: Optional[str] = None
     refresh_token_expires_at: Optional[datetime] = None
+    # MFA challenge: when a user has MFA enabled, login returns mfa_required=True
+    # + a short-lived mfa_token instead of tokens; the client then calls
+    # /auth/mfa/login with the TOTP code to obtain real tokens.
+    mfa_required: bool = False
+    mfa_token: Optional[str] = None
+
+
+class MfaLoginRequest(BaseModel):
+    mfa_token: str
+    code: str
+
+
+class MfaCodeRequest(BaseModel):
+    code: str
 
 
 class RefreshRequest(BaseModel):
@@ -125,37 +143,154 @@ async def login_for_access_token(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account has been deactivated",
         )
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email}, expires_delta=access_token_expires
-    )
 
-    # Issue a refresh token alongside the access token. The raw token is
-    # returned exactly once; the database stores only its SHA-256 hash.
+    # MFA gate: if enabled, don't issue tokens yet — return a short-lived
+    # challenge the client redeems at /auth/mfa/login with a TOTP code.
+    if user.mfa_enabled:
+        challenge = create_access_token(
+            data={"sub": user.email, "mfa_pending": True},
+            expires_delta=timedelta(minutes=5))
+        return {"token_type": "bearer", "mfa_required": True, "mfa_token": challenge}
+
+    return await _issue_tokens(user, request, session)
+
+
+async def _issue_tokens(user: User, request: Request, session: AsyncSession) -> dict:
+    """Mint an access token + a rotating refresh token for a fully-authenticated
+    user. Shared by password login, MFA login, and SSO."""
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+
     raw_refresh, hashed_refresh = generate_refresh_token()
     refresh_expires_at = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    family_id = secrets.token_urlsafe(16)
-    refresh_record = RefreshToken(
+    session.add(RefreshToken(
         user_id=user.id,
         hashed_token=hashed_refresh,
-        family_id=family_id,
+        family_id=secrets.token_urlsafe(16),
         expires_at=refresh_expires_at,
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
-    )
-    session.add(refresh_record)
-
-    # Update last login
+    ))
     user.last_login_at = datetime.utcnow()
     session.add(user)
     await session.commit()
-
     return {
         "access_token": access_token,
         "token_type": "bearer",
         "refresh_token": raw_refresh,
         "refresh_token_expires_at": refresh_expires_at,
     }
+
+
+def _normalize_code(c: str) -> str:
+    return (c or "").strip().replace("-", "").replace(" ", "").lower()
+
+
+async def _generate_recovery_codes(user_id: int, session: AsyncSession, n: int = 10) -> List[str]:
+    """Replace a user's recovery codes with a fresh set; return the plaintext
+    (shown to the user exactly once — only hashes are stored)."""
+    await session.exec(delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == user_id))
+    codes: List[str] = []
+    for _ in range(n):
+        raw = f"{secrets.token_hex(3)}-{secrets.token_hex(3)}"
+        codes.append(raw)
+        session.add(MfaRecoveryCode(user_id=user_id, code_hash=_hash_token(_normalize_code(raw))))
+    await session.commit()
+    return codes
+
+
+async def _consume_recovery_code(user_id: int, code: str, session: AsyncSession) -> bool:
+    rec = (await session.exec(select(MfaRecoveryCode).where(
+        MfaRecoveryCode.user_id == user_id,
+        MfaRecoveryCode.code_hash == _hash_token(_normalize_code(code)),
+        MfaRecoveryCode.used_at == None))).first()  # noqa: E711
+    if not rec:
+        return False
+    rec.used_at = datetime.utcnow()
+    session.add(rec)
+    await session.commit()
+    return True
+
+
+@router.post("/mfa/login", response_model=Token)
+@limiter.limit("10/minute")
+async def mfa_login(request: Request, body: MfaLoginRequest,
+                    session: AsyncSession = Depends(get_session)):
+    """Redeem an MFA challenge token + a TOTP code *or* a recovery code."""
+    try:
+        payload = jwt.decode(body.mfa_token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired MFA challenge")
+    if not payload.get("mfa_pending") or not payload.get("sub"):
+        raise HTTPException(status_code=401, detail="Invalid MFA challenge")
+    user = (await session.exec(select(User).where(User.email == payload["sub"]))).first()
+    if not user or not user.mfa_enabled or not user.mfa_secret:
+        raise HTTPException(status_code=401, detail="MFA not configured")
+
+    ok = totp.verify(decrypt_secret(user.mfa_secret), body.code)
+    if not ok:
+        ok = await _consume_recovery_code(user.id, body.code, session)
+    if not ok:
+        raise HTTPException(status_code=401, detail="Invalid authentication or recovery code")
+    return await _issue_tokens(user, request, session)
+
+
+@router.post("/mfa/setup")
+async def mfa_setup(current_user: User = Depends(get_current_user),
+                    session: AsyncSession = Depends(get_session)):
+    """Generate a TOTP secret (not yet enforced) and return the enrollment URI."""
+    secret = totp.generate_secret()
+    current_user.mfa_secret = encrypt_secret(secret)
+    current_user.mfa_enabled = False  # not enforced until verified
+    session.add(current_user)
+    await session.commit()
+    return {"secret": secret,
+            "otpauth_uri": totp.provisioning_uri(secret, current_user.email)}
+
+
+@router.post("/mfa/verify")
+async def mfa_verify(body: MfaCodeRequest, current_user: User = Depends(get_current_user),
+                     session: AsyncSession = Depends(get_session)):
+    """Confirm a code against the pending secret and turn MFA on."""
+    if not current_user.mfa_secret:
+        raise HTTPException(status_code=400, detail="Run /mfa/setup first")
+    if not totp.verify(decrypt_secret(current_user.mfa_secret), body.code):
+        raise HTTPException(status_code=400, detail="Invalid authentication code")
+    current_user.mfa_enabled = True
+    session.add(current_user)
+    await session.commit()
+    # Issue backup codes (shown once) so a lost device doesn't lock the user out.
+    codes = await _generate_recovery_codes(current_user.id, session)
+    return {"mfa_enabled": True, "recovery_codes": codes}
+
+
+@router.post("/mfa/disable")
+async def mfa_disable(body: MfaCodeRequest, current_user: User = Depends(get_current_user),
+                      session: AsyncSession = Depends(get_session)):
+    if current_user.mfa_enabled and current_user.mfa_secret:
+        if not totp.verify(decrypt_secret(current_user.mfa_secret), body.code):
+            raise HTTPException(status_code=400, detail="Invalid authentication code")
+    current_user.mfa_enabled = False
+    current_user.mfa_secret = None
+    session.add(current_user)
+    await session.exec(delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == current_user.id))
+    await session.commit()
+    return {"mfa_enabled": False}
+
+
+@router.post("/mfa/recovery-codes")
+async def regenerate_recovery_codes(body: MfaCodeRequest,
+                                    current_user: User = Depends(get_current_user),
+                                    session: AsyncSession = Depends(get_session)):
+    """Issue a fresh set of recovery codes (invalidating the old), gated by a
+    current TOTP code."""
+    if not current_user.mfa_enabled or not current_user.mfa_secret:
+        raise HTTPException(status_code=400, detail="MFA is not enabled")
+    if not totp.verify(decrypt_secret(current_user.mfa_secret), body.code):
+        raise HTTPException(status_code=400, detail="Invalid authentication code")
+    codes = await _generate_recovery_codes(current_user.id, session)
+    return {"recovery_codes": codes}
 
 
 @router.post("/refresh", response_model=Token)
@@ -532,3 +667,93 @@ async def delete_my_account(
         session.add(tok)
     await session.commit()
     return {"status": "ok", "message": "Account deleted"}
+
+
+# ---------------------------------------------------------------------------
+# SSO (OIDC). Enabled only when OIDC_* is configured. The token-exchange flow
+# needs a real IdP to exercise end-to-end; URL/state construction is pure.
+# ---------------------------------------------------------------------------
+import httpx
+from fastapi.responses import RedirectResponse
+from urllib.parse import urlencode
+
+
+async def _oidc_discovery() -> dict:
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.get(f"{app_settings.OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration")
+        r.raise_for_status()
+        return r.json()
+
+
+def build_authorize_url(cfg: dict, state: str) -> str:
+    """Pure: assemble the IdP authorization URL (unit-testable)."""
+    params = {
+        "response_type": "code",
+        "client_id": app_settings.OIDC_CLIENT_ID,
+        "redirect_uri": app_settings.OIDC_REDIRECT_URI,
+        "scope": "openid email profile",
+        "state": state,
+    }
+    return f"{cfg['authorization_endpoint']}?{urlencode(params)}"
+
+
+@router.get("/sso/status")
+async def sso_status():
+    return {"enabled": app_settings.oidc_enabled,
+            "issuer": app_settings.OIDC_ISSUER if app_settings.oidc_enabled else None}
+
+
+@router.get("/sso/login")
+async def sso_login():
+    if not app_settings.oidc_enabled:
+        raise HTTPException(status_code=404, detail="SSO is not configured")
+    state = create_access_token(data={"sso_state": True}, expires_delta=timedelta(minutes=10))
+    cfg = await _oidc_discovery()
+    return RedirectResponse(build_authorize_url(cfg, state))
+
+
+@router.get("/sso/callback")
+async def sso_callback(request: Request, code: str = "", state: str = "",
+                       session: AsyncSession = Depends(get_session)):
+    if not app_settings.oidc_enabled:
+        raise HTTPException(status_code=404, detail="SSO is not configured")
+    try:
+        payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
+        if not payload.get("sso_state"):
+            raise JWTError("bad state")
+    except JWTError:
+        raise HTTPException(status_code=400, detail="Invalid SSO state")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing authorization code")
+
+    cfg = await _oidc_discovery()
+    async with httpx.AsyncClient(timeout=15) as client:
+        tok = await client.post(cfg["token_endpoint"], data={
+            "grant_type": "authorization_code", "code": code,
+            "redirect_uri": app_settings.OIDC_REDIRECT_URI,
+            "client_id": app_settings.OIDC_CLIENT_ID,
+            "client_secret": app_settings.OIDC_CLIENT_SECRET,
+        }, headers={"Accept": "application/json"})
+        if tok.status_code != 200:
+            raise HTTPException(status_code=401, detail=f"SSO token exchange failed: {tok.text[:200]}")
+        access = tok.json().get("access_token")
+        ui = await client.get(cfg["userinfo_endpoint"], headers={"Authorization": f"Bearer {access}"})
+        ui.raise_for_status()
+        info = ui.json()
+
+    email = (info.get("email") or "").lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="SSO provider did not return an email")
+
+    user = (await session.exec(select(User).where(User.email == email))).first()
+    if not user:
+        user = User(email=email, full_name=info.get("name") or email.split("@")[0],
+                    hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+                    is_active=True, is_verified=True, email_verified_at=datetime.utcnow())
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    tokens = await _issue_tokens(user, request, session)
+    frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})
+    return RedirectResponse(f"{app_settings.OIDC_POST_LOGIN_REDIRECT}#{frag}")

@@ -9,7 +9,7 @@ from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models import TestRun, TestStatus, ExecutionMode
+from app.models import TestRun, TestStatus, ExecutionMode, ExecutorType
 import requests
 import json
 import redis
@@ -122,6 +122,16 @@ def run_test_suite(run_id: int, tags: list = None):
 
             # Update total tests count
             run.total_tests = len(cases_to_run)
+
+            # Denormalise the executor onto the run. If every case shares one
+            # executor, the run adopts it; a mixed suite falls back to the
+            # classic ui_playwright label (per-job payload stays authoritative).
+            executors = {
+                getattr(c, 'executor', ExecutorType.UI_PLAYWRIGHT) or ExecutorType.UI_PLAYWRIGHT
+                for c in cases_to_run
+            }
+            run.executor = next(iter(executors)) if len(executors) == 1 else ExecutorType.UI_PLAYWRIGHT
+
             session.add(run)
             session.commit()
 
@@ -182,9 +192,16 @@ def _case_payload(case, row_index=None, data_row=None) -> dict:
     name = case.name
     if row_index is not None:
         name = f"{case.name} [row {row_index + 1}]"
+    executor = getattr(case, 'executor', None)
     payload = {
         'id': case.id,
         'name': name,
+        # Which worker should run this case. Unknown values are ignored by the
+        # current Node worker (it only handles ui_playwright), so this is safe
+        # to emit before the other executor workers exist.
+        'executor': executor.value if hasattr(executor, 'value') else (executor or 'ui_playwright'),
+        # Raw Playwright spec source for executor=raw_playwright (else None).
+        'raw_script': getattr(case, 'raw_script', None),
         'steps': [
             step.dict() if hasattr(step, 'dict') else step
             for step in case.steps

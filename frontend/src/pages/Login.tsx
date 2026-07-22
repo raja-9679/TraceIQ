@@ -11,8 +11,27 @@ export default function Login() {
     const navigate = useNavigate();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
+    const [mfaToken, setMfaToken] = useState<string | null>(null);
+    const [mfaCode, setMfaCode] = useState("");
+    const [ssoEnabled, setSsoEnabled] = useState(false);
 
     const { register, handleSubmit, formState: { errors } } = useForm();
+    const API = import.meta.env.VITE_API_BASE_URL;
+
+    // SSO: detect the callback (#access_token=…) and finish login; also learn
+    // whether SSO is configured so we can show the button.
+    useEffect(() => {
+        axios.get(`${API}/auth/sso/status`).then((r) => setSsoEnabled(!!r.data?.enabled)).catch(() => {});
+        const hash = window.location.hash.startsWith('#') ? new URLSearchParams(window.location.hash.slice(1)) : null;
+        const ssoToken = hash?.get('access_token');
+        if (ssoToken) {
+            window.history.replaceState(null, '', window.location.pathname);
+            axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${ssoToken}` } })
+                .then((me) => { login(ssoToken, me.data); navigate('/'); })
+                .catch(() => setError('SSO sign-in failed.'));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     // Complex Microservices Architecture Simulation
     const initialNodes = [
@@ -70,26 +89,39 @@ export default function Login() {
     }, []);
 
 
+    const finishLogin = async (accessToken: string) => {
+        const userResponse = await axios.get(`${API}/auth/me`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        login(accessToken, userResponse.data);
+        navigate("/");
+    };
+
     const onSubmit = async (data: any) => {
         setIsLoading(true);
         setError("");
         try {
+            // Second step: an MFA challenge is pending — redeem it with the code.
+            if (mfaToken) {
+                const resp = await axios.post(`${API}/auth/mfa/login`, { mfa_token: mfaToken, code: mfaCode });
+                await finishLogin(resp.data.access_token);
+                return;
+            }
+
             const formData = new FormData();
             formData.append('username', data.email);
             formData.append('password', data.password);
+            const response = await axios.post(`${API}/auth/login`, formData);
 
-            const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, formData);
-            const { access_token } = response.data;
-
-            const userResponse = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/auth/me`, {
-                headers: { Authorization: `Bearer ${access_token}` }
-            });
-
-            login(access_token, userResponse.data);
-            navigate("/");
+            if (response.data.mfa_required) {
+                setMfaToken(response.data.mfa_token);
+                setError("");
+                return;  // show the code step
+            }
+            await finishLogin(response.data.access_token);
         } catch (err: any) {
             console.error("Login failed", err);
-            setError(err.response?.data?.detail || "Invalid credentials.");
+            setError(err.response?.data?.detail || (mfaToken ? "Invalid authentication code." : "Invalid credentials."));
         } finally {
             setIsLoading(false);
         }
@@ -351,30 +383,49 @@ export default function Login() {
                                         )}
                                     </AnimatePresence>
 
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Work Email</label>
-                                        <input
-                                            {...register("email", { required: "Required" })}
-                                            type="email"
-                                            autoFocus
-                                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
-                                            placeholder="name@company.com"
-                                        />
-                                        {errors.email && <span className="text-xs text-red-500">{errors.email.message as string}</span>}
-                                    </div>
+                                    {!mfaToken && (
+                                        <>
+                                            <div className="space-y-2">
+                                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Work Email</label>
+                                                <input
+                                                    {...register("email", { required: "Required" })}
+                                                    type="email"
+                                                    autoFocus
+                                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                                                    placeholder="name@company.com"
+                                                />
+                                                {errors.email && <span className="text-xs text-red-500">{errors.email.message as string}</span>}
+                                            </div>
 
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
-                                            <Link to="/forgot-password" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-900 transition-colors">Forgot?</Link>
+                                            <div className="space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
+                                                    <Link to="/forgot-password" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-900 transition-colors">Forgot?</Link>
+                                                </div>
+                                                <input
+                                                    {...register("password", { required: "Required" })}
+                                                    type="password"
+                                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                                                />
+                                                {errors.password && <span className="text-xs text-red-500">{errors.password.message as string}</span>}
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {mfaToken && (
+                                        <div className="space-y-2">
+                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Authentication code</label>
+                                            <input
+                                                value={mfaCode}
+                                                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                                                inputMode="numeric"
+                                                autoFocus
+                                                placeholder="123456"
+                                                className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
+                                            />
+                                            <p className="text-[10px] text-zinc-400">Enter the 6-digit code from your authenticator app.</p>
                                         </div>
-                                        <input
-                                            {...register("password", { required: "Required" })}
-                                            type="password"
-                                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
-                                        />
-                                        {errors.password && <span className="text-xs text-red-500">{errors.password.message as string}</span>}
-                                    </div>
+                                    )}
 
                                     <button
                                         type="submit"
@@ -383,10 +434,19 @@ export default function Login() {
                                     >
                                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
                                             <span className="flex items-center">
-                                                Sign In <ArrowRight className="w-4 h-4 ml-2 opacity-50 group-hover:translate-x-1 group-hover:opacity-100 transition-all" />
+                                                {mfaToken ? 'Verify' : 'Sign In'} <ArrowRight className="w-4 h-4 ml-2 opacity-50 group-hover:translate-x-1 group-hover:opacity-100 transition-all" />
                                             </span>
                                         )}
                                     </button>
+
+                                    {ssoEnabled && !mfaToken && (
+                                        <a
+                                            href={`${API}/auth/sso/login`}
+                                            className="w-full py-2.5 px-4 border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2"
+                                        >
+                                            <Shield className="w-4 h-4" /> Sign in with SSO
+                                        </a>
+                                    )}
                                 </form>
                             </div>
 
