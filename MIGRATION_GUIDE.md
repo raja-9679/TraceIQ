@@ -40,6 +40,39 @@ alembic downgrade <revision_id>
 
 ---
 
+## Running Migrations via Docker Compose
+
+When the stack is running under Docker Compose (the normal setup), run Alembic
+**inside** the `backend` container instead of from the host. Do this from the
+`infrastructure/` directory.
+
+> **Always run `alembic upgrade head` after pulling new backend commits.** If the
+> models add a column the DB doesn't have yet (e.g. `users.is_verified`),
+> endpoints will return HTTP 500 with `column ... does not exist` until you
+> migrate.
+
+### Apply pending migrations
+
+```bash
+docker compose --env-file env.local -f docker-compose.yml exec backend alembic upgrade head
+```
+
+### Check migration status
+
+```bash
+# Revision the DB is currently on
+docker compose --env-file env.local -f docker-compose.yml exec backend alembic current
+
+# Latest revision the code expects (target)
+docker compose --env-file env.local -f docker-compose.yml exec backend alembic heads
+```
+
+If `current` differs from `heads`, the DB is behind — run the upgrade command above.
+
+For production, swap the compose args: `--env-file env.prod -f docker-compose.prod.yml`.
+
+---
+
 ## 🚨 Emergency Manual Approvals (Raw SQL) 🚨
 
 In emergency situations where Alembic is unavailable or migrations fail, use raw SQL directly against the PostgreSQL instance.
