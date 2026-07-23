@@ -168,3 +168,88 @@ async def get_security_scan(
     return SecurityScanRead(
         **scan.model_dump(),
         findings=[SecurityFindingRead.model_validate(r, from_attributes=True) for r in rows])
+
+
+_FINDING_STATUSES = {"open", "acknowledged", "false_positive", "resolved"}
+
+
+@router.patch("/security-findings/{finding_id}", response_model=SecurityFindingRead)
+async def update_security_finding(
+    finding_id: int,
+    body: dict = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Triage a finding: set status (open/acknowledged/false_positive/resolved)
+    and/or assignee. false_positive verdicts on ZAP findings carry forward to
+    the same finding in future scans (fingerprint match)."""
+    finding = await session.get(SecurityFinding, finding_id)
+    if not finding:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if not finding.project_id or not await access_service.has_project_access(
+            current_user.id, finding.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    if "status" in body:
+        status = str(body["status"])
+        if status not in _FINDING_STATUSES:
+            raise HTTPException(status_code=422, detail=f"status must be one of {sorted(_FINDING_STATUSES)}")
+        finding.status = status
+        from datetime import datetime as _dt
+        finding.resolved_at = _dt.utcnow() if status == "resolved" else None
+    if "assignee_id" in body:
+        finding.assignee_id = body["assignee_id"] or None
+
+    session.add(finding)
+    await session.commit()
+    await session.refresh(finding)
+    return finding
+
+
+@router.get("/security-scans/{scan_id}/diff")
+async def security_scan_diff(
+    scan_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Scan-over-scan comparison against the previous completed scan of the
+    same project+target: which findings are new, fixed, or persisting."""
+    scan = await session.get(SecurityScan, scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    if not await access_service.has_project_access(current_user.id, scan.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    prev = (await session.exec(
+        select(SecurityScan).where(
+            SecurityScan.project_id == scan.project_id,
+            SecurityScan.target_url == scan.target_url,
+            SecurityScan.status == "completed",
+            SecurityScan.id != scan.id,
+            SecurityScan.created_at < scan.created_at,
+        ).order_by(SecurityScan.created_at.desc()))).first()
+
+    current_rows = (await session.exec(
+        select(SecurityFinding).where(SecurityFinding.scan_id == scan_id))).all()
+    prev_rows = (await session.exec(
+        select(SecurityFinding).where(SecurityFinding.scan_id == prev.id))).all() if prev else []
+
+    cur_fp = {r.fingerprint: r for r in current_rows if r.fingerprint}
+    prev_fp = {r.fingerprint: r for r in prev_rows if r.fingerprint}
+
+    def _brief(r: SecurityFinding) -> dict:
+        return {"id": r.id, "severity": r.severity, "title": r.title,
+                "target_url": r.target_url, "status": r.status}
+
+    new = [_brief(r) for fp, r in cur_fp.items() if fp not in prev_fp]
+    fixed = [_brief(r) for fp, r in prev_fp.items() if fp not in cur_fp]
+    persisting = [_brief(r) for fp, r in cur_fp.items() if fp in prev_fp]
+
+    return {
+        "scan_id": scan_id,
+        "previous_scan_id": prev.id if prev else None,
+        "baseline_available": prev is not None,
+        "new": new,
+        "fixed": fixed,
+        "persisting_count": len(persisting),
+    }

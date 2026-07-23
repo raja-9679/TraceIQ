@@ -14,6 +14,19 @@ export interface SecurityFinding {
     evidence?: string | null;
     target_url?: string | null;
     created_at: string;
+    status?: 'open' | 'acknowledged' | 'false_positive' | 'resolved';
+    assignee_id?: number | null;
+    resolved_at?: string | null;
+    fingerprint?: string | null;
+}
+
+export interface ScanDiff {
+    scan_id: number;
+    previous_scan_id: number | null;
+    baseline_available: boolean;
+    new: { id: number; severity: string; title: string; target_url: string | null; status: string }[];
+    fixed: { id: number; severity: string; title: string; target_url: string | null; status: string }[];
+    persisting_count: number;
 }
 
 export interface SecurityScanResult {
@@ -75,6 +88,14 @@ export const securityApi = {
         target_url: string; scan_type: string; authenticated: boolean; authorized: boolean;
     }): Promise<SecurityScan> => {
         const r = await api.post(`/projects/${projectId}/security-scan`, body);
+        return r.data;
+    },
+    updateFinding: async (findingId: number, body: { status?: string; assignee_id?: number | null }): Promise<SecurityFinding> => {
+        const r = await api.patch(`/security-findings/${findingId}`, body);
+        return r.data;
+    },
+    scanDiff: async (scanId: number): Promise<ScanDiff> => {
+        const r = await api.get(`/security-scans/${scanId}/diff`);
         return r.data;
     },
 };

@@ -46,7 +46,37 @@ async def _process_schedules_async():
 
 async def _dispatch_schedule(schedule: TestSchedule, session):
     created_runs = []
-    
+
+    # Recurring security scan — fires a BASELINE (never active) ZAP scan of
+    # the target instead of a suite run. The same per-project gates apply as
+    # for manual scans: security enabled + target host on the allowlist.
+    if schedule.security_scan_target:
+        from app.api.security import _host_allowed, _security_settings
+        from app.models import Project, SecurityScan
+        from app.tasks.zap_tasks import run_zap_scan
+
+        project = await session.get(Project, schedule.project_id)
+        sec = _security_settings(project) if project else None
+        if not sec or not sec.enabled:
+            print(f"[Schedule] Security scan schedule {schedule.id} skipped: security not enabled on project")
+            return
+        if not _host_allowed(schedule.security_scan_target, sec.allowed_domains):
+            print(f"[Schedule] Security scan schedule {schedule.id} skipped: target host not on the allowlist")
+            return
+        scan = SecurityScan(
+            project_id=schedule.project_id,
+            target_url=schedule.security_scan_target,
+            scan_type="baseline",
+            requested_by_id=schedule.created_by_id,
+        )
+        session.add(scan)
+        await session.commit()
+        await session.refresh(scan)
+        run_zap_scan.delay(scan.id)
+        print(f"[Schedule] Dispatched scheduled baseline security scan {scan.id} "
+              f"for schedule {schedule.id} → {schedule.security_scan_target}")
+        return
+
     # Target devices check
     target_devices = [schedule.device] if schedule.device else [None]
     target_browser = schedule.browser or "chromium"

@@ -674,6 +674,11 @@ class TestScheduleBase(SQLModel):
     # Extra email recipients for DOWN/RECOVERY alerts (Slack/Teams come from
     # the project's notification settings; email is per-monitor).
     alert_emails: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    # When set, this schedule fires a recurring BASELINE security scan of the
+    # target instead of a suite/case run. Scheduled scans are never active —
+    # the attacking scan keeps its manual double-opt-in. The same
+    # security_settings gates (enabled + host allowlist) apply at dispatch.
+    security_scan_target: Optional[str] = Field(default=None)
 
 
 class TestSchedule(TestScheduleBase, table=True):
@@ -714,6 +719,7 @@ class TestScheduleUpdate(SQLModel):
     alert_after_failures: Optional[int] = None
     alert_on_recovery: Optional[bool] = None
     alert_emails: Optional[List[str]] = None
+    security_scan_target: Optional[str] = None
 
 
 class MonitorCheck(SQLModel, table=True):
@@ -776,6 +782,13 @@ class SecurityFinding(SQLModel, table=True):
     evidence: Optional[str] = None
     target_url: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Triage lifecycle. `fingerprint` identifies the same logical finding
+    # across scans (category|title|host+path) so scan-over-scan diffs work and
+    # false-positive verdicts carry forward instead of resurfacing every scan.
+    status: str = Field(default="open", index=True)  # open|acknowledged|false_positive|resolved
+    assignee_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    resolved_at: Optional[datetime] = Field(default=None)
+    fingerprint: Optional[str] = Field(default=None, index=True)
 
 
 class SecurityScan(SQLModel, table=True):
@@ -830,6 +843,10 @@ class SecurityFindingRead(SQLModel):
     evidence: Optional[str] = None
     target_url: Optional[str] = None
     created_at: datetime
+    status: str = "open"
+    assignee_id: Optional[int] = None
+    resolved_at: Optional[datetime] = None
+    fingerprint: Optional[str] = None
 
 
 class SecurityScanRead(SQLModel):

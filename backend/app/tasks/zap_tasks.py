@@ -93,14 +93,36 @@ def run_zap_scan(self, scan_id: int):
                 _poll_to_complete(lambda: client.active_scan_status(ascan_id), budget)
 
             findings = map_alerts(client.alerts(scan.target_url))
+
+            # Carry triage forward: a finding marked false_positive in the
+            # previous completed scan of this project+target stays
+            # false_positive instead of resurfacing as open every scan.
+            from sqlmodel import select as _select
+
+            from app.models import SecurityScan as _Scan
+            from app.services.passive_security import finding_fingerprint
+            prev_scan = s.exec(_select(_Scan).where(
+                _Scan.project_id == scan.project_id,
+                _Scan.target_url == scan.target_url,
+                _Scan.status == "completed",
+                _Scan.id != scan.id).order_by(_Scan.finished_at.desc())).first()
+            prev_fp_status: dict = {}
+            if prev_scan:
+                for pf in s.exec(_select(SecurityFinding).where(
+                        SecurityFinding.scan_id == prev_scan.id)).all():
+                    if pf.fingerprint:
+                        prev_fp_status[pf.fingerprint] = pf.status
+
             counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
             for f in findings:
                 counts[f["severity"]] = counts.get(f["severity"], 0) + 1
+                fp = finding_fingerprint(f["category"], f["title"], f["target_url"])
                 s.add(SecurityFinding(
                     scan_id=scan.id, project_id=scan.project_id, scan_type="zap",
                     category=f["category"], severity=f["severity"], title=f["title"],
                     description=f["description"], evidence=f["evidence"],
-                    target_url=f["target_url"]))
+                    target_url=f["target_url"], fingerprint=fp,
+                    status="false_positive" if prev_fp_status.get(fp) == "false_positive" else "open"))
 
             scan.counts = counts
             scan.status = "completed"
