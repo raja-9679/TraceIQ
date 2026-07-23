@@ -510,28 +510,47 @@ async def delete_runs(
             )
         )
         runs = result.all()
+        # Membership scoping above limits the blast radius; still require the
+        # editor role per project so viewers cannot bulk-delete.
+        editable: dict[int, bool] = {}
+        deleted = 0
         for run in runs:
+            if run.project_id not in editable:
+                editable[run.project_id] = await access_service.has_project_access(
+                    current_user.id, run.project_id, session, min_role="editor")
+            if not editable[run.project_id]:
+                continue
             minio_client.delete_run_artifacts(run.id)
             result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
             for res in result_cases.all():
                 await session.delete(res)
             await session.delete(run)
+            deleted += 1
         await session.commit()
-        return {"status": "success", "message": f"All {len(runs)} runs deleted"}
+        return {"status": "success", "message": f"All {deleted} runs deleted"}
 
     if run_ids:
-        # Delete specific runs
+        # Delete specific runs — only those in projects the caller can edit.
         result = await session.exec(select(TestRun).where(TestRun.id.in_(run_ids)))
         runs = result.all()
+        denied = 0
+        deleted = 0
         for run in runs:
+            if not await access_service.has_project_access(
+                    current_user.id, run.project_id, session, min_role="editor"):
+                denied += 1
+                continue
             minio_client.delete_run_artifacts(run.id)
             # Delete associated TestCaseResults
             result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
             for res in result_cases.all():
                 await session.delete(res)
             await session.delete(run)
+            deleted += 1
         await session.commit()
-        return {"status": "success", "message": f"{len(runs)} runs deleted"}
+        if denied and not deleted:
+            raise HTTPException(status_code=403, detail="Access denied for all requested runs")
+        return {"status": "success", "message": f"{deleted} runs deleted" + (f", {denied} denied" if denied else "")}
 
     raise HTTPException(
         status_code=400, detail="Must specify run_ids or all=true")
