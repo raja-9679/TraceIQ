@@ -6,6 +6,21 @@ import addFormats from 'ajv-formats';
 import * as path from 'path';
 import { spawn } from 'child_process';
 
+// Dot-path lookup into a parsed JSON body. Supports `a.b.c`, numeric array
+// segments (`items.0.id`), and bracket indexing (`items[0].id`). Returns
+// undefined when any segment is missing.
+export function jsonPath(obj: any, pathExpr: string): any {
+    if (!pathExpr) return undefined;
+    let current = obj;
+    // normalize [n] → .n so both syntaxes work
+    const parts = pathExpr.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+    for (const part of parts) {
+        if (current === undefined || current === null) return undefined;
+        current = current[part];
+    }
+    return current;
+}
+
 // Lightweight test-data generator for {{fake.KIND}} interpolation. Kept
 // dependency-free on purpose; covers the common kinds. Unknown kinds return
 // the token unchanged so mistakes are visible rather than silently blank.
@@ -249,12 +264,7 @@ export class TestExecutor {
                                     }
                                 } else if (assertion.type === 'json-path') {
                                     if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
-                                    const pathParts = assertion.path.split('.');
-                                    let current = jsonBody;
-                                    for (const part of pathParts) {
-                                        if (current === undefined || current === null) break;
-                                        current = current[part];
-                                    }
+                                    const current = jsonPath(jsonBody, assertion.path);
                                     if (assertion.operator === 'equals') {
                                         if (String(current) !== String(assertion.value)) {
                                             throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
@@ -343,6 +353,27 @@ export class TestExecutor {
                         }
                     }
 
+                    // Extract values from the JSON response into runtime
+                    // variables for later steps ({{name}} interpolation) — the
+                    // login→token→authorized-call chaining primitive.
+                    //   extract: [{ path: "data.token", variable: "token" }]
+                    if (step.params?.extract && testCaseContext) {
+                        if (!testCaseContext.variables) testCaseContext.variables = {};
+                        for (const ex of step.params.extract) {
+                            if (!ex?.path || !ex?.variable) continue;
+                            if (jsonBody === undefined) {
+                                throw new Error(`extract: response from ${reqUrl} is not JSON, cannot extract "${ex.path}"`);
+                            }
+                            const value = jsonPath(jsonBody, ex.path);
+                            if (value === undefined && ex.required !== false) {
+                                throw new Error(`extract: path "${ex.path}" not found in response from ${reqUrl}`);
+                            }
+                            testCaseContext.variables[ex.variable] =
+                                (value !== null && typeof value === 'object') ? JSON.stringify(value) : value;
+                            console.log(`  [API] extracted {{${ex.variable}}} from ${ex.path}`);
+                        }
+                    }
+
                     allResults.push(resultObject);
                 }
 
@@ -378,6 +409,142 @@ export class TestExecutor {
                 }
 
                 return allResults[0];
+            }
+
+            case 'oauth2-token': {
+                // Client-credentials token fetch for the app under test.
+                //   value/params.token_url  — the token endpoint
+                //   params.client_id / client_secret (use {{secret.X}})
+                //   params.scope / audience — optional
+                //   params.variable — runtime var name (default access_token)
+                const tokenUrl = resolve(step.value || step.params?.token_url);
+                const clientId = resolve(step.params?.client_id);
+                const clientSecret = resolve(step.params?.client_secret);
+                if (!tokenUrl || !clientId || !clientSecret) {
+                    throw new Error('oauth2-token requires token_url, client_id and client_secret');
+                }
+                const varName = step.params?.variable || 'access_token';
+                const form: Record<string, string> = {
+                    grant_type: 'client_credentials',
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                };
+                const scope = resolve(step.params?.scope);
+                if (scope) form.scope = scope;
+                const audience = resolve(step.params?.audience);
+                if (audience) form.audience = audience;
+
+                console.log(`  [OAuth2] client_credentials → ${tokenUrl}`);
+                const tokenResp = await page.request.post(tokenUrl, { form, timeout: 30000 });
+                const tokenText = await tokenResp.text();
+                if (!tokenResp.ok()) {
+                    throw new Error(`oauth2-token: token endpoint returned ${tokenResp.status()}: ${tokenText.slice(0, 300)}`);
+                }
+                let tokenJson: any;
+                try { tokenJson = JSON.parse(tokenText); } catch {
+                    throw new Error('oauth2-token: token endpoint did not return JSON');
+                }
+                const accessToken = tokenJson.access_token;
+                if (!accessToken) {
+                    throw new Error(`oauth2-token: no access_token in response (keys: ${Object.keys(tokenJson).join(', ')})`);
+                }
+                if (testCaseContext) {
+                    if (!testCaseContext.variables) testCaseContext.variables = {};
+                    testCaseContext.variables[varName] = accessToken;
+                    if (tokenJson.token_type) testCaseContext.variables[`${varName}_type`] = tokenJson.token_type;
+                }
+                console.log(`  [OAuth2] stored {{${varName}}} (${String(accessToken).length} chars, never logged)`);
+                break;
+            }
+
+            case 'graphql': {
+                // GraphQL request with data-path assertions.
+                //   value/selector — endpoint URL
+                //   params.query / params.variables
+                //   params.allow_errors — skip the default errors[] check
+                //   params.assertions: [{type:'status'|'data-path', path, operator, value}]
+                //   params.extract: [{path, variable}] — paths are relative to `data`
+                const gqlUrl = resolve(step.value || step.selector);
+                const query = resolve(step.params?.query);
+                if (!gqlUrl || !query) throw new Error('graphql requires a URL and params.query');
+                const gqlVariables = resolve(step.params?.variables || {});
+                const gqlHeaders = {
+                    'content-type': 'application/json',
+                    ...globalSettings.headers,
+                    ...resolve(step.params?.headers || {}),
+                };
+
+                console.log(`  [GraphQL] POST ${gqlUrl}`);
+                const gqlResp = await page.request.post(gqlUrl, {
+                    headers: gqlHeaders,
+                    data: { query, variables: gqlVariables },
+                    timeout: 30000,
+                });
+                const gqlStatus = gqlResp.status();
+                const gqlText = await gqlResp.text();
+                let gqlJson: any;
+                try { gqlJson = JSON.parse(gqlText); } catch { /* asserted below */ }
+
+                const gqlResult: any = {
+                    type: 'graphql',
+                    url: gqlUrl,
+                    status: gqlStatus,
+                    headers: gqlResp.headers(),
+                    body: gqlText,
+                    request: { url: gqlUrl, method: 'POST', headers: gqlHeaders, body: JSON.stringify({ query, variables: gqlVariables }) },
+                };
+
+                try {
+                    if (gqlJson === undefined) {
+                        throw new Error(`GraphQL response is not JSON (status ${gqlStatus})`);
+                    }
+                    if (!step.params?.allow_errors && Array.isArray(gqlJson.errors) && gqlJson.errors.length) {
+                        const messages = gqlJson.errors.map((e: any) => e.message || JSON.stringify(e)).slice(0, 5).join('; ');
+                        throw new Error(`GraphQL errors: ${messages}`);
+                    }
+                    for (const assertion of step.params?.assertions || []) {
+                        if (assertion.type === 'status') {
+                            if (gqlStatus !== parseInt(assertion.value)) {
+                                throw new Error(`Expected status ${assertion.value} but got ${gqlStatus}`);
+                            }
+                        } else if (assertion.type === 'data-path') {
+                            const actual = jsonPath(gqlJson.data, assertion.path);
+                            const op = assertion.operator || 'equals';
+                            if (op === 'exists') {
+                                if (actual === undefined || actual === null) {
+                                    throw new Error(`Expected data.${assertion.path} to exist`);
+                                }
+                            } else if (op === 'equals') {
+                                if (String(actual) !== String(assertion.value)) {
+                                    throw new Error(`Expected data.${assertion.path} to equal ${assertion.value} but got ${actual}`);
+                                }
+                            } else if (op === 'contains') {
+                                if (!String(actual).includes(String(assertion.value))) {
+                                    throw new Error(`Expected data.${assertion.path} to contain ${assertion.value} but got ${actual}`);
+                                }
+                            }
+                        }
+                    }
+                    if (step.params?.extract && testCaseContext) {
+                        if (!testCaseContext.variables) testCaseContext.variables = {};
+                        for (const ex of step.params.extract) {
+                            if (!ex?.path || !ex?.variable) continue;
+                            const value = jsonPath(gqlJson.data, ex.path);
+                            if (value === undefined && ex.required !== false) {
+                                throw new Error(`extract: path "data.${ex.path}" not found in GraphQL response`);
+                            }
+                            testCaseContext.variables[ex.variable] =
+                                (value !== null && typeof value === 'object') ? JSON.stringify(value) : value;
+                        }
+                    }
+                } catch (e: any) {
+                    gqlResult.error = e.message;
+                    const err = new Error(e.message);
+                    (err as any).stepResult = gqlResult;
+                    throw err;
+                }
+
+                return gqlResult;
             }
 
             case 'feed-check': {
