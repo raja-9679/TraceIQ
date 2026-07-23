@@ -517,7 +517,7 @@ class ExecutionWorker {
                         if (stepResponse?.__switchToPage) {
                             page = stepResponse.__switchToPage as Page;
                             currentContext = page;
-                        } else if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
+                        } else if (stepResponse && (step.type === 'http-request' || step.type === 'graphql' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                             lastStepResult = stepResponse;
                         }
                     }
@@ -854,7 +854,7 @@ class ExecutionWorker {
                                 if (stepResponse?.__switchToPage) {
                                     page = stepResponse.__switchToPage;
                                     currentContext = page;
-                                } else if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
+                                } else if (stepResponse && (step.type === 'http-request' || step.type === 'graphql' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                                     lastStepResult = stepResponse;
                                 }
                             }

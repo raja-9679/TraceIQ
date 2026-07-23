@@ -321,12 +321,16 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.body": "Request body (object or string)",
             "params.params": "Query-param object",
             "params.assertions": "Array of {type, ...} — see assertion shapes below",
+            "params.extract": "Array of {path, variable, required?} — store JSON response values as runtime vars",
         },
         "notes": (
             "Assertion shapes inside params.assertions: "
             "{type:'status', value:200}; "
             "{type:'json-path', path:'postgres.articles', operator:'equals'|'contains', value:...}; "
-            "{type:'json-schema', value:'<JSON-schema-as-string>'} — json-path uses dotted paths (NO '$.' prefix)."
+            "{type:'json-schema', value:'<JSON-schema-as-string>'} — json-path uses dotted paths (NO '$.' prefix); "
+            "array indexing via 'items.0.id' or 'items[0].id'. "
+            "params.extract chains requests: extract {path:'data.token', variable:'token'} then use "
+            "{{token}} in a later step's headers/body/url. Extraction failure fails the step unless required:false."
         ),
         "example": {
             "id": "<uuid>",
@@ -341,6 +345,49 @@ _STEP_TYPES: List[Dict[str, Any]] = [
                 ],
             },
         },
+    },
+    {
+        "type": "graphql",
+        "category": "api",
+        "params": {
+            "value": "GraphQL endpoint URL",
+            "params.query": "GraphQL query/mutation string",
+            "params.variables": "Optional variables object",
+            "params.headers": "Optional extra headers (merged over suite headers)",
+            "params.allow_errors": "true to skip the default errors[]-must-be-empty check",
+            "params.assertions": "Array of {type:'status', value} or {type:'data-path', path, operator:'equals'|'contains'|'exists', value}",
+            "params.extract": "Array of {path, variable} — paths relative to response `data`",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "graphql",
+            "value": "http://app/graphql",
+            "params": {
+                "query": "query($id: ID!) { user(id: $id) { name email } }",
+                "variables": {"id": "1"},
+                "assertions": [{"type": "data-path", "path": "user.name", "operator": "exists"}],
+            },
+        },
+        "notes": "POSTs {query, variables}. Fails when the response carries GraphQL errors[] unless allow_errors. data-path paths omit the leading 'data.'.",
+    },
+    {
+        "type": "oauth2-token",
+        "category": "api",
+        "params": {
+            "value": "Token endpoint URL",
+            "params.client_id": "Client id (supports {{secret.X}})",
+            "params.client_secret": "Client secret — ALWAYS use {{secret.X}}",
+            "params.scope": "Optional scope",
+            "params.audience": "Optional audience",
+            "params.variable": "Runtime var for the token (default 'access_token')",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "oauth2-token",
+            "value": "http://app/oauth/token",
+            "params": {"client_id": "{{secret.CLIENT_ID}}", "client_secret": "{{secret.CLIENT_SECRET}}"},
+        },
+        "notes": "client_credentials grant for the app under test. Later steps use {{access_token}} e.g. headers: {'Authorization': 'Bearer {{access_token}}'}.",
     },
     {
         "type": "feed-check",
