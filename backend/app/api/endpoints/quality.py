@@ -23,7 +23,8 @@ from app.core.database import get_session
 from app.core.auth import get_current_user, get_current_principal, AuthPrincipal
 from app.services.access_service import access_service
 from app.models import (
-    User, Project, TestRun, TestStatus, TestCase, FlakeRecord, TestSchedule,
+    User, Project, TestRun, TestStatus, TestCase, TestCaseResult, FlakeRecord,
+    TestSchedule,
     SecurityFinding, QualitySnapshot, QualityTrendPoint, QualityGatePolicy,
     QualityGateCheck, QualityGateResult, DEFAULT_QUALITY_GATE,
     CiSettings, DEFAULT_CI_SETTINGS, RunReport, ReportTestResult,
@@ -204,6 +205,42 @@ async def evaluate_gate_for_runs(
             name="monitors_up", passed=len(down) == 0,
             actual=f"{len(down)} down", threshold="0 down",
             detail=", ".join(down) or None))
+
+    # Performance budgets — worst web-vitals sample across the evaluated runs.
+    if run_ids and (policy.max_lcp_ms or policy.max_cls or policy.max_ttfb_ms):
+        results = (await session.exec(
+            select(TestCaseResult.result_payload, TestCaseResult.test_name).where(
+                TestCaseResult.test_run_id.in_(run_ids)))).all()
+        worst: dict = {"lcp_ms": None, "cls": None, "ttfb_ms": None}
+        worst_test: dict = {}
+        for payload, test_name in results:
+            wv = (payload or {}).get("web_vitals") or {}
+            for key in worst:
+                val = wv.get(key)
+                if val is not None and (worst[key] is None or val > worst[key]):
+                    worst[key] = val
+                    worst_test[key] = test_name
+
+        def _budget_check(name: str, key: str, limit: float, unit: str = "ms"):
+            actual = worst[key]
+            if actual is None:
+                # No samples — inconclusive, don't fail the gate on missing data.
+                checks.append(QualityGateCheck(
+                    name=name, passed=True, actual="no samples",
+                    threshold=f"<= {limit}{unit}",
+                    detail="no web-vitals captured in evaluated runs"))
+            else:
+                checks.append(QualityGateCheck(
+                    name=name, passed=actual <= limit,
+                    actual=f"{actual}{unit}", threshold=f"<= {limit}{unit}",
+                    detail=f"worst: {worst_test.get(key)}"))
+
+        if policy.max_lcp_ms:
+            _budget_check("perf_lcp", "lcp_ms", policy.max_lcp_ms)
+        if policy.max_cls:
+            _budget_check("perf_cls", "cls", policy.max_cls, unit="")
+        if policy.max_ttfb_ms:
+            _budget_check("perf_ttfb", "ttfb_ms", policy.max_ttfb_ms)
 
     passed_gate = bool(finished_runs) and all(c.passed for c in checks)
     return QualityGateResult(
