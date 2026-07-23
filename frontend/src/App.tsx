@@ -18,6 +18,7 @@ import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
 import LLMUsage from "@/pages/LLMUsage";
+import PublicStatus from "@/pages/PublicStatus";
 import Traceability from "@/pages/Traceability";
 import ImportPlaywright from "@/pages/ImportPlaywright";
 import IssueTrackers from "@/pages/IssueTrackers";
@@ -49,6 +50,7 @@ function App() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
+            <Route path="/status/:slug" element={<PublicStatus />} />
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>
