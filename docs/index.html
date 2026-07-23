@@ -74,6 +74,47 @@
   .icon-btn:hover { background: var(--surface-2); }
   #menuBtn { display: none; }
 
+  /* ---- search trigger + palette ---- */
+  .searchtrigger {
+    display: flex; align-items: center; gap: 9px; margin-left: 14px; margin-right: auto;
+    flex: 0 1 380px; min-width: 0; height: 36px; padding: 0 10px 0 12px; cursor: text;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; color: var(--muted); font: inherit;
+  }
+  .searchtrigger:hover { border-color: var(--accent); }
+  .searchtrigger .si { font-size: 15px; color: var(--muted); }
+  .searchtrigger .sl { flex: 1; text-align: left; font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .searchtrigger kbd, .search-inputwrap kbd {
+    font-family: var(--mono); font-size: .68rem; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 6px; line-height: 1;
+  }
+  .search-overlay { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, #05070c 46%, transparent);
+    backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+  .search-overlay[hidden] { display: none; }
+  .search-panel { width: 100%; max-width: 640px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: 0 24px 60px rgba(5,7,12,.4); overflow: hidden; }
+  .search-inputwrap { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .search-inputwrap .si { font-size: 19px; color: var(--accent-ink); }
+  #searchInput { flex: 1; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 1.02rem; outline: none; }
+  #searchInput::placeholder { color: var(--muted); }
+  .search-results { max-height: 56vh; overflow-y: auto; padding: 6px; }
+  .search-result { display: block; width: 100%; text-align: left; background: transparent; border: none; border-radius: 10px;
+    padding: 10px 12px; cursor: pointer; color: var(--ink); }
+  .search-result:hover, .search-result.sel { background: var(--accent-soft); }
+  .search-result .rt { font-weight: 650; font-size: .92rem; display: flex; align-items: center; gap: 8px; }
+  .search-result .rc { font-family: var(--mono); font-size: .64rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink);
+    background: var(--surface-2); border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+  .search-result .rs { font-size: .82rem; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .search-result mark { background: color-mix(in srgb, var(--warn) 32%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .search-empty { padding: 26px 18px 30px; text-align: center; color: var(--muted); font-size: .9rem; }
+  .search-empty[hidden] { display: none; }
+  .search-foot { display: flex; gap: 14px; padding: 9px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: .72rem; }
+  .search-foot span { display: flex; align-items: center; gap: 5px; }
+  @keyframes flashfade { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
+  .flash { animation: flashfade 1.7s ease-out; border-radius: 12px; }
+  section > h2 { scroll-margin-top: 74px; }
+  .card, .fcard { scroll-margin-top: 74px; }
+  @media (max-width: 720px) { .ver { display: none; } .searchtrigger .sl, .searchtrigger kbd { display: none; } .searchtrigger { flex-basis: 40px; } }
+
   /* ---- shell ---- */
   .shell { display: grid; grid-template-columns: 272px minmax(0,1fr); max-width: 1400px; margin: 0 auto; }
   nav.side {
@@ -214,9 +255,30 @@
 <div class="topbar">
   <button class="icon-btn" id="menuBtn" aria-label="Toggle navigation">☰</button>
   <div class="brand"><span class="glyph">◎</span> TraceIQ <small>Docs</small></div>
-  <span class="spacer"></span>
+  <button class="searchtrigger" id="searchBtn" aria-label="Search the documentation">
+    <span class="si" aria-hidden="true">⌕</span>
+    <span class="sl">Search the docs…</span>
+    <kbd>/</kbd>
+  </button>
   <span class="ver">unified quality platform</span>
   <button class="icon-btn" id="themeBtn" aria-label="Toggle light/dark theme">◐</button>
+</div>
+
+<div class="search-overlay" id="searchOverlay" hidden>
+  <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search documentation">
+    <div class="search-inputwrap">
+      <span class="si" aria-hidden="true">⌕</span>
+      <input id="searchInput" type="text" placeholder="Search features, steps, endpoints…" autocomplete="off" spellcheck="false" aria-label="Search query">
+      <kbd>Esc</kbd>
+    </div>
+    <div class="search-results" id="searchResults" role="listbox" aria-label="Search results"></div>
+    <div class="search-empty" id="searchEmpty" hidden>No matches. Try “load”, “graphql”, “gate”, “monitor”, or “token”.</div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> jump</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
 </div>
 
 <div class="shell">
@@ -1126,5 +1188,127 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
       });
     }, { rootMargin: '-64px 0px -75% 0px' });
     sections.forEach(function (s) { obs.observe(s); });
+
+    /* ---------- search ---------- */
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var overlay = document.getElementById('searchOverlay');
+    var input = document.getElementById('searchInput');
+    var resultsEl = document.getElementById('searchResults');
+    var emptyEl = document.getElementById('searchEmpty');
+
+    // Build an index: section headings + every card + every feature card.
+    var index = [];
+    sections.forEach(function (sec) {
+      var h2 = sec.querySelector('h2');
+      var secTitle = h2 ? h2.textContent.trim() : sec.id;
+      var sub = sec.querySelector('.sec-sub');
+      index.push({ el: h2 || sec, flash: h2 || sec, title: secTitle, crumb: 'Section', text: sub ? sub.textContent.trim() : '' });
+      sec.querySelectorAll('.card').forEach(function (card) {
+        var h3 = card.querySelector('h3');
+        index.push({ el: card, flash: card, title: h3 ? h3.textContent.trim() : secTitle, crumb: secTitle,
+          text: card.textContent.replace(/\s+/g, ' ').trim() });
+      });
+      sec.querySelectorAll('.fcard').forEach(function (fc) {
+        var t = fc.querySelector('.t'); var d = fc.querySelector('.d');
+        index.push({ el: fc, flash: fc, title: t ? t.textContent.trim() : secTitle, crumb: secTitle,
+          text: (d ? d.textContent : '').replace(/\s+/g, ' ').trim() });
+      });
+    });
+
+    function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    function query(q) {
+      q = q.toLowerCase().trim();
+      if (!q) return [];
+      var terms = q.split(/\s+/);
+      var out = [];
+      index.forEach(function (it) {
+        var titleL = it.title.toLowerCase();
+        var hay = (it.title + ' ' + it.text).toLowerCase();
+        if (!terms.every(function (t) { return hay.indexOf(t) !== -1; })) return;
+        var score = 0;
+        terms.forEach(function (t) {
+          if (titleL === t) score += 25;
+          else if (titleL.indexOf(t) !== -1) score += 10;
+          if (it.text.toLowerCase().indexOf(t) !== -1) score += 1;
+        });
+        if (it.crumb === 'Section') score += 2; // let section headings surface as quick jumps
+        out.push({ it: it, score: score, term: terms[0] });
+      });
+      out.sort(function (a, b) { return b.score - a.score; });
+      return out.slice(0, 12);
+    }
+
+    function snippet(text, term) {
+      if (!text) return '';
+      var i = text.toLowerCase().indexOf(term);
+      if (i === -1) return esc(text.slice(0, 120)) + (text.length > 120 ? '…' : '');
+      var start = Math.max(0, i - 40), end = Math.min(text.length, i + term.length + 80);
+      var pre = (start > 0 ? '…' : '') + text.slice(start, i);
+      var mid = text.slice(i, i + term.length);
+      var post = text.slice(i + term.length, end) + (end < text.length ? '…' : '');
+      return esc(pre) + '<mark>' + esc(mid) + '</mark>' + esc(post);
+    }
+
+    var current = [];
+    var sel = 0;
+
+    function render(list) {
+      current = list; sel = 0;
+      resultsEl.innerHTML = '';
+      var hasQ = input.value.trim().length > 0;
+      emptyEl.hidden = !(hasQ && list.length === 0);
+      list.forEach(function (r, idx) {
+        var b = document.createElement('button');
+        b.className = 'search-result' + (idx === 0 ? ' sel' : '');
+        b.setAttribute('role', 'option');
+        b.innerHTML = '<div class="rt">' + esc(r.it.title) + ' <span class="rc">' + esc(r.it.crumb) + '</span></div>'
+          + (r.it.text ? '<div class="rs">' + snippet(r.it.text, r.term) + '</div>' : '');
+        b.addEventListener('click', function () { jump(r.it); });
+        b.addEventListener('mousemove', function () { setSel(idx); });
+        resultsEl.appendChild(b);
+      });
+    }
+
+    function setSel(i) {
+      var items = resultsEl.querySelectorAll('.search-result');
+      if (!items.length) return;
+      sel = (i + items.length) % items.length;
+      items.forEach(function (el, idx) { el.classList.toggle('sel', idx === sel); });
+      items[sel].scrollIntoView({ block: 'nearest' });
+    }
+
+    function jump(it) {
+      closeSearch();
+      it.el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      var f = it.flash;
+      f.classList.remove('flash'); void f.offsetWidth; f.classList.add('flash');
+    }
+
+    function openSearch() {
+      overlay.hidden = false; input.value = ''; render([]);
+      document.body.style.overflow = 'hidden';
+      input.focus();
+    }
+    function closeSearch() {
+      overlay.hidden = true; document.body.style.overflow = '';
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', openSearch);
+    input.addEventListener('input', function () { render(query(input.value)); });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeSearch(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (current[sel]) jump(current[sel].it); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeSearch(); }
+    });
+    document.addEventListener('keydown', function (e) {
+      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) || e.target.isContentEditable;
+      if (!overlay.hidden && e.key === 'Escape') { closeSearch(); return; }
+      if (overlay.hidden && !typing && (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'))) {
+        e.preventDefault(); openSearch();
+      }
+    });
   })();
 </script>
