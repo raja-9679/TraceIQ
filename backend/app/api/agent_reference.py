@@ -396,6 +396,17 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Self-contained fetch+assert. NOT a way to assert on a previous step's response — use http-request's embedded assertions for that.",
     },
     {
+        "type": "check-tls",
+        "category": "api",
+        "params": {
+            "value": "Host or URL (port from URL, default 443)",
+            "params.min_days_remaining": "Fail when the cert expires within N days (default 14)",
+        },
+        "example": {"id": "<uuid>", "type": "check-tls", "value": "https://example.com",
+                    "params": {"min_days_remaining": 21}},
+        "notes": "TLS probe: validates the chain and the expiry window. Pairs well with a monitor schedule for cert-expiry alerting.",
+    },
+    {
         "type": "load-test",
         "category": "load",
         "params": {

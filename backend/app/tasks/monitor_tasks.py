@@ -144,8 +144,10 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
     """Post a DOWN/RECOVERY alert to the configured Slack/Teams webhooks."""
     project = session.get(Project, schedule.project_id) if schedule.project_id else None
     cfg = get_notification_settings(project, session)
+    # Per-monitor email recipients are explicit opt-in, so they fire even when
+    # the project's Slack/Teams notification settings are disabled.
     if not cfg.get("enabled", False):
-        return
+        cfg = {}
 
     down = state == "down"
     title = (f"🔴 Monitor DOWN: {schedule.name}" if down
@@ -196,3 +198,44 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
             logger.info("[Monitor] Teams alert sent for schedule %s (%s)", schedule.id, state)
         except Exception as e:
             logger.error("[Monitor] Teams alert failed: %s", e)
+
+    recipients = [r for r in (schedule.alert_emails or []) if r and "@" in r]
+    if recipients:
+        _send_alert_email(recipients, title, schedule, state, detail, run)
+
+
+def _send_alert_email(recipients, title: str, schedule: TestSchedule,
+                      state: str, detail: str, run: TestRun):
+    """Plain SMTP alert to the monitor's explicit recipient list. Uses the
+    same SMTP_* settings as account emails; silently skips when unset."""
+    import smtplib
+    from email.mime.text import MIMEText
+
+    from app.core.config import settings as app_settings
+
+    smtp_host = getattr(app_settings, "SMTP_HOST", None)
+    if not smtp_host:
+        logger.warning("[Monitor] alert_emails set but SMTP not configured; skipping email")
+        return
+    try:
+        body = (
+            f"Monitor: {schedule.name}\n"
+            f"State: {state.upper()}\n"
+            f"Detail: {detail}\n"
+            f"Run: #{run.id}\n"
+        )
+        msg = MIMEText(body, "plain")
+        msg["Subject"] = title
+        msg["From"] = getattr(app_settings, "SMTP_FROM", "noreply@traceiq.io")
+        msg["To"] = ", ".join(recipients)
+        with smtplib.SMTP(smtp_host, getattr(app_settings, "SMTP_PORT", 587)) as server:
+            smtp_user = getattr(app_settings, "SMTP_USER", None)
+            smtp_password = getattr(app_settings, "SMTP_PASSWORD", None)
+            if smtp_user and smtp_password:
+                server.starttls()
+                server.login(smtp_user, smtp_password)
+            server.sendmail(msg["From"], recipients, msg.as_string())
+        logger.info("[Monitor] Email alert sent to %d recipient(s) for schedule %s (%s)",
+                    len(recipients), schedule.id, state)
+    except Exception as e:  # noqa: BLE001 — alerting must not break evaluation
+        logger.error("[Monitor] Email alert failed: %s", e)

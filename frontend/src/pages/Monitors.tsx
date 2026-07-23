@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     Radio, RefreshCw, AlertCircle, Layers, ArrowUpCircle, ArrowDownCircle, HelpCircle, Info,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { toast } from 'sonner';
 import { getProjects } from '@/lib/api';
 import { monitorsApi, MonitorStatus } from '@/api/monitors';
 
@@ -32,6 +34,52 @@ function Sparkline({ checks }: { checks: MonitorStatus['recent_checks'] }) {
                 <span key={c.id} title={`${c.checked_at}: ${c.status}`}
                     className={`inline-block w-1.5 h-4 rounded-sm ${c.is_up ? 'bg-emerald-400' : 'bg-rose-400'}`} />
             ))}
+        </div>
+    );
+}
+
+function StatusPageCard({ projectId }: { projectId: number }) {
+    const qc = useQueryClient();
+    const page = useQuery({
+        queryKey: ['status-page', projectId],
+        queryFn: () => monitorsApi.getStatusPage(projectId),
+    });
+    const save = useMutation({
+        mutationFn: (body: Record<string, any>) => monitorsApi.upsertStatusPage(projectId, body),
+        onSuccess: () => { toast.success('Status page updated'); qc.invalidateQueries({ queryKey: ['status-page', projectId] }); },
+        onError: (e) => toast.error(errDetail(e)),
+    });
+
+    const p = page.data;
+    const publicUrl = p ? `${window.location.origin}/status/${p.slug}` : null;
+
+    return (
+        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="min-w-0">
+                    <h3 className="font-bold text-slate-800">Public status page</h3>
+                    {p && p.enabled && publicUrl ? (
+                        <a href={publicUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline break-all">{publicUrl}</a>
+                    ) : (
+                        <p className="text-xs text-slate-400">Share an unauthenticated uptime page built from this project's monitors (names + uptime only).</p>
+                    )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                    {!p ? (
+                        <Button size="sm" className="h-8 rounded-lg" onClick={() => save.mutate({ enabled: true })} disabled={save.isPending}>Create page</Button>
+                    ) : (
+                        <>
+                            {p.enabled && publicUrl && (
+                                <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => { navigator.clipboard.writeText(publicUrl); toast.success('Link copied'); }}>Copy link</Button>
+                            )}
+                            <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => save.mutate({ enabled: !p.enabled })} disabled={save.isPending}>
+                                {p.enabled ? 'Disable' : 'Enable'}
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => save.mutate({ regenerate_slug: true })} disabled={save.isPending}>Rotate link</Button>
+                        </>
+                    )}
+                </div>
+            </div>
         </div>
     );
 }
@@ -127,6 +175,7 @@ export default function Monitors() {
                             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
                         </button>
                     </div>
+                    <StatusPageCard projectId={projectId} />
                     <div className="grid md:grid-cols-2 gap-4">
                         {monitors.map((m) => (
                             <div key={m.schedule_id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">

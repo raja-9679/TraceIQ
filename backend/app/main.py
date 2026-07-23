@@ -20,6 +20,7 @@ from app.api import reports as reports_api
 from app.api import billing as billing_api
 from app.api import llm_usage as llm_usage_api
 from app.api import external_results as external_results_api
+from app.api import status_pages as status_pages_api
 from app.api import traceability as traceability_api
 from app.core.config import settings as core_settings
 import logging
@@ -79,6 +80,7 @@ app.include_router(reports_api.router, prefix="/api", tags=["reports"])
 app.include_router(billing_api.router, prefix="/api", tags=["billing"])
 app.include_router(llm_usage_api.router, prefix="/api", tags=["llm-usage"])
 app.include_router(external_results_api.router, prefix="/api", tags=["external-results"])
+app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
 app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 app.include_router(agent_reference.router, prefix="/api", tags=["agent-reference"])
