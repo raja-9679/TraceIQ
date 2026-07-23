@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test';
     selector?: string;
     value?: string;
     params?: {
@@ -119,6 +119,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'http-request': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <FileJson size={18} />, label: 'API Request' };
             case 'graphql': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Braces size={18} />, label: 'GraphQL Request' };
             case 'oauth2-token': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: 'OAuth2 Token' };
+            case 'load-test': return { border: 'border-orange-200', bg: 'bg-orange-50 text-orange-600', hue: 'orange', icon: <Activity size={18} />, label: 'Load Test (k6)' };
             case 'feed-check': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Rss size={18} />, label: 'Feed Check' };
             case 'run-script': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Code2 size={18} />, label: 'Run Script' };
             case 'assert': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <CheckCircle2 size={18} />, label: 'Assertion' };
@@ -187,6 +188,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="oauth2-token"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> OAuth2 Token</div></SelectItem>
                                 <SelectItem value="feed-check"><div className="flex items-center gap-2"><Rss size={14} className="text-amber-500"/> Feed Check</div></SelectItem>
                                 <SelectItem value="amp-validate"><div className="flex items-center gap-2"><Zap size={14} className="text-violet-500"/> AMP Validate</div></SelectItem>
+                                <SelectItem value="load-test"><div className="flex items-center gap-2"><Activity size={14} className="text-orange-500"/> Load Test (k6)</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
@@ -453,6 +455,54 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                         )}
                     </div>
                 </div>
+
+                {/* Extended Configuration for Load Test */}
+                {step.type === 'load-test' && (
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 rounded-b-2xl">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Virtual users</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="10" value={step.params?.vus ?? ''}
+                                    onChange={(e) => updateParams('vus', parseInt(e.target.value) || undefined)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Duration (s)</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="30" value={step.params?.duration_s ?? ''}
+                                    onChange={(e) => updateParams('duration_s', parseInt(e.target.value) || undefined)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Ramp-up (s)</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="0" value={step.params?.ramp_up_s ?? ''}
+                                    onChange={(e) => updateParams('ramp_up_s', parseInt(e.target.value) || undefined)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Method</label>
+                                <Select value={step.params?.method || 'GET'} onValueChange={(v) => updateParams('method', v)}>
+                                    <SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Max p95 (ms)</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="off" value={step.params?.thresholds?.p95_ms ?? ''}
+                                    onChange={(e) => updateParams('thresholds', { ...(step.params?.thresholds || {}), p95_ms: parseInt(e.target.value) || undefined })} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Max error rate</label>
+                                <Input type="number" step="0.01" className="h-10 bg-white" placeholder="0.01" value={step.params?.thresholds?.error_rate ?? ''}
+                                    onChange={(e) => updateParams('thresholds', { ...(step.params?.thresholds || {}), error_rate: parseFloat(e.target.value) || undefined })} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Min RPS</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="off" value={step.params?.thresholds?.min_rps ?? ''}
+                                    onChange={(e) => updateParams('thresholds', { ...(step.params?.thresholds || {}), min_rps: parseInt(e.target.value) || undefined })} />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2 italic">A k6 load test against the URL above. The case runs on the load executor (no browser). Only target apps you own — breached thresholds fail the case.</p>
+                    </div>
+                )}
 
                 {/* Extended Configuration for GraphQL */}
                 {step.type === 'graphql' && (

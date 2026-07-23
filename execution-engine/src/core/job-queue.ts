@@ -99,6 +99,12 @@ export interface JobResult {
     // job; continuous jobs carry them per-case on test_results instead.
     web_vitals?: any;
 
+    // Type-aware result payload for non-UI executors (keystone). e.g. a load
+    // job reports result_kind='load' with aggregate k6 metrics + threshold
+    // verdicts in result_payload.
+    result_kind?: string;
+    result_payload?: any;
+
     // Playwright storageState captured by a passing auth-setup case; the
     // backend persists it as the project's AuthSession. auth_case_id names
     // the capturing case when the job ran multiple cases (continuous mode).
