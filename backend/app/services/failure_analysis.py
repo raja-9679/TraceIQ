@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from app.ai.providers import provider
 from app.schemas.failure_report import FailureEvidence, FailureReport, RunFailureAnalysis
+from app.services.llm_usage import llm_call_context
 
 # (pattern, category, fix_target, summary) — first match wins.
 _HEURISTICS = [
@@ -130,7 +131,8 @@ def analyze_case_failure(
         f"Heuristic first guess: {base.root_cause_category} — {base.summary}\n"
         "Classify the failure."
     )
-    raw = provider.complete(prompt, system=_LLM_SYSTEM, max_tokens=700)
+    with llm_call_context(feature="failure_analysis"):
+        raw = provider.complete(prompt, system=_LLM_SYSTEM, max_tokens=700)
     if not raw:
         return base
 

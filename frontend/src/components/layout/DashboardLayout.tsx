@@ -29,7 +29,8 @@ import {
     Bug,
     BarChart3,
     CreditCard,
-    GitMerge
+    GitMerge,
+    Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -53,6 +54,7 @@ const navigation = [
     { name: 'Security', href: '/security', icon: ShieldAlert },
     { name: 'Triage', href: '/triage', icon: Bug },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
+    { name: 'AI Usage', href: '/ai-usage', icon: Sparkles },
     { name: 'Traceability', href: '/traceability', icon: GitMerge },
     { name: 'Import Playwright', href: '/import-playwright', icon: FileCode2 },
     { name: 'Schedules', href: '/schedules', icon: CalendarClock },

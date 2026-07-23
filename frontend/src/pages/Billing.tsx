@@ -14,6 +14,7 @@ const errDetail = (e: any): string => e?.response?.data?.detail || e?.message ||
 const LIMIT_LABELS: [string, string][] = [
     ['monthly_runs', 'Runs / month'], ['seats', 'Seats'], ['concurrent_runs', 'Concurrent runs'],
     ['retention_days', 'Retention (days)'], ['ai_daily', 'AI generations / day'],
+    ['monthly_llm_tokens', 'LLM tokens / month'],
 ];
 const fmtLimit = (n: number) => n === 0 ? 'Unlimited' : n.toLocaleString();
 
@@ -101,9 +102,10 @@ export default function Billing() {
                                 {!st.stripe_configured && <div className="text-[11px] mt-1">Manual billing (Stripe not configured)</div>}
                             </div>
                         </div>
-                        <div className="grid sm:grid-cols-2 gap-4 max-w-2xl">
+                        <div className="grid sm:grid-cols-3 gap-4">
                             <UsageMeter label="Runs this month" used={st.usage.runs || 0} limit={st.limits.monthly_runs ?? 0} />
                             <UsageMeter label="AI generations today" used={st.usage.ai_generations || 0} limit={st.limits.ai_daily ?? 0} />
+                            <UsageMeter label="LLM tokens this month" used={st.usage.llm_tokens || 0} limit={st.limits.monthly_llm_tokens ?? 0} />
                         </div>
                     </div>
 

@@ -16,7 +16,8 @@ from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models import TestCase, TestCaseResult, TestRun, TestStatus
+from app.models import Project, TestCase, TestCaseResult, TestRun, TestStatus
+from app.services.llm_usage import llm_call_context
 
 _sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
 _engine = create_engine(_sync_db_url, echo=False)
@@ -42,29 +43,36 @@ def analyze_run_failures(run_id: int) -> Dict[str, Any]:
         if not failed_results:
             return {"status": "no_failures"}
 
-        reports = []
-        for result in failed_results[:_MAX_PER_RUN]:
-            steps = []
-            case = None
-            if run.test_case_id:
-                case = session.get(TestCase, run.test_case_id)
-            if case is None:
-                case = session.exec(
-                    select(TestCase).where(TestCase.name == result.test_name)
-                ).first()
-            if case:
-                steps = [s if isinstance(s, dict) else s.dict() for s in (case.steps or [])]
+        project = session.get(Project, run.project_id) if run.project_id else None
+        usage_ctx = llm_call_context(
+            workspace_id=project.workspace_id if project else None,
+            project_id=run.project_id, run_id=run_id,
+        )
 
-            report = analyze_case_failure(
-                test_name=result.test_name,
-                error_message=result.error_message or "",
-                steps=steps,
-                response_status=result.response_status,
-                request_url=result.request_url,
-            )
-            result.ai_analysis = report.model_dump_json()
-            session.add(result)
-            reports.append(report)
+        reports = []
+        with usage_ctx:
+            for result in failed_results[:_MAX_PER_RUN]:
+                steps = []
+                case = None
+                if run.test_case_id:
+                    case = session.get(TestCase, run.test_case_id)
+                if case is None:
+                    case = session.exec(
+                        select(TestCase).where(TestCase.name == result.test_name)
+                    ).first()
+                if case:
+                    steps = [s if isinstance(s, dict) else s.dict() for s in (case.steps or [])]
+
+                report = analyze_case_failure(
+                    test_name=result.test_name,
+                    error_message=result.error_message or "",
+                    steps=steps,
+                    response_status=result.response_status,
+                    request_url=result.request_url,
+                )
+                result.ai_analysis = report.model_dump_json()
+                session.add(result)
+                reports.append(report)
 
         rollup = build_run_rollup(reports, failed_total=len(failed_results))
         run.ai_analysis = json.loads(rollup.model_dump_json())

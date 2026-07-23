@@ -17,6 +17,7 @@ import Security from "@/pages/Security";
 import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
+import LLMUsage from "@/pages/LLMUsage";
 import Traceability from "@/pages/Traceability";
 import ImportPlaywright from "@/pages/ImportPlaywright";
 import IssueTrackers from "@/pages/IssueTrackers";
@@ -62,6 +63,7 @@ function App() {
                 <Route path="triage" element={<Triage />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="billing" element={<Billing />} />
+                <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="traceability" element={<Traceability />} />
                 <Route path="import-playwright" element={<ImportPlaywright />} />
                 <Route path="schedules" element={<Schedules />} />
