@@ -812,7 +812,7 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
         <ul class="bul">
           <li>Per-project <em>verified-domain allowlist</em> — only registered targets can be scanned.</li>
           <li>An explicit "I'm authorized to scan this" attestation on every scan.</li>
-          <li>Active scans need a global flag <em>and</em> a per-project opt-in (double opt-in).</li>
+          <li>Active (attacking) scans need <em>both</em> the workspace master switch <em>and</em> the per-project opt-in turned on — a two-key lock. A workspace admin flips the master switch right on the Security page (no env edits); the deployment env flag <code>SECURITY_ACTIVE_SCAN_ENABLED</code> still works as a global override.</li>
         </ul>
       </div>
       <div class="card">

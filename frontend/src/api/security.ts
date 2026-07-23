@@ -98,4 +98,20 @@ export const securityApi = {
         const r = await api.get(`/security-scans/${scanId}/diff`);
         return r.data;
     },
+    getWorkspaceSecurity: async (workspaceId: number): Promise<WorkspaceSecurity> => {
+        const r = await api.get(`/workspaces/${workspaceId}/security`);
+        return r.data;
+    },
+    setWorkspaceActiveScan: async (workspaceId: number, enabled: boolean): Promise<WorkspaceSecurity> => {
+        const r = await api.put(`/workspaces/${workspaceId}/security`, { active_scan_enabled: enabled });
+        return r.data;
+    },
 };
+
+export interface WorkspaceSecurity {
+    workspace_id: number;
+    active_scan_enabled: boolean;   // effective (env flag OR workspace toggle)
+    workspace_toggle: boolean;      // the stored workspace setting
+    forced_by_deployment: boolean;  // env flag forces it on
+    can_edit: boolean;              // caller is workspace admin/owner
+}
