@@ -15,7 +15,11 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import Plan, WorkspaceSubscription, UsageRecord, Project
 
 # metric → the plan-limit key it is capped by.
-_METRIC_LIMIT = {"runs": "monthly_runs", "ai_generations": "ai_daily"}
+_METRIC_LIMIT = {
+    "runs": "monthly_runs",
+    "ai_generations": "ai_daily",
+    "llm_tokens": "monthly_llm_tokens",
+}
 
 
 def current_period() -> str:

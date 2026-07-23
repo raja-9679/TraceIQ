@@ -51,6 +51,7 @@ async def workspace_billing(workspace_id: int, session: AsyncSession = Depends(g
     usage = {
         "runs": await billing_svc.get_usage(session, workspace_id, "runs", period),
         "ai_generations": await billing_svc.get_usage(session, workspace_id, "ai_generations", period),
+        "llm_tokens": await billing_svc.get_usage(session, workspace_id, "llm_tokens", period),
     }
     return BillingStatus(
         workspace_id=workspace_id, plan=PlanRead(**plan.model_dump()),

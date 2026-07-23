@@ -56,7 +56,7 @@ export class AIEngine {
         }
 
         const prompt = `The selector '${brokenSelector}' failed to find an element.\nHere is the DOM snapshot:\n${truncatedDom}\n\nFind the element that most likely corresponds to the broken selector.\nReturn ONLY the new selector.`;
-        const healed = await provider.complete(prompt, { maxTokens: 128 });
+        const healed = await provider.complete(prompt, { maxTokens: 128, feature: 'selector_heal', runId });
         lruSet(cacheKey, healed);
         return healed;
     }

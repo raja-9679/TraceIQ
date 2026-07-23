@@ -11,9 +11,55 @@
 // Falls back to a null provider that returns "" so callers don't have to
 // guard every call on key-present checks.
 
+export interface LLMCallOpts {
+    system?: string;
+    maxTokens?: number;
+    // Usage-metering context: which feature made the call and for which run.
+    // The backend resolves workspace/project from the run id.
+    feature?: string;
+    runId?: number;
+}
+
 export interface LLMProvider {
     name: string;
-    complete(prompt: string, opts?: { system?: string; maxTokens?: number }): Promise<string>;
+    complete(prompt: string, opts?: LLMCallOpts): Promise<string>;
+}
+
+// ---------------------------------------------------------------------------
+// Usage reporting — every call posts its token counts to the backend so the
+// AI-usage dashboard covers worker-side calls too. Fire-and-forget: metering
+// must never slow down or fail a test run.
+// ---------------------------------------------------------------------------
+
+const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
+const WORKER_TOKEN = process.env.WORKER_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || '';
+
+function reportUsage(event: {
+    provider: string; model: string; feature?: string; runId?: number;
+    inputTokens: number; outputTokens: number; latencyMs: number;
+    success: boolean; error?: string;
+}): void {
+    fetch(`${BACKEND_URL}/api/internal/llm-usage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Worker-Secret': WORKER_TOKEN },
+        body: JSON.stringify({
+            events: [{
+                provider: event.provider,
+                model: event.model,
+                feature: event.feature || 'unknown',
+                run_id: event.runId ?? null,
+                input_tokens: event.inputTokens,
+                output_tokens: event.outputTokens,
+                latency_ms: event.latencyMs,
+                success: event.success,
+                error: event.error || null,
+            }],
+        }),
+    }).then((res) => {
+        if (!res.ok) console.warn(`[LLM] usage report returned ${res.status}`);
+    }).catch((err) => {
+        console.warn('[LLM] usage report failed:', err?.message || err);
+    });
 }
 
 // Any OpenAI-wire-compatible endpoint: OpenAI, Gemini (compat endpoint),
@@ -31,7 +77,8 @@ class OpenAICompatibleProvider implements LLMProvider {
         this.model = model;
     }
 
-    async complete(prompt: string, opts: { system?: string; maxTokens?: number } = {}): Promise<string> {
+    async complete(prompt: string, opts: LLMCallOpts = {}): Promise<string> {
+        const started = Date.now();
         try {
             const messages: any[] = [];
             if (opts.system) messages.push({ role: 'system', content: opts.system });
@@ -41,8 +88,22 @@ class OpenAICompatibleProvider implements LLMProvider {
                 messages,
                 max_tokens: opts.maxTokens ?? 1024,
             });
+            reportUsage({
+                provider: this.name, model: this.model,
+                feature: opts.feature, runId: opts.runId,
+                inputTokens: resp.usage?.prompt_tokens ?? 0,
+                outputTokens: resp.usage?.completion_tokens ?? 0,
+                latencyMs: Date.now() - started, success: true,
+            });
             return (resp.choices[0].message.content || '').trim();
-        } catch (err) {
+        } catch (err: any) {
+            reportUsage({
+                provider: this.name, model: this.model,
+                feature: opts.feature, runId: opts.runId,
+                inputTokens: 0, outputTokens: 0,
+                latencyMs: Date.now() - started, success: false,
+                error: String(err?.message || err),
+            });
             console.error(`[LLM] ${this.name} call failed:`, err);
             return '';
         }
@@ -63,7 +124,8 @@ class AnthropicProvider implements LLMProvider {
         this.model = model;
     }
 
-    async complete(prompt: string, opts: { system?: string; maxTokens?: number } = {}): Promise<string> {
+    async complete(prompt: string, opts: LLMCallOpts = {}): Promise<string> {
+        const started = Date.now();
         try {
             const params: any = {
                 model: this.model,
@@ -72,9 +134,23 @@ class AnthropicProvider implements LLMProvider {
             };
             if (opts.system) params.system = opts.system;
             const resp = await this.client.messages.create(params);
+            reportUsage({
+                provider: this.name, model: this.model,
+                feature: opts.feature, runId: opts.runId,
+                inputTokens: resp.usage?.input_tokens ?? 0,
+                outputTokens: resp.usage?.output_tokens ?? 0,
+                latencyMs: Date.now() - started, success: true,
+            });
             const parts = (resp.content || []).filter((b: any) => b.type === 'text').map((b: any) => b.text);
             return parts.join('').trim();
-        } catch (err) {
+        } catch (err: any) {
+            reportUsage({
+                provider: this.name, model: this.model,
+                feature: opts.feature, runId: opts.runId,
+                inputTokens: 0, outputTokens: 0,
+                latencyMs: Date.now() - started, success: false,
+                error: String(err?.message || err),
+            });
             console.error('[LLM] Anthropic call failed:', err);
             return '';
         }

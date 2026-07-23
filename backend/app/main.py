@@ -18,6 +18,7 @@ from app.api import issue_trackers as issue_trackers_api
 from app.api import triage as triage_api
 from app.api import reports as reports_api
 from app.api import billing as billing_api
+from app.api import llm_usage as llm_usage_api
 from app.api import traceability as traceability_api
 from app.core.config import settings as core_settings
 import logging
@@ -75,6 +76,7 @@ app.include_router(issue_trackers_api.router, prefix="/api", tags=["issue-tracke
 app.include_router(triage_api.router, prefix="/api", tags=["triage"])
 app.include_router(reports_api.router, prefix="/api", tags=["reports"])
 app.include_router(billing_api.router, prefix="/api", tags=["billing"])
+app.include_router(llm_usage_api.router, prefix="/api", tags=["llm-usage"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
 app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 app.include_router(agent_reference.router, prefix="/api", tags=["agent-reference"])
