@@ -38,4 +38,25 @@ export const monitorsApi = {
         const r = await api.put(`/schedules/${scheduleId}`, data);
         return r.data;
     },
+    getStatusPage: async (projectId: number): Promise<StatusPageConfig | null> => {
+        try {
+            const r = await api.get(`/projects/${projectId}/status-page`);
+            return r.data;
+        } catch (e: any) {
+            if (e?.response?.status === 404) return null;
+            throw e;
+        }
+    },
+    upsertStatusPage: async (projectId: number, body: Record<string, any>): Promise<StatusPageConfig> => {
+        const r = await api.put(`/projects/${projectId}/status-page`, body);
+        return r.data;
+    },
 };
+
+export interface StatusPageConfig {
+    id: number;
+    project_id: number;
+    slug: string;
+    title: string;
+    enabled: boolean;
+}

@@ -671,6 +671,9 @@ class TestScheduleBase(SQLModel):
     alert_after_failures: int = Field(default=1)
     # Send a RECOVERY alert when a down monitor passes again.
     alert_on_recovery: bool = Field(default=True)
+    # Extra email recipients for DOWN/RECOVERY alerts (Slack/Teams come from
+    # the project's notification settings; email is per-monitor).
+    alert_emails: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
 
 
 class TestSchedule(TestScheduleBase, table=True):
@@ -710,6 +713,7 @@ class TestScheduleUpdate(SQLModel):
     is_monitor: Optional[bool] = None
     alert_after_failures: Optional[int] = None
     alert_on_recovery: Optional[bool] = None
+    alert_emails: Optional[List[str]] = None
 
 
 class MonitorCheck(SQLModel, table=True):
@@ -1677,6 +1681,26 @@ class UsageRecord(SQLModel, table=True):
     period: str = Field(index=True)  # "YYYY-MM"
     metric: str                       # "runs" | "ai_generations"
     count: int = Field(default=0)
+
+
+class StatusPage(SQLModel, table=True):
+    """Public, unauthenticated status page generated from a project's
+    monitors. The slug is an unguessable token — the page exposes monitor
+    names + up/down/uptime only, never target URLs or run details."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", unique=True, index=True)
+    slug: str = Field(unique=True, index=True)
+    title: str = Field(default="Service status")
+    enabled: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class StatusPageRead(SQLModel):
+    id: int
+    project_id: int
+    slug: str
+    title: str
+    enabled: bool
 
 
 class ExternalTestReport(SQLModel, table=True):

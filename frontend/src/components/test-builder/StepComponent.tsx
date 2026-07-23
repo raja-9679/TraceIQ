@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls';
     selector?: string;
     value?: string;
     params?: {
@@ -120,6 +120,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'graphql': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Braces size={18} />, label: 'GraphQL Request' };
             case 'oauth2-token': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: 'OAuth2 Token' };
             case 'load-test': return { border: 'border-orange-200', bg: 'bg-orange-50 text-orange-600', hue: 'orange', icon: <Activity size={18} />, label: 'Load Test (k6)' };
+            case 'check-tls': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: 'TLS Cert Check' };
             case 'feed-check': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Rss size={18} />, label: 'Feed Check' };
             case 'run-script': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Code2 size={18} />, label: 'Run Script' };
             case 'assert': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <CheckCircle2 size={18} />, label: 'Assertion' };
@@ -189,6 +190,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="feed-check"><div className="flex items-center gap-2"><Rss size={14} className="text-amber-500"/> Feed Check</div></SelectItem>
                                 <SelectItem value="amp-validate"><div className="flex items-center gap-2"><Zap size={14} className="text-violet-500"/> AMP Validate</div></SelectItem>
                                 <SelectItem value="load-test"><div className="flex items-center gap-2"><Activity size={14} className="text-orange-500"/> Load Test (k6)</div></SelectItem>
+                                <SelectItem value="check-tls"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> TLS Cert Check</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>

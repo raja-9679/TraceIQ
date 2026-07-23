@@ -547,6 +547,44 @@ export class TestExecutor {
                 return gqlResult;
             }
 
+            case 'check-tls': {
+                // TLS certificate probe: connects to the host, validates the
+                // chain (Node default), and fails when the cert expires within
+                // params.min_days_remaining (default 14). No browser involved.
+                const target = resolve(step.value || step.selector);
+                if (!target) throw new Error('check-tls requires a host or URL');
+                const minDays = parseInt(String(step.params?.min_days_remaining ?? '14'), 10);
+                const parsed = new URL(target.includes('://') ? target : `https://${target}`);
+                const host = parsed.hostname;
+                const tlsPort = parseInt(parsed.port || '443', 10);
+
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const tls = require('tls');
+                const cert: any = await new Promise((resolveP, rejectP) => {
+                    const socket = tls.connect(
+                        { host, port: tlsPort, servername: host, timeout: 10000 },
+                        () => {
+                            const c = socket.getPeerCertificate();
+                            socket.end();
+                            resolveP(c);
+                        });
+                    socket.on('error', (e: any) => rejectP(new Error(`check-tls: ${host}:${tlsPort} — ${e.message}`)));
+                    socket.on('timeout', () => { socket.destroy(); rejectP(new Error(`check-tls: ${host}:${tlsPort} — connect timeout`)); });
+                });
+                if (!cert || !cert.valid_to) {
+                    throw new Error(`check-tls: ${host} returned no certificate`);
+                }
+                const daysLeft = Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000);
+                console.log(`  [TLS] ${host}:${tlsPort} cert valid_to=${cert.valid_to} (${daysLeft}d left, issuer=${cert.issuer?.O || '?'})`);
+                if (daysLeft < 0) {
+                    throw new Error(`check-tls: certificate for ${host} EXPIRED on ${cert.valid_to}`);
+                }
+                if (daysLeft < minDays) {
+                    throw new Error(`check-tls: certificate for ${host} expires in ${daysLeft} day(s) (< ${minDays} required) on ${cert.valid_to}`);
+                }
+                break;
+            }
+
             case 'feed-check': {
                 const rawFeedUrl = step.value || step.selector;
                 const stepHeaders = resolve(step.params?.headers || {});
