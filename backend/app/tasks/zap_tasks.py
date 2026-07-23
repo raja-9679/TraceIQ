@@ -12,6 +12,7 @@ created — this task assumes the target was already authorized.
 import logging
 import time
 from datetime import datetime
+from urllib.parse import urlsplit
 
 from sqlmodel import Session, create_engine, select
 
@@ -24,6 +25,13 @@ from app.services.zap_client import (
 logger = logging.getLogger(__name__)
 
 sync_engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""), echo=False)
+
+
+def _scan_origin(url: str) -> str:
+    """scheme://host[:port] of a URL, so alerts are collected for the whole
+    origin the spider crawled rather than only the entry path."""
+    p = urlsplit(url)
+    return f"{p.scheme}://{p.netloc}" if p.scheme and p.netloc else url
 
 
 def _auth_cookie(session: Session, project_id: int):
@@ -49,6 +57,7 @@ def _fail(session: Session, scan: SecurityScan, msg: str):
     scan.status = "error"
     scan.error = msg[:1000]
     scan.finished_at = datetime.utcnow()
+    scan.auth_header_value = None  # never retain the secret past a run
     session.add(scan)
     session.commit()
 
@@ -80,10 +89,54 @@ def run_zap_scan(self, scan_id: int):
                 else:
                     logger.warning("[ZAP] scan %s: authenticated requested but no auth session", scan_id)
 
-            # Spider (crawl) then let the passive scanner drain its queue.
-            spider_id = client.spider(scan.target_url)
-            _poll_to_complete(lambda: client.spider_status(spider_id), budget)
-            p_deadline = time.time() + min(120, budget)
+            # Header auth (item 7): inject a bearer token / API key header. Then
+            # scrub the secret from the row — ZAP holds the rule from here on.
+            if scan.auth_header_value:
+                client.add_header_rule(
+                    scan.auth_header_name or "Authorization", scan.auth_header_value,
+                    description="traceiq-auth-header")
+                logger.info("[ZAP] scan %s: authenticated via %s header",
+                            scan_id, scan.auth_header_name or "Authorization")
+                scan.auth_header_value = None
+                s.add(scan)
+                s.commit()
+
+            # API import (item 6): pull an OpenAPI/Swagger spec so endpoints the
+            # crawler can't reach by following links are added to the site tree.
+            if scan.openapi_url:
+                try:
+                    client.import_openapi(scan.openapi_url, host_override=_scan_origin(scan.target_url))
+                    logger.info("[ZAP] scan %s: imported OpenAPI spec %s", scan_id, scan.openapi_url)
+                except ZapError as e:
+                    logger.warning("[ZAP] scan %s: OpenAPI import failed: %s", scan_id, e)
+
+            # Spider (crawl). Widen depth for large sites, then optionally run
+            # the AJAX spider so JS-rendered / SPA content is also discovered.
+            if settings.ZAP_SPIDER_MAX_DEPTH:
+                try:
+                    client.set_spider_max_depth(settings.ZAP_SPIDER_MAX_DEPTH)
+                except ZapError:
+                    logger.warning("[ZAP] scan %s: could not set spider depth", scan_id)
+            spider_id = client.spider(
+                scan.target_url, max_children=settings.ZAP_SPIDER_MAX_CHILDREN)
+            spidered = _poll_to_complete(lambda: client.spider_status(spider_id), budget)
+            if not spidered:
+                logger.warning("[ZAP] scan %s: HTML spider hit the time budget", scan_id)
+
+            if settings.ZAP_AJAX_SPIDER:
+                try:
+                    client.ajax_spider(scan.target_url)
+                    a_deadline = time.time() + budget
+                    while client.ajax_spider_running() and time.time() < a_deadline:
+                        time.sleep(3)
+                except ZapError as e:
+                    # AJAX spider is best-effort (needs a browser in the image);
+                    # never fail the whole scan if it's unavailable.
+                    logger.warning("[ZAP] scan %s: AJAX spider unavailable: %s", scan_id, e)
+
+            # Let the passive scanner drain its queue against the full budget —
+            # a large site won't finish in a fixed 2-minute window.
+            p_deadline = time.time() + budget
             while client.passive_records_to_scan() > 0 and time.time() < p_deadline:
                 time.sleep(3)
 
@@ -92,7 +145,10 @@ def run_zap_scan(self, scan_id: int):
                 ascan_id = client.active_scan(scan.target_url)
                 _poll_to_complete(lambda: client.active_scan_status(ascan_id), budget)
 
-            findings = map_alerts(client.alerts(scan.target_url))
+            # Report on the whole scanned origin, not just the entry path — a
+            # deep entry URL (e.g. a single article) would otherwise hide every
+            # finding outside its subtree.
+            findings = map_alerts(client.alerts(_scan_origin(scan.target_url)))
 
             # Carry triage forward: a finding marked false_positive in the
             # previous completed scan of this project+target stays

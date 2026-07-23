@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     ShieldAlert, RefreshCw, AlertCircle, Layers, Save, Play, X, Plus, ShieldCheck, Lock,
+    ChevronRight, ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -9,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { getProjects } from '@/lib/api';
-import { securityApi, SecuritySettings, SecurityScan } from '@/api/security';
+import { securityApi, SecuritySettings, SecurityScan, SecurityFinding } from '@/api/security';
 
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 
@@ -116,16 +117,42 @@ function SettingsCard({ projectId, workspaceId }: { projectId: number; workspace
     );
 }
 
+const AUTH_PRESETS: Record<string, { name: string; placeholder: string; wrap: (v: string) => string }> = {
+    bearer: { name: 'Authorization', placeholder: 'JWT / access token', wrap: (v) => `Bearer ${v}` },
+    apikey: { name: 'X-API-Key', placeholder: 'API key', wrap: (v) => v },
+    custom: { name: '', placeholder: 'header value', wrap: (v) => v },
+};
+
 function NewScanCard({ projectId }: { projectId: number }) {
     const qc = useQueryClient();
     const [target, setTarget] = useState('');
     const [scanType, setScanType] = useState('baseline');
     const [authenticated, setAuthenticated] = useState(false);
     const [authorized, setAuthorized] = useState(false);
+    // Advanced: API import + header auth (items 6 & 7).
+    const [advanced, setAdvanced] = useState(false);
+    const [openapiUrl, setOpenapiUrl] = useState('');
+    const [authMode, setAuthMode] = useState<'none' | 'bearer' | 'apikey' | 'custom'>('none');
+    const [tokenValue, setTokenValue] = useState('');
+    const [customHeader, setCustomHeader] = useState('');
 
+    const preset = authMode === 'none' ? null : AUTH_PRESETS[authMode];
+    const headerName = authMode === 'custom' ? customHeader.trim() : preset?.name;
+    const headerValue = preset && tokenValue.trim() ? preset.wrap(tokenValue.trim()) : null;
+    const authIncomplete = authMode !== 'none' && (!tokenValue.trim() || (authMode === 'custom' && !customHeader.trim()));
+
+    const reset = () => {
+        setTarget(''); setAuthorized(false); setOpenapiUrl('');
+        setAuthMode('none'); setTokenValue(''); setCustomHeader(''); setAdvanced(false);
+    };
     const run = useMutation({
-        mutationFn: () => securityApi.createScan(projectId, { target_url: target, scan_type: scanType, authenticated, authorized }),
-        onSuccess: () => { toast.success('Scan queued'); setTarget(''); setAuthorized(false); qc.invalidateQueries({ queryKey: ['sec-scans', projectId] }); },
+        mutationFn: () => securityApi.createScan(projectId, {
+            target_url: target, scan_type: scanType, authenticated, authorized,
+            openapi_url: openapiUrl.trim() || null,
+            auth_header_name: headerValue ? headerName : null,
+            auth_header_value: headerValue,
+        }),
+        onSuccess: () => { toast.success('Scan queued'); reset(); qc.invalidateQueries({ queryKey: ['sec-scans', projectId] }); },
         onError: (e) => toast.error(errDetail(e)),
     });
 
@@ -133,7 +160,10 @@ function NewScanCard({ projectId }: { projectId: number }) {
         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><ShieldCheck className="w-4 h-4 text-emerald-500" /> New scan</h3>
             <div className="space-y-3">
-                <Input placeholder="https://staging.example.com" value={target} onChange={(e) => setTarget(e.target.value)} className="h-9" />
+                <div>
+                    <label className="text-[11px] font-semibold uppercase text-slate-400 mb-1 block">Target URL</label>
+                    <Input placeholder="https://staging.example.com" value={target} onChange={(e) => setTarget(e.target.value)} className="h-9" />
+                </div>
                 <div className="flex gap-3">
                     <Select value={scanType} onValueChange={setScanType}>
                         <SelectTrigger className="h-9 flex-1"><SelectValue /></SelectTrigger>
@@ -142,15 +172,70 @@ function NewScanCard({ projectId }: { projectId: number }) {
                             <SelectItem value="active">Active (attacking)</SelectItem>
                         </SelectContent>
                     </Select>
-                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
-                        <input type="checkbox" className="w-4 h-4" checked={authenticated} onChange={(e) => setAuthenticated(e.target.checked)} /> Authenticated
+                    <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer whitespace-nowrap">
+                        <input type="checkbox" className="w-4 h-4" checked={authenticated} onChange={(e) => setAuthenticated(e.target.checked)} /> Use saved session
                     </label>
                 </div>
+
+                {/* Advanced: API import + header auth */}
+                <button
+                    type="button"
+                    onClick={() => setAdvanced((a) => !a)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
+                >
+                    {advanced ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    API import &amp; token auth
+                    {(openapiUrl || authMode !== 'none') && <Badge variant="outline" className="ml-1 text-[9px] bg-sky-50 text-sky-600 border-sky-200 rounded">configured</Badge>}
+                </button>
+
+                {advanced && (
+                    <div className="space-y-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+                        <div>
+                            <label className="text-[11px] font-semibold uppercase text-slate-400 mb-1 flex items-center gap-1">
+                                <Layers className="w-3 h-3" /> OpenAPI / Swagger spec URL
+                            </label>
+                            <Input placeholder="https://api.example.com/openapi.json" value={openapiUrl}
+                                onChange={(e) => setOpenapiUrl(e.target.value)} className="h-8 text-xs" />
+                            <p className="text-[10px] text-slate-400 mt-1">Imports every documented endpoint so the scan reaches routes the crawler can't find by following links.</p>
+                        </div>
+                        <div>
+                            <label className="text-[11px] font-semibold uppercase text-slate-400 mb-1 flex items-center gap-1">
+                                <Lock className="w-3 h-3" /> Token / header auth
+                            </label>
+                            <div className="flex gap-2">
+                                <Select value={authMode} onValueChange={(v) => setAuthMode(v as typeof authMode)}>
+                                    <SelectTrigger className="h-8 w-32 text-xs shrink-0"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">None</SelectItem>
+                                        <SelectItem value="bearer">Bearer</SelectItem>
+                                        <SelectItem value="apikey">API key</SelectItem>
+                                        <SelectItem value="custom">Custom header</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {authMode === 'custom' && (
+                                    <Input placeholder="Header-Name" value={customHeader}
+                                        onChange={(e) => setCustomHeader(e.target.value)} className="h-8 text-xs w-32 shrink-0" />
+                                )}
+                                {authMode !== 'none' && (
+                                    <Input type="password" autoComplete="off" placeholder={preset?.placeholder}
+                                        value={tokenValue} onChange={(e) => setTokenValue(e.target.value)} className="h-8 text-xs flex-1" />
+                                )}
+                            </div>
+                            {headerValue && (
+                                <p className="text-[10px] text-slate-400 mt-1 font-mono truncate">
+                                    Sends: {headerName}: {authMode === 'bearer' ? 'Bearer ••••••' : '••••••'}
+                                </p>
+                            )}
+                            <p className="text-[10px] text-slate-400 mt-1">Injected on every request. Stored only for this run, then discarded.</p>
+                        </div>
+                    </div>
+                )}
+
                 <label className="flex items-start gap-2 text-xs text-slate-600 cursor-pointer bg-amber-50/60 border border-amber-100 rounded-lg px-3 py-2">
                     <input type="checkbox" className="w-4 h-4 mt-px" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} />
                     I am authorized to scan this target (it belongs to me/my organization).
                 </label>
-                <Button size="sm" className="h-9 rounded-lg w-full" onClick={() => run.mutate()} disabled={run.isPending || !target || !authorized}>
+                <Button size="sm" className="h-9 rounded-lg w-full" onClick={() => run.mutate()} disabled={run.isPending || !target || !authorized || authIncomplete}>
                     <Play className="w-3.5 h-3.5 mr-1.5" /> Run scan
                 </Button>
             </div>
@@ -163,6 +248,78 @@ const FINDING_STATUS_TONE: Record<string, string> = {
     open: 'text-rose-600', acknowledged: 'text-amber-600',
     false_positive: 'text-slate-400', resolved: 'text-emerald-600',
 };
+
+// Minimal inline markdown → JSX for finding bodies (**bold**, `code`, links).
+function inlineMd(text: string): ReactNode[] {
+    const nodes: ReactNode[] = [];
+    const re = /\*\*(.+?)\*\*|`([^`]+?)`|(https?:\/\/[^\s]+)/g;
+    let last = 0, m: RegExpExecArray | null, i = 0;
+    while ((m = re.exec(text)) !== null) {
+        if (m.index > last) nodes.push(text.slice(last, m.index));
+        if (m[1]) nodes.push(<strong key={i++} className="font-semibold text-slate-700">{m[1]}</strong>);
+        else if (m[2]) nodes.push(<code key={i++} className="px-1 py-0.5 bg-slate-100 rounded text-[11px] font-mono text-slate-700">{m[2]}</code>);
+        else if (m[3]) nodes.push(<a key={i++} href={m[3]} target="_blank" rel="noreferrer" className="text-sky-600 hover:underline break-all">{m[3]}</a>);
+        last = m.index + m[0].length;
+    }
+    if (last < text.length) nodes.push(text.slice(last));
+    return nodes;
+}
+
+function FindingBody({ text }: { text: string }) {
+    return (
+        <div className="space-y-1.5">
+            {text.split('\n').map((line, i) => {
+                const t = line.trim();
+                if (!t) return null;
+                if (t.startsWith('- ')) return <div key={i} className="flex gap-1.5 pl-1"><span className="text-slate-400">•</span><span className="min-w-0 break-words">{inlineMd(t.slice(2))}</span></div>;
+                return <p key={i} className="break-words">{inlineMd(t)}</p>;
+            })}
+        </div>
+    );
+}
+
+function FindingRow({ f, onTriage }: { f: SecurityFinding; onTriage: (status: string) => void }) {
+    const [open, setOpen] = useState(false);
+    const muted = f.status === 'false_positive' || f.status === 'resolved';
+    const hasDetail = !!(f.description || f.evidence);
+    return (
+        <div className="border border-slate-100 rounded-md">
+            <div className="flex items-start gap-2 text-sm p-2">
+                <button
+                    className="mt-0.5 text-slate-400 hover:text-slate-600 shrink-0 disabled:opacity-30"
+                    disabled={!hasDetail}
+                    onClick={() => setOpen((o) => !o)}
+                    aria-label={open ? 'Collapse finding' : 'Expand finding'}
+                >
+                    {open ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </button>
+                <Badge variant="outline" className={`rounded-md text-[9px] font-bold uppercase shrink-0 ${SEV_TONE[f.severity]}`}>{f.severity}</Badge>
+                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => hasDetail && setOpen((o) => !o)}>
+                    <span className={`font-medium ${muted ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{f.title}</span>
+                    {f.target_url && <span className="text-xs text-slate-400 ml-1 break-all">{f.target_url}</span>}
+                </div>
+                <select
+                    className={`text-[11px] font-semibold bg-transparent border border-slate-200 rounded-md px-1.5 py-0.5 shrink-0 ${FINDING_STATUS_TONE[f.status || 'open']}`}
+                    value={f.status || 'open'}
+                    onChange={(e) => onTriage(e.target.value)}
+                >
+                    {FINDING_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                </select>
+            </div>
+            {open && hasDetail && (
+                <div className="px-3 pb-3 pl-9 text-xs text-slate-600 space-y-3">
+                    {f.description && <FindingBody text={f.description} />}
+                    {f.evidence && (
+                        <div>
+                            <div className="text-[10px] font-bold uppercase text-slate-400 mb-1">Evidence</div>
+                            <pre className="bg-slate-50 border border-slate-100 rounded p-2 overflow-x-auto text-[11px] font-mono text-slate-700 whitespace-pre-wrap break-all">{f.evidence}</pre>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
 
 function ScanRow({ scan }: { scan: SecurityScan }) {
     const [open, setOpen] = useState(false);
@@ -188,8 +345,10 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
             <button className="w-full flex items-center justify-between p-4 hover:bg-slate-50/50 text-left" onClick={() => setOpen(!open)}>
                 <div className="min-w-0">
                     <div className="font-semibold text-slate-800 text-sm truncate">{scan.target_url}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">
-                        #{scan.id} · {scan.scan_type}{scan.authenticated && ' · authenticated'} · {new Date(scan.created_at).toLocaleString()}
+                    <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>#{scan.id} · {scan.scan_type}{scan.authenticated && ' · session'} · {new Date(scan.created_at).toLocaleString()}</span>
+                        {scan.openapi_url && <Badge variant="outline" className="text-[9px] bg-sky-50 text-sky-600 border-sky-200 rounded">API import</Badge>}
+                        {scan.auth_header_name && <Badge variant="outline" className="text-[9px] bg-violet-50 text-violet-600 border-violet-200 rounded">{scan.auth_header_name}</Badge>}
                     </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -216,20 +375,7 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
                             : (
                                 <div className="space-y-2">
                                     {detail.findings.map((f) => (
-                                        <div key={f.id} className="flex items-start gap-2 text-sm">
-                                            <Badge variant="outline" className={`rounded-md text-[9px] font-bold uppercase shrink-0 ${SEV_TONE[f.severity]}`}>{f.severity}</Badge>
-                                            <div className="min-w-0 flex-1">
-                                                <span className={`font-medium ${f.status === 'false_positive' || f.status === 'resolved' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{f.title}</span>
-                                                {f.target_url && <span className="text-xs text-slate-400 ml-1">{f.target_url}</span>}
-                                            </div>
-                                            <select
-                                                className={`text-[11px] font-semibold bg-transparent border border-slate-200 rounded-md px-1.5 py-0.5 shrink-0 ${FINDING_STATUS_TONE[f.status || 'open']}`}
-                                                value={f.status || 'open'}
-                                                onChange={(e) => triage.mutate({ id: f.id, status: e.target.value })}
-                                            >
-                                                {FINDING_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                                            </select>
-                                        </div>
+                                        <FindingRow key={f.id} f={f} onTriage={(status) => triage.mutate({ id: f.id, status })} />
                                     ))}
                                 </div>
                             )}

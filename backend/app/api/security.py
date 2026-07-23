@@ -29,6 +29,13 @@ from app.models import (
 router = APIRouter()
 
 
+def _scan_read(scan: SecurityScan, findings=None) -> SecurityScanRead:
+    """Serialize a scan without leaking the stored auth-header secret."""
+    return SecurityScanRead(
+        **scan.model_dump(exclude={"auth_header_value"}),
+        findings=findings or [])
+
+
 def _security_settings(project: Project) -> SecuritySettings:
     if project.security_settings:
         merged = {**DEFAULT_SECURITY_SETTINGS.model_dump(), **project.security_settings}
@@ -116,10 +123,25 @@ async def create_security_scan(
         if not sec.allow_active_scan:
             raise HTTPException(status_code=403, detail="Active scanning is not enabled for this project")
 
+    # API import: the spec URL's host must be allowlisted too, so a scan can't
+    # be used to pull and probe an arbitrary third-party spec.
+    openapi_url = (req.openapi_url or "").strip() or None
+    if openapi_url:
+        if not openapi_url.lower().startswith(("http://", "https://")):
+            raise HTTPException(status_code=400, detail="openapi_url must be an http(s) URL")
+        if not _host_allowed(openapi_url, sec.allowed_domains):
+            raise HTTPException(status_code=403, detail="OpenAPI spec host is not on this project's authorized-domain allowlist")
+
+    # Header auth: a value implies a header name (default Authorization).
+    auth_value = (req.auth_header_value or "").strip() or None
+    auth_name = (req.auth_header_name or "").strip() or ("Authorization" if auth_value else None)
+
     scan = SecurityScan(
         project_id=project_id, target_url=req.target_url, scan_type=scan_type,
         authenticated=bool(req.authenticated), status="pending",
-        requested_by_id=principal.user.id)
+        requested_by_id=principal.user.id,
+        openapi_url=openapi_url,
+        auth_header_name=auth_name, auth_header_value=auth_value)
     session.add(scan)
     await session.commit()
     await session.refresh(scan)
@@ -133,7 +155,7 @@ async def create_security_scan(
         session.add(scan)
         await session.commit()
 
-    return SecurityScanRead(**scan.model_dump(), findings=[])
+    return _scan_read(scan)
 
 
 @router.get("/projects/{project_id}/security-scans", response_model=List[SecurityScanRead])
@@ -150,7 +172,7 @@ async def list_security_scans(
     scans = (await session.exec(
         select(SecurityScan).where(SecurityScan.project_id == project_id)
         .order_by(SecurityScan.created_at.desc()))).all()
-    return [SecurityScanRead(**s.model_dump(), findings=[]) for s in scans]
+    return [_scan_read(s) for s in scans]
 
 
 @router.get("/security-scans/{scan_id}", response_model=SecurityScanRead)
@@ -168,8 +190,8 @@ async def get_security_scan(
     rows = (await session.exec(
         select(SecurityFinding).where(SecurityFinding.scan_id == scan_id))).all()
     rows.sort(key=lambda r: severity_rank.get(r.severity, 9))
-    return SecurityScanRead(
-        **scan.model_dump(),
+    return _scan_read(
+        scan,
         findings=[SecurityFindingRead.model_validate(r, from_attributes=True) for r in rows])
 
 

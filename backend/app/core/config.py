@@ -96,6 +96,11 @@ class Settings(BaseSettings):
     SECURITY_ACTIVE_SCAN_ENABLED: bool = False
     # Max seconds to wait for a ZAP scan phase before giving up.
     ZAP_SCAN_TIMEOUT_SECONDS: int = 900
+    # Crawl coverage. AJAX spider crawls JS-rendered / SPA content the HTML
+    # spider can't see (slower; needs the browser bundled in the ZAP image).
+    ZAP_AJAX_SPIDER: bool = True
+    ZAP_SPIDER_MAX_DEPTH: int = 10          # 0 = ZAP default (5)
+    ZAP_SPIDER_MAX_CHILDREN: int = 0        # 0 = unlimited children per node
 
     # Billing (Stripe). When unset, billing runs in "manual" mode: plans exist
     # and quotas are enforced, but Stripe checkout/webhooks are disabled and
