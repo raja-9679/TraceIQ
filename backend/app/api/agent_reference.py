@@ -396,6 +396,33 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Self-contained fetch+assert. NOT a way to assert on a previous step's response — use http-request's embedded assertions for that.",
     },
     {
+        "type": "load-test",
+        "category": "load",
+        "params": {
+            "value": "Target URL",
+            "params.method": "'GET' (default) | POST | PUT | PATCH | DELETE",
+            "params.headers": "Optional headers object",
+            "params.body": "Optional body (object or string)",
+            "params.vus": "Virtual users (default 10, capped by LOAD_MAX_VUS)",
+            "params.duration_s": "Steady-state seconds (default 30, capped by LOAD_MAX_DURATION_S)",
+            "params.ramp_up_s": "Optional ramp-up seconds to reach vus",
+            "params.think_time_s": "Sleep between iterations (default 1)",
+            "params.thresholds": "{p95_ms?, p99_ms?, error_rate? (0-1), min_rps?} — any breach fails the case",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "load-test",
+            "value": "http://app/api/overview",
+            "params": {"vus": 20, "duration_s": 60, "thresholds": {"p95_ms": 500, "error_rate": 0.01}},
+        },
+        "notes": (
+            "Declares a k6 load test — a case containing this step gets executor='load' automatically and "
+            "MUST be the only meaningful step in the case (load cases skip the browser entirely). "
+            "Aggregate metrics land in result_payload (result_kind='load'); the generated k6 script and "
+            "summary are uploaded as run artifacts. Only run against apps you own."
+        ),
+    },
+    {
         "type": "run-script",
         "category": "interaction",
         "params": {

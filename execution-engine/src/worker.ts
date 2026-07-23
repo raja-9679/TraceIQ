@@ -281,6 +281,12 @@ class ExecutionWorker {
             return this.executeRawPlaywrightJob(job);
         }
 
+        // Load testing: generate + run a k6 script (no browser involved).
+        if (job.test_case?.executor === 'load') {
+            console.log(`[Worker] Executing load job ${job.job_id}`);
+            return this.executeLoadJob(job);
+        }
+
         // Check if this is a multi-test continuous job
         if (job.execution_mode === 'continuous' && job.test_cases && job.test_cases.length > 0) {
             console.log(`[Worker] Executing continuous job ${job.job_id} with ${job.test_cases.length} tests`);
@@ -338,6 +344,50 @@ class ExecutionWorker {
             duration_ms: res.duration_ms || (Date.now() - start),
             error: res.error,
             test_results,
+        };
+    }
+
+    /**
+     * Run a k6 load test (executor=load). The case's first `load-test` step is
+     * the declarative spec; the k6 script is generated, never user-supplied.
+     * The generated script + k6 summary are uploaded as run artifacts.
+     */
+    private async executeLoadJob(job: TestJob): Promise<JobResult> {
+        const tc = job.test_case;
+        const base = {
+            job_id: job.job_id,
+            run_id: job.run_id,
+            test_case_id: job.test_case_id,
+            test_name: tc?.name,
+            network_events: [],
+            completed_at: new Date().toISOString(),
+        };
+
+        const loadStep = (tc?.steps || []).find((s: any) => s.type === 'load-test');
+        if (!loadStep) {
+            return { ...base, status: 'error', duration_ms: 0,
+                artifacts: { screenshots: [], uploadedLocalPaths: [] } as any,
+                error: 'Load case has no load-test step.' };
+        }
+
+        const artifactsDir = path.join(ARTIFACTS_BASE_DIR, job.job_id);
+        fs.mkdirSync(artifactsDir, { recursive: true });
+
+        const { runLoadTest } = await import('./load-runner');
+        const spec = { target_url: loadStep.value || loadStep.selector, ...(loadStep.params || {}) };
+        const outcome = await runLoadTest(spec, job.settings, artifactsDir);
+
+        const artifacts = await this.uploadArtifacts(
+            job.run_id, job.job_id, artifactsDir, null, null, [], []);
+        this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
+
+        return {
+            ...base,
+            status: outcome.status,
+            duration_ms: outcome.duration_ms,
+            error: outcome.error,
+            artifacts,
+            ...(outcome.payload ? { result_kind: 'load', result_payload: outcome.payload } : {}),
         };
     }
 

@@ -585,6 +585,16 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
         network_events = result.get('network_events', [])
         web_vitals = result.get('web_vitals')
 
+        # Type-aware payload from non-UI executors (load, security, …); web
+        # vitals ride along in the same JSON column for UI runs.
+        typed_payload = result.get('result_payload')
+        typed_kind = result.get('result_kind')
+        merged_payload = None
+        if typed_payload or web_vitals:
+            merged_payload = {**(typed_payload or {})}
+            if web_vitals:
+                merged_payload['web_vitals'] = web_vitals
+
         retry_count = int(result.get('retry_count', 0) or 0)
 
         if existing:
@@ -596,8 +606,10 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             existing.trace_url = artifacts.get('trace')
             existing.screenshots = artifacts.get('screenshots', [])
             existing.retry_count = retry_count
-            if web_vitals:
-                existing.result_payload = {**(existing.result_payload or {}), 'web_vitals': web_vitals}
+            if typed_kind:
+                existing.result_kind = typed_kind
+            if merged_payload:
+                existing.result_payload = {**(existing.result_payload or {}), **merged_payload}
             existing.response_status = response_data.get('status')
             existing.response_headers = response_data.get('headers')
             existing.response_body = response_data.get('body')
@@ -627,7 +639,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 request_url=request_data.get('url'),
                 request_method=request_data.get('method'),
                 request_params=request_data.get('params'),
-                result_payload={'web_vitals': web_vitals} if web_vitals else None
+                result_kind=typed_kind,
+                result_payload=merged_payload
             )
             session.add(test_result)
 
