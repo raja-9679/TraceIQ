@@ -268,6 +268,26 @@ export default function QualityDashboard() {
                                         <input type="checkbox" className="w-4 h-4" checked={policy.require_monitors_up}
                                             onChange={(e) => setPolicy({ ...policy, require_monitors_up: e.target.checked })} />
                                     </label>
+                                    <div className="pt-2 border-t border-slate-100">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Performance budgets (0 = off)</p>
+                                        <div className="space-y-3">
+                                            <label className="flex items-center justify-between text-sm">
+                                                <span className="text-slate-600">Max LCP (ms)</span>
+                                                <Input type="number" className="w-24 h-8" value={policy.max_lcp_ms ?? 0}
+                                                    onChange={(e) => setPolicy({ ...policy, max_lcp_ms: parseInt(e.target.value) || 0 })} />
+                                            </label>
+                                            <label className="flex items-center justify-between text-sm">
+                                                <span className="text-slate-600">Max CLS</span>
+                                                <Input type="number" step="0.01" className="w-24 h-8" value={policy.max_cls ?? 0}
+                                                    onChange={(e) => setPolicy({ ...policy, max_cls: parseFloat(e.target.value) || 0 })} />
+                                            </label>
+                                            <label className="flex items-center justify-between text-sm">
+                                                <span className="text-slate-600">Max TTFB (ms)</span>
+                                                <Input type="number" className="w-24 h-8" value={policy.max_ttfb_ms ?? 0}
+                                                    onChange={(e) => setPolicy({ ...policy, max_ttfb_ms: parseInt(e.target.value) || 0 })} />
+                                            </label>
+                                        </div>
+                                    </div>
                                 </div>
                                 <Button size="sm" className="mt-4 h-9 rounded-lg" onClick={() => savePolicy.mutate()} disabled={savePolicy.isPending}>
                                     <Save className="w-3.5 h-3.5 mr-1.5" /> Save policy

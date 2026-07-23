@@ -26,6 +26,7 @@ import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
+import { collectWebVitals, WebVitals } from './web-vitals';
 
 // Errors that look like a selector no longer matching the page — the only
 // failures worth an LLM heal attempt.
@@ -401,6 +402,7 @@ class ExecutionWorker {
         let lastStepResult: any = null;
         let capturedAuthState: any = null;
         let currentStep: any = null;
+        let webVitals: WebVitals | null = null;
         const healSuggestions: any[] = [];
         let healedStepCount = 0;
 
@@ -597,6 +599,12 @@ class ExecutionWorker {
                 }
             }
         } finally {
+            // Web vitals for the page's final document — pass or fail, the
+            // perf data is real as long as the page is still open.
+            if (page && !page.isClosed()) {
+                webVitals = await collectWebVitals(page);
+            }
+
             // Stop tracing and save
             if (context) {
                 try {
@@ -657,6 +665,7 @@ class ExecutionWorker {
             artifacts,
             response_data: responseData,
             network_events: networkEvents,
+            ...(webVitals ? { web_vitals: webVitals } : {}),
             ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
             completed_at: new Date().toISOString()
@@ -918,6 +927,9 @@ class ExecutionWorker {
 
                 const caseDuration = Date.now() - caseStartTime;
 
+                const caseVitals = (page && !page.isClosed())
+                    ? await collectWebVitals(page) : null;
+
                 // Record test result, including only the network events for
                 // this test case (sliced from the shared accumulator).
                 testResults.push({
@@ -927,7 +939,8 @@ class ExecutionWorker {
                     duration_ms: caseDuration,
                     error: caseError,
                     response_data: responseData,
-                    network_events: networkEvents.slice(netStartIdx)
+                    network_events: networkEvents.slice(netStartIdx),
+                    ...(caseVitals ? { web_vitals: caseVitals } : {})
                 });
 
                 console.log(`[Worker] Completed test case: ${testCase.name} (${caseStatus}, ${caseDuration}ms)`);

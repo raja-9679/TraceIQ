@@ -810,6 +810,28 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                 </div>
                             )}
 
+                            {(result as any).result_payload?.web_vitals && (() => {
+                                const wv = (result as any).result_payload.web_vitals;
+                                const chip = (label: string, val: number | null, unit: string, warn: boolean) => val == null ? null : (
+                                    <span key={label} className={cn(
+                                        "px-2.5 py-1 rounded-full border text-[11px] font-semibold tabular-nums",
+                                        warn ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-50 text-slate-600 border-slate-200"
+                                    )}>
+                                        {label} {unit === '' ? val.toFixed(3) : `${Math.round(val)}${unit}`}
+                                    </span>
+                                );
+                                return (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Web vitals</span>
+                                        {chip('TTFB', wv.ttfb_ms, 'ms', wv.ttfb_ms > 800)}
+                                        {chip('FCP', wv.fcp_ms, 'ms', wv.fcp_ms > 1800)}
+                                        {chip('LCP', wv.lcp_ms, 'ms', wv.lcp_ms > 2500)}
+                                        {chip('CLS', wv.cls, '', wv.cls > 0.1)}
+                                        {chip('Load', wv.load_ms, 'ms', wv.load_ms > 5000)}
+                                    </div>
+                                );
+                            })()}
+
                             <Tabs.Root defaultValue="details" className="flex flex-col">
                                 <Tabs.List className="flex shrink-0 border-b border-gray-200 mb-5 overflow-x-auto custom-scrollbar pb-px">
                                     <Tabs.Trigger

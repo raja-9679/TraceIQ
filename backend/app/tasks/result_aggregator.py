@@ -484,6 +484,9 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 existing.request_url = request_data.get('url')
                 existing.request_method = request_data.get('method')
                 existing.request_params = request_data.get('params')
+                if test_res.get('web_vitals'):
+                    existing.result_payload = {**(existing.result_payload or {}),
+                                               'web_vitals': test_res['web_vitals']}
                 session.add(existing)
             else:
                 # Create new result
@@ -503,7 +506,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     request_body=request_data.get('body'),
                     request_url=request_data.get('url'),
                     request_method=request_data.get('method'),
-                    request_params=request_data.get('params')
+                    request_params=request_data.get('params'),
+                    result_payload={'web_vitals': test_res['web_vitals']} if test_res.get('web_vitals') else None
                 )
                 session.add(test_result)
 
@@ -579,6 +583,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
         request_data = response_data.get(
             'request', {}) if response_data else {}
         network_events = result.get('network_events', [])
+        web_vitals = result.get('web_vitals')
 
         retry_count = int(result.get('retry_count', 0) or 0)
 
@@ -591,6 +596,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             existing.trace_url = artifacts.get('trace')
             existing.screenshots = artifacts.get('screenshots', [])
             existing.retry_count = retry_count
+            if web_vitals:
+                existing.result_payload = {**(existing.result_payload or {}), 'web_vitals': web_vitals}
             existing.response_status = response_data.get('status')
             existing.response_headers = response_data.get('headers')
             existing.response_body = response_data.get('body')
@@ -619,7 +626,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 request_body=request_data.get('body'),
                 request_url=request_data.get('url'),
                 request_method=request_data.get('method'),
-                request_params=request_data.get('params')
+                request_params=request_data.get('params'),
+                result_payload={'web_vitals': web_vitals} if web_vitals else None
             )
             session.add(test_result)
 
