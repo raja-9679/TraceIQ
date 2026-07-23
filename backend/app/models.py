@@ -890,6 +890,11 @@ class QualityGatePolicy(SQLModel):
     max_high_severity_findings: int = 0
     max_medium_severity_findings: Optional[int] = None  # None = no limit
     require_monitors_up: bool = False
+    # Performance budgets, checked against the worst web-vitals sample across
+    # the evaluated runs' results. 0 = budget not enforced.
+    max_lcp_ms: int = 0
+    max_cls: float = 0.0
+    max_ttfb_ms: int = 0
 
 
 class QualityGateCheck(SQLModel):

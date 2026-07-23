@@ -80,6 +80,7 @@ export interface TestCaseResult {
     };
     video?: string;  // Per-case video for continuous jobs
     network_events?: any[];  // Network events captured during this test case
+    web_vitals?: any;  // Performance metrics for the case's final document
 }
 
 // Job result - can contain single or multiple test results
@@ -93,6 +94,10 @@ export interface JobResult {
     status: 'passed' | 'failed' | 'error';
     duration_ms: number;
     error?: string;
+
+    // Web vitals (LCP/CLS/TTFB/FCP…) for the final document of a single-test
+    // job; continuous jobs carry them per-case on test_results instead.
+    web_vitals?: any;
 
     // Playwright storageState captured by a passing auth-setup case; the
     // backend persists it as the project's AuthSession. auth_case_id names

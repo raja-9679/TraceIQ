@@ -32,6 +32,10 @@ export interface QualityGatePolicy {
     max_high_severity_findings: number;
     max_medium_severity_findings: number | null;
     require_monitors_up: boolean;
+    // Performance budgets (0 = not enforced)
+    max_lcp_ms: number;
+    max_cls: number;
+    max_ttfb_ms: number;
 }
 
 export interface QualityGateCheck {
