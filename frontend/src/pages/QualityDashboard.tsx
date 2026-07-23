@@ -109,6 +109,11 @@ export default function QualityDashboard() {
         queryFn: () => qualityApi.getCiSettings(projectId!),
         enabled: !!projectId,
     });
+    const externalQ = useQuery({
+        queryKey: ['external-reports', projectId],
+        queryFn: () => qualityApi.externalReports(projectId!),
+        enabled: !!projectId,
+    });
 
     const [policy, setPolicy] = useState<QualityGatePolicy | null>(null);
     const [ci, setCi] = useState<CiSettings | null>(null);
@@ -268,6 +273,11 @@ export default function QualityDashboard() {
                                         <input type="checkbox" className="w-4 h-4" checked={policy.require_monitors_up}
                                             onChange={(e) => setPolicy({ ...policy, require_monitors_up: e.target.checked })} />
                                     </label>
+                                    <label className="flex items-center justify-between text-sm cursor-pointer">
+                                        <span className="text-slate-600">Require external CI tests green (ingested JUnit)</span>
+                                        <input type="checkbox" className="w-4 h-4" checked={policy.require_external_tests_pass ?? false}
+                                            onChange={(e) => setPolicy({ ...policy, require_external_tests_pass: e.target.checked })} />
+                                    </label>
                                     <div className="pt-2 border-t border-slate-100">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Performance budgets (0 = off)</p>
                                         <div className="space-y-3">
@@ -318,6 +328,30 @@ export default function QualityDashboard() {
                             </div>
                         )}
                     </div>
+
+                    {(externalQ.data?.length ?? 0) > 0 && (
+                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
+                            <h3 className="font-bold text-slate-800 mb-3">External CI results (ingested JUnit)</h3>
+                            <div className="space-y-2">
+                                {externalQ.data!.map((r) => {
+                                    const broken = r.failures + r.errors;
+                                    return (
+                                        <div key={r.id} className="flex items-center justify-between text-sm border border-slate-100 rounded-lg px-3 py-2">
+                                            <div className="min-w-0">
+                                                <span className={`inline-block w-2 h-2 rounded-full mr-2 ${broken ? 'bg-rose-500' : 'bg-emerald-500'}`} />
+                                                <span className="font-semibold text-slate-700">{r.suite_name || r.source}</span>
+                                                {r.git_commit && <span className="text-xs text-slate-400 ml-2 font-mono">{r.git_commit.slice(0, 8)}</span>}
+                                            </div>
+                                            <span className="tabular-nums text-slate-500 text-xs shrink-0">
+                                                {r.tests} tests · {broken ? `${broken} failed` : 'all green'} · {new Date(r.created_at).toLocaleString()}
+                                            </span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-2 italic">Push reports: POST /api/projects/{projectId}/external-results with JUnit XML body (X-API-Key auth).</p>
+                        </div>
+                    )}
 
                     {d.monitors_down > 0 && (
                         <div className="flex items-start gap-2 text-sm text-rose-600 bg-rose-50/60 border border-rose-100 rounded-xl px-3 py-2.5">

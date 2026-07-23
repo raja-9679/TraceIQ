@@ -895,6 +895,9 @@ class QualityGatePolicy(SQLModel):
     max_lcp_ms: int = 0
     max_cls: float = 0.0
     max_ttfb_ms: int = 0
+    # Require the team's own CI results (ingested JUnit reports) to be green.
+    # Fails closed when required but no report exists for the commit/project.
+    require_external_tests_pass: bool = False
 
 
 class QualityGateCheck(SQLModel):
@@ -1674,6 +1677,43 @@ class UsageRecord(SQLModel, table=True):
     period: str = Field(index=True)  # "YYYY-MM"
     metric: str                       # "runs" | "ai_generations"
     count: int = Field(default=0)
+
+
+class ExternalTestReport(SQLModel, table=True):
+    """A test report ingested from a team's own CI (JUnit XML) — results
+    TraceIQ displays and gates on but did not execute. Report-level rows;
+    failing cases are kept as a truncated JSON detail list."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    source: str = Field(default="junit")   # junit | ... (future: trx, xunit)
+    suite_name: Optional[str] = Field(default=None)
+    git_commit: Optional[str] = Field(default=None, index=True)
+    git_branch: Optional[str] = Field(default=None)
+    tests: int = Field(default=0)
+    failures: int = Field(default=0)
+    errors: int = Field(default=0)
+    skipped: int = Field(default=0)
+    time_seconds: float = Field(default=0.0)
+    failed_cases: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))  # [{name, classname, message}]
+    uploaded_by: Optional[str] = Field(default=None)  # user email or api-key label
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ExternalTestReportRead(SQLModel):
+    id: int
+    project_id: int
+    source: str
+    suite_name: Optional[str] = None
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    tests: int
+    failures: int
+    errors: int
+    skipped: int
+    time_seconds: float
+    failed_cases: Optional[List[dict]] = None
+    uploaded_by: Optional[str] = None
+    created_at: datetime
 
 
 class LLMUsageEvent(SQLModel, table=True):
