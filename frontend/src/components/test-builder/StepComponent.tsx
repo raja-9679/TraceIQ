@@ -1,7 +1,7 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
 import {
     Select,
@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
     selector?: string;
     value?: string;
     params?: {
@@ -117,6 +117,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'hover': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
             case 'press-key': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
             case 'http-request': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <FileJson size={18} />, label: 'API Request' };
+            case 'graphql': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Braces size={18} />, label: 'GraphQL Request' };
+            case 'oauth2-token': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: 'OAuth2 Token' };
             case 'feed-check': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Rss size={18} />, label: 'Feed Check' };
             case 'run-script': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Code2 size={18} />, label: 'Run Script' };
             case 'assert': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <CheckCircle2 size={18} />, label: 'Assertion' };
@@ -181,6 +183,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
                                 <SelectItem value="http-request"><div className="flex items-center gap-2"><FileJson size={14} className="text-amber-500"/> API Request</div></SelectItem>
+                                <SelectItem value="graphql"><div className="flex items-center gap-2"><FileJson size={14} className="text-amber-500"/> GraphQL Request</div></SelectItem>
+                                <SelectItem value="oauth2-token"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> OAuth2 Token</div></SelectItem>
                                 <SelectItem value="feed-check"><div className="flex items-center gap-2"><Rss size={14} className="text-amber-500"/> Feed Check</div></SelectItem>
                                 <SelectItem value="amp-validate"><div className="flex items-center gap-2"><Zap size={14} className="text-violet-500"/> AMP Validate</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
@@ -449,6 +453,62 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                         )}
                     </div>
                 </div>
+
+                {/* Extended Configuration for GraphQL */}
+                {step.type === 'graphql' && (
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 space-y-4 rounded-b-2xl">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Braces size={14} className="text-amber-500" /> Query</label>
+                            <textarea
+                                className="w-full h-32 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-amber-700 placeholder:text-slate-400 transition-colors shadow-inner resize-none"
+                                placeholder={'query($id: ID!) {\n  user(id: $id) { name email }\n}'}
+                                value={step.params?.query || ''}
+                                onChange={(e) => updateParams('query', e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><FileJson size={14} className="text-amber-500" /> Variables (JSON)</label>
+                            <textarea
+                                className="w-full h-20 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-indigo-600 placeholder:text-slate-400 transition-colors shadow-inner resize-none"
+                                placeholder='{"id": "1"}'
+                                defaultValue={JSON.stringify(step.params?.variables || {}, null, 2)}
+                                onBlur={(e) => {
+                                    try { updateParams('variables', JSON.parse(e.target.value)); } catch { /* keep last valid */ }
+                                }}
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1 italic">Assertions/extract are editable via the case JSON or an AI agent (data-path assertions on the response).</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Extended Configuration for OAuth2 token */}
+                {step.type === 'oauth2-token' && (
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 rounded-b-2xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Client ID</label>
+                                <Input className="h-10 bg-white" placeholder="{{secret.CLIENT_ID}}" value={step.params?.client_id || ''}
+                                    onChange={(e) => updateParams('client_id', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Client Secret</label>
+                                <Input className="h-10 bg-white" placeholder="{{secret.CLIENT_SECRET}}" value={step.params?.client_secret || ''}
+                                    onChange={(e) => updateParams('client_secret', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Scope (optional)</label>
+                                <Input className="h-10 bg-white" placeholder="read write" value={step.params?.scope || ''}
+                                    onChange={(e) => updateParams('scope', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Store token as</label>
+                                <Input className="h-10 bg-white" placeholder="access_token" value={step.params?.variable || ''}
+                                    onChange={(e) => updateParams('variable', e.target.value)} />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2 italic">Client-credentials grant against the app under test. Use the token in later steps: {'{"Authorization": "Bearer {{access_token}}"}'}. Reference project secrets, never paste real secrets here.</p>
+                    </div>
+                )}
 
                 {/* Extended Configuration for API/Feed/Script */}
                 {(step.type === 'http-request' || step.type === 'feed-check' || step.type === 'run-script') && (
