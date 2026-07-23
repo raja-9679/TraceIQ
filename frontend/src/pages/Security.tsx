@@ -122,12 +122,29 @@ function NewScanCard({ projectId }: { projectId: number }) {
     );
 }
 
+const FINDING_STATUSES = ['open', 'acknowledged', 'false_positive', 'resolved'] as const;
+const FINDING_STATUS_TONE: Record<string, string> = {
+    open: 'text-rose-600', acknowledged: 'text-amber-600',
+    false_positive: 'text-slate-400', resolved: 'text-emerald-600',
+};
+
 function ScanRow({ scan }: { scan: SecurityScan }) {
     const [open, setOpen] = useState(false);
+    const qc = useQueryClient();
     const { data: detail } = useQuery({
         queryKey: ['sec-scan', scan.id],
         queryFn: () => securityApi.getScan(scan.id),
         enabled: open,
+    });
+    const { data: diff } = useQuery({
+        queryKey: ['sec-scan-diff', scan.id],
+        queryFn: () => securityApi.scanDiff(scan.id),
+        enabled: open && scan.status === 'completed',
+    });
+    const triage = useMutation({
+        mutationFn: ({ id, status }: { id: number; status: string }) => securityApi.updateFinding(id, { status }),
+        onSuccess: () => qc.invalidateQueries({ queryKey: ['sec-scan', scan.id] }),
+        onError: (e: any) => toast.error(e?.response?.data?.detail || 'Update failed'),
     });
     const counts = scan.counts || {};
     return (
@@ -149,6 +166,15 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
             {open && (
                 <div className="border-t border-slate-100 p-4 bg-slate-50/30">
                     {scan.error && <p className="text-sm text-rose-600 mb-2">{scan.error}</p>}
+                    {diff?.baseline_available && (
+                        <p className="text-xs mb-3 text-slate-500">
+                            vs scan #{diff.previous_scan_id}:{' '}
+                            <span className={diff.new.length ? 'text-rose-600 font-semibold' : ''}>{diff.new.length} new</span>
+                            {' · '}
+                            <span className={diff.fixed.length ? 'text-emerald-600 font-semibold' : ''}>{diff.fixed.length} fixed</span>
+                            {' · '}{diff.persisting_count} persisting
+                        </p>
+                    )}
                     {!detail ? <RefreshCw className="animate-spin w-4 h-4 text-slate-400" />
                         : detail.findings.length === 0 ? <p className="text-sm text-slate-400">No findings.</p>
                             : (
@@ -156,10 +182,17 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
                                     {detail.findings.map((f) => (
                                         <div key={f.id} className="flex items-start gap-2 text-sm">
                                             <Badge variant="outline" className={`rounded-md text-[9px] font-bold uppercase shrink-0 ${SEV_TONE[f.severity]}`}>{f.severity}</Badge>
-                                            <div className="min-w-0">
-                                                <span className="font-medium text-slate-700">{f.title}</span>
+                                            <div className="min-w-0 flex-1">
+                                                <span className={`font-medium ${f.status === 'false_positive' || f.status === 'resolved' ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{f.title}</span>
                                                 {f.target_url && <span className="text-xs text-slate-400 ml-1">{f.target_url}</span>}
                                             </div>
+                                            <select
+                                                className={`text-[11px] font-semibold bg-transparent border border-slate-200 rounded-md px-1.5 py-0.5 shrink-0 ${FINDING_STATUS_TONE[f.status || 'open']}`}
+                                                value={f.status || 'open'}
+                                                onChange={(e) => triage.mutate({ id: f.id, status: e.target.value })}
+                                            >
+                                                {FINDING_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                                            </select>
                                         </div>
                                     ))}
                                 </div>

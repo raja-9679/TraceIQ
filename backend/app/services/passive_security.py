@@ -21,6 +21,21 @@ from urllib.parse import urlsplit
 SEVERITY_ORDER = {"high": 0, "medium": 1, "low": 2, "info": 3}
 
 
+def finding_fingerprint(category: str, title: str, target_url: Optional[str]) -> str:
+    """Stable identity for 'the same logical finding' across scans: category +
+    title + host/path (query stripped, so volatile params don't split it)."""
+    import hashlib
+    loc = ""
+    if target_url:
+        try:
+            parts = urlsplit(target_url)
+            loc = f"{parts.netloc}{parts.path}"
+        except ValueError:
+            loc = target_url
+    raw = f"{category}|{title}|{loc}".lower()
+    return hashlib.sha1(raw.encode()).hexdigest()[:16]
+
+
 def _origin(url: Optional[str]) -> Optional[str]:
     """scheme://host for a URL, used to dedupe per-origin header findings so a
     site with several page loads reports each missing header once, not per URL.
