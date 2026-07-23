@@ -34,6 +34,10 @@ class RunCreateContext(BaseModel):
     # Run against a specific ProjectEnvironment; None uses the project's
     # default environment (if one is configured).
     environment_id: Optional[int] = None
+    # Route this run's jobs to a developer's local worker (started with
+    # `npm run worker:local` in execution-engine) instead of the server
+    # workers — lets agents/CI test a dev server on localhost.
+    local_worker_id: Optional[str] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -59,6 +63,7 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         "triggered_by": triggered_by,
         "agent_id": agent_id,
         "api_key_id": api_key_id,
+        "local_worker_id": (ctx.local_worker_id or None) and str(ctx.local_worker_id)[:64],
     }
 
 
