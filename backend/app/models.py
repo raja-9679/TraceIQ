@@ -819,6 +819,14 @@ class SecurityScan(SQLModel, table=True):
     finished_at: Optional[datetime] = Field(default=None)
     counts: Optional[dict] = Field(default=None, sa_column=Column(JSON))  # severity → count
     error: Optional[str] = Field(default=None)
+    # API scanning (item 6): an OpenAPI/Swagger spec URL imported into ZAP so
+    # endpoints the spider can't reach by following links are still scanned.
+    openapi_url: Optional[str] = Field(default=None)
+    # Header auth (item 7): e.g. name="Authorization", value="Bearer eyJ…" or
+    # name="X-API-Key". The value is a secret — never returned in the read model
+    # and cleared once the scan finishes.
+    auth_header_name: Optional[str] = Field(default=None)
+    auth_header_value: Optional[str] = Field(default=None)
 
 
 class SecuritySettings(SQLModel):
@@ -841,6 +849,11 @@ class SecurityScanRequest(SQLModel):
     authenticated: bool = False     # use the project's stored auth session
     # Explicit attestation that the caller is authorized to scan the target.
     authorized: bool = False
+    # API scanning (item 6): OpenAPI/Swagger spec URL to import before scanning.
+    openapi_url: Optional[str] = None
+    # Header auth (item 7): defaults to "Authorization" when a value is given.
+    auth_header_name: Optional[str] = None
+    auth_header_value: Optional[str] = None
 
 
 class SecurityFindingRead(SQLModel):
@@ -873,6 +886,9 @@ class SecurityScanRead(SQLModel):
     finished_at: Optional[datetime] = None
     counts: Optional[dict] = None
     error: Optional[str] = None
+    openapi_url: Optional[str] = None
+    # Whether header auth was configured — the value itself is never exposed.
+    auth_header_name: Optional[str] = None
     findings: List[SecurityFindingRead] = []
 
 

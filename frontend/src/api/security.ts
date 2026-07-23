@@ -48,6 +48,8 @@ export interface SecurityScan {
     finished_at?: string | null;
     counts?: Record<string, number> | null;
     error?: string | null;
+    openapi_url?: string | null;
+    auth_header_name?: string | null;   // secret value is never returned
     findings: SecurityFinding[];
 }
 
@@ -86,6 +88,9 @@ export const securityApi = {
     },
     createScan: async (projectId: number, body: {
         target_url: string; scan_type: string; authenticated: boolean; authorized: boolean;
+        openapi_url?: string | null;
+        auth_header_name?: string | null;
+        auth_header_value?: string | null;
     }): Promise<SecurityScan> => {
         const r = await api.post(`/projects/${projectId}/security-scan`, body);
         return r.data;
