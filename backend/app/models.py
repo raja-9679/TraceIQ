@@ -1671,6 +1671,31 @@ class UsageRecord(SQLModel, table=True):
     count: int = Field(default=0)
 
 
+class LLMUsageEvent(SQLModel, table=True):
+    """One row per LLM API call — the raw feed behind the AI-usage dashboard.
+
+    Monthly per-workspace token totals are additionally rolled up into
+    UsageRecord (metric="llm_tokens") so plan quotas can cap them the same way
+    runs are capped. workspace_id is nullable: some calls (e.g. inline selector
+    heal inside the Celery runner) happen before workspace context is known.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, index=True)
+    run_id: Optional[int] = Field(default=None, index=True)
+    provider: str = Field(index=True)   # anthropic|openai|gemini|ollama|openai-compatible
+    model: str = Field(default="", index=True)
+    feature: str = Field(default="unknown", index=True)  # failure_analysis|selector_heal|case_generation|...
+    source: str = Field(default="backend")  # backend | execution-engine
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    total_tokens: int = Field(default=0)
+    latency_ms: int = Field(default=0)
+    success: bool = Field(default=True)
+    error: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class PlanRead(SQLModel):
     id: int
     name: str
