@@ -97,6 +97,11 @@ async def create_test_case(
     # Phase E: agent provenance.
     case.created_by_agent_id = principal.agent_id
     case.agent_session_id = principal.agent_session_id
+    # A case whose steps contain a load-test spec is a load-executor case —
+    # inferred here so authors never have to set the executor by hand.
+    if any((s.get('type') if isinstance(s, dict) else getattr(s, 'type', None)) == 'load-test'
+           for s in (case.steps or [])):
+        case.executor = ExecutorType.LOAD
     session.add(case)
     await session.commit()
     await session.refresh(case)
@@ -137,6 +142,13 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
     if "steps" in case_data:
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(db_case, "steps")
+        has_load_step = any(
+            (s.get('type') if isinstance(s, dict) else getattr(s, 'type', None)) == 'load-test'
+            for s in (db_case.steps or []))
+        if has_load_step and db_case.executor != ExecutorType.LOAD:
+            db_case.executor = ExecutorType.LOAD
+        elif not has_load_step and db_case.executor == ExecutorType.LOAD:
+            db_case.executor = ExecutorType.UI_PLAYWRIGHT
 
     if changes:
         db_case.updated_by_id = current_user.id

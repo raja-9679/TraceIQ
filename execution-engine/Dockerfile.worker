@@ -3,6 +3,10 @@
 
 FROM mcr.microsoft.com/playwright:v1.40.1-jammy
 
+# k6 binary for the load executor (executor=load). The k6 script is generated
+# server-side from a declarative spec — no user code runs through it.
+COPY --from=grafana/k6:0.57.0 /usr/bin/k6 /usr/bin/k6
+
 WORKDIR /app
 
 # Install ALL dependencies (including devDeps for TypeScript build)

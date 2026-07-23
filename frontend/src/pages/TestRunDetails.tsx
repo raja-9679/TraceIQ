@@ -810,6 +810,46 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                 </div>
                             )}
 
+                            {(result as any).result_kind === 'load' && (result as any).result_payload && (() => {
+                                const lp = (result as any).result_payload;
+                                const m = lp.metrics || {};
+                                const dur = m.http_req_duration || {};
+                                const fmt = (v: any, unit = '') => v == null ? '—' : `${Math.round((v + Number.EPSILON) * 100) / 100}${unit}`;
+                                const stat = (label: string, value: string) => (
+                                    <div key={label} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</div>
+                                        <div className="text-lg font-extrabold tabular-nums text-slate-800">{value}</div>
+                                    </div>
+                                );
+                                return (
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            Load test · {lp.vus} VUs · {lp.duration_s}s · {lp.target_url}
+                                        </p>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                            {stat('Requests', fmt(m.http_reqs?.count))}
+                                            {stat('RPS', fmt(m.http_reqs?.rate))}
+                                            {stat('p95', fmt(dur['p(95)'], 'ms'))}
+                                            {stat('p99', fmt(dur['p(99)'] ?? dur['p(99.9)'], 'ms'))}
+                                            {stat('Avg', fmt(dur.avg, 'ms'))}
+                                            {stat('Error rate', fmt((m.http_req_failed?.value ?? m.http_req_failed?.rate ?? 0) * 100, '%'))}
+                                        </div>
+                                        {(lp.thresholds || []).length > 0 && (
+                                            <div className="flex flex-wrap gap-2 mt-3">
+                                                {lp.thresholds.map((t: any) => (
+                                                    <span key={t.name} className={cn(
+                                                        "px-2.5 py-1 rounded-full border text-[11px] font-semibold tabular-nums",
+                                                        t.passed ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                                                    )}>
+                                                        {t.name}: {t.actual == null ? 'n/a' : Math.round((t.actual + Number.EPSILON) * 1000) / 1000} / limit {t.limit}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
                             {(result as any).result_payload?.web_vitals && (() => {
                                 const wv = (result as any).result_payload.web_vitals;
                                 const chip = (label: string, val: number | null, unit: string, warn: boolean) => val == null ? null : (
