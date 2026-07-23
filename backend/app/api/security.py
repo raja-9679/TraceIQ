@@ -22,7 +22,7 @@ from app.core.auth import get_current_user, get_current_principal, AuthPrincipal
 from app.core.config import settings as cfg
 from app.services.access_service import access_service
 from app.models import (
-    User, Project, SecurityScan, SecurityScanRead, SecurityScanRequest,
+    User, Project, Workspace, UserWorkspace, SecurityScan, SecurityScanRead, SecurityScanRequest,
     SecuritySettings, DEFAULT_SECURITY_SETTINGS, SecurityFinding, SecurityFindingRead,
 )
 
@@ -108,8 +108,11 @@ async def create_security_scan(
     if scan_type not in ("baseline", "active"):
         raise HTTPException(status_code=400, detail="scan_type must be 'baseline' or 'active'")
     if scan_type == "active":
-        if not cfg.SECURITY_ACTIVE_SCAN_ENABLED:
-            raise HTTPException(status_code=403, detail="Active scanning is disabled on this deployment")
+        workspace = await session.get(Workspace, project.workspace_id) if project.workspace_id else None
+        deployment_ok = cfg.SECURITY_ACTIVE_SCAN_ENABLED or bool(workspace and workspace.active_scan_enabled)
+        if not deployment_ok:
+            raise HTTPException(status_code=403,
+                detail="Active scanning is disabled for this workspace — a workspace admin can enable it in Security settings")
         if not sec.allow_active_scan:
             raise HTTPException(status_code=403, detail="Active scanning is not enabled for this project")
 
@@ -253,3 +256,55 @@ async def security_scan_diff(
         "fixed": fixed,
         "persisting_count": len(persisting),
     }
+
+
+async def _workspace_role(session: AsyncSession, workspace_id: int, user_id: int) -> str:
+    row = (await session.exec(select(UserWorkspace).where(
+        UserWorkspace.workspace_id == workspace_id,
+        UserWorkspace.user_id == user_id))).first()
+    if not row:
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    return (row.role or "").lower()
+
+
+@router.get("/workspaces/{workspace_id}/security")
+async def get_workspace_security(
+    workspace_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Workspace-level security settings + whether the caller may change them."""
+    role = await _workspace_role(session, workspace_id, current_user.id)
+    ws = await session.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return {
+        "workspace_id": workspace_id,
+        # Effective master switch: the global env flag OR the workspace toggle.
+        "active_scan_enabled": bool(cfg.SECURITY_ACTIVE_SCAN_ENABLED or ws.active_scan_enabled),
+        "workspace_toggle": ws.active_scan_enabled,
+        "forced_by_deployment": bool(cfg.SECURITY_ACTIVE_SCAN_ENABLED),
+        "can_edit": role in ("admin", "owner"),
+    }
+
+
+@router.put("/workspaces/{workspace_id}/security")
+async def set_workspace_security(
+    workspace_id: int,
+    body: dict = Body(...),
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Toggle workspace-wide active scanning (workspace admin/owner only)."""
+    role = await _workspace_role(session, workspace_id, current_user.id)
+    if role not in ("admin", "owner"):
+        raise HTTPException(status_code=403, detail="Workspace admin required to change active-scan policy")
+    ws = await session.get(Workspace, workspace_id)
+    if not ws:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if "active_scan_enabled" in body:
+        ws.active_scan_enabled = bool(body["active_scan_enabled"])
+        session.add(ws)
+        await session.commit()
+        await session.refresh(ws)
+    return await get_workspace_security(workspace_id, session, current_user)

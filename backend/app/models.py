@@ -108,6 +108,13 @@ class Workspace(SQLModel, table=True):
     # PENDING and are retried until a slot frees. 0 = unlimited.
     max_concurrent_runs: int = Field(default=0)
 
+    # Master switch for active (attacking) DAST scans across this workspace.
+    # A workspace admin toggles it from the UI. Active scans still require the
+    # per-project `allow_active_scan` opt-in and a per-scan authorization
+    # attestation. The env flag SECURITY_ACTIVE_SCAN_ENABLED remains a global
+    # override (either being true permits active scans).
+    active_scan_enabled: bool = Field(default=False)
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
