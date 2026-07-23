@@ -26,12 +26,26 @@ const STATUS_TONE: Record<string, string> = {
     error: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
-function SettingsCard({ projectId }: { projectId: number }) {
+function SettingsCard({ projectId, workspaceId }: { projectId: number; workspaceId: number | null }) {
     const qc = useQueryClient();
     const { data } = useQuery({ queryKey: ['sec-settings', projectId], queryFn: () => securityApi.getSettings(projectId) });
     const [s, setS] = useState<SecuritySettings | null>(null);
     const [domainInput, setDomainInput] = useState('');
     useEffect(() => { if (data) setS(data); }, [data]);
+
+    const wsSec = useQuery({
+        queryKey: ['ws-security', workspaceId],
+        queryFn: () => securityApi.getWorkspaceSecurity(workspaceId!),
+        enabled: !!workspaceId,
+    });
+    const toggleWs = useMutation({
+        mutationFn: (enabled: boolean) => securityApi.setWorkspaceActiveScan(workspaceId!, enabled),
+        onSuccess: (d) => {
+            toast.success(d.workspace_toggle ? 'Active scanning enabled for this workspace' : 'Active scanning disabled for this workspace');
+            qc.invalidateQueries({ queryKey: ['ws-security', workspaceId] });
+        },
+        onError: (e) => toast.error(errDetail(e)),
+    });
 
     const save = useMutation({
         mutationFn: () => securityApi.setSettings(projectId, s!),
@@ -39,6 +53,8 @@ function SettingsCard({ projectId }: { projectId: number }) {
         onError: (e) => toast.error(`Save failed: ${errDetail(e)} (admin role required)`),
     });
     if (!s) return null;
+
+    const ws = wsSec.data;
 
     const addDomain = () => {
         const d = domainInput.trim().toLowerCase();
@@ -55,9 +71,29 @@ function SettingsCard({ projectId }: { projectId: number }) {
                 <input type="checkbox" className="w-4 h-4" checked={s.enabled} onChange={(e) => setS({ ...s, enabled: e.target.checked })} />
             </label>
             <label className="flex items-center justify-between text-sm cursor-pointer mb-4">
-                <span className="text-slate-600">Allow active (attacking) scans</span>
+                <span className="text-slate-600">Allow active (attacking) scans <span className="text-slate-400">(this project)</span></span>
                 <input type="checkbox" className="w-4 h-4" checked={s.allow_active_scan} onChange={(e) => setS({ ...s, allow_active_scan: e.target.checked })} />
             </label>
+
+            {ws && (
+                <div className="mb-4 p-3 rounded-xl border border-amber-100 bg-amber-50/60">
+                    <label className="flex items-center justify-between text-sm cursor-pointer">
+                        <span className="text-slate-700 font-medium">Active scanning enabled for workspace</span>
+                        <input type="checkbox" className="w-4 h-4"
+                            checked={ws.active_scan_enabled}
+                            disabled={!ws.can_edit || ws.forced_by_deployment || toggleWs.isPending}
+                            onChange={(e) => toggleWs.mutate(e.target.checked)} />
+                    </label>
+                    <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+                        {ws.forced_by_deployment
+                            ? 'Forced on by the deployment (SECURITY_ACTIVE_SCAN_ENABLED).'
+                            : ws.can_edit
+                                ? 'Workspace-wide master switch for attacking scans. Both this and the per-project toggle must be on. Only scan targets you own.'
+                                : 'Only a workspace admin can change this. Active scans need this on plus the per-project toggle.'}
+                    </p>
+                </div>
+            )}
+
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Authorized domains</div>
             <div className="flex flex-wrap gap-1.5 mb-2">
                 {s.allowed_domains.length === 0 && <span className="text-xs text-slate-400">none — scans will be refused</span>}
@@ -266,7 +302,7 @@ export default function Security() {
             ) : (
                 <div className="space-y-6">
                     <div className="grid md:grid-cols-2 gap-6">
-                        <SettingsCard projectId={projectId} />
+                        <SettingsCard projectId={projectId} workspaceId={(projects || []).find((p) => p.id === projectId)?.workspace_id ?? null} />
                         <NewScanCard projectId={projectId} />
                     </div>
                     <div>
