@@ -316,6 +316,34 @@ def _load_auth_state(project_id, session):
     return auth.storage_state
 
 
+def _local_queue_key(run: TestRun, session: Session) -> str | None:
+    """Redis LIST key for a run pinned to a developer's local worker
+    (run.local_worker_id). Namespaced by workspace so worker ids can't
+    collide (or be polled) across tenants. None → normal stream dispatch."""
+    if not getattr(run, 'local_worker_id', None):
+        return None
+    from app.models import Project
+    project = session.get(Project, run.project_id) if run.project_id else None
+    if not project:
+        return None
+    return f"jobs:local:{project.workspace_id}:{run.local_worker_id}"
+
+
+def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job: dict):
+    """One job → either the shared worker stream or the run's local queue."""
+    if local_key:
+        pipe.rpush(local_key, json.dumps(job))
+        # Local queues are polled over HTTP; expire abandoned ones after a day.
+        pipe.expire(local_key, 86400)
+    else:
+        pipe.xadd(jobs_stream, {
+            'job_id': job['job_id'],
+            'run_id': str(run_id),
+            'payload': json.dumps(job),
+        })
+    pipe.sadd(f'runs:{run_id}:job_ids', job['job_id'])
+
+
 def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, session: Session):
     """
     Dispatch jobs for SEPARATE mode via Redis stream.
@@ -335,6 +363,9 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
         f"[Worker] Dispatching {len(execution_units)} execution units for run {run.id}")
 
     jobs_stream = 'jobs:pending'
+    local_key = _local_queue_key(run, session)
+    if local_key:
+        print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
     job_ids = []
     total_test_count = 0
 
@@ -398,16 +429,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 })
 
         for job in jobs:
-            pipe.xadd(
-                jobs_stream,
-                {
-                    'job_id': job['job_id'],
-                    'run_id': str(run.id),
-                    'payload': json.dumps(job)
-                }
-            )
-            # Track job in run's job set
-            pipe.sadd(f'runs:{run.id}:job_ids', job['job_id'])
+            _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
 
     # Initialize run progress tracking
     # Track by total test cases, not jobs (for accurate progress)
@@ -436,6 +458,9 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     print(f"[Worker] Dispatching {len(cases)} jobs to queue for run {run.id}")
 
     jobs_stream = 'jobs:pending'
+    local_key = _local_queue_key(run, session)
+    if local_key:
+        print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
     job_ids = []
 
     # Ensure consumer group exists
@@ -465,15 +490,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'retry_count': 0
         }
 
-        pipe.xadd(
-            jobs_stream,
-            {
-                'job_id': job_id,
-                'run_id': str(run.id),
-                'payload': json.dumps(job)
-            }
-        )
-        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+        _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(expanded),
@@ -591,6 +608,9 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
     )
 
     jobs_stream = 'jobs:pending'
+    local_key = _local_queue_key(run, session)
+    if local_key:
+        print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
     try:
         redis_client.xgroup_create(jobs_stream, 'execution-workers', id='0', mkstream=True)
     except redis.ResponseError as e:
@@ -616,15 +636,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'created_at': datetime.utcnow().isoformat(),
             'retry_count': 0,
         }
-        pipe.xadd(
-            jobs_stream,
-            {
-                'job_id': job_id,
-                'run_id': str(run.id),
-                'payload': json.dumps(job),
-            },
-        )
-        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+        _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(expanded),

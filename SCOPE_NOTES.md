@@ -107,11 +107,25 @@ This loop is exactly what Mode 1 was designed for. **The gap is step 3**: TraceI
 **Why not tunnel (ngrok / Cloudflare)?**
 Tunnel approach works today with zero TraceIQ changes, but exposes the local dev server publicly — uncomfortable for internal, unreleased, or credential-bearing apps. Local worker keeps everything local.
 
-**Not built yet.** Requires:
-- New `local_worker_id` / `local_worker_token` concept on Workspace (similar to API keys)
-- Job-polling endpoint on the TraceIQ backend (`GET /api/jobs/poll?worker_id=...`) that returns the next pending job for a given local worker
-- Worker picks up execution mode from the job; existing Playwright runner code reuses as-is
-- Result POST-back uses the existing `/api/runs/{id}/webhook` + `/api/runs/{id}/finalize` flow unchanged
+**✅ BUILT (2026-07-23), with small deltas from the sketch above:**
+- Auth reuses **workspace API keys** (no new worker-token concept): the key's
+  workspace namespaces the job queue (`jobs:local:{workspace_id}:{worker_id}`),
+  so a worker can never poll another tenant's jobs.
+- `POST /api/runs` accepts `local_worker_id` in the body; dispatch routes that
+  run's jobs to the local Redis list (1-day TTL) instead of `jobs:pending`.
+- `GET /api/jobs/poll?worker_id=…` (API-key auth) pops the next job; 204 idle.
+- Results POST to **`POST /api/jobs/result`** (not the webhook endpoints): the
+  server validates run/workspace ownership, increments the run's progress
+  hash, and feeds the normal `jobs:results` stream — aggregation, finalize,
+  notifications identical to server execution. Verified end-to-end.
+- CLI: `npm run worker:local` in `execution-engine/`
+  (`src/local-worker.ts`, env: TRACEIQ_URL / TRACEIQ_API_KEY /
+  TRACEIQ_WORKER_ID). Reuses the full TestExecutor step engine.
+
+Still deferred for the local worker: continuous (sub-suite) jobs — v1 is
+single-test jobs only (SEPARATE/PARALLEL); artifact upload (screenshots/video/
+trace stay on the dev machine — no MinIO from outside the cluster); an
+`npx traceiq-worker` standalone package (today it runs from the repo).
 
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 
