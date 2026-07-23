@@ -206,6 +206,30 @@ async def evaluate_gate_for_runs(
             actual=f"{len(down)} down", threshold="0 down",
             detail=", ".join(down) or None))
 
+    # External CI results (ingested JUnit) must be green when required.
+    if policy.require_external_tests_pass:
+        from app.models import ExternalTestReport
+        ext_query = select(ExternalTestReport).where(
+            ExternalTestReport.project_id == project.id)
+        if git_commit:
+            ext_query = ext_query.where(ExternalTestReport.git_commit == git_commit)
+        ext_query = ext_query.order_by(ExternalTestReport.created_at.desc()).limit(1)
+        latest_ext = (await session.exec(ext_query)).first()
+        if latest_ext is None:
+            checks.append(QualityGateCheck(
+                name="external_tests", passed=False, actual="no report",
+                threshold="0 failures",
+                detail=("no external CI report ingested"
+                        + (f" for commit {git_commit}" if git_commit else ""))))
+        else:
+            broken = latest_ext.failures + latest_ext.errors
+            checks.append(QualityGateCheck(
+                name="external_tests", passed=broken == 0,
+                actual=f"{broken} failed of {latest_ext.tests}",
+                threshold="0 failures",
+                detail=f"{latest_ext.source} report {latest_ext.id}"
+                       + (f" ({latest_ext.suite_name})" if latest_ext.suite_name else "")))
+
     # Performance budgets — worst web-vitals sample across the evaluated runs.
     if run_ids and (policy.max_lcp_ms or policy.max_cls or policy.max_ttfb_ms):
         results = (await session.exec(

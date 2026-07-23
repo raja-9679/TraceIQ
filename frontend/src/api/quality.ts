@@ -36,6 +36,24 @@ export interface QualityGatePolicy {
     max_lcp_ms: number;
     max_cls: number;
     max_ttfb_ms: number;
+    require_external_tests_pass: boolean;
+}
+
+export interface ExternalTestReport {
+    id: number;
+    project_id: number;
+    source: string;
+    suite_name: string | null;
+    git_commit: string | null;
+    git_branch: string | null;
+    tests: number;
+    failures: number;
+    errors: number;
+    skipped: number;
+    time_seconds: number;
+    failed_cases: { name: string; classname: string; message: string }[] | null;
+    uploaded_by: string | null;
+    created_at: string;
 }
 
 export interface QualityGateCheck {
@@ -80,6 +98,10 @@ export const qualityApi = {
     },
     setPolicy: async (projectId: number, policy: QualityGatePolicy): Promise<QualityGatePolicy> => {
         const r = await api.put(`/projects/${projectId}/quality-gate/policy`, policy);
+        return r.data;
+    },
+    externalReports: async (projectId: number, limit = 5): Promise<ExternalTestReport[]> => {
+        const r = await api.get(`/projects/${projectId}/external-results?limit=${limit}`);
         return r.data;
     },
     getCiSettings: async (projectId: number): Promise<CiSettings> => {
