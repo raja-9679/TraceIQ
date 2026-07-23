@@ -435,6 +435,11 @@ class TestRunBase(SQLModel):
         default=None, foreign_key="project.id")  # Link to project
     suite_name: Optional[str] = None
     test_case_name: Optional[str] = None
+    # When set, this run's jobs are queued for a developer's LOCAL worker
+    # (polled over HTTPS via GET /api/jobs/poll) instead of the server-side
+    # Redis-stream workers — the bridge that lets TraceIQ test `localhost`
+    # before code is deployed anywhere.
+    local_worker_id: Optional[str] = Field(default=None, index=True)
     # Denormalised from the case(s) at dispatch so results, filtering, and the
     # webhook payload know which executor produced this run. See ExecutorType.
     executor: ExecutorType = Field(
