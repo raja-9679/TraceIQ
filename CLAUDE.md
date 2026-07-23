@@ -244,9 +244,14 @@ See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full
 
 ## Known issues to be aware of
 
-- `DELETE /api/runs?all=true` is unscoped — any authenticated user can delete all runs (`test_runs.py:323`)
-- Webhook and finalize endpoint security checks are warn-only, not enforced (`test_runs.py:399-427`)
-- `PARALLEL` execution mode is defined in the enum but not yet implemented distinctly
-- CORS is `["*"]` in default config — verify `BACKEND_CORS_ORIGINS` is set in production
-- `/mock/bihar-election` stub endpoint is live in production (`main.py:56`)
-- No refresh token — 30-minute JWT causes frequent logouts in long sessions
+Historical issues now FIXED (kept here so stale docs elsewhere don't mislead):
+run deletion is access-checked and editor-gated (single, `run_ids`, and `all=true`
+paths); webhook/finalize enforce `X-TraceIQ-Secret` (403, not warn-only); CORS
+defaults to localhost dev origins; the `/mock/bihar-election` stub is gone;
+refresh tokens exist (rotation + family revocation); PARALLEL mode is routed.
+
+Still open:
+- Worker image bakes code at build time — new step types need an image rebuild
+  or workers log "Unknown step type" and skip silently
+- `celery_beat` is required for run finalization (drains `jobs:results` every 2s)
+- Committed `.env` history was never scrubbed — rotate any real credentials
