@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api, triggerRun, exportTestSuite, importTestSuite, getProjects } from '@/lib/api';
+import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getWorkspaces } from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -107,6 +107,31 @@ export default function TestSuites() {
             (suite.description && suite.description.toLowerCase().includes(lowerSearch))
         );
     }, [suites, searchTerm]);
+
+    // Onboarding: seed a runnable "Sample Project" (Getting Started suite with
+    // three demo cases) and switch the workspace to it.
+    const { data: workspaces } = useQuery({
+        queryKey: ['workspaces'],
+        queryFn: () => getWorkspaces(),
+    });
+    const seedSampleMutation = useMutation({
+        mutationFn: async (workspaceId: number) =>
+            (await api.post('/onboarding/sample-project', { workspace_id: workspaceId })).data,
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ['suites'] });
+            localStorage.setItem('activeProjectId', String(data.project_id));
+            window.dispatchEvent(new Event('projectChanged'));
+            setActiveProjectId(data.project_id);
+            toast.success(data.created ? 'Sample project created' : 'Sample project already exists', {
+                description: 'Open the Getting Started suite and hit Run Now to see real results.',
+            });
+        },
+        onError: (error: any) => {
+            toast.error(error.response?.data?.detail || 'Failed to create the sample project');
+        },
+    });
+    const seedTargetWorkspaceId = activeProject?.workspace_id ?? (workspaces && workspaces[0]?.id);
 
     const createSuite = useMutation({
         mutationFn: (data: { name: string; description?: string; execution_mode: string; project_id: number }) =>
@@ -294,7 +319,17 @@ export default function TestSuites() {
                         <AlertCircle className="w-10 h-10 text-amber-500" />
                     </div>
                     <h3 className="text-2xl font-extrabold text-slate-900 mb-2">Project Required</h3>
-                    <p className="text-slate-500">Please select a project from the top navigation to view or manage test suites.</p>
+                    <p className="text-slate-500 mb-6">Please select a project from the top navigation to view or manage test suites.</p>
+                    {seedTargetWorkspaceId && (
+                        <Button
+                            variant="outline"
+                            onClick={() => seedSampleMutation.mutate(seedTargetWorkspaceId)}
+                            disabled={seedSampleMutation.isPending}
+                            className="rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-semibold px-6 h-11"
+                        >
+                            {seedSampleMutation.isPending ? 'Seeding…' : 'New here? Create a sample project'}
+                        </Button>
+                    )}
                 </div>
             ) : suites?.length === 0 ? (
                 <div className="p-16 text-center bg-white border border-slate-200 rounded-3xl shadow-sm max-w-2xl mx-auto mt-12">
@@ -315,6 +350,17 @@ export default function TestSuites() {
                                 <Upload className="mr-2 h-5 w-5 text-slate-400" /> Import JSON
                             </Button>
                         </div>
+                        {seedTargetWorkspaceId && (
+                            <Button
+                                variant="ghost"
+                                onClick={() => seedSampleMutation.mutate(seedTargetWorkspaceId)}
+                                disabled={seedSampleMutation.isPending}
+                                className="rounded-xl text-indigo-600 hover:bg-indigo-50 font-medium px-6 h-12"
+                                title="Seeds a Sample Project with three runnable demo tests (UI, API, accessibility)"
+                            >
+                                {seedSampleMutation.isPending ? 'Seeding…' : 'Try a sample project'}
+                            </Button>
+                        )}
                     </div>
                 </div>
             ) : (
