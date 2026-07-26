@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
-import { useParams, Link } from "react-router-dom";
-import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink } from "lucide-react";
+import { useParams, Link, useNavigate } from "react-router-dom";
+import { getRun, getArtifactUrl, forceCompleteRun, createComparisonRun } from "@/lib/api";
+import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import CreateTicketDialog from "@/components/CreateTicketDialog";
@@ -21,8 +21,11 @@ export default function TestRunDetails() {
     const isValidRunId = !isNaN(runId) && runId > 0;
     const queryClient = useQueryClient();
 
+    const navigate = useNavigate();
     const [testSearchTerm, setTestSearchTerm] = useState('');
     const [showForceCompleteDialog, setShowForceCompleteDialog] = useState(false);
+    const [showCompareDialog, setShowCompareDialog] = useState(false);
+    const [compareTargetUrl, setCompareTargetUrl] = useState('');
 
     const { data: run, isLoading } = useQuery({
         queryKey: ["run", runId],
@@ -95,6 +98,22 @@ export default function TestRunDetails() {
         }
     });
 
+    // Deployment comparison: re-run this run's suite against another URL and
+    // land on the side-by-side diff view.
+    const compareMutation = useMutation({
+        mutationFn: () => createComparisonRun(runId, compareTargetUrl.trim()),
+        onSuccess: (candidate) => {
+            setShowCompareDialog(false);
+            navigate(`/runs/${candidate.id}/comparison`);
+        },
+        onError: (error: any) => {
+            toast.error("Failed to start comparison run", {
+                description: error.response?.data?.detail || "An error occurred"
+            });
+        }
+    });
+    const isFinishedRun = run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error';
+
     // Check if test is stuck (running for more than 10 minutes)
     const isStuckTest = run?.status === "running" && run?.created_at &&
         (new Date().getTime() - new Date(run.created_at).getTime()) > 10 * 60 * 1000;
@@ -148,6 +167,23 @@ export default function TestRunDetails() {
                         </h2>
                     </div>
                     <div className="flex items-center gap-3">
+                        {run.baseline_run_id && (
+                            <Link
+                                to={`/runs/${run.id}/comparison`}
+                                className="px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all text-sm font-medium flex items-center gap-2"
+                            >
+                                <GitCompareArrows size={16} /> View Comparison
+                            </Link>
+                        )}
+                        {isFinishedRun && !run.baseline_run_id && (
+                            <button
+                                onClick={() => setShowCompareDialog(true)}
+                                className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all shadow-sm text-sm font-medium flex items-center gap-2"
+                                title="Re-run this suite against another deployment and diff the results"
+                            >
+                                <GitCompareArrows size={16} /> Compare Deployment
+                            </button>
+                        )}
                         <CreateTicketDialog runId={run.id} />
                         {isStuckTest && (
                             <button
@@ -520,6 +556,63 @@ export default function TestRunDetails() {
                                 >
                                     {forceCompleteMutation.isPending ? <Activity size={16} className="animate-spin" /> : null}
                                     {forceCompleteMutation.isPending ? "Processing..." : "Force Complete"}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Compare Deployment Dialog */}
+            <AnimatePresence>
+                {showCompareDialog && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+                        onClick={() => setShowCompareDialog(false)}
+                    >
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                            className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="w-12 h-12 rounded-full bg-indigo-50 flex items-center justify-center mb-4">
+                                <GitCompareArrows size={24} className="text-indigo-600" />
+                            </div>
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">Compare Deployment</h3>
+                            <p className="text-gray-500 text-sm mb-4 leading-relaxed">
+                                Re-runs this run's suite against a different deployment URL (same browser
+                                and device) and shows a side-by-side regression diff.
+                            </p>
+                            <input
+                                type="url"
+                                autoFocus
+                                placeholder="https://staging.example.com"
+                                value={compareTargetUrl}
+                                onChange={(e) => setCompareTargetUrl(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && compareTargetUrl.trim()) compareMutation.mutate();
+                                }}
+                                className="w-full h-11 rounded-lg border border-gray-200 px-3 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 mb-6"
+                            />
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={() => setShowCompareDialog(false)}
+                                    className="px-5 py-2.5 rounded-lg font-medium text-gray-700 hover:bg-gray-100 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => compareMutation.mutate()}
+                                    disabled={compareMutation.isPending || !compareTargetUrl.trim()}
+                                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                                >
+                                    {compareMutation.isPending ? <Activity size={16} className="animate-spin" /> : <GitCompareArrows size={16} />}
+                                    {compareMutation.isPending ? "Starting…" : "Run Comparison"}
                                 </button>
                             </div>
                         </motion.div>
