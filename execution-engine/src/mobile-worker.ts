@@ -11,6 +11,13 @@
  * captures) upload to MinIO under the same `runs/{run_id}/screenshots/` key
  * layout the Playwright worker uses. Steps interpolate `{{env.X}}`,
  * `{{secret.X}}`, `{{data.X}}`, and `{{fake.KIND}}` via the shared resolver.
+ *
+ * MOB-5 selector heal: locator-shaped failures ask the LLM for a replacement
+ * against the Appium XML page source; suggestions ride `heal_suggestions` in
+ * the job result (persisted as pending SelectorHealProposal rows by the
+ * backend, exactly like web). RUNTIME_HEAL_ENABLED=true additionally retries
+ * the step in place when the healed locator matches exactly one element.
+ *
  * Still deferred: video, `{{name}}` runtime variables (no extract-value on
  * mobile yet). See SCOPE_NOTES.md / FEATURE_GAP_ANALYSIS.md §31.
  *
@@ -32,12 +39,17 @@ const { JobQueue } = require('./core/job-queue') as typeof import('./core/job-qu
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
 import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
+import { AIEngine } from './ai';
+import { provider as llmProvider } from './llm-provider';
 import * as Minio from 'minio';
 
 const MinioClient = (Minio as any).Client || Minio;
 const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 const APPIUM_URL = process.env.APPIUM_URL || 'http://localhost:4723';
 const POLL_IDLE_MS = 2000;
+// Locator-shaped failures eligible for AI heal (mirrors the web worker's
+// SELECTOR_FAILURE_RE, matching this worker's own error wording).
+const MOBILE_SELECTOR_FAILURE_RE = /element not found|no such element|timed out waiting for/i;
 
 type MobileApp = NonNullable<TestJob['settings']['mobile_app']>;
 
@@ -50,6 +62,7 @@ interface PendingScreenshot {
 class MobileWorker {
     private queue = new JobQueue();
     private driver = new WebDriverClient(APPIUM_URL);
+    private aiEngine = new AIEngine();
     private running = true;
     private minio = new MinioClient({
         endPoint: process.env.MINIO_ENDPOINT || 'localhost',
@@ -119,13 +132,15 @@ class MobileWorker {
         }
 
         const shots: PendingScreenshot[] = [];
+        const heals: any[] = [];
         const testResults: TestCaseResult[] = [];
         try {
             for (const testCase of cases) {
-                testResults.push(await this.runCase(sessionId, testCase, app, job, shots));
+                testResults.push(await this.runCase(sessionId, testCase, app, job, shots, heals));
             }
         } finally {
             await this.driver.deleteSession(sessionId).catch(() => undefined);
+            this.aiEngine.clearRunState(job.run_id);
         }
 
         base.artifacts.screenshots = await this.uploadScreenshots(job, shots);
@@ -140,6 +155,7 @@ class MobileWorker {
             duration_ms: Date.now() - startedAt,
             completed_at: new Date().toISOString(),
             result_payload: { platform: app.platform, app_build_id: app.app_build_id, appium_url: APPIUM_URL },
+            ...(heals.length ? { heal_suggestions: heals } : {}),
             ...(single
                 ? {
                     test_case_id: cases[0].id,
@@ -151,7 +167,8 @@ class MobileWorker {
     }
 
     private async runCase(
-        sessionId: string, testCase: TestCase, app: MobileApp, job: TestJob, shots: PendingScreenshot[],
+        sessionId: string, testCase: TestCase, app: MobileApp, job: TestJob,
+        shots: PendingScreenshot[], heals: any[],
     ): Promise<TestCaseResult> {
         const start = Date.now();
         console.log(`[MobileWorker]   Case: ${testCase.name}`);
@@ -165,7 +182,13 @@ class MobileWorker {
         };
         try {
             for (const step of testCase.steps || []) {
-                await this.executeStep(sessionId, step, app, ctx, shots);
+                try {
+                    await this.executeStep(sessionId, step, app, ctx, shots);
+                } catch (stepErr: any) {
+                    const recovered = await this.tryHeal(
+                        sessionId, step, testCase, job, app, ctx, shots, heals, stepErr);
+                    if (!recovered) throw stepErr;
+                }
             }
             return {
                 test_case_id: testCase.id,
@@ -293,6 +316,51 @@ class MobileWorker {
             }
         } catch (err: any) {
             throw new Error(`Step '${type}'${selector ? ` (${selector})` : ''}: ${err.message}`);
+        }
+    }
+
+    /**
+     * MOB-5 selector heal — the mobile analogue of the web worker's
+     * maybeProposeHeal + tryRuntimeHeal, on Appium XML page source instead
+     * of DOM. Always records an old→new suggestion (the backend persists it
+     * as a pending SelectorHealProposal; accepting rewrites the stored
+     * step). With RUNTIME_HEAL_ENABLED=true and the healed locator matching
+     * EXACTLY one element, the step is retried in place so the run recovers.
+     * Returns true iff the step passed on retry.
+     */
+    private async tryHeal(
+        sessionId: string, step: any, testCase: TestCase, job: TestJob, app: MobileApp,
+        ctx: TemplateContext, shots: PendingScreenshot[], heals: any[], err: Error,
+    ): Promise<boolean> {
+        try {
+            if (llmProvider.name === 'null') return false;
+            if (!step?.selector || !testCase.id) return false;
+            if (!MOBILE_SELECTOR_FAILURE_RE.test(err.message || '')) return false;
+
+            const source = await this.driver.getPageSource(sessionId);
+            const healed = (await this.aiEngine.healMobileLocator(step.selector, source, job.run_id) || '').trim();
+            if (!healed || healed === step.selector) return false;
+
+            const matches = (await this.driver.findElements(sessionId, healed).catch(() => [])).length;
+            heals.push({
+                test_case_id: testCase.id,
+                step_id: step.id || '',
+                old_selector: step.selector,
+                new_selector: healed,
+                matches,
+                intent: step.intent || null,
+            });
+            console.log(`[MobileWorker] Heal suggestion: "${step.selector}" -> "${healed}" (${matches} match(es))`);
+
+            // Only auto-apply an unambiguous match; otherwise just suggest.
+            if (process.env.RUNTIME_HEAL_ENABLED !== 'true' || matches !== 1) return false;
+
+            await this.executeStep(sessionId, { ...step, selector: healed }, app, ctx, shots);
+            console.log(`[MobileWorker] Runtime heal APPLIED: "${step.selector}" -> "${healed}" (step recovered)`);
+            return true;
+        } catch (healErr: any) {
+            console.warn(`[MobileWorker] Heal attempt failed: ${healErr.message}`);
+            return false;
         }
     }
 

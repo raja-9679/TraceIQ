@@ -296,6 +296,21 @@ services:
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
       - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - MINIO_BUCKET_NAME=test-artifacts
+      # AI selector heal on Appium page source (MOB-5). Same provider vars
+      # as execution-worker; usage metering reports through the backend.
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - BACKEND_URL=http://backend:8000
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # Auto-retry a failing step with an LLM-healed locator when it
+      # uniquely matches (suggestion-only when false).
+      - RUNTIME_HEAL_ENABLED=${RUNTIME_HEAL_ENABLED:-false}
     depends_on:
       - redis
       - appium

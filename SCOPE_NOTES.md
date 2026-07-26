@@ -144,9 +144,11 @@ Full phase plan in `info/FEATURE_GAP_ANALYSIS.md` §31 + "Phase MOB". Built so f
 - ✅ Interpolation: `{{env.X}}` / `{{secret.X}}` / `{{data.X}}` / `{{fake.KIND}}` resolve in mobile step selectors/values/params via the shared `execution-engine/src/core/interpolate.ts` (extracted from test-executor so both executors use one implementation).
 - ✅ Deploy runbook: `PRODUCTION_DEPLOY.md` §2.7 (migration, image rebuilds, opt-in mobile profile, device options, smoke checklist, rollback).
 
+- ✅ MOB-5 — selector heal on mobile: locator failures propose an LLM-healed Appium locator from the XML page source (`AIEngine.healMobileLocator`, shared cache/per-run cap); suggestions flow through the existing `heal_suggestions` → `SelectorHealProposal` pipeline unchanged; `RUNTIME_HEAL_ENABLED=true` retries the step in place on a unique match. Failure-analysis heuristics gained Appium-session and missing-app-build patterns (mobile locator/timeout errors already matched the existing patterns).
+
 Still deferred for mobile:
 - **A device.** Appium needs an emulator/real device: attach `budtmo/docker-android` (KVM required) or point `APPIUM_URL` at a device cloud. iOS requires macOS — device cloud only (MOB-4).
-- Video artifacts; `{{name}}` runtime variables (no extract-value on mobile); selector heal on Appium XML source (MOB-5); device-cloud adapter (MOB-4).
+- Video artifacts; `{{name}}` runtime variables (no extract-value on mobile); device-cloud adapter (MOB-4).
 
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 
