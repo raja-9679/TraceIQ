@@ -146,9 +146,11 @@ Full phase plan in `info/FEATURE_GAP_ANALYSIS.md` §31 + "Phase MOB". Built so f
 
 - ✅ MOB-5 — selector heal on mobile: locator failures propose an LLM-healed Appium locator from the XML page source (`AIEngine.healMobileLocator`, shared cache/per-run cap); suggestions flow through the existing `heal_suggestions` → `SelectorHealProposal` pipeline unchanged; `RUNTIME_HEAL_ENABLED=true` retries the step in place on a unique match. Failure-analysis heuristics gained Appium-session and missing-app-build patterns (mobile locator/timeout errors already matched the existing patterns).
 
+- ✅ MOB-4 — device-cloud adapter: `MOBILE_DEVICE_PROVIDER=local|browserstack|saucelabs|lambdatest` (`execution-engine/src/device-cloud.ts`). Cloud providers get the binary pushed to their app storage automatically (bs://… / storage:… / lt://…, cached per build for the worker's lifetime), vendor options blocks (`bstack:options` etc.) injected, hub auth via basic-auth header. This is the iOS path.
+
 Still deferred for mobile:
-- **A device.** Appium needs an emulator/real device: attach `budtmo/docker-android` (KVM required) or point `APPIUM_URL` at a device cloud. iOS requires macOS — device cloud only (MOB-4).
-- Video artifacts; `{{name}}` runtime variables (no extract-value on mobile); device-cloud adapter (MOB-4).
+- **A local Android device** for the self-hosted path: attach `budtmo/docker-android` (KVM required) or a USB device via host Appium. (Cloud providers need no local device.)
+- Video artifacts; `{{name}}` runtime variables (no extract-value on mobile); end-to-end smoke against a real device/cloud account.
 
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 
