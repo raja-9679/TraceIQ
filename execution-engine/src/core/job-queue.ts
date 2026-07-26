@@ -7,6 +7,11 @@ export interface TestCase {
     id: number;
     name: string;
     steps: any[];
+    // Which executor runs this case (keystone; PLATFORM_VISION.md §2). Absent
+    // or 'ui_playwright' → the step interpreter; 'raw_playwright' → run
+    // `raw_script` verbatim via the Playwright test runner.
+    executor?: string;
+    raw_script?: string;
     // Auth sessions: a passing run of an auth-setup case captures the
     // context's storageState; use_auth_session=false opts a case out of
     // starting from the stored state (e.g. login-flow tests).
@@ -50,6 +55,22 @@ export interface TestJob {
         // project secrets ({{secret.X}}), dispatched by the backend.
         environment?: { name: string; base_url?: string; variables: Record<string, any> };
         secrets?: Record<string, string>;
+        // Per-test retry policy dispatched by the backend from suite settings.
+        // When auto_retry is true a failed/errored test case is re-run up to
+        // max_retries times with exponential backoff.
+        auto_retry?: boolean;
+        max_retries?: number;
+        retry_backoff_ms?: number;
+        // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
+        // MinIO URL + metadata the mobile worker needs to install/launch it.
+        mobile_app?: {
+            app_build_id: number;
+            platform: 'android' | 'ios';
+            app_url: string;
+            package_id?: string | null;
+            app_name?: string;
+            version_name?: string | null;
+        };
     };
     created_at: string;
     retry_count?: number;
@@ -69,6 +90,7 @@ export interface TestCaseResult {
     };
     video?: string;  // Per-case video for continuous jobs
     network_events?: any[];  // Network events captured during this test case
+    web_vitals?: any;  // Performance metrics for the case's final document
 }
 
 // Job result - can contain single or multiple test results
@@ -82,6 +104,16 @@ export interface JobResult {
     status: 'passed' | 'failed' | 'error';
     duration_ms: number;
     error?: string;
+
+    // Web vitals (LCP/CLS/TTFB/FCP…) for the final document of a single-test
+    // job; continuous jobs carry them per-case on test_results instead.
+    web_vitals?: any;
+
+    // Type-aware result payload for non-UI executors (keystone). e.g. a load
+    // job reports result_kind='load' with aggregate k6 metrics + threshold
+    // verdicts in result_payload.
+    result_kind?: string;
+    result_payload?: any;
 
     // Playwright storageState captured by a passing auth-setup case; the
     // backend persists it as the project's AuthSession. auth_case_id names
@@ -116,8 +148,10 @@ export interface JobResult {
     
     // For multi-test continuous jobs
     test_results?: TestCaseResult[];
-    
+
     network_events: any[];
+    // Number of RETRIES performed for this test (0 = passed first attempt).
+    retry_count?: number;
     completed_at: string;
 }
 

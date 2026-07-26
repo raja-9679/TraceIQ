@@ -108,7 +108,17 @@ export const getRun = async (id: number): Promise<TestRun> => {
     return response.data;
 };
 
-export const triggerRun = async (suiteId: number, caseId?: number, browser: string | string[] = "chromium", device?: string | string[]): Promise<TestRun | TestRun[]> => {
+/** Optional change-context sent as the POST /runs JSON body (RunCreateContext). */
+export interface RunContext {
+    environment_id?: number;
+    /** MobileAppBuild id — required for suites with mobile_appium cases. */
+    app_build_id?: number;
+    git_commit?: string;
+    git_branch?: string;
+    local_worker_id?: string;
+}
+
+export const triggerRun = async (suiteId: number, caseId?: number, browser: string | string[] = "chromium", device?: string | string[], context?: RunContext): Promise<TestRun | TestRun[]> => {
     let url = `/runs?suite_id=${suiteId}`;
 
     if (Array.isArray(browser)) {
@@ -128,8 +138,43 @@ export const triggerRun = async (suiteId: number, caseId?: number, browser: stri
             url += `&device=${encodeURIComponent(device)}`;
         }
     }
-    const response = await api.post(url);
+    const response = await api.post(url, context && Object.keys(context).length ? context : undefined);
     return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Mobile app builds (Phase MOB) — uploaded APK/AAB/IPA binaries that
+// mobile_appium runs install and test.
+// ---------------------------------------------------------------------------
+
+export interface AppBuild {
+    id: number;
+    project_id: number;
+    platform: 'android' | 'ios';
+    app_name: string;
+    version_name?: string | null;
+    build_number?: string | null;
+    package_id?: string | null;
+    file_size?: number | null;
+    original_filename?: string | null;
+    notes?: string | null;
+    created_at: string;
+    download_url?: string | null;
+}
+
+export const getAppBuilds = async (projectId: number): Promise<AppBuild[]> => {
+    const response = await api.get(`/projects/${projectId}/app-builds`);
+    return response.data;
+};
+
+export const uploadAppBuild = async (projectId: number, formData: FormData): Promise<AppBuild> => {
+    // Content-Type (multipart boundary) is set by the browser/axios.
+    const response = await api.post(`/projects/${projectId}/app-builds`, formData);
+    return response.data;
+};
+
+export const deleteAppBuild = async (buildId: number): Promise<void> => {
+    await api.delete(`/app-builds/${buildId}`);
 };
 
 export const getTestCase = async (caseId: number): Promise<any> => {

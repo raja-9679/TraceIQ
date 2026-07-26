@@ -1,7 +1,7 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
 import {
     Select,
@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
     selector?: string;
     value?: string;
     params?: {
@@ -117,10 +117,27 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'hover': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
             case 'press-key': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
             case 'http-request': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <FileJson size={18} />, label: 'API Request' };
+            case 'graphql': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Braces size={18} />, label: 'GraphQL Request' };
+            case 'oauth2-token': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: 'OAuth2 Token' };
+            case 'load-test': return { border: 'border-orange-200', bg: 'bg-orange-50 text-orange-600', hue: 'orange', icon: <Activity size={18} />, label: 'Load Test (k6)' };
+            case 'check-tls': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: 'TLS Cert Check' };
             case 'feed-check': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <Rss size={18} />, label: 'Feed Check' };
             case 'run-script': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Code2 size={18} />, label: 'Run Script' };
             case 'assert': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <CheckCircle2 size={18} />, label: 'Assertion' };
             case 'amp-validate': return { border: 'border-violet-200', bg: 'bg-violet-50 text-violet-600', hue: 'violet', icon: <Zap size={18} />, label: 'AMP Validate' };
+            case 'mobile-launch-app': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Smartphone size={18} />, label: 'Launch App' };
+            case 'mobile-terminate-app': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Smartphone size={18} />, label: 'Terminate App' };
+            case 'mobile-tap': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <MousePointerClick size={18} />, label: 'Tap (Mobile)' };
+            case 'mobile-long-press': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <MousePointer2 size={18} />, label: 'Long Press' };
+            case 'mobile-type': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <TextCursorInput size={18} />, label: 'Type (Mobile)' };
+            case 'mobile-swipe': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Move size={18} />, label: 'Swipe' };
+            case 'mobile-press-key': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Keyboard size={18} />, label: 'Device Key' };
+            case 'mobile-wait-for': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Clock size={18} />, label: 'Wait For (Mobile)' };
+            case 'mobile-expect-visible': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Eye size={18} />, label: 'Expect Visible (Mobile)' };
+            case 'mobile-expect-text': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Search size={18} />, label: 'Expect Text (Mobile)' };
+            case 'mobile-screenshot': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Screenshot (Mobile)' };
+            case 'mobile-extract-value': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
+            case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
             default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
         }
@@ -181,14 +198,32 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
                                 <SelectItem value="http-request"><div className="flex items-center gap-2"><FileJson size={14} className="text-amber-500"/> API Request</div></SelectItem>
+                                <SelectItem value="graphql"><div className="flex items-center gap-2"><FileJson size={14} className="text-amber-500"/> GraphQL Request</div></SelectItem>
+                                <SelectItem value="oauth2-token"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> OAuth2 Token</div></SelectItem>
                                 <SelectItem value="feed-check"><div className="flex items-center gap-2"><Rss size={14} className="text-amber-500"/> Feed Check</div></SelectItem>
                                 <SelectItem value="amp-validate"><div className="flex items-center gap-2"><Zap size={14} className="text-violet-500"/> AMP Validate</div></SelectItem>
+                                <SelectItem value="load-test"><div className="flex items-center gap-2"><Activity size={14} className="text-orange-500"/> Load Test (k6)</div></SelectItem>
+                                <SelectItem value="check-tls"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> TLS Cert Check</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
                                 <SelectItem value="run-script"><div className="flex items-center gap-2"><Code2 size={14} className="text-rose-500"/> Run Script</div></SelectItem>
                                 <SelectItem value="screenshot"><div className="flex items-center gap-2"><Camera size={14} className="text-rose-500"/> Take Screenshot</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Mobile App (Appium)</div>
+                                <SelectItem value="mobile-launch-app"><div className="flex items-center gap-2"><Smartphone size={14} className="text-fuchsia-500"/> Launch App</div></SelectItem>
+                                <SelectItem value="mobile-tap"><div className="flex items-center gap-2"><MousePointerClick size={14} className="text-fuchsia-500"/> Tap</div></SelectItem>
+                                <SelectItem value="mobile-long-press"><div className="flex items-center gap-2"><MousePointer2 size={14} className="text-fuchsia-500"/> Long Press</div></SelectItem>
+                                <SelectItem value="mobile-type"><div className="flex items-center gap-2"><TextCursorInput size={14} className="text-fuchsia-500"/> Type Text</div></SelectItem>
+                                <SelectItem value="mobile-swipe"><div className="flex items-center gap-2"><Move size={14} className="text-fuchsia-500"/> Swipe</div></SelectItem>
+                                <SelectItem value="mobile-press-key"><div className="flex items-center gap-2"><Keyboard size={14} className="text-fuchsia-500"/> Device Key</div></SelectItem>
+                                <SelectItem value="mobile-wait-for"><div className="flex items-center gap-2"><Clock size={14} className="text-fuchsia-500"/> Wait For Element</div></SelectItem>
+                                <SelectItem value="mobile-expect-visible"><div className="flex items-center gap-2"><Eye size={14} className="text-fuchsia-500"/> Expect Visible</div></SelectItem>
+                                <SelectItem value="mobile-expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-fuchsia-500"/> Expect Text</div></SelectItem>
+                                <SelectItem value="mobile-screenshot"><div className="flex items-center gap-2"><Camera size={14} className="text-fuchsia-500"/> Screenshot</div></SelectItem>
+                                <SelectItem value="mobile-extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-fuchsia-500"/> Extract Value</div></SelectItem>
+                                <SelectItem value="mobile-expect-visual-match"><div className="flex items-center gap-2"><Camera size={14} className="text-fuchsia-500"/> Visual Match</div></SelectItem>
+                                <SelectItem value="mobile-terminate-app"><div className="flex items-center gap-2"><Smartphone size={14} className="text-fuchsia-500"/> Terminate App</div></SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -323,6 +358,93 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             <div className={`flex-1 min-w-0 h-12 rounded-xl shadow-sm bg-white px-4 flex items-center text-sm text-slate-500`}>
                                 Captures a full-page screenshot and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.
                             </div>
+                        ) : step.type.startsWith('mobile-') ? (
+                            /* Mobile (Appium) steps — no web element picker; selectors use
+                               Appium locators (~accessibility-id, xpath=, id=, android=, ios=).
+                               Cases with these steps run on the mobile executor against the
+                               app build pinned at run time. */
+                            <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
+                                {(step.type === 'mobile-launch-app' || step.type === 'mobile-terminate-app' || step.type === 'mobile-screenshot' || step.type === 'mobile-expect-visual-match') ? (
+                                    <div className="flex-1 min-w-0 h-12 rounded-xl shadow-sm bg-white px-4 flex items-center text-sm text-slate-500">
+                                        {step.type === 'mobile-launch-app' ? "Launches the run's pinned app build — no inputs needed." :
+                                            step.type === 'mobile-terminate-app' ? 'Force-stops the app (cold-start / state tests) — no inputs needed.' :
+                                                step.type === 'mobile-expect-visual-match' ? 'Captures the device screen and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.' :
+                                                    'Captures the device screen — no inputs needed.'}
+                                    </div>
+                                ) : step.type === 'mobile-swipe' ? (
+                                    <>
+                                        <Select
+                                            value={step.params?.direction || 'up'}
+                                            onValueChange={(value) => updateParams('direction', value)}
+                                        >
+                                            <SelectTrigger className={`w-40 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm text-slate-600`}>
+                                                <SelectValue placeholder="Direction" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="up">Swipe Up</SelectItem>
+                                                <SelectItem value="down">Swipe Down</SelectItem>
+                                                <SelectItem value="left">Swipe Left</SelectItem>
+                                                <SelectItem value="right">Swipe Right</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Input
+                                            placeholder="Distance 0–1 (default 0.5)"
+                                            value={step.params?.distance || ''}
+                                            onChange={(e) => updateParams('distance', e.target.value)}
+                                            className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                        />
+                                    </>
+                                ) : step.type === 'mobile-press-key' ? (
+                                    <Select
+                                        value={step.value || 'back'}
+                                        onValueChange={(value) => updateStep(step.id, 'value', value)}
+                                    >
+                                        <SelectTrigger className={`w-48 shrink-0 h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm text-slate-600`}>
+                                            <SelectValue placeholder="Key" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="back">Back (Android)</SelectItem>
+                                            <SelectItem value="home">Home (Android)</SelectItem>
+                                            <SelectItem value="enter">Enter (Android)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                ) : (
+                                    <>
+                                        <Input
+                                            placeholder="Locator: ~accessibility-id, xpath=…, id=…, android=…, ios=…"
+                                            value={step.selector || ''}
+                                            onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
+                                            className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                        />
+                                        {(step.type === 'mobile-type' || step.type === 'mobile-expect-text' || step.type === 'mobile-extract-value') && (
+                                            <Input
+                                                placeholder={step.type === 'mobile-type' ? 'Text to type' :
+                                                    step.type === 'mobile-extract-value' ? 'Variable name (use as {{name}} later)' :
+                                                        'Expected text (substring)'}
+                                                value={step.value || ''}
+                                                onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                                className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                            />
+                                        )}
+                                        {step.type === 'mobile-wait-for' && (
+                                            <Input
+                                                placeholder="Timeout ms (default 10000)"
+                                                value={step.params?.timeout_ms || ''}
+                                                onChange={(e) => updateParams('timeout_ms', e.target.value)}
+                                                className={`w-48 shrink-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                            />
+                                        )}
+                                        {step.type === 'mobile-long-press' && (
+                                            <Input
+                                                placeholder="Hold ms (default 800)"
+                                                value={step.params?.duration_ms || ''}
+                                                onChange={(e) => updateParams('duration_ms', e.target.value)}
+                                                className={`w-44 shrink-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
+                                            />
+                                        )}
+                                    </>
+                                )}
+                            </div>
                         ) : (
                             /* Default UI for other steps */
                             <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
@@ -449,6 +571,110 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                         )}
                     </div>
                 </div>
+
+                {/* Extended Configuration for Load Test */}
+                {step.type === 'load-test' && (
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 rounded-b-2xl">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Virtual users</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="10" value={step.params?.vus ?? ''}
+                                    onChange={(e) => updateParams('vus', parseInt(e.target.value) || undefined)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Duration (s)</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="30" value={step.params?.duration_s ?? ''}
+                                    onChange={(e) => updateParams('duration_s', parseInt(e.target.value) || undefined)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Ramp-up (s)</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="0" value={step.params?.ramp_up_s ?? ''}
+                                    onChange={(e) => updateParams('ramp_up_s', parseInt(e.target.value) || undefined)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Method</label>
+                                <Select value={step.params?.method || 'GET'} onValueChange={(v) => updateParams('method', v)}>
+                                    <SelectTrigger className="h-10 bg-white"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Max p95 (ms)</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="off" value={step.params?.thresholds?.p95_ms ?? ''}
+                                    onChange={(e) => updateParams('thresholds', { ...(step.params?.thresholds || {}), p95_ms: parseInt(e.target.value) || undefined })} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Max error rate</label>
+                                <Input type="number" step="0.01" className="h-10 bg-white" placeholder="0.01" value={step.params?.thresholds?.error_rate ?? ''}
+                                    onChange={(e) => updateParams('thresholds', { ...(step.params?.thresholds || {}), error_rate: parseFloat(e.target.value) || undefined })} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Min RPS</label>
+                                <Input type="number" className="h-10 bg-white" placeholder="off" value={step.params?.thresholds?.min_rps ?? ''}
+                                    onChange={(e) => updateParams('thresholds', { ...(step.params?.thresholds || {}), min_rps: parseInt(e.target.value) || undefined })} />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2 italic">A k6 load test against the URL above. The case runs on the load executor (no browser). Only target apps you own — breached thresholds fail the case.</p>
+                    </div>
+                )}
+
+                {/* Extended Configuration for GraphQL */}
+                {step.type === 'graphql' && (
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 space-y-4 rounded-b-2xl">
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><Braces size={14} className="text-amber-500" /> Query</label>
+                            <textarea
+                                className="w-full h-32 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-amber-700 placeholder:text-slate-400 transition-colors shadow-inner resize-none"
+                                placeholder={'query($id: ID!) {\n  user(id: $id) { name email }\n}'}
+                                value={step.params?.query || ''}
+                                onChange={(e) => updateParams('query', e.target.value)}
+                            />
+                        </div>
+                        <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 flex items-center gap-1.5"><FileJson size={14} className="text-amber-500" /> Variables (JSON)</label>
+                            <textarea
+                                className="w-full h-20 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-indigo-600 placeholder:text-slate-400 transition-colors shadow-inner resize-none"
+                                placeholder='{"id": "1"}'
+                                defaultValue={JSON.stringify(step.params?.variables || {}, null, 2)}
+                                onBlur={(e) => {
+                                    try { updateParams('variables', JSON.parse(e.target.value)); } catch { /* keep last valid */ }
+                                }}
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1 italic">Assertions/extract are editable via the case JSON or an AI agent (data-path assertions on the response).</p>
+                        </div>
+                    </div>
+                )}
+
+                {/* Extended Configuration for OAuth2 token */}
+                {step.type === 'oauth2-token' && (
+                    <div className="w-full bg-slate-50 border-t border-slate-100 p-5 rounded-b-2xl">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Client ID</label>
+                                <Input className="h-10 bg-white" placeholder="{{secret.CLIENT_ID}}" value={step.params?.client_id || ''}
+                                    onChange={(e) => updateParams('client_id', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Client Secret</label>
+                                <Input className="h-10 bg-white" placeholder="{{secret.CLIENT_SECRET}}" value={step.params?.client_secret || ''}
+                                    onChange={(e) => updateParams('client_secret', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Scope (optional)</label>
+                                <Input className="h-10 bg-white" placeholder="read write" value={step.params?.scope || ''}
+                                    onChange={(e) => updateParams('scope', e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Store token as</label>
+                                <Input className="h-10 bg-white" placeholder="access_token" value={step.params?.variable || ''}
+                                    onChange={(e) => updateParams('variable', e.target.value)} />
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2 italic">Client-credentials grant against the app under test. Use the token in later steps: {'{"Authorization": "Bearer {{access_token}}"}'}. Reference project secrets, never paste real secrets here.</p>
+                    </div>
+                )}
 
                 {/* Extended Configuration for API/Feed/Script */}
                 {(step.type === 'http-request' || step.type === 'feed-check' || step.type === 'run-script') && (

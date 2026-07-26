@@ -1,19 +1,69 @@
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_
+from sqlalchemy import func
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import get_current_user
 from app.services.rbac_service import rbac_service
 from app.models import (
     User, AuditLog, Project, UserWorkspace, UserTeam, UserProjectAccess, UserSystemRole, Role, Workspace, TeamProjectAccess,
-    TestSchedule, TestScheduleRead, TestScheduleUpdate, TestScheduleBase, TestSuite, TestCase
+    TestSchedule, TestScheduleRead, TestScheduleUpdate, TestScheduleBase, TestSuite, TestCase,
+    MonitorCheck, MonitorCheckRead, MonitorStatusRead
 )
 from croniter import croniter
 
 router = APIRouter()
+
+
+async def _uptime(session: AsyncSession, schedule_id: int, cutoff: datetime) -> Optional[float]:
+    """Uptime % (passing / total checks) since `cutoff`; None when no checks."""
+    total = (await session.exec(
+        select(func.count()).select_from(MonitorCheck).where(
+            MonitorCheck.schedule_id == schedule_id,
+            MonitorCheck.checked_at >= cutoff))).one()
+    if not total:
+        return None
+    up = (await session.exec(
+        select(func.count()).select_from(MonitorCheck).where(
+            MonitorCheck.schedule_id == schedule_id,
+            MonitorCheck.checked_at >= cutoff,
+            MonitorCheck.is_up == True))).one()  # noqa: E712
+    return round(100.0 * up / total, 2)
+
+
+async def _build_monitor_status(schedule: TestSchedule, session: AsyncSession) -> MonitorStatusRead:
+    now = datetime.utcnow()
+    recent = (await session.exec(
+        select(MonitorCheck)
+        .where(MonitorCheck.schedule_id == schedule.id)
+        .order_by(MonitorCheck.checked_at.desc(), MonitorCheck.id.desc())
+        .limit(20))).all()
+
+    streak = 0
+    for check in recent:
+        if check.is_up:
+            break
+        streak += 1
+
+    total = (await session.exec(
+        select(func.count()).select_from(MonitorCheck).where(
+            MonitorCheck.schedule_id == schedule.id))).one()
+
+    return MonitorStatusRead(
+        schedule_id=schedule.id,
+        name=schedule.name,
+        is_active=schedule.is_active,
+        state=schedule.monitor_state or "unknown",
+        consecutive_failures=streak,
+        total_checks=int(total or 0),
+        uptime_24h=await _uptime(session, schedule.id, now - timedelta(hours=24)),
+        uptime_7d=await _uptime(session, schedule.id, now - timedelta(days=7)),
+        last_checked_at=schedule.last_checked_at,
+        recent_checks=[MonitorCheckRead.model_validate(c, from_attributes=True) for c in recent],
+    )
 
 
 @router.post("", response_model=TestScheduleRead)
@@ -96,6 +146,64 @@ async def list_schedules(
         
     result = await session.exec(query)
     return result.all()
+
+
+@router.get("/monitors", response_model=List[MonitorStatusRead])
+async def list_monitors(
+    project_id: Optional[int] = None,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    """Health snapshot for every monitor the user can see (optionally one project).
+
+    Registered before `/{schedule_id}` so the literal path wins over the
+    int path-param.
+    """
+    org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
+    team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
+    user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
+    tenant_admin_stmt = (
+        select(Project.id)
+        .join(Workspace, Workspace.id == Project.workspace_id)
+        .join(UserSystemRole, UserSystemRole.tenant_id == Workspace.tenant_id)
+        .where(
+            UserSystemRole.user_id == current_user.id,
+            UserSystemRole.role_id.in_(select(Role.id).where(Role.name == "Tenant Admin")),
+        )
+    )
+
+    query = select(TestSchedule).where(
+        TestSchedule.is_monitor == True,  # noqa: E712
+        or_(
+            TestSchedule.project_id.in_(org_stmt),
+            TestSchedule.project_id.in_(team_stmt),
+            TestSchedule.project_id.in_(user_stmt),
+            TestSchedule.project_id.in_(tenant_admin_stmt),
+        ),
+    )
+    if project_id:
+        if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
+            raise HTTPException(status_code=403, detail="Access denied to this project")
+        query = query.where(TestSchedule.project_id == project_id)
+
+    monitors = (await session.exec(query)).all()
+    return [await _build_monitor_status(m, session) for m in monitors]
+
+
+@router.get("/{schedule_id}/monitor", response_model=MonitorStatusRead)
+async def get_monitor_status(
+    schedule_id: int,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user)
+):
+    schedule = await session.get(TestSchedule, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=schedule.project_id):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if not schedule.is_monitor:
+        raise HTTPException(status_code=400, detail="Schedule is not a monitor")
+    return await _build_monitor_status(schedule, session)
 
 
 @router.get("/{schedule_id}", response_model=TestScheduleRead)

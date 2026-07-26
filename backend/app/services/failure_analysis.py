@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from app.ai.providers import provider
 from app.schemas.failure_report import FailureEvidence, FailureReport, RunFailureAnalysis
+from app.services.llm_usage import llm_call_context
 
 # (pattern, category, fix_target, summary) — first match wins.
 _HEURISTICS = [
@@ -23,6 +24,10 @@ _HEURISTICS = [
      "A selector did not match any element — the UI may have changed or the selector is brittle."),
     (r"net::ERR_|ECONNREFUSED|ENOTFOUND|getaddrinfo|socket hang up", "environment", "infra",
      "The target host was unreachable from the worker — deployment or network issue, not a test defect."),
+    (r"Failed to start Appium session|Appium not reachable", "environment", "infra",
+     "The mobile worker could not open a device session — Appium, emulator, or device-cloud issue, not a test defect."),
+    (r"No app build pinned to this run", "test_bug", "test",
+     "A mobile run was triggered without an app binary — pass app_build_id in the POST /api/runs body."),
     (r"Expected status (\d+) but got (5\d\d)", "app_bug", "app",
      "The application returned a server error where the test expected success."),
     (r"Expected status .* but got 4\d\d", "unknown", "none",
@@ -130,7 +135,8 @@ def analyze_case_failure(
         f"Heuristic first guess: {base.root_cause_category} — {base.summary}\n"
         "Classify the failure."
     )
-    raw = provider.complete(prompt, system=_LLM_SYSTEM, max_tokens=700)
+    with llm_call_context(feature="failure_analysis"):
+        raw = provider.complete(prompt, system=_LLM_SYSTEM, max_tokens=700)
     if not raw:
         return base
 

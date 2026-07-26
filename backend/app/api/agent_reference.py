@@ -236,13 +236,23 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Playwright's waitForURL with a bare string does EXACT match. Use globs (`**`) for substring.",
     },
     {
+        "type": "expect-title",
+        "category": "assertion",
+        "params": {
+            "value": "Expected page title (or fragment)",
+            "params.operator": "'contains' (default) | 'equals' | 'matches' (regex)",
+        },
+        "example": {"id": "<uuid>", "type": "expect-title", "value": "Dashboard"},
+    },
+    {
         "type": "assert",
         "category": "assertion",
         "params": {
             "selector": "Element to inspect",
-            "params.source": "'text' | 'value' | 'attribute' | 'count'",
+            "params.source": "'text' | 'value' | 'attribute' | 'count' | 'css'",
             "params.operator": "'equals' | 'contains' | ...",
             "params.attribute": "Required when source='attribute'",
+            "params.property": "CSS property name, required when source='css' (compared against the computed style, e.g. 'color' -> 'rgb(255, 0, 0)')",
             "value": "Expected value",
         },
         "example": {
@@ -265,6 +275,43 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Phase B. Compares against a stored VisualBaseline keyed by (test_case_id, step.id, browser, device).",
     },
     {
+        "type": "mock-response",
+        "category": "network",
+        "params": {
+            "selector": "URL glob to intercept (e.g. '**/api/user')",
+            "params.status": "HTTP status to return (default 200)",
+            "params.json": "JSON body to return (sets content-type application/json)",
+            "params.body": "Raw string body (when not JSON)",
+            "params.content_type": "Override content-type",
+            "params.headers": "Response headers object",
+        },
+        "example": {"id": "<uuid>", "type": "mock-response", "selector": "**/api/me",
+                    "params": {"status": 200, "json": {"name": "Test User"}}},
+        "notes": "Register BEFORE the goto/action that triggers the request.",
+    },
+    {
+        "type": "block-request",
+        "category": "network",
+        "params": {"selector": "URL glob to abort (e.g. '**/analytics/**')"},
+        "example": {"id": "<uuid>", "type": "block-request", "selector": "**/gtag/**"},
+    },
+    {
+        "type": "set-network-latency",
+        "category": "network",
+        "params": {"selector": "URL glob (default '**/*')", "params.ms": "Delay in ms before continuing"},
+        "example": {"id": "<uuid>", "type": "set-network-latency", "selector": "**/api/**", "params": {"ms": 2000}},
+    },
+    {
+        "type": "check-accessibility",
+        "category": "assertion",
+        "params": {
+            "params.impact": "Minimum severity that fails the step: 'minor'|'moderate'|'serious'(default)|'critical'",
+            "params.fail": "false = report-only (never throws)",
+        },
+        "example": {"id": "<uuid>", "type": "check-accessibility", "params": {"impact": "serious"}},
+        "notes": "Runs axe-core against the current page; returns a violations summary.",
+    },
+    {
         "type": "http-request",
         "category": "api",
         "params": {
@@ -274,12 +321,16 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.body": "Request body (object or string)",
             "params.params": "Query-param object",
             "params.assertions": "Array of {type, ...} — see assertion shapes below",
+            "params.extract": "Array of {path, variable, required?} — store JSON response values as runtime vars",
         },
         "notes": (
             "Assertion shapes inside params.assertions: "
             "{type:'status', value:200}; "
             "{type:'json-path', path:'postgres.articles', operator:'equals'|'contains', value:...}; "
-            "{type:'json-schema', value:'<JSON-schema-as-string>'} — json-path uses dotted paths (NO '$.' prefix)."
+            "{type:'json-schema', value:'<JSON-schema-as-string>'} — json-path uses dotted paths (NO '$.' prefix); "
+            "array indexing via 'items.0.id' or 'items[0].id'. "
+            "params.extract chains requests: extract {path:'data.token', variable:'token'} then use "
+            "{{token}} in a later step's headers/body/url. Extraction failure fails the step unless required:false."
         ),
         "example": {
             "id": "<uuid>",
@@ -296,10 +347,91 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         },
     },
     {
+        "type": "graphql",
+        "category": "api",
+        "params": {
+            "value": "GraphQL endpoint URL",
+            "params.query": "GraphQL query/mutation string",
+            "params.variables": "Optional variables object",
+            "params.headers": "Optional extra headers (merged over suite headers)",
+            "params.allow_errors": "true to skip the default errors[]-must-be-empty check",
+            "params.assertions": "Array of {type:'status', value} or {type:'data-path', path, operator:'equals'|'contains'|'exists', value}",
+            "params.extract": "Array of {path, variable} — paths relative to response `data`",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "graphql",
+            "value": "http://app/graphql",
+            "params": {
+                "query": "query($id: ID!) { user(id: $id) { name email } }",
+                "variables": {"id": "1"},
+                "assertions": [{"type": "data-path", "path": "user.name", "operator": "exists"}],
+            },
+        },
+        "notes": "POSTs {query, variables}. Fails when the response carries GraphQL errors[] unless allow_errors. data-path paths omit the leading 'data.'.",
+    },
+    {
+        "type": "oauth2-token",
+        "category": "api",
+        "params": {
+            "value": "Token endpoint URL",
+            "params.client_id": "Client id (supports {{secret.X}})",
+            "params.client_secret": "Client secret — ALWAYS use {{secret.X}}",
+            "params.scope": "Optional scope",
+            "params.audience": "Optional audience",
+            "params.variable": "Runtime var for the token (default 'access_token')",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "oauth2-token",
+            "value": "http://app/oauth/token",
+            "params": {"client_id": "{{secret.CLIENT_ID}}", "client_secret": "{{secret.CLIENT_SECRET}}"},
+        },
+        "notes": "client_credentials grant for the app under test. Later steps use {{access_token}} e.g. headers: {'Authorization': 'Bearer {{access_token}}'}.",
+    },
+    {
         "type": "feed-check",
         "category": "api",
         "params": {"value": "URL to fetch", "params.assertions": "Same shape as http-request assertions"},
         "notes": "Self-contained fetch+assert. NOT a way to assert on a previous step's response — use http-request's embedded assertions for that.",
+    },
+    {
+        "type": "check-tls",
+        "category": "api",
+        "params": {
+            "value": "Host or URL (port from URL, default 443)",
+            "params.min_days_remaining": "Fail when the cert expires within N days (default 14)",
+        },
+        "example": {"id": "<uuid>", "type": "check-tls", "value": "https://example.com",
+                    "params": {"min_days_remaining": 21}},
+        "notes": "TLS probe: validates the chain and the expiry window. Pairs well with a monitor schedule for cert-expiry alerting.",
+    },
+    {
+        "type": "load-test",
+        "category": "load",
+        "params": {
+            "value": "Target URL",
+            "params.method": "'GET' (default) | POST | PUT | PATCH | DELETE",
+            "params.headers": "Optional headers object",
+            "params.body": "Optional body (object or string)",
+            "params.vus": "Virtual users (default 10, capped by LOAD_MAX_VUS)",
+            "params.duration_s": "Steady-state seconds (default 30, capped by LOAD_MAX_DURATION_S)",
+            "params.ramp_up_s": "Optional ramp-up seconds to reach vus",
+            "params.think_time_s": "Sleep between iterations (default 1)",
+            "params.thresholds": "{p95_ms?, p99_ms?, error_rate? (0-1), min_rps?} — any breach fails the case",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "load-test",
+            "value": "http://app/api/overview",
+            "params": {"vus": 20, "duration_s": 60, "thresholds": {"p95_ms": 500, "error_rate": 0.01}},
+        },
+        "notes": (
+            "Declares a k6 load test — a case containing this step gets executor='load' automatically and "
+            "MUST be the only meaningful step in the case (load cases skip the browser entirely). "
+            "Aggregate metrics land in result_payload (result_kind='load'); the generated k6 script and "
+            "summary are uploaded as run artifacts. Only run against apps you own."
+        ),
     },
     {
         "type": "run-script",
@@ -349,6 +481,96 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "params": {"value": "URL of an AMP doc"},
         "notes": "Validates AMP HTML compliance.",
     },
+    # ------------------------------------------------------------------
+    # Mobile (native app) steps — Phase MOB. Cases using these MUST set
+    # executor='mobile_appium' and the run MUST pin an app_build_id
+    # (POST /api/runs body). Executed by the mobile worker via Appium.
+    # Selector convention (Appium locator strategies):
+    #   "~foo"                     → accessibility id
+    #   "//..." or "xpath=..."     → XPath over the native page source
+    #   "id=com.app:id/btn"        → resource-id (Android) / name (iOS)
+    #   "android=new UiSelector()…"→ UiAutomator (Android only)
+    #   "ios=label == 'Done'"      → NSPredicate (iOS only)
+    # ------------------------------------------------------------------
+    {
+        "type": "mobile-launch-app",
+        "category": "mobile",
+        "params": {},
+        "example": {"id": "<uuid>", "type": "mobile-launch-app"},
+        "notes": "Activates the run's installed app build (uses the build's package_id). Implicit before the first mobile step; include it explicitly to relaunch mid-test.",
+    },
+    {
+        "type": "mobile-tap",
+        "category": "mobile",
+        "params": {"selector": "Appium locator (see convention above)"},
+        "example": {"id": "<uuid>", "type": "mobile-tap", "selector": "~login-button"},
+    },
+    {
+        "type": "mobile-long-press",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "params.duration_ms": "Hold time, default 800"},
+    },
+    {
+        "type": "mobile-type",
+        "category": "mobile",
+        "params": {"selector": "Appium locator of a text field", "value": "Text to type"},
+        "example": {"id": "<uuid>", "type": "mobile-type", "selector": "~email-input", "value": "alice@example.com"},
+    },
+    {
+        "type": "mobile-swipe",
+        "category": "mobile",
+        "params": {"params.direction": "'up' | 'down' | 'left' | 'right'", "params.distance": "0..1 fraction of the screen, default 0.5"},
+        "example": {"id": "<uuid>", "type": "mobile-swipe", "params": {"direction": "up"}},
+        "notes": "Swipes from screen centre; direction is the finger's movement (swipe up scrolls content down).",
+    },
+    {
+        "type": "mobile-press-key",
+        "category": "mobile",
+        "params": {"value": "'back' | 'home' | 'enter' (Android keycodes)"},
+        "example": {"id": "<uuid>", "type": "mobile-press-key", "value": "back"},
+        "notes": "Android only; iOS has no hardware back key.",
+    },
+    {
+        "type": "mobile-wait-for",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "params.timeout_ms": "Default 10000"},
+    },
+    {
+        "type": "mobile-expect-visible",
+        "category": "mobile",
+        "params": {"selector": "Appium locator"},
+        "example": {"id": "<uuid>", "type": "mobile-expect-visible", "selector": "~dashboard-header"},
+    },
+    {
+        "type": "mobile-expect-text",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "value": "Expected text (substring match)"},
+    },
+    {
+        "type": "mobile-screenshot",
+        "category": "mobile",
+        "params": {"value": "Optional label for the artifact filename"},
+        "notes": "Uploaded to MinIO under runs/{run_id}/screenshots/ like web screenshots. A failure screenshot is also captured automatically when a mobile case fails.",
+    },
+    {
+        "type": "mobile-extract-value",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "value": "Variable name to save the element's text under"},
+        "example": {"id": "<uuid>", "type": "mobile-extract-value", "selector": "~order-id", "value": "orderId"},
+        "notes": "Later steps in the same case reference it as {{orderId}}.",
+    },
+    {
+        "type": "mobile-expect-visual-match",
+        "category": "mobile",
+        "params": {},
+        "notes": "Captures the device screen and pixelmatch-compares it against the pinned VisualBaseline (browser key 'mobile'). First run is capture-only; promote the candidate via POST /api/visual-baselines/promote.",
+    },
+    {
+        "type": "mobile-terminate-app",
+        "category": "mobile",
+        "params": {},
+        "notes": "Force-stops the app (uses the build's package_id). Useful for cold-start and state-persistence tests.",
+    },
 ]
 
 
@@ -362,7 +584,7 @@ async def list_step_types() -> Dict[str, Any]:
     return {
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
-        "last_updated": "2026-05-13",
+        "last_updated": "2026-07-25",
     }
 
 

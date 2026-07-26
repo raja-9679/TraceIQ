@@ -26,6 +26,7 @@ import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
+import { collectWebVitals, WebVitals } from './web-vitals';
 
 // Errors that look like a selector no longer matching the page — the only
 // failures worth an LLM heal attempt.
@@ -40,6 +41,7 @@ const IDLE_TIMEOUT_MS = parseInt(process.env.WORKER_IDLE_TIMEOUT || '60000');
 const MAX_JOBS_BEFORE_RESTART = parseInt(process.env.MAX_JOBS_BEFORE_RESTART || '50');
 // Maximum wall-clock time a single job may run before it is aborted (default 10 min)
 const MAX_JOB_DURATION_MS = parseInt(process.env.MAX_JOB_DURATION_MS || '600000');
+const MAX_CONSOLE_LOG_ENTRIES = parseInt(process.env.MAX_CONSOLE_LOG_ENTRIES || '5000');
 
 class ExecutionWorker {
     private jobQueue: JobQueue;
@@ -86,6 +88,59 @@ class ExecutionWorker {
             console.log(`[Worker] Heal suggestion: "${step.selector}" -> "${healed}" (${matches} match(es) in current DOM)`);
         } catch (healErr: any) {
             console.warn(`[Worker] Heal attempt failed: ${healErr.message}`);
+        }
+    }
+
+    /**
+     * Runtime self-heal (opt-in via RUNTIME_HEAL_ENABLED): on a selector-looking
+     * failure, ask the LLM for a replacement selector and, when it UNIQUELY
+     * matches the live DOM, retry the step with it so the run recovers instead
+     * of failing on a brittle selector. Always records the old→new suggestion
+     * (via `sink`) so the fix can be made durable by a human. Returns true iff
+     * the step passed on retry.
+     */
+    private async tryRuntimeHeal(
+        page: Page | null,
+        currentContext: Page | FrameLocator,
+        step: any,
+        testCaseId: number | undefined,
+        runId: number,
+        errorMessage: string,
+        sink: any[],
+        settings: any,
+        contextData: any,
+    ): Promise<boolean> {
+        try {
+            if (process.env.RUNTIME_HEAL_ENABLED !== 'true') return false;
+            if (llmProvider.name === 'null') return false;
+            if (!step?.selector || !page || page.isClosed()) return false;
+            if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return false;
+
+            const dom = await page.content();
+            const healed = (await this.aiEngine.healSelector(step.selector, dom, runId) || '').trim();
+            if (!healed || healed === step.selector) return false;
+
+            const matches = await page.locator(healed).count().catch(() => 0);
+            const record = () => {
+                if (testCaseId) sink.push({
+                    test_case_id: testCaseId, step_id: step.id || '',
+                    old_selector: step.selector, new_selector: healed,
+                    matches, intent: step.intent || null,
+                });
+            };
+            // Only auto-apply an unambiguous match; otherwise just suggest.
+            if (matches !== 1) {
+                if (matches > 0) record();
+                return false;
+            }
+
+            await TestExecutor.executeStep(page, currentContext, { ...step, selector: healed }, settings, contextData);
+            record();
+            console.log(`[Worker] Runtime heal APPLIED: "${step.selector}" -> "${healed}" (step recovered)`);
+            return true;
+        } catch (e: any) {
+            console.warn(`[Worker] Runtime heal retry failed: ${e.message}`);
+            return false;
         }
     }
 
@@ -220,6 +275,18 @@ class ExecutionWorker {
      * Execute a test job - routes to appropriate handler based on job type
      */
     private async executeJob(job: TestJob): Promise<JobResult> {
+        // Raw Playwright: run the uploaded spec verbatim, not the interpreter.
+        if (job.test_case?.executor === 'raw_playwright') {
+            console.log(`[Worker] Executing raw_playwright job ${job.job_id}`);
+            return this.executeRawPlaywrightJob(job);
+        }
+
+        // Load testing: generate + run a k6 script (no browser involved).
+        if (job.test_case?.executor === 'load') {
+            console.log(`[Worker] Executing load job ${job.job_id}`);
+            return this.executeLoadJob(job);
+        }
+
         // Check if this is a multi-test continuous job
         if (job.execution_mode === 'continuous' && job.test_cases && job.test_cases.length > 0) {
             console.log(`[Worker] Executing continuous job ${job.job_id} with ${job.test_cases.length} tests`);
@@ -228,7 +295,127 @@ class ExecutionWorker {
 
         // Single test case job (original behavior)
         console.log(`[Worker] Executing single test job ${job.job_id}`);
-        return this.executeSingleTestJob(job);
+        return this.executeSingleTestJobWithRetry(job);
+    }
+
+    /**
+     * Run an uploaded Playwright spec (executor=raw_playwright). Gated by
+     * RAW_PLAYWRIGHT_ENABLED because it executes arbitrary user code — only
+     * enable on a sandboxed, network-restricted worker image with
+     * @playwright/test + browsers installed. Results are reported at spec/test
+     * granularity via `test_results` (same shape as continuous jobs).
+     */
+    private async executeRawPlaywrightJob(job: TestJob): Promise<JobResult> {
+        const start = Date.now();
+        const tc = job.test_case;
+        const base: Omit<JobResult, 'status' | 'duration_ms'> = {
+            job_id: job.job_id,
+            run_id: job.run_id,
+            test_case_id: job.test_case_id,
+            test_name: tc?.name,
+            artifacts: { screenshots: [] },
+            network_events: [],
+            completed_at: new Date().toISOString(),
+        };
+
+        if (process.env.RAW_PLAYWRIGHT_ENABLED !== 'true') {
+            return { ...base, status: 'error', duration_ms: 0,
+                error: 'raw_playwright execution is disabled on this worker (set RAW_PLAYWRIGHT_ENABLED=true on a sandboxed worker image).' };
+        }
+        if (!tc?.raw_script) {
+            return { ...base, status: 'error', duration_ms: 0, error: 'Case has no raw_script.' };
+        }
+
+        const { runRawPlaywright } = await import('./raw-playwright-runner');
+        const baseUrl = job.settings?.environment?.base_url;
+        const res = await runRawPlaywright(tc.raw_script, { baseUrl, timeoutMs: MAX_JOB_DURATION_MS });
+
+        const test_results: TestCaseResult[] = res.tests.map((t) => ({
+            test_case_id: job.test_case_id as number,
+            test_name: t.title,
+            status: t.status,
+            duration_ms: t.duration_ms,
+            error: t.error,
+        }));
+
+        return {
+            ...base,
+            status: res.status,
+            duration_ms: res.duration_ms || (Date.now() - start),
+            error: res.error,
+            test_results,
+        };
+    }
+
+    /**
+     * Run a k6 load test (executor=load). The case's first `load-test` step is
+     * the declarative spec; the k6 script is generated, never user-supplied.
+     * The generated script + k6 summary are uploaded as run artifacts.
+     */
+    private async executeLoadJob(job: TestJob): Promise<JobResult> {
+        const tc = job.test_case;
+        const base = {
+            job_id: job.job_id,
+            run_id: job.run_id,
+            test_case_id: job.test_case_id,
+            test_name: tc?.name,
+            network_events: [],
+            completed_at: new Date().toISOString(),
+        };
+
+        const loadStep = (tc?.steps || []).find((s: any) => s.type === 'load-test');
+        if (!loadStep) {
+            return { ...base, status: 'error', duration_ms: 0,
+                artifacts: { screenshots: [], uploadedLocalPaths: [] } as any,
+                error: 'Load case has no load-test step.' };
+        }
+
+        const artifactsDir = path.join(ARTIFACTS_BASE_DIR, job.job_id);
+        fs.mkdirSync(artifactsDir, { recursive: true });
+
+        const { runLoadTest } = await import('./load-runner');
+        const spec = { target_url: loadStep.value || loadStep.selector, ...(loadStep.params || {}) };
+        const outcome = await runLoadTest(spec, job.settings, artifactsDir);
+
+        const artifacts = await this.uploadArtifacts(
+            job.run_id, job.job_id, artifactsDir, null, null, [], []);
+        this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
+
+        return {
+            ...base,
+            status: outcome.status,
+            duration_ms: outcome.duration_ms,
+            error: outcome.error,
+            artifacts,
+            ...(outcome.payload ? { result_kind: 'load', result_payload: outcome.payload } : {}),
+        };
+    }
+
+    /**
+     * Run a single-test job, retrying the whole case on failure/error when the
+     * suite's auto_retry policy is enabled. Uses exponential backoff between
+     * attempts. The returned result is the last attempt's, with retry_count set
+     * to the number of retries performed (0 = passed first try).
+     */
+    private async executeSingleTestJobWithRetry(job: TestJob): Promise<JobResult> {
+        const autoRetry = job.settings?.auto_retry === true;
+        const maxRetries = autoRetry ? Math.max(0, job.settings?.max_retries ?? 2) : 0;
+        const backoffBase = job.settings?.retry_backoff_ms ?? 1000;
+
+        let attempt = 0;
+        let result = await this.executeSingleTestJob(job);
+        while (result.status !== 'passed' && attempt < maxRetries) {
+            attempt++;
+            const delay = backoffBase * Math.pow(2, attempt - 1);
+            console.log(`[Worker] Test "${result.test_name}" ${result.status}; retry ${attempt}/${maxRetries} after ${delay}ms`);
+            await new Promise(res => setTimeout(res, delay));
+            result = await this.executeSingleTestJob(job);
+        }
+        result.retry_count = attempt;
+        if (attempt > 0) {
+            console.log(`[Worker] Test "${result.test_name}" final status ${result.status} after ${attempt} retry(ies)`);
+        }
+        return result;
     }
 
     /**
@@ -254,6 +441,7 @@ class ExecutionWorker {
         let page: Page | null = null;
 
         const networkEvents: any[] = [];
+        const consoleLogs: any[] = [];
         const screenshots: string[] = [];
 
         let status: 'passed' | 'failed' | 'error' = 'passed';
@@ -264,7 +452,9 @@ class ExecutionWorker {
         let lastStepResult: any = null;
         let capturedAuthState: any = null;
         let currentStep: any = null;
+        let webVitals: WebVitals | null = null;
         const healSuggestions: any[] = [];
+        let healedStepCount = 0;
 
         try {
             // Launch browser
@@ -338,6 +528,9 @@ class ExecutionWorker {
             // Log console messages
             page.on('console', msg => {
                 console.log(`  [Browser] [${testCase.name}]: ${msg.text()}`);
+                if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+                    consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: testCase.name });
+                }
             });
 
             // Initialize page
@@ -374,7 +567,7 @@ class ExecutionWorker {
                         if (stepResponse?.__switchToPage) {
                             page = stepResponse.__switchToPage as Page;
                             currentContext = page;
-                        } else if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
+                        } else if (stepResponse && (step.type === 'http-request' || step.type === 'graphql' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                             lastStepResult = stepResponse;
                         }
                     }
@@ -382,8 +575,21 @@ class ExecutionWorker {
                     if (stepErr.stepResult) {
                         lastStepResult = stepErr.stepResult;
                     }
+                    // Runtime self-heal: try to recover this step with an
+                    // LLM-healed selector before failing the whole test.
+                    const recovered = await this.tryRuntimeHeal(
+                        page, currentContext, step, testCaseId, job.run_id,
+                        stepErr.message, healSuggestions, job.settings, contextData);
+                    if (recovered) {
+                        healedStepCount++;
+                        continue;
+                    }
                     throw stepErr;
                 }
+            }
+
+            if (healedStepCount > 0) {
+                console.log(`[Worker] Test "${testCase.name}" passed with ${healedStepCount} runtime-healed step(s); heal proposals recorded.`);
             }
 
             // Capture response data if available
@@ -443,6 +649,12 @@ class ExecutionWorker {
                 }
             }
         } finally {
+            // Web vitals for the page's final document — pass or fail, the
+            // perf data is real as long as the page is still open.
+            if (page && !page.isClosed()) {
+                webVitals = await collectWebVitals(page);
+            }
+
             // Stop tracing and save
             if (context) {
                 try {
@@ -486,7 +698,9 @@ class ExecutionWorker {
             job.job_id,
             artifactsDir,
             videoPath,
-            tracePath
+            tracePath,
+            consoleLogs,
+            networkEvents
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
@@ -501,6 +715,7 @@ class ExecutionWorker {
             artifacts,
             response_data: responseData,
             network_events: networkEvents,
+            ...(webVitals ? { web_vitals: webVitals } : {}),
             ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
             completed_at: new Date().toISOString()
@@ -522,6 +737,7 @@ class ExecutionWorker {
         let sharedContext: BrowserContext | null = null;
 
         const networkEvents: any[] = [];
+        const consoleLogs: any[] = [];
         const testResults: TestCaseResult[] = [];
         let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
         let overallError: string | undefined;
@@ -602,6 +818,9 @@ class ExecutionWorker {
             // Log console messages
             page.on('console', msg => {
                 console.log(`  [Browser] [${job.unit_name}]: ${msg.text()}`);
+                if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+                    consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: sharedContextData.name });
+                }
             });
 
             // Execute each test case sequentially
@@ -632,6 +851,9 @@ class ExecutionWorker {
                         page.setDefaultTimeout(parseInt(process.env.DEFAULT_TIMEOUT || '30000'));
                         page.on('console', msg => {
                             console.log(`  [Browser] [${job.unit_name}]: ${msg.text()}`);
+                            if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+                                consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: sharedContextData.name });
+                            }
                         });
                     } catch (pageErr: any) {
                         console.error(`[Worker] Failed to create new page: ${pageErr.message}`);
@@ -682,7 +904,7 @@ class ExecutionWorker {
                                 if (stepResponse?.__switchToPage) {
                                     page = stepResponse.__switchToPage;
                                     currentContext = page;
-                                } else if (stepResponse && (step.type === 'http-request' || step.type === 'feed-check' || step.type === 'amp-validate')) {
+                                } else if (stepResponse && (step.type === 'http-request' || step.type === 'graphql' || step.type === 'feed-check' || step.type === 'amp-validate')) {
                                     lastStepResult = stepResponse;
                                 }
                             }
@@ -755,6 +977,9 @@ class ExecutionWorker {
 
                 const caseDuration = Date.now() - caseStartTime;
 
+                const caseVitals = (page && !page.isClosed())
+                    ? await collectWebVitals(page) : null;
+
                 // Record test result, including only the network events for
                 // this test case (sliced from the shared accumulator).
                 testResults.push({
@@ -764,7 +989,8 @@ class ExecutionWorker {
                     duration_ms: caseDuration,
                     error: caseError,
                     response_data: responseData,
-                    network_events: networkEvents.slice(netStartIdx)
+                    network_events: networkEvents.slice(netStartIdx),
+                    ...(caseVitals ? { web_vitals: caseVitals } : {})
                 });
 
                 console.log(`[Worker] Completed test case: ${testCase.name} (${caseStatus}, ${caseDuration}ms)`);
@@ -817,7 +1043,9 @@ class ExecutionWorker {
             job.job_id,
             artifactsDir,
             videoPath,
-            tracePath
+            tracePath,
+            consoleLogs,
+            networkEvents
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
@@ -925,9 +1153,11 @@ class ExecutionWorker {
         jobId: string,
         artifactsDir: string,
         videoPath: string | null,
-        tracePath: string | null
-    ): Promise<{ video?: string; trace?: string; screenshots: string[]; uploadedLocalPaths: string[] }> {
-        const result: { video?: string; trace?: string; screenshots: string[]; uploadedLocalPaths: string[] } = {
+        tracePath: string | null,
+        consoleLogs?: any[],
+        networkEvents?: any[]
+    ): Promise<{ video?: string; trace?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
+        const result: { video?: string; trace?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
             screenshots: [],
             uploadedLocalPaths: []
         };
@@ -967,6 +1197,22 @@ class ExecutionWorker {
                     result.screenshots.push(screenshotKey);
                     result.uploadedLocalPaths.push(localPath);
                 }
+            }
+
+            // Upload console + network logs as JSON artifacts
+            if (consoleLogs && consoleLogs.length) {
+                const consoleKey = `runs/${runId}/logs/${jobId}-console.json`;
+                const body = Buffer.from(JSON.stringify(consoleLogs, null, 1));
+                await this.minioClient.putObject(BUCKET_NAME, consoleKey, body, body.length, { 'Content-Type': 'application/json' });
+                result.console_log = consoleKey;
+                console.log(`[Worker] Uploaded console log: ${consoleKey}`);
+            }
+            if (networkEvents && networkEvents.length) {
+                const networkKey = `runs/${runId}/logs/${jobId}-network.json`;
+                const body = Buffer.from(JSON.stringify(networkEvents, null, 1));
+                await this.minioClient.putObject(BUCKET_NAME, networkKey, body, body.length, { 'Content-Type': 'application/json' });
+                result.network_log = networkKey;
+                console.log(`[Worker] Uploaded network log: ${networkKey}`);
             }
         } catch (err) {
             console.error('[Worker] Error uploading artifacts:', err);

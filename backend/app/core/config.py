@@ -14,7 +14,23 @@ class Settings(BaseSettings):
     MINIO_BUCKET_NAME: str = "test-artifacts"
     OPENAI_API_KEY: str = ""
     EXECUTION_ENGINE_URL: str = "http://execution-engine:3000/run"
-    BACKEND_CORS_ORIGINS: list[str] = ["*"]
+    # Set in the environment as a JSON list, e.g.
+    #   BACKEND_CORS_ORIGINS=["https://app.traceiq.io","https://admin.traceiq.io"]
+    # Defaults to local dev origins — set explicitly in production. A bare "*"
+    # is honoured but forces credentials off (see cors_allow_credentials /
+    # main.py) since browsers reject wildcard-with-credentials.
+    BACKEND_CORS_ORIGINS: list[str] = [
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:5173",
+    ]
+
+    # Public URL of the frontend, used to build links in account emails
+    # (password reset / email verification).
+    FRONTEND_BASE_URL: str = "http://localhost:5173"
+    # Lifetimes for single-use account tokens.
+    PASSWORD_RESET_TOKEN_EXPIRE_HOURS: int = 2
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_HOURS: int = 48
 
     # Security
     SECRET_KEY: str
@@ -39,6 +55,13 @@ class Settings(BaseSettings):
     # forever. Default: 6 hours.
     MAX_RUN_DURATION_HOURS: int = 6
 
+    # Data retention: finished TestRuns (and their TestCaseResults + MinIO
+    # artifacts) older than this many days are purged by a Celery beat task.
+    # 0 disables retention (keep everything forever).
+    RUN_RETENTION_DAYS: int = 0
+    # How many runs to purge per pass, to bound each task's work.
+    RETENTION_BATCH_SIZE: int = 500
+
     # Notification Settings
     # Master switch - if false, no notifications are sent regardless of other settings
     NOTIFICATIONS_ENABLED: bool = False
@@ -62,9 +85,52 @@ class Settings(BaseSettings):
     # Teams Configuration
     TEAMS_WEBHOOK_URL: Optional[str] = None
 
+    # Security scanning (PLATFORM_VISION.md P-4).
+    # Passive analysis of captured responses (item 2) — read-only, safe.
+    PASSIVE_SECURITY_SCAN_ENABLED: bool = True
+    # OWASP ZAP daemon for active/authenticated DAST (item 6). Scans are refused
+    # when ZAP_API_URL is unset. Active (attacking) scans additionally require
+    # SECURITY_ACTIVE_SCAN_ENABLED=true AND per-project opt-in + target allowlist.
+    ZAP_API_URL: Optional[str] = None            # e.g. http://zap:8090
+    ZAP_API_KEY: str = ""
+    SECURITY_ACTIVE_SCAN_ENABLED: bool = False
+    # Max seconds to wait for a ZAP scan phase before giving up.
+    ZAP_SCAN_TIMEOUT_SECONDS: int = 900
+    # Crawl coverage. AJAX spider crawls JS-rendered / SPA content the HTML
+    # spider can't see (slower; needs the browser bundled in the ZAP image).
+    ZAP_AJAX_SPIDER: bool = True
+    ZAP_SPIDER_MAX_DEPTH: int = 10          # 0 = ZAP default (5)
+    ZAP_SPIDER_MAX_CHILDREN: int = 0        # 0 = unlimited children per node
+
+    # Billing (Stripe). When unset, billing runs in "manual" mode: plans exist
+    # and quotas are enforced, but Stripe checkout/webhooks are disabled and
+    # plans are assigned by a workspace admin.
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_SUCCESS_URL: str = "http://localhost:5173/billing?success=1"
+    STRIPE_CANCEL_URL: str = "http://localhost:5173/billing?canceled=1"
+
+    # SSO (OIDC). When issuer+client are set, /api/auth/sso/* is enabled.
+    OIDC_ISSUER: Optional[str] = None            # e.g. https://accounts.google.com
+    OIDC_CLIENT_ID: Optional[str] = None
+    OIDC_CLIENT_SECRET: Optional[str] = None
+    OIDC_REDIRECT_URI: str = "http://localhost:8001/api/auth/sso/callback"
+    # Where to send the browser after a successful SSO login (token in fragment).
+    OIDC_POST_LOGIN_REDIRECT: str = "http://localhost:5173/login"
+
+    @property
+    def oidc_enabled(self) -> bool:
+        return bool(self.OIDC_ISSUER and self.OIDC_CLIENT_ID and self.OIDC_CLIENT_SECRET)
+
     @property
     def cors_origins(self) -> list[str]:
         return self.BACKEND_CORS_ORIGINS
+
+    @property
+    def cors_allow_credentials(self) -> bool:
+        # Browsers reject wildcard origin with credentials; disable credentials
+        # when a wildcard is configured so the wildcard actually works.
+        return "*" not in self.BACKEND_CORS_ORIGINS
 
     class Config:
         env_file = ".env"

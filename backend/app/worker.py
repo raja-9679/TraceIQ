@@ -9,7 +9,7 @@ from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
 from app.core.config import settings
-from app.models import TestRun, TestStatus, ExecutionMode
+from app.models import TestRun, TestStatus, ExecutionMode, ExecutorType
 import requests
 import json
 import redis
@@ -32,17 +32,59 @@ USE_DISTRIBUTED_EXECUTION = getattr(
 # Webhook secret for internal service-to-service calls
 _WEBHOOK_SECRET = getattr(settings, 'WEBHOOK_SECRET', None) or settings.SECRET_KEY
 
+# Job streams. Playwright workers consume jobs:pending; mobile (Appium)
+# workers consume their own stream so a Playwright worker can never claim a
+# job it cannot execute (Phase MOB — see FEATURE_GAP_ANALYSIS.md §31).
+JOBS_STREAM = 'jobs:pending'
+MOBILE_JOBS_STREAM = 'jobs:mobile:pending'
+_STREAM_GROUPS = (
+    (JOBS_STREAM, 'execution-workers'),
+    (MOBILE_JOBS_STREAM, 'mobile-workers'),
+)
+
+
+def _ensure_consumer_groups():
+    """Idempotently create every job stream + consumer group."""
+    for stream, group in _STREAM_GROUPS:
+        try:
+            redis_client.xgroup_create(stream, group, id='0', mkstream=True)
+        except redis.ResponseError as e:
+            if 'BUSYGROUP' not in str(e):
+                raise
+
+
+def _job_stream(job: dict) -> str:
+    """Which stream a job belongs on, by the executor of its case(s)."""
+    case = job.get('test_case') or {}
+    executor = case.get('executor')
+    if not executor and job.get('test_cases'):
+        executor = (job['test_cases'][0] or {}).get('executor')
+    if executor == ExecutorType.MOBILE_APPIUM.value:
+        return MOBILE_JOBS_STREAM
+    return JOBS_STREAM
+
 
 @celery_app.task(name="app.worker.run_test_suite")
-def run_test_suite(run_id: int):
+def run_test_suite(run_id: int, tags: list = None):
     """
     Main entry point for test execution.
     Routes to appropriate execution strategy based on execution mode.
+
+    `tags`, when provided, restricts the run to test cases carrying at least
+    one of the given tags (tag-based run selection).
     """
     with Session(sync_engine) as session:
         run = session.get(TestRun, run_id)
         if not run:
             print(f"[Worker] Run {run_id} not found")
+            return
+
+        # Per-workspace concurrency cap: if the run's workspace is already at
+        # its RUNNING limit, leave this run PENDING and retry shortly. This
+        # bounds a single tenant's fan-out so it can't starve other tenants.
+        if _workspace_at_capacity(run, session):
+            print(f"[Worker] Run {run_id} deferred: workspace at concurrency cap")
+            run_test_suite.apply_async((run_id,), {'tags': tags}, countdown=30)
             return
 
         print(f"[Worker] Starting run {run_id}")
@@ -73,6 +115,13 @@ def run_test_suite(run_id: int):
             # at the test_case level; sub-step granularity is informational.
             cases_to_run = _filter_quarantined(cases_to_run, session)
 
+            # Tag-based run selection: keep only cases carrying a requested tag.
+            if tags:
+                cases_to_run = _filter_by_tags(cases_to_run, tags)
+                if not cases_to_run:
+                    raise Exception(
+                        f"No test cases match tags {tags}")
+
             # Get execution mode
             suite = session.get(TestSuite, run.test_suite_id)
             execution_mode = suite.execution_mode if suite else ExecutionMode.CONTINUOUS
@@ -102,8 +151,26 @@ def run_test_suite(run_id: int):
             if secrets:
                 effective_settings['secrets'] = secrets
 
+            # App binary for mobile_appium runs (Phase MOB): presigned URL +
+            # metadata the mobile worker needs to install and launch the app.
+            mobile_app = _load_mobile_app(run, session)
+            if mobile_app:
+                effective_settings['mobile_app'] = mobile_app
+                print(f"[Worker] Run {run_id}: mobile app build "
+                      f"{mobile_app['app_build_id']} ({mobile_app['platform']})")
+
             # Update total tests count
             run.total_tests = len(cases_to_run)
+
+            # Denormalise the executor onto the run. If every case shares one
+            # executor, the run adopts it; a mixed suite falls back to the
+            # classic ui_playwright label (per-job payload stays authoritative).
+            executors = {
+                getattr(c, 'executor', ExecutorType.UI_PLAYWRIGHT) or ExecutorType.UI_PLAYWRIGHT
+                for c in cases_to_run
+            }
+            run.executor = next(iter(executors)) if len(executors) == 1 else ExecutorType.UI_PLAYWRIGHT
+
             session.add(run)
             session.commit()
 
@@ -164,9 +231,16 @@ def _case_payload(case, row_index=None, data_row=None) -> dict:
     name = case.name
     if row_index is not None:
         name = f"{case.name} [row {row_index + 1}]"
+    executor = getattr(case, 'executor', None)
     payload = {
         'id': case.id,
         'name': name,
+        # Which worker should run this case. Unknown values are ignored by the
+        # current Node worker (it only handles ui_playwright), so this is safe
+        # to emit before the other executor workers exist.
+        'executor': executor.value if hasattr(executor, 'value') else (executor or 'ui_playwright'),
+        # Raw Playwright spec source for executor=raw_playwright (else None).
+        'raw_script': getattr(case, 'raw_script', None),
         'steps': [
             step.dict() if hasattr(step, 'dict') else step
             for step in case.steps
@@ -210,7 +284,48 @@ def _settings_payload(settings: dict) -> dict:
         payload['environment'] = settings['environment']
     if settings.get('secrets'):
         payload['secrets'] = settings['secrets']
+    # Per-test retry policy (inherited from suite settings; falls back to off).
+    if settings.get('auto_retry'):
+        payload['auto_retry'] = True
+        payload['max_retries'] = int(settings.get('max_retries', 2) or 2)
+        payload['retry_backoff_ms'] = int(settings.get('retry_backoff_ms', 1000) or 1000)
+    # Mobile app binary (presigned URL + capabilities) for mobile_appium jobs.
+    if settings.get('mobile_app'):
+        payload['mobile_app'] = settings['mobile_app']
     return payload
+
+
+def _load_mobile_app(run, session) -> dict | None:
+    """Presigned download descriptor for the run's pinned MobileAppBuild.
+
+    Dispatched inside job settings so the mobile worker can install the
+    binary and derive Appium capabilities. None for web runs."""
+    build_id = getattr(run, 'app_build_id', None)
+    if not build_id:
+        return None
+    from app.models import MobileAppBuild
+    build = session.get(MobileAppBuild, build_id)
+    if not build:
+        print(f"[Worker] Run {run.id}: app_build_id={build_id} not found — "
+              f"dispatching without a binary")
+        return None
+    try:
+        from app.core.storage import minio_client
+        # Internal endpoint: workers live on the docker network where the
+        # public (localhost) host is unreachable.
+        app_url = minio_client.get_internal_presigned_url(
+            build.file_key, expiration=6 * 3600)
+    except Exception as e:
+        print(f"[Worker] Run {run.id}: failed to presign app build: {e}")
+        return None
+    return {
+        'app_build_id': build.id,
+        'platform': build.platform,
+        'app_url': app_url,
+        'package_id': build.package_id,
+        'app_name': build.app_name,
+        'version_name': build.version_name,
+    }
 
 
 def _load_environment(run, project_id, session):
@@ -276,6 +391,38 @@ def _load_auth_state(project_id, session):
     return auth.storage_state
 
 
+def _local_queue_key(run: TestRun, session: Session) -> str | None:
+    """Redis LIST key for a run pinned to a developer's local worker
+    (run.local_worker_id). Namespaced by workspace so worker ids can't
+    collide (or be polled) across tenants. None → normal stream dispatch."""
+    if not getattr(run, 'local_worker_id', None):
+        return None
+    from app.models import Project
+    project = session.get(Project, run.project_id) if run.project_id else None
+    if not project:
+        return None
+    return f"jobs:local:{project.workspace_id}:{run.local_worker_id}"
+
+
+def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job: dict):
+    """One job → its executor's worker stream, or the run's local queue.
+
+    `jobs_stream` is the caller's default; mobile_appium jobs override it so
+    they land on the mobile workers' stream (`_job_stream`)."""
+    if local_key:
+        pipe.rpush(local_key, json.dumps(job))
+        # Local queues are polled over HTTP; expire abandoned ones after a day.
+        pipe.expire(local_key, 86400)
+    else:
+        stream = _job_stream(job)
+        pipe.xadd(stream if stream != JOBS_STREAM else jobs_stream, {
+            'job_id': job['job_id'],
+            'run_id': str(run_id),
+            'payload': json.dumps(job),
+        })
+    pipe.sadd(f'runs:{run_id}:job_ids', job['job_id'])
+
+
 def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, session: Session):
     """
     Dispatch jobs for SEPARATE mode via Redis stream.
@@ -295,16 +442,13 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
         f"[Worker] Dispatching {len(execution_units)} execution units for run {run.id}")
 
     jobs_stream = 'jobs:pending'
+    local_key = _local_queue_key(run, session)
+    if local_key:
+        print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
     job_ids = []
     total_test_count = 0
 
-    # Ensure consumer group exists
-    try:
-        redis_client.xgroup_create(
-            jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
+    _ensure_consumer_groups()
 
     # Use pipeline for atomic batch insert
     pipe = redis_client.pipeline()
@@ -358,16 +502,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 })
 
         for job in jobs:
-            pipe.xadd(
-                jobs_stream,
-                {
-                    'job_id': job['job_id'],
-                    'run_id': str(run.id),
-                    'payload': json.dumps(job)
-                }
-            )
-            # Track job in run's job set
-            pipe.sadd(f'runs:{run.id}:job_ids', job['job_id'])
+            _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
 
     # Initialize run progress tracking
     # Track by total test cases, not jobs (for accurate progress)
@@ -396,15 +531,12 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     print(f"[Worker] Dispatching {len(cases)} jobs to queue for run {run.id}")
 
     jobs_stream = 'jobs:pending'
+    local_key = _local_queue_key(run, session)
+    if local_key:
+        print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
     job_ids = []
 
-    # Ensure consumer group exists
-    try:
-        redis_client.xgroup_create(
-            jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
+    _ensure_consumer_groups()
 
     pipe = redis_client.pipeline()
 
@@ -425,15 +557,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'retry_count': 0
         }
 
-        pipe.xadd(
-            jobs_stream,
-            {
-                'job_id': job_id,
-                'run_id': str(run.id),
-                'payload': json.dumps(job)
-            }
-        )
-        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+        _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(expanded),
@@ -446,6 +570,58 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
     pipe.execute()
 
     print(f"[Worker] Dispatched {len(job_ids)} jobs to queue for run {run.id}")
+
+
+def _workspace_at_capacity(run, session: Session) -> bool:
+    """True when the run's workspace already has >= max_concurrent_runs RUNNING.
+
+    Resolves workspace via the run's project. Fails open (returns False) if the
+    cap is unset/zero or anything about the lookup goes wrong, so capacity
+    enforcement can never wedge dispatch.
+    """
+    try:
+        from sqlmodel import select as _select, func as _func
+        from app.models import Project, Workspace, TestRun as _TestRun, TestStatus as _TS
+
+        if not run.project_id:
+            return False
+        project = session.get(Project, run.project_id)
+        if not project:
+            return False
+        workspace = session.get(Workspace, project.workspace_id)
+        limit = getattr(workspace, 'max_concurrent_runs', 0) or 0
+        if limit <= 0:
+            return False
+
+        # Count RUNNING runs across every project in this workspace.
+        ws_project_ids = _select(Project.id).where(
+            Project.workspace_id == project.workspace_id)
+        running = session.exec(
+            _select(_func.count()).select_from(_TestRun).where(
+                _TestRun.status == _TS.RUNNING,
+                _TestRun.project_id.in_(ws_project_ids),
+            )
+        ).one()
+        return running >= limit
+    except Exception as exc:  # noqa: BLE001
+        print(f"[Worker] capacity check failed (dispatching anyway): {exc}")
+        return False
+
+
+def _filter_by_tags(cases: list, tags: list) -> list:
+    """Keep only cases carrying at least one of `tags` (case-insensitive)."""
+    wanted = {str(t).strip().lower() for t in tags if str(t).strip()}
+    if not wanted:
+        return cases
+    filtered = [
+        c for c in cases
+        if wanted & {str(t).strip().lower() for t in (getattr(c, 'tags', None) or [])}
+    ]
+    skipped = len(cases) - len(filtered)
+    if skipped:
+        print(f"[Worker] Tag filter {sorted(wanted)}: kept {len(filtered)}, "
+              f"skipped {skipped} test case(s)")
+    return filtered
 
 
 def _filter_quarantined(cases: list, session: Session) -> list:
@@ -499,11 +675,10 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
     )
 
     jobs_stream = 'jobs:pending'
-    try:
-        redis_client.xgroup_create(jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
+    local_key = _local_queue_key(run, session)
+    if local_key:
+        print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
+    _ensure_consumer_groups()
 
     pipe = redis_client.pipeline()
     job_ids = []
@@ -524,15 +699,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'created_at': datetime.utcnow().isoformat(),
             'retry_count': 0,
         }
-        pipe.xadd(
-            jobs_stream,
-            {
-                'job_id': job_id,
-                'run_id': str(run.id),
-                'payload': json.dumps(job),
-            },
-        )
-        pipe.sadd(f'runs:{run.id}:job_ids', job_id)
+        _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(expanded),
