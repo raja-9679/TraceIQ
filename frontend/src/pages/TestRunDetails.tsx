@@ -4,6 +4,7 @@ import { getRun, getArtifactUrl, forceCompleteRun } from "@/lib/api";
 import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
+import CreateTicketDialog from "@/components/CreateTicketDialog";
 import { toast } from "sonner";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion, AnimatePresence } from "framer-motion";
@@ -146,16 +147,17 @@ export default function TestRunDetails() {
                             </span>
                         </h2>
                     </div>
-                    {isStuckTest && (
-                        <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3">
+                        <CreateTicketDialog runId={run.id} />
+                        {isStuckTest && (
                             <button
                                 onClick={() => setShowForceCompleteDialog(true)}
                                 className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all shadow-sm hover:shadow text-sm font-medium flex items-center gap-2"
                             >
                                 <AlertTriangle size={16} /> Force Complete
                             </button>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -807,6 +809,68 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                     </pre>
                                 </div>
                             )}
+
+                            {(result as any).result_kind === 'load' && (result as any).result_payload && (() => {
+                                const lp = (result as any).result_payload;
+                                const m = lp.metrics || {};
+                                const dur = m.http_req_duration || {};
+                                const fmt = (v: any, unit = '') => v == null ? '—' : `${Math.round((v + Number.EPSILON) * 100) / 100}${unit}`;
+                                const stat = (label: string, value: string) => (
+                                    <div key={label} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</div>
+                                        <div className="text-lg font-extrabold tabular-nums text-slate-800">{value}</div>
+                                    </div>
+                                );
+                                return (
+                                    <div>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                                            Load test · {lp.vus} VUs · {lp.duration_s}s · {lp.target_url}
+                                        </p>
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                                            {stat('Requests', fmt(m.http_reqs?.count))}
+                                            {stat('RPS', fmt(m.http_reqs?.rate))}
+                                            {stat('p95', fmt(dur['p(95)'], 'ms'))}
+                                            {stat('p99', fmt(dur['p(99)'] ?? dur['p(99.9)'], 'ms'))}
+                                            {stat('Avg', fmt(dur.avg, 'ms'))}
+                                            {stat('Error rate', fmt((m.http_req_failed?.value ?? m.http_req_failed?.rate ?? 0) * 100, '%'))}
+                                        </div>
+                                        {(lp.thresholds || []).length > 0 && (
+                                            <div className="flex flex-wrap gap-2 mt-3">
+                                                {lp.thresholds.map((t: any) => (
+                                                    <span key={t.name} className={cn(
+                                                        "px-2.5 py-1 rounded-full border text-[11px] font-semibold tabular-nums",
+                                                        t.passed ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                                                    )}>
+                                                        {t.name}: {t.actual == null ? 'n/a' : Math.round((t.actual + Number.EPSILON) * 1000) / 1000} / limit {t.limit}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {(result as any).result_payload?.web_vitals && (() => {
+                                const wv = (result as any).result_payload.web_vitals;
+                                const chip = (label: string, val: number | null, unit: string, warn: boolean) => val == null ? null : (
+                                    <span key={label} className={cn(
+                                        "px-2.5 py-1 rounded-full border text-[11px] font-semibold tabular-nums",
+                                        warn ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-50 text-slate-600 border-slate-200"
+                                    )}>
+                                        {label} {unit === '' ? val.toFixed(3) : `${Math.round(val)}${unit}`}
+                                    </span>
+                                );
+                                return (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Web vitals</span>
+                                        {chip('TTFB', wv.ttfb_ms, 'ms', wv.ttfb_ms > 800)}
+                                        {chip('FCP', wv.fcp_ms, 'ms', wv.fcp_ms > 1800)}
+                                        {chip('LCP', wv.lcp_ms, 'ms', wv.lcp_ms > 2500)}
+                                        {chip('CLS', wv.cls, '', wv.cls > 0.1)}
+                                        {chip('Load', wv.load_ms, 'ms', wv.load_ms > 5000)}
+                                    </div>
+                                );
+                            })()}
 
                             <Tabs.Root defaultValue="details" className="flex flex-col">
                                 <Tabs.List className="flex shrink-0 border-b border-gray-200 mb-5 overflow-x-auto custom-scrollbar pb-px">

@@ -1,0 +1,1314 @@
+<title>TraceIQ — Platform Documentation</title>
+<style>
+  :root {
+    --bg: #f6f8fc; --surface: #ffffff; --surface-2: #f0f3fa; --surface-3: #e9edf6;
+    --ink: #14161d; --ink-2: #464c5b; --muted: #7b8395; --border: #e2e7f1;
+    --accent: #4f46e5; --accent-2: #6366f1; --accent-soft: #ecedfe; --accent-ink: #4338ca;
+    --good: #0e9f6e; --good-soft: #e3f5ec; --warn: #c2740a; --warn-soft: #fbf0dd;
+    --crit: #dc2846; --crit-soft: #fce4e8; --new: #7c3aed; --new-soft: #f0e9fe;
+    --code-bg: #0f1320; --code-ink: #d7def0; --code-dim: #7c86a3;
+    --code-key: #c4b5fd; --code-str: #86efac; --code-com: #64748b; --code-num: #fca5a5;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --shadow: 0 1px 2px rgba(20,22,29,.04), 0 4px 16px rgba(20,22,29,.05);
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0d13; --surface: #12151e; --surface-2: #171b26; --surface-3: #1e2432;
+      --ink: #e8ebf2; --ink-2: #aab2c3; --muted: #6c7488; --border: #232a39;
+      --accent: #8b8cf9; --accent-2: #a5a6fb; --accent-soft: #1c1e39; --accent-ink: #c7c8fc;
+      --good: #34d399; --good-soft: #0e2a20; --warn: #e0a83f; --warn-soft: #2c220f;
+      --crit: #fb7185; --crit-soft: #2c1218; --new: #b794f6; --new-soft: #241a3a;
+      --code-bg: #090b12; --code-ink: #d7def0;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.28);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f8fc; --surface: #ffffff; --surface-2: #f0f3fa; --surface-3: #e9edf6;
+    --ink: #14161d; --ink-2: #464c5b; --muted: #7b8395; --border: #e2e7f1;
+    --accent: #4f46e5; --accent-2: #6366f1; --accent-soft: #ecedfe; --accent-ink: #4338ca;
+    --good: #0e9f6e; --good-soft: #e3f5ec; --warn: #c2740a; --warn-soft: #fbf0dd;
+    --crit: #dc2846; --crit-soft: #fce4e8; --new: #7c3aed; --new-soft: #f0e9fe;
+    --code-bg: #0f1320; --code-ink: #d7def0; --shadow: 0 1px 2px rgba(20,22,29,.04), 0 4px 16px rgba(20,22,29,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b0d13; --surface: #12151e; --surface-2: #171b26; --surface-3: #1e2432;
+    --ink: #e8ebf2; --ink-2: #aab2c3; --muted: #6c7488; --border: #232a39;
+    --accent: #8b8cf9; --accent-2: #a5a6fb; --accent-soft: #1c1e39; --accent-ink: #c7c8fc;
+    --good: #34d399; --good-soft: #0e2a20; --warn: #e0a83f; --warn-soft: #2c220f;
+    --crit: #fb7185; --crit-soft: #2c1218; --new: #b794f6; --new-soft: #241a3a;
+    --code-bg: #090b12; --code-ink: #d7def0; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 20px rgba(0,0,0,.28);
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } * { transition: none !important; animation: none !important; } }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--sans);
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent-ink); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  /* ---- top bar ---- */
+  .topbar {
+    position: sticky; top: 0; z-index: 40; height: 58px; display: flex; align-items: center;
+    gap: 14px; padding: 0 20px; background: color-mix(in srgb, var(--surface) 86%, transparent);
+    backdrop-filter: blur(10px); border-bottom: 1px solid var(--border);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: -.02em; font-size: 1.05rem; }
+  .brand .glyph {
+    width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; font-size: 15px;
+  }
+  .brand small { font-family: var(--mono); font-weight: 600; font-size: .62rem; color: var(--muted);
+    letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border: 1px solid var(--border); border-radius: 6px; }
+  .topbar .spacer { flex: 1; }
+  .topbar .ver { font-family: var(--mono); font-size: .72rem; color: var(--muted); }
+  .icon-btn {
+    appearance: none; border: 1px solid var(--border); background: var(--surface); color: var(--ink-2);
+    width: 36px; height: 36px; border-radius: 9px; cursor: pointer; display: grid; place-items: center; font-size: 15px;
+  }
+  .icon-btn:hover { background: var(--surface-2); }
+  #menuBtn { display: none; }
+
+  /* ---- search trigger + palette ---- */
+  .searchtrigger {
+    display: flex; align-items: center; gap: 9px; margin-left: 14px; margin-right: auto;
+    flex: 0 1 380px; min-width: 0; height: 36px; padding: 0 10px 0 12px; cursor: text;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; color: var(--muted); font: inherit;
+  }
+  .searchtrigger:hover { border-color: var(--accent); }
+  .searchtrigger .si { font-size: 15px; color: var(--muted); }
+  .searchtrigger .sl { flex: 1; text-align: left; font-size: .86rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .searchtrigger kbd, .search-inputwrap kbd {
+    font-family: var(--mono); font-size: .68rem; color: var(--ink-2); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 2px 6px; line-height: 1;
+  }
+  .search-overlay { position: fixed; inset: 0; z-index: 60; background: color-mix(in srgb, #05070c 46%, transparent);
+    backdrop-filter: blur(3px); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+  .search-overlay[hidden] { display: none; }
+  .search-panel { width: 100%; max-width: 640px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; box-shadow: 0 24px 60px rgba(5,7,12,.4); overflow: hidden; }
+  .search-inputwrap { display: flex; align-items: center; gap: 11px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .search-inputwrap .si { font-size: 19px; color: var(--accent-ink); }
+  #searchInput { flex: 1; border: none; background: transparent; color: var(--ink); font: inherit; font-size: 1.02rem; outline: none; }
+  #searchInput::placeholder { color: var(--muted); }
+  .search-results { max-height: 56vh; overflow-y: auto; padding: 6px; }
+  .search-result { display: block; width: 100%; text-align: left; background: transparent; border: none; border-radius: 10px;
+    padding: 10px 12px; cursor: pointer; color: var(--ink); }
+  .search-result:hover, .search-result.sel { background: var(--accent-soft); }
+  .search-result .rt { font-weight: 650; font-size: .92rem; display: flex; align-items: center; gap: 8px; }
+  .search-result .rc { font-family: var(--mono); font-size: .64rem; letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink);
+    background: var(--surface-2); border: 1px solid var(--border); padding: 2px 6px; border-radius: 5px; white-space: nowrap; }
+  .search-result .rs { font-size: .82rem; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .search-result mark { background: color-mix(in srgb, var(--warn) 32%, transparent); color: inherit; border-radius: 3px; padding: 0 1px; }
+  .search-empty { padding: 26px 18px 30px; text-align: center; color: var(--muted); font-size: .9rem; }
+  .search-empty[hidden] { display: none; }
+  .search-foot { display: flex; gap: 14px; padding: 9px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: .72rem; }
+  .search-foot span { display: flex; align-items: center; gap: 5px; }
+  @keyframes flashfade { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
+  .flash { animation: flashfade 1.7s ease-out; border-radius: 12px; }
+  section > h2 { scroll-margin-top: 74px; }
+  .card, .fcard { scroll-margin-top: 74px; }
+  @media (max-width: 720px) { .ver { display: none; } .searchtrigger .sl, .searchtrigger kbd { display: none; } .searchtrigger { flex-basis: 40px; } }
+
+  /* ---- shell ---- */
+  .shell { display: grid; grid-template-columns: 272px minmax(0,1fr); max-width: 1400px; margin: 0 auto; }
+  nav.side {
+    position: sticky; top: 58px; align-self: start; height: calc(100vh - 58px); overflow-y: auto;
+    padding: 22px 14px 60px; border-right: 1px solid var(--border);
+  }
+  nav.side .grp { font-family: var(--mono); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); margin: 20px 10px 7px; }
+  nav.side a { display: block; color: var(--ink-2); padding: 5px 10px; border-radius: 8px; font-size: .875rem; line-height: 1.4; }
+  nav.side a:hover { background: var(--surface-2); text-decoration: none; color: var(--ink); }
+  nav.side a.active { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+
+  main { padding: 40px clamp(20px, 4vw, 60px) 120px; min-width: 0; }
+
+  /* ---- hero ---- */
+  .hero { border-bottom: 1px solid var(--border); padding-bottom: 34px; margin-bottom: 40px; }
+  .eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--accent-ink); }
+  .hero h1 { font-size: clamp(2rem, 4.5vw, 3rem); line-height: 1.05; letter-spacing: -.03em; margin: 12px 0 0; text-wrap: balance; }
+  .hero p.lead { font-size: 1.12rem; color: var(--ink-2); max-width: 66ch; margin: 16px 0 0; }
+  .hero .pills { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+  .pill { font-family: var(--mono); font-size: .72rem; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink-2); }
+  .pill b { color: var(--accent-ink); font-weight: 700; }
+
+  section { scroll-margin-top: 76px; margin-top: 52px; }
+  section > h2 { font-size: 1.6rem; letter-spacing: -.02em; margin: 0 0 4px; padding-top: 10px; }
+  .sec-sub { color: var(--muted); margin: 0 0 22px; font-size: .95rem; }
+  h3 { font-size: 1.12rem; letter-spacing: -.01em; margin: 0 0 6px; }
+  p { margin: 0 0 14px; max-width: 72ch; }
+  .lead-narrow { max-width: 70ch; }
+
+  /* ---- cards ---- */
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 22px 24px; box-shadow: var(--shadow); margin-bottom: 18px;
+  }
+  .card .head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .card .head h3 { margin: 0; }
+  .what { color: var(--ink-2); }
+  .how-label, .note-label { font-family: var(--mono); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); display: block; margin: 16px 0 8px; }
+  ol.steps { margin: 0; padding-left: 0; list-style: none; counter-reset: s; }
+  ol.steps li { position: relative; padding: 3px 0 3px 30px; margin-bottom: 4px; counter-increment: s; color: var(--ink-2); max-width: 70ch; }
+  ol.steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 3px; width: 20px; height: 20px; border-radius: 6px;
+    background: var(--accent-soft); color: var(--accent-ink); font-family: var(--mono); font-size: .72rem; font-weight: 700;
+    display: grid; place-items: center;
+  }
+  ul.bul { margin: 0 0 8px; padding-left: 18px; }
+  ul.bul li { margin-bottom: 5px; color: var(--ink-2); max-width: 70ch; }
+  .note { display: flex; gap: 10px; background: var(--surface-2); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 8px; padding: 11px 14px; font-size: .9rem; color: var(--ink-2); margin: 14px 0 0; }
+  .note.warn { border-left-color: var(--warn); }
+  .note code { background: transparent; padding: 0; color: var(--accent-ink); }
+
+  /* ---- badges ---- */
+  .badge { font-family: var(--mono); font-size: .62rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 8px; border-radius: 6px; border: 1px solid transparent; white-space: nowrap; }
+  .b-new { background: var(--new-soft); color: var(--new); border-color: color-mix(in srgb, var(--new) 30%, transparent); }
+  .b-core { background: var(--accent-soft); color: var(--accent-ink); }
+  .b-good { background: var(--good-soft); color: var(--good); }
+  .b-beta { background: var(--warn-soft); color: var(--warn); }
+
+  /* ---- code ---- */
+  pre { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 15px 16px; overflow-x: auto;
+    font-family: var(--mono); font-size: .82rem; line-height: 1.6; margin: 6px 0 0; border: 1px solid rgba(255,255,255,.06); }
+  code { font-family: var(--mono); font-size: .86em; background: var(--surface-2); padding: 1px 6px; border-radius: 5px; color: var(--accent-ink); }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  .tok-k { color: var(--code-key); } .tok-s { color: var(--code-str); } .tok-c { color: var(--code-com); } .tok-n { color: var(--code-num); } .tok-d { color: var(--code-dim); }
+
+  /* ---- tables ---- */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; margin: 6px 0 0; }
+  table { border-collapse: collapse; width: 100%; font-size: .875rem; }
+  th, td { text-align: left; padding: 9px 13px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { font-family: var(--mono); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); background: var(--surface-2); }
+  tr:last-child td { border-bottom: none; }
+  td code { white-space: nowrap; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ---- feature grid ---- */
+  .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; margin-top: 4px; }
+  .fcard { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 17px; }
+  .fcard .t { font-weight: 700; font-size: .95rem; display: flex; align-items: center; gap: 8px; }
+  .fcard .d { color: var(--muted); font-size: .84rem; margin-top: 5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+
+  /* ---- step catalog chips ---- */
+  .catgrp { margin-top: 14px; }
+  .catgrp .cat-h { font-family: var(--mono); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .chip { font-family: var(--mono); font-size: .76rem; padding: 4px 9px; border-radius: 7px; background: var(--surface-2); border: 1px solid var(--border); color: var(--ink-2); }
+  .chip.nw { border-color: color-mix(in srgb, var(--new) 40%, transparent); color: var(--new); background: var(--new-soft); }
+
+  /* ---- schematic UI mock ---- */
+  .mock { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--surface); margin: 8px 0 0; }
+  .mock .bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--border); }
+  .mock .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--border); display: inline-block; }
+  .mock .bar span { font-family: var(--mono); font-size: .7rem; color: var(--muted); margin-left: 6px; }
+  .mock .body { padding: 16px; display: grid; gap: 12px; }
+  .mock .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .mock .kpi { background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; }
+  .mock .kpi .l { font-family: var(--mono); font-size: .58rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .mock .kpi .v { font-size: 1.35rem; font-weight: 800; letter-spacing: -.02em; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .mock .caption { font-size: .76rem; color: var(--muted); text-align: center; padding: 4px 0 0; font-style: italic; }
+
+  /* ---- real screenshot figure ---- */
+  figure.shot { margin: 8px 0 0; }
+  figure.shot img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); background: var(--surface); }
+  figure.shot figcaption { font-size: .78rem; color: var(--muted); text-align: center; padding: 8px 0 0; }
+  figure.shot figcaption b { color: var(--ink-2); font-weight: 600; }
+  .hero figure.shot { margin-top: 26px; }
+  .spark { display: flex; align-items: flex-end; gap: 3px; height: 46px; }
+  .spark i { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; opacity: .85; }
+  .gatebar { display: flex; gap: 8px; flex-wrap: wrap; }
+  .gatecheck { display: flex; align-items: center; gap: 7px; font-size: .8rem; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); }
+
+  .arrowflow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 0; }
+  .flowstep { background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 8px 13px; font-size: .82rem; font-weight: 600; }
+  .flowstep small { display: block; font-weight: 400; color: var(--muted); font-family: var(--mono); font-size: .66rem; margin-top: 1px; }
+  .flowarrow { color: var(--muted); font-weight: 700; }
+
+  .hierarchy { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; font-family: var(--mono); font-size: .82rem; }
+  .hnode { padding: 6px 11px; border-radius: 8px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+  .hierarchy .sep { color: var(--muted); }
+
+  footer { border-top: 1px solid var(--border); margin-top: 70px; padding: 28px clamp(20px,4vw,60px); color: var(--muted); font-size: .85rem; }
+
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    nav.side { position: fixed; top: 58px; left: 0; width: 280px; background: var(--surface); z-index: 30;
+      transform: translateX(-102%); transition: transform .2s ease; box-shadow: var(--shadow); }
+    nav.side.open { transform: translateX(0); }
+    #menuBtn { display: grid; }
+    .mock .kpis { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+
+<div class="topbar">
+  <button class="icon-btn" id="menuBtn" aria-label="Toggle navigation">☰</button>
+  <div class="brand"><span class="glyph">◎</span> TraceIQ <small>Docs</small></div>
+  <button class="searchtrigger" id="searchBtn" aria-label="Search the documentation">
+    <span class="si" aria-hidden="true">⌕</span>
+    <span class="sl">Search the docs…</span>
+    <kbd>/</kbd>
+  </button>
+  <span class="ver">unified quality platform</span>
+  <button class="icon-btn" id="themeBtn" aria-label="Toggle light/dark theme">◐</button>
+</div>
+
+<div class="search-overlay" id="searchOverlay" hidden>
+  <div class="search-panel" role="dialog" aria-modal="true" aria-label="Search documentation">
+    <div class="search-inputwrap">
+      <span class="si" aria-hidden="true">⌕</span>
+      <input id="searchInput" type="text" placeholder="Search features, steps, endpoints…" autocomplete="off" spellcheck="false" aria-label="Search query">
+      <kbd>Esc</kbd>
+    </div>
+    <div class="search-results" id="searchResults" role="listbox" aria-label="Search results"></div>
+    <div class="search-empty" id="searchEmpty" hidden>No matches. Try “load”, “graphql”, “gate”, “monitor”, or “token”.</div>
+    <div class="search-foot">
+      <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
+      <span><kbd>↵</kbd> jump</span>
+      <span><kbd>esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<div class="shell">
+  <nav class="side" id="sidenav">
+    <div class="grp">Start here</div>
+    <a href="#overview">What TraceIQ is</a>
+    <a href="#concepts">Core concepts</a>
+    <a href="#lifecycle">Run lifecycle</a>
+    <div class="grp">Authoring</div>
+    <a href="#builder">Test builder</a>
+    <a href="#steps">Step catalog</a>
+    <a href="#variables">Variables &amp; secrets</a>
+    <a href="#ai-authoring">AI generation</a>
+    <a href="#import">Import &amp; record</a>
+    <a href="#data-driven">Data-driven tests</a>
+    <a href="#personas">Personas &amp; auth</a>
+    <div class="grp">Running</div>
+    <a href="#modes">Execution modes</a>
+    <a href="#schedules">Schedules</a>
+    <a href="#local-worker">Local dev worker</a>
+    <a href="#healing">Self-healing</a>
+    <div class="grp">Testing pillars</div>
+    <a href="#ui-testing">UI testing</a>
+    <a href="#api-testing">API testing</a>
+    <a href="#performance">Performance &amp; vitals</a>
+    <a href="#load">Load testing</a>
+    <a href="#security">Security testing</a>
+    <a href="#monitoring">Synthetic monitoring</a>
+    <div class="grp">Results</div>
+    <a href="#run-details">Run details &amp; trace</a>
+    <a href="#failure-analysis">AI failure analysis</a>
+    <a href="#triage">Triage &amp; flake</a>
+    <a href="#comparison">Comparison runs</a>
+    <div class="grp">Quality &amp; delivery</div>
+    <a href="#quality-gate">Dashboard &amp; gate</a>
+    <a href="#junit">CI results ingestion</a>
+    <a href="#ci">PR gating</a>
+    <a href="#traceability">Traceability</a>
+    <a href="#tickets">Issue trackers</a>
+    <a href="#analytics">Analytics &amp; reports</a>
+    <div class="grp">Platform &amp; admin</div>
+    <a href="#rbac">Users &amp; RBAC</a>
+    <a href="#auth">Auth: SSO &amp; MFA</a>
+    <a href="#billing">Billing &amp; plans</a>
+    <a href="#llm">AI usage &amp; providers</a>
+    <a href="#api-keys">API keys &amp; webhooks</a>
+    <div class="grp">Integrations</div>
+    <a href="#mcp">MCP server</a>
+    <a href="#github">GitHub Action</a>
+    <a href="#cheatsheet">API cheat sheet</a>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="eyebrow">Platform Documentation</div>
+      <h1>One platform for every layer of quality</h1>
+      <p class="lead">TraceIQ records browser and API test journeys, runs them across distributed workers, and correlates <b>UI, API, performance, load, security, and uptime</b> against the same commit — then a single quality gate decides go / no-go. This page covers every feature: what it does, and how to use it.</p>
+      <div class="pills">
+        <span class="pill"><b>6</b> testing pillars</span>
+        <span class="pill"><b>45+</b> step types</span>
+        <span class="pill"><b>29</b> MCP tools</span>
+        <span class="pill">Multi-tenant &amp; RBAC</span>
+        <span class="pill">AI-native</span>
+      </div>
+      <figure class="shot">
+        <img src="screenshots/dashboard.png" alt="TraceIQ dashboard" loading="lazy">
+        <figcaption><b>The TraceIQ web app</b> — the dashboard, showing recent runs and health at a glance.</figcaption>
+      </figure>
+    </header>
+
+    <!-- OVERVIEW -->
+    <section id="overview">
+      <h2>What TraceIQ is</h2>
+      <p class="sec-sub">A unified quality platform — not just a UI testing tool.</p>
+      <p>TraceIQ began as a Playwright-based UI testing product and has grown into a single place a team uses to keep a product healthy across every layer. The defensible idea is <strong>unification</strong>: rather than out-featuring k6 at load or ZAP at security, TraceIQ ties all of them to the same <code>git_commit</code> / pull request, reasons across the results with AI, and gates a release on the whole picture.</p>
+      <div class="fgrid">
+        <div class="fcard"><div class="t"><span class="dot" style="background:var(--accent)"></span>Frontend / UI</div><div class="d">Playwright journeys, visual diff, accessibility, network mocking.</div></div>
+        <div class="fcard"><div class="t"><span class="dot" style="background:var(--accent)"></span>API</div><div class="d">REST, GraphQL, OAuth2, JSON-schema contracts, request chaining.</div></div>
+        <div class="fcard"><div class="t"><span class="dot" style="background:var(--warn)"></span>Performance</div><div class="d">Web-vitals captured on every UI run, enforced as budgets.</div></div>
+        <div class="fcard"><div class="t"><span class="dot" style="background:var(--warn)"></span>Load</div><div class="d">k6 load tests with latency / error-rate / RPS thresholds.</div></div>
+        <div class="fcard"><div class="t"><span class="dot" style="background:var(--crit)"></span>Security</div><div class="d">Passive checks on every run + authenticated ZAP scans.</div></div>
+        <div class="fcard"><div class="t"><span class="dot" style="background:var(--good)"></span>Monitoring</div><div class="d">Scheduled prod health checks, uptime, public status pages.</div></div>
+      </div>
+      <span class="how-label">Services under the hood</span>
+      <p class="lead-narrow">A FastAPI + Celery control plane dispatches jobs over Redis Streams to Node/Playwright workers, stores artifacts in MinIO (S3-compatible), and persists everything in PostgreSQL. You interact through the React web app, the REST API, the MCP server, or the GitHub Action.</p>
+    </section>
+
+    <!-- CONCEPTS -->
+    <section id="concepts">
+      <h2>Core concepts</h2>
+      <p class="sec-sub">The hierarchy, roles, and executor model everything else builds on.</p>
+
+      <div class="card">
+        <div class="head"><h3>The object hierarchy</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Everything is scoped inside a tenant. Settings (headers, params, auth) are inherited from a parent suite to its children unless a child opts out.</p>
+        <div class="hierarchy" style="margin-top:12px">
+          <span class="hnode">Tenant</span><span class="sep">→</span>
+          <span class="hnode">Workspace</span><span class="sep">→</span>
+          <span class="hnode">Team</span><span class="sep">→</span>
+          <span class="hnode">Project</span><span class="sep">→</span>
+          <span class="hnode">Test&nbsp;Suite</span><span class="sep">↻→</span>
+          <span class="hnode">Test&nbsp;Case</span>
+        </div>
+        <div class="note">Test suites are self-referential — a suite can contain sub-suites for nested module hierarchies. A test case holds an ordered array of steps.</div>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>Roles &amp; access (RBAC)</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Access is checked at Workspace → Team → Project → TestCase level. Three minimum roles gate what you can do:</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Role</th><th>Can</th></tr></thead>
+            <tbody>
+              <tr><td><b>Viewer</b></td><td>Read suites, cases, runs, results, dashboards.</td></tr>
+              <tr><td><b>Editor</b></td><td>Everything a viewer can, plus create / edit / run tests, delete runs, triage findings.</td></tr>
+              <tr><td><b>Admin</b></td><td>Everything an editor can, plus manage members, plans, and delete projects.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="head"><h3>Executors</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Each test case declares an <em>executor</em> — the kind of worker that runs it. The run denormalizes it at dispatch, so a new pillar is just a new worker reporting through the same job → webhook → finalize contract.</p>
+        <div class="chips" style="margin-top:10px">
+          <span class="chip">ui_playwright <span style="color:var(--muted)">· default</span></span>
+          <span class="chip">raw_playwright</span>
+          <span class="chip">api</span>
+          <span class="chip nw">load</span>
+          <span class="chip">security</span>
+        </div>
+        <div class="note">You rarely set the executor by hand — a case containing a <code>load-test</code> step is automatically flagged as a load case, for example.</div>
+      </div>
+    </section>
+
+    <!-- LIFECYCLE -->
+    <section id="lifecycle">
+      <h2>Run lifecycle</h2>
+      <p class="sec-sub">What happens between "Run" and a finalized result.</p>
+      <div class="card">
+        <div class="arrowflow">
+          <div class="flowstep">Create run<small>POST /api/runs</small></div><span class="flowarrow">→</span>
+          <div class="flowstep">Dispatch<small>Redis stream</small></div><span class="flowarrow">→</span>
+          <div class="flowstep">Worker runs<small>Playwright / k6 / ZAP</small></div><span class="flowarrow">→</span>
+          <div class="flowstep">Upload artifacts<small>MinIO</small></div><span class="flowarrow">→</span>
+          <div class="flowstep">Aggregate + finalize<small>Celery</small></div><span class="flowarrow">→</span>
+          <div class="flowstep">Notify + gate<small>Slack / webhook / CI</small></div>
+        </div>
+        <span class="how-label">Trigger a run</span>
+        <pre><code><span class="tok-c"># Run a whole suite; git context is optional but powers PR correlation</span>
+curl -X POST "$TRACEIQ/api/runs?suite_id=42&amp;browser=chromium" \
+  -H "X-API-Key: tiq_..." \
+  -H "Content-Type: application/json" \
+  -d '{<span class="tok-k">"git_commit"</span>: <span class="tok-s">"abc123"</span>, <span class="tok-k">"git_branch"</span>: <span class="tok-s">"main"</span>, <span class="tok-k">"git_pr_url"</span>: <span class="tok-s">"https://github.com/org/repo/pull/12"</span>}'
+
+<span class="tok-c"># Then poll for status</span>
+curl "$TRACEIQ/api/runs/507" -H "X-API-Key: tiq_..."</code></pre>
+        <div class="note warn"><span><code>celery_beat</code> is required for runs to finalize — it drains the results stream every 2 seconds. Without it, runs stay <code>RUNNING</code> forever even after workers complete.</span></div>
+      </div>
+    </section>
+
+    <!-- BUILDER -->
+    <section id="builder">
+      <h2>Test builder</h2>
+      <p class="sec-sub">Author steps visually, with a screenshot-based element picker.</p>
+      <div class="card">
+        <div class="head"><h3>Building a test case</h3><span class="badge b-core">Core</span></div>
+        <p class="what">The builder is a step-by-step editor: each step has a type, a target (selector or URL), and type-specific parameters. An element picker renders the page headless and lets you click the element you mean instead of hand-writing selectors.</p>
+        <span class="how-label">How to use</span>
+        <ol class="steps">
+          <li>Open a suite → <em>New test case</em> (or <em>Builder</em> for the full-screen editor).</li>
+          <li>Add steps from the action menu — grouped into Navigation &amp; Interaction, Assertions, API &amp; Data, and Advanced.</li>
+          <li>For UI steps, use <em>Pick element</em> to grab a stable selector from a live screenshot of the page.</li>
+          <li>Save. Run the case standalone, or as part of its suite.</li>
+        </ol>
+        <div class="note">Prefer stable selectors: <code>#id</code>, <code>[data-testid=…]</code>, then role/text selectors. Steps also carry an optional <code>intent</code> string that powers AI self-healing when a selector drifts.</div>
+      </div>
+    </section>
+
+    <!-- STEPS -->
+    <section id="steps">
+      <h2>Step catalog</h2>
+      <p class="sec-sub">45+ step types. New in this build are highlighted.</p>
+      <div class="card">
+        <div class="catgrp">
+          <div class="cat-h">Navigation &amp; interaction</div>
+          <div class="chips">
+            <span class="chip">goto</span><span class="chip">click</span><span class="chip">double-click</span><span class="chip">right-click</span>
+            <span class="chip">fill</span><span class="chip">check</span><span class="chip">uncheck</span><span class="chip">select-option</span>
+            <span class="chip">hover</span><span class="chip">press-key</span><span class="chip">scroll-to</span><span class="chip">drag-and-drop</span>
+            <span class="chip">upload-file</span><span class="chip">download-file</span><span class="chip">handle-dialog</span>
+            <span class="chip">switch-tab</span><span class="chip">switch-frame</span><span class="chip">carousel-find</span>
+          </div>
+        </div>
+        <div class="catgrp">
+          <div class="cat-h">Waits &amp; assertions</div>
+          <div class="chips">
+            <span class="chip">wait-for-selector</span><span class="chip">wait-timeout</span><span class="chip">wait-for-response</span>
+            <span class="chip">expect-visible</span><span class="chip">expect-hidden</span><span class="chip">expect-text</span><span class="chip">expect-not-text</span>
+            <span class="chip">expect-url</span><span class="chip">expect-title</span><span class="chip">verify-nth-child</span><span class="chip">count-children</span><span class="chip">assert</span>
+          </div>
+        </div>
+        <div class="catgrp">
+          <div class="cat-h">API &amp; data</div>
+          <div class="chips">
+            <span class="chip">http-request</span><span class="chip nw">graphql</span><span class="chip nw">oauth2-token</span>
+            <span class="chip">feed-check</span><span class="chip">amp-validate</span><span class="chip nw">check-tls</span>
+            <span class="chip">extract-value</span><span class="chip">run-script</span>
+          </div>
+        </div>
+        <div class="catgrp">
+          <div class="cat-h">Network, visual &amp; a11y</div>
+          <div class="chips">
+            <span class="chip">mock-response</span><span class="chip">block-request</span><span class="chip">set-network-latency</span>
+            <span class="chip">screenshot</span><span class="chip">expect-visual-match</span><span class="chip">check-accessibility</span>
+          </div>
+        </div>
+        <div class="catgrp">
+          <div class="cat-h">Load</div>
+          <div class="chips"><span class="chip nw">load-test</span></div>
+        </div>
+        <div class="note">The full machine-readable catalog — every parameter, example, and gotcha — lives at <code>GET /api/step-types</code>, and is what the MCP <code>describe_step_types</code> tool returns to AI agents.</div>
+      </div>
+    </section>
+
+    <!-- VARIABLES -->
+    <section id="variables">
+      <h2>Variables &amp; secrets</h2>
+      <p class="sec-sub">Interpolation tokens that make suites portable and data-driven.</p>
+      <div class="card">
+        <div class="head"><h3>Interpolation</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Any step value, header, param, or body can reference runtime values with <code>{{…}}</code> tokens, resolved by the worker at execution time.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Token</th><th>Resolves to</th></tr></thead>
+            <tbody>
+              <tr><td><code>{{env.KEY}}</code></td><td>A variable from the selected project Environment.</td></tr>
+              <tr><td><code>{{secret.KEY}}</code></td><td>A Fernet-encrypted Project Secret (decrypted only at dispatch, never logged).</td></tr>
+              <tr><td><code>{{data.KEY}}</code></td><td>A column from the current data-driven dataset row.</td></tr>
+              <tr><td><code>{{fake.KIND}}</code></td><td>Generated test data — <code>uuid</code>, <code>email</code>, <code>name</code>, <code>phone</code>, <code>date</code>…</td></tr>
+              <tr><td><code>{{name}}</code></td><td>A runtime variable set earlier by <code>extract-value</code>, an API <code>extract</code>, or <code>run-script</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Environments &amp; secrets</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Reusable per-project configs so one suite runs against dev / staging / prod. A relative <code>goto</code> URL resolves against the environment's <code>base_url</code>.</p>
+        <span class="how-label">How to use</span>
+        <ol class="steps">
+          <li>Go to <em>Environments</em>, create one per target (dev, staging, prod) with a <code>base_url</code> and variables.</li>
+          <li>Add secrets (tokens, passwords) — they are write-only and stored encrypted.</li>
+          <li>Reference them in steps as <code>{{env.X}}</code> / <code>{{secret.X}}</code>, and pin a run to an environment when you trigger it.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- AI AUTHORING -->
+    <section id="ai-authoring">
+      <h2>AI generation</h2>
+      <p class="sec-sub">Draft tests from a description or an API schema.</p>
+      <div class="card">
+        <div class="head"><h3>Test-from-intent</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Describe a journey in plain language; TraceIQ live-probes the target URL so generated selectors and assertions are grounded in what the page actually serves, not hallucinated.</p>
+        <pre><code>POST /api/cases/generate
+{<span class="tok-k">"description"</span>: <span class="tok-s">"Log in as a standard user and confirm the dashboard loads"</span>,
+ <span class="tok-k">"target_url"</span>: <span class="tok-s">"https://staging.example.com/login"</span>,
+ <span class="tok-k">"test_suite_id"</span>: <span class="tok-n">42</span>}</code></pre>
+        <div class="note">API-key (agent) callers are forced into <code>propose</code> mode — the draft lands in a review queue for a human to accept, never written directly.</div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Test-from-OpenAPI</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Point it at an OpenAPI document and it emits one case per operation with ready-made <code>http-request</code> steps.</p>
+        <pre><code>POST /api/cases/from-openapi
+{<span class="tok-k">"schema_url"</span>: <span class="tok-s">"https://api.example.com/openapi.json"</span>, <span class="tok-k">"test_suite_id"</span>: <span class="tok-n">42</span>}</code></pre>
+      </div>
+    </section>
+
+    <!-- IMPORT -->
+    <section id="import">
+      <h2>Import &amp; record</h2>
+      <p class="sec-sub">Bring existing assets in with less friction.</p>
+      <div class="card">
+        <div class="head"><h3>Import Playwright scripts</h3><span class="badge b-beta">Gated</span></div>
+        <p class="what">Upload a <code>.spec.ts</code> and run it verbatim through the Playwright test runner (the <code>raw_playwright</code> executor). Zero-friction, but you trade away step-level AI heal and the per-step trace mapping until it's converted to native steps.</p>
+        <ol class="steps">
+          <li><em>Import Playwright</em> → paste or upload your spec.</li>
+          <li>Enable on a sandboxed worker only — it runs arbitrary code, so it is gated by <code>RAW_PLAYWRIGHT_ENABLED</code> and needs a worker image with browsers.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Browser recorder</h3><span class="badge b-beta">Scaffold</span></div>
+        <p class="what">A Chrome MV3 extension records <code>goto</code> / <code>click</code> / <code>fill</code> / <code>press-key</code> with stable selectors and an <code>intent</code>, then posts them to <code>/api/cases</code> with your API key. Install unpacked via developer mode.</p>
+      </div>
+    </section>
+
+    <!-- DATA DRIVEN -->
+    <section id="data-driven">
+      <h2>Data-driven tests</h2>
+      <p class="sec-sub">Run one case across many input rows.</p>
+      <div class="card">
+        <div class="head"><h3>Datasets</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Attach a dataset (a list of rows) to a case; the worker expands it into one execution per row, and each row's columns are available as <code>{{data.KEY}}</code>.</p>
+        <pre><code><span class="tok-c">// A login case with three credential rows becomes three executions</span>
+dataset = [
+  {<span class="tok-k">"user"</span>: <span class="tok-s">"alice"</span>, <span class="tok-k">"pass"</span>: <span class="tok-s">"wonderland"</span>},
+  {<span class="tok-k">"user"</span>: <span class="tok-s">"bob"</span>,   <span class="tok-k">"pass"</span>: <span class="tok-s">"builder"</span>}
+]
+<span class="tok-c">// step: fill #username → {{data.user}}, fill #password → {{data.pass}}</span></code></pre>
+      </div>
+    </section>
+
+    <!-- PERSONAS -->
+    <section id="personas">
+      <h2>Personas &amp; auth sessions</h2>
+      <p class="sec-sub">Run tests "as" a logged-in user without repeating the login every time.</p>
+      <div class="card">
+        <div class="head"><h3>Auth sessions</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Mark a case as an <em>auth setup</em>; on success the worker captures its logged-in <code>storageState</code>, which TraceIQ stores and injects into later runs in the project — so downstream tests start already authenticated.</p>
+        <span class="how-label">How to use</span>
+        <ol class="steps">
+          <li>Create a case that performs the login and flag it <em>is auth setup</em>.</li>
+          <li>Run it once — the session is captured and persisted.</li>
+          <li>Other cases reuse it automatically (opt out per case with <em>use auth session = off</em>).</li>
+        </ol>
+        <div class="note">Personas extend this: saved storage-state + headers with optional auto-login refresh, so a run can execute as a specific user (standard, admin, …).</div>
+      </div>
+    </section>
+
+    <!-- MODES -->
+    <section id="modes">
+      <h2>Execution modes</h2>
+      <p class="sec-sub">How a suite's cases are distributed across workers.</p>
+      <div class="card">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Mode</th><th>Behavior</th><th>Use when</th></tr></thead>
+            <tbody>
+              <tr><td><b>SEPARATE</b></td><td>One job per case (or per sub-suite), run in isolation.</td><td>Independent tests; maximum parallelism.</td></tr>
+              <tr><td><b>CONTINUOUS</b></td><td>One job per suite; cases share a browser context sequentially.</td><td>Steps that build on shared state.</td></tr>
+              <tr><td><b>PARALLEL</b></td><td>Fan-out one job per case with a concurrency hint.</td><td>Large suites; tune with <code>PARALLEL_MAX_CONCURRENCY</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCHEDULES -->
+    <section id="schedules">
+      <h2>Schedules</h2>
+      <p class="sec-sub">Run suites on a cron — the basis for monitoring and recurring scans.</p>
+      <div class="card">
+        <div class="head"><h3>Scheduling</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Create a schedule with a cron expression against a suite or case. A schedule can also be flagged as a <em>monitor</em> (see Synthetic monitoring) or set to fire a recurring <em>security scan</em>.</p>
+        <ol class="steps">
+          <li><em>Schedules</em> → New → pick a suite, set the cron (e.g. <code>0 9 * * 1</code> for Mondays 9am).</li>
+          <li>Optionally flag it as a monitor or set a security-scan target.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- LOCAL WORKER -->
+    <section id="local-worker">
+      <h2>Local dev worker</h2>
+      <p class="sec-sub">Test <code>localhost</code> before you deploy — the pre-commit bridge.</p>
+      <div class="card">
+        <div class="head"><h3>Poll-based local execution</h3><span class="badge b-new">New</span></div>
+        <p class="what">Server-side workers can't reach a developer's machine, so normally TraceIQ can only test deployed targets. The local worker closes that gap: run a thin worker next to your dev server; it polls TraceIQ over HTTPS for jobs pinned to it, runs them against <code>localhost</code>, and posts results back through the normal pipeline. Nothing about your dev server is exposed publicly.</p>
+        <span class="how-label">How to use</span>
+        <pre><code><span class="tok-c"># 1. Start the worker beside your dev server (execution-engine/)</span>
+TRACEIQ_URL=https://traceiq.example.com \
+TRACEIQ_API_KEY=tiq_... \
+TRACEIQ_WORKER_ID=my-laptop \
+npm run worker:local
+
+<span class="tok-c"># 2. Trigger a run pinned to it</span>
+curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
+  -d '{<span class="tok-k">"local_worker_id"</span>: <span class="tok-s">"my-laptop"</span>}'</code></pre>
+        <div class="note">Auth is your workspace API key — its workspace namespaces the queue, so a worker can never pick up another tenant's jobs. v1 runs single-test jobs (SEPARATE / PARALLEL); artifacts stay on your machine.</div>
+      </div>
+    </section>
+
+    <!-- HEALING -->
+    <section id="healing">
+      <h2>Self-healing selectors</h2>
+      <p class="sec-sub">Recover from UI drift instead of just failing.</p>
+      <div class="card">
+        <div class="head"><h3>Reactive, runtime &amp; proactive heal</h3><span class="badge b-good">AI</span></div>
+        <ul class="bul">
+          <li><b>Reactive</b> — on a selector miss the worker asks the LLM for a replacement and records a heal <em>proposal</em> for review.</li>
+          <li><b>Runtime</b> — with <code>RUNTIME_HEAL_ENABLED</code>, if the healed selector uniquely matches the live DOM the step is retried so the run recovers, and the old→new change is logged.</li>
+          <li><b>Proactive</b> — a post-run task audits stored selectors against captured DOM and proposes durable fixes.</li>
+        </ul>
+        <div class="note">Proposals appear on the <em>Proposals</em> page; accepting one rewrites the step's selector. A step's <code>intent</code> is the durable contract the heal reasons against.</div>
+      </div>
+    </section>
+
+    <!-- UI TESTING -->
+    <section id="ui-testing">
+      <h2>UI testing</h2>
+      <p class="sec-sub">The core pillar — browser journeys with rich verification.</p>
+      <div class="fgrid">
+        <div class="fcard"><div class="t">Visual regression</div><div class="d"><code>expect-visual-match</code> does a perceptual pixel diff against a stored baseline, with mask regions and a tolerance.</div></div>
+        <div class="fcard"><div class="t">Accessibility</div><div class="d"><code>check-accessibility</code> runs axe-core and filters violations by impact threshold.</div></div>
+        <div class="fcard"><div class="t">Network control</div><div class="d"><code>mock-response</code>, <code>block-request</code>, and <code>set-network-latency</code> make flaky flows deterministic.</div></div>
+        <div class="fcard"><div class="t">Device emulation</div><div class="d">Chromium, Firefox, WebKit + mobile viewport / UA emulation.</div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="head"><h3>Visual baselines</h3><span class="badge b-core">Core</span></div>
+        <ol class="steps">
+          <li>Add an <code>expect-visual-match</code> step; run once to capture a candidate.</li>
+          <li>Promote the candidate to a durable baseline on the <em>Visual Review</em> page.</li>
+          <li>Future runs fail the step when the diff ratio exceeds tolerance.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- API TESTING -->
+    <section id="api-testing">
+      <h2>API testing</h2>
+      <p class="sec-sub">First-class request testing with chaining, contracts, and auth.</p>
+      <div class="card">
+        <div class="head"><h3>http-request</h3><span class="badge b-core">Core</span><span class="badge b-new">Extract new</span></div>
+        <p class="what">Call any REST endpoint (comma-separate URLs for a batch), assert on status, JSON-path, or full JSON-schema, and now <strong>extract response values into runtime variables</strong> for the next request — the login→token→authorized-call pattern.</p>
+        <pre><code>{<span class="tok-k">"type"</span>: <span class="tok-s">"http-request"</span>, <span class="tok-k">"value"</span>: <span class="tok-s">"{{env.base_url}}/api/login"</span>,
+ <span class="tok-k">"params"</span>: {
+   <span class="tok-k">"method"</span>: <span class="tok-s">"POST"</span>,
+   <span class="tok-k">"body"</span>: {<span class="tok-k">"user"</span>: <span class="tok-s">"{{secret.USER}}"</span>, <span class="tok-k">"pass"</span>: <span class="tok-s">"{{secret.PASS}}"</span>},
+   <span class="tok-k">"assertions"</span>: [{<span class="tok-k">"type"</span>: <span class="tok-s">"status"</span>, <span class="tok-k">"value"</span>: <span class="tok-n">200</span>}],
+   <span class="tok-k">"extract"</span>: [{<span class="tok-k">"path"</span>: <span class="tok-s">"data.token"</span>, <span class="tok-k">"variable"</span>: <span class="tok-s">"token"</span>}]
+ }}
+<span class="tok-c">// later step header: { "Authorization": "Bearer {{token}}" }</span></code></pre>
+        <div class="note">JSON-path uses dotted paths (no <code>$.</code> prefix) with array indexing — <code>items.0.id</code> or <code>items[0].id</code>.</div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>GraphQL</h3><span class="badge b-new">New</span></div>
+        <p class="what">Post a query + variables, fail automatically on a GraphQL <code>errors[]</code> array (unless <code>allow_errors</code>), and assert / extract on <code>data</code> paths.</p>
+        <pre><code>{<span class="tok-k">"type"</span>: <span class="tok-s">"graphql"</span>, <span class="tok-k">"value"</span>: <span class="tok-s">"{{env.base_url}}/graphql"</span>,
+ <span class="tok-k">"params"</span>: {
+   <span class="tok-k">"query"</span>: <span class="tok-s">"query($id: ID!){ user(id:$id){ name email } }"</span>,
+   <span class="tok-k">"variables"</span>: {<span class="tok-k">"id"</span>: <span class="tok-s">"1"</span>},
+   <span class="tok-k">"assertions"</span>: [{<span class="tok-k">"type"</span>: <span class="tok-s">"data-path"</span>, <span class="tok-k">"path"</span>: <span class="tok-s">"user.name"</span>, <span class="tok-k">"operator"</span>: <span class="tok-s">"exists"</span>}]
+ }}</code></pre>
+      </div>
+      <div class="card">
+        <div class="head"><h3>OAuth2 token</h3><span class="badge b-new">New</span></div>
+        <p class="what">Fetch a client-credentials token from the app under test and store it as a runtime variable for subsequent requests. Reference the secret, never paste it.</p>
+        <pre><code>{<span class="tok-k">"type"</span>: <span class="tok-s">"oauth2-token"</span>, <span class="tok-k">"value"</span>: <span class="tok-s">"{{env.base_url}}/oauth/token"</span>,
+ <span class="tok-k">"params"</span>: {<span class="tok-k">"client_id"</span>: <span class="tok-s">"{{secret.CLIENT_ID}}"</span>, <span class="tok-k">"client_secret"</span>: <span class="tok-s">"{{secret.CLIENT_SECRET}}"</span>}}
+<span class="tok-c">// stores {{access_token}} for later Authorization headers</span></code></pre>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Feeds &amp; AMP</h3><span class="badge b-core">Core</span></div>
+        <p class="what"><code>feed-check</code> validates RSS/Atom/XML with XPath assertions; <code>amp-validate</code> checks AMP HTML compliance.</p>
+      </div>
+    </section>
+
+    <!-- PERFORMANCE -->
+    <section id="performance">
+      <h2>Performance &amp; web vitals</h2>
+      <p class="sec-sub">Every UI run doubles as a performance check.</p>
+      <div class="card">
+        <div class="head"><h3>Web-vitals capture</h3><span class="badge b-new">New</span></div>
+        <p class="what">Each test's final document is measured for LCP, CLS, TTFB, FCP, DOMContentLoaded, and load time — captured automatically, no extra step. Chromium reports the full set; other browsers report what they expose.</p>
+        <div class="mock">
+          <div class="bar"><i></i><i></i><i></i><span>Run details · web vitals</span></div>
+          <div class="body">
+            <div class="kpis">
+              <div class="kpi"><div class="l">TTFB</div><div class="v">40<span style="font-size:.7rem;color:var(--muted)">ms</span></div></div>
+              <div class="kpi"><div class="l">FCP</div><div class="v">480<span style="font-size:.7rem;color:var(--muted)">ms</span></div></div>
+              <div class="kpi"><div class="l">LCP</div><div class="v" style="color:var(--good)">820<span style="font-size:.7rem;color:var(--muted)">ms</span></div></div>
+              <div class="kpi"><div class="l">CLS</div><div class="v" style="color:var(--good)">0.01</div></div>
+            </div>
+          </div>
+          <div class="caption">Illustration — web-vitals chips on the run details page</div>
+        </div>
+        <span class="how-label">Enforce budgets</span>
+        <p>In the quality-gate policy, set <code>max_lcp_ms</code>, <code>max_cls</code>, and <code>max_ttfb_ms</code> (0 = off). The gate checks the worst sample across the evaluated runs and fails the release if a budget is exceeded.</p>
+        <div class="note warn"><span>Requires a rebuilt worker image, since the capture runs inside the Playwright worker.</span></div>
+      </div>
+    </section>
+
+    <!-- LOAD -->
+    <section id="load">
+      <h2>Load testing</h2>
+      <p class="sec-sub">k6 under the hood, driven by a declarative step.</p>
+      <div class="card">
+        <div class="head"><h3>load-test</h3><span class="badge b-new">New</span></div>
+        <p class="what">Describe a load profile — target, virtual users, duration, ramp-up, and thresholds. TraceIQ <em>generates</em> the k6 script from your spec (no user code runs), executes it, and fails the case if any threshold is breached. Aggregate metrics and per-threshold verdicts land on the run.</p>
+        <pre><code>{<span class="tok-k">"type"</span>: <span class="tok-s">"load-test"</span>, <span class="tok-k">"value"</span>: <span class="tok-s">"{{env.base_url}}/api/overview"</span>,
+ <span class="tok-k">"params"</span>: {
+   <span class="tok-k">"vus"</span>: <span class="tok-n">20</span>, <span class="tok-k">"duration_s"</span>: <span class="tok-n">60</span>, <span class="tok-k">"ramp_up_s"</span>: <span class="tok-n">10</span>,
+   <span class="tok-k">"thresholds"</span>: {<span class="tok-k">"p95_ms"</span>: <span class="tok-n">500</span>, <span class="tok-k">"error_rate"</span>: <span class="tok-n">0.01</span>, <span class="tok-k">"min_rps"</span>: <span class="tok-n">50</span>}
+ }}</code></pre>
+        <div class="mock">
+          <div class="bar"><i></i><i></i><i></i><span>Run details · load result</span></div>
+          <div class="body">
+            <div class="kpis">
+              <div class="kpi"><div class="l">Requests</div><div class="v">42.1k</div></div>
+              <div class="kpi"><div class="l">RPS</div><div class="v">701</div></div>
+              <div class="kpi"><div class="l">p95</div><div class="v" style="color:var(--good)">318ms</div></div>
+              <div class="kpi"><div class="l">Error rate</div><div class="v" style="color:var(--good)">0.2%</div></div>
+            </div>
+            <div class="gatebar">
+              <span class="gatecheck"><span class="dot" style="background:var(--good)"></span>p95 318 / limit 500</span>
+              <span class="gatecheck"><span class="dot" style="background:var(--good)"></span>error 0.2% / limit 1%</span>
+            </div>
+          </div>
+          <div class="caption">Illustration — k6 metrics + threshold verdicts</div>
+        </div>
+        <div class="note warn"><span>The worker image ships the <code>k6</code> binary; caps are configurable (<code>LOAD_MAX_VUS</code>, <code>LOAD_MAX_DURATION_S</code>). Only load-test apps you own.</span></div>
+      </div>
+    </section>
+
+    <!-- SECURITY -->
+    <section id="security">
+      <h2>Security testing</h2>
+      <p class="sec-sub">Defensive DAST — passive by default, active behind hard guardrails.</p>
+      <figure class="shot">
+        <img src="screenshots/security.png" alt="Security scans page with authorization allowlist, new-scan form, and completed scans showing severity counts" loading="lazy">
+        <figcaption>The Security page — the authorization allowlist and attestation gate, the new-scan form (baseline vs active), and completed ZAP scans with per-severity finding counts.</figcaption>
+      </figure>
+      <div class="card">
+        <div class="head"><h3>Passive checks</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Zero extra traffic: TraceIQ analyzes responses already captured during a run for missing security headers (CSP/HSTS/etc.), insecure cookie flags, information disclosure, and plaintext transport. Runs automatically at finalize, or on demand.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Authenticated ZAP scans</h3><span class="badge b-core">Core</span></div>
+        <p class="what">A baseline (spider + passive) or active (attacking) scan via OWASP ZAP. The differentiator: TraceIQ turns your captured Playwright <code>storageState</code> into a ZAP session cookie, so scans run <em>behind the login</em>.</p>
+        <span class="how-label">Guardrails</span>
+        <ul class="bul">
+          <li>Per-project <em>verified-domain allowlist</em> — only registered targets can be scanned.</li>
+          <li>An explicit "I'm authorized to scan this" attestation on every scan.</li>
+          <li>Active (attacking) scans need <em>both</em> the workspace master switch <em>and</em> the per-project opt-in turned on — a two-key lock. A workspace admin flips the master switch right on the Security page (no env edits); the deployment env flag <code>SECURITY_ACTIVE_SCAN_ENABLED</code> still works as a global override.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Findings lifecycle &amp; scan diffs</h3><span class="badge b-new">New</span></div>
+        <p class="what">Findings unify into one model regardless of source. Triage each one — <em>open / acknowledged / false-positive / resolved</em> — and a false-positive verdict carries forward to the same finding in future scans instead of resurfacing. Scan-over-scan diff shows what's new, fixed, and persisting.</p>
+        <ol class="steps">
+          <li>Enable security + add the target host to the allowlist in <em>Security</em> settings.</li>
+          <li>Run a scan (or schedule a recurring baseline scan on a cron).</li>
+          <li>Triage findings inline; open a scan to see its diff against the previous one.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- MONITORING -->
+    <section id="monitoring">
+      <h2>Synthetic monitoring</h2>
+      <p class="sec-sub">Run the same tests against production on a schedule; alert on failure streaks.</p>
+      <div class="card">
+        <div class="head"><h3>Monitors</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Flag any schedule as a monitor: each scheduled run becomes a health check, consecutive failures drive DOWN / RECOVERY alerts, and every check feeds uptime and SLA windows.</p>
+        <div class="mock">
+          <div class="bar"><i></i><i></i><i></i><span>Monitors</span></div>
+          <div class="body">
+            <div style="display:flex;justify-content:space-between;align-items:center">
+              <div><b>Checkout journey</b><div style="font-size:.72rem;color:var(--muted);font-family:var(--mono)">every 5 min</div></div>
+              <span class="gatecheck"><span class="dot" style="background:var(--good)"></span>up · 99.94%</span>
+            </div>
+            <div class="spark"><i style="height:80%"></i><i style="height:90%"></i><i style="height:70%"></i><i style="height:100%"></i><i style="height:85%"></i><i style="height:95%"></i><i style="height:60%"></i><i style="height:88%"></i></div>
+          </div>
+          <div class="caption">Illustration of a populated monitor — uptime &amp; check history</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Public status pages</h3><span class="badge b-new">New</span></div>
+        <p class="what">Generate a shareable, unauthenticated status page from a project's monitors — names, up/down state, and uptime only (never URLs or run detail). The slug is unguessable and rotatable.</p>
+        <ol class="steps">
+          <li>On the <em>Monitors</em> page, create the status page and copy its link.</li>
+          <li>Share <code>/status/&lt;slug&gt;</code>; it auto-refreshes every 60s. Rotate the link to invalidate it.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Alerts &amp; TLS checks</h3><span class="badge b-new">New</span></div>
+        <ul class="bul">
+          <li>Alert channels: Slack and Teams (project settings), plus per-monitor <em>email</em> recipients.</li>
+          <li><code>check-tls</code> step validates a certificate chain and fails when it expires within N days — pair it with a monitor for cert-expiry alerting.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- RUN DETAILS -->
+    <section id="run-details">
+      <h2>Run details &amp; trace</h2>
+      <p class="sec-sub">Everything captured about a run, in one place.</p>
+      <div class="card">
+        <div class="head"><h3>The run detail page</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Step-level results with a custom Playwright trace timeline (actions, timings, errors), video, screenshot gallery, a network tab, request/response bodies, web-vitals chips, load metrics, and the AI failure analysis panel.</p>
+        <figure class="shot">
+          <img src="screenshots/run-details.png" alt="Run details page showing duration, total tests, pass rate, and per-case results with Overview/Traces/Network tabs" loading="lazy">
+          <figcaption>A finished run — duration, pass rate, and per-case results, with <b>Overview / Traces / Network</b> tabs. Expand a case for its error, request/response, web-vitals, and trace timeline.</figcaption>
+        </figure>
+        <div class="note">Artifacts (video <code>.webm</code>, trace <code>.zip</code>, screenshots, visual diffs) are stored in MinIO and served through access-checked URLs.</div>
+      </div>
+    </section>
+
+    <!-- FAILURE ANALYSIS -->
+    <section id="failure-analysis">
+      <h2>AI failure analysis</h2>
+      <p class="sec-sub">Why it broke, in a typed, machine-readable shape.</p>
+      <div class="card">
+        <div class="head"><h3>Typed failure reports</h3><span class="badge b-good">AI</span></div>
+        <p class="what">A heuristic classifier always runs; when an LLM provider is configured the report is deepened with a structured JSON call. Each failure is categorized as <em>app_bug / test_bug / environment / flake / unknown</em> with a fix target, confidence, and evidence — plus a run-level rollup.</p>
+        <div class="chips">
+          <span class="chip" style="color:var(--crit)">app_bug</span>
+          <span class="chip" style="color:var(--warn)">test_bug</span>
+          <span class="chip" style="color:var(--accent-ink)">environment</span>
+          <span class="chip" style="color:var(--muted)">flake</span>
+          <span class="chip">unknown</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TRIAGE -->
+    <section id="triage">
+      <h2>Triage &amp; flake management</h2>
+      <p class="sec-sub">One root cause is one item — and flaky tests get quarantined.</p>
+      <div class="card">
+        <div class="head"><h3>Failure clustering</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Failing results are fingerprinted (normalized error → signature) into clusters, so N failures with one root cause become one triage item with an assignee and state. File one ticket per cluster.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Flake detection</h3><span class="badge b-core">Core</span></div>
+        <p class="what">A statistical flake score (alternation ratio over the last 20 results) auto-quarantines a case above 0.4 and auto-releases below 0.15. Quarantined cases are skipped at dispatch. Manage them on the <em>Flaky Tests</em> page.</p>
+      </div>
+    </section>
+
+    <!-- COMPARISON -->
+    <section id="comparison">
+      <h2>Comparison runs</h2>
+      <p class="sec-sub">Re-run a baseline against a new target and diff the outcome.</p>
+      <div class="card">
+        <div class="head"><h3>Deployment comparison</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Point a known-good suite at a new <code>target_url</code> (e.g. a preview deploy) and get a side-by-side delta against the baseline run.</p>
+        <pre><code>POST /api/runs/comparison
+{<span class="tok-k">"baseline_run_id"</span>: <span class="tok-n">318</span>, <span class="tok-k">"target_url"</span>: <span class="tok-s">"https://pr-42.preview.example.com"</span>}</code></pre>
+      </div>
+    </section>
+
+    <!-- QUALITY GATE -->
+    <section id="quality-gate">
+      <h2>Quality dashboard &amp; release gate</h2>
+      <p class="sec-sub">The payoff of unification — one go / no-go decision.</p>
+      <div class="card">
+        <div class="head"><h3>Unified dashboard</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Per project, one snapshot aggregates run pass-rate and trend, flakiness, monitor uptime, and security findings by severity.</p>
+        <figure class="shot">
+          <img src="screenshots/quality.png" alt="Quality dashboard with KPIs, pass-rate trend, and the release gate verdict" loading="lazy">
+          <figcaption>The Quality Dashboard — KPI tiles, pass-rate trend, the live <b>release gate</b> verdict, and the editable gate policy (including the new performance-budget and ingested-CI checks).</figcaption>
+        </figure>
+      </div>
+      <div class="card">
+        <div class="head"><h3>The release gate</h3><span class="badge b-core">Core</span><span class="badge b-new">Perf + CI checks new</span></div>
+        <p class="what">A per-project policy evaluated for a commit (or the latest run). It fails closed — you can't certify what didn't run.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Policy key</th><th>Check</th></tr></thead>
+            <tbody>
+              <tr><td><code>min_pass_rate</code></td><td>Pass rate across evaluated runs.</td></tr>
+              <tr><td><code>max_high/medium_severity_findings</code></td><td>Security findings ceiling.</td></tr>
+              <tr><td><code>require_monitors_up</code></td><td>No monitor may be down.</td></tr>
+              <tr><td><code>max_lcp_ms · max_cls · max_ttfb_ms</code></td><td>Performance budgets (worst sample).</td></tr>
+              <tr><td><code>require_external_tests_pass</code></td><td>Ingested CI (JUnit) results must be green.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <pre><code>GET /api/projects/42/quality-gate?git_commit=abc123
+<span class="tok-c">// → { "passed": false, "checks": [ {name, passed, actual, threshold}, ... ] }</span></code></pre>
+      </div>
+    </section>
+
+    <!-- JUNIT -->
+    <section id="junit">
+      <h2>CI results ingestion</h2>
+      <p class="sec-sub">Fold the tests TraceIQ doesn't run into the same gate.</p>
+      <div class="card">
+        <div class="head"><h3>JUnit XML ingestion</h3><span class="badge b-new">New</span></div>
+        <p class="what">TraceIQ will never execute your unit tests — but it can <em>ingest</em> their results. Push your CI's JUnit report per commit; totals and failing cases show on the dashboard, and the gate can require them green. That makes "one gate decides go / no-go" literally true.</p>
+        <pre><code>curl -X POST "$TRACEIQ/api/projects/42/external-results?git_commit=abc123" \
+  -H "X-API-Key: tiq_..." -H "Content-Type: application/xml" \
+  --data-binary @junit.xml</code></pre>
+      </div>
+    </section>
+
+    <!-- CI -->
+    <section id="ci">
+      <h2>PR gating</h2>
+      <p class="sec-sub">Block a merge on the whole quality picture.</p>
+      <div class="card">
+        <div class="head"><h3>Consolidated report &amp; GitHub Action</h3><span class="badge b-core">Core</span></div>
+        <p class="what">A git-optional report keyed by run id returns results + security + the gate verdict as ready-to-paste markdown. The GitHub Action triggers a run, polls, and gates the PR on the server-side verdict. CI-/VCS-agnostic — anything that speaks REST works.</p>
+        <pre><code>GET /api/runs/507/report   <span class="tok-c"># consolidated, includes gate + security + markdown</span></code></pre>
+        <p style="margin-top:12px">Per-project <em>CI settings</em> (<code>enabled</code>, <code>enforce_gate</code>, <code>post_pr_comment</code>) control whether and how CI blocks — teams not using CI are unaffected.</p>
+      </div>
+    </section>
+
+    <!-- TRACEABILITY -->
+    <section id="traceability">
+      <h2>Traceability</h2>
+      <p class="sec-sub">Which requirements are tested — and passing.</p>
+      <div class="card">
+        <div class="head"><h3>Requirement links</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Link test cases to free-form requirement references (a ticket key, a spec id). The coverage rollup answers "is requirement X tested and passing?" and surfaces untraced cases — deliberately lightweight, not a full RTM.</p>
+      </div>
+    </section>
+
+    <!-- TICKETS -->
+    <section id="tickets">
+      <h2>Issue trackers</h2>
+      <p class="sec-sub">File a defect from a failure, with evidence attached.</p>
+      <div class="card">
+        <div class="head"><h3>Jira · iTop · GitHub Issues</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Configure a workspace tracker (credentials stored encrypted), then create a ticket from a run or a failure cluster. TraceIQ pulls the trace / video / screenshots from MinIO and attaches them (GitHub, which has no attach API, gets signed links instead).</p>
+        <ol class="steps">
+          <li><em>Issue Trackers</em> → connect Jira / iTop / GitHub.</li>
+          <li>On a run or cluster, <em>Create ticket</em> — artifacts are attached automatically.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ANALYTICS -->
+    <section id="analytics">
+      <h2>Analytics &amp; reports</h2>
+      <p class="sec-sub">Trends, effectiveness, and scheduled summaries.</p>
+      <figure class="shot">
+        <img src="screenshots/analytics.png" alt="Test analytics page with pass rate, MTTR, top-failing, slowest and flakiest tests, and a per-test effectiveness table" loading="lazy">
+        <figcaption>Test Analytics — pass rate, MTTR and open clusters, the top-failing / slowest / flakiest boards, and a per-test effectiveness table.</figcaption>
+      </figure>
+      <div class="card">
+        <div class="head"><h3>Test effectiveness</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Per-test runs / failures / failure rate / clusters / duration, plus a project summary — pass rate, MTTR, top-failing, slowest, and flakiest tests.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Scheduled reports</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Recurring quality summaries delivered to Slack / Teams / email on a cron and window you choose. Notifications on run events are configured per project.</p>
+      </div>
+    </section>
+
+    <!-- RBAC -->
+    <section id="rbac">
+      <h2>Users &amp; RBAC</h2>
+      <p class="sec-sub">Multi-tenant access control.</p>
+      <div class="card">
+        <div class="head"><h3>Workspaces, teams &amp; invites</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Manage members, teams, and role assignments per workspace and project. Access resolves through workspace-admin → direct project grant → team-based grant → deny. Every mutation is written to an audit log.</p>
+      </div>
+    </section>
+
+    <!-- AUTH -->
+    <section id="auth">
+      <h2>Auth: SSO &amp; MFA</h2>
+      <p class="sec-sub">Enterprise-ready sign-in.</p>
+      <div class="fgrid">
+        <div class="fcard"><div class="t">OIDC SSO</div><div class="d">Enabled when <code>OIDC_*</code> env is set; discovery → authorize → token → userinfo → JIT user.</div></div>
+        <div class="fcard"><div class="t">TOTP MFA</div><div class="d">Authenticator setup with a scannable QR + single-use recovery codes.</div></div>
+        <div class="fcard"><div class="t">Refresh tokens</div><div class="d">Rotation-on-use with family-based revocation on replay.</div></div>
+        <div class="fcard"><div class="t">Account lifecycle</div><div class="d">Password reset, email verification, account deletion.</div></div>
+      </div>
+    </section>
+
+    <!-- BILLING -->
+    <section id="billing">
+      <h2>Billing &amp; plans</h2>
+      <p class="sec-sub">Metered usage and plan quotas.</p>
+      <div class="card">
+        <div class="head"><h3>Plans, subscriptions &amp; quotas</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Free / Pro / Enterprise plans with per-workspace limits (monthly runs, seats, concurrent runs, retention, AI generations, and LLM tokens). Usage is metered per calendar month; run creation returns <code>402</code> when a quota is exhausted. Works manually (admin assigns a plan) or through Stripe checkout when configured.</p>
+        <div class="note">Limits use <code>0 = unlimited</code>. The <em>Billing</em> page shows current plan, usage meters, and available tiers.</div>
+      </div>
+    </section>
+
+    <!-- LLM -->
+    <section id="llm">
+      <h2>AI usage &amp; providers</h2>
+      <p class="sec-sub">Multi-provider LLM support with full token accounting.</p>
+      <div class="card">
+        <div class="head"><h3>Provider abstraction</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Every AI feature (failure analysis, selector heal, test generation) runs through one abstraction. Switch backends with <code>LLM_PROVIDER</code> + <code>LLM_MODEL</code>.</p>
+        <div class="chips"><span class="chip">anthropic</span><span class="chip">openai</span><span class="chip">gemini</span><span class="chip">ollama</span><span class="chip">openai-compatible</span></div>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Token metering</h3><span class="badge b-new">New</span></div>
+        <p class="what">Every LLM call records tokens, latency, feature, and success. The <em>AI Usage</em> page breaks it down by provider, model, and feature with a daily trend; monthly totals roll into billing so you can cap tokens per plan.</p>
+        <div class="mock">
+          <div class="bar"><i></i><i></i><i></i><span>AI usage</span></div>
+          <div class="body">
+            <div class="kpis">
+              <div class="kpi"><div class="l">Total tokens</div><div class="v">2.1M</div></div>
+              <div class="kpi"><div class="l">Calls</div><div class="v">1,204</div></div>
+              <div class="kpi"><div class="l">Avg latency</div><div class="v">1.8s</div></div>
+              <div class="kpi"><div class="l">Success</div><div class="v" style="color:var(--good)">99%</div></div>
+            </div>
+            <div class="spark"><i style="height:40%"></i><i style="height:65%"></i><i style="height:55%"></i><i style="height:80%"></i><i style="height:70%"></i><i style="height:95%"></i><i style="height:60%"></i></div>
+          </div>
+          <div class="caption">Illustration of the populated AI Usage page — provider / model / feature breakdown with a daily trend</div>
+        </div>
+        <div class="note">Set a <code>monthly_llm_tokens</code> plan limit to cap spend — over-cap calls are skipped and features fall back to their non-AI behavior.</div>
+      </div>
+    </section>
+
+    <!-- API KEYS -->
+    <section id="api-keys">
+      <h2>API keys &amp; webhooks</h2>
+      <p class="sec-sub">Service accounts and outbound events.</p>
+      <div class="card">
+        <div class="head"><h3>API keys</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Mint workspace-scoped <code>tiq_…</code> keys for CI and agents. Pass them as <code>X-API-Key</code> on any endpoint; keys are hashed, role-scoped, expirable, and revocable. An API key can't accept its own AI proposals or mint other keys — blast-radius limits by design.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Outbound webhooks</h3><span class="badge b-core">Core</span></div>
+        <p class="what">Register HTTPS endpoints to receive HMAC-SHA256-signed (<code>X-TraceIQ-Signature</code>) events when a run finalizes — for CI bots and agent callbacks.</p>
+      </div>
+    </section>
+
+    <!-- MCP -->
+    <section id="mcp">
+      <h2>MCP server</h2>
+      <p class="sec-sub">Wire Claude Code / Cursor to TraceIQ as a tool.</p>
+      <div class="card">
+        <div class="head"><h3>29 tools for AI agents</h3><span class="badge b-good">AI</span></div>
+        <p class="what">The MCP server exposes TraceIQ as callable tools so a coding agent can discover the app surface, select tests for a diff, run suites, read failure analysis, and propose case changes — all under the same RBAC and the human-review proposal queue.</p>
+        <div class="chips">
+          <span class="chip">run_suite</span><span class="chip">get_run</span><span class="chip">get_failure_analysis</span>
+          <span class="chip">discover_app_surface</span><span class="chip">select_tests_for_diff</span>
+          <span class="chip">propose_create_case</span><span class="chip">set_code_paths</span><span class="chip">describe_step_types</span>
+          <span class="chip" style="color:var(--muted)">+21 more</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- GITHUB -->
+    <section id="github">
+      <h2>GitHub Action</h2>
+      <p class="sec-sub">Regression gating in your PR workflow.</p>
+      <div class="card">
+        <div class="head"><h3>Usage</h3><span class="badge b-core">Core</span></div>
+        <pre><code><span class="tok-k">- uses</span>: your-org/traceiq-action@v1
+  <span class="tok-k">with</span>:
+    api_key: ${{ secrets.TRACEIQ_API_KEY }}
+    suite_id: <span class="tok-n">42</span>
+    fail_on: gate   <span class="tok-c"># block the PR on the server-side quality gate</span></code></pre>
+        <p style="margin-top:12px">It attaches git context, polls to completion, posts an idempotent PR comment with per-case results + artifact links + AI analysis, and honors the project's CI settings.</p>
+      </div>
+    </section>
+
+    <!-- CHEATSHEET -->
+    <section id="cheatsheet">
+      <h2>API cheat sheet</h2>
+      <p class="sec-sub">The endpoints you'll reach for most.</p>
+      <div class="card">
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST /api/runs?suite_id=</code></td><td>Trigger a run (body carries git + <code>local_worker_id</code>).</td></tr>
+              <tr><td><code>GET /api/runs/{id}</code></td><td>Run status + results.</td></tr>
+              <tr><td><code>GET /api/runs/{id}/report</code></td><td>Consolidated report + gate verdict + markdown.</td></tr>
+              <tr><td><code>GET /api/projects/{id}/quality</code></td><td>Unified quality snapshot.</td></tr>
+              <tr><td><code>GET /api/projects/{id}/quality-gate</code></td><td>Evaluate the release gate.</td></tr>
+              <tr><td><code>POST /api/projects/{id}/external-results</code></td><td>Ingest JUnit XML. <span class="badge b-new">New</span></td></tr>
+              <tr><td><code>POST /api/projects/{id}/security-scan</code></td><td>Start a ZAP scan (gated).</td></tr>
+              <tr><td><code>GET /api/status/{slug}</code></td><td>Public status page (no auth). <span class="badge b-new">New</span></td></tr>
+              <tr><td><code>GET /api/jobs/poll?worker_id=</code></td><td>Local worker pulls its next job. <span class="badge b-new">New</span></td></tr>
+              <tr><td><code>GET /api/workspaces/{id}/llm-usage</code></td><td>Token usage stats. <span class="badge b-new">New</span></td></tr>
+              <tr><td><code>POST /api/cases/generate</code></td><td>AI test-from-intent.</td></tr>
+              <tr><td><code>GET /api/step-types</code></td><td>Machine-readable step catalog.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">Authenticate every call with either a JWT (<code>Authorization: Bearer</code>) or a service-account key (<code>X-API-Key: tiq_…</code>).</div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<footer>
+  TraceIQ — unified quality platform. This documentation covers UI, API, performance, load, security, and monitoring, plus the platform and integration surface. Features marked <span class="badge b-new">New</span> shipped in the latest build and require a rebuilt worker image where they run inside the execution worker (web vitals, GraphQL / OAuth2 / TLS / load steps).
+</footer>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeBtn');
+    btn.addEventListener('click', function () {
+      var cur = root.getAttribute('data-theme');
+      if (!cur) cur = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+    });
+
+    var nav = document.getElementById('sidenav');
+    document.getElementById('menuBtn').addEventListener('click', function () { nav.classList.toggle('open'); });
+    nav.addEventListener('click', function (e) { if (e.target.tagName === 'A' && window.innerWidth <= 900) nav.classList.remove('open'); });
+
+    var links = Array.prototype.slice.call(nav.querySelectorAll('a'));
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    var sections = Array.prototype.slice.call(document.querySelectorAll('section[id]'));
+    var obs = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting) {
+          links.forEach(function (l) { l.classList.remove('active'); });
+          var a = byId[en.target.id];
+          if (a) { a.classList.add('active'); a.scrollIntoView({ block: 'nearest' }); }
+        }
+      });
+    }, { rootMargin: '-64px 0px -75% 0px' });
+    sections.forEach(function (s) { obs.observe(s); });
+
+    /* ---------- search ---------- */
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var overlay = document.getElementById('searchOverlay');
+    var input = document.getElementById('searchInput');
+    var resultsEl = document.getElementById('searchResults');
+    var emptyEl = document.getElementById('searchEmpty');
+
+    // Build an index: section headings + every card + every feature card.
+    var index = [];
+    sections.forEach(function (sec) {
+      var h2 = sec.querySelector('h2');
+      var secTitle = h2 ? h2.textContent.trim() : sec.id;
+      var sub = sec.querySelector('.sec-sub');
+      index.push({ el: h2 || sec, flash: h2 || sec, title: secTitle, crumb: 'Section', text: sub ? sub.textContent.trim() : '' });
+      sec.querySelectorAll('.card').forEach(function (card) {
+        var h3 = card.querySelector('h3');
+        index.push({ el: card, flash: card, title: h3 ? h3.textContent.trim() : secTitle, crumb: secTitle,
+          text: card.textContent.replace(/\s+/g, ' ').trim() });
+      });
+      sec.querySelectorAll('.fcard').forEach(function (fc) {
+        var t = fc.querySelector('.t'); var d = fc.querySelector('.d');
+        index.push({ el: fc, flash: fc, title: t ? t.textContent.trim() : secTitle, crumb: secTitle,
+          text: (d ? d.textContent : '').replace(/\s+/g, ' ').trim() });
+      });
+    });
+
+    function esc(s) { return s.replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    function query(q) {
+      q = q.toLowerCase().trim();
+      if (!q) return [];
+      var terms = q.split(/\s+/);
+      var out = [];
+      index.forEach(function (it) {
+        var titleL = it.title.toLowerCase();
+        var hay = (it.title + ' ' + it.text).toLowerCase();
+        if (!terms.every(function (t) { return hay.indexOf(t) !== -1; })) return;
+        var score = 0;
+        terms.forEach(function (t) {
+          if (titleL === t) score += 25;
+          else if (titleL.indexOf(t) !== -1) score += 10;
+          if (it.text.toLowerCase().indexOf(t) !== -1) score += 1;
+        });
+        if (it.crumb === 'Section') score += 2; // let section headings surface as quick jumps
+        out.push({ it: it, score: score, term: terms[0] });
+      });
+      out.sort(function (a, b) { return b.score - a.score; });
+      return out.slice(0, 12);
+    }
+
+    function snippet(text, term) {
+      if (!text) return '';
+      var i = text.toLowerCase().indexOf(term);
+      if (i === -1) return esc(text.slice(0, 120)) + (text.length > 120 ? '…' : '');
+      var start = Math.max(0, i - 40), end = Math.min(text.length, i + term.length + 80);
+      var pre = (start > 0 ? '…' : '') + text.slice(start, i);
+      var mid = text.slice(i, i + term.length);
+      var post = text.slice(i + term.length, end) + (end < text.length ? '…' : '');
+      return esc(pre) + '<mark>' + esc(mid) + '</mark>' + esc(post);
+    }
+
+    var current = [];
+    var sel = 0;
+
+    function render(list) {
+      current = list; sel = 0;
+      resultsEl.innerHTML = '';
+      var hasQ = input.value.trim().length > 0;
+      emptyEl.hidden = !(hasQ && list.length === 0);
+      list.forEach(function (r, idx) {
+        var b = document.createElement('button');
+        b.className = 'search-result' + (idx === 0 ? ' sel' : '');
+        b.setAttribute('role', 'option');
+        b.innerHTML = '<div class="rt">' + esc(r.it.title) + ' <span class="rc">' + esc(r.it.crumb) + '</span></div>'
+          + (r.it.text ? '<div class="rs">' + snippet(r.it.text, r.term) + '</div>' : '');
+        b.addEventListener('click', function () { jump(r.it); });
+        b.addEventListener('mousemove', function () { setSel(idx); });
+        resultsEl.appendChild(b);
+      });
+    }
+
+    function setSel(i) {
+      var items = resultsEl.querySelectorAll('.search-result');
+      if (!items.length) return;
+      sel = (i + items.length) % items.length;
+      items.forEach(function (el, idx) { el.classList.toggle('sel', idx === sel); });
+      items[sel].scrollIntoView({ block: 'nearest' });
+    }
+
+    function jump(it) {
+      closeSearch();
+      it.el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      var f = it.flash;
+      f.classList.remove('flash'); void f.offsetWidth; f.classList.add('flash');
+    }
+
+    function openSearch() {
+      overlay.hidden = false; input.value = ''; render([]);
+      document.body.style.overflow = 'hidden';
+      input.focus();
+    }
+    function closeSearch() {
+      overlay.hidden = true; document.body.style.overflow = '';
+    }
+
+    document.getElementById('searchBtn').addEventListener('click', openSearch);
+    input.addEventListener('input', function () { render(query(input.value)); });
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeSearch(); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSel(sel + 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(sel - 1); }
+      else if (e.key === 'Enter') { e.preventDefault(); if (current[sel]) jump(current[sel].it); }
+      else if (e.key === 'Escape') { e.preventDefault(); closeSearch(); }
+    });
+    document.addEventListener('keydown', function (e) {
+      var typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName || '')) || e.target.isContentEditable;
+      if (!overlay.hidden && e.key === 'Escape') { closeSearch(); return; }
+      if (overlay.hidden && !typing && (e.key === '/' || ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k'))) {
+        e.preventDefault(); openSearch();
+      }
+    });
+  })();
+</script>

@@ -26,10 +26,12 @@ from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models import (
+    Project,
     SelectorHealProposal,
     TestCase,
     TestRun,
 )
+from app.services.llm_usage import llm_call_context
 
 _sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
 _engine = create_engine(_sync_db_url, echo=False)
@@ -87,7 +89,13 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
                 "the element described by intent? Reply STRICTLY in JSON:\n"
                 '{"still_valid": true|false, "new_selector": "...", "confidence": 0.0-1.0, "rationale": "..."}'
             )
-            raw = llm.complete(prompt, max_tokens=300)
+            project = session.get(Project, run.project_id) if run.project_id else None
+            with llm_call_context(
+                feature="selector_heal",
+                workspace_id=project.workspace_id if project else None,
+                project_id=run.project_id, run_id=run_id,
+            ):
+                raw = llm.complete(prompt, max_tokens=300)
             verdict = _parse_verdict(raw)
             if not verdict or verdict.get("still_valid"):
                 continue

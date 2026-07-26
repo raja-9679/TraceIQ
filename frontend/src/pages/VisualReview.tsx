@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Images, RefreshCw, AlertCircle, Check, ShieldCheck, ChevronDown, ChevronRight,
-  Monitor, Smartphone, Clock, ImageOff, ExternalLink,
+  Monitor, Smartphone, Clock, ImageOff, ExternalLink, Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -174,21 +174,36 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
 // ---------------------------------------------------------------------------
 
 function BaselineRow({ baseline, caseInfo }: { baseline: VisualBaseline; caseInfo?: TestCaseInfo }) {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const caseName = caseInfo?.name || `Case #${baseline.test_case_id}`;
 
+  const deleteMutation = useMutation({
+    mutationFn: () => visualBaselinesApi.delete(baseline.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visual-baselines'] });
+      toast.success('Baseline deleted', {
+        description: `The pinned baseline for "${caseName}" (step ${baseline.step_id}) was removed.`,
+      });
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
+      toast.error(`Failed to delete baseline: ${err.response?.data?.detail || err.message}`),
+  });
+
   return (
     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <button
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-slate-50/60 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        {expanded ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
-        <div className="min-w-0">
-          <span className="font-bold text-slate-800 truncate block">{caseName}</span>
-          <span className="text-xs text-slate-400 font-mono">step {baseline.step_id}</span>
-        </div>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
+      <div className="w-full flex items-center gap-3 px-5 py-4 hover:bg-slate-50/60 transition-colors">
+        <button
+          className="flex items-center gap-3 text-left flex-1 min-w-0"
+          onClick={() => setExpanded((e) => !e)}
+        >
+          {expanded ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
+          <div className="min-w-0">
+            <span className="font-bold text-slate-800 truncate block">{caseName}</span>
+            <span className="text-xs text-slate-400 font-mono">step {baseline.step_id}</span>
+          </div>
+        </button>
+        <div className="flex items-center gap-2 shrink-0">
           <Badge variant="outline" className="rounded-lg bg-slate-50 text-slate-600 border-slate-200 text-[10px] font-semibold">
             <Monitor className="w-3 h-3 mr-1" /> {baseline.browser}
           </Badge>
@@ -201,8 +216,22 @@ function BaselineRow({ baseline, caseInfo }: { baseline: VisualBaseline; caseInf
             tolerance {(baseline.tolerance * 100).toFixed(1)}%
           </Badge>
           <span className="text-xs text-slate-400 whitespace-nowrap hidden sm:inline">{formatDate(baseline.created_at)}</span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={deleteMutation.isPending}
+            onClick={() => {
+              if (window.confirm(`Delete the baseline for "${caseName}" (step ${baseline.step_id})? Subsequent runs will have nothing to compare against.`)) {
+                deleteMutation.mutate();
+              }
+            }}
+            className="h-8 rounded-lg text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
+            title="Delete baseline"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </Button>
         </div>
-      </button>
+      </div>
       {expanded && (
         <div className="border-t border-slate-100 px-5 py-4 bg-slate-50/30">
           <ComparisonPanel baseline={baseline} caseName={caseName} />

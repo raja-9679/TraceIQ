@@ -8,9 +8,21 @@ var without touching call sites.
 from __future__ import annotations
 
 import os
+import time
 from typing import List, Optional, Protocol
 
 from app.core.config import settings
+from app.services.llm_usage import llm_tokens_quota_exceeded, record_llm_usage
+
+
+def _quota_blocked(provider_name: str) -> bool:
+    """Plan-level monthly token cap (see services/llm_usage.py). When the
+    ambient workspace is over its `monthly_llm_tokens` limit the call is
+    skipped and callers fall back to their non-AI behavior."""
+    if llm_tokens_quota_exceeded():
+        print(f"[LLM] {provider_name} call skipped: workspace over monthly token quota")
+        return True
+    return False
 
 
 class LLMProvider(Protocol):
@@ -41,6 +53,9 @@ class OpenAICompatibleProvider:
         self._model = model
 
     def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
+        if _quota_blocked(self.name):
+            return ""
+        started = time.monotonic()
         try:
             messages: List[dict] = []
             if system:
@@ -51,9 +66,21 @@ class OpenAICompatibleProvider:
                 messages=messages,
                 max_tokens=max_tokens,
             )
+            usage = getattr(resp, "usage", None)
+            record_llm_usage(
+                provider=self.name, model=self._model,
+                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
             content = resp.choices[0].message.content or ""
             return content.strip()
         except Exception as exc:  # noqa: BLE001 — provider errors must not bubble up
+            record_llm_usage(
+                provider=self.name, model=self._model,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                success=False, error=str(exc),
+            )
             print(f"[LLM] {self.name} call failed: {exc}")
             return ""
 
@@ -75,6 +102,9 @@ class AnthropicProvider:
         self._model = model
 
     def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
+        if _quota_blocked(self.name):
+            return ""
+        started = time.monotonic()
         try:
             kwargs = {
                 "model": self._model,
@@ -84,12 +114,24 @@ class AnthropicProvider:
             if system:
                 kwargs["system"] = system
             resp = self._client.messages.create(**kwargs)
+            usage = getattr(resp, "usage", None)
+            record_llm_usage(
+                provider=self.name, model=self._model,
+                input_tokens=getattr(usage, "input_tokens", 0) or 0,
+                output_tokens=getattr(usage, "output_tokens", 0) or 0,
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
             text_parts = []
             for block in resp.content:
                 if getattr(block, "type", None) == "text":
                     text_parts.append(block.text)
             return "".join(text_parts).strip()
         except Exception as exc:  # noqa: BLE001
+            record_llm_usage(
+                provider=self.name, model=self._model,
+                latency_ms=int((time.monotonic() - started) * 1000),
+                success=False, error=str(exc),
+            )
             print(f"[LLM] Anthropic call failed: {exc}")
             return ""
 

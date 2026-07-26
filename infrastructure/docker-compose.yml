@@ -7,10 +7,11 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: quality_intelligence
-    # No host port mapping — Postgres is reached only by other containers on
-    # qip_network as `postgres:5432`. To run psql from the host, use:
-    #   docker exec -it infrastructure-postgres-1 psql -U user -d quality_intelligence
-    # Or attach pgadmin (already wired) at http://localhost:8014.
+    # Host port 5433 -> container 5432 (host 5432 is taken by a native Postgres).
+    # Connect DBeaver/psql from the host at localhost:5433.
+    # Other containers still reach it on qip_network as `postgres:5432`.
+    ports:
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -52,7 +53,7 @@ services:
     volumes:
       - ../backend:/app
     ports:
-      - "8000:8000"
+      - "8001:8000"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-user}:${POSTGRES_PASSWORD:-password}@postgres:5432/quality_intelligence
       - CELERY_BROKER_URL=redis://redis:6379/0
@@ -87,6 +88,11 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@traceiq.io}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+      # Security scanning (see celery_worker for details).
+      - PASSIVE_SECURITY_SCAN_ENABLED=${PASSIVE_SECURITY_SCAN_ENABLED:-true}
+      - ZAP_API_URL=${ZAP_API_URL:-}
+      - ZAP_API_KEY=${ZAP_API_KEY:-}
+      - SECURITY_ACTIVE_SCAN_ENABLED=${SECURITY_ACTIVE_SCAN_ENABLED:-false}
     depends_on:
       - postgres
       - redis
@@ -135,6 +141,12 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@traceiq.io}
       - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL:-}
       - TEAMS_WEBHOOK_URL=${TEAMS_WEBHOOK_URL:-}
+      # Security scanning. ZAP_API_URL empty → active scans are refused (safe
+      # default). Point it at the `zap` service (--profile security) to enable.
+      - PASSIVE_SECURITY_SCAN_ENABLED=${PASSIVE_SECURITY_SCAN_ENABLED:-true}
+      - ZAP_API_URL=${ZAP_API_URL:-}
+      - ZAP_API_KEY=${ZAP_API_KEY:-}
+      - SECURITY_ACTIVE_SCAN_ENABLED=${SECURITY_ACTIVE_SCAN_ENABLED:-false}
     depends_on:
       - postgres
       - redis
@@ -230,6 +242,12 @@ services:
       - ARTIFACTS_DIR=/tmp/artifacts
       - BACKEND_URL=http://backend:8000
       - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # Runtime self-heal: auto-retry a failing step with an LLM-healed selector
+      # when it uniquely matches (needs an LLM provider configured above).
+      - RUNTIME_HEAL_ENABLED=${RUNTIME_HEAL_ENABLED:-false}
+      # Raw Playwright executor (item 5): run uploaded specs verbatim. Arbitrary
+      # code execution — only enable on a sandboxed worker.
+      - RAW_PLAYWRIGHT_ENABLED=${RAW_PLAYWRIGHT_ENABLED:-false}
     depends_on:
       - redis
       - minio
@@ -240,6 +258,78 @@ services:
       - "host.docker.internal:host-gateway"
     deploy:
       replicas: 4
+
+  # ---------------------------------------------------------------------
+  # Mobile app testing (Phase MOB) — opt-in via the "mobile" profile:
+  #   docker compose --profile mobile -f docker-compose.yml up -d
+  # The mobile-worker claims mobile_appium jobs from jobs:mobile:pending and
+  # drives the Appium server. Appium itself needs a device to talk to: attach
+  # an Android emulator container (e.g. budtmo/docker-android, requires KVM)
+  # or point APPIUM_URL at a device cloud / a host-side Appium with a real
+  # device plugged in. iOS requires macOS — use a device cloud.
+  # ---------------------------------------------------------------------
+  appium:
+    image: appium/appium:latest
+    profiles: ["mobile"]
+    networks:
+      - qip_network
+    ports:
+      - "4723:4723"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mobile-worker:
+    build:
+      context: ../execution-engine
+      dockerfile: Dockerfile.worker
+    command: node dist/mobile-worker.js
+    profiles: ["mobile"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_JOBS_STREAM=jobs:mobile:pending
+      - REDIS_RESULTS_STREAM=jobs:results
+      - REDIS_CONSUMER_GROUP=mobile-workers
+      - APPIUM_URL=http://appium:4723
+      # Device provider (MOB-4): local Appium (default) or a device cloud.
+      # With a cloud provider the local `appium` service sits idle — binaries
+      # are pushed to the cloud's app storage and sessions run there. iOS
+      # requires a cloud provider.
+      - MOBILE_DEVICE_PROVIDER=${MOBILE_DEVICE_PROVIDER:-local}
+      - MOBILE_DEVICE_NAME=${MOBILE_DEVICE_NAME:-Android Emulator}
+      - MOBILE_PLATFORM_VERSION=${MOBILE_PLATFORM_VERSION:-}
+      - BROWSERSTACK_USERNAME=${BROWSERSTACK_USERNAME:-}
+      - BROWSERSTACK_ACCESS_KEY=${BROWSERSTACK_ACCESS_KEY:-}
+      - SAUCE_USERNAME=${SAUCE_USERNAME:-}
+      - SAUCE_ACCESS_KEY=${SAUCE_ACCESS_KEY:-}
+      - SAUCE_REGION=${SAUCE_REGION:-us-west-1}
+      - LT_USERNAME=${LT_USERNAME:-}
+      - LT_ACCESS_KEY=${LT_ACCESS_KEY:-}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=test-artifacts
+      # AI selector heal on Appium page source (MOB-5). Same provider vars
+      # as execution-worker; usage metering reports through the backend.
+      - LLM_PROVIDER=${LLM_PROVIDER:-}
+      - LLM_MODEL=${LLM_MODEL:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - BACKEND_URL=http://backend:8000
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET:-}
+      # Auto-retry a failing step with an LLM-healed locator when it
+      # uniquely matches (suggestion-only when false).
+      - RUNTIME_HEAL_ENABLED=${RUNTIME_HEAL_ENABLED:-false}
+    depends_on:
+      - redis
+      - appium
+      - minio
+    networks:
+      - qip_network
 
   # Legacy execution engine (for CONTINUOUS mode - shared browser context)
   execution-engine:
@@ -310,6 +400,29 @@ services:
       - "8014:80"
     depends_on:
       - postgres
+    networks:
+      - qip_network
+
+  # OWASP ZAP daemon for active/authenticated DAST (PLATFORM_VISION.md P-4).
+  # Optional + heavy: gated behind the `security` compose profile so a normal
+  # `up` does not start it. Enable with:
+  #   docker compose --profile security up -d zap
+  # then set ZAP_API_URL=http://zap:8090 (and a ZAP_API_KEY) in the env so the
+  # celery worker can reach it.
+  zap:
+    image: zaproxy/zap-stable
+    profiles: ["security"]
+    command: >-
+      zap.sh -daemon -host 0.0.0.0 -port 8090
+      -config api.disablekey=false
+      -config api.key=${ZAP_API_KEY:-changeme}
+      -config api.addrs.addr.name=.*
+      -config api.addrs.addr.regex=true
+    # No host port published — the worker/backend reach ZAP internally via
+    # zap:8090 on qip_network. (Publishing a host port clashes with other local
+    # projects; add `ports: ["8091:8090"]` if you want host access for debugging.)
+    expose:
+      - "8090"
     networks:
       - qip_network
 

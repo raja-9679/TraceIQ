@@ -8,6 +8,7 @@ UIs for the new entities, full Playwright recorder fidelity, and a
 statistical flake model remain deferred to follow-up sessions.
 
 For the authoritative end-to-end picture, see `ARCHITECTURE.md`.
+For a full feature-coverage scorecard against a modern-platform checklist (and the prioritized roadmap derived from it), see `info/FEATURE_GAP_ANALYSIS.md`.
 
 ---
 
@@ -76,8 +77,8 @@ These items either require significant frontend work, external products, or desi
 ### Phase B polish
 - **Persona-refresh handler in execution-engine** — backend task POSTs to `<engine>/persona-refresh`; that endpoint does not exist yet. The task degrades gracefully when the engine returns 4xx.
 - **Per-step DOM capture in execution-worker** — `heal_tasks.propose_selector_heals_for_run` reads DOM from `run.execution_log[*].dom`. The worker captures DOM for some step types but not consistently per step; until it does, proactive heal proposals will rarely be generated.
-- **Statistical flake scoring** — the `flake_score` column exists; populating it (alternating-status detection over recent retries) is open.
-- **Visual baseline approval UI** — baselines today are created via API only. A "promote this candidate to baseline" UI is needed for human-in-the-loop adoption.
+- ~~**Statistical flake scoring**~~ — SHIPPED since this note was written: `result_aggregator.py` computes `flake_score` (alternation ratio over the last 20 results) with auto-quarantine ≥ 0.4 and auto-release < 0.15, backed by `FlakeRecord`.
+- **Visual baseline approval UI** — the backend promote workflow now exists (`POST /api/visual-baselines/promote` copies a run's candidate screenshot to a durable baseline); the React "promote this candidate" UI is still needed for human-in-the-loop adoption.
 
 ### Phase C polish
 - **Coverage gap detection** — partially shipped via Phase D's `impact-analysis` endpoint (returns unmatched files). The "auto-draft a test for unmatched files" pipeline is open: an agent must explicitly call `generate_case_proposal` on each unmatched file. Possible next step: a server-side "auto-propose for every unmatched file" mode.
@@ -106,11 +107,52 @@ This loop is exactly what Mode 1 was designed for. **The gap is step 3**: TraceI
 **Why not tunnel (ngrok / Cloudflare)?**
 Tunnel approach works today with zero TraceIQ changes, but exposes the local dev server publicly — uncomfortable for internal, unreleased, or credential-bearing apps. Local worker keeps everything local.
 
-**Not built yet.** Requires:
-- New `local_worker_id` / `local_worker_token` concept on Workspace (similar to API keys)
-- Job-polling endpoint on the TraceIQ backend (`GET /api/jobs/poll?worker_id=...`) that returns the next pending job for a given local worker
-- Worker picks up execution mode from the job; existing Playwright runner code reuses as-is
-- Result POST-back uses the existing `/api/runs/{id}/webhook` + `/api/runs/{id}/finalize` flow unchanged
+**✅ BUILT (2026-07-23), with small deltas from the sketch above:**
+- Auth reuses **workspace API keys** (no new worker-token concept): the key's
+  workspace namespaces the job queue (`jobs:local:{workspace_id}:{worker_id}`),
+  so a worker can never poll another tenant's jobs.
+- `POST /api/runs` accepts `local_worker_id` in the body; dispatch routes that
+  run's jobs to the local Redis list (1-day TTL) instead of `jobs:pending`.
+- `GET /api/jobs/poll?worker_id=…` (API-key auth) pops the next job; 204 idle.
+- Results POST to **`POST /api/jobs/result`** (not the webhook endpoints): the
+  server validates run/workspace ownership, increments the run's progress
+  hash, and feeds the normal `jobs:results` stream — aggregation, finalize,
+  notifications identical to server execution. Verified end-to-end.
+- CLI: `npm run worker:local` in `execution-engine/`
+  (`src/local-worker.ts`, env: TRACEIQ_URL / TRACEIQ_API_KEY /
+  TRACEIQ_WORKER_ID). Reuses the full TestExecutor step engine.
+
+Still deferred for the local worker: continuous (sub-suite) jobs — v1 is
+single-test jobs only (SEPARATE/PARALLEL); artifact upload (screenshots/video/
+trace stay on the dev machine — no MinIO from outside the cluster); an
+`npx traceiq-worker` standalone package (today it runs from the repo).
+
+### Phase MOB — native mobile app testing (started 2026-07-25)
+
+Full phase plan in `info/FEATURE_GAP_ANALYSIS.md` §31 + "Phase MOB". Built so far (MOB-2 complete, MOB-3 scaffold):
+
+- ✅ `ExecutorType.MOBILE_APPIUM` — rides the executor keystone; no schema change needed for the value itself.
+- ✅ `MobileAppBuild` registry (APK/AAB/IPA → MinIO `app-builds/{project_id}/`) + CRUD at `POST/GET /api/projects/{id}/app-builds`, `GET/DELETE /api/app-builds/{id}`. Editor-gated uploads, extension-vs-platform validation.
+- ✅ `TestRun.app_build_id` (+ `app_build_id` in the `POST /api/runs` body, validated against the suite's project). Migration `b3c4d5e6f7a8_mobile_app_testing`.
+- ✅ Dispatch routing: mobile jobs land on a dedicated `jobs:mobile:pending` stream (`mobile-workers` consumer group) so Playwright workers never claim them; job settings carry a `mobile_app` descriptor (internal presigned URL + platform + package_id).
+- ✅ 11 native step types (`mobile-tap`, `mobile-swipe`, `mobile-type`, …) in the `agent_reference.py` catalog with an Appium locator convention (`~accessibility-id`, `xpath=`, `id=`, `android=`, `ios=`).
+- ✅ `execution-engine/src/mobile-worker.ts` — reuses `JobQueue` (stream/group via env), drives Appium over the raw W3C WebDriver protocol (`src/core/webdriver-client.ts`, zero new npm deps). `npm run worker:mobile` / `dev:mobile-worker`.
+- ✅ Compose profile `mobile`: `appium` + `mobile-worker` services (`docker compose --profile mobile … up`).
+- ✅ Executor inference: cases containing `mobile-*` steps get `executor=mobile_appium` automatically on create/update (`test_cases.py`, same pattern as `load-test`).
+- ✅ Frontend: App Builds page (`/app-builds` — upload APK/AAB/IPA, list, download, delete; Environments-style project scoping); app-build + environment pickers next to Run Now in `SuiteDetails.tsx` (pinned onto every run from the page); 11 mobile step types in the TestBuilder step editor under a "Mobile App (Appium)" category with Appium-locator inputs; `triggerRun` now sends a `RunCreateContext` JSON body.
+- ✅ Screenshot artifacts: `mobile-screenshot` steps + automatic on-failure captures upload to MinIO (`runs/{run_id}/screenshots/`, same layout as web).
+- ✅ Interpolation: `{{env.X}}` / `{{secret.X}}` / `{{data.X}}` / `{{fake.KIND}}` resolve in mobile step selectors/values/params via the shared `execution-engine/src/core/interpolate.ts` (extracted from test-executor so both executors use one implementation).
+- ✅ Deploy runbook: `PRODUCTION_DEPLOY.md` §2.7 (migration, image rebuilds, opt-in mobile profile, device options, smoke checklist, rollback).
+
+- ✅ MOB-5 — selector heal on mobile: locator failures propose an LLM-healed Appium locator from the XML page source (`AIEngine.healMobileLocator`, shared cache/per-run cap); suggestions flow through the existing `heal_suggestions` → `SelectorHealProposal` pipeline unchanged; `RUNTIME_HEAL_ENABLED=true` retries the step in place on a unique match. Failure-analysis heuristics gained Appium-session and missing-app-build patterns (mobile locator/timeout errors already matched the existing patterns).
+
+- ✅ MOB-4 — device-cloud adapter: `MOBILE_DEVICE_PROVIDER=local|browserstack|saucelabs|lambdatest` (`execution-engine/src/device-cloud.ts`). Cloud providers get the binary pushed to their app storage automatically (bs://… / storage:… / lt://…, cached per build for the worker's lifetime), vendor options blocks (`bstack:options` etc.) injected, hub auth via basic-auth header. This is the iOS path.
+
+- ✅ Mobile polish (2026-07-26): `mobile-expect-visual-match` (pixelmatch against baselines keyed browser='mobile'; candidate + diff uploaded as artifacts; capture-only when no baseline); `mobile-extract-value` feeding `{{name}}` runtime variables within a case; best-effort MP4 screen recording per job (`appium/start|stop_recording_screen` → `runs/{run_id}/videos/`). All 13 mobile step types in the catalog + step editor.
+
+Still deferred for mobile:
+- **A local Android device** for the self-hosted path: attach `budtmo/docker-android` (KVM required) or a USB device via host Appium. (Cloud providers need no local device.)
+- End-to-end smoke against a real device/cloud account — the only remaining gap in Phase MOB.
 
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 

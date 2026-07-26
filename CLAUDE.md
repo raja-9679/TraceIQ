@@ -234,8 +234,11 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
 - **Git context on runs** — `POST /api/runs` accepts a JSON body with `git_commit`, `git_branch`, `git_pr_url`, `git_repo`, `triggered_by`, `agent_id`. These are stored on `TestRun` and surfaced in the finalize webhook payload.
 - **Refresh tokens** — `POST /api/auth/refresh` (rotation-on-use). Family-based revocation on token replay.
 - **Outbound webhooks** — `POST /api/workspaces/{id}/webhooks`. HMAC-SHA256 signed (`X-TraceIQ-Signature`). Fan-out happens in `app.tasks.outbound_webhook_tasks.dispatch_run_webhooks`.
-- **LLM provider abstraction** — `app/ai/providers.py` (Python) and `execution-engine/src/llm-provider.ts` (TS). Switch via `LLM_PROVIDER=anthropic|openai` + `LLM_MODEL=...`.
+- **LLM provider abstraction** — `app/ai/providers.py` (Python) and `execution-engine/src/llm-provider.ts` (TS). Switch via `LLM_PROVIDER=anthropic|openai|gemini|ollama|openai-compatible` + `LLM_MODEL=...`.
+- **LLM usage metering** — every provider call records tokens/latency to `LLMUsageEvent` (context via `app/services/llm_usage.py:llm_call_context`); workers report via `POST /api/internal/llm-usage` (X-Worker-Secret). Stats at `GET /api/workspaces/{id}/llm-usage`; monthly totals roll into `UsageRecord` (metric `llm_tokens`) and are capped by the `monthly_llm_tokens` plan-limit key (absent/0 = unlimited — over-cap calls are skipped and fall back to heuristics). Frontend: `/ai-usage` page.
 - **PARALLEL execution mode** — fully routed through `dispatch_parallel_jobs` in `app/worker.py`. Tune fan-out via `PARALLEL_MAX_CONCURRENCY`.
+- **Local dev worker** — `POST /api/runs` body `local_worker_id` pins a run to a developer's polling worker (`npm run worker:local` in `execution-engine/`, API-key auth via `GET /api/jobs/poll` + `POST /api/jobs/result`) so agents/CI can test `localhost` before deploy. v1: single-test jobs, no artifact upload.
+- **Mobile app testing (Phase MOB)** — cases with `executor=mobile_appium` run native Android/iOS journeys via Appium. Upload binaries at `POST /api/projects/{id}/app-builds` (MinIO-backed `MobileAppBuild` registry); pin a run via `app_build_id` in the `POST /api/runs` body. Mobile jobs ride a dedicated `jobs:mobile:pending` stream consumed by `execution-engine/src/mobile-worker.ts` (compose profile `mobile`; Appium at `APPIUM_URL`; needs an emulator/device attached). Step types are `mobile-*` in the `/api/step-types` catalog. v1: no artifact upload; iOS via device cloud only.
 - **MCP server** — `integrations/mcp-server/`. Wires Claude Code / Cursor to TraceIQ as a tool.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
 
@@ -243,9 +246,14 @@ See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full
 
 ## Known issues to be aware of
 
-- `DELETE /api/runs?all=true` is unscoped — any authenticated user can delete all runs (`test_runs.py:323`)
-- Webhook and finalize endpoint security checks are warn-only, not enforced (`test_runs.py:399-427`)
-- `PARALLEL` execution mode is defined in the enum but not yet implemented distinctly
-- CORS is `["*"]` in default config — verify `BACKEND_CORS_ORIGINS` is set in production
-- `/mock/bihar-election` stub endpoint is live in production (`main.py:56`)
-- No refresh token — 30-minute JWT causes frequent logouts in long sessions
+Historical issues now FIXED (kept here so stale docs elsewhere don't mislead):
+run deletion is access-checked and editor-gated (single, `run_ids`, and `all=true`
+paths); webhook/finalize enforce `X-TraceIQ-Secret` (403, not warn-only); CORS
+defaults to localhost dev origins; the `/mock/bihar-election` stub is gone;
+refresh tokens exist (rotation + family revocation); PARALLEL mode is routed.
+
+Still open:
+- Worker image bakes code at build time — new step types need an image rebuild
+  or workers log "Unknown step type" and skip silently
+- `celery_beat` is required for run finalization (drains `jobs:results` every 2s)
+- Committed `.env` history was never scrubbed — rotate any real credentials

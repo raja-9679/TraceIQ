@@ -45,6 +45,7 @@ from app.models import (
     Workspace,
 )
 from app.services.access_service import access_service
+from app.services.llm_usage import llm_call_context
 
 router = APIRouter()
 
@@ -188,7 +189,12 @@ async def generate_case(
             "`expect-visible` or `expect-text` step that proves the journey "
             "succeeded."
         )
-    raw = llm_provider.complete(prompt, system=_GENERATION_SYSTEM, max_tokens=1500)
+    with llm_call_context(
+        feature="case_generation",
+        workspace_id=project.workspace_id if project else None,
+        project_id=suite.project_id,
+    ):
+        raw = llm_provider.complete(prompt, system=_GENERATION_SYSTEM, max_tokens=1500)
     steps = _parse_steps_payload(raw)
     if not steps:
         raise HTTPException(

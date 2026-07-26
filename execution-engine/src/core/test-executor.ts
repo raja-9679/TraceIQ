@@ -5,6 +5,25 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { resolveTemplates } from './interpolate';
+
+// Dot-path lookup into a parsed JSON body. Supports `a.b.c`, numeric array
+// segments (`items.0.id`), and bracket indexing (`items[0].id`). Returns
+// undefined when any segment is missing.
+export function jsonPath(obj: any, pathExpr: string): any {
+    if (!pathExpr) return undefined;
+    let current = obj;
+    // normalize [n] → .n so both syntaxes work
+    const parts = pathExpr.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
+    for (const part of parts) {
+        if (current === undefined || current === null) return undefined;
+        current = current[part];
+    }
+    return current;
+}
+
+// {{fake.KIND}} generation and the full template resolver now live in
+// ./interpolate so the mobile worker shares one implementation.
 
 export class TestExecutor {
     public static async executeStep(
@@ -24,43 +43,12 @@ export class TestExecutor {
             }
         };
 
-        const resolve = (val: any): any => {
-            if (typeof val === 'string') {
-                let out = val;
-                // {{env.KEY}} — environment variables, {{secret.KEY}} — project
-                // secrets: both dispatched in job settings by the backend.
-                const envVars = globalSettings?.environment?.variables;
-                if (envVars) {
-                    out = out.replace(/\{\{\s*env\.(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        envVars[key] !== undefined ? String(envVars[key]) : `{{env.${key}}}`);
-                }
-                const secrets = globalSettings?.secrets;
-                if (secrets) {
-                    out = out.replace(/\{\{\s*secret\.(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        secrets[key] !== undefined ? String(secrets[key]) : `{{secret.${key}}}`);
-                }
-                // {{data.KEY}} — the current data-driven dataset row.
-                const dataRow = testCaseContext?.data;
-                if (dataRow) {
-                    out = out.replace(/\{\{\s*data\.(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        dataRow[key] !== undefined ? String(dataRow[key]) : `{{data.${key}}}`);
-                }
-                // {{name}} — runtime variables from extract-value / scripts.
-                if (testCaseContext?.variables) {
-                    out = out.replace(/\{\{\s*(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        testCaseContext.variables[key] !== undefined ? String(testCaseContext.variables[key]) : `{{${key}}}`);
-                }
-                return out;
-            }
-            // Simple recursion for objects/arrays (shallow for headers/params is usually enough, but let's go one level deep if needed)
-            if (val && typeof val === 'object') {
-                if (Array.isArray(val)) return val.map(item => resolve(item));
-                const newObj: any = {};
-                for (const k in val) newObj[k] = resolve(val[k]);
-                return newObj;
-            }
-            return val;
-        };
+        const resolve = (val: any): any => resolveTemplates(val, {
+            envVars: globalSettings?.environment?.variables,
+            secrets: globalSettings?.secrets,
+            dataRow: testCaseContext?.data,
+            variables: testCaseContext?.variables,
+        });
 
         const getLocator = (selector: string) => {
             return context.locator(selector).first();
@@ -199,12 +187,7 @@ export class TestExecutor {
                                     }
                                 } else if (assertion.type === 'json-path') {
                                     if (!jsonBody) throw new Error("Response is not JSON, cannot perform json-path assertion");
-                                    const pathParts = assertion.path.split('.');
-                                    let current = jsonBody;
-                                    for (const part of pathParts) {
-                                        if (current === undefined || current === null) break;
-                                        current = current[part];
-                                    }
+                                    const current = jsonPath(jsonBody, assertion.path);
                                     if (assertion.operator === 'equals') {
                                         if (String(current) !== String(assertion.value)) {
                                             throw new Error(`Expected ${assertion.path} to equal ${assertion.value} but got ${current}`);
@@ -293,6 +276,27 @@ export class TestExecutor {
                         }
                     }
 
+                    // Extract values from the JSON response into runtime
+                    // variables for later steps ({{name}} interpolation) — the
+                    // login→token→authorized-call chaining primitive.
+                    //   extract: [{ path: "data.token", variable: "token" }]
+                    if (step.params?.extract && testCaseContext) {
+                        if (!testCaseContext.variables) testCaseContext.variables = {};
+                        for (const ex of step.params.extract) {
+                            if (!ex?.path || !ex?.variable) continue;
+                            if (jsonBody === undefined) {
+                                throw new Error(`extract: response from ${reqUrl} is not JSON, cannot extract "${ex.path}"`);
+                            }
+                            const value = jsonPath(jsonBody, ex.path);
+                            if (value === undefined && ex.required !== false) {
+                                throw new Error(`extract: path "${ex.path}" not found in response from ${reqUrl}`);
+                            }
+                            testCaseContext.variables[ex.variable] =
+                                (value !== null && typeof value === 'object') ? JSON.stringify(value) : value;
+                            console.log(`  [API] extracted {{${ex.variable}}} from ${ex.path}`);
+                        }
+                    }
+
                     allResults.push(resultObject);
                 }
 
@@ -328,6 +332,180 @@ export class TestExecutor {
                 }
 
                 return allResults[0];
+            }
+
+            case 'oauth2-token': {
+                // Client-credentials token fetch for the app under test.
+                //   value/params.token_url  — the token endpoint
+                //   params.client_id / client_secret (use {{secret.X}})
+                //   params.scope / audience — optional
+                //   params.variable — runtime var name (default access_token)
+                const tokenUrl = resolve(step.value || step.params?.token_url);
+                const clientId = resolve(step.params?.client_id);
+                const clientSecret = resolve(step.params?.client_secret);
+                if (!tokenUrl || !clientId || !clientSecret) {
+                    throw new Error('oauth2-token requires token_url, client_id and client_secret');
+                }
+                const varName = step.params?.variable || 'access_token';
+                const form: Record<string, string> = {
+                    grant_type: 'client_credentials',
+                    client_id: clientId,
+                    client_secret: clientSecret,
+                };
+                const scope = resolve(step.params?.scope);
+                if (scope) form.scope = scope;
+                const audience = resolve(step.params?.audience);
+                if (audience) form.audience = audience;
+
+                console.log(`  [OAuth2] client_credentials → ${tokenUrl}`);
+                const tokenResp = await page.request.post(tokenUrl, { form, timeout: 30000 });
+                const tokenText = await tokenResp.text();
+                if (!tokenResp.ok()) {
+                    throw new Error(`oauth2-token: token endpoint returned ${tokenResp.status()}: ${tokenText.slice(0, 300)}`);
+                }
+                let tokenJson: any;
+                try { tokenJson = JSON.parse(tokenText); } catch {
+                    throw new Error('oauth2-token: token endpoint did not return JSON');
+                }
+                const accessToken = tokenJson.access_token;
+                if (!accessToken) {
+                    throw new Error(`oauth2-token: no access_token in response (keys: ${Object.keys(tokenJson).join(', ')})`);
+                }
+                if (testCaseContext) {
+                    if (!testCaseContext.variables) testCaseContext.variables = {};
+                    testCaseContext.variables[varName] = accessToken;
+                    if (tokenJson.token_type) testCaseContext.variables[`${varName}_type`] = tokenJson.token_type;
+                }
+                console.log(`  [OAuth2] stored {{${varName}}} (${String(accessToken).length} chars, never logged)`);
+                break;
+            }
+
+            case 'graphql': {
+                // GraphQL request with data-path assertions.
+                //   value/selector — endpoint URL
+                //   params.query / params.variables
+                //   params.allow_errors — skip the default errors[] check
+                //   params.assertions: [{type:'status'|'data-path', path, operator, value}]
+                //   params.extract: [{path, variable}] — paths are relative to `data`
+                const gqlUrl = resolve(step.value || step.selector);
+                const query = resolve(step.params?.query);
+                if (!gqlUrl || !query) throw new Error('graphql requires a URL and params.query');
+                const gqlVariables = resolve(step.params?.variables || {});
+                const gqlHeaders = {
+                    'content-type': 'application/json',
+                    ...globalSettings.headers,
+                    ...resolve(step.params?.headers || {}),
+                };
+
+                console.log(`  [GraphQL] POST ${gqlUrl}`);
+                const gqlResp = await page.request.post(gqlUrl, {
+                    headers: gqlHeaders,
+                    data: { query, variables: gqlVariables },
+                    timeout: 30000,
+                });
+                const gqlStatus = gqlResp.status();
+                const gqlText = await gqlResp.text();
+                let gqlJson: any;
+                try { gqlJson = JSON.parse(gqlText); } catch { /* asserted below */ }
+
+                const gqlResult: any = {
+                    type: 'graphql',
+                    url: gqlUrl,
+                    status: gqlStatus,
+                    headers: gqlResp.headers(),
+                    body: gqlText,
+                    request: { url: gqlUrl, method: 'POST', headers: gqlHeaders, body: JSON.stringify({ query, variables: gqlVariables }) },
+                };
+
+                try {
+                    if (gqlJson === undefined) {
+                        throw new Error(`GraphQL response is not JSON (status ${gqlStatus})`);
+                    }
+                    if (!step.params?.allow_errors && Array.isArray(gqlJson.errors) && gqlJson.errors.length) {
+                        const messages = gqlJson.errors.map((e: any) => e.message || JSON.stringify(e)).slice(0, 5).join('; ');
+                        throw new Error(`GraphQL errors: ${messages}`);
+                    }
+                    for (const assertion of step.params?.assertions || []) {
+                        if (assertion.type === 'status') {
+                            if (gqlStatus !== parseInt(assertion.value)) {
+                                throw new Error(`Expected status ${assertion.value} but got ${gqlStatus}`);
+                            }
+                        } else if (assertion.type === 'data-path') {
+                            const actual = jsonPath(gqlJson.data, assertion.path);
+                            const op = assertion.operator || 'equals';
+                            if (op === 'exists') {
+                                if (actual === undefined || actual === null) {
+                                    throw new Error(`Expected data.${assertion.path} to exist`);
+                                }
+                            } else if (op === 'equals') {
+                                if (String(actual) !== String(assertion.value)) {
+                                    throw new Error(`Expected data.${assertion.path} to equal ${assertion.value} but got ${actual}`);
+                                }
+                            } else if (op === 'contains') {
+                                if (!String(actual).includes(String(assertion.value))) {
+                                    throw new Error(`Expected data.${assertion.path} to contain ${assertion.value} but got ${actual}`);
+                                }
+                            }
+                        }
+                    }
+                    if (step.params?.extract && testCaseContext) {
+                        if (!testCaseContext.variables) testCaseContext.variables = {};
+                        for (const ex of step.params.extract) {
+                            if (!ex?.path || !ex?.variable) continue;
+                            const value = jsonPath(gqlJson.data, ex.path);
+                            if (value === undefined && ex.required !== false) {
+                                throw new Error(`extract: path "data.${ex.path}" not found in GraphQL response`);
+                            }
+                            testCaseContext.variables[ex.variable] =
+                                (value !== null && typeof value === 'object') ? JSON.stringify(value) : value;
+                        }
+                    }
+                } catch (e: any) {
+                    gqlResult.error = e.message;
+                    const err = new Error(e.message);
+                    (err as any).stepResult = gqlResult;
+                    throw err;
+                }
+
+                return gqlResult;
+            }
+
+            case 'check-tls': {
+                // TLS certificate probe: connects to the host, validates the
+                // chain (Node default), and fails when the cert expires within
+                // params.min_days_remaining (default 14). No browser involved.
+                const target = resolve(step.value || step.selector);
+                if (!target) throw new Error('check-tls requires a host or URL');
+                const minDays = parseInt(String(step.params?.min_days_remaining ?? '14'), 10);
+                const parsed = new URL(target.includes('://') ? target : `https://${target}`);
+                const host = parsed.hostname;
+                const tlsPort = parseInt(parsed.port || '443', 10);
+
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const tls = require('tls');
+                const cert: any = await new Promise((resolveP, rejectP) => {
+                    const socket = tls.connect(
+                        { host, port: tlsPort, servername: host, timeout: 10000 },
+                        () => {
+                            const c = socket.getPeerCertificate();
+                            socket.end();
+                            resolveP(c);
+                        });
+                    socket.on('error', (e: any) => rejectP(new Error(`check-tls: ${host}:${tlsPort} — ${e.message}`)));
+                    socket.on('timeout', () => { socket.destroy(); rejectP(new Error(`check-tls: ${host}:${tlsPort} — connect timeout`)); });
+                });
+                if (!cert || !cert.valid_to) {
+                    throw new Error(`check-tls: ${host} returned no certificate`);
+                }
+                const daysLeft = Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000);
+                console.log(`  [TLS] ${host}:${tlsPort} cert valid_to=${cert.valid_to} (${daysLeft}d left, issuer=${cert.issuer?.O || '?'})`);
+                if (daysLeft < 0) {
+                    throw new Error(`check-tls: certificate for ${host} EXPIRED on ${cert.valid_to}`);
+                }
+                if (daysLeft < minDays) {
+                    throw new Error(`check-tls: certificate for ${host} expires in ${daysLeft} day(s) (< ${minDays} required) on ${cert.valid_to}`);
+                }
+                break;
             }
 
             case 'feed-check': {
@@ -551,6 +729,25 @@ export class TestExecutor {
                 break;
             }
 
+            case 'expect-title': {
+                const expectedTitle = resolve(step.value || step.selector);
+                if (!expectedTitle) throw new Error('expect-title requires a value');
+                const titleOperator = step.params?.operator || 'contains';
+                const actualTitle = await page.title();
+                if (titleOperator === 'equals') {
+                    if (actualTitle !== expectedTitle) {
+                        throw new Error(`Expected title to equal "${expectedTitle}", but got "${actualTitle}"`);
+                    }
+                } else if (titleOperator === 'matches') {
+                    if (!new RegExp(expectedTitle).test(actualTitle)) {
+                        throw new Error(`Expected title to match /${expectedTitle}/, but got "${actualTitle}"`);
+                    }
+                } else if (!actualTitle.includes(expectedTitle)) {
+                    throw new Error(`Expected title to contain "${expectedTitle}", but got "${actualTitle}"`);
+                }
+                break;
+            }
+
             case 'hover': {
                 const hoverSelector = step.selector || step.value;
                 if (hoverSelector) {
@@ -572,6 +769,84 @@ export class TestExecutor {
                 const key = step.value || step.selector;
                 if (key) await page.keyboard.press(key);
                 break;
+            }
+
+            case 'mock-response': {
+                // Stub matching network responses. selector = URL glob/pattern;
+                // params.status/body/content_type/headers shape the response.
+                const urlPattern = step.selector || '**/*';
+                const mockStatus = step.params?.status ?? 200;
+                const contentType = step.params?.content_type
+                    || (step.params?.json !== undefined ? 'application/json' : 'text/plain');
+                const bodyRaw = step.params?.json !== undefined
+                    ? JSON.stringify(step.params.json)
+                    : resolve(step.value ?? step.params?.body ?? '');
+                await page.route(urlPattern, route => route.fulfill({
+                    status: mockStatus,
+                    contentType,
+                    headers: step.params?.headers || {},
+                    body: bodyRaw,
+                }));
+                console.log(`  [Mock] ${urlPattern} -> ${mockStatus} (${contentType})`);
+                break;
+            }
+
+            case 'block-request': {
+                // Abort matching requests (e.g. block analytics/3rd-party).
+                const blockPattern = step.selector || step.value;
+                if (!blockPattern) throw new Error('block-request requires a selector (URL pattern)');
+                await page.route(blockPattern, route => route.abort());
+                console.log(`  [Block] ${blockPattern}`);
+                break;
+            }
+
+            case 'set-network-latency': {
+                // Delay matching requests by params.ms milliseconds before
+                // continuing them (simulate slow network / spinners).
+                const latencyPattern = step.selector || '**/*';
+                const delayMs = Number(step.params?.ms ?? step.value ?? 0);
+                await page.route(latencyPattern, async route => {
+                    if (delayMs > 0) await new Promise(r => setTimeout(r, delayMs));
+                    await route.continue();
+                });
+                console.log(`  [Latency] ${latencyPattern} +${delayMs}ms`);
+                break;
+            }
+
+            case 'check-accessibility': {
+                // Run axe-core against the current page. params.impact filters
+                // the minimum severity that fails the step (default 'serious').
+                // params.fail=false makes it report-only (never throws).
+                let AxeBuilder: any;
+                try {
+                    AxeBuilder = require('@axe-core/playwright').default;
+                } catch (e) {
+                    console.warn('  [A11y] @axe-core/playwright not installed; skipping (report-only)');
+                    break;
+                }
+                const results = await new AxeBuilder({ page }).analyze();
+                const order: Record<string, number> = { minor: 0, moderate: 1, serious: 2, critical: 3 };
+                const threshold = order[String(step.params?.impact || 'serious')] ?? 2;
+                const blocking = (results.violations || []).filter(
+                    (v: any) => (order[v.impact as string] ?? 0) >= threshold);
+                const summary = blocking.map((v: any) => `${v.id} (${v.impact}, ${v.nodes.length})`).join('; ');
+                console.log(`  [A11y] ${results.violations.length} violation type(s); `
+                    + `${blocking.length} at/above '${step.params?.impact || 'serious'}'`);
+                const a11yResult = {
+                    type: 'check-accessibility',
+                    total_violations: results.violations.length,
+                    blocking_violations: blocking.length,
+                    violations: blocking.map((v: any) => ({
+                        id: v.id, impact: v.impact, help: v.help,
+                        nodes: v.nodes.length, helpUrl: v.helpUrl,
+                    })),
+                };
+                if (step.params?.fail !== false && blocking.length > 0) {
+                    const err: any = new Error(`Accessibility check failed: ${blocking.length} violation(s) — ${summary}`);
+                    err.stepResult = a11yResult;
+                    throw err;
+                }
+                return a11yResult;
             }
 
             case 'screenshot': {
@@ -897,6 +1172,14 @@ if __name__ == "__main__":
                     actualValue = await locator.getAttribute(attributeName);
                 } else if (source === 'count') {
                     actualValue = await context.locator(selector).count();
+                } else if (source === 'css') {
+                    const propertyName = step.params?.property || attributeName;
+                    if (!propertyName) throw new Error("CSS property name required for css assertion (params.property)");
+                    actualValue = await locator.evaluate(
+                        (el, prop) => window.getComputedStyle(el).getPropertyValue(prop),
+                        propertyName,
+                    );
+                    actualValue = String(actualValue).trim();
                 }
 
                 console.log(`  [Assert] ${source} of '${selector}' is '${actualValue}'. Checking ${operator} '${expectedValue}'`);

@@ -136,7 +136,7 @@ export class AIAnalyzer {
 Provide concise, actionable analysis. Focus on identifying root causes and suggesting specific fixes.
 Format your response as JSON matching the FailureAnalysis interface.`;
 
-        const aiContent = await llmProvider.complete(prompt, { system, maxTokens: 2000 });
+        const aiContent = await llmProvider.complete(prompt, { system, maxTokens: 2000, feature: 'failure_analysis', runId });
 
         if (aiContent) {
             try {

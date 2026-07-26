@@ -151,7 +151,7 @@ truth for the upgrade path.
 ```bash
 # Local dev (hot-reload, volume mounts)
 cd infrastructure
-docker compose --env-file env.local -f docker-compose.yml up -d --build
+* [ ] docker compose --env-file env.local -f docker-compose.yml up -d --build
 
 # Production
 docker compose --env-file env.prod -f docker-compose.prod.yml up -d --build
