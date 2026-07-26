@@ -7,10 +7,13 @@
  * aggregation, finalize, notifications, and AI analysis are identical to the
  * Playwright path.
  *
- * Screenshots (explicit `mobile-screenshot` steps + automatic on-failure
- * captures) upload to MinIO under the same `runs/{run_id}/screenshots/` key
- * layout the Playwright worker uses. Steps interpolate `{{env.X}}`,
- * `{{secret.X}}`, `{{data.X}}`, and `{{fake.KIND}}` via the shared resolver.
+ * Artifacts: screenshots (explicit `mobile-screenshot` steps, automatic
+ * on-failure captures, visual-match candidates/diffs) and a best-effort MP4
+ * screen recording per job upload to MinIO under the same `runs/{run_id}/…`
+ * key layout the Playwright worker uses. Steps interpolate `{{env.X}}`,
+ * `{{secret.X}}`, `{{data.X}}`, `{{fake.KIND}}`, and `{{name}}` runtime
+ * variables fed by `mobile-extract-value`. `mobile-expect-visual-match`
+ * reuses the pixelmatch pipeline against baselines keyed browser='mobile'.
  *
  * MOB-5 selector heal: locator-shaped failures ask the LLM for a replacement
  * against the Appium XML page source; suggestions ride `heal_suggestions` in
@@ -18,8 +21,6 @@
  * backend, exactly like web). RUNTIME_HEAL_ENABLED=true additionally retries
  * the step in place when the healed locator matches exactly one element.
  *
- * Still deferred: video, `{{name}}` runtime variables (no extract-value on
- * mobile yet). See SCOPE_NOTES.md / FEATURE_GAP_ANALYSIS.md §31.
  *
  * MOB-4 device clouds: MOBILE_DEVICE_PROVIDER = local (default) |
  * browserstack | saucelabs | lambdatest routes sessions to a cloud hub —
@@ -52,6 +53,9 @@ import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
 import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
 import * as Minio from 'minio';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 const MinioClient = (Minio as any).Client || Minio;
 const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
@@ -66,6 +70,15 @@ type MobileApp = NonNullable<TestJob['settings']['mobile_app']>;
 interface PendingScreenshot {
     label: string;
     png: Buffer;
+}
+
+/** Per-case execution context threaded through steps (ids for baseline
+ * lookups, the shared runtime-variables map fed by mobile-extract-value). */
+interface StepExecMeta {
+    testCaseId?: number;
+    device?: string | null;
+    runId: number;
+    variables: Record<string, any>;
 }
 
 class MobileWorker {
@@ -125,7 +138,7 @@ class MobileWorker {
             job_id: job.job_id,
             run_id: job.run_id,
             network_events: [] as any[],
-            artifacts: { screenshots: [] as string[] },
+            artifacts: { screenshots: [] as string[] } as { video?: string; screenshots: string[] },
             completed_at: '',
             result_kind: 'mobile',
         };
@@ -159,16 +172,38 @@ class MobileWorker {
         const shots: PendingScreenshot[] = [];
         const heals: any[] = [];
         const testResults: TestCaseResult[] = [];
+        let videoBuf: Buffer | null = null;
+
+        // Screen recording is best-effort: emulators and clouds support it,
+        // some targets don't — never fail the job over it.
+        let recording = false;
+        try {
+            await this.driver.startScreenRecording(sessionId);
+            recording = true;
+        } catch (err: any) {
+            console.log(`[MobileWorker] Screen recording unavailable: ${err.message}`);
+        }
+
         try {
             for (const testCase of cases) {
                 testResults.push(await this.runCase(sessionId, testCase, app, job, shots, heals));
             }
         } finally {
+            if (recording) {
+                try {
+                    const b64 = await this.driver.stopScreenRecording(sessionId);
+                    if (b64) videoBuf = Buffer.from(b64, 'base64');
+                } catch (err: any) {
+                    console.log(`[MobileWorker] Failed to stop screen recording: ${err.message}`);
+                }
+            }
             await this.driver.deleteSession(sessionId).catch(() => undefined);
             this.aiEngine.clearRunState(job.run_id);
         }
 
         base.artifacts.screenshots = await this.uploadScreenshots(job, shots);
+        const videoKey = await this.uploadVideo(job, videoBuf);
+        if (videoKey) base.artifacts.video = videoKey;
 
         const failed = testResults.filter((r) => r.status !== 'passed').length;
         const status: JobResult['status'] = failed === 0 ? 'passed' : 'failed';
@@ -203,20 +238,28 @@ class MobileWorker {
         const start = Date.now();
         console.log(`[MobileWorker]   Case: ${testCase.name}`);
         // {{env.X}} / {{secret.X}} from job settings; {{data.X}} from this
-        // case's dataset row. Runtime {{name}} variables don't exist on
-        // mobile yet (no extract-value step).
+        // case's dataset row; bare {{name}} from mobile-extract-value steps
+        // earlier in the same case (the map is shared by reference).
+        const variables: Record<string, any> = {};
         const ctx: TemplateContext = {
             envVars: job.settings?.environment?.variables,
             secrets: job.settings?.secrets,
             dataRow: testCase.data_row,
+            variables,
+        };
+        const meta: StepExecMeta = {
+            testCaseId: testCase.id,
+            device: job.device || null,
+            runId: job.run_id,
+            variables,
         };
         try {
             for (const step of testCase.steps || []) {
                 try {
-                    await this.executeStep(sessionId, step, app, ctx, shots);
+                    await this.executeStep(sessionId, step, app, ctx, shots, meta);
                 } catch (stepErr: any) {
                     const recovered = await this.tryHeal(
-                        sessionId, step, testCase, job, app, ctx, shots, heals, stepErr);
+                        sessionId, step, testCase, job, app, ctx, shots, heals, stepErr, meta);
                     if (!recovered) throw stepErr;
                 }
             }
@@ -245,7 +288,8 @@ class MobileWorker {
     }
 
     private async executeStep(
-        sessionId: string, step: any, app: MobileApp, ctx: TemplateContext, shots: PendingScreenshot[],
+        sessionId: string, step: any, app: MobileApp, ctx: TemplateContext,
+        shots: PendingScreenshot[], meta: StepExecMeta,
     ): Promise<void> {
         const type = step.type as string;
         const selector = resolveTemplates(step.selector, ctx);
@@ -339,6 +383,70 @@ class MobileWorker {
                     break;
                 }
 
+                case 'mobile-extract-value': {
+                    // Element text → {{varName}} for later steps in this case
+                    // (mirrors the web extract-value contract: value = name).
+                    const varName = value || params.variableName;
+                    if (!varName) throw new Error("mobile-extract-value needs a variable name in 'value'");
+                    const el = await this.driver.waitForElement(sessionId, selector);
+                    const text = await this.driver.getText(sessionId, el);
+                    meta.variables[varName] = text;
+                    console.log(`[MobileWorker] Extracted "${text}" -> {{${varName}}}`);
+                    break;
+                }
+
+                case 'mobile-expect-visual-match': {
+                    // Same workflow as the web expect-visual-match, on the
+                    // device screen: capture → resolve baseline (browser key
+                    // 'mobile') → pixelmatch → fail over tolerance. The
+                    // candidate always becomes an artifact so the promote
+                    // workflow can pin it as the baseline; degraded modes
+                    // (no baseline / diff lib missing) are capture-only.
+                    const stepId = step.id || `visual-${Date.now()}`;
+                    const png = await this.driver.takeScreenshot(sessionId);
+                    const candidate = Buffer.from(png, 'base64');
+                    shots.push({ label: `visual-${stepId}`, png: candidate });
+                    const candidatePath = path.join(os.tmpdir(), `mobile-visual-${stepId}-${Date.now()}.png`);
+                    try {
+                        fs.writeFileSync(candidatePath, candidate);
+                        // eslint-disable-next-line @typescript-eslint/no-var-requires
+                        const { compareScreenshots } = require('./visual-diff');
+                        // eslint-disable-next-line @typescript-eslint/no-var-requires
+                        const { resolveBaseline, fetchImageBytes } = require('./baseline-client');
+                        const baseline = await resolveBaseline({
+                            testCaseId: meta.testCaseId,
+                            stepId,
+                            browser: 'mobile',
+                            device: meta.device || app.platform,
+                        });
+                        if (!baseline) {
+                            console.log(`[MobileWorker] visual-match: no baseline for step ${stepId} — capture-only`);
+                            break;
+                        }
+                        const baselineBytes = await fetchImageBytes(baseline.image_url);
+                        const result = await compareScreenshots({
+                            candidatePath,
+                            baselineBytes,
+                            tolerance: baseline.tolerance ?? 0.01,
+                            maskRegions: baseline.mask_regions || [],
+                        });
+                        if (result.diffImagePath && fs.existsSync(result.diffImagePath)) {
+                            shots.push({ label: `visual-diff-${stepId}`, png: fs.readFileSync(result.diffImagePath) });
+                            fs.unlinkSync(result.diffImagePath);
+                        }
+                        console.log(`[MobileWorker] visual-match step=${stepId} diffRatio=${result.diffRatio.toFixed(4)} passed=${result.passed}`);
+                        if (!result.passed) {
+                            throw new Error(`Visual regression: diffRatio=${result.diffRatio.toFixed(4)} > tolerance=${baseline.tolerance ?? 0.01}`);
+                        }
+                    } catch (err: any) {
+                        if (err?.message?.startsWith('Visual regression')) throw err;
+                        console.log(`[MobileWorker] visual-match degraded to capture-only: ${err?.message}`);
+                    } finally {
+                        try { fs.unlinkSync(candidatePath); } catch { /* already gone */ }
+                    }
+                    break;
+                }
+
                 default:
                     // Same contract as the Playwright worker: unknown types fail
                     // loudly rather than passing silently.
@@ -361,6 +469,7 @@ class MobileWorker {
     private async tryHeal(
         sessionId: string, step: any, testCase: TestCase, job: TestJob, app: MobileApp,
         ctx: TemplateContext, shots: PendingScreenshot[], heals: any[], err: Error,
+        meta: StepExecMeta,
     ): Promise<boolean> {
         try {
             if (llmProvider.name === 'null') return false;
@@ -385,7 +494,7 @@ class MobileWorker {
             // Only auto-apply an unambiguous match; otherwise just suggest.
             if (process.env.RUNTIME_HEAL_ENABLED !== 'true' || matches !== 1) return false;
 
-            await this.executeStep(sessionId, { ...step, selector: healed }, app, ctx, shots);
+            await this.executeStep(sessionId, { ...step, selector: healed }, app, ctx, shots, meta);
             console.log(`[MobileWorker] Runtime heal APPLIED: "${step.selector}" -> "${healed}" (step recovered)`);
             return true;
         } catch (healErr: any) {
@@ -419,6 +528,24 @@ class MobileWorker {
             console.error(`[MobileWorker] Screenshot upload failed (job continues): ${err.message}`);
         }
         return keys;
+    }
+
+    /** Upload the job's screen recording (MP4) — same key layout as web video. */
+    private async uploadVideo(job: TestJob, videoBuf: Buffer | null): Promise<string | null> {
+        if (!videoBuf || videoBuf.length === 0) return null;
+        try {
+            const exists = await this.minio.bucketExists(BUCKET_NAME);
+            if (!exists) await this.minio.makeBucket(BUCKET_NAME);
+            const key = `runs/${job.run_id}/videos/${job.job_id}.mp4`;
+            await this.minio.putObject(BUCKET_NAME, key, videoBuf, videoBuf.length, {
+                'Content-Type': 'video/mp4',
+            });
+            console.log(`[MobileWorker] Uploaded video: ${key} (${(videoBuf.length / 1e6).toFixed(1)} MB)`);
+            return key;
+        } catch (err: any) {
+            console.error(`[MobileWorker] Video upload failed (job continues): ${err.message}`);
+            return null;
+        }
     }
 
     private capabilities(app: MobileApp, job: TestJob, appTarget: string): Record<string, any> {
