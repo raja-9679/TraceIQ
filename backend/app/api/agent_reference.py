@@ -553,6 +553,19 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Uploaded to MinIO under runs/{run_id}/screenshots/ like web screenshots. A failure screenshot is also captured automatically when a mobile case fails.",
     },
     {
+        "type": "mobile-extract-value",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "value": "Variable name to save the element's text under"},
+        "example": {"id": "<uuid>", "type": "mobile-extract-value", "selector": "~order-id", "value": "orderId"},
+        "notes": "Later steps in the same case reference it as {{orderId}}.",
+    },
+    {
+        "type": "mobile-expect-visual-match",
+        "category": "mobile",
+        "params": {},
+        "notes": "Captures the device screen and pixelmatch-compares it against the pinned VisualBaseline (browser key 'mobile'). First run is capture-only; promote the candidate via POST /api/visual-baselines/promote.",
+    },
+    {
         "type": "mobile-terminate-app",
         "category": "mobile",
         "params": {},

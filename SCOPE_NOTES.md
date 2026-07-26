@@ -148,9 +148,11 @@ Full phase plan in `info/FEATURE_GAP_ANALYSIS.md` §31 + "Phase MOB". Built so f
 
 - ✅ MOB-4 — device-cloud adapter: `MOBILE_DEVICE_PROVIDER=local|browserstack|saucelabs|lambdatest` (`execution-engine/src/device-cloud.ts`). Cloud providers get the binary pushed to their app storage automatically (bs://… / storage:… / lt://…, cached per build for the worker's lifetime), vendor options blocks (`bstack:options` etc.) injected, hub auth via basic-auth header. This is the iOS path.
 
+- ✅ Mobile polish (2026-07-26): `mobile-expect-visual-match` (pixelmatch against baselines keyed browser='mobile'; candidate + diff uploaded as artifacts; capture-only when no baseline); `mobile-extract-value` feeding `{{name}}` runtime variables within a case; best-effort MP4 screen recording per job (`appium/start|stop_recording_screen` → `runs/{run_id}/videos/`). All 13 mobile step types in the catalog + step editor.
+
 Still deferred for mobile:
 - **A local Android device** for the self-hosted path: attach `budtmo/docker-android` (KVM required) or a USB device via host Appium. (Cloud providers need no local device.)
-- Video artifacts; `{{name}}` runtime variables (no extract-value on mobile); end-to-end smoke against a real device/cloud account.
+- End-to-end smoke against a real device/cloud account — the only remaining gap in Phase MOB.
 
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 

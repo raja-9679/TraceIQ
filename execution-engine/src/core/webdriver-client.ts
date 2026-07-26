@@ -185,4 +185,15 @@ export class WebDriverClient {
     async executeScript(sessionId: string, script: string, args: any[] = []): Promise<any> {
         return this.cmd('POST', `/session/${sessionId}/execute/sync`, { script, args });
     }
+
+    /** Start Appium screen recording (no-op error on unsupported targets). */
+    async startScreenRecording(sessionId: string): Promise<void> {
+        await this.cmd('POST', `/session/${sessionId}/appium/start_recording_screen`, {});
+    }
+
+    /** Stop screen recording; returns base64 MP4 ('' when nothing recorded). */
+    async stopScreenRecording(sessionId: string): Promise<string> {
+        const value = await this.cmd('POST', `/session/${sessionId}/appium/stop_recording_screen`, {});
+        return typeof value === 'string' ? value : '';
+    }
 }
