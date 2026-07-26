@@ -464,6 +464,85 @@ docker compose -f docker-compose.prod.yml up -d backend
 Hot-fixes still need backups (lighter — usually the daily snapshot is enough)
 and a sanity test before rolling out.
 
+## 2.7 Deploying Phase MOB — mobile app testing (2026-07-25)
+
+Commit `394e335` on `feature/gap-roadmap`. Ships the `mobile_appium`
+executor: APK/AAB/IPA upload (`MobileAppBuild` → MinIO), `app_build_id` on
+runs, a dedicated `jobs:mobile:pending` stream, the Appium mobile worker,
+11 `mobile-*` step types, and the App Builds frontend page.
+
+**This is a §2.3 deploy (has migration `b3c4d5e6f7a8`) that also touches
+execution-engine and frontend** — so all three image groups rebuild:
+
+```bash
+# ───────────────────────────────────────────────────────────────────────
+# Step 1: Pre-flight (as §2.3): pg_dump + note alembic current
+# ───────────────────────────────────────────────────────────────────────
+docker exec <postgres> pg_dump -U <user> -d quality_intelligence \
+  --format=custom --file=/var/backups/traceiq/pre-mob-$(date +%Y%m%d-%H%M).pgdump
+docker compose -f docker-compose.prod.yml run --rm backend alembic current
+# Expect: a1b2c3d4e5f6
+
+# ───────────────────────────────────────────────────────────────────────
+# Step 2: Build ALL changed images before stopping anything
+# ───────────────────────────────────────────────────────────────────────
+cd infrastructure
+docker compose -f docker-compose.prod.yml build \
+  backend celery_worker celery_aggregator celery_beat \
+  execution-worker execution-engine frontend
+
+# ───────────────────────────────────────────────────────────────────────
+# Step 3: Migrate (beat stopped first, as always)
+# ───────────────────────────────────────────────────────────────────────
+docker compose -f docker-compose.prod.yml stop celery_beat
+docker compose -f docker-compose.prod.yml run --rm backend alembic upgrade head
+docker compose -f docker-compose.prod.yml run --rm backend alembic current
+# Expect: b3c4d5e6f7a8
+
+# ───────────────────────────────────────────────────────────────────────
+# Step 4: Restart everything that was rebuilt
+# ───────────────────────────────────────────────────────────────────────
+docker compose -f docker-compose.prod.yml up -d \
+  backend celery_worker celery_aggregator celery_beat \
+  execution-worker execution-engine frontend
+```
+
+**The mobile worker itself is OPT-IN** (compose profile `mobile`). Web
+testing is completely unaffected if you never enable it — mobile jobs just
+queue on `jobs:mobile:pending` until a mobile worker exists. To enable:
+
+```bash
+# Brings up `appium` + `mobile-worker` alongside the normal stack:
+docker compose --profile mobile -f docker-compose.prod.yml up -d
+```
+
+**Device requirement (read before enabling).** Appium needs a device to
+drive; the compose file deliberately does not ship one:
+
+| Option | How | Notes |
+|---|---|---|
+| Android emulator container | Add `budtmo/docker-android` to compose, point Appium at its ADB | Host needs KVM (`ls /dev/kvm`); ~4 GB RAM per emulator |
+| Physical Android device | Run Appium on the host with the device on USB; set `APPIUM_URL=http://host.docker.internal:4723` on `mobile-worker` | Simplest for a first smoke test |
+| Device cloud (BrowserStack / Sauce / LambdaTest) | Set `APPIUM_URL` to the cloud's Appium endpoint with credentials in the URL | The only option for iOS — never self-host macOS |
+
+Env vars on `mobile-worker` (see compose): `APPIUM_URL` (default
+`http://appium:4723`), `MOBILE_DEVICE_NAME` (capability override),
+standard `REDIS_URL`.
+
+**Post-deploy smoke checklist:**
+
+1. `alembic current` shows `b3c4d5e6f7a8`.
+2. `curl -sf $HOST/api/step-types | jq -r '.total'` — now ≥ 36 (11 mobile types added).
+3. Upload a small APK: App Builds page or `curl -X POST $HOST/api/projects/<id>/app-builds -H "X-API-Key: …" -F file=@app.apk -F platform=android` → 200 with an id.
+4. Create a case with a `mobile-tap` step → `GET /api/cases/{id}` shows `executor: "mobile_appium"` (auto-inferred).
+5. Trigger a run with `{"app_build_id": <id>}` in the body → `docker exec <redis> redis-cli XLEN jobs:mobile:pending` goes to 1 (and stays there until a mobile worker is enabled — that's correct).
+6. With the mobile profile up and a device attached: the run completes and per-case results appear as usual.
+
+**Rollback:** `alembic downgrade a1b2c3d4e5f6` (drops `mobileappbuild` +
+`testrun.app_build_id`), then git checkout previous sha, rebuild, restart.
+The executor value needs no downgrade (plain string column). Any jobs left
+on `jobs:mobile:pending` can be deleted: `redis-cli DEL jobs:mobile:pending`.
+
 ---
 
 # Part 3 — Reference
@@ -487,6 +566,7 @@ and a sanity test before rolling out.
 
 | Revision | Phase | What |
 |---|---|---|
+| `b3c4d5e6f7a8` | Phase MOB | `mobileappbuild` table + `testrun.app_build_id` (mobile app testing). Applies on top of `a1b2c3d4e5f6` — the ~15 revisions between Phase E and here (auth sessions, executor keystone, security scans, monitoring, billing, local-worker, …) are not itemised in this table; `ls backend/app/alembic/versions/` is authoritative |
 | `f8b3c4d5e6f7` | Phase E | `created_by_agent_id` + `agent_session_id` on `testsuite`, `testcase`, `caseproposal` |
 | `e7a1b2c3d4e5` | Phase D | `caseproposal` table + `caseproposalaction` enum; agent-ownership columns on `testcase`; `workspace.ai_generation_limit_daily` |
 | `d6f9a3b4c5d6` | Phase B/C | `persona`, `selectorhealproposal`, `flakerecord`; comparison columns on `testrun`; retry/flake columns on `testcaseresult` |
@@ -514,7 +594,7 @@ curl -sf "$HOST/health" >/dev/null && echo "  OK"
 
 echo "[2/5] alembic head matches …"
 ACTUAL=$(docker exec <backend> alembic current | tail -1 | awk '{print $1}')
-EXPECTED="f8b3c4d5e6f7"  # update this on each deploy that includes a migration
+EXPECTED="b3c4d5e6f7a8"  # update this on each deploy that includes a migration
 [ "$ACTUAL" = "$EXPECTED" ] && echo "  OK ($ACTUAL)" || { echo "  FAIL: at $ACTUAL"; exit 1; }
 
 echo "[3/5] step-types catalog reachable …"

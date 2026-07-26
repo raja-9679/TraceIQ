@@ -203,8 +203,22 @@ export default function SuiteDetails() {
         staleTime: 60000,
     });
     const [selectedAppBuildId, setSelectedAppBuildId] = useState<string>('none');
-    const runContext = selectedAppBuildId !== 'none'
-        ? { app_build_id: Number(selectedAppBuildId) }
+
+    // Environment picker: 'default' lets the dispatcher fall back to the
+    // project's default ProjectEnvironment (or none configured).
+    const { data: environments } = useQuery<{ id: number; name: string; is_default: boolean }[]>({
+        queryKey: ['environments', suite?.project_id],
+        queryFn: () => api.get(`/projects/${suite!.project_id}/environments`).then(res => res.data),
+        enabled: !!suite?.project_id,
+        staleTime: 60000,
+    });
+    const [selectedEnvId, setSelectedEnvId] = useState<string>('default');
+
+    const runContext = (selectedAppBuildId !== 'none' || selectedEnvId !== 'default')
+        ? {
+            ...(selectedAppBuildId !== 'none' ? { app_build_id: Number(selectedAppBuildId) } : {}),
+            ...(selectedEnvId !== 'default' ? { environment_id: Number(selectedEnvId) } : {}),
+        }
         : undefined;
 
     const runMutation = useMutation({
@@ -469,6 +483,24 @@ export default function SuiteDetails() {
                         >
                             <CalendarClock className="mr-2 h-4 w-4" /> Schedule
                         </Button>
+                    )}
+                    {can("test:execute", { projectId, workspaceId }) && (environments?.length ?? 0) > 0 && (
+                        <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
+                            <SelectTrigger className="w-[190px] h-11 rounded-xl bg-white border-slate-200 shadow-sm" title="Environment for runs from this page">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <Globe className="w-4 h-4 text-emerald-500 shrink-0" />
+                                    <SelectValue placeholder="Environment" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="default">Default environment</SelectItem>
+                                {(environments || []).map((env) => (
+                                    <SelectItem key={env.id} value={env.id.toString()}>
+                                        {env.name}{env.is_default ? ' (default)' : ''}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     )}
                     {can("test:execute", { projectId, workspaceId }) && (appBuilds?.length ?? 0) > 0 && (
                         <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>

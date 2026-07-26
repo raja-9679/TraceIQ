@@ -7,14 +7,18 @@
  * aggregation, finalize, notifications, and AI analysis are identical to the
  * Playwright path.
  *
- * v1 scope (mirrors local-worker v1): single-test and continuous jobs, no
- * MinIO artifact upload — failure screenshots stay in the result payload as
- * base64 only when small. See SCOPE_NOTES.md / FEATURE_GAP_ANALYSIS.md §31.
+ * Screenshots (explicit `mobile-screenshot` steps + automatic on-failure
+ * captures) upload to MinIO under the same `runs/{run_id}/screenshots/` key
+ * layout the Playwright worker uses. Steps interpolate `{{env.X}}`,
+ * `{{secret.X}}`, `{{data.X}}`, and `{{fake.KIND}}` via the shared resolver.
+ * Still deferred: video, `{{name}}` runtime variables (no extract-value on
+ * mobile yet). See SCOPE_NOTES.md / FEATURE_GAP_ANALYSIS.md §31.
  *
  * Env:
  *   REDIS_URL     — same Redis the backend dispatches to
  *   APPIUM_URL    — Appium 2 server (default http://localhost:4723)
  *   DEVICE_NAME   — capability override (default: Android Emulator / iPhone Simulator)
+ *   MINIO_*       — artifact store (same vars as the Playwright worker)
  */
 
 // JobQueue reads its stream/group names from these env vars at module load,
@@ -27,19 +31,33 @@ process.env.REDIS_CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'mobile-w
 const { JobQueue } = require('./core/job-queue') as typeof import('./core/job-queue');
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
 import { WebDriverClient } from './core/webdriver-client';
+import { resolveTemplates, TemplateContext } from './core/interpolate';
+import * as Minio from 'minio';
 
+const MinioClient = (Minio as any).Client || Minio;
+const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 const APPIUM_URL = process.env.APPIUM_URL || 'http://localhost:4723';
 const POLL_IDLE_MS = 2000;
-// Base64 PNGs above this size are dropped from the result payload rather
-// than bloating the Redis results stream.
-const MAX_INLINE_SCREENSHOT_BYTES = 256 * 1024;
 
 type MobileApp = NonNullable<TestJob['settings']['mobile_app']>;
+
+/** Screenshot captured during a job, uploaded to MinIO after the last case. */
+interface PendingScreenshot {
+    label: string;
+    png: Buffer;
+}
 
 class MobileWorker {
     private queue = new JobQueue();
     private driver = new WebDriverClient(APPIUM_URL);
     private running = true;
+    private minio = new MinioClient({
+        endPoint: process.env.MINIO_ENDPOINT || 'localhost',
+        port: parseInt(process.env.MINIO_PORT || '9000'),
+        useSSL: process.env.MINIO_USE_SSL === 'true',
+        accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
+        secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
+    });
 
     async start(): Promise<void> {
         await this.queue.initialize();
@@ -100,14 +118,17 @@ class MobileWorker {
                 `Failed to start Appium session: ${err.message}`);
         }
 
+        const shots: PendingScreenshot[] = [];
         const testResults: TestCaseResult[] = [];
         try {
             for (const testCase of cases) {
-                testResults.push(await this.runCase(sessionId, testCase, app));
+                testResults.push(await this.runCase(sessionId, testCase, app, job, shots));
             }
         } finally {
             await this.driver.deleteSession(sessionId).catch(() => undefined);
         }
+
+        base.artifacts.screenshots = await this.uploadScreenshots(job, shots);
 
         const failed = testResults.filter((r) => r.status !== 'passed').length;
         const status: JobResult['status'] = failed === 0 ? 'passed' : 'failed';
@@ -129,12 +150,22 @@ class MobileWorker {
         };
     }
 
-    private async runCase(sessionId: string, testCase: TestCase, app: MobileApp): Promise<TestCaseResult> {
+    private async runCase(
+        sessionId: string, testCase: TestCase, app: MobileApp, job: TestJob, shots: PendingScreenshot[],
+    ): Promise<TestCaseResult> {
         const start = Date.now();
         console.log(`[MobileWorker]   Case: ${testCase.name}`);
+        // {{env.X}} / {{secret.X}} from job settings; {{data.X}} from this
+        // case's dataset row. Runtime {{name}} variables don't exist on
+        // mobile yet (no extract-value step).
+        const ctx: TemplateContext = {
+            envVars: job.settings?.environment?.variables,
+            secrets: job.settings?.secrets,
+            dataRow: testCase.data_row,
+        };
         try {
             for (const step of testCase.steps || []) {
-                await this.executeStep(sessionId, step, app);
+                await this.executeStep(sessionId, step, app, ctx, shots);
             }
             return {
                 test_case_id: testCase.id,
@@ -144,6 +175,12 @@ class MobileWorker {
             };
         } catch (err: any) {
             console.log(`[MobileWorker]   FAILED: ${err.message}`);
+            // Failure screenshot — same convention as the web worker's
+            // failure.png. Best-effort: the session may already be dead.
+            try {
+                const png = await this.driver.takeScreenshot(sessionId);
+                shots.push({ label: `failure-${testCase.id}`, png: Buffer.from(png, 'base64') });
+            } catch { /* session gone — nothing to capture */ }
             return {
                 test_case_id: testCase.id,
                 test_name: testCase.name,
@@ -154,9 +191,13 @@ class MobileWorker {
         }
     }
 
-    private async executeStep(sessionId: string, step: any, app: MobileApp): Promise<void> {
+    private async executeStep(
+        sessionId: string, step: any, app: MobileApp, ctx: TemplateContext, shots: PendingScreenshot[],
+    ): Promise<void> {
         const type = step.type as string;
-        const params = step.params || {};
+        const selector = resolveTemplates(step.selector, ctx);
+        const value = resolveTemplates(step.value, ctx);
+        const params = resolveTemplates(step.params || {}, ctx);
         try {
             switch (type) {
                 case 'mobile-launch-app':
@@ -170,13 +211,13 @@ class MobileWorker {
                     break;
 
                 case 'mobile-tap': {
-                    const el = await this.driver.waitForElement(sessionId, step.selector);
+                    const el = await this.driver.waitForElement(sessionId, selector);
                     await this.driver.click(sessionId, el);
                     break;
                 }
 
                 case 'mobile-long-press': {
-                    const el = await this.driver.waitForElement(sessionId, step.selector);
+                    const el = await this.driver.waitForElement(sessionId, selector);
                     const rect = await this.driver.getElementRect(sessionId, el);
                     const x = Math.round(rect.x + rect.width / 2);
                     const y = Math.round(rect.y + rect.height / 2);
@@ -186,9 +227,9 @@ class MobileWorker {
                 }
 
                 case 'mobile-type': {
-                    const el = await this.driver.waitForElement(sessionId, step.selector);
+                    const el = await this.driver.waitForElement(sessionId, selector);
                     await this.driver.clear(sessionId, el).catch(() => undefined);
-                    await this.driver.sendKeys(sessionId, el, step.value ?? '');
+                    await this.driver.sendKeys(sessionId, el, value ?? '');
                     break;
                 }
 
@@ -212,38 +253,36 @@ class MobileWorker {
                 case 'mobile-press-key': {
                     // Android keycodes; iOS has no hardware keys.
                     const codes: Record<string, number> = { back: 4, home: 3, enter: 66 };
-                    const code = codes[(step.value || 'back').toLowerCase()];
-                    if (code === undefined) throw new Error(`Unknown key '${step.value}'`);
+                    const code = codes[(value || 'back').toLowerCase()];
+                    if (code === undefined) throw new Error(`Unknown key '${value}'`);
                     await this.driver.executeScript(sessionId, 'mobile: pressKey', [{ keycode: code }]);
                     break;
                 }
 
                 case 'mobile-wait-for':
-                    await this.driver.waitForElement(sessionId, step.selector,
+                    await this.driver.waitForElement(sessionId, selector,
                         Number(params.timeout_ms) || 10000);
                     break;
 
                 case 'mobile-expect-visible': {
-                    const el = await this.driver.waitForElement(sessionId, step.selector);
+                    const el = await this.driver.waitForElement(sessionId, selector);
                     const visible = await this.driver.isDisplayed(sessionId, el);
-                    if (!visible) throw new Error(`Element found but not visible: ${step.selector}`);
+                    if (!visible) throw new Error(`Element found but not visible: ${selector}`);
                     break;
                 }
 
                 case 'mobile-expect-text': {
-                    const el = await this.driver.waitForElement(sessionId, step.selector);
+                    const el = await this.driver.waitForElement(sessionId, selector);
                     const text = await this.driver.getText(sessionId, el);
-                    if (!text?.includes(step.value ?? '')) {
-                        throw new Error(`Expected text '${step.value}' but element has '${text}'`);
+                    if (!text?.includes(value ?? '')) {
+                        throw new Error(`Expected text '${value}' but element has '${text}'`);
                     }
                     break;
                 }
 
                 case 'mobile-screenshot': {
                     const png = await this.driver.takeScreenshot(sessionId);
-                    if (png.length > MAX_INLINE_SCREENSHOT_BYTES) {
-                        console.log('[MobileWorker] Screenshot too large to inline — dropped (artifact upload deferred)');
-                    }
+                    shots.push({ label: value || 'screenshot', png: Buffer.from(png, 'base64') });
                     break;
                 }
 
@@ -253,8 +292,35 @@ class MobileWorker {
                     throw new Error(`Unknown mobile step type '${type}' — is the case's executor set correctly?`);
             }
         } catch (err: any) {
-            throw new Error(`Step '${type}'${step.selector ? ` (${step.selector})` : ''}: ${err.message}`);
+            throw new Error(`Step '${type}'${selector ? ` (${selector})` : ''}: ${err.message}`);
         }
+    }
+
+    /**
+     * Upload captured screenshots to MinIO under the same key layout the
+     * Playwright worker uses (`runs/{run_id}/screenshots/…`) and return the
+     * object keys. Best-effort: an unreachable MinIO fails the artifacts,
+     * never the job.
+     */
+    private async uploadScreenshots(job: TestJob, shots: PendingScreenshot[]): Promise<string[]> {
+        if (shots.length === 0) return [];
+        const keys: string[] = [];
+        try {
+            const exists = await this.minio.bucketExists(BUCKET_NAME);
+            if (!exists) await this.minio.makeBucket(BUCKET_NAME);
+            for (let i = 0; i < shots.length; i++) {
+                const label = (shots[i].label || 'screenshot').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60);
+                const key = `runs/${job.run_id}/screenshots/${job.job_id}-${i}-${label}.png`;
+                await this.minio.putObject(BUCKET_NAME, key, shots[i].png, shots[i].png.length, {
+                    'Content-Type': 'image/png',
+                });
+                keys.push(key);
+            }
+            console.log(`[MobileWorker] Uploaded ${keys.length} screenshot(s) for job ${job.job_id}`);
+        } catch (err: any) {
+            console.error(`[MobileWorker] Screenshot upload failed (job continues): ${err.message}`);
+        }
+        return keys;
     }
 
     private capabilities(app: MobileApp, job: TestJob): Record<string, any> {

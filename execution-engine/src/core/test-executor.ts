@@ -5,6 +5,7 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { resolveTemplates } from './interpolate';
 
 // Dot-path lookup into a parsed JSON body. Supports `a.b.c`, numeric array
 // segments (`items.0.id`), and bracket indexing (`items[0].id`). Returns
@@ -21,50 +22,8 @@ export function jsonPath(obj: any, pathExpr: string): any {
     return current;
 }
 
-// Lightweight test-data generator for {{fake.KIND}} interpolation. Kept
-// dependency-free on purpose; covers the common kinds. Unknown kinds return
-// the token unchanged so mistakes are visible rather than silently blank.
-function generateFake(kind: string): string {
-    const rnd = (n: number) => Math.floor(Math.random() * n);
-    const pick = <T>(a: T[]): T => a[rnd(a.length)];
-    const firsts = ['alex', 'sam', 'jordan', 'taylor', 'riley', 'morgan', 'casey', 'jamie'];
-    const lasts = ['smith', 'jones', 'patel', 'kim', 'garcia', 'khan', 'lee', 'nair'];
-    const first = pick(firsts);
-    const last = pick(lasts);
-    const suffix = Date.now().toString(36) + rnd(1e6).toString(36);
-    switch (kind.toLowerCase()) {
-        case 'uuid':
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
-                const r = rnd(16);
-                const v = c === 'x' ? r : (r & 0x3) | 0x8;
-                return v.toString(16);
-            });
-        case 'email':
-            return `${first}.${last}.${suffix}@example.com`;
-        case 'name':
-            return `${first[0].toUpperCase()}${first.slice(1)} ${last[0].toUpperCase()}${last.slice(1)}`;
-        case 'first_name':
-        case 'firstname':
-            return `${first[0].toUpperCase()}${first.slice(1)}`;
-        case 'last_name':
-        case 'lastname':
-            return `${last[0].toUpperCase()}${last.slice(1)}`;
-        case 'username':
-            return `${first}_${last}_${rnd(1000)}`;
-        case 'phone':
-            return `+1${(2000000000 + rnd(999999999)).toString().slice(0, 10)}`;
-        case 'number':
-        case 'int':
-            return String(rnd(1000000));
-        case 'date':
-            // Deterministic offset from a fixed epoch to avoid new Date() dependence.
-            return new Date(Date.now() - rnd(1e10)).toISOString().slice(0, 10);
-        case 'word':
-            return pick(['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur']);
-        default:
-            return `{{fake.${kind}}}`;
-    }
-}
+// {{fake.KIND}} generation and the full template resolver now live in
+// ./interpolate so the mobile worker shares one implementation.
 
 export class TestExecutor {
     public static async executeStep(
@@ -84,48 +43,12 @@ export class TestExecutor {
             }
         };
 
-        const resolve = (val: any): any => {
-            if (typeof val === 'string') {
-                let out = val;
-                // {{env.KEY}} — environment variables, {{secret.KEY}} — project
-                // secrets: both dispatched in job settings by the backend.
-                const envVars = globalSettings?.environment?.variables;
-                if (envVars) {
-                    out = out.replace(/\{\{\s*env\.(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        envVars[key] !== undefined ? String(envVars[key]) : `{{env.${key}}}`);
-                }
-                const secrets = globalSettings?.secrets;
-                if (secrets) {
-                    out = out.replace(/\{\{\s*secret\.(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        secrets[key] !== undefined ? String(secrets[key]) : `{{secret.${key}}}`);
-                }
-                // {{data.KEY}} — the current data-driven dataset row.
-                const dataRow = testCaseContext?.data;
-                if (dataRow) {
-                    out = out.replace(/\{\{\s*data\.(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        dataRow[key] !== undefined ? String(dataRow[key]) : `{{data.${key}}}`);
-                }
-                // {{fake.KIND}} — generated test data (email/uuid/name/...).
-                if (out.includes('{{fake.')) {
-                    out = out.replace(/\{\{\s*fake\.(\w+)\s*\}\}/g, (_: string, kind: string) =>
-                        generateFake(kind));
-                }
-                // {{name}} — runtime variables from extract-value / scripts.
-                if (testCaseContext?.variables) {
-                    out = out.replace(/\{\{\s*(\w+)\s*\}\}/g, (_: string, key: string) =>
-                        testCaseContext.variables[key] !== undefined ? String(testCaseContext.variables[key]) : `{{${key}}}`);
-                }
-                return out;
-            }
-            // Simple recursion for objects/arrays (shallow for headers/params is usually enough, but let's go one level deep if needed)
-            if (val && typeof val === 'object') {
-                if (Array.isArray(val)) return val.map(item => resolve(item));
-                const newObj: any = {};
-                for (const k in val) newObj[k] = resolve(val[k]);
-                return newObj;
-            }
-            return val;
-        };
+        const resolve = (val: any): any => resolveTemplates(val, {
+            envVars: globalSettings?.environment?.variables,
+            secrets: globalSettings?.secrets,
+            dataRow: testCaseContext?.data,
+            variables: testCaseContext?.variables,
+        });
 
         const getLocator = (selector: string) => {
             return context.locator(selector).first();

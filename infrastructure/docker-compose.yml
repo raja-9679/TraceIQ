@@ -291,9 +291,15 @@ services:
       - REDIS_CONSUMER_GROUP=mobile-workers
       - APPIUM_URL=http://appium:4723
       - DEVICE_NAME=${MOBILE_DEVICE_NAME:-Android Emulator}
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - MINIO_BUCKET_NAME=test-artifacts
     depends_on:
       - redis
       - appium
+      - minio
     networks:
       - qip_network
 
