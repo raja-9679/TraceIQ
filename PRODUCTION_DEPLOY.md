@@ -523,11 +523,15 @@ drive; the compose file deliberately does not ship one:
 |---|---|---|
 | Android emulator container | Add `budtmo/docker-android` to compose, point Appium at its ADB | Host needs KVM (`ls /dev/kvm`); ~4 GB RAM per emulator |
 | Physical Android device | Run Appium on the host with the device on USB; set `APPIUM_URL=http://host.docker.internal:4723` on `mobile-worker` | Simplest for a first smoke test |
-| Device cloud (BrowserStack / Sauce / LambdaTest) | Set `APPIUM_URL` to the cloud's Appium endpoint with credentials in the URL | The only option for iOS — never self-host macOS |
+| Device cloud (BrowserStack / Sauce / LambdaTest) | Set `MOBILE_DEVICE_PROVIDER=browserstack\|saucelabs\|lambdatest` + that provider's credential env vars | The only option for iOS — never self-host macOS. Binaries are pushed to the cloud's app storage automatically; the local `appium` service sits idle |
 
 Env vars on `mobile-worker` (see compose): `APPIUM_URL` (default
-`http://appium:4723`), `MOBILE_DEVICE_NAME` (capability override),
-standard `REDIS_URL`.
+`http://appium:4723`, local provider only), `MOBILE_DEVICE_PROVIDER`
+(default `local`), `MOBILE_DEVICE_NAME` + `MOBILE_PLATFORM_VERSION`
+(device capabilities), per-cloud credentials
+(`BROWSERSTACK_USERNAME`/`BROWSERSTACK_ACCESS_KEY`,
+`SAUCE_USERNAME`/`SAUCE_ACCESS_KEY`/`SAUCE_REGION`,
+`LT_USERNAME`/`LT_ACCESS_KEY`), standard `REDIS_URL`.
 
 **Post-deploy smoke checklist:**
 

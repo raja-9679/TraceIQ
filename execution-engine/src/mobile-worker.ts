@@ -21,11 +21,20 @@
  * Still deferred: video, `{{name}}` runtime variables (no extract-value on
  * mobile yet). See SCOPE_NOTES.md / FEATURE_GAP_ANALYSIS.md §31.
  *
+ * MOB-4 device clouds: MOBILE_DEVICE_PROVIDER = local (default) |
+ * browserstack | saucelabs | lambdatest routes sessions to a cloud hub —
+ * binaries are pushed to the cloud's app storage automatically (cached per
+ * build). iOS requires a cloud provider. See src/device-cloud.ts.
+ *
  * Env:
- *   REDIS_URL     — same Redis the backend dispatches to
- *   APPIUM_URL    — Appium 2 server (default http://localhost:4723)
- *   DEVICE_NAME   — capability override (default: Android Emulator / iPhone Simulator)
- *   MINIO_*       — artifact store (same vars as the Playwright worker)
+ *   REDIS_URL                — same Redis the backend dispatches to
+ *   APPIUM_URL               — local Appium 2 server (default http://localhost:4723)
+ *   MOBILE_DEVICE_PROVIDER   — local | browserstack | saucelabs | lambdatest
+ *   BROWSERSTACK_USERNAME/ACCESS_KEY, SAUCE_USERNAME/ACCESS_KEY (+SAUCE_REGION),
+ *   LT_USERNAME/LT_ACCESS_KEY — cloud credentials per provider
+ *   MOBILE_DEVICE_NAME       — device capability (e.g. "Google Pixel 8", "iPhone 15")
+ *   MOBILE_PLATFORM_VERSION  — OS version capability (e.g. "14")
+ *   MINIO_*                  — artifact store (same vars as the Playwright worker)
  */
 
 // JobQueue reads its stream/group names from these env vars at module load,
@@ -41,11 +50,11 @@ import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
+import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
 import * as Minio from 'minio';
 
 const MinioClient = (Minio as any).Client || Minio;
 const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
-const APPIUM_URL = process.env.APPIUM_URL || 'http://localhost:4723';
 const POLL_IDLE_MS = 2000;
 // Locator-shaped failures eligible for AI heal (mirrors the web worker's
 // SELECTOR_FAILURE_RE, matching this worker's own error wording).
@@ -61,7 +70,10 @@ interface PendingScreenshot {
 
 class MobileWorker {
     private queue = new JobQueue();
-    private driver = new WebDriverClient(APPIUM_URL);
+    // MOB-4: local Appium or a device cloud (MOBILE_DEVICE_PROVIDER) — same
+    // WebDriver protocol either way. Misconfiguration throws at startup.
+    private provider: DeviceCloudProvider = pickDeviceProvider();
+    private driver = new WebDriverClient(this.provider.webdriverUrl, this.provider.authHeader);
     private aiEngine = new AIEngine();
     private running = true;
     private minio = new MinioClient({
@@ -76,10 +88,10 @@ class MobileWorker {
         await this.queue.initialize();
         try {
             await this.driver.status();
-            console.log(`[MobileWorker] Appium reachable at ${APPIUM_URL}`);
+            console.log(`[MobileWorker] WebDriver hub reachable: ${this.provider.name} (${this.provider.webdriverUrl})`);
         } catch (err: any) {
-            console.warn(`[MobileWorker] WARNING: Appium not reachable at ${APPIUM_URL} (${err.message}). ` +
-                `Jobs will fail until it is up.`);
+            console.warn(`[MobileWorker] WARNING: ${this.provider.name} hub not reachable at ` +
+                `${this.provider.webdriverUrl} (${err.message}). Jobs will fail until it is up.`);
         }
         console.log(`[MobileWorker] Consuming ${process.env.REDIS_JOBS_STREAM} as ${process.env.REDIS_CONSUMER_GROUP}`);
 
@@ -123,9 +135,22 @@ class MobileWorker {
                 'No app build pinned to this run — POST /api/runs with app_build_id.');
         }
 
+        // MOB-4: deliver the binary to wherever the session runs — the MinIO
+        // URL directly for local Appium, or the cloud's app storage
+        // (bs://… / storage:… / lt://…) for a device-cloud provider.
+        let appTarget: string;
+        try {
+            appTarget = await this.provider.resolveApp(app);
+        } catch (err: any) {
+            return this.fail(base, job, cases, startedAt,
+                `Failed to deliver app build to ${this.provider.name}: ${err.message}`);
+        }
+
         let sessionId: string | null = null;
         try {
-            sessionId = await this.driver.createSession(this.capabilities(app, job));
+            const caps = this.provider.decorateCapabilities(
+                this.capabilities(app, job, appTarget), app);
+            sessionId = await this.driver.createSession(caps);
         } catch (err: any) {
             return this.fail(base, job, cases, startedAt,
                 `Failed to start Appium session: ${err.message}`);
@@ -154,7 +179,12 @@ class MobileWorker {
             status,
             duration_ms: Date.now() - startedAt,
             completed_at: new Date().toISOString(),
-            result_payload: { platform: app.platform, app_build_id: app.app_build_id, appium_url: APPIUM_URL },
+            result_payload: {
+                platform: app.platform,
+                app_build_id: app.app_build_id,
+                device_provider: this.provider.name,
+                appium_url: this.provider.webdriverUrl,
+            },
             ...(heals.length ? { heal_suggestions: heals } : {}),
             ...(single
                 ? {
@@ -391,16 +421,20 @@ class MobileWorker {
         return keys;
     }
 
-    private capabilities(app: MobileApp, job: TestJob): Record<string, any> {
+    private capabilities(app: MobileApp, job: TestJob, appTarget: string): Record<string, any> {
         const common = {
-            'appium:app': app.app_url,
+            'appium:app': appTarget,
             'appium:newCommandTimeout': 300,
+            ...(process.env.MOBILE_PLATFORM_VERSION
+                ? { 'appium:platformVersion': process.env.MOBILE_PLATFORM_VERSION } : {}),
+            // Read by device-cloud decorators for session/build naming.
+            'traceiq:sessionName': `TraceIQ run ${job.run_id}`,
         };
         if (app.platform === 'ios') {
             return {
                 platformName: 'iOS',
                 'appium:automationName': 'XCUITest',
-                'appium:deviceName': job.device || process.env.DEVICE_NAME || 'iPhone Simulator',
+                'appium:deviceName': job.device || process.env.MOBILE_DEVICE_NAME || process.env.DEVICE_NAME || 'iPhone Simulator',
                 ...(app.package_id ? { 'appium:bundleId': app.package_id } : {}),
                 ...common,
             };
@@ -408,7 +442,7 @@ class MobileWorker {
         return {
             platformName: 'Android',
             'appium:automationName': 'UiAutomator2',
-            'appium:deviceName': job.device || process.env.DEVICE_NAME || 'Android Emulator',
+            'appium:deviceName': job.device || process.env.MOBILE_DEVICE_NAME || process.env.DEVICE_NAME || 'Android Emulator',
             ...(app.package_id ? { 'appium:appPackage': app.package_id } : {}),
             ...common,
         };

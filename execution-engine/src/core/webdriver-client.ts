@@ -52,14 +52,21 @@ export class WebDriverError extends Error {
 }
 
 export class WebDriverClient {
-    constructor(private baseUrl: string) {
+    /**
+     * @param authHeader Optional Authorization header value — device clouds
+     * (BrowserStack/Sauce/LambdaTest) authenticate the hub with basic auth.
+     */
+    constructor(private baseUrl: string, private authHeader?: string) {
         this.baseUrl = baseUrl.replace(/\/+$/, '');
     }
 
     private async cmd(method: string, path: string, body?: any): Promise<any> {
         const res = await fetch(`${this.baseUrl}${path}`, {
             method,
-            headers: { 'Content-Type': 'application/json; charset=utf-8' },
+            headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                ...(this.authHeader ? { Authorization: this.authHeader } : {}),
+            },
             body: body !== undefined ? JSON.stringify(body) : undefined,
         });
         let json: any = null;
