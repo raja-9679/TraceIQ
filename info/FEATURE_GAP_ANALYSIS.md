@@ -171,6 +171,9 @@ A new capability pillar on the executor keystone: `ExecutorType.MOBILE_APPIUM`. 
 - **MOB-4. iOS via device cloud** — ✅ shipped 2026-07-26: `MOBILE_DEVICE_PROVIDER=browserstack|saucelabs|lambdatest` (`execution-engine/src/device-cloud.ts`) routes sessions to the cloud's WebDriver hub over the same protocol; binaries are auto-uploaded to the cloud's app storage (cached per build) and vendor capability blocks are injected. iOS = pick a cloud provider + upload an IPA. Never self-host macOS.
 - **MOB-5. Port the AI differentiators** — ✅ shipped 2026-07-26: selector heal on Appium XML page source (`healMobileLocator` + runtime self-heal on unique match, same `SelectorHealProposal` pipeline as web), mobile-aware failure-analysis heuristics, and `mobile-expect-visual-match` (pixelmatch reuse, baselines keyed browser='mobile'). The Chrome recorder does not carry over (native recording is out of scope). **Phase MOB is feature-complete; remaining: e2e smoke against a real device/cloud account.**
 
+### Under review — community free edition (added 2026-07-26)
+Distribute TraceIQ free without exposing source (backend above all). Three options — hosted free tier (zero exposure, recommended start), prebuilt obfuscated Docker images (PyArmor), or hybrid (hosted backend + self-hosted workers over the existing API-key seam) — plus mandatory prerequisites (license terms, rotating the credentials in git history). Full write-up: `info/COMMUNITY_DISTRIBUTION_PLAN.md`.
+
 ### Rejected (do not build)
 Multi-language code editor · SOAP/gRPC · database SQL steps (revisit on pull) · requirements-traceability matrices · plugin system · drag-drop flow builder · dedicated Discord channel.
 
