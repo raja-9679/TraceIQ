@@ -83,6 +83,12 @@ export default function TestRunDetails() {
         enabled: !!run?.video_url,
     });
 
+    const { data: harUrl } = useQuery({
+        queryKey: ["har", run?.har_url],
+        queryFn: () => getArtifactUrl(run!.har_url!),
+        enabled: !!run?.har_url,
+    });
+
     // Force complete mutation
     const forceCompleteMutation = useMutation({
         mutationFn: () => forceCompleteRun(runId, "error", "Manually completed by administrator"),
@@ -417,6 +423,29 @@ export default function TestRunDetails() {
                                         <Video size={16} className="text-primary" /> Global Recording
                                     </div>
                                     <video controls className="w-full bg-black aspect-video" src={videoUrl} />
+                                </div>
+                            )}
+
+                            {harUrl && (
+                                <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm h-fit">
+                                    <div className="bg-gray-50 border-b border-gray-200 px-5 py-3 flex items-center justify-between">
+                                        <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                                            <Globe size={16} className="text-primary" /> Network Archive (HAR)
+                                        </h3>
+                                        <a
+                                            href={harUrl}
+                                            download
+                                            className="text-primary hover:text-primary/80 font-medium text-xs flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-full transition-colors"
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            <FileText size={14} /> Download .har
+                                        </a>
+                                    </div>
+                                    <p className="px-5 py-4 text-sm text-gray-500">
+                                        Full request/response archive of this run — open it in Chrome DevTools
+                                        (Network → import) or any HAR viewer.
+                                    </p>
                                 </div>
                             )}
 

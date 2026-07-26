@@ -58,6 +58,8 @@ export interface TestRun {
     // Deployment comparison: set on candidate runs created via /runs/comparison.
     baseline_run_id?: number | null;
     target_url?: string | null;
+    // HAR network archive (opt-in via suite settings har_capture).
+    har_url?: string | null;
     results?: {
         id: number;
         test_name: string;

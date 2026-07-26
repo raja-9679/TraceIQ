@@ -232,22 +232,28 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
                 TestCaseResult.test_run_id == run_id)
         ).all()
 
-        # Copy video/trace from results to run level
+        # Copy video/trace/HAR from results to run level
         if len(results) == 1 and results[0]:
             if results[0].video_url and not run.video_url:
                 run.video_url = results[0].video_url
             if results[0].trace_url and not run.trace_url:
                 run.trace_url = results[0].trace_url
+            if results[0].har_url and not run.har_url:
+                run.har_url = results[0].har_url
         elif len(results) > 1:
             # For multi-test runs, use the first result's artifacts as run-level
             first_with_video = next(
                 (r for r in results if r.video_url), None)
             first_with_trace = next(
                 (r for r in results if r.trace_url), None)
+            first_with_har = next(
+                (r for r in results if r.har_url), None)
             if first_with_video and not run.video_url:
                 run.video_url = first_with_video.video_url
             if first_with_trace and not run.trace_url:
                 run.trace_url = first_with_trace.trace_url
+            if first_with_har and not run.har_url:
+                run.har_url = first_with_har.har_url
 
         print(
             f"[Aggregator] Run {run_id} completed: {run.passed_tests} passed, {run.failed_tests} failed, duration={run.duration_ms}ms")
@@ -445,10 +451,11 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
             'error': TestStatus.ERROR
         }
 
-        # Job-level artifacts (shared video/trace for all tests in this job)
+        # Job-level artifacts (shared video/trace/HAR for all tests in this job)
         artifacts = result.get('artifacts', {})
         job_video = artifacts.get('video')
         job_trace = artifacts.get('trace')
+        job_har = artifacts.get('har')
         network_events = result.get('network_events', [])
 
         # Process each test result in the job
@@ -473,9 +480,10 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 existing.status = status
                 existing.duration_ms = test_res.get('duration_ms', 0)
                 existing.error_message = test_res.get('error')
-                # Use job-level video/trace for all tests (shared browser)
+                # Use job-level video/trace/HAR for all tests (shared browser)
                 existing.video_url = job_video
                 existing.trace_url = job_trace
+                existing.har_url = job_har
                 existing.response_status = response_data.get('status')
                 existing.response_headers = response_data.get('headers')
                 existing.response_body = response_data.get('body')
@@ -498,6 +506,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     error_message=test_res.get('error'),
                     video_url=job_video,
                     trace_url=job_trace,
+                    har_url=job_har,
                     screenshots=artifacts.get('screenshots', []),
                     response_status=response_data.get('status'),
                     response_headers=response_data.get('headers'),
@@ -604,6 +613,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             existing.error_message = result.get('error')
             existing.video_url = artifacts.get('video')
             existing.trace_url = artifacts.get('trace')
+            existing.har_url = artifacts.get('har')
             existing.screenshots = artifacts.get('screenshots', [])
             existing.retry_count = retry_count
             if typed_kind:
@@ -629,6 +639,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 error_message=result.get('error'),
                 video_url=artifacts.get('video'),
                 trace_url=artifacts.get('trace'),
+                har_url=artifacts.get('har'),
                 screenshots=artifacts.get('screenshots', []),
                 retry_count=retry_count,
                 response_status=response_data.get('status'),
