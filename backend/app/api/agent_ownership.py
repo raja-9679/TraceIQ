@@ -18,6 +18,7 @@ from fnmatch import fnmatch
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
+from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
 
@@ -440,6 +441,10 @@ async def create_proposal(
         agent_session_id=principal.agent_session_id,
     )
     session.add(proposal)
+    await session.flush()
+    # Workspace auto-apply policy: high-confidence CREATE/UPDATE proposals
+    # can merge immediately (snapshotted in TestCaseRevision either way).
+    await maybe_auto_apply(proposal, principal.user.id, session)
     await session.commit()
     await session.refresh(proposal)
     return _proposal_read(proposal)
@@ -524,6 +529,102 @@ async def reject_proposal(
     await session.commit()
     await session.refresh(proposal)
     return _proposal_read(proposal)
+
+
+async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncSession) -> bool:
+    """Auto-apply policy: merge a fresh proposal immediately when the
+    workspace opted in (auto_apply_threshold) and the proposal's confidence
+    clears it. CREATE/UPDATE only — DELETE/MOVE always wait for a human.
+    Safe because every applied change is snapshotted in TestCaseRevision.
+    Caller commits. Returns True iff the proposal was applied."""
+    try:
+        if proposal.status != "pending" or proposal.ai_confidence is None:
+            return False
+        if proposal.action not in (CaseProposalAction.CREATE, CaseProposalAction.UPDATE):
+            return False
+        from app.models import Project, Workspace
+        project = await session.get(Project, proposal.project_id)
+        if not project:
+            return False
+        workspace = await session.get(Workspace, project.workspace_id)
+        threshold = getattr(workspace, "auto_apply_threshold", None) or 0
+        if threshold <= 0 or proposal.ai_confidence < threshold:
+            return False
+
+        await _apply_proposal(proposal, user_id, session)
+        proposal.status = "accepted"
+        proposal.decided_at = datetime.utcnow()
+        proposal.decided_by_id = None  # policy decision, not a human reviewer
+        proposal.decision_note = (
+            f"auto-applied: confidence {proposal.ai_confidence:.2f} >= "
+            f"workspace threshold {threshold:.2f}")
+        session.add(proposal)
+        print(f"[AutoApply] proposal {proposal.id} ({proposal.action}) auto-applied "
+              f"(confidence {proposal.ai_confidence:.2f} >= {threshold:.2f})")
+        return True
+    except Exception as exc:  # noqa: BLE001
+        # Policy failures degrade to the normal review queue, never a 500.
+        print(f"[AutoApply] policy check failed for proposal {proposal.id}: {exc}")
+        return False
+
+
+class ProposalPolicyBody(BaseModel):
+    # None or 0 disables auto-apply.
+    auto_apply_threshold: Optional[float] = None
+
+
+@router.get("/workspaces/{workspace_id}/proposal-policy")
+async def get_proposal_policy(
+    workspace_id: int,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    from app.models import UserWorkspace, Workspace
+    membership = await session.exec(
+        select(UserWorkspace).where(
+            UserWorkspace.workspace_id == workspace_id,
+            UserWorkspace.user_id == principal.user.id,
+        ))
+    if not membership.first():
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    workspace = await session.get(Workspace, workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return {"workspace_id": workspace_id,
+            "auto_apply_threshold": workspace.auto_apply_threshold}
+
+
+@router.put("/workspaces/{workspace_id}/proposal-policy")
+async def set_proposal_policy(
+    workspace_id: int,
+    body: ProposalPolicyBody,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    # Humans only — an agent must not be able to raise the bar it is
+    # measured against (same rule as accepting proposals).
+    if principal.is_api_caller:
+        raise HTTPException(status_code=403, detail="API keys cannot change the auto-apply policy")
+    from app.models import UserWorkspace, Workspace
+    membership = await session.exec(
+        select(UserWorkspace).where(
+            UserWorkspace.workspace_id == workspace_id,
+            UserWorkspace.user_id == principal.user.id,
+        ))
+    if not membership.first():
+        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    workspace = await session.get(Workspace, workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    threshold = body.auto_apply_threshold
+    if threshold is not None and not (0 <= threshold <= 1):
+        raise HTTPException(status_code=400, detail="auto_apply_threshold must be between 0 and 1")
+    workspace.auto_apply_threshold = threshold or None
+    session.add(workspace)
+    await session.commit()
+    return {"workspace_id": workspace_id,
+            "auto_apply_threshold": workspace.auto_apply_threshold}
 
 
 async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSession) -> None:

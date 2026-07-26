@@ -292,6 +292,7 @@
     <a href="#steps">Step catalog</a>
     <a href="#variables">Variables &amp; secrets</a>
     <a href="#ai-authoring">AI generation</a>
+    <a href="#versioning">Revision history</a>
     <a href="#import">Import &amp; record</a>
     <a href="#data-driven">Data-driven tests</a>
     <a href="#personas">Personas &amp; auth</a>
@@ -306,12 +307,14 @@
     <a href="#performance">Performance &amp; vitals</a>
     <a href="#load">Load testing</a>
     <a href="#security">Security testing</a>
+    <a href="#mobile">Mobile app testing</a>
     <a href="#monitoring">Synthetic monitoring</a>
     <div class="grp">Results</div>
     <a href="#run-details">Run details &amp; trace</a>
     <a href="#failure-analysis">AI failure analysis</a>
     <a href="#triage">Triage &amp; flake</a>
     <a href="#comparison">Comparison runs</a>
+    <a href="#proposals">Proposals &amp; auto-apply</a>
     <div class="grp">Quality &amp; delivery</div>
     <a href="#quality-gate">Dashboard &amp; gate</a>
     <a href="#junit">CI results ingestion</a>
@@ -329,16 +332,18 @@
     <a href="#mcp">MCP server</a>
     <a href="#github">GitHub Action</a>
     <a href="#cheatsheet">API cheat sheet</a>
+    <div class="grp">Roadmap</div>
+    <a href="#roadmap">What's next</a>
   </nav>
 
   <main>
     <header class="hero">
       <div class="eyebrow">Platform Documentation</div>
       <h1>One platform for every layer of quality</h1>
-      <p class="lead">TraceIQ records browser and API test journeys, runs them across distributed workers, and correlates <b>UI, API, performance, load, security, and uptime</b> against the same commit — then a single quality gate decides go / no-go. This page covers every feature: what it does, and how to use it.</p>
+      <p class="lead">TraceIQ records browser, API, and native-mobile test journeys, runs them across distributed workers, and correlates <b>UI, API, mobile, performance, load, security, and uptime</b> against the same commit — then a single quality gate decides go / no-go. This page covers every feature: what it does, and how to use it.</p>
       <div class="pills">
-        <span class="pill"><b>6</b> testing pillars</span>
-        <span class="pill"><b>45+</b> step types</span>
+        <span class="pill"><b>7</b> testing pillars</span>
+        <span class="pill"><b>95+</b> step types</span>
         <span class="pill"><b>29</b> MCP tools</span>
         <span class="pill">Multi-tenant &amp; RBAC</span>
         <span class="pill">AI-native</span>
@@ -558,6 +563,24 @@ curl "$TRACEIQ/api/runs/507" -H "X-API-Key: tiq_..."</code></pre>
     </section>
 
     <!-- IMPORT -->
+    <section id="versioning">
+      <h2>Revision history</h2>
+      <p class="sec-sub">Every save is snapshotted — the rollback safety net for AI-edited tests.</p>
+      <div class="card">
+        <div class="head"><h3>Case revisions</h3><span class="badge b-new">New</span></div>
+        <p class="what">Every mutation of a test case — manual edit, accepted selector heal, accepted or auto-applied AI proposal — appends an immutable snapshot (name, steps, executor, tags, dataset, code paths). History is append-only: restoring an old revision writes a <em>new</em> revision rather than rewriting the past.</p>
+        <ol class="steps">
+          <li>Open a case in the Test Builder and click <em>History</em> in the header.</li>
+          <li>Each revision shows its change source (created / edited / heal / AI proposal / restored), human-vs-agent attribution, and an expandable step-level preview.</li>
+          <li><em>Restore</em> rolls the case back in one click (editor role required, audited).</li>
+        </ol>
+        <pre><code>GET  /api/cases/{id}/revisions            <span class="tok-c"># list (metadata)</span>
+GET  /api/cases/{id}/revisions/{n}        <span class="tok-c"># full snapshot</span>
+POST /api/cases/{id}/revisions/{n}/restore</code></pre>
+        <div class="note">Revisions are what make the <a href="#proposals">auto-apply policy</a> acceptable: an agent can merge a change, and a human can always see exactly what changed and undo it.</div>
+      </div>
+    </section>
+
     <section id="import">
       <h2>Import &amp; record</h2>
       <p class="sec-sub">Bring existing assets in with less friction.</p>
@@ -862,6 +885,32 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
       </div>
     </section>
 
+    <section id="mobile">
+      <h2>Mobile app testing</h2>
+      <p class="sec-sub">Install a real APK / IPA and drive it with taps and swipes — the 7th pillar, on the same platform.</p>
+      <div class="card">
+        <div class="head"><h3>App builds</h3><span class="badge b-new">New</span></div>
+        <p class="what">Upload native binaries (<code>.apk</code> / <code>.aab</code> / <code>.ipa</code>) on the <em>App Builds</em> page; they're versioned per project. When you trigger a run, pin a build with the picker next to <em>Run Now</em> (or <code>app_build_id</code> in the <code>POST /api/runs</code> body) — the mobile worker installs it before executing.</p>
+        <pre><code>POST /api/projects/{id}/app-builds        <span class="tok-c"># multipart upload</span>
+GET  /api/projects/{id}/app-builds
+POST /api/runs  {<span class="tok-k">"app_build_id"</span>: <span class="tok-n">7</span>}   <span class="tok-c"># pin on a run</span></code></pre>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Mobile steps</h3><span class="badge b-new">New</span></div>
+        <p class="what">13 native step types in the builder's <em>Mobile App (Appium)</em> category — <code>mobile-tap</code>, <code>mobile-swipe</code>, <code>mobile-type</code>, <code>mobile-press-key</code>, <code>mobile-expect-visible</code>, <code>mobile-expect-text</code>, <code>mobile-extract-value</code>, <code>mobile-expect-visual-match</code>, <code>mobile-screenshot</code>, launch/terminate/wait. A case containing mobile steps runs on the <code>mobile_appium</code> executor automatically — no configuration.</p>
+        <p class="what">Locators use Appium strategies: <code>~accessibility-id</code> (preferred), <code>id=resource-id</code>, <code>xpath=//…</code>, <code>android=UiSelector…</code>, <code>ios=predicate</code>. Steps interpolate <code>{{env.X}}</code>, <code>{{secret.X}}</code>, <code>{{data.X}}</code>, <code>{{fake.KIND}}</code>, and runtime <code>{{name}}</code> variables like web steps.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Devices: local Appium or a device cloud</h3><span class="badge b-new">New</span></div>
+        <p class="what">Mobile jobs ride a dedicated queue consumed by the mobile worker (compose profile <code>mobile</code>). Point it at a local Appium + Android emulator, or set <code>MOBILE_DEVICE_PROVIDER</code> to <b>browserstack</b>, <b>saucelabs</b>, or <b>lambdatest</b> — binaries are pushed to the cloud's app storage automatically and sessions run there. <b>iOS requires a device cloud.</b></p>
+        <ul class="bul">
+          <li>Screenshots, failure captures, visual-match diffs, and an MP4 screen recording upload as run artifacts — the run details page works unchanged.</li>
+          <li>AI selector heal works on the native page source: broken locators get replacement proposals (and can self-heal at runtime), same review queue as web.</li>
+          <li>Everything else is shared: suites, schedules, RBAC, quality gate, failure analysis, notifications.</li>
+        </ul>
+      </div>
+    </section>
+
     <!-- RUN DETAILS -->
     <section id="run-details">
       <h2>Run details &amp; trace</h2>
@@ -913,10 +962,27 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
       <h2>Comparison runs</h2>
       <p class="sec-sub">Re-run a baseline against a new target and diff the outcome.</p>
       <div class="card">
-        <div class="head"><h3>Deployment comparison</h3><span class="badge b-core">Core</span></div>
-        <p class="what">Point a known-good suite at a new <code>target_url</code> (e.g. a preview deploy) and get a side-by-side delta against the baseline run.</p>
+        <div class="head"><h3>Deployment comparison</h3><span class="badge b-core">Core</span><span class="badge b-new">UI new</span></div>
+        <p class="what">Point a known-good suite at a new <code>target_url</code> (e.g. a preview deploy) and get a side-by-side delta against the baseline run. From the UI: open any finished run → <em>Compare Deployment</em> → enter the target URL. The comparison view polls while the candidate runs, then renders a promote/block verdict banner, regressed / recovered / unchanged counts, and a per-test delta table with duration change — regressions sorted first.</p>
         <pre><code>POST /api/runs/comparison
-{<span class="tok-k">"baseline_run_id"</span>: <span class="tok-n">318</span>, <span class="tok-k">"target_url"</span>: <span class="tok-s">"https://pr-42.preview.example.com"</span>}</code></pre>
+{<span class="tok-k">"baseline_run_id"</span>: <span class="tok-n">318</span>, <span class="tok-k">"target_url"</span>: <span class="tok-s">"https://pr-42.preview.example.com"</span>}
+GET  /api/runs/{candidate_id}/comparison   <span class="tok-c"># summary + per-test deltas</span></code></pre>
+      </div>
+    </section>
+
+    <section id="proposals">
+      <h2>Proposals &amp; auto-apply</h2>
+      <p class="sec-sub">Agents propose; humans review — or set a confidence bar above which changes merge themselves.</p>
+      <div class="card">
+        <div class="head"><h3>The review queue</h3><span class="badge b-core">Core</span></div>
+        <p class="what">AI agents (via MCP or the REST API) can't silently edit your suite: their create / update / delete / move requests land as <em>proposals</em> on the Proposals page, with a side-by-side diff, rationale, and a confidence score. Selector heals detected during runs queue here too. API keys can submit proposals but can never accept them.</p>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Auto-apply policy</h3><span class="badge b-new">New</span></div>
+        <p class="what">Per workspace, set a confidence threshold on the Proposals page (e.g. <code>0.95</code>): CREATE and UPDATE proposals at or above it merge immediately, tagged <em>auto-applied</em> in the decision log. DELETE and MOVE always wait for a human. Every applied change is snapshotted in <a href="#versioning">revision history</a>, so an auto-merge is one click from undone.</p>
+        <pre><code>PUT /api/workspaces/{id}/proposal-policy
+{<span class="tok-k">"auto_apply_threshold"</span>: <span class="tok-n">0.95</span>}   <span class="tok-c"># null/0 = off (default)</span></code></pre>
+        <div class="note">Only humans can change the policy — an agent must not be able to raise the bar it is measured against.</div>
       </div>
     </section>
 
@@ -1127,6 +1193,40 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
     </section>
 
     <!-- CHEATSHEET -->
+    <section id="roadmap">
+      <h2>What's next</h2>
+      <p class="sec-sub">Where the platform is heading — recently landed, in flight, and planned.</p>
+      <div class="card">
+        <div class="head"><h3>Recently landed</h3><span class="badge b-new">2026 H2</span></div>
+        <ul class="bul">
+          <li><b>Mobile app testing</b> — Appium executor, app-build registry, 13 native steps, device clouds (iOS), AI heal on native page source.</li>
+          <li><b>Deployment-comparison UI</b> — promote/block verdict on a per-test baseline diff.</li>
+          <li><b>Revision history</b> — append-only case snapshots with one-click restore.</li>
+          <li><b>Auto-apply policy</b> — confidence-gated agent merges, backed by revisions.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Planned</h3><span class="badge b-beta">Roadmap</span></div>
+        <ul class="bul">
+          <li><b>Onboarding flow</b> — sample-project seeding and "paste a URL → we generate your first suite".</li>
+          <li><b>Observability endpoints</b> — Prometheus <code>/metrics</code>, worker/queue-health admin API, real readiness probes.</li>
+          <li><b>Coverage-based impact analysis</b> — match PR diffs against per-file coverage captured during runs, replacing self-reported code paths.</li>
+          <li><b>HAR capture</b> — full network archives as downloadable run artifacts.</li>
+          <li><b>Recorder fidelity</b> — drag-drop, iframes, hover flows, and network capture in the browser recorder.</li>
+          <li><b>Integrations polish</b> — GitHub Action running impact-matched cases only; MCP server on PyPI with an HTTP transport.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="head"><h3>Later / exploring</h3><span class="badge b-beta">Ideas</span></div>
+        <ul class="bul">
+          <li>AI chat assistant over run history ("why did this fail?").</li>
+          <li>AI visual comparison, layout-shift detection, responsive/dark-mode matrices.</li>
+          <li>Internationalised UI, self-hosted distribution, SOC 2 groundwork.</li>
+        </ul>
+        <div class="note">Deliberately out of scope: multi-language code-export editors, SOAP/gRPC, SQL steps, requirement-traceability matrices, and a plugin marketplace — the step-JSON model, MCP, webhooks, and the REST API are the extension surface.</div>
+      </div>
+    </section>
+
     <section id="cheatsheet">
       <h2>API cheat sheet</h2>
       <p class="sec-sub">The endpoints you'll reach for most.</p>

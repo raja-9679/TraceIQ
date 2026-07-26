@@ -700,6 +700,9 @@ async def bulk_propose_cases(
             )
             session.add(proposal)
             await session.flush()
+            # Workspace auto-apply policy — per-item, best-effort.
+            from app.api.agent_ownership import maybe_auto_apply
+            await maybe_auto_apply(proposal, principal.user.id, session)
             results.append(BulkProposalItemResult(index=idx, status="created", proposal_id=proposal.id))
             created += 1
         except Exception as exc:  # noqa: BLE001
