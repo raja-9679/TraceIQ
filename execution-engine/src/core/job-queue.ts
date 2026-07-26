@@ -61,6 +61,9 @@ export interface TestJob {
         auto_retry?: boolean;
         max_retries?: number;
         retry_backoff_ms?: number;
+        // Opt-in HAR network archive (inherited suite setting; also
+        // enable globally with HAR_CAPTURE_ENABLED on the worker).
+        har_capture?: boolean;
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
         // MinIO URL + metadata the mobile worker needs to install/launch it.
         mobile_app?: {
@@ -136,6 +139,7 @@ export interface JobResult {
     artifacts: {
         video?: string;
         trace?: string;
+        har?: string;
         screenshots: string[];
     };
     

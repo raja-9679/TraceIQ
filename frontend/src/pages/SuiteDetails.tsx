@@ -1048,6 +1048,38 @@ export default function SuiteDetails() {
                                     </div>
                                 </div>
 
+                                {/* ── HAR Capture Setting ── */}
+                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden hover:border-slate-300 transition-colors">
+                                    <div className="p-6 lg:p-8 grid md:grid-cols-3 gap-6 items-start">
+                                        <div className="md:col-span-2 space-y-1">
+                                            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                                                <Globe className="h-4 w-4 text-indigo-500" />
+                                                Network Archive (HAR)
+                                            </h3>
+                                            <p className="text-sm text-slate-500">
+                                                Record a full HAR of every job in this suite and attach it to run results
+                                                as a downloadable artifact. Adds some overhead and artifact size — enable
+                                                when debugging network behavior. Inherited by sub-modules like other settings.
+                                            </p>
+                                        </div>
+                                        <div className="md:col-span-1 md:justify-self-end">
+                                            <label className="flex items-center gap-2.5 text-sm font-semibold text-slate-700 cursor-pointer select-none bg-slate-50/50 border border-slate-200 rounded-xl px-4 h-11">
+                                                <input
+                                                    type="checkbox"
+                                                    className="rounded accent-indigo-600"
+                                                    checked={!!suite.settings?.har_capture}
+                                                    onChange={(e) => handleUpdateSettings(
+                                                        { ...(suite.settings || {}), har_capture: e.target.checked },
+                                                        suite.inherit_settings,
+                                                        e.target.checked ? 'HAR capture enabled' : 'HAR capture disabled'
+                                                    )}
+                                                />
+                                                Capture HAR
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 {/* ── Headers & Params Configuration ── */}
                                 <div className="grid lg:grid-cols-2 gap-6">
                                     {/* Custom Headers */}
