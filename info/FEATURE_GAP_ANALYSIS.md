@@ -192,7 +192,7 @@ The checklist covers testing features; these SaaS-readiness gaps were verified s
 ### Tier 2 — high-value product additions
 - **Deployment-comparison UI** — backend fully built (`backend/app/api/comparison_runs.py`: `POST /runs/comparison`, `GET /runs/{id}/comparison`) with zero frontend consumers; a headline release-gating feature is invisible.
 - **Synthetic monitoring & alerting** — schedules + per-run notifications exist, but no failure-streak alerts, uptime dashboard, or SLA reporting; a small delta turns scheduled suites into a production-monitoring product (Checkly-adjacent revenue).
-- **Test case versioning** — no revision history/diff/restore (only `AuditLog`, `models.py:588`). Matters doubly because AI agents edit tests: rollback is the safety net that makes auto-applying proposals acceptable.
+- ~~**Test case versioning**~~ — ✅ shipped 2026-07-26: `TestCaseRevision` append-only snapshots on every mutation (create/update/heal-accept/proposal-accept/restore — `app/services/case_revisions.py`), list/get/restore endpoints (`app/api/case_revisions.py`), and a History dialog in the TestBuilder header (view steps at any revision, one-click restore). Unblocks the auto-apply policy below.
 - **Onboarding** — no sample-project seeding or first-run guide; with AI generation already built, "paste a URL → we generate your first suite" is the natural first-run flow.
 - **Hosted API/MCP docs** — only default FastAPI `/docs`; an agent-first product needs a hosted, versioned API + MCP reference.
 

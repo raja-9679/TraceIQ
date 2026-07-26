@@ -385,6 +385,43 @@ class TestCaseUpdate(SQLModel):
     priority: Optional[str] = None
 
 
+class TestCaseRevision(SQLModel, table=True):
+    """Immutable snapshot of a test case, appended on every mutation.
+
+    The safety net that makes agent-edited (and eventually auto-applied)
+    tests acceptable: each create/update/heal-accept/proposal-accept writes
+    the case's post-change state here; restore copies a snapshot back
+    (which itself appends a new revision — history is never rewritten).
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    # 1-based, monotonically increasing per case.
+    revision_number: int = Field(default=1)
+    # Full editable state of the case at this point (see snapshot_case()).
+    snapshot: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    # What caused this revision: create | update | heal | proposal | restore.
+    change_source: str = Field(default="update")
+    changed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    changed_by_agent_id: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TestCaseRevisionRead(SQLModel):
+    id: int
+    test_case_id: int
+    revision_number: int
+    change_source: str
+    changed_by_id: Optional[int] = None
+    changed_by_agent_id: Optional[str] = None
+    created_at: datetime
+    # Cheap list rendering without shipping full step arrays: step count +
+    # case name at this revision.
+    name: Optional[str] = None
+    step_count: Optional[int] = None
+    # Populated on detail reads only.
+    snapshot: Optional[Dict[str, Any]] = None
+
+
 class ProjectEnvironment(SQLModel, table=True):
     """A named deployment target for a project (dev/staging/prod).
 
