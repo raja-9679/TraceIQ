@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
     selector?: string;
     value?: string;
     params?: {
@@ -136,6 +136,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'mobile-expect-visible': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Eye size={18} />, label: 'Expect Visible (Mobile)' };
             case 'mobile-expect-text': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Search size={18} />, label: 'Expect Text (Mobile)' };
             case 'mobile-screenshot': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Screenshot (Mobile)' };
+            case 'mobile-extract-value': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
+            case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
             default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
         }
@@ -219,6 +221,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="mobile-expect-visible"><div className="flex items-center gap-2"><Eye size={14} className="text-fuchsia-500"/> Expect Visible</div></SelectItem>
                                 <SelectItem value="mobile-expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-fuchsia-500"/> Expect Text</div></SelectItem>
                                 <SelectItem value="mobile-screenshot"><div className="flex items-center gap-2"><Camera size={14} className="text-fuchsia-500"/> Screenshot</div></SelectItem>
+                                <SelectItem value="mobile-extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-fuchsia-500"/> Extract Value</div></SelectItem>
+                                <SelectItem value="mobile-expect-visual-match"><div className="flex items-center gap-2"><Camera size={14} className="text-fuchsia-500"/> Visual Match</div></SelectItem>
                                 <SelectItem value="mobile-terminate-app"><div className="flex items-center gap-2"><Smartphone size={14} className="text-fuchsia-500"/> Terminate App</div></SelectItem>
                             </SelectContent>
                         </Select>
@@ -360,11 +364,12 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                Cases with these steps run on the mobile executor against the
                                app build pinned at run time. */
                             <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
-                                {(step.type === 'mobile-launch-app' || step.type === 'mobile-terminate-app' || step.type === 'mobile-screenshot') ? (
+                                {(step.type === 'mobile-launch-app' || step.type === 'mobile-terminate-app' || step.type === 'mobile-screenshot' || step.type === 'mobile-expect-visual-match') ? (
                                     <div className="flex-1 min-w-0 h-12 rounded-xl shadow-sm bg-white px-4 flex items-center text-sm text-slate-500">
                                         {step.type === 'mobile-launch-app' ? "Launches the run's pinned app build — no inputs needed." :
                                             step.type === 'mobile-terminate-app' ? 'Force-stops the app (cold-start / state tests) — no inputs needed.' :
-                                                'Captures the device screen — no inputs needed.'}
+                                                step.type === 'mobile-expect-visual-match' ? 'Captures the device screen and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.' :
+                                                    'Captures the device screen — no inputs needed.'}
                                     </div>
                                 ) : step.type === 'mobile-swipe' ? (
                                     <>
@@ -411,9 +416,11 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
                                             className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                         />
-                                        {(step.type === 'mobile-type' || step.type === 'mobile-expect-text') && (
+                                        {(step.type === 'mobile-type' || step.type === 'mobile-expect-text' || step.type === 'mobile-extract-value') && (
                                             <Input
-                                                placeholder={step.type === 'mobile-type' ? 'Text to type' : 'Expected text (substring)'}
+                                                placeholder={step.type === 'mobile-type' ? 'Text to type' :
+                                                    step.type === 'mobile-extract-value' ? 'Variable name (use as {{name}} later)' :
+                                                        'Expected text (substring)'}
                                                 value={step.value || ''}
                                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                                 className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
