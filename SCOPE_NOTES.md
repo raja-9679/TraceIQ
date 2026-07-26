@@ -139,11 +139,14 @@ Full phase plan in `info/FEATURE_GAP_ANALYSIS.md` §31 + "Phase MOB". Built so f
 - ✅ `execution-engine/src/mobile-worker.ts` — reuses `JobQueue` (stream/group via env), drives Appium over the raw W3C WebDriver protocol (`src/core/webdriver-client.ts`, zero new npm deps). `npm run worker:mobile` / `dev:mobile-worker`.
 - ✅ Compose profile `mobile`: `appium` + `mobile-worker` services (`docker compose --profile mobile … up`).
 - ✅ Executor inference: cases containing `mobile-*` steps get `executor=mobile_appium` automatically on create/update (`test_cases.py`, same pattern as `load-test`).
-- ✅ Frontend: App Builds page (`/app-builds` — upload APK/AAB/IPA, list, download, delete; Environments-style project scoping); app-build picker next to Run Now in `SuiteDetails.tsx` (pins `app_build_id` on every run from the page); 11 mobile step types in the TestBuilder step editor under a "Mobile App (Appium)" category with Appium-locator inputs; `triggerRun` now sends a `RunCreateContext` JSON body.
+- ✅ Frontend: App Builds page (`/app-builds` — upload APK/AAB/IPA, list, download, delete; Environments-style project scoping); app-build + environment pickers next to Run Now in `SuiteDetails.tsx` (pinned onto every run from the page); 11 mobile step types in the TestBuilder step editor under a "Mobile App (Appium)" category with Appium-locator inputs; `triggerRun` now sends a `RunCreateContext` JSON body.
+- ✅ Screenshot artifacts: `mobile-screenshot` steps + automatic on-failure captures upload to MinIO (`runs/{run_id}/screenshots/`, same layout as web).
+- ✅ Interpolation: `{{env.X}}` / `{{secret.X}}` / `{{data.X}}` / `{{fake.KIND}}` resolve in mobile step selectors/values/params via the shared `execution-engine/src/core/interpolate.ts` (extracted from test-executor so both executors use one implementation).
+- ✅ Deploy runbook: `PRODUCTION_DEPLOY.md` §2.7 (migration, image rebuilds, opt-in mobile profile, device options, smoke checklist, rollback).
 
 Still deferred for mobile:
 - **A device.** Appium needs an emulator/real device: attach `budtmo/docker-android` (KVM required) or point `APPIUM_URL` at a device cloud. iOS requires macOS — device cloud only (MOB-4).
-- Artifact upload (screenshots/video to MinIO — result payload only in v1), `{{env/secret/data}}` interpolation in mobile steps, selector heal on Appium XML source (MOB-5), device-cloud adapter (MOB-4), an environment picker in the run controls (backend accepts `environment_id` in the same body).
+- Video artifacts; `{{name}}` runtime variables (no extract-value on mobile); selector heal on Appium XML source (MOB-5); device-cloud adapter (MOB-4).
 
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 

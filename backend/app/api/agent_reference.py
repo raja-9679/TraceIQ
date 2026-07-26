@@ -549,8 +549,8 @@ _STEP_TYPES: List[Dict[str, Any]] = [
     {
         "type": "mobile-screenshot",
         "category": "mobile",
-        "params": {},
-        "notes": "v1: stored in the result payload; MinIO artifact upload for mobile is deferred (see SCOPE_NOTES.md).",
+        "params": {"value": "Optional label for the artifact filename"},
+        "notes": "Uploaded to MinIO under runs/{run_id}/screenshots/ like web screenshots. A failure screenshot is also captured automatically when a mobile case fails.",
     },
     {
         "type": "mobile-terminate-app",
