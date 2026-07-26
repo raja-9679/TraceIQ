@@ -548,6 +548,10 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
             agent_session_id=proposal.agent_session_id,
         )
         session.add(case)
+        await session.flush()  # assign case.id so the revision can reference it
+        from app.services.case_revisions import record_revision
+        await record_revision(session, case, "proposal", user_id=user_id,
+                              agent_id=proposal.agent_id)
         return
 
     case = await session.get(TestCase, proposal.target_case_id)
@@ -566,6 +570,9 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         case.last_human_reviewed_at = datetime.utcnow()
         case.last_human_reviewed_by_id = user_id
         session.add(case)
+        from app.services.case_revisions import record_revision
+        await record_revision(session, case, "proposal", user_id=user_id,
+                              agent_id=proposal.agent_id)
     elif proposal.action == CaseProposalAction.DELETE:
         await session.delete(case)
     elif proposal.action == CaseProposalAction.MOVE:
@@ -576,6 +583,9 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         case.updated_at = datetime.utcnow()
         case.updated_by_id = user_id
         session.add(case)
+        from app.services.case_revisions import record_revision
+        await record_revision(session, case, "proposal", user_id=user_id,
+                              agent_id=proposal.agent_id)
 
 
 def _proposal_read(p: CaseProposal) -> CaseProposalRead:

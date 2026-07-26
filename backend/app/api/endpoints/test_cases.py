@@ -109,7 +109,10 @@ async def create_test_case(
     session.add(case)
     await session.commit()
     await session.refresh(case)
-    
+
+    from app.services.case_revisions import record_revision
+    await record_revision(session, case, "create", user_id=current_user.id,
+                          agent_id=principal.agent_id)
     audit = AuditLog(entity_type="case", entity_id=case.id, action="create", user_id=current_user.id, changes=case.model_dump(mode='json'))
     session.add(audit)
     await session.commit()
@@ -163,11 +166,13 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
         db_case.updated_by_id = current_user.id
         db_case.updated_at = datetime.utcnow()
         session.add(db_case)
+        from app.services.case_revisions import record_revision
+        await record_revision(session, db_case, "update", user_id=current_user.id)
         audit = AuditLog(entity_type="case", entity_id=case_id, action="update", user_id=current_user.id, changes=changes)
         session.add(audit)
         await session.commit()
         await session.refresh(db_case)
-        
+
     return db_case
 
 @router.delete("/cases/{case_id}")

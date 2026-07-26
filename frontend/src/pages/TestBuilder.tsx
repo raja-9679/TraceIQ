@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInput, Code2, CheckCircle2, FileJson, Zap } from "lucide-react";
 import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
+import { CaseHistoryDialog } from "@/components/test-builder/CaseHistoryDialog";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -323,6 +324,17 @@ export default function TestBuilder() {
                     </div>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                    {isEditing && caseId && (
+                        <CaseHistoryDialog
+                            caseId={parseInt(caseId)}
+                            onRestored={() => {
+                                // The server-side case changed under the editor —
+                                // drop any local draft and rehydrate from scratch.
+                                localStorage.removeItem(draftKey);
+                                window.location.reload();
+                            }}
+                        />
+                    )}
                     <button
                         type="button"
                         onClick={() => setShowDataset(!showDataset)}

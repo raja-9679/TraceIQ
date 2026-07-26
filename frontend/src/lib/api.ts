@@ -225,6 +225,39 @@ export const getTestCase = async (caseId: number): Promise<any> => {
     return response.data;
 };
 
+// ---------------------------------------------------------------------------
+// Test-case revision history — every save appends an immutable snapshot;
+// restore rolls the case back (appending another revision).
+// ---------------------------------------------------------------------------
+
+export interface CaseRevision {
+    id: number;
+    test_case_id: number;
+    revision_number: number;
+    change_source: 'create' | 'update' | 'heal' | 'proposal' | 'restore' | string;
+    changed_by_id?: number | null;
+    changed_by_agent_id?: string | null;
+    created_at: string;
+    name?: string | null;
+    step_count?: number | null;
+    snapshot?: Record<string, any> | null;
+}
+
+export const getCaseRevisions = async (caseId: number): Promise<CaseRevision[]> => {
+    const response = await api.get(`/cases/${caseId}/revisions`);
+    return response.data;
+};
+
+export const getCaseRevision = async (caseId: number, number: number): Promise<CaseRevision> => {
+    const response = await api.get(`/cases/${caseId}/revisions/${number}`);
+    return response.data;
+};
+
+export const restoreCaseRevision = async (caseId: number, number: number): Promise<CaseRevision> => {
+    const response = await api.post(`/cases/${caseId}/revisions/${number}/restore`);
+    return response.data;
+};
+
 export const updateTestCase = async (caseId: number, data: any): Promise<any> => {
     const response = await api.put(`/cases/${caseId}`, data);
     return response.data;
