@@ -102,6 +102,11 @@ class Workspace(SQLModel, table=True):
 
     # Phase D: daily cap on AI-driven test generation calls. 0 = unlimited.
     ai_generation_limit_daily: int = Field(default=100)
+    # Auto-apply policy: agent proposals with ai_confidence >= this threshold
+    # are applied immediately (CREATE/UPDATE only — never DELETE/MOVE).
+    # None/0 = disabled, every proposal waits for human review. Safe to enable
+    # because every applied proposal is snapshotted in TestCaseRevision.
+    auto_apply_threshold: Optional[float] = Field(default=None)
 
     # Max number of runs that may be RUNNING concurrently across this
     # workspace's projects. Enforced at dispatch — runs over the cap stay
