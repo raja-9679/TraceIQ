@@ -468,6 +468,17 @@ class ExecutionWorker {
                 }
             };
 
+            // Opt-in HAR capture: suite setting (dispatched per job) or a
+            // worker-wide env default. Written on context.close(), picked up
+            // by uploadArtifacts' directory scan.
+            if (job.settings?.har_capture || process.env.HAR_CAPTURE_ENABLED === 'true') {
+                contextOptions.recordHar = {
+                    path: path.join(artifactsDir, `network-${job.job_id}.har`),
+                    content: 'embed',
+                };
+                console.log(`[Worker] HAR capture enabled for job ${job.job_id}`);
+            }
+
             // Apply device emulation if specified
             let emulatedAs: string | null = null;
             if (job.device) {
@@ -758,6 +769,15 @@ class ExecutionWorker {
                     size: { width: 1280, height: 720 }
                 }
             };
+
+            // Opt-in HAR capture (shared context — one archive for the job).
+            if (job.settings?.har_capture || process.env.HAR_CAPTURE_ENABLED === 'true') {
+                contextOptions.recordHar = {
+                    path: path.join(artifactsDir, `network-${job.job_id}.har`),
+                    content: 'embed',
+                };
+                console.log(`[Worker] HAR capture enabled for continuous job ${job.job_id}`);
+            }
 
             // Apply device emulation if specified
             let emulatedAs: string | null = null;
@@ -1156,8 +1176,8 @@ class ExecutionWorker {
         tracePath: string | null,
         consoleLogs?: any[],
         networkEvents?: any[]
-    ): Promise<{ video?: string; trace?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
-        const result: { video?: string; trace?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
+    ): Promise<{ video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
+        const result: { video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
             screenshots: [],
             uploadedLocalPaths: []
         };
@@ -1196,6 +1216,18 @@ class ExecutionWorker {
                     await this.minioClient.fPutObject(BUCKET_NAME, screenshotKey, localPath);
                     result.screenshots.push(screenshotKey);
                     result.uploadedLocalPaths.push(localPath);
+                }
+
+                // HAR network archive (written by recordHar on context.close()
+                // when har_capture is enabled — one per job).
+                const harFile = files.find(f => f.endsWith('.har'));
+                if (harFile) {
+                    const localPath = path.join(artifactsDir, harFile);
+                    const harKey = `runs/${runId}/har/${jobId}.har`;
+                    await this.minioClient.fPutObject(BUCKET_NAME, harKey, localPath);
+                    result.har = harKey;
+                    result.uploadedLocalPaths.push(localPath);
+                    console.log(`[Worker] Uploaded HAR: ${harKey}`);
                 }
             }
 

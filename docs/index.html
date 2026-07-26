@@ -1203,17 +1203,18 @@ GET  /api/runs/{candidate_id}/comparison   <span class="tok-c"># summary + per-t
           <li><b>Deployment-comparison UI</b> — promote/block verdict on a per-test baseline diff.</li>
           <li><b>Revision history</b> — append-only case snapshots with one-click restore.</li>
           <li><b>Auto-apply policy</b> — confidence-gated agent merges, backed by revisions.</li>
+          <li><b>Observability</b> — Prometheus <code>/metrics</code>, real <code>/health/ready</code> probe, and an authenticated queue-health API.</li>
+          <li><b>Onboarding</b> — one-click sample project with three runnable demo tests (see the empty state on Test Suites).</li>
+          <li><b>HAR capture</b> — opt-in per suite (settings → Network Archive): full request/response archives attached to runs.</li>
         </ul>
       </div>
       <div class="card">
         <div class="head"><h3>Planned</h3><span class="badge b-beta">Roadmap</span></div>
         <ul class="bul">
-          <li><b>Onboarding flow</b> — sample-project seeding and "paste a URL → we generate your first suite".</li>
-          <li><b>Observability endpoints</b> — Prometheus <code>/metrics</code>, worker/queue-health admin API, real readiness probes.</li>
           <li><b>Coverage-based impact analysis</b> — match PR diffs against per-file coverage captured during runs, replacing self-reported code paths.</li>
-          <li><b>HAR capture</b> — full network archives as downloadable run artifacts.</li>
           <li><b>Recorder fidelity</b> — drag-drop, iframes, hover flows, and network capture in the browser recorder.</li>
           <li><b>Integrations polish</b> — GitHub Action running impact-matched cases only; MCP server on PyPI with an HTTP transport.</li>
+          <li><b>Generate-from-URL onboarding</b> — "paste a URL → we draft your first suite" on top of the existing AI generation.</li>
         </ul>
       </div>
       <div class="card">
