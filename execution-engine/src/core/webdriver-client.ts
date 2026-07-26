@@ -105,6 +105,16 @@ export class WebDriverClient {
         return el;
     }
 
+    /** All matching element ids (no error when none) — used to count matches. */
+    async findElements(sessionId: string, selector: string): Promise<string[]> {
+        const locator = parseLocator(selector);
+        const value = await this.cmd('POST', `/session/${sessionId}/elements`, locator);
+        if (!Array.isArray(value)) return [];
+        return value
+            .map((v: any) => v?.[ELEMENT_KEY] || v?.ELEMENT)
+            .filter((el: any): el is string => typeof el === 'string');
+    }
+
     /** Poll findElement until it resolves or timeoutMs elapses. */
     async waitForElement(sessionId: string, selector: string, timeoutMs = 10000): Promise<string> {
         const deadline = Date.now() + timeoutMs;
