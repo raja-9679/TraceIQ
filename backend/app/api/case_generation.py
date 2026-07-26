@@ -245,6 +245,11 @@ async def generate_case(
         agent_session_id=principal.agent_session_id,
     )
     session.add(proposal)
+    await session.flush()
+    # Workspace auto-apply policy (generation proposals carry confidence 0.7,
+    # so they only auto-merge in workspaces with a threshold <= 0.7).
+    from app.api.agent_ownership import maybe_auto_apply
+    await maybe_auto_apply(proposal, principal.user.id, session)
     await session.commit()
     await session.refresh(proposal)
     return {

@@ -3,6 +3,7 @@ import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/rea
 import {
   Bot, Check, X, ChevronDown, ChevronRight, RefreshCw, AlertCircle, Inbox,
   PlusCircle, PenLine, Trash2, MoveRight, Wrench, GitPullRequestArrow, FileText,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,92 @@ import {
   caseProposalsApi, healProposalsApi, getTestCaseInfo,
   CaseProposal, HealProposal, ProposedStep, TestCaseInfo,
 } from '@/api/proposals';
+import { api, getProjects } from '@/lib/api';
+
+// ---------------------------------------------------------------------------
+// Auto-apply policy — workspace-level threshold above which agent CREATE /
+// UPDATE proposals merge without waiting in this queue.
+// ---------------------------------------------------------------------------
+
+function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
+  const queryClient = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+
+  const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
+  const workspaceId = projects?.find((p) => p.id === projectId)?.workspace_id;
+
+  const { data: policy } = useQuery({
+    queryKey: ['proposal-policy', workspaceId],
+    queryFn: async () => (await api.get(`/workspaces/${workspaceId}/proposal-policy`)).data,
+    enabled: !!workspaceId,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async (threshold: number | null) =>
+      (await api.put(`/workspaces/${workspaceId}/proposal-policy`, { auto_apply_threshold: threshold })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['proposal-policy', workspaceId] });
+      setEditing(false);
+      toast.success('Auto-apply policy updated');
+    },
+    onError: (err: any) => toast.error('Failed to update policy', {
+      description: err.response?.data?.detail,
+    }),
+  });
+
+  if (!workspaceId) return null;
+  const threshold: number | null = policy?.auto_apply_threshold ?? null;
+  const enabled = !!threshold && threshold > 0;
+
+  return (
+    <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border shadow-sm ${enabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
+      <Zap size={16} className={enabled ? 'text-amber-500' : 'text-slate-300'} />
+      {editing ? (
+        <>
+          <span className="text-xs font-semibold text-slate-600">Auto-apply when confidence ≥</span>
+          <Input
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="0.95"
+            className="h-8 w-20 rounded-lg text-sm font-mono"
+          />
+          <Button size="sm" className="h-8 rounded-lg" disabled={saveMutation.isPending}
+            onClick={() => {
+              const n = parseFloat(value);
+              if (value.trim() !== '' && (isNaN(n) || n < 0 || n > 1)) {
+                toast.error('Threshold must be between 0 and 1 (empty = off)');
+                return;
+              }
+              saveMutation.mutate(value.trim() === '' || n === 0 ? null : n);
+            }}>
+            Save
+          </Button>
+          <Button size="sm" variant="ghost" className="h-8 rounded-lg" onClick={() => setEditing(false)}>Cancel</Button>
+        </>
+      ) : (
+        <>
+          <div className="text-xs">
+            <span className="font-bold text-slate-700">Auto-apply: </span>
+            {enabled ? (
+              <span className="font-mono font-bold text-amber-700">confidence ≥ {threshold!.toFixed(2)}</span>
+            ) : (
+              <span className="text-slate-400">off — every proposal waits here</span>
+            )}
+            <span className="text-slate-400"> · creates/updates only, all changes snapshotted</span>
+          </div>
+          <button
+            onClick={() => { setValue(threshold ? String(threshold) : ''); setEditing(true); }}
+            className="text-xs font-semibold text-indigo-600 hover:underline"
+          >
+            Edit
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -556,6 +643,11 @@ export default function Proposals() {
         <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
           Review changes proposed by AI agents before they touch the suite — new, updated or deleted test cases, and selector heals detected after runs.
         </p>
+        {projectId && (
+          <div className="mt-4">
+            <AutoApplyPolicyCard projectId={projectId} />
+          </div>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
