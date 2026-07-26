@@ -23,6 +23,7 @@ from app.api import external_results as external_results_api
 from app.api import status_pages as status_pages_api
 from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
+from app.api import app_builds as app_builds_api
 from app.core.config import settings as core_settings
 import logging
 
@@ -84,6 +85,7 @@ app.include_router(external_results_api.router, prefix="/api", tags=["external-r
 app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
 app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
+app.include_router(app_builds_api.router, prefix="/api", tags=["app-builds"])
 app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 app.include_router(agent_reference.router, prefix="/api", tags=["agent-reference"])
 app.include_router(environments.router, prefix="/api", tags=["environments"])

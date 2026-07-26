@@ -481,6 +481,83 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "params": {"value": "URL of an AMP doc"},
         "notes": "Validates AMP HTML compliance.",
     },
+    # ------------------------------------------------------------------
+    # Mobile (native app) steps — Phase MOB. Cases using these MUST set
+    # executor='mobile_appium' and the run MUST pin an app_build_id
+    # (POST /api/runs body). Executed by the mobile worker via Appium.
+    # Selector convention (Appium locator strategies):
+    #   "~foo"                     → accessibility id
+    #   "//..." or "xpath=..."     → XPath over the native page source
+    #   "id=com.app:id/btn"        → resource-id (Android) / name (iOS)
+    #   "android=new UiSelector()…"→ UiAutomator (Android only)
+    #   "ios=label == 'Done'"      → NSPredicate (iOS only)
+    # ------------------------------------------------------------------
+    {
+        "type": "mobile-launch-app",
+        "category": "mobile",
+        "params": {},
+        "example": {"id": "<uuid>", "type": "mobile-launch-app"},
+        "notes": "Activates the run's installed app build (uses the build's package_id). Implicit before the first mobile step; include it explicitly to relaunch mid-test.",
+    },
+    {
+        "type": "mobile-tap",
+        "category": "mobile",
+        "params": {"selector": "Appium locator (see convention above)"},
+        "example": {"id": "<uuid>", "type": "mobile-tap", "selector": "~login-button"},
+    },
+    {
+        "type": "mobile-long-press",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "params.duration_ms": "Hold time, default 800"},
+    },
+    {
+        "type": "mobile-type",
+        "category": "mobile",
+        "params": {"selector": "Appium locator of a text field", "value": "Text to type"},
+        "example": {"id": "<uuid>", "type": "mobile-type", "selector": "~email-input", "value": "alice@example.com"},
+    },
+    {
+        "type": "mobile-swipe",
+        "category": "mobile",
+        "params": {"params.direction": "'up' | 'down' | 'left' | 'right'", "params.distance": "0..1 fraction of the screen, default 0.5"},
+        "example": {"id": "<uuid>", "type": "mobile-swipe", "params": {"direction": "up"}},
+        "notes": "Swipes from screen centre; direction is the finger's movement (swipe up scrolls content down).",
+    },
+    {
+        "type": "mobile-press-key",
+        "category": "mobile",
+        "params": {"value": "'back' | 'home' | 'enter' (Android keycodes)"},
+        "example": {"id": "<uuid>", "type": "mobile-press-key", "value": "back"},
+        "notes": "Android only; iOS has no hardware back key.",
+    },
+    {
+        "type": "mobile-wait-for",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "params.timeout_ms": "Default 10000"},
+    },
+    {
+        "type": "mobile-expect-visible",
+        "category": "mobile",
+        "params": {"selector": "Appium locator"},
+        "example": {"id": "<uuid>", "type": "mobile-expect-visible", "selector": "~dashboard-header"},
+    },
+    {
+        "type": "mobile-expect-text",
+        "category": "mobile",
+        "params": {"selector": "Appium locator", "value": "Expected text (substring match)"},
+    },
+    {
+        "type": "mobile-screenshot",
+        "category": "mobile",
+        "params": {},
+        "notes": "v1: stored in the result payload; MinIO artifact upload for mobile is deferred (see SCOPE_NOTES.md).",
+    },
+    {
+        "type": "mobile-terminate-app",
+        "category": "mobile",
+        "params": {},
+        "notes": "Force-stops the app (uses the build's package_id). Useful for cold-start and state-persistence tests.",
+    },
 ]
 
 
@@ -494,7 +571,7 @@ async def list_step_types() -> Dict[str, Any]:
     return {
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
-        "last_updated": "2026-05-13",
+        "last_updated": "2026-07-25",
     }
 
 

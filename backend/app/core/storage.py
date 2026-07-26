@@ -63,6 +63,20 @@ class MinioClient:
         self.s3.upload_file(file_path, self.bucket, object_name)
         return object_name
 
+    def upload_fileobj(self, fileobj, object_name: str, content_type: str = None):
+        """Stream an open file-like object (e.g. FastAPI UploadFile.file)
+        straight to MinIO without buffering it on disk. Used for app-build
+        binaries, which can be hundreds of MB."""
+        extra = {"ContentType": content_type} if content_type else {}
+        self.s3.upload_fileobj(
+            fileobj, self.bucket, object_name,
+            ExtraArgs=extra or None,
+        )
+        return object_name
+
+    def delete_object(self, object_name: str):
+        self.s3.delete_object(Bucket=self.bucket, Key=object_name)
+
     def copy_object(self, source_key: str, dest_key: str):
         """Server-side copy within the bucket (used to promote a run's
         candidate screenshot into a durable baseline object)."""

@@ -127,6 +127,24 @@ single-test jobs only (SEPARATE/PARALLEL); artifact upload (screenshots/video/
 trace stay on the dev machine — no MinIO from outside the cluster); an
 `npx traceiq-worker` standalone package (today it runs from the repo).
 
+### Phase MOB — native mobile app testing (started 2026-07-25)
+
+Full phase plan in `info/FEATURE_GAP_ANALYSIS.md` §31 + "Phase MOB". Built so far (MOB-2 complete, MOB-3 scaffold):
+
+- ✅ `ExecutorType.MOBILE_APPIUM` — rides the executor keystone; no schema change needed for the value itself.
+- ✅ `MobileAppBuild` registry (APK/AAB/IPA → MinIO `app-builds/{project_id}/`) + CRUD at `POST/GET /api/projects/{id}/app-builds`, `GET/DELETE /api/app-builds/{id}`. Editor-gated uploads, extension-vs-platform validation.
+- ✅ `TestRun.app_build_id` (+ `app_build_id` in the `POST /api/runs` body, validated against the suite's project). Migration `b3c4d5e6f7a8_mobile_app_testing`.
+- ✅ Dispatch routing: mobile jobs land on a dedicated `jobs:mobile:pending` stream (`mobile-workers` consumer group) so Playwright workers never claim them; job settings carry a `mobile_app` descriptor (internal presigned URL + platform + package_id).
+- ✅ 11 native step types (`mobile-tap`, `mobile-swipe`, `mobile-type`, …) in the `agent_reference.py` catalog with an Appium locator convention (`~accessibility-id`, `xpath=`, `id=`, `android=`, `ios=`).
+- ✅ `execution-engine/src/mobile-worker.ts` — reuses `JobQueue` (stream/group via env), drives Appium over the raw W3C WebDriver protocol (`src/core/webdriver-client.ts`, zero new npm deps). `npm run worker:mobile` / `dev:mobile-worker`.
+- ✅ Compose profile `mobile`: `appium` + `mobile-worker` services (`docker compose --profile mobile … up`).
+- ✅ Executor inference: cases containing `mobile-*` steps get `executor=mobile_appium` automatically on create/update (`test_cases.py`, same pattern as `load-test`).
+- ✅ Frontend: App Builds page (`/app-builds` — upload APK/AAB/IPA, list, download, delete; Environments-style project scoping); app-build picker next to Run Now in `SuiteDetails.tsx` (pins `app_build_id` on every run from the page); 11 mobile step types in the TestBuilder step editor under a "Mobile App (Appium)" category with Appium-locator inputs; `triggerRun` now sends a `RunCreateContext` JSON body.
+
+Still deferred for mobile:
+- **A device.** Appium needs an emulator/real device: attach `budtmo/docker-android` (KVM required) or point `APPIUM_URL` at a device cloud. iOS requires macOS — device cloud only (MOB-4).
+- Artifact upload (screenshots/video to MinIO — result payload only in v1), `{{env/secret/data}}` interpolation in mobile steps, selector heal on Appium XML source (MOB-5), device-cloud adapter (MOB-4), an environment picker in the run controls (backend accepts `environment_id` in the same body).
+
 ### Phase F (future) — Mode-2 discovery + server-side codebase analysis
 
 Explicitly NOT built in Phase E. The MCP design doesn't preclude them — they can ship later without touching what's shipped now.

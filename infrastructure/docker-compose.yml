@@ -259,6 +259,44 @@ services:
     deploy:
       replicas: 4
 
+  # ---------------------------------------------------------------------
+  # Mobile app testing (Phase MOB) — opt-in via the "mobile" profile:
+  #   docker compose --profile mobile -f docker-compose.yml up -d
+  # The mobile-worker claims mobile_appium jobs from jobs:mobile:pending and
+  # drives the Appium server. Appium itself needs a device to talk to: attach
+  # an Android emulator container (e.g. budtmo/docker-android, requires KVM)
+  # or point APPIUM_URL at a device cloud / a host-side Appium with a real
+  # device plugged in. iOS requires macOS — use a device cloud.
+  # ---------------------------------------------------------------------
+  appium:
+    image: appium/appium:latest
+    profiles: ["mobile"]
+    networks:
+      - qip_network
+    ports:
+      - "4723:4723"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  mobile-worker:
+    build:
+      context: ../execution-engine
+      dockerfile: Dockerfile.worker
+    command: node dist/mobile-worker.js
+    profiles: ["mobile"]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - REDIS_JOBS_STREAM=jobs:mobile:pending
+      - REDIS_RESULTS_STREAM=jobs:results
+      - REDIS_CONSUMER_GROUP=mobile-workers
+      - APPIUM_URL=http://appium:4723
+      - DEVICE_NAME=${MOBILE_DEVICE_NAME:-Android Emulator}
+    depends_on:
+      - redis
+      - appium
+    networks:
+      - qip_network
+
   # Legacy execution engine (for CONTINUOUS mode - shared browser context)
   execution-engine:
     build:

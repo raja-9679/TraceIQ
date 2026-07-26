@@ -202,6 +202,7 @@ class ExecutorType(str, Enum):
     API = "api"                       # API/contract testing
     LOAD = "load"                     # k6/Locust performance runs (time-series result)
     SECURITY = "security"             # ZAP/nuclei DAST scans (findings result)
+    MOBILE_APPIUM = "mobile_appium"   # native Android/iOS journeys via Appium (mobile worker)
 
 
 class RunTrigger(str, Enum):
@@ -512,6 +513,10 @@ class TestRunBase(SQLModel):
     # Optional persona injected at runtime so the run executes "as" a
     # specific user (logged-in, admin, etc.). Phase B feature.
     persona_id: Optional[int] = Field(default=None)
+    # Phase MOB: which uploaded app binary (MobileAppBuild) a mobile_appium
+    # run installs and tests. Soft FK (like api_key_id) to stay
+    # migration-friendly; irrelevant (None) for web runs.
+    app_build_id: Optional[int] = Field(default=None)
 
 
 class UserRead(SQLModel):
@@ -1210,6 +1215,46 @@ class VisualBaselineRead(SQLModel):
     image_url: str
     tolerance: float
     created_at: datetime
+
+
+class MobileAppBuild(SQLModel, table=True):
+    """Registry entry for an uploaded native app binary (APK / AAB / IPA).
+
+    Phase MOB: `mobile_appium` runs pin an `app_build_id`; dispatch presigns
+    `file_key` so the mobile worker can download and install the binary. The
+    bytes themselves live in MinIO under `app-builds/{project_id}/`.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    platform: str = Field(default="android")  # "android" | "ios"
+    app_name: str
+    version_name: Optional[str] = Field(default=None)   # e.g. "2.4.1"
+    build_number: Optional[str] = Field(default=None)   # e.g. "241" / CI build id
+    # Android applicationId / iOS bundle identifier — lets the worker
+    # terminate/relaunch the app without re-parsing the binary.
+    package_id: Optional[str] = Field(default=None)
+    file_key: str                                        # MinIO object key
+    file_size: Optional[int] = Field(default=None)
+    original_filename: Optional[str] = Field(default=None)
+    notes: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
+class MobileAppBuildRead(SQLModel):
+    id: int
+    project_id: int
+    platform: str
+    app_name: str
+    version_name: Optional[str] = None
+    build_number: Optional[str] = None
+    package_id: Optional[str] = None
+    file_size: Optional[int] = None
+    original_filename: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    # Presigned MinIO URL, populated on detail reads only.
+    download_url: Optional[str] = None
 
 
 # =============================================================================
