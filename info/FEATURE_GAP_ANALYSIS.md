@@ -190,7 +190,7 @@ The checklist covers testing features; these SaaS-readiness gaps were verified s
 | **Known security issues** — unscoped `DELETE /api/runs?all=true`, warn-only webhook/finalize checks, `CORS ["*"]` default, live `/mock/bihar-election` stub | `CLAUDE.md` "Known issues"; `test_runs.py:323,399-427`, `main.py:56` |
 
 ### Tier 2 — high-value product additions
-- **Deployment-comparison UI** — backend fully built (`backend/app/api/comparison_runs.py`: `POST /runs/comparison`, `GET /runs/{id}/comparison`) with zero frontend consumers; a headline release-gating feature is invisible.
+- ~~**Deployment-comparison UI**~~ — ✅ shipped 2026-07-26: "Compare Deployment" dialog on finished runs (`TestRunDetails.tsx`) → candidate run → `/runs/{id}/comparison` view (`ComparisonView.tsx`: verdict banner, regressed/recovered/unchanged tiles, per-test delta table with duration change; polls while the candidate runs).
 - **Synthetic monitoring & alerting** — schedules + per-run notifications exist, but no failure-streak alerts, uptime dashboard, or SLA reporting; a small delta turns scheduled suites into a production-monitoring product (Checkly-adjacent revenue).
 - **Test case versioning** — no revision history/diff/restore (only `AuditLog`, `models.py:588`). Matters doubly because AI agents edit tests: rollback is the safety net that makes auto-applying proposals acceptable.
 - **Onboarding** — no sample-project seeding or first-run guide; with AI generation already built, "paste a URL → we generate your first suite" is the natural first-run flow.

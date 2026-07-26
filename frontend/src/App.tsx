@@ -4,6 +4,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
 import TestMatrix from "@/pages/TestMatrix";
 import TestRunDetails from "@/pages/TestRunDetails";
+import ComparisonView from "@/pages/ComparisonView";
 import Schedules from "@/pages/Schedules";
 import Proposals from "@/pages/Proposals";
 import Environments from "@/pages/Environments";
@@ -58,6 +59,7 @@ function App() {
                 <Route index element={<Dashboard />} />
                 <Route path="runs" element={<TestMatrix />} />
                 <Route path="runs/:runId" element={<TestRunDetails />} />
+                <Route path="runs/:runId/comparison" element={<ComparisonView />} />
                 <Route path="suites" element={<TestSuites />} />
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="quality" element={<QualityDashboard />} />

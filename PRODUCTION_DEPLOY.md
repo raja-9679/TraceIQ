@@ -466,8 +466,9 @@ and a sanity test before rolling out.
 
 ## 2.7 Deploying Phase MOB — mobile app testing (2026-07-25)
 
-Commit `394e335` on `feature/gap-roadmap`. Ships the `mobile_appium`
-executor: APK/AAB/IPA upload (`MobileAppBuild` → MinIO), `app_build_id` on
+Shipped on `feature/gap-roadmap` (merged 2026-07-26; commit SHAs may have
+been rewritten since — search `feat(mobile)` in the log). Ships the
+`mobile_appium` executor: APK/AAB/IPA upload (`MobileAppBuild` → MinIO), `app_build_id` on
 runs, a dedicated `jobs:mobile:pending` stream, the Appium mobile worker,
 11 `mobile-*` step types, and the App Builds frontend page.
 
