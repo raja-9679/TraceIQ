@@ -123,6 +123,11 @@ No Jira/Linear/GitHub Issues integration. Start with GitHub Issues (credentials 
 ### 30. Plugin system — MISSING (rejected)
 Premature. MCP + outbound webhooks + REST API are the extensibility surface; revisit if a marketplace motion emerges.
 
+### 31. Mobile app testing — PARTIAL (added 2026-07-25)
+- **HAVE:** mobile **web** testing — Playwright device emulation (`devices` + custom mobile descriptors, cross-browser UA overrides) applied per job (`execution-engine/src/worker.ts getDeviceConfig`); `TestRun.device` flows through every dispatch path.
+- **MISSING:** **native** app testing — installing an APK/IPA and driving it with taps/swipes. No Appium anywhere, no app-binary storage, no native step types.
+- **Verdict: needed — new pillar (Phase MOB below).** Fits the executor keystone (`PLATFORM_VISION.md` §2) exactly: a `mobile_appium` executor is "a new worker image that claims from the stream and reports through the same contract". Suites, RBAC, schedules, artifacts, notifications, AI failure analysis all come for free; the real cost is device infrastructure (Android emulators are self-hostable, iOS simulators require macOS — device-cloud integration instead).
+
 ---
 
 ## Prioritized roadmap
@@ -155,6 +160,16 @@ Premature. MCP + outbound webhooks + REST API are the extensibility surface; rev
 14. **Defect integration** — GitHub Issues first, then Jira.
 15. **GraphQL helper** on `http-request`; OAuth2 token helper.
 16. **HAR capture** as optional artifact.
+
+### Phase MOB — native mobile app testing (§31; added 2026-07-25)
+
+A new capability pillar on the executor keystone: `ExecutorType.MOBILE_APPIUM`. One architecture rule throughout — mobile jobs ride the existing dispatch/result contract (Redis stream in, `jobs:results` out), so aggregation, finalize, notifications, webhooks, and AI analysis are untouched.
+
+- **MOB-1. Surface what exists (done already, expose it)** — mobile-web device emulation is shipped; make it visible in run UI + API docs.
+- **MOB-2. Backend foundation** — `mobile_appium` executor value; `MobileAppBuild` registry (APK/AAB/IPA uploaded to MinIO under `app-builds/{project_id}/`, versioned); `TestRun.app_build_id`; `POST /api/runs` accepts `app_build_id`; dispatch routes mobile jobs to a dedicated `jobs:mobile:pending` stream (`mobile-workers` consumer group) so Playwright workers never claim them; presigned binary URL + capabilities in the job payload; native step-type catalog (`mobile-tap`, `mobile-swipe`, `mobile-type`, …) in `agent_reference.py`. **← implementation started on this branch.**
+- **MOB-3. Android worker** — `execution-engine/src/mobile-worker.ts` claims from the mobile stream and drives Appium over the plain W3C WebDriver HTTP protocol (no heavy client dep). Self-hosted emulators via docker (`profiles: ["mobile"]` in compose); Appium server URL via `APPIUM_URL`. v1 mirrors local-worker v1 scope: single-test jobs, no artifact upload.
+- **MOB-4. iOS via device cloud** — adapter that submits the same job payload to BrowserStack App Automate / Sauce Labs / LambdaTest instead of a local Appium; results return through the identical contract. Do NOT self-host macOS.
+- **MOB-5. Port the AI differentiators** — failure analysis + selector heal on Appium XML page source (swap DOM snapshot for `getPageSource` output); mobile visual diff reuses pixelmatch as-is. The Chrome recorder does not carry over (native recording is out of scope).
 
 ### Rejected (do not build)
 Multi-language code editor · SOAP/gRPC · database SQL steps (revisit on pull) · requirements-traceability matrices · plugin system · drag-drop flow builder · dedicated Discord channel.

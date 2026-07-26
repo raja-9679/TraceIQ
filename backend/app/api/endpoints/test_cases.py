@@ -98,10 +98,14 @@ async def create_test_case(
     case.created_by_agent_id = principal.agent_id
     case.agent_session_id = principal.agent_session_id
     # A case whose steps contain a load-test spec is a load-executor case —
-    # inferred here so authors never have to set the executor by hand.
-    if any((s.get('type') if isinstance(s, dict) else getattr(s, 'type', None)) == 'load-test'
-           for s in (case.steps or [])):
+    # inferred here so authors never have to set the executor by hand. Native
+    # mobile (mobile-*) steps likewise imply the mobile_appium executor.
+    _step_types = {(s.get('type') if isinstance(s, dict) else getattr(s, 'type', None))
+                   for s in (case.steps or [])}
+    if 'load-test' in _step_types:
         case.executor = ExecutorType.LOAD
+    elif any(t and str(t).startswith('mobile-') for t in _step_types):
+        case.executor = ExecutorType.MOBILE_APPIUM
     session.add(case)
     await session.commit()
     await session.refresh(case)
@@ -142,12 +146,17 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
     if "steps" in case_data:
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(db_case, "steps")
-        has_load_step = any(
-            (s.get('type') if isinstance(s, dict) else getattr(s, 'type', None)) == 'load-test'
-            for s in (db_case.steps or []))
+        _step_types = {(s.get('type') if isinstance(s, dict) else getattr(s, 'type', None))
+                       for s in (db_case.steps or [])}
+        has_load_step = 'load-test' in _step_types
+        has_mobile_step = any(t and str(t).startswith('mobile-') for t in _step_types)
         if has_load_step and db_case.executor != ExecutorType.LOAD:
             db_case.executor = ExecutorType.LOAD
+        elif has_mobile_step and db_case.executor != ExecutorType.MOBILE_APPIUM:
+            db_case.executor = ExecutorType.MOBILE_APPIUM
         elif not has_load_step and db_case.executor == ExecutorType.LOAD:
+            db_case.executor = ExecutorType.UI_PLAYWRIGHT
+        elif not has_mobile_step and db_case.executor == ExecutorType.MOBILE_APPIUM:
             db_case.executor = ExecutorType.UI_PLAYWRIGHT
 
     if changes:

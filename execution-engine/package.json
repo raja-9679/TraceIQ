@@ -8,8 +8,10 @@
     "start": "node dist/server.js",
     "worker": "node --expose-gc dist/worker.js",
     "worker:local": "npm run build && node dist/local-worker.js",
+    "worker:mobile": "npm run build && node dist/mobile-worker.js",
     "dev": "nodemon",
-    "dev:worker": "nodemon --exec ts-node src/worker.ts"
+    "dev:worker": "nodemon --exec ts-node src/worker.ts",
+    "dev:mobile-worker": "nodemon --exec ts-node src/mobile-worker.ts"
   },
   "keywords": [],
   "author": "",

@@ -32,6 +32,37 @@ USE_DISTRIBUTED_EXECUTION = getattr(
 # Webhook secret for internal service-to-service calls
 _WEBHOOK_SECRET = getattr(settings, 'WEBHOOK_SECRET', None) or settings.SECRET_KEY
 
+# Job streams. Playwright workers consume jobs:pending; mobile (Appium)
+# workers consume their own stream so a Playwright worker can never claim a
+# job it cannot execute (Phase MOB — see FEATURE_GAP_ANALYSIS.md §31).
+JOBS_STREAM = 'jobs:pending'
+MOBILE_JOBS_STREAM = 'jobs:mobile:pending'
+_STREAM_GROUPS = (
+    (JOBS_STREAM, 'execution-workers'),
+    (MOBILE_JOBS_STREAM, 'mobile-workers'),
+)
+
+
+def _ensure_consumer_groups():
+    """Idempotently create every job stream + consumer group."""
+    for stream, group in _STREAM_GROUPS:
+        try:
+            redis_client.xgroup_create(stream, group, id='0', mkstream=True)
+        except redis.ResponseError as e:
+            if 'BUSYGROUP' not in str(e):
+                raise
+
+
+def _job_stream(job: dict) -> str:
+    """Which stream a job belongs on, by the executor of its case(s)."""
+    case = job.get('test_case') or {}
+    executor = case.get('executor')
+    if not executor and job.get('test_cases'):
+        executor = (job['test_cases'][0] or {}).get('executor')
+    if executor == ExecutorType.MOBILE_APPIUM.value:
+        return MOBILE_JOBS_STREAM
+    return JOBS_STREAM
+
 
 @celery_app.task(name="app.worker.run_test_suite")
 def run_test_suite(run_id: int, tags: list = None):
@@ -119,6 +150,14 @@ def run_test_suite(run_id: int, tags: list = None):
             secrets = _load_secrets(auth_project_id, session)
             if secrets:
                 effective_settings['secrets'] = secrets
+
+            # App binary for mobile_appium runs (Phase MOB): presigned URL +
+            # metadata the mobile worker needs to install and launch the app.
+            mobile_app = _load_mobile_app(run, session)
+            if mobile_app:
+                effective_settings['mobile_app'] = mobile_app
+                print(f"[Worker] Run {run_id}: mobile app build "
+                      f"{mobile_app['app_build_id']} ({mobile_app['platform']})")
 
             # Update total tests count
             run.total_tests = len(cases_to_run)
@@ -250,7 +289,43 @@ def _settings_payload(settings: dict) -> dict:
         payload['auto_retry'] = True
         payload['max_retries'] = int(settings.get('max_retries', 2) or 2)
         payload['retry_backoff_ms'] = int(settings.get('retry_backoff_ms', 1000) or 1000)
+    # Mobile app binary (presigned URL + capabilities) for mobile_appium jobs.
+    if settings.get('mobile_app'):
+        payload['mobile_app'] = settings['mobile_app']
     return payload
+
+
+def _load_mobile_app(run, session) -> dict | None:
+    """Presigned download descriptor for the run's pinned MobileAppBuild.
+
+    Dispatched inside job settings so the mobile worker can install the
+    binary and derive Appium capabilities. None for web runs."""
+    build_id = getattr(run, 'app_build_id', None)
+    if not build_id:
+        return None
+    from app.models import MobileAppBuild
+    build = session.get(MobileAppBuild, build_id)
+    if not build:
+        print(f"[Worker] Run {run.id}: app_build_id={build_id} not found — "
+              f"dispatching without a binary")
+        return None
+    try:
+        from app.core.storage import minio_client
+        # Internal endpoint: workers live on the docker network where the
+        # public (localhost) host is unreachable.
+        app_url = minio_client.get_internal_presigned_url(
+            build.file_key, expiration=6 * 3600)
+    except Exception as e:
+        print(f"[Worker] Run {run.id}: failed to presign app build: {e}")
+        return None
+    return {
+        'app_build_id': build.id,
+        'platform': build.platform,
+        'app_url': app_url,
+        'package_id': build.package_id,
+        'app_name': build.app_name,
+        'version_name': build.version_name,
+    }
 
 
 def _load_environment(run, project_id, session):
@@ -330,13 +405,17 @@ def _local_queue_key(run: TestRun, session: Session) -> str | None:
 
 
 def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job: dict):
-    """One job → either the shared worker stream or the run's local queue."""
+    """One job → its executor's worker stream, or the run's local queue.
+
+    `jobs_stream` is the caller's default; mobile_appium jobs override it so
+    they land on the mobile workers' stream (`_job_stream`)."""
     if local_key:
         pipe.rpush(local_key, json.dumps(job))
         # Local queues are polled over HTTP; expire abandoned ones after a day.
         pipe.expire(local_key, 86400)
     else:
-        pipe.xadd(jobs_stream, {
+        stream = _job_stream(job)
+        pipe.xadd(stream if stream != JOBS_STREAM else jobs_stream, {
             'job_id': job['job_id'],
             'run_id': str(run_id),
             'payload': json.dumps(job),
@@ -369,13 +448,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
     job_ids = []
     total_test_count = 0
 
-    # Ensure consumer group exists
-    try:
-        redis_client.xgroup_create(
-            jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
+    _ensure_consumer_groups()
 
     # Use pipeline for atomic batch insert
     pipe = redis_client.pipeline()
@@ -463,13 +536,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
         print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
     job_ids = []
 
-    # Ensure consumer group exists
-    try:
-        redis_client.xgroup_create(
-            jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
+    _ensure_consumer_groups()
 
     pipe = redis_client.pipeline()
 
@@ -611,11 +678,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
     local_key = _local_queue_key(run, session)
     if local_key:
         print(f"[Worker] Run {run.id} pinned to local worker queue {local_key}")
-    try:
-        redis_client.xgroup_create(jobs_stream, 'execution-workers', id='0', mkstream=True)
-    except redis.ResponseError as e:
-        if 'BUSYGROUP' not in str(e):
-            raise
+    _ensure_consumer_groups()
 
     pipe = redis_client.pipeline()
     job_ids = []

@@ -38,6 +38,9 @@ class RunCreateContext(BaseModel):
     # `npm run worker:local` in execution-engine) instead of the server
     # workers — lets agents/CI test a dev server on localhost.
     local_worker_id: Optional[str] = None
+    # Phase MOB: which uploaded MobileAppBuild a mobile_appium run installs
+    # and tests. Required for suites whose cases use the mobile executor.
+    app_build_id: Optional[int] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -101,6 +104,17 @@ async def create_run(
 
     # Get effective settings for this suite
     effective_settings = await test_service.get_effective_settings(suite_id, session)
+
+    # Pin the run to an uploaded app binary for mobile_appium cases; the
+    # dispatcher presigns it into the job payload.
+    if context and context.app_build_id:
+        from app.models import MobileAppBuild
+        build = await session.get(MobileAppBuild, context.app_build_id)
+        if not build or build.project_id != suite.project_id:
+            raise HTTPException(
+                status_code=400,
+                detail="app_build_id does not belong to this project")
+        run_defaults["app_build_id"] = context.app_build_id
 
     # Pin the run to a specific environment when requested; the dispatcher
     # falls back to the project's default environment when this is None.
