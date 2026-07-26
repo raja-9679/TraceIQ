@@ -44,6 +44,29 @@ $('clear').addEventListener('click', async () => {
     setStatus('Cleared.');
 });
 
+// Steps recorded inside iframes carry `_frame` (the iframe's selector).
+// Weave explicit `switch-frame` steps wherever the frame context changes —
+// including a switch back to 'main' — and strip the tag before saving.
+function weaveFrameSwitches(steps) {
+    const out = [];
+    let currentFrame = '';
+    for (const step of steps) {
+        const frame = step._frame || '';
+        if (frame !== currentFrame) {
+            out.push({
+                id: crypto.randomUUID(),
+                type: 'switch-frame',
+                selector: frame || 'main',
+                intent: frame ? `Enter iframe ${frame}` : 'Return to the main page',
+            });
+            currentFrame = frame;
+        }
+        const { _frame, ...clean } = step;
+        out.push(clean);
+    }
+    return out;
+}
+
 $('save').addEventListener('click', async () => {
     persistConfig();
     const { tiq_steps = [] } = await chrome.storage.session.get('tiq_steps');
@@ -54,7 +77,7 @@ $('save').addEventListener('click', async () => {
 
     setStatus('Saving…');
     chrome.runtime.sendMessage(
-        { action: 'save-case', payload: { name, suiteId, steps: tiq_steps } },
+        { action: 'save-case', payload: { name, suiteId, steps: weaveFrameSwitches(tiq_steps) } },
         (resp) => {
             if (!resp?.ok) return setStatus(resp?.error || 'Save failed.', 'err');
             setStatus(`Saved as case #${resp.data?.id}.`, 'ok');

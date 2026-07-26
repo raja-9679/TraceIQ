@@ -292,6 +292,9 @@ def _settings_payload(settings: dict) -> dict:
     # Mobile app binary (presigned URL + capabilities) for mobile_appium jobs.
     if settings.get('mobile_app'):
         payload['mobile_app'] = settings['mobile_app']
+    # Opt-in HAR network archive (inherited suite setting).
+    if settings.get('har_capture'):
+        payload['har_capture'] = True
     return payload
 
 

@@ -505,6 +505,8 @@ class TestRunBase(SQLModel):
     error_message: Optional[str] = Field(default=None)
     trace_url: Optional[str] = Field(default=None)
     video_url: Optional[str] = Field(default=None)
+    # HAR network archive (opt-in via suite settings har_capture / env).
+    har_url: Optional[str] = Field(default=None)
     screenshots: Optional[List[str]] = Field(
         default=[], sa_column=Column(JSON))
     response_status: Optional[int] = Field(default=None)
@@ -591,6 +593,7 @@ class TestCaseResultRead(SQLModel):
     error_message: Optional[str] = None
     video_url: Optional[str] = None
     trace_url: Optional[str] = None
+    har_url: Optional[str] = None
     screenshots: Optional[List[str]] = []
     response_status: Optional[int] = None
     response_headers: Optional[dict] = {}
@@ -619,6 +622,8 @@ class TestCaseResult(SQLModel, table=True):
     error_message: Optional[str] = None
     trace_url: Optional[str] = None
     video_url: Optional[str] = None
+    # HAR network archive for this job (opt-in; shared per job like video).
+    har_url: Optional[str] = None
     screenshots: Optional[List[str]] = Field(
         default=[], sa_column=Column(JSON))
     response_status: Optional[int] = Field(default=None)
