@@ -290,7 +290,20 @@ services:
       - REDIS_RESULTS_STREAM=jobs:results
       - REDIS_CONSUMER_GROUP=mobile-workers
       - APPIUM_URL=http://appium:4723
-      - DEVICE_NAME=${MOBILE_DEVICE_NAME:-Android Emulator}
+      # Device provider (MOB-4): local Appium (default) or a device cloud.
+      # With a cloud provider the local `appium` service sits idle — binaries
+      # are pushed to the cloud's app storage and sessions run there. iOS
+      # requires a cloud provider.
+      - MOBILE_DEVICE_PROVIDER=${MOBILE_DEVICE_PROVIDER:-local}
+      - MOBILE_DEVICE_NAME=${MOBILE_DEVICE_NAME:-Android Emulator}
+      - MOBILE_PLATFORM_VERSION=${MOBILE_PLATFORM_VERSION:-}
+      - BROWSERSTACK_USERNAME=${BROWSERSTACK_USERNAME:-}
+      - BROWSERSTACK_ACCESS_KEY=${BROWSERSTACK_ACCESS_KEY:-}
+      - SAUCE_USERNAME=${SAUCE_USERNAME:-}
+      - SAUCE_ACCESS_KEY=${SAUCE_ACCESS_KEY:-}
+      - SAUCE_REGION=${SAUCE_REGION:-us-west-1}
+      - LT_USERNAME=${LT_USERNAME:-}
+      - LT_ACCESS_KEY=${LT_ACCESS_KEY:-}
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
