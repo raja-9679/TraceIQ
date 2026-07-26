@@ -98,6 +98,10 @@ async def accept_proposal(
     p.decided_by_id = principal.user.id
     session.add(case)
     session.add(p)
+    if updated:
+        from app.services.case_revisions import record_revision
+        await record_revision(session, case, "heal", user_id=principal.user.id,
+                              agent_id=principal.agent_id)
     await session.commit()
     return {"status": "accepted", "applied": updated}
 
