@@ -55,6 +55,9 @@ export interface TestRun {
     browser?: string;
     device?: string;
     screenshots?: string[];
+    // Deployment comparison: set on candidate runs created via /runs/comparison.
+    baseline_run_id?: number | null;
+    target_url?: string | null;
     results?: {
         id: number;
         test_name: string;
@@ -139,6 +142,46 @@ export const triggerRun = async (suiteId: number, caseId?: number, browser: stri
         }
     }
     const response = await api.post(url, context && Object.keys(context).length ? context : undefined);
+    return response.data;
+};
+
+// ---------------------------------------------------------------------------
+// Deployment comparison — re-run a baseline run's suite against a different
+// target URL and diff the results side by side.
+// ---------------------------------------------------------------------------
+
+export interface ComparisonDelta {
+    test_name: string;
+    baseline_status: string | null;
+    candidate_status: string | null;
+    baseline_duration_ms: number | null;
+    candidate_duration_ms: number | null;
+    regressed: boolean;
+    recovered: boolean;
+}
+
+export interface ComparisonReport {
+    baseline_run_id: number;
+    candidate_run_id: number;
+    target_url: string | null;
+    summary: { regressed: number; recovered: number; unchanged: number };
+    deltas: ComparisonDelta[];
+}
+
+export const createComparisonRun = async (
+    baselineRunId: number, targetUrl: string, browser?: string, device?: string,
+): Promise<TestRun> => {
+    const response = await api.post('/runs/comparison', {
+        baseline_run_id: baselineRunId,
+        target_url: targetUrl,
+        ...(browser ? { browser } : {}),
+        ...(device ? { device } : {}),
+    });
+    return response.data;
+};
+
+export const getComparison = async (runId: number): Promise<ComparisonReport> => {
+    const response = await api.get(`/runs/${runId}/comparison`);
     return response.data;
 };
 
