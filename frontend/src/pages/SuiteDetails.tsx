@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
-import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getAuditLog } from '@/lib/api';
+import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getAuditLog, getAppBuilds } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScheduleModal } from "@/components/ScheduleModal";
@@ -10,7 +10,7 @@ import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import {
-    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles
+    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles, Smartphone
 } from 'lucide-react';
 import {
     Select,
@@ -193,8 +193,22 @@ export default function SuiteDetails() {
         }
     });
 
+    // Mobile app builds (Phase MOB): when the project has uploaded binaries,
+    // a picker appears next to Run Now; the chosen build is pinned onto every
+    // run triggered from this page (required for mobile_appium cases).
+    const { data: appBuilds } = useQuery({
+        queryKey: ['app-builds', suite?.project_id],
+        queryFn: () => getAppBuilds(suite!.project_id),
+        enabled: !!suite?.project_id,
+        staleTime: 60000,
+    });
+    const [selectedAppBuildId, setSelectedAppBuildId] = useState<string>('none');
+    const runContext = selectedAppBuildId !== 'none'
+        ? { app_build_id: Number(selectedAppBuildId) }
+        : undefined;
+
     const runMutation = useMutation({
-        mutationFn: (id: number) => triggerRun(id),
+        mutationFn: (id: number) => triggerRun(id, undefined, "chromium", undefined, runContext),
         onSuccess: () => { navigate('/runs'); },
         onError: (error: any) => { toast.error(error.response?.data?.detail || "Failed to start run"); }
     });
@@ -251,7 +265,7 @@ export default function SuiteDetails() {
     });
 
     const runTestCaseMutation = useMutation({
-        mutationFn: (caseId: number) => triggerRun(Number(suiteId), caseId),
+        mutationFn: (caseId: number) => triggerRun(Number(suiteId), caseId, "chromium", undefined, runContext),
         onSuccess: () => { navigate('/runs'); },
         onError: (error: any) => { toast.error(error.response?.data?.detail || "Failed to start run for this test case"); }
     });
@@ -455,6 +469,24 @@ export default function SuiteDetails() {
                         >
                             <CalendarClock className="mr-2 h-4 w-4" /> Schedule
                         </Button>
+                    )}
+                    {can("test:execute", { projectId, workspaceId }) && (appBuilds?.length ?? 0) > 0 && (
+                        <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
+                            <SelectTrigger className="w-[210px] h-11 rounded-xl bg-white border-slate-200 shadow-sm" title="Pin a mobile app build to runs from this page">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <Smartphone className="w-4 h-4 text-indigo-500 shrink-0" />
+                                    <SelectValue placeholder="App build" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">No app build (web)</SelectItem>
+                                {(appBuilds || []).map((b) => (
+                                    <SelectItem key={b.id} value={b.id.toString()}>
+                                        {b.app_name}{b.version_name ? ` ${b.version_name}` : ''} ({b.platform})
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     )}
                     {can("test:execute", { projectId, workspaceId }) && (
                         <Button

@@ -7,6 +7,7 @@ import TestRunDetails from "@/pages/TestRunDetails";
 import Schedules from "@/pages/Schedules";
 import Proposals from "@/pages/Proposals";
 import Environments from "@/pages/Environments";
+import AppBuilds from "@/pages/AppBuilds";
 import VisualReview from "@/pages/VisualReview";
 import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
@@ -71,6 +72,7 @@ function App() {
                 <Route path="schedules" element={<Schedules />} />
                 <Route path="proposals" element={<Proposals />} />
                 <Route path="environments" element={<Environments />} />
+                <Route path="app-builds" element={<AppBuilds />} />
                 <Route path="visual-review" element={<VisualReview />} />
                 <Route path="flaky-tests" element={<FlakyTests />} />
                 <Route path="api-keys" element={<ApiKeys />} />

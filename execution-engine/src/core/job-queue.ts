@@ -61,6 +61,16 @@ export interface TestJob {
         auto_retry?: boolean;
         max_retries?: number;
         retry_backoff_ms?: number;
+        // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
+        // MinIO URL + metadata the mobile worker needs to install/launch it.
+        mobile_app?: {
+            app_build_id: number;
+            platform: 'android' | 'ios';
+            app_url: string;
+            package_id?: string | null;
+            app_name?: string;
+            version_name?: string | null;
+        };
     };
     created_at: string;
     retry_count?: number;

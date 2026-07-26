@@ -30,7 +30,8 @@ import {
     BarChart3,
     CreditCard,
     GitMerge,
-    Sparkles
+    Sparkles,
+    Smartphone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -62,6 +63,7 @@ const navigation = [
     { name: 'Visual Review', href: '/visual-review', icon: Images },
     { name: 'Flaky Tests', href: '/flaky-tests', icon: Activity },
     { name: 'Environments', href: '/environments', icon: Globe },
+    { name: 'App Builds', href: '/app-builds', icon: Smartphone },
     { name: 'API Keys', href: '/api-keys', icon: KeyRound },
     { name: 'Webhooks', href: '/webhooks', icon: Webhook },
     { name: 'Issue Trackers', href: '/issue-trackers', icon: Ticket },
