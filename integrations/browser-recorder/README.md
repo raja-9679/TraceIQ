@@ -1,7 +1,8 @@
 # TraceIQ Browser Recorder
 
 A minimal Manifest V3 Chrome extension that records browser interactions
-(navigation, clicks, fills, key presses) and saves them as a TraceIQ
+(navigation, clicks, fills, selects, checkboxes, drag-and-drop, hovers, key
+presses — including inside same-origin iframes) and saves them as a TraceIQ
 `TestCase`. The lowest-friction way to onboard a SaaS app: record five
 journeys → push to TraceIQ → run them against every AI-authored PR.
 
@@ -27,7 +28,16 @@ journeys → push to TraceIQ → run them against every AI-authored PR.
 | Page navigation while recording | `goto` with current URL |
 | Click on an element | `click` with selector and `intent` |
 | Typing in `<input>` / `<textarea>` | `fill` with the resulting value |
+| Choosing in a `<select>` | `select-option` with the chosen value |
+| Toggling a checkbox / radio | `check` / `uncheck` |
+| HTML5 drag onto a drop target | `drag-and-drop` (source selector → target selector) |
+| **Ctrl+Shift+H** over an element | `hover` (explicit — auto-recording hovers is too noisy) |
 | Enter / Escape inside an input | `press-key` |
+| Acting inside a same-origin iframe | steps are wrapped in `switch-frame` / back-to-`main` automatically at save |
+
+Selector preference order: `#id` → `[data-testid]` → `tag[name=…]` →
+`[aria-label=…]` → `text="…"` → tag. Cross-origin iframes cannot be
+recorded (the browser isolates them); interactions there are skipped.
 
 Selectors are best-effort: `data-testid` is preferred, then `id`, then a
 text-content fragment, then the tag name. The `intent` field stores the
