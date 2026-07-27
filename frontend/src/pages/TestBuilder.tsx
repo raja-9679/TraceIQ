@@ -59,6 +59,11 @@ export default function TestBuilder() {
     const [useAuthSession, setUseAuthSession] = useState(true);
     const [datasetText, setDatasetText] = useState('');
     const [showDataset, setShowDataset] = useState(false);
+    // Per-case execution matrix override. Empty lists → inherit the module's
+    // settings chain (and ultimately the user's Settings defaults).
+    const [matrixBrowsers, setMatrixBrowsers] = useState<string[]>([]);
+    const [matrixDevices, setMatrixDevices] = useState<string[]>([]);
+    const [showMatrix, setShowMatrix] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
     const [originalData, setOriginalData] = useState<{ testName: string; steps: TestStep[] } | null>(null);
     const initialLoadDone = useRef(false);
@@ -90,6 +95,11 @@ export default function TestBuilder() {
             if (serverData.dataset && Array.isArray(serverData.dataset) && serverData.dataset.length > 0) {
                 setDatasetText(JSON.stringify(serverData.dataset, null, 2));
                 setShowDataset(true);
+            }
+            if (serverData.run_matrix && (serverData.run_matrix.browsers?.length || serverData.run_matrix.devices?.length)) {
+                setMatrixBrowsers(serverData.run_matrix.browsers || []);
+                setMatrixDevices(serverData.run_matrix.devices || []);
+                setShowMatrix(true);
             }
 
             if (draft && draft.timestamp) {
@@ -269,7 +279,10 @@ export default function TestBuilder() {
                 steps: steps,
                 is_auth_setup: isAuthSetup,
                 use_auth_session: useAuthSession,
-                dataset: dataset
+                dataset: dataset,
+                run_matrix: (matrixBrowsers.length || matrixDevices.length)
+                    ? { browsers: matrixBrowsers, devices: matrixDevices }
+                    : null
             };
 
             if (isEditing && caseId) {
@@ -343,6 +356,14 @@ export default function TestBuilder() {
                     >
                         Dataset{datasetText.trim() ? ' ✓' : ''}
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowMatrix(!showMatrix)}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${(matrixBrowsers.length || matrixDevices.length) ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                        title="Override which browsers/devices this case runs on. Empty = inherit from the module."
+                    >
+                        Matrix{(matrixBrowsers.length || matrixDevices.length) ? ' ✓' : ''}
+                    </button>
                     <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="A passing run of this case captures the logged-in session (cookies + storage) and stores it for the project. Other cases then start already logged in.">
                         <input type="checkbox" checked={isAuthSetup} onChange={(e) => { setIsAuthSetup(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
                         Auth setup case
@@ -377,6 +398,51 @@ export default function TestBuilder() {
             </div>
 
             <div className="max-w-4xl mx-auto pb-24">
+                {/* ── Per-case execution matrix panel ── */}
+                {showMatrix && (
+                    <div className="mb-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="text-sm font-bold text-indigo-800">Execution Matrix (this case only)</h3>
+                            <button type="button" onClick={() => { setMatrixBrowsers([]); setMatrixDevices([]); setIsDirty(true); }} className="text-xs text-slate-500 hover:text-rose-600">Clear (inherit)</button>
+                        </div>
+                        <p className="text-xs text-slate-600 mb-3">
+                            This case runs once per selected browser × device. Leave everything unchecked to
+                            inherit the module's matrix (Module Settings → Execution Matrix), which itself
+                            inherits from parent modules and your Settings defaults.
+                        </p>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Browsers</p>
+                                {['chromium', 'firefox', 'webkit'].map((b) => (
+                                    <label key={b} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none bg-white border border-indigo-100 rounded-lg px-3 py-2">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded accent-indigo-600"
+                                            checked={matrixBrowsers.includes(b)}
+                                            onChange={(e) => { setMatrixBrowsers(e.target.checked ? [...matrixBrowsers, b] : matrixBrowsers.filter(x => x !== b)); setIsDirty(true); }}
+                                        />
+                                        <span className="capitalize">{b}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <div className="space-y-1.5">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Devices</p>
+                                {['Desktop', 'Mobile (Generic)', 'iPhone 13', 'Pixel 5'].map((d) => (
+                                    <label key={d} className="flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none bg-white border border-indigo-100 rounded-lg px-3 py-2">
+                                        <input
+                                            type="checkbox"
+                                            className="rounded accent-indigo-600"
+                                            checked={matrixDevices.includes(d)}
+                                            onChange={(e) => { setMatrixDevices(e.target.checked ? [...matrixDevices, d] : matrixDevices.filter(x => x !== d)); setIsDirty(true); }}
+                                        />
+                                        {d}
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* ── Data-driven dataset panel ── */}
                 {showDataset && (
                     <div className="mb-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5">
