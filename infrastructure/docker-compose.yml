@@ -268,9 +268,36 @@ services:
   # or point APPIUM_URL at a device cloud / a host-side Appium with a real
   # device plugged in. iOS requires macOS — use a device cloud.
   # ---------------------------------------------------------------------
+  # Local Android emulator (needs /dev/kvm on the host). Screen viewable at
+  # http://localhost:6080 (noVNC). Appium reaches it over remote ADB :5555.
+  android-emulator:
+    image: budtmo/docker-android:emulator_11.0
+    profiles: ["mobile"]
+    privileged: true
+    devices:
+      - /dev/kvm
+    environment:
+      - EMULATOR_DEVICE=Samsung Galaxy S10
+      - WEB_VNC=true
+    ports:
+      - "6080:6080"
+    networks:
+      - qip_network
+    shm_size: 2g
+
   appium:
     image: appium/appium:latest
     profiles: ["mobile"]
+    # Keep retrying `adb connect` until the emulator container is booted,
+    # then start Appium. --allow-cors so the session survives proxying.
+    entrypoint: /bin/bash
+    command: >
+      -c "until adb connect android-emulator:5555 2>/dev/null | grep -q connected;
+          do echo 'waiting for android-emulator adb...'; sleep 5; done;
+          adb wait-for-device;
+          appium --allow-cors --base-path /"
+    depends_on:
+      - android-emulator
     networks:
       - qip_network
     ports:
