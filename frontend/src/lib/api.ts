@@ -123,12 +123,15 @@ export interface RunContext {
     local_worker_id?: string;
 }
 
-export const triggerRun = async (suiteId: number, caseId?: number, browser: string | string[] = "chromium", device?: string | string[], context?: RunContext): Promise<TestRun | TestRun[]> => {
+// browser/device are optional: when omitted the backend resolves the
+// execution matrix itself (case run_matrix > suite settings chain > the
+// user's Settings defaults > chromium). Pass them only to override.
+export const triggerRun = async (suiteId: number, caseId?: number, browser?: string | string[], device?: string | string[], context?: RunContext): Promise<TestRun | TestRun[]> => {
     let url = `/runs?suite_id=${suiteId}`;
 
     if (Array.isArray(browser)) {
         browser.forEach(b => url += `&browser=${b}`);
-    } else {
+    } else if (browser) {
         url += `&browser=${browser}`;
     }
 

@@ -52,7 +52,11 @@ def _merge_settings(parent: Dict[str, Any], child: Dict[str, Any]) -> Dict[str, 
         "headers": merged_headers,
         "params": merged_params,
         "allowed_domains": list(domains_map.values()),
-        "domain_settings": merged_domain_settings
+        "domain_settings": merged_domain_settings,
+        # Execution matrix: a child that sets its own list replaces the
+        # parent's wholesale (no union) — "my module runs on exactly these".
+        "browsers": child.get("browsers") or parent.get("browsers") or [],
+        "devices": child.get("devices") or parent.get("devices") or [],
     }
 
 
@@ -73,7 +77,9 @@ class TestService:
             "headers": current.get("headers", {}),
             "params": current.get("params", {}),
             "allowed_domains": current.get("allowed_domains", []),
-            "domain_settings": current.get("domain_settings", {})
+            "domain_settings": current.get("domain_settings", {}),
+            "browsers": current.get("browsers", []),
+            "devices": current.get("devices", []),
         }
 
     @staticmethod
@@ -102,7 +108,9 @@ class TestService:
             "headers": current.get("headers", {}),
             "params": current.get("params", {}),
             "allowed_domains": current.get("allowed_domains", []),
-            "domain_settings": current.get("domain_settings", {})
+            "domain_settings": current.get("domain_settings", {}),
+            "browsers": current.get("browsers", []),
+            "devices": current.get("devices", []),
         }
 
     @staticmethod

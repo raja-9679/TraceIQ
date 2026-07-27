@@ -222,7 +222,7 @@ export default function SuiteDetails() {
         : undefined;
 
     const runMutation = useMutation({
-        mutationFn: (id: number) => triggerRun(id, undefined, "chromium", undefined, runContext),
+        mutationFn: (id: number) => triggerRun(id, undefined, undefined, undefined, runContext),
         onSuccess: () => { navigate('/runs'); },
         onError: (error: any) => { toast.error(error.response?.data?.detail || "Failed to start run"); }
     });
@@ -279,7 +279,7 @@ export default function SuiteDetails() {
     });
 
     const runTestCaseMutation = useMutation({
-        mutationFn: (caseId: number) => triggerRun(Number(suiteId), caseId, "chromium", undefined, runContext),
+        mutationFn: (caseId: number) => triggerRun(Number(suiteId), caseId, undefined, undefined, runContext),
         onSuccess: () => { navigate('/runs'); },
         onError: (error: any) => { toast.error(error.response?.data?.detail || "Failed to start run for this test case"); }
     });
@@ -476,7 +476,7 @@ export default function SuiteDetails() {
                     <Button variant="outline" onClick={handleExportSuite} className="rounded-xl border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm h-11 px-4 font-medium">
                         <Download className="mr-2 h-4 w-4 text-slate-400" /> Export
                     </Button>
-                    {can("test:execute", { projectId, workspaceId }) && (
+                    {can("project:execute_test", { projectId, workspaceId }) && (
                         <Button
                             onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}
                             className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-md h-11 px-5 transition-all font-semibold"
@@ -484,7 +484,7 @@ export default function SuiteDetails() {
                             <CalendarClock className="mr-2 h-4 w-4" /> Schedule
                         </Button>
                     )}
-                    {can("test:execute", { projectId, workspaceId }) && (environments?.length ?? 0) > 0 && (
+                    {can("project:execute_test", { projectId, workspaceId }) && (environments?.length ?? 0) > 0 && (
                         <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
                             <SelectTrigger className="w-[190px] h-11 rounded-xl bg-white border-slate-200 shadow-sm" title="Environment for runs from this page">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -502,7 +502,7 @@ export default function SuiteDetails() {
                             </SelectContent>
                         </Select>
                     )}
-                    {can("test:execute", { projectId, workspaceId }) && (appBuilds?.length ?? 0) > 0 && (
+                    {can("project:execute_test", { projectId, workspaceId }) && (appBuilds?.length ?? 0) > 0 && (
                         <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
                             <SelectTrigger className="w-[210px] h-11 rounded-xl bg-white border-slate-200 shadow-sm" title="Pin a mobile app build to runs from this page">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -520,7 +520,7 @@ export default function SuiteDetails() {
                             </SelectContent>
                         </Select>
                     )}
-                    {can("test:execute", { projectId, workspaceId }) && (
+                    {can("project:execute_test", { projectId, workspaceId }) && (
                         <Button
                             onClick={() => runMutation.mutate(Number(suiteId))}
                             disabled={runMutation.isPending}
@@ -1076,6 +1076,81 @@ export default function SuiteDetails() {
                                                 />
                                                 Capture HAR
                                             </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* ── Execution Matrix (Browsers & Devices) ── */}
+                                <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden hover:border-slate-300 transition-colors">
+                                    <div className="p-6 lg:p-8 space-y-5">
+                                        <div className="space-y-1">
+                                            <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                                                <Play className="h-4 w-4 text-indigo-500" />
+                                                Execution Matrix
+                                            </h3>
+                                            <p className="text-sm text-slate-500">
+                                                Browsers and devices every run of this module fans out to — one run per
+                                                combination. Leave everything unchecked to inherit from the parent module
+                                                (or, at the top level, your personal Settings defaults). Checking anything
+                                                here replaces the inherited list for this module and its children.
+                                                Test cases can override this individually in the builder.
+                                            </p>
+                                            {suite.inherit_settings && !(suite.settings?.browsers?.length) && (suite.effective_settings?.browsers?.length ?? 0) > 0 && (
+                                                <p className="text-xs font-semibold text-indigo-600">
+                                                    Inherited browsers: {suite.effective_settings.browsers.join(', ')}
+                                                </p>
+                                            )}
+                                            {suite.inherit_settings && !(suite.settings?.devices?.length) && (suite.effective_settings?.devices?.length ?? 0) > 0 && (
+                                                <p className="text-xs font-semibold text-indigo-600">
+                                                    Inherited devices: {suite.effective_settings.devices.join(', ')}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div className="grid md:grid-cols-2 gap-6">
+                                            <div className="space-y-2.5">
+                                                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Browsers</p>
+                                                {['chromium', 'firefox', 'webkit'].map((b) => (
+                                                    <label key={b} className="flex items-center gap-2.5 text-sm font-semibold text-slate-700 cursor-pointer select-none bg-slate-50/50 border border-slate-200 rounded-xl px-4 h-11">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="rounded accent-indigo-600"
+                                                            checked={(suite.settings?.browsers || []).includes(b)}
+                                                            onChange={(e) => {
+                                                                const cur: string[] = suite.settings?.browsers || [];
+                                                                const next = e.target.checked ? [...cur, b] : cur.filter((x: string) => x !== b);
+                                                                handleUpdateSettings(
+                                                                    { ...(suite.settings || {}), browsers: next },
+                                                                    suite.inherit_settings,
+                                                                    next.length ? `Module runs on: ${next.join(', ')}` : 'Browser list cleared — inheriting again'
+                                                                );
+                                                            }}
+                                                        />
+                                                        <span className="capitalize">{b}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                            <div className="space-y-2.5">
+                                                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Devices</p>
+                                                {['Desktop', 'Mobile (Generic)', 'iPhone 13', 'Pixel 5'].map((d) => (
+                                                    <label key={d} className="flex items-center gap-2.5 text-sm font-semibold text-slate-700 cursor-pointer select-none bg-slate-50/50 border border-slate-200 rounded-xl px-4 h-11">
+                                                        <input
+                                                            type="checkbox"
+                                                            className="rounded accent-indigo-600"
+                                                            checked={(suite.settings?.devices || []).includes(d)}
+                                                            onChange={(e) => {
+                                                                const cur: string[] = suite.settings?.devices || [];
+                                                                const next = e.target.checked ? [...cur, d] : cur.filter((x: string) => x !== d);
+                                                                handleUpdateSettings(
+                                                                    { ...(suite.settings || {}), devices: next },
+                                                                    suite.inherit_settings,
+                                                                    next.length ? `Module devices: ${next.join(', ')}` : 'Device list cleared — inheriting again'
+                                                                );
+                                                            }}
+                                                        />
+                                                        {d}
+                                                    </label>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>

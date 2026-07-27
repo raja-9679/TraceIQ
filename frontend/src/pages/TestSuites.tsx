@@ -150,6 +150,8 @@ export default function TestSuites() {
         }
     });
 
+    // Browser/device fan-out is resolved server-side (case run_matrix >
+    // suite settings chain > user Settings defaults).
     const runMutation = useMutation({
         mutationFn: (id: number) => triggerRun(id),
         onSuccess: () => { navigate('/runs'); },

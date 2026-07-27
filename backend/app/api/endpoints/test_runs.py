@@ -74,7 +74,7 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
 async def create_run(
     suite_id: int,
     case_id: Optional[int] = None,
-    browser: List[str] = Query(["chromium"]),
+    browser: Optional[List[str]] = Query(None),
     device: Optional[List[str]] = Query(None),
     tags: Optional[List[str]] = Query(None),
     context: Optional[RunCreateContext] = Body(None),
@@ -127,8 +127,39 @@ async def create_run(
                 detail="environment_id does not belong to this project")
         run_defaults["environment_id"] = context.environment_id
 
-    # Normalize devices list
-    target_devices = device if device else [None]
+    # ── Execution-matrix resolution ──────────────────────────────────────
+    # Precedence per test case:
+    #   explicit request params  >  case.run_matrix  >  suite chain settings
+    #   (browsers/devices, inherited like headers)  >  the triggering user's
+    #   Settings defaults  >  chromium / no device emulation.
+    from app.settings_models import UserSettings
+    user_settings = (await session.exec(
+        select(UserSettings).where(UserSettings.user_id == current_user.id)
+    )).first()
+
+    def _user_default_browsers() -> List[str]:
+        if user_settings and user_settings.multi_browser_enabled and user_settings.selected_browsers:
+            return user_settings.selected_browsers
+        if user_settings and user_settings.default_browser:
+            return [user_settings.default_browser]
+        return ["chromium"]
+
+    def _user_default_devices() -> Optional[List[str]]:
+        if user_settings and user_settings.multi_device_enabled and user_settings.selected_devices:
+            return user_settings.selected_devices
+        return None
+
+    def _resolve_matrix(case: Optional[TestCase], eff: Dict[str, Any]):
+        case_matrix = (getattr(case, "run_matrix", None) or {}) if case else {}
+        browsers = (browser
+                    or case_matrix.get("browsers")
+                    or eff.get("browsers")
+                    or _user_default_browsers())
+        devices = (device
+                   or case_matrix.get("devices")
+                   or eff.get("devices")
+                   or _user_default_devices())
+        return browsers, (devices if devices else [None])
 
     created_runs = []
 
@@ -149,8 +180,9 @@ async def create_run(
                 direct_cases = result.all()
 
                 for case in direct_cases:
-                    for target_browser in browser:
-                        for target_device in target_devices:
+                    case_browsers, case_devices = _resolve_matrix(case, current_effective_settings)
+                    for target_browser in case_browsers:
+                        for target_device in case_devices:
                             run = TestRun(
                                 status=TestStatus.PENDING,
                                 test_suite_id=s_id,
@@ -182,8 +214,9 @@ async def create_run(
                     await process_suite(sub.id, current_effective_settings)
 
             else:  # CONTINUOUS
-                for target_browser in browser:
-                    for target_device in target_devices:
+                suite_browsers, suite_devices = _resolve_matrix(None, current_effective_settings)
+                for target_browser in suite_browsers:
+                    for target_device in suite_devices:
                         run = TestRun(
                             status=TestStatus.PENDING,
                             test_suite_id=s_id,
@@ -222,12 +255,12 @@ async def create_run(
 
         # If a specific case is requested, just run that case
         if case_id:
-            for target_browser in browser:
-                for target_device in target_devices:
-                    suite_path = await test_service.get_suite_path(suite_id, session)
-                    case = await session.get(TestCase, case_id)
-                    test_case_name = case.name if case else None
-
+            suite_path = await test_service.get_suite_path(suite_id, session)
+            case = await session.get(TestCase, case_id)
+            test_case_name = case.name if case else None
+            case_browsers, case_devices = _resolve_matrix(case, effective_settings)
+            for target_browser in case_browsers:
+                for target_device in case_devices:
                     run = TestRun(
                         status=TestStatus.PENDING,
                         test_suite_id=suite_id,

@@ -316,6 +316,10 @@ class TestCaseBase(SQLModel):
     # verbatim via `playwright test` on the worker (not the step interpreter).
     # NULL for step-based (ui_playwright) cases. See PLATFORM_VISION.md §4.
     raw_script: Optional[str] = Field(default=None, sa_column=Column(Text))
+    # Per-case execution matrix override: {"browsers": [...], "devices": [...]}.
+    # None (or missing keys) → inherit the suite chain's settings-level matrix.
+    run_matrix: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
     test_suite_id: Optional[int] = Field(
         default=None, foreign_key="testsuite.id")
     # Redundant but helpful for direct access
@@ -388,6 +392,7 @@ class TestCaseUpdate(SQLModel):
     dataset: Optional[List[dict]] = None
     tags: Optional[List[str]] = None
     priority: Optional[str] = None
+    run_matrix: Optional[Dict[str, Any]] = None
 
 
 class TestCaseRevision(SQLModel, table=True):
