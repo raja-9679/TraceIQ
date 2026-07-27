@@ -707,7 +707,7 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
         <div class="fcard"><div class="t">Visual regression</div><div class="d"><code>expect-visual-match</code> does a perceptual pixel diff against a stored baseline, with mask regions and a tolerance.</div></div>
         <div class="fcard"><div class="t">Accessibility</div><div class="d"><code>check-accessibility</code> runs axe-core and filters violations by impact threshold.</div></div>
         <div class="fcard"><div class="t">Network control</div><div class="d"><code>mock-response</code>, <code>block-request</code>, and <code>set-network-latency</code> make flaky flows deterministic.</div></div>
-        <div class="fcard"><div class="t">Device emulation</div><div class="d">Chromium, Firefox, WebKit + mobile viewport / UA emulation.</div></div>
+        <div class="fcard"><div class="t">Device emulation</div><div class="d">Chromium, Firefox, WebKit + mobile viewport / UA emulation — fanned out per run by the execution matrix below.</div></div>
       </div>
       <div class="card" style="margin-top:16px">
         <div class="head"><h3>Visual baselines</h3><span class="badge b-core">Core</span></div>
@@ -716,6 +716,18 @@ curl -X POST "$TRACEIQ/api/runs?suite_id=42" -H "X-API-Key: tiq_..." \
           <li>Promote the candidate to a durable baseline on the <em>Visual Review</em> page.</li>
           <li>Future runs fail the step when the diff ratio exceeds tolerance.</li>
         </ol>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="head"><h3>Execution matrix (browsers × devices)</h3><span class="badge b-new">New</span></div>
+        <p class="what">Every run fans out to <b>one TestRun per browser × device combination</b>, and the matrix is configurable at every level of the hierarchy with the same inheritance rules as headers and params. Resolution per test case, highest wins:</p>
+        <ol class="steps">
+          <li><b>Explicit API params</b> — <code>POST /api/runs?suite_id=42&amp;browser=chromium&amp;browser=firefox&amp;device=iPhone%2013</code> overrides everything (for agents / CI pinning a re-run).</li>
+          <li><b>Test case</b> — the <em>Matrix</em> pill in the test builder toolbar sets a per-case override (<code>run_matrix</code> on the case).</li>
+          <li><b>Module chain</b> — <em>Module Settings → Execution Matrix</em>. Unchecked = inherit from the parent module; checking anything replaces the inherited list for this module and its children.</li>
+          <li><b>User defaults</b> — the multi-browser / multi-device toggles on your <em>Settings</em> page.</li>
+          <li>Fallback: chromium, no device emulation.</li>
+        </ol>
+        <div class="note">Example: set <code>chromium + firefox</code> on a parent module, leave children inheriting, and give one Safari-specific case a <code>webkit</code>-only override — a single <em>Run All</em> creates exactly the right set of runs. Mobile-Appium cases ignore the matrix (they run on the device/emulator).</div>
       </div>
     </section>
 
@@ -901,8 +913,10 @@ POST /api/runs  {<span class="tok-k">"app_build_id"</span>: <span class="tok-n">
         <p class="what">Locators use Appium strategies: <code>~accessibility-id</code> (preferred), <code>id=resource-id</code>, <code>xpath=//…</code>, <code>android=UiSelector…</code>, <code>ios=predicate</code>. Steps interpolate <code>{{env.X}}</code>, <code>{{secret.X}}</code>, <code>{{data.X}}</code>, <code>{{fake.KIND}}</code>, and runtime <code>{{name}}</code> variables like web steps.</p>
       </div>
       <div class="card">
-        <div class="head"><h3>Devices: local Appium or a device cloud</h3><span class="badge b-new">New</span></div>
-        <p class="what">Mobile jobs ride a dedicated queue consumed by the mobile worker (compose profile <code>mobile</code>). Point it at a local Appium + Android emulator, or set <code>MOBILE_DEVICE_PROVIDER</code> to <b>browserstack</b>, <b>saucelabs</b>, or <b>lambdatest</b> — binaries are pushed to the cloud's app storage automatically and sessions run there. <b>iOS requires a device cloud.</b></p>
+        <div class="head"><h3>Devices: bundled emulator, local Appium, or a device cloud</h3><span class="badge b-new">New</span></div>
+        <p class="what">Mobile jobs ride a dedicated queue consumed by the mobile worker (compose profile <code>mobile</code>). The profile now ships a <b>ready-to-use Android emulator</b> (<code>android-emulator</code> service, Android 11 via <code>budtmo/docker-android</code>): Appium auto-connects to it over ADB on startup, and you can watch the screen live at <code>http://localhost:6080</code> (noVNC). Requires KVM on the host (<code>ls /dev/kvm</code>). Alternatively set <code>MOBILE_DEVICE_PROVIDER</code> to <b>browserstack</b>, <b>saucelabs</b>, or <b>lambdatest</b> — binaries are pushed to the cloud's app storage automatically and sessions run there. <b>iOS requires a device cloud.</b></p>
+        <pre><code>cd infrastructure
+docker compose --profile mobile --env-file env.local up -d   <span class="tok-c"># emulator + appium + mobile-worker</span></code></pre>
         <ul class="bul">
           <li>Screenshots, failure captures, visual-match diffs, and an MP4 screen recording upload as run artifacts — the run details page works unchanged.</li>
           <li>AI selector heal works on the native page source: broken locators get replacement proposals (and can self-heal at runtime), same review queue as web.</li>
