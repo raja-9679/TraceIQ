@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Starting up...")
+    # Fail fast on shipped-default secrets before anything is served. Raises on
+    # fatal misconfiguration; self-hosted instances depend on this to avoid
+    # running with a publicly-known JWT signing key.
+    for warning in core_settings.validate_for_deployment():
+        logger.warning("[config] %s", warning)
     await init_db()
     minio_client.ensure_bucket()
     logger.info("Startup complete")
