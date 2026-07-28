@@ -33,6 +33,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.ai.providers import provider as llm_provider
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
+from app.core.net_guard import UnsafeUrlError, safe_get
 from app.models import (
     CaseFromOpenAPIRequest,
     CaseGenerationRequest,
@@ -280,18 +281,20 @@ async def cases_from_openapi(
 
     schema = body.schema_inline
     if not schema and body.schema_url:
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.get(body.schema_url)
-            if resp.status_code >= 300:
-                raise HTTPException(
-                    status_code=502, detail=f"Could not fetch schema_url: {resp.status_code}"
-                )
-            try:
-                schema = resp.json()
-            except Exception:
-                # try YAML
-                import yaml  # type: ignore
-                schema = yaml.safe_load(resp.text)
+        try:
+            resp = await safe_get(body.schema_url, timeout=30.0)
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=400, detail=f"schema_url refused: {exc}")
+        if resp.status_code >= 300:
+            raise HTTPException(
+                status_code=502, detail=f"Could not fetch schema_url: {resp.status_code}"
+            )
+        try:
+            schema = resp.json()
+        except Exception:
+            # try YAML
+            import yaml  # type: ignore
+            schema = yaml.safe_load(resp.text)
     if not isinstance(schema, dict):
         raise HTTPException(status_code=400, detail="schema_url/schema_inline did not yield a dict")
 
@@ -343,9 +346,21 @@ async def _fetch_target_context(url: str) -> tuple:
     "feed" (raw XML head) | "" (probe failed — caller falls back to the
     ungrounded prompt).
     """
+    # This response is fed into an LLM prompt and the completion is returned to
+    # the caller, so an unvalidated fetch here exfiltrates internal pages
+    # through the model. safe_get validates the target on every redirect hop.
+    # TLS verification is deliberately left at its secure default; this probe
+    # previously disabled it, accepting any certificate, which made it trivially
+    # interceptable.
     try:
-        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, verify=False) as client:
-            resp = await client.get(url, headers={"User-Agent": "TraceIQ-CaseGenerator/1.0"})
+        resp = await safe_get(
+            url,
+            timeout=10.0,
+            headers={"User-Agent": "TraceIQ-CaseGenerator/1.0"},
+        )
+    except UnsafeUrlError as exc:
+        print(f"[case-gen] refused probe of {url}: {exc}")
+        return "", ""
     except Exception as exc:  # noqa: BLE001 — probe is best-effort
         print(f"[case-gen] probe of {url} failed: {exc}")
         return "", ""
