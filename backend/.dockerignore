@@ -1,0 +1,40 @@
+# Keep the image build hermetic, and keep local configuration OUT of a
+# distributed image.
+
+# CRITICAL: config.py sets `env_file = ".env"`, so a .env copied into the image
+# becomes baked-in configuration for everyone who pulls it — including whatever
+# credentials happen to be in the developer's copy. All configuration must come
+# from the environment at run time.
+.env
+.env.*
+!.env.example
+
+# Local artifacts that must never define the image's behaviour.
+celerybeat-schedule
+celerybeat-schedule.*
+*.db
+*.sqlite3
+
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+venv
+.venv
+
+# Tests and dev-only dependencies are not needed at run time.
+tests
+requirements-dev.txt
+
+.git
+.gitignore
+*.log
+.DS_Store
+.vscode
+.idea
+Dockerfile
+.dockerignore
