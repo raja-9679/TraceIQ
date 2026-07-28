@@ -502,6 +502,12 @@ class TestRunBase(SQLModel):
         sa_column=Column(String, nullable=False,
                          server_default=ExecutorType.UI_PLAYWRIGHT.value))
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Set the first time POST /runs/{id}/finalize succeeds. Guards the six
+    # side-effecting tasks that endpoint dispatches (notifications, outbound
+    # webhooks, heal, monitor, security scan, triage) against redelivery — a
+    # retried webhook would otherwise re-send customer emails and re-fire CI
+    # callbacks.
+    finalized_at: Optional[datetime] = Field(default=None)
     status: TestStatus = Field(default=TestStatus.PENDING)
     total_tests: int = 0
     passed_tests: int = 0

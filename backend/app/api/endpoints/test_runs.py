@@ -1,8 +1,10 @@
+from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func, or_, and_, delete
+from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
@@ -705,9 +707,27 @@ async def finalize_test_run(
     if not run:
         raise HTTPException(status_code=404, detail="Test run not found")
 
+    # Idempotency guard. Workers retry finalize on network failure, and every
+    # task below has an externally-visible side effect (customer email, outbound
+    # webhook into customer CI, monitor uptime state). Claim the run atomically
+    # so a concurrent redelivery loses the race and returns without re-firing.
+    claim = await session.exec(
+        update(TestRun)
+        .where(TestRun.id == run_id, TestRun.finalized_at.is_(None))
+        .values(finalized_at=datetime.utcnow())
+    )
+    await session.commit()
+    if claim.rowcount == 0:
+        _logger.info(
+            "[Finalize] Run %s already finalized at %s — skipping side effects",
+            run_id, run.finalized_at,
+        )
+        return {"status": "already_finalized", "run_id": run_id}
+
     # Store AI analysis if provided
     ai_analysis = payload.get('aiAnalysis')
     if ai_analysis:
+        await session.refresh(run)
         run.ai_analysis = ai_analysis
         session.add(run)
         await session.commit()
