@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ArrowRight, LayoutGrid, Check, X, AlertTriangle, Terminal, Zap, Shield, Workflow, Sparkles } from "lucide-react";
 
@@ -16,7 +17,7 @@ export default function Login() {
     const [ssoEnabled, setSsoEnabled] = useState(false);
 
     const { register, handleSubmit, formState: { errors } } = useForm();
-    const API = import.meta.env.VITE_API_BASE_URL;
+    const API = API_BASE_URL;
 
     // SSO: detect the callback (#access_token=…) and finish login; also learn
     // whether SSO is configured so we can show the button.

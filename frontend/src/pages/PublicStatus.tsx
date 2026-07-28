@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle } from 'lucide-react';
+import { API_BASE_URL } from '@/lib/api';
 
 // Public, unauthenticated status page — rendered outside the app shell.
 // Data comes from GET /api/status/{slug}; auto-refreshes every 60s.
@@ -18,7 +19,7 @@ interface StatusData {
     monitors: StatusMonitor[];
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+const API_BASE = API_BASE_URL;
 
 const OVERALL: Record<string, { label: string; cls: string; icon: any }> = {
     operational: { label: 'All systems operational', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },

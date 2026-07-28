@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { getRun, getArtifactUrl, forceCompleteRun, createComparisonRun } from "@/lib/api";
+import { getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl } from "@/lib/api";
 import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
@@ -39,12 +39,12 @@ export default function TestRunDetails() {
         // If run is already finished, no need to connect (unless you want to watch for potential post-run updates, but unlikely)
         if (run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error') return;
 
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api";
-        // Convert http(s) to ws(s). The JWT goes as a query param because
-        // browsers can't set headers on a WebSocket; the server authorizes
-        // against the run's project before accepting.
+        // The JWT goes as a query param because browsers can't set headers on a
+        // WebSocket; the server authorizes against the run's project before
+        // accepting.
         const token = localStorage.getItem("token");
-        const wsUrl = baseUrl.replace(/^http/, 'ws') + `/ws/runs/${runId}` + (token ? `?token=${encodeURIComponent(token)}` : '');
+        const wsUrl = apiWebSocketUrl(`/ws/runs/${runId}`)
+            + (token ? `?token=${encodeURIComponent(token)}` : '');
 
         console.log("Connecting to WebSocket:", wsUrl);
         const ws = new WebSocket(wsUrl);
