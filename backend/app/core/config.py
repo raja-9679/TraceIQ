@@ -38,6 +38,20 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 30 minutes
 
+    # Set to "production" in any real deployment. Enables the startup checks in
+    # validate_for_deployment() that refuse to boot on shipped-default secrets.
+    ENVIRONMENT: str = "development"
+
+    # Outbound fetch policy for user-supplied URLs (see core/net_guard.py).
+    # Self-hosted deployments testing internal apps need this true; leave it
+    # false on any instance where you don't trust every user, because true also
+    # lets a user probe your internal network. Link-local/metadata addresses
+    # (169.254.169.254) stay blocked either way.
+    ALLOW_PRIVATE_NETWORK_TARGETS: bool = False
+    # Hostnames always permitted regardless of where they resolve. Useful for
+    # e.g. host.docker.internal on a developer machine.
+    OUTBOUND_ALLOWED_HOSTS: list[str] = []
+
     # Webhook Queue Configuration
     REDIS_WEBHOOK_QUEUE: str = "webhook:results"
     REDIS_WEBHOOK_FAILED_QUEUE: str = "webhook:failed"
@@ -121,6 +135,106 @@ class Settings(BaseSettings):
     @property
     def oidc_enabled(self) -> bool:
         return bool(self.OIDC_ISSUER and self.OIDC_CLIENT_ID and self.OIDC_CLIENT_SECRET)
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.strip().lower() in ("production", "prod")
+
+    def validate_for_deployment(self) -> list[str]:
+        """Refuse to run a production instance on shipped-default credentials.
+
+        Called from the app lifespan rather than at import time so tests and
+        tooling can load settings without a full production environment.
+
+        This exists because TraceIQ is distributed as a Docker image that users
+        self-host. A weak default here isn't one insecure instance — it's a
+        known signing key across every deployment, which lets anyone forge a
+        token against any of them. Returns a list of non-fatal warnings; raises
+        RuntimeError on anything fatal.
+        """
+        MIN_SECRET_LEN = 32
+        PLACEHOLDERS = (
+            "changeme", "change-me", "secret-key", "your-secret", "yoursecret",
+            "placeholder", "example", "insecure", "password", "supersecret",
+            "traceiq-dev", "dev-secret", "test-secret", "minioadmin",
+        )
+
+        fatal: list[str] = []
+        warnings: list[str] = []
+
+        def check_secret(name: str, value: Optional[str], *, required: bool) -> None:
+            if not value:
+                if required:
+                    fatal.append(f"{name} is not set.")
+                return
+            low = value.strip().lower()
+            if len(value.strip()) < MIN_SECRET_LEN:
+                fatal.append(
+                    f"{name} is only {len(value.strip())} characters; "
+                    f"at least {MIN_SECRET_LEN} are required. "
+                    f"Generate one with: openssl rand -hex 32"
+                )
+            if any(p in low for p in PLACEHOLDERS):
+                fatal.append(
+                    f"{name} looks like a placeholder or documented default. "
+                    f"Generate a real one with: openssl rand -hex 32"
+                )
+            if len(set(value.strip())) < 8:
+                fatal.append(f"{name} has too little variety to be a real secret.")
+
+        if self.is_production:
+            check_secret("SECRET_KEY", self.SECRET_KEY, required=True)
+            check_secret("WEBHOOK_SECRET", self.WEBHOOK_SECRET, required=False)
+
+            if not self.WEBHOOK_SECRET:
+                warnings.append(
+                    "WEBHOOK_SECRET is unset, so worker/webhook authentication "
+                    "falls back to SECRET_KEY — the same value that signs JWTs. "
+                    "Set a separate WEBHOOK_SECRET so the two can be rotated "
+                    "independently."
+                )
+            elif self.WEBHOOK_SECRET == self.SECRET_KEY:
+                warnings.append(
+                    "WEBHOOK_SECRET equals SECRET_KEY. Use distinct values so "
+                    "rotating one does not invalidate the other."
+                )
+
+            if "*" in self.BACKEND_CORS_ORIGINS:
+                fatal.append(
+                    "BACKEND_CORS_ORIGINS contains \"*\", which is not a valid "
+                    "production setting. List your actual frontend origins."
+                )
+
+            for cred_name in ("MINIO_ACCESS_KEY", "MINIO_SECRET_KEY"):
+                val = (getattr(self, cred_name, "") or "").strip().lower()
+                if val in ("minioadmin", "minio", "admin"):
+                    fatal.append(
+                        f"{cred_name} is still the MinIO default. Change it "
+                        f"before exposing this instance."
+                    )
+
+            db = (self.DATABASE_URL or "").lower()
+            if "://user:password@" in db or ":password@" in db:
+                fatal.append(
+                    "DATABASE_URL still contains the default password. "
+                    "Set a real POSTGRES_PASSWORD."
+                )
+
+            if self.ALLOW_PRIVATE_NETWORK_TARGETS:
+                warnings.append(
+                    "ALLOW_PRIVATE_NETWORK_TARGETS=true lets any user aim a test "
+                    "at your internal network. Correct for a trusted "
+                    "single-tenant deployment; unsafe if users are untrusted."
+                )
+
+        if fatal:
+            raise RuntimeError(
+                "Refusing to start — insecure configuration detected:\n  - "
+                + "\n  - ".join(fatal)
+                + "\n\nSee infrastructure/env.community.example for guidance. "
+                  "To run anyway (never in production), set ENVIRONMENT=development."
+            )
+        return warnings
 
     @property
     def cors_origins(self) -> list[str]:
