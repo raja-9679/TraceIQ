@@ -171,6 +171,43 @@ Explicitly NOT built in Phase E. The MCP design doesn't preclude them — they c
 - **Run-history per case** is currently best-effort: it matches `TestCaseResult.test_name == case.name`. If two cases share a name across suites it conflates results. Fix is to backfill `TestCaseResult.test_case_id` (column doesn't exist yet) and update the worker to emit it.
 - **Bulk impact analysis** — the current endpoint processes one diff per call; a high-PR-volume org may want batched analysis.
 
+### Phase I18N / SOC2 — parked items (audited 2026-07-28)
+
+Full plan in `info/I18N_SOC2_IMPLEMENTATION_PLAN.md`. Recorded here so the
+deferred pieces don't get lost.
+
+- **RTL support — explicitly deferred, not dropped.** Blocked on a commercial
+  commitment to an Arabic or Hebrew locale, because it's a mass mechanical
+  rewrite rather than an incremental feature: ~300 physical-direction Tailwind
+  utilities (`mr-2` ×78, `mr-1.5` ×49, `text-right` ×38, plus
+  `pl-*`/`pr-*`/`left-*`/`right-*`/`border-l`) and **zero** logical equivalents
+  anywhere in the tree — no `ms-*`, `me-*`, `ps-*`, `pe-*`, `text-start`,
+  `text-end`. Absolutely-positioned input icons (`pl-9` paired with `left-3`)
+  mirror incorrectly and need per-component judgement. Do the logical-property
+  migration as one sweep when it's actually needed; piecemeal conversion leaves
+  the codebase in a worse mixed state than either endpoint.
+- **Needs no work — don't re-audit.** Charset/collation is already correct
+  (UTF8 client encoding, no fixed-width `VARCHAR(n)` on user text, no explicit
+  `COLLATE` in any of the 39 migrations), and no text is baked into images or
+  SVGs (icons are glyph-only `lucide-react`; every apparent `<text` grep hit is
+  actually `<textarea`).
+- **AI analysis retranslation is a product decision, not a bug.** LLM failure
+  analyses are persisted, so a user switching locale will still see old analyses
+  in the original language. Threading a locale into the prompt builders is cheap
+  (every provider's `complete()` already accepts `system`), but back-filling or
+  re-generating historic analyses is deliberately out of scope — decide whether
+  to retranslate on read, regenerate on demand, or leave them.
+- **Schedule timezones** — `TestSchedule` has no `timezone` column and croniter
+  runs on naive UTC, so the `Every Monday at 9AM` presets are wrong for every
+  non-UTC customer and the UI just discloses "Times are evaluated in UTC."
+  Deferred behind the `TIMESTAMPTZ` migration because DST correctness needs a
+  tz-aware croniter base, not just a column.
+- **SOC 2 Type II observation window** — Type I is a point-in-time design
+  opinion and is what the plan targets. Type II additionally needs 3–12 months
+  during which the audit-log and monitoring evidence actually accumulates, so it
+  cannot be compressed by engineering effort. Sequence the auditor engagement
+  accordingly.
+
 ---
 
 ## Phase E — Mode-1 MCP completion (agent has source-code access)

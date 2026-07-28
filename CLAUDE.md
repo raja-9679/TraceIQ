@@ -252,8 +252,64 @@ paths); webhook/finalize enforce `X-TraceIQ-Secret` (403, not warn-only); CORS
 defaults to localhost dev origins; the `/mock/bihar-election` stub is gone;
 refresh tokens exist (rotation + family revocation); PARALLEL mode is routed.
 
+Also FIXED 2026-07-28 (verified against a real Postgres and real image builds):
+`is_active` is now checked in both the JWT and API-key principal paths, so
+deactivating a user immediately revokes their tokens *and* their API keys;
+`finalize` claims `TestRun.finalized_at` with a conditional UPDATE before
+dispatching its six side-effecting tasks, so a retried webhook no longer sends
+duplicate customer emails or re-fires outbound CI webhooks; `verify=False` is
+gone from the backend and user-supplied URLs go through
+`app/core/net_guard.py`; `Settings.validate_for_deployment()` refuses to boot a
+production instance on weak/placeholder secrets, `minioadmin`, or CORS `*`.
+
 Still open:
 - Worker image bakes code at build time — new step types need an image rebuild
   or workers log "Unknown step type" and skip silently
 - `celery_beat` is required for run finalization (drains `jobs:results` every 2s)
-- Committed `.env` history was never scrubbed — rotate any real credentials
+- Credential hygiene: committed `.env` history was never scrubbed, and a
+  tracked database dump at the repo root carries account data that should not be
+  in version control. Both need a `git filter-repo` rewrite, and the affected
+  credentials need rotating first — rotation is independent of the rewrite and
+  should not wait for it. Treat anything that has ever been committed here as
+  disclosed.
+- **The Alembic chain cannot build a schema from scratch.** The baseline
+  revision `1f266105057e` is an empty `pass` stub — it was stamped onto a
+  database that `SQLModel.metadata.create_all()` had already built, and no
+  revision creates the core tables. `alembic upgrade head` against an empty
+  database fails at `CREATE INDEX ... ON testrun`. Use
+  `python scripts/bootstrap_db.py` (what the container entrypoint runs), which
+  creates the schema and stamps head on an empty database and upgrades an
+  existing one. A real squashed initial migration is still worth writing.
+- `executionmode` enum labels are lowercase in Postgres while `teststatus`
+  labels are uppercase. Any raw SQL touching either must account for that; the
+  `finalized_at` backfill uses `UPPER(status::text)` for exactly this reason.
+
+---
+
+## Self-hosted distribution (community edition)
+
+Users pull prebuilt images rather than building from source. See
+`SELF_HOSTING.md` for the user-facing guide.
+
+- `infrastructure/docker-compose.community.yml` — no `build:` contexts; pulls
+  `ghcr.io/<owner>/traceiq-{backend,frontend,execution-worker}`.
+- `infrastructure/env.community.example` + `traceiq-setup.sh` — the setup script
+  generates distinct secrets with `openssl rand -hex` and writes a `.env` at
+  mode 600.
+- **Every secret uses `${VAR:?message}` with no default.** A default in a
+  published image is a shared secret across every deployment; for `SECRET_KEY`
+  that means anyone could forge a JWT against any instance. CI asserts that the
+  compose file still *refuses* to render with no secrets set — if that check
+  ever passes, a default has crept back in.
+- `.dockerignore` in both `backend/` and `frontend/` is load-bearing, not
+  housekeeping. `backend/.env` was previously baked into the image (config.py
+  sets `env_file = ".env"`), and Vite inlines `VITE_API_BASE_URL` at build time,
+  so a developer's local `.env` would hardcode an API URL wrong for every user.
+- The frontend defaults to a **relative** `/api` and nginx proxies it, so one
+  image works on localhost, a LAN host, or a domain. `Login`, `Signup`,
+  `AuthContext`, and `PublicStatus` previously read
+  `import.meta.env.VITE_API_BASE_URL` with no fallback, which produced
+  `undefined/auth/login` in a prebuilt image; they now all import `API_BASE_URL`
+  from `lib/api.ts`. Use `apiWebSocketUrl()` for WebSocket URLs.
+- Images are published by `.github/workflows/release-images.yml`. Tag `v*.*.*`
+  for `:latest`; pushes to `main` publish `:edge` only.
