@@ -1,0 +1,13 @@
+# Test and lint dependencies. Not installed into the distributed image.
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# pytest.ini already sets asyncio_mode = auto, so async tests need no decorator.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-asyncio==0.25.2
+pytest-cov==6.0.0
+
+# Linting. Kept advisory for now — the codebase predates it, so a blanket
+# enforcement would be a large unrelated diff.
+ruff==0.9.2
