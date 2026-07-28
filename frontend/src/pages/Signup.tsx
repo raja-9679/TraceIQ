@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ArrowRight, Code2, Globe, Database, Rocket, Users, Lock, Check, Sparkles } from "lucide-react";
 
@@ -45,14 +46,14 @@ export default function Signup() {
                 payload.invite_token = inviteToken;
             }
 
-            const registerResponse = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/register`, payload);
+            const registerResponse = await axios.post(`${API_BASE_URL}/auth/register`, payload);
 
             // Login automatically after registration
             const formData = new FormData();
             formData.append('username', data.email);
             formData.append('password', data.password);
 
-            const loginResponse = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, formData);
+            const loginResponse = await axios.post(`${API_BASE_URL}/auth/login`, formData);
             const { access_token } = loginResponse.data;
 
             login(access_token, registerResponse.data);

@@ -1,10 +1,28 @@
 import axios from "axios";
 import { toast } from "sonner";
 
+// Vite inlines env vars at BUILD time, so a prebuilt image can't carry a
+// per-deployment API URL. Defaulting to a relative path means the same image
+// works on localhost, a LAN host, or a domain: nginx serves the app and proxies
+// /api/ to the backend on the same origin (see frontend/nginx.conf). Set
+// VITE_API_BASE_URL only when the API lives on a different origin, as in local
+// dev where Vite serves on :5173 and the backend runs on :8001.
+export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || "/api";
+
 export const api = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
+    baseURL: API_BASE_URL,
     timeout: 30000,
 });
+
+/** Absolute ws(s):// URL for an API path, resolving a relative API_BASE_URL
+ *  against the current origin. Built explicitly rather than relying on the
+ *  WebSocket constructor's relative-URL and http→ws coercion. */
+export function apiWebSocketUrl(path: string): string {
+    const base = API_BASE_URL.startsWith("http")
+        ? API_BASE_URL
+        : `${window.location.origin}${API_BASE_URL.startsWith("/") ? "" : "/"}${API_BASE_URL}`;
+    return `${base.replace(/^http/, "ws")}${path.startsWith("/") ? "" : "/"}${path}`;
+}
 
 api.interceptors.request.use((config) => {
     const token = localStorage.getItem("token");

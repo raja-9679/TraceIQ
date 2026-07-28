@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
+import { API_BASE_URL } from "@/lib/api";
 
 interface User {
     id: number;
@@ -30,7 +31,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     // Configure axios default header
                     axios.defaults.headers.common["Authorization"] = `Bearer ${token}`;
                     // Validate token and get user info
-                    const response = await axios.get(`${import.meta.env.VITE_API_BASE_URL}/auth/me`);
+                    const response = await axios.get(`${API_BASE_URL}/auth/me`);
                     setUser(response.data);
                 } catch (error: any) {
                     // Only clear the session on a definitive authentication
