@@ -1,0 +1,146 @@
+name: Publish container images
+
+# Builds and pushes the images that self-hosted users pull via
+# infrastructure/docker-compose.community.yml.
+#
+# Tag a release to publish an immutable version:
+#   git tag v0.1.0 && git push origin v0.1.0
+# That produces :0.1.0, :0.1, and :latest. Pushes to main publish :edge only, so
+# `latest` never moves without a deliberate tag.
+
+on:
+  push:
+    tags: ["v*.*.*"]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Extra tag to publish (e.g. rc1)"
+        required: false
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+          - name: frontend
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+          - name: execution-worker
+            context: ./execution-engine
+            dockerfile: ./execution-engine/Dockerfile.worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/traceiq-${{ matrix.name }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=edge,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # Scan what was actually published rather than a local build, so the report
+  # matches the artifact users pull. Non-blocking on main, enforced on tags.
+  scan:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [backend, frontend, execution-worker]
+    steps:
+      - name: Resolve tag
+        id: t
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=edge" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/traceiq-${{ matrix.name }}:${{ steps.t.outputs.tag }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+
+  verify-compose:
+    # Proves the shipped compose file is loadable and, crucially, that it still
+    # refuses to start without secrets. A regression there would silently ship
+    # insecure defaults to every self-hoster.
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compose must REFUSE with no secrets
+        working-directory: infrastructure
+        run: |
+          if docker compose -f docker-compose.community.yml config >/dev/null 2>&1; then
+            echo "::error::community compose rendered without any secrets set — a default secret has crept back in"
+            exit 1
+          fi
+          echo "Correctly refused to render without secrets."
+
+      - name: Compose must render with generated secrets
+        working-directory: infrastructure
+        run: |
+          ./traceiq-setup.sh
+          docker compose -f docker-compose.community.yml --env-file .env config >/dev/null
+          echo "Rendered successfully."
+
+      - name: Secrets must be distinct
+        working-directory: infrastructure
+        run: |
+          # shellcheck disable=SC1091
+          set -a; . ./.env; set +a
+          if [ "$SECRET_KEY" = "$WEBHOOK_SECRET" ]; then
+            echo "::error::setup script generated identical SECRET_KEY and WEBHOOK_SECRET"
+            exit 1
+          fi
+          for v in SECRET_KEY WEBHOOK_SECRET POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_PASSWORD; do
+            eval "val=\$$v"
+            if [ -z "$val" ]; then echo "::error::$v is empty"; exit 1; fi
+            if [ "${#val}" -lt 32 ]; then echo "::error::$v is shorter than 32 chars"; exit 1; fi
+          done
+          echo "All generated secrets are present, long enough, and distinct."
