@@ -1,0 +1,28 @@
+# Keep the image build hermetic and reproducible.
+
+# CRITICAL: Vite inlines env vars at build time, and it loads .env files
+# automatically. A developer's local .env (pointing at localhost:8001) would
+# otherwise be baked into a distributed image, hardcoding an API URL that is
+# wrong for every user. Excluding these makes VITE_API_BASE_URL unset during the
+# image build, so the app falls back to the relative "/api" that nginx proxies.
+# .env.example is kept — it is documentation, not configuration.
+.env
+.env.*
+!.env.example
+
+# Installed fresh inside the build; copying the host's copy is slow and can
+# carry platform-specific binaries.
+node_modules
+dist
+dist-ssr
+
+.git
+.gitignore
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+.vscode
+.idea
+Dockerfile
+.dockerignore

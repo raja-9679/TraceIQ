@@ -1,0 +1,233 @@
+# TraceIQ — self-hosted community edition
+#
+# Pulls prebuilt images; there are no `build:` contexts, so this file works from
+# a release archive without the source tree.
+#
+#   1. cp env.community.example .env   (or run ./traceiq-setup.sh which fills it in)
+#   2. docker compose -f docker-compose.community.yml --env-file .env up -d
+#   3. open http://localhost:8080
+#
+# Every secret below uses ${VAR:?...} rather than a default. That is deliberate:
+# a default secret in a distributed image is a *shared* secret across every
+# deployment, which would let anyone forge a JWT against any instance. Compose
+# refuses to start and tells you what to set instead.
+#
+# Postgres and Redis are intentionally not published to the host. Nothing
+# outside this compose network needs them, and exposing Redis unauthenticated is
+# how self-hosted stacks get mined.
+
+name: traceiq
+
+x-backend-env: &backend-env
+  ENVIRONMENT: production
+  DATABASE_URL: postgresql+asyncpg://traceiq:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}@postgres:5432/traceiq
+  # Redis runs with --requirepass, and the backend derives its Celery broker,
+  # result backend, and raw Redis client (core/redis.py) all from these URLs, so
+  # the password has to be embedded here.
+  CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (openssl rand -hex 24)}@redis:6379/0
+  CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/0
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env (must not be minioadmin)}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (openssl rand -hex 24)}
+  MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
+  SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env (openssl rand -hex 32)}
+  WEBHOOK_SECRET: ${WEBHOOK_SECRET:?Set WEBHOOK_SECRET in .env (openssl rand -hex 32) — must differ from SECRET_KEY}
+  BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:-["http://localhost:8080"]}
+  FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
+  # Self-hosters usually point TraceIQ at apps on their own network. See
+  # env.community.example for the tradeoff before enabling.
+  ALLOW_PRIVATE_NETWORK_TARGETS: ${ALLOW_PRIVATE_NETWORK_TARGETS:-false}
+  OUTBOUND_ALLOWED_HOSTS: ${OUTBOUND_ALLOWED_HOSTS:-[]}
+  # Finished runs and their artifacts are purged after this many days.
+  # 0 keeps everything forever and will grow your disk without bound.
+  RUN_RETENTION_DAYS: ${RUN_RETENTION_DAYS:-90}
+  LLM_PROVIDER: ${LLM_PROVIDER:-}
+  LLM_MODEL: ${LLM_MODEL:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+  LLM_BASE_URL: ${LLM_BASE_URL:-}
+  LLM_API_KEY: ${LLM_API_KEY:-}
+  NOTIFICATIONS_ENABLED: ${NOTIFICATIONS_ENABLED:-false}
+  EMAIL_NOTIFICATIONS_ENABLED: ${EMAIL_NOTIFICATIONS_ENABLED:-false}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
+  SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+  TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    <<: *hardening
+    environment:
+      POSTGRES_USER: traceiq
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (openssl rand -hex 24)}
+      POSTGRES_DB: traceiq
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U traceiq -d traceiq"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [traceiq_internal]
+
+  redis:
+    image: redis:7-alpine
+    <<: *hardening
+    command: >-
+      redis-server --appendonly yes
+      --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (openssl rand -hex 24)}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [traceiq_internal]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    <<: *hardening
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env (must not be minioadmin)}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (openssl rand -hex 24)}
+    ports:
+      # The browser fetches artifacts (traces, videos, screenshots) directly from
+      # MinIO via presigned URLs, so this port must be reachable by the browser.
+      - "${MINIO_PORT:-9000}:9000"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks: [traceiq_internal, traceiq_egress]
+
+  backend:
+    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    <<: *hardening
+    # Only this service migrates; the Celery services below set it false so
+    # four processes don't race on `alembic upgrade head`.
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "true"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      minio: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks: [traceiq_internal, traceiq_egress]
+
+  frontend:
+    image: ghcr.io/raja-9679/traceiq-frontend:${TRACEIQ_VERSION:-latest}
+    <<: *hardening
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+    depends_on:
+      backend: {condition: service_started}
+    networks: [traceiq_internal]
+
+  celery_worker:
+    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    <<: *hardening
+    command: celery -A app.core.celery_app worker --loglevel=info -Q main-queue -c ${CELERY_CONCURRENCY:-4}
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      backend: {condition: service_started}
+    networks: [traceiq_internal, traceiq_egress]
+
+  celery_aggregator:
+    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    <<: *hardening
+    command: celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue -c 2
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      backend: {condition: service_started}
+    networks: [traceiq_internal]
+
+  # REQUIRED, not optional. Beat drains the jobs:results stream every 2s; without
+  # it runs are dispatched and execute but never move out of RUNNING.
+  celery_beat:
+    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    <<: *hardening
+    command: celery -A app.core.celery_app beat --loglevel=info
+    environment:
+      <<: *backend-env
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      backend: {condition: service_started}
+    networks: [traceiq_internal]
+
+  execution-worker:
+    image: ghcr.io/raja-9679/traceiq-execution-worker:${TRACEIQ_VERSION:-latest}
+    <<: *hardening
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_JOBS_STREAM: jobs:pending
+      REDIS_RESULTS_STREAM: jobs:results
+      REDIS_CONSUMER_GROUP: execution-workers
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_NAME: test-artifacts
+      BACKEND_URL: http://backend:8000
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      DEFAULT_TIMEOUT: ${DEFAULT_TIMEOUT:-30000}
+      ARTIFACTS_DIR: /tmp/artifacts
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      RUNTIME_HEAL_ENABLED: ${RUNTIME_HEAL_ENABLED:-false}
+      # Executes user-supplied Playwright specs verbatim — arbitrary code
+      # execution inside the worker. Leave false unless you trust every user of
+      # this instance.
+      RAW_PLAYWRIGHT_ENABLED: ${RAW_PLAYWRIGHT_ENABLED:-false}
+    depends_on:
+      redis: {condition: service_healthy}
+      minio: {condition: service_started}
+    shm_size: '1gb'
+    networks: [traceiq_internal, traceiq_egress]
+    deploy:
+      replicas: ${EXECUTION_WORKERS:-2}
+
+networks:
+  # Internal service-to-service traffic. Not marked `internal: true` because
+  # workers need outbound access to reach the sites under test; see
+  # traceiq_egress and the note in env.community.example.
+  traceiq_internal:
+    driver: bridge
+  traceiq_egress:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
