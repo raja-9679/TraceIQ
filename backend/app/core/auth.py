@@ -132,7 +132,12 @@ async def _user_from_jwt(token: str, session: AsyncSession) -> Optional[User]:
     except Exception:
         return None
     result = await session.exec(select(User).where(User.email == email))
-    return result.first()
+    user = result.first()
+    # Deactivated accounts must lose access immediately. Without this an issued
+    # token stays valid for its full lifetime after offboarding.
+    if user and not user.is_active:
+        return None
+    return user
 
 
 async def _principal_from_api_key(
@@ -163,6 +168,11 @@ async def _principal_from_api_key(
     user_result = await session.exec(select(User).where(User.id == key.created_by_id))
     user = user_result.first()
     if not user:
+        return None
+    # An API key inherits its owner's access, so it must also inherit their
+    # deactivation. Otherwise offboarding a user leaves their keys working
+    # indefinitely — keys have no expiry by default.
+    if not user.is_active:
         return None
     return AuthPrincipal(user=user, api_key=key, agent_id=agent_id)
 
