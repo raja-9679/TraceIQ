@@ -239,7 +239,20 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
 - **PARALLEL execution mode** — fully routed through `dispatch_parallel_jobs` in `app/worker.py`. Tune fan-out via `PARALLEL_MAX_CONCURRENCY`.
 - **Local dev worker** — `POST /api/runs` body `local_worker_id` pins a run to a developer's polling worker (`npm run worker:local` in `execution-engine/`, API-key auth via `GET /api/jobs/poll` + `POST /api/jobs/result`) so agents/CI can test `localhost` before deploy. v1: single-test jobs, no artifact upload.
 - **Mobile app testing (Phase MOB)** — cases with `executor=mobile_appium` run native Android/iOS journeys via Appium. Upload binaries at `POST /api/projects/{id}/app-builds` (MinIO-backed `MobileAppBuild` registry); pin a run via `app_build_id` in the `POST /api/runs` body. Mobile jobs ride a dedicated `jobs:mobile:pending` stream consumed by `execution-engine/src/mobile-worker.ts` (compose profile `mobile`; Appium at `APPIUM_URL`; needs an emulator/device attached). Step types are `mobile-*` in the `/api/step-types` catalog. v1: no artifact upload; iOS via device cloud only.
-- **MCP server** — `integrations/mcp-server/`. Wires Claude Code / Cursor to TraceIQ as a tool.
+- **Instance settings (DB-over-env)** — admin-editable runtime config stored in
+  the `instance_settings` table (secrets Fernet-encrypted), resolved by
+  `app/services/instance_settings.py:effective()` with a ~15s TTL cache:
+  DB override wins, environment is the fallback; DB unavailable degrades to
+  env-only. Only keys in its REGISTRY are storable — bootstrap config
+  (DATABASE_URL, Redis, SECRET_KEY) is env-only by construction. Consumers:
+  notifications/SMTP, LLM providers (module `provider` is now a re-resolving
+  proxy), storage (lazy client, restart-required), OIDC, net_guard policy,
+  retention. API: `/api/admin/instance-settings` (+ test-email / test-llm),
+  guarded by `get_current_instance_admin` = admin of the FIRST tenant (plain
+  tenant-admin is not enough — self-registration makes everyone admin of
+  their own tenant). UI: Settings → "Instance (Admin)" tab. Execution workers
+  still read their own env (LLM keys, MinIO) — worker-side config is not
+  DB-driven.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
 
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
@@ -311,5 +324,44 @@ Users pull prebuilt images rather than building from source. See
   `import.meta.env.VITE_API_BASE_URL` with no fallback, which produced
   `undefined/auth/login` in a prebuilt image; they now all import `API_BASE_URL`
   from `lib/api.ts`. Use `apiWebSocketUrl()` for WebSocket URLs.
+- The nginx proxy target is also runtime config: `frontend/nginx.conf` ships as
+  `/etc/nginx/templates/default.conf.template` and the base image envsubsts
+  `${BACKEND_URL}` at container start (default `http://backend:8000`; Dockerfile
+  ENV). Split deployments set `FRONTEND_PROXY_BACKEND_URL` in the community
+  `.env` or `-e BACKEND_URL=...` on `docker run`.
 - Images are published by `.github/workflows/release-images.yml`. Tag `v*.*.*`
-  for `:latest`; pushes to `main` publish `:edge` only.
+  for `:latest`; pushes to `main` publish `:edge` only. Docker Hub is a second
+  publish target that activates only when the `DOCKERHUB_USERNAME` +
+  `DOCKERHUB_TOKEN` repo secrets exist; self-hosters switch registries via
+  `TRACEIQ_REGISTRY` in `.env` (default `ghcr.io/raja-9679`).
+- `install.sh` (repo root) is the one-line installer
+  (`curl … /install.sh | bash`): fetches the three community files, runs
+  `traceiq-setup.sh`, pulls, starts, waits for `/health/ready`. Idempotent —
+  an existing `.env` is never overwritten.
+- Secret/setting precedence everywhere: **user-supplied → auto-generated**.
+  `traceiq-setup.sh` honors pre-set env vars and has `--interactive` (prompts
+  via `/dev/tty` so it works under curl|bash); `install.sh` adds
+  `--configure` (write `.env`, stop before starting); the AIO entrypoint
+  accepts `-e` secrets on first boot only and warns on later mismatches.
+  User-supplied `POSTGRES_PASSWORD`/`REDIS_PASSWORD` are restricted to
+  `[A-Za-z0-9._~-]` because compose embeds them in connection URLs verbatim.
+- `infrastructure/aio/` is the all-in-one **evaluation** image
+  (`traceiq-aio`): postgres+redis+minio+backend+celery+worker+nginx under
+  supervisord, single `docker run`, secrets generated on first boot into the
+  `/data` volume (never baked in). It builds from the **repo root** context;
+  the root `.dockerignore` is deny-by-default and is the only thing keeping
+  `.git` and `dump.sql` out of that context — treat it like the other two.
+  Chromium-only, one worker; production stays on the compose file.
+- Base images are pinned to `python:3.11-slim-bookworm`: the un-suffixed tag
+  floated to Debian trixie, which drops `postgresql-15` and renames chromium
+  runtime libs that `backend/Dockerfile` lists manually.
+- **Source protection in published images** (deterrence, not absolute):
+  backend + AIO compile `app/` to 3.11 bytecode and delete the `.py` files
+  (`ARG STRIP_SOURCE=1`; build with `0` for readable tracebacks). `app/alembic`
+  and `scripts/` stay source — alembic globs `versions/*.py` and the
+  entrypoint runs scripts by path. No working decompiler exists for 3.11+
+  bytecode, but it can be disassembled. Worker/engine `dist/` JS is
+  esbuild-minified per file (no bundling). `LICENSE-COMMUNITY.md` carries the
+  community-edition terms (draft — counsel review pending). Note `app/` and
+  `app/core/` are NAMESPACE packages (no `__init__.py`) — tooling that infers
+  module names from packages (e.g. cythonize) gets them wrong there.
