@@ -1,37 +1,69 @@
 import boto3
 from botocore.client import Config
-from app.core.config import settings
 
 class MinioClient:
+    """S3/MinIO access. Config is resolved lazily on FIRST USE (not import),
+    through the effective instance settings (admin UI DB override, else env).
+    Once built, the clients are frozen for the life of the process — storage
+    settings are advertised as restart-required in the admin UI, because
+    swapping buckets/endpoints mid-flight would strand in-progress artifacts.
+    """
     def __init__(self):
-        # We need to parse the MINIO_ENDPOINT to handle http/https if present, 
+        self._s3 = None
+        self._s3_public = None
+        self._bucket = None
+
+    def _init_clients(self):
+        from app.services.instance_settings import effective
+
+        # We need to parse the MINIO_ENDPOINT to handle http/https if present,
         # but boto3 expects endpoint_url to include scheme.
-        endpoint = settings.MINIO_ENDPOINT
+        endpoint = str(effective("MINIO_ENDPOINT") or "")
         if not endpoint.startswith("http"):
             endpoint = f"http://{endpoint}"
+        access_key = effective("MINIO_ACCESS_KEY")
+        secret_key = effective("MINIO_SECRET_KEY")
 
-        self.s3 = boto3.client(
+        self._s3 = boto3.client(
             "s3",
             endpoint_url=endpoint,
-            aws_access_key_id=settings.MINIO_ACCESS_KEY,
-            aws_secret_access_key=settings.MINIO_SECRET_KEY,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
             config=Config(signature_version="s3v4"),
             region_name="us-east-1"
         )
-        
+
         # separate client for generating public URLs (localhost)
         # Boto3 uses the endpoint URL to generate the signature's Host header.
         # So we must use the external hostname here for signatures to match user's browser requests.
-        self.s3_public = boto3.client(
+        self._s3_public = boto3.client(
             "s3",
-            endpoint_url=settings.MINIO_PUBLIC_URL, 
-            aws_access_key_id=settings.MINIO_ACCESS_KEY,
-            aws_secret_access_key=settings.MINIO_SECRET_KEY,
+            endpoint_url=effective("MINIO_PUBLIC_URL"),
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
             config=Config(signature_version="s3v4"),
             region_name="us-east-1"
         )
-        
-        self.bucket = settings.MINIO_BUCKET_NAME
+
+        self._bucket = effective("MINIO_BUCKET_NAME")
+
+    @property
+    def s3(self):
+        if self._s3 is None:
+            self._init_clients()
+        return self._s3
+
+    @property
+    def s3_public(self):
+        if self._s3_public is None:
+            self._init_clients()
+        return self._s3_public
+
+    @property
+    def bucket(self):
+        if self._bucket is None:
+            self._init_clients()
+        return self._bucket
 
     def ensure_bucket(self):
         try:

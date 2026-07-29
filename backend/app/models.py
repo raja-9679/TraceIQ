@@ -1580,6 +1580,24 @@ class ImpactAnalysisResponse(SQLModel):
 # =============================================================================
 
 
+class InstanceSetting(SQLModel, table=True):
+    """Instance-wide configuration override saved from the admin UI.
+
+    One row per overridden setting key. Effective value resolution is
+    DB-over-env: a row here wins over the environment/default (see
+    app/services/instance_settings.py, which also defines WHICH keys may be
+    stored). Values are stored as strings and parsed by the registry's type;
+    keys registered as secret are Fernet-encrypted at rest.
+    """
+    __tablename__ = "instance_settings"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key: str = Field(unique=True, index=True)
+    value: str                          # plaintext, or Fernet ciphertext when is_secret
+    is_secret: bool = Field(default=False)
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class IssueTrackerConfig(SQLModel, table=True):
     """Workspace-scoped connection to an external tracker. The credential is
     stored Fernet-encrypted (never returned by the API)."""

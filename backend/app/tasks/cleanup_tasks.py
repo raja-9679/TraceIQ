@@ -76,7 +76,8 @@ def purge_old_runs():
     Bounded to RETENTION_BATCH_SIZE runs per pass so a large backlog drains
     over several scheduled runs rather than in one long transaction.
     """
-    retention_days = getattr(settings, 'RUN_RETENTION_DAYS', 0) or 0
+    from app.services.instance_settings import effective
+    retention_days = int(effective('RUN_RETENTION_DAYS') or 0)
     if retention_days <= 0:
         return 0
 

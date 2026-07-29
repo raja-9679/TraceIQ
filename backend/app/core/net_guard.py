@@ -99,7 +99,9 @@ async def validate_outbound_url(
     """
     settings = _settings()
     if allow_private is None:
-        allow_private = bool(getattr(settings, "ALLOW_PRIVATE_NETWORK_TARGETS", False))
+        # Effective policy: admin UI (DB) override, else environment.
+        from app.services.instance_settings import effective
+        allow_private = bool(effective("ALLOW_PRIVATE_NETWORK_TARGETS"))
 
     parts = urlsplit(raw)
     if parts.scheme.lower() not in ALLOWED_SCHEMES:
@@ -110,9 +112,10 @@ async def validate_outbound_url(
     if not host:
         raise UnsafeUrlError("URL has no host")
 
+    from app.services.instance_settings import effective as _eff_setting
     allowed_hosts = {
         h.strip().lower()
-        for h in list(getattr(settings, "OUTBOUND_ALLOWED_HOSTS", []) or [])
+        for h in list(_eff_setting("OUTBOUND_ALLOWED_HOSTS") or [])
         + list(extra_allowed_hosts)
         if h and h.strip()
     }

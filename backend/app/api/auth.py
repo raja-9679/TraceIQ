@@ -678,9 +678,19 @@ from fastapi.responses import RedirectResponse
 from urllib.parse import urlencode
 
 
+def _oidc(key: str) -> str:
+    """Effective OIDC value: admin UI (DB) override, else environment."""
+    from app.services.instance_settings import effective
+    return str(effective(key) or "")
+
+
+def _oidc_enabled() -> bool:
+    return bool(_oidc("OIDC_ISSUER") and _oidc("OIDC_CLIENT_ID") and _oidc("OIDC_CLIENT_SECRET"))
+
+
 async def _oidc_discovery() -> dict:
     async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.get(f"{app_settings.OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration")
+        r = await client.get(f"{_oidc('OIDC_ISSUER').rstrip('/')}/.well-known/openid-configuration")
         r.raise_for_status()
         return r.json()
 
@@ -689,8 +699,8 @@ def build_authorize_url(cfg: dict, state: str) -> str:
     """Pure: assemble the IdP authorization URL (unit-testable)."""
     params = {
         "response_type": "code",
-        "client_id": app_settings.OIDC_CLIENT_ID,
-        "redirect_uri": app_settings.OIDC_REDIRECT_URI,
+        "client_id": _oidc("OIDC_CLIENT_ID"),
+        "redirect_uri": _oidc("OIDC_REDIRECT_URI"),
         "scope": "openid email profile",
         "state": state,
     }
@@ -699,13 +709,14 @@ def build_authorize_url(cfg: dict, state: str) -> str:
 
 @router.get("/sso/status")
 async def sso_status():
-    return {"enabled": app_settings.oidc_enabled,
-            "issuer": app_settings.OIDC_ISSUER if app_settings.oidc_enabled else None}
+    enabled = _oidc_enabled()
+    return {"enabled": enabled,
+            "issuer": _oidc("OIDC_ISSUER") if enabled else None}
 
 
 @router.get("/sso/login")
 async def sso_login():
-    if not app_settings.oidc_enabled:
+    if not _oidc_enabled():
         raise HTTPException(status_code=404, detail="SSO is not configured")
     state = create_access_token(data={"sso_state": True}, expires_delta=timedelta(minutes=10))
     cfg = await _oidc_discovery()
@@ -715,7 +726,7 @@ async def sso_login():
 @router.get("/sso/callback")
 async def sso_callback(request: Request, code: str = "", state: str = "",
                        session: AsyncSession = Depends(get_session)):
-    if not app_settings.oidc_enabled:
+    if not _oidc_enabled():
         raise HTTPException(status_code=404, detail="SSO is not configured")
     try:
         payload = jwt.decode(state, SECRET_KEY, algorithms=[ALGORITHM])
@@ -730,9 +741,9 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
     async with httpx.AsyncClient(timeout=15) as client:
         tok = await client.post(cfg["token_endpoint"], data={
             "grant_type": "authorization_code", "code": code,
-            "redirect_uri": app_settings.OIDC_REDIRECT_URI,
-            "client_id": app_settings.OIDC_CLIENT_ID,
-            "client_secret": app_settings.OIDC_CLIENT_SECRET,
+            "redirect_uri": _oidc("OIDC_REDIRECT_URI"),
+            "client_id": _oidc("OIDC_CLIENT_ID"),
+            "client_secret": _oidc("OIDC_CLIENT_SECRET"),
         }, headers={"Accept": "application/json"})
         if tok.status_code != 200:
             raise HTTPException(status_code=401, detail=f"SSO token exchange failed: {tok.text[:200]}")
@@ -756,4 +767,4 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
 
     tokens = await _issue_tokens(user, request, session)
     frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})
-    return RedirectResponse(f"{app_settings.OIDC_POST_LOGIN_REDIRECT}#{frag}")
+    return RedirectResponse(f"{_oidc('OIDC_POST_LOGIN_REDIRECT')}#{frag}")

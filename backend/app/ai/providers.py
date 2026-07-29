@@ -11,7 +11,6 @@ import os
 import time
 from typing import List, Optional, Protocol
 
-from app.core.config import settings
 from app.services.llm_usage import llm_tokens_quota_exceeded, record_llm_usage
 
 
@@ -148,39 +147,49 @@ class NullProvider:
         return ""
 
 
+def _eff(key: str) -> str:
+    """Effective config value: admin-saved DB override, else environment.
+
+    Local import — instance_settings imports app config, and this module is
+    imported broadly; keep the dependency one-directional at import time.
+    """
+    from app.services.instance_settings import effective
+    return str(effective(key) or "")
+
+
 def _detect_provider_name() -> str:
-    explicit = os.getenv("LLM_PROVIDER")
+    explicit = _eff("LLM_PROVIDER")
     if explicit:
         return explicit.strip().lower()
-    if os.getenv("ANTHROPIC_API_KEY"):
+    if _eff("ANTHROPIC_API_KEY"):
         return "anthropic"
-    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+    if _eff("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         return "gemini"
-    if settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY"):
+    if _eff("OPENAI_API_KEY"):
         return "openai"
-    if os.getenv("OLLAMA_BASE_URL"):
+    if _eff("OLLAMA_BASE_URL"):
         return "ollama"
     return "null"
 
 
 def build_default_provider() -> LLMProvider:
     name = _detect_provider_name()
-    model = os.getenv("LLM_MODEL", "")
+    model = _eff("LLM_MODEL")
     if name == "anthropic":
-        key = os.getenv("ANTHROPIC_API_KEY", "")
+        key = _eff("ANTHROPIC_API_KEY")
         if not key:
             print("[LLM] LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is empty; using null provider")
             return NullProvider()
         return AnthropicProvider(api_key=key, model=model or "claude-opus-4-8")
     if name == "openai":
-        key = settings.OPENAI_API_KEY or os.getenv("OPENAI_API_KEY", "")
+        key = _eff("OPENAI_API_KEY")
         if not key:
             return NullProvider()
         return OpenAICompatibleProvider("openai", api_key=key, model=model or "gpt-4o")
     if name == "gemini":
         # Google's OpenAI-compatible endpoint. The Gemini API has a generous
         # free tier, so this doubles as the free hosted option.
-        key = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
+        key = _eff("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY", "")
         if not key:
             print("[LLM] LLM_PROVIDER=gemini but GEMINI_API_KEY is empty; using null provider")
             return NullProvider()
@@ -191,22 +200,49 @@ def build_default_provider() -> LLMProvider:
     if name == "ollama":
         # Local, free, no API key. From inside Docker use
         # OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
-        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        base_url = _eff("OLLAMA_BASE_URL") or "http://localhost:11434/v1"
         return OpenAICompatibleProvider(
             "ollama", api_key="ollama", model=model or "llama3.1",
             base_url=base_url,
         )
     if name in ("openai-compatible", "custom"):
         # Generic escape hatch: Groq/OpenRouter free tiers, LM Studio, vLLM…
-        base_url = os.getenv("LLM_BASE_URL", "")
+        base_url = _eff("LLM_BASE_URL")
         if not base_url or not model:
             print("[LLM] LLM_PROVIDER=openai-compatible needs LLM_BASE_URL and LLM_MODEL; using null provider")
             return NullProvider()
-        key = os.getenv("LLM_API_KEY", "") or "not-needed"
+        key = _eff("LLM_API_KEY") or "not-needed"
         return OpenAICompatibleProvider("openai-compatible", api_key=key, model=model, base_url=base_url)
     return NullProvider()
 
 
-# Module-level singleton — built once at import time. Re-import if env vars
-# change (typically only at process start).
-provider: LLMProvider = build_default_provider()
+_AI_KEYS = ("LLM_PROVIDER", "LLM_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+            "GEMINI_API_KEY", "OLLAMA_BASE_URL", "LLM_BASE_URL", "LLM_API_KEY")
+
+
+class _ProviderProxy:
+    """Module-level `provider` used to be a singleton frozen at import, which
+    meant admin UI changes to the AI settings needed a process restart. This
+    proxy rebuilds the underlying provider whenever the effective AI config
+    changes (effective() is TTL-cached, so the signature check is cheap)."""
+
+    def __init__(self) -> None:
+        self._built: Optional[LLMProvider] = None
+        self._sig: Optional[tuple] = None
+
+    def _resolve(self) -> LLMProvider:
+        sig = tuple(_eff(k) for k in _AI_KEYS)
+        if self._built is None or sig != self._sig:
+            self._built = build_default_provider()
+            self._sig = sig
+        return self._built
+
+    @property
+    def name(self) -> str:
+        return self._resolve().name
+
+    def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
+        return self._resolve().complete(prompt, system=system, max_tokens=max_tokens)
+
+
+provider: LLMProvider = _ProviderProxy()
