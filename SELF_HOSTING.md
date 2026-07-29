@@ -1,9 +1,41 @@
 # Self-hosting TraceIQ
 
 Run TraceIQ on your own server from prebuilt images. No source checkout, no
-build step.
+build step. Use of the Community Edition is governed by
+[LICENSE-COMMUNITY.md](./LICENSE-COMMUNITY.md) — free to self-host for your
+team; no redistribution or hosting it for others.
 
 Everything below refers to files in `infrastructure/`.
+
+---
+
+## Just evaluating? The all-in-one image
+
+If you only want to *try* TraceIQ, skip everything below and run the single
+evaluation container:
+
+```bash
+docker run -d --name traceiq --shm-size=1g \
+  -p 8080:8080 -p 9000:9000 \
+  -v traceiq:/data \
+  ghcr.io/raja-9679/traceiq-aio:latest
+```
+
+Wait a minute or two for first-boot setup (`docker logs -f traceiq`), then
+open <http://localhost:8080>. The first account registered becomes the admin.
+Unique secrets are generated on first boot into the `traceiq` volume — there
+are no defaults to change and nothing secret baked into the image. Port 9000
+must stay published: the browser fetches run artifacts (traces, videos)
+directly from the bundled MinIO.
+
+Know its limits — it is an evaluation tier, not the production path:
+
+- one execution worker, chromium only (no firefox/webkit runs)
+- everything shares one container and one `/data` volume
+- no independent scaling of anything
+
+When you outgrow it, deploy the compose stack below and migrate with a
+database dump (see Backups).
 
 ---
 
@@ -17,6 +49,69 @@ Everything below refers to files in `infrastructure/`.
   keeps this bounded.
 
 ---
+
+## Quick install (one line)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/raja-9679/TraceIQ/main/install.sh | bash
+```
+
+This does everything in the Install section below for you: downloads the
+compose files into a `./traceiq` directory, generates unique secrets, pulls
+the images, starts the stack, and waits until the backend is ready. Re-running
+it later pulls newer images without touching your secrets.
+
+### Bringing your own secrets and settings
+
+Everything — DB password, signing keys, ports — is auto-generated or defaulted,
+but all of it can be customized **before the first start**. Configuration is
+always injected at runtime; nothing secret is ever baked into an image. Three
+ways, combinable:
+
+```bash
+# 1. Inline environment variables: anything you set wins over auto-generation
+curl -fsSL .../install.sh | POSTGRES_PASSWORD='my-own-pass' FRONTEND_PORT=9090 bash
+
+# 2. Interactive: prompts for each secret/setting, Enter accepts the default
+curl -fsSL .../install.sh | bash -s -- --interactive
+
+# 3. Review-first: writes .env, then STOPS so you can edit anything before starting
+curl -fsSL .../install.sh | bash -s -- --configure
+```
+
+One rule for hand-picked infrastructure passwords (`POSTGRES_PASSWORD`,
+`REDIS_PASSWORD`): letters, digits, and `. _ ~ -` only — they are embedded in
+connection URLs where other characters cannot be escaped. The setup script
+enforces this and tells you when a value is rejected. `SECRET_KEY` and
+`WEBHOOK_SECRET` must each be at least 32 characters and differ from each
+other, same as the backend enforces at boot.
+
+**Most optional settings can also be changed later from the UI** — as the
+first-registered (instance admin) account, open Settings → *Instance (Admin)*:
+SMTP, Slack/Teams, the AI provider and its API keys, SSO (OIDC), retention,
+and network policy are all editable there, with test buttons for email and the
+LLM. Values saved in the UI are stored in the database (secrets encrypted) and
+override the environment; a Reset button falls back to the env value. Only the
+bootstrap infrastructure (database, Redis, signing keys) must be configured
+via `.env`, and storage (MinIO/S3) changes need a restart plus matching worker
+environment updates.
+
+The same applies to the all-in-one evaluation image: pass secrets with `-e` on
+the **first** `docker run` and they are used instead of generated ones —
+
+```bash
+docker run -d --name traceiq --shm-size=1g -p 8080:8080 -p 9000:9000 \
+  -v traceiq:/data \
+  -e POSTGRES_PASSWORD='my-own-pass' \
+  -e SECRET_KEY="$(openssl rand -hex 32)" \
+  ghcr.io/raja-9679/traceiq-aio:latest
+```
+
+After the first boot the stored values win; a differing `-e` value is warned
+about and ignored (rotating the DB password requires the database to agree,
+not just the environment).
+
+Prefer to see each step? Do it manually:
 
 ## Install
 
@@ -87,6 +182,15 @@ FRONTEND_BASE_URL=http://traceiq.internal:8080
 browser** from presigned URLs, so it must be an address the browser can reach —
 not an internal Docker hostname. If traces and videos fail to load while
 everything else works, this is why.
+
+The frontend itself never needs a backend URL: the app calls a same-origin
+relative `/api`, which its nginx proxies to the backend. That proxy target is
+runtime configuration too — if you run the backend somewhere *outside* this
+compose stack (split deployment), point the frontend at it with:
+
+```bash
+FRONTEND_PROXY_BACKEND_URL=http://backend.internal.example.com:8000
+```
 
 ### Testing apps on your own network
 

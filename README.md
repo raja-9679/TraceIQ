@@ -16,6 +16,7 @@ via Docker Compose.
 
 | If you're… | Read this first |
 |---|---|
+| **Self-hosting from prebuilt images** (no source checkout) | [`SELF_HOSTING.md`](./SELF_HOSTING.md) — one-line installer, the all-in-one evaluation image, upgrades, backups |
 | **Deploying to production** (or planning a release) | [`PRODUCTION_DEPLOY.md`](./PRODUCTION_DEPLOY.md) — full runbook: first-time Phase A→E upgrade, steady-state feature updates, rollback procedures, healthcheck script |
 | **Trying to understand the architecture end-to-end** | [`ARCHITECTURE.md`](./ARCHITECTURE.md) — services, data model, run lifecycle, auth, AI integration map, RBAC, extension points |
 | **An AI coding agent** (Claude Code, Cursor, etc.) authoring tests via MCP | [`integrations/mcp-server/AGENT_GUIDE.md`](./integrations/mcp-server/AGENT_GUIDE.md) — mental model, step-type reference, suite-organization conventions, 5 documented pitfalls, end-to-end Sarvajna example |

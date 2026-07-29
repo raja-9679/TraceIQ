@@ -19,6 +19,13 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
+# Source protection: per-file minify+mangle of the compiled JS. tsc output is
+# otherwise as readable as the TypeScript. No bundling — module layout and
+# dynamic requires stay untouched.
+RUN npm install -g esbuild@0.25.9 \
+    && find dist -name '*.js' -exec esbuild {} --minify --platform=node --target=node18 --allow-overwrite --outfile={} \; \
+    && npm uninstall -g esbuild
+
 # Remove devDependencies for leaner production image
 RUN npm prune --production
 
