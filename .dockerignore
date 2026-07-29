@@ -1,0 +1,54 @@
+# Root build context — used ONLY by infrastructure/aio/Dockerfile (the
+# all-in-one image builds frontend + backend + engine from one context).
+#
+# Deny-by-default: `*` excludes everything, then only the trees the AIO build
+# needs are re-included. This matters more than the per-directory .dockerignore
+# files because a root context would otherwise upload .git (which still carries
+# unscrubbed committed credentials), dump.sql (a tracked database dump with
+# account data), and any developer .env — all of which must never be able to
+# reach a published image.
+*
+
+!backend
+!frontend
+!execution-engine
+!infrastructure/aio
+
+# Re-excludes inside the allowed trees (last match wins). These mirror
+# backend/.dockerignore and frontend/.dockerignore, which do NOT apply when the
+# build context is the repo root.
+backend/.env
+backend/.env.*
+backend/celerybeat-schedule*
+backend/*.db
+backend/*.sqlite3
+backend/tests
+backend/requirements-dev.txt
+backend/venv
+backend/.venv
+backend/htmlcov
+backend/.coverage
+
+frontend/.env
+frontend/.env.*
+frontend/node_modules
+frontend/dist
+frontend/dist-ssr
+frontend/coverage
+
+execution-engine/.env
+execution-engine/.env.*
+execution-engine/node_modules
+execution-engine/dist
+
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.git
+**/.gitignore
+**/*.log
+**/.DS_Store
+**/.vscode
+**/.idea

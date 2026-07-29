@@ -119,7 +119,7 @@ services:
     networks: [traceiq_internal, traceiq_egress]
 
   backend:
-    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-backend:${TRACEIQ_VERSION:-latest}
     <<: *hardening
     # Only this service migrates; the Celery services below set it false so
     # four processes don't race on `alembic upgrade head`.
@@ -141,8 +141,12 @@ services:
     networks: [traceiq_internal, traceiq_egress]
 
   frontend:
-    image: ghcr.io/raja-9679/traceiq-frontend:${TRACEIQ_VERSION:-latest}
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-frontend:${TRACEIQ_VERSION:-latest}
     <<: *hardening
+    environment:
+      # Where nginx proxies /api/ to. Only change this when the backend runs
+      # OUTSIDE this compose stack (split deployment).
+      BACKEND_URL: ${FRONTEND_PROXY_BACKEND_URL:-http://backend:8000}
     ports:
       - "${FRONTEND_PORT:-8080}:80"
     depends_on:
@@ -150,7 +154,7 @@ services:
     networks: [traceiq_internal]
 
   celery_worker:
-    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-backend:${TRACEIQ_VERSION:-latest}
     <<: *hardening
     command: celery -A app.core.celery_app worker --loglevel=info -Q main-queue -c ${CELERY_CONCURRENCY:-4}
     environment:
@@ -161,7 +165,7 @@ services:
     networks: [traceiq_internal, traceiq_egress]
 
   celery_aggregator:
-    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-backend:${TRACEIQ_VERSION:-latest}
     <<: *hardening
     command: celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue -c 2
     environment:
@@ -174,7 +178,7 @@ services:
   # REQUIRED, not optional. Beat drains the jobs:results stream every 2s; without
   # it runs are dispatched and execute but never move out of RUNNING.
   celery_beat:
-    image: ghcr.io/raja-9679/traceiq-backend:${TRACEIQ_VERSION:-latest}
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-backend:${TRACEIQ_VERSION:-latest}
     <<: *hardening
     command: celery -A app.core.celery_app beat --loglevel=info
     environment:
@@ -185,7 +189,7 @@ services:
     networks: [traceiq_internal]
 
   execution-worker:
-    image: ghcr.io/raja-9679/traceiq-execution-worker:${TRACEIQ_VERSION:-latest}
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-execution-worker:${TRACEIQ_VERSION:-latest}
     <<: *hardening
     environment:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0

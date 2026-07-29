@@ -29,6 +29,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # Docker Hub publishing is optional: it activates only when both
+      # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repo secrets exist. Forks and
+      # secretless runs still publish to GHCR alone.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +47,12 @@ jobs:
           - name: execution-worker
             context: ./execution-engine
             dockerfile: ./execution-engine/Dockerfile.worker
+          # All-in-one demo tier: single `docker run`, secrets generated on
+          # first boot. Context is the repo root — the root .dockerignore is
+          # deny-by-default and is what keeps .git/dump.sql out of this build.
+          - name: aio
+            context: .
+            dockerfile: ./infrastructure/aio/Dockerfile
     steps:
       - uses: actions/checkout@v4
 
@@ -54,10 +65,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log in to Docker Hub
+        if: env.DOCKERHUB_USERNAME != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/traceiq-${{ matrix.name }}
+          # The `|| 'unset'` keeps the disabled Docker Hub entry syntactically
+          # valid when the secret is absent; `enable` drops it from the output.
+          images: |
+            name=${{ env.REGISTRY }}/${{ github.repository_owner }}/traceiq-${{ matrix.name }}
+            name=docker.io/${{ env.DOCKERHUB_USERNAME || 'unset' }}/traceiq-${{ matrix.name }},enable=${{ env.DOCKERHUB_USERNAME != '' }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -84,7 +106,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: [backend, frontend, execution-worker]
+        include:
+          - {name: backend, blocking: true}
+          - {name: frontend, blocking: true}
+          - {name: execution-worker, blocking: true}
+          # The AIO demo tier bundles postgres/redis/nginx, so it inherits
+          # their distro CVEs; those shouldn't be able to block a release of
+          # the production images. Scanned, reported, never enforced.
+          - {name: aio, blocking: false}
     steps:
       - name: Resolve tag
         id: t
@@ -102,7 +131,7 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           format: table
-          exit-code: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '0' }}
+          exit-code: ${{ startsWith(github.ref, 'refs/tags/v') && matrix.blocking && '1' || '0' }}
 
   verify-compose:
     # Proves the shipped compose file is loadable and, crucially, that it still
@@ -144,3 +173,19 @@ jobs:
             if [ "${#val}" -lt 32 ]; then echo "::error::$v is shorter than 32 chars"; exit 1; fi
           done
           echo "All generated secrets are present, long enough, and distinct."
+
+      - name: User-supplied secrets must win over generation
+        working-directory: infrastructure
+        run: |
+          custom="$(openssl rand -hex 24)"
+          POSTGRES_PASSWORD="$custom" ./traceiq-setup.sh --force >/dev/null
+          if ! grep -q "^POSTGRES_PASSWORD=${custom}$" .env; then
+            echo "::error::setup script ignored a user-supplied POSTGRES_PASSWORD"
+            exit 1
+          fi
+          # And invalid user input must be rejected, not written.
+          if SECRET_KEY="too-short" ./traceiq-setup.sh --force >/dev/null 2>&1; then
+            echo "::error::setup script accepted a 9-char SECRET_KEY"
+            exit 1
+          fi
+          echo "Override precedence and validation hold."

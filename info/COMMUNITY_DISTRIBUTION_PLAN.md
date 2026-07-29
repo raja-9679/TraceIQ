@@ -32,12 +32,27 @@ layer in the image build:
 
 | Layer | Protection | Effort |
 |---|---|---|
-| **PyArmor** (bytecode obfuscation + runtime guards) | Good — the pragmatic choice | Low-medium (Dockerfile stage) |
+| **PyArmor** (bytecode obfuscation + runtime guards) | Good — the pragmatic choice | Low-medium (Dockerfile stage) — needs a paid license (free trial caps file size below models.py) |
 | Nuitka / Cython (compile to native) | Strong | High — FastAPI/SQLModel/Celery dynamic imports are fiddly |
-| `.pyc`-only distribution | Weak (decompilers) | Trivial |
+| `.pyc`-only distribution | Weak-to-moderate (no working decompiler for 3.11+; disassembly still possible) | Trivial |
 
 Execution engine: esbuild bundle + minify `dist/`. Frontend: already
 minified bundles — nothing to do.
+
+**Status 2026-07-29 — implemented:** `.pyc`-only strip is live in
+`backend/Dockerfile` and the AIO image (`ARG STRIP_SOURCE=1`; alembic and
+scripts stay source). Worker/engine `dist/` is esbuild-minified.
+`LICENSE-COMMUNITY.md` added (draft).
+
+**Cython experiment result (2026-07-29): NOT VIABLE for this codebase.**
+All 98 modules compile, but pydantic v2 rejects Cython-compiled methods on
+model classes (`cyfunction` fails its namespace inspection →
+"non-annotated attribute" on every Settings/SQLModel/BaseModel class);
+`binding=False` does not change class-body function types. Fixing means
+`ignored_types` on every model or excluding models.py + most of api/ —
+which guts the benefit. If native compilation is ever revisited, trial
+Nuitka (claims full-compat function objects), and remember `app/` and
+`app/core/` are namespace packages — name inference breaks on them.
 
 ## Option 3 — Hybrid (recommended if self-hosting is demanded)
 

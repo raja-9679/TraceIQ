@@ -1,4 +1,7 @@
-FROM python:3.11-slim
+# Pinned to -bookworm: the un-suffixed tag floated to Debian trixie, which
+# renames chromium runtime libs in the manually-maintained list below
+# (libasound2 -> libasound2t64, etc).
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
@@ -34,6 +37,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY . .
 
 RUN chmod +x /app/docker-entrypoint.sh
+
+# Source protection for distributed images: compile app/ to Python 3.11
+# bytecode and delete the .py files. Not absolute protection (bytecode can be
+# disassembled), but no working decompiler exists for 3.11+ — this stops
+# source-copy, not a determined reverse engineer. See
+# info/COMMUNITY_DISTRIBUTION_PLAN.md for the ladder (Cython/Nuitka above).
+#
+# Kept as source on purpose:
+#   app/alembic/  — alembic's ScriptDirectory globs versions/*.py; stripping
+#                   it breaks every migration (and the schema is recoverable
+#                   from any running instance anyway, it isn't secret)
+#   scripts/      — invoked by path from the entrypoint; glue, not IP
+# Build with --build-arg STRIP_SOURCE=0 for a debuggable image (readable
+# tracebacks with source lines).
+ARG STRIP_SOURCE=1
+RUN if [ "$STRIP_SOURCE" = "1" ]; then \
+      python -m compileall -q -b app \
+      && find app -name '*.py' -not -path 'app/alembic/*' -delete \
+      && find app -name '__pycache__' -type d -prune -exec rm -rf {} + ; \
+    fi
 
 # Run as an unprivileged user. This image is distributed for self-hosting, and
 # the worker paths can execute user-supplied scripts when RAW_PLAYWRIGHT_ENABLED
