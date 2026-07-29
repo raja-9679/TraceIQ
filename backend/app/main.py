@@ -27,6 +27,7 @@ from app.api import app_builds as app_builds_api
 from app.api import case_revisions as case_revisions_api
 from app.api import observability as observability_api
 from app.api import onboarding as onboarding_api
+from app.api import instance_settings as instance_settings_api
 from app.core.config import settings as core_settings
 import logging
 
@@ -72,6 +73,7 @@ app.include_router(settings.router, prefix="/api/settings", tags=["settings"])
 app.include_router(workspaces.router, prefix="/api", tags=["workspaces"])
 app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(instance_settings_api.router, prefix="/api", tags=["instance-settings"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(api_keys.router, prefix="/api", tags=["api-keys"])

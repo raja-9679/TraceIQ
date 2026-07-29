@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings as SettingsIcon, User, Bell, Database, Zap, Save, X, Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle } from 'lucide-react';
+import { Settings as SettingsIcon, User, Bell, Database, Zap, Save, X, Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle, Server } from 'lucide-react';
+import InstanceSettingsSection from '@/components/settings/InstanceSettingsSection';
 import { toast } from 'sonner';
 import {
     Select,
@@ -262,6 +263,9 @@ export default function Settings() {
         { id: 'storage', name: 'Storage & Retention', icon: Database },
         { id: 'account', name: 'Account', icon: User },
         { id: 'security', name: 'Security (MFA)', icon: KeyRound },
+        // Tenant-admin only; the section itself shows an access message to
+        // non-admins (the API 403s), matching the Tenant Admin page pattern.
+        { id: 'instance', name: 'Instance (Admin)', icon: Server },
     ];
 
     return (
@@ -969,6 +973,7 @@ export default function Settings() {
                         {/* Account Settings */}
                         {activeSection === 'account' && <AccountSection />}
                         {activeSection === 'security' && <MfaSection />}
+                        {activeSection === 'instance' && <InstanceSettingsSection />}
 
                         {/* Save/Cancel Actions */}
                         {hasUnsavedChanges && (

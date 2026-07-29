@@ -32,6 +32,7 @@ import requests
 from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
 from app.core.config import settings
+from app.services import instance_settings as insvc
 from app.models import TestRun, TestSuite, Project, User, TestStatus
 import logging
 
@@ -122,15 +123,15 @@ def get_notification_settings(project: Optional[Project], session: Session) -> D
         - teams_enabled: Teams channel (TEAMS_NOTIFICATIONS_ENABLED)
         - notify_on_failure_only: Skip passed runs (NOTIFY_ON_FAILURE_ONLY)
     """
-    # Global defaults from environment
+    # Effective instance settings: admin UI (DB) override, else environment.
     defaults = {
-        'enabled': getattr(settings, 'NOTIFICATIONS_ENABLED', False),
-        'email_enabled': getattr(settings, 'EMAIL_NOTIFICATIONS_ENABLED', False),
-        'slack_enabled': getattr(settings, 'SLACK_NOTIFICATIONS_ENABLED', False),
-        'teams_enabled': getattr(settings, 'TEAMS_NOTIFICATIONS_ENABLED', False),
-        'notify_on_failure_only': getattr(settings, 'NOTIFY_ON_FAILURE_ONLY', True),
-        'slack_webhook_url': getattr(settings, 'SLACK_WEBHOOK_URL', None),
-        'teams_webhook_url': getattr(settings, 'TEAMS_WEBHOOK_URL', None),
+        'enabled': insvc.effective('NOTIFICATIONS_ENABLED'),
+        'email_enabled': insvc.effective('EMAIL_NOTIFICATIONS_ENABLED'),
+        'slack_enabled': insvc.effective('SLACK_NOTIFICATIONS_ENABLED'),
+        'teams_enabled': insvc.effective('TEAMS_NOTIFICATIONS_ENABLED'),
+        'notify_on_failure_only': insvc.effective('NOTIFY_ON_FAILURE_ONLY'),
+        'slack_webhook_url': insvc.effective('SLACK_WEBHOOK_URL'),
+        'teams_webhook_url': insvc.effective('TEAMS_WEBHOOK_URL'),
     }
 
     logger.debug(f"[Notification] Global settings: enabled={defaults['enabled']}, "
@@ -207,12 +208,12 @@ def send_email_notification(
         subject = content['title']
         body = build_email_body(content)
 
-        # Send via SMTP
-        smtp_host = getattr(settings, 'SMTP_HOST', None)
-        smtp_port = getattr(settings, 'SMTP_PORT', 587)
-        smtp_user = getattr(settings, 'SMTP_USER', None)
-        smtp_password = getattr(settings, 'SMTP_PASSWORD', None)
-        smtp_from = getattr(settings, 'SMTP_FROM', 'noreply@traceiq.io')
+        # Send via SMTP (effective settings: admin UI override, else env)
+        smtp_host = insvc.effective('SMTP_HOST')
+        smtp_port = insvc.effective('SMTP_PORT') or 587
+        smtp_user = insvc.effective('SMTP_USER')
+        smtp_password = insvc.effective('SMTP_PASSWORD')
+        smtp_from = insvc.effective('SMTP_FROM') or 'noreply@traceiq.io'
 
         if not smtp_host:
             logger.warning("[Email] SMTP not configured, skipping email")
@@ -483,17 +484,17 @@ def send_account_email(to_email: str, subject: str, html_body: str, text_body: s
     is unconfigured (dev), the message (including any link) is logged so flows
     remain testable.
     """
-    smtp_host = getattr(settings, 'SMTP_HOST', None)
-    smtp_from = getattr(settings, 'SMTP_FROM', 'noreply@traceiq.io')
+    smtp_host = insvc.effective('SMTP_HOST')
+    smtp_from = insvc.effective('SMTP_FROM') or 'noreply@traceiq.io'
     if not smtp_host:
         logger.warning("[Account] SMTP not configured; would send to %s: %s\n%s",
                        to_email, subject, text_body or html_body)
         return
 
     try:
-        smtp_port = getattr(settings, 'SMTP_PORT', 587)
-        smtp_user = getattr(settings, 'SMTP_USER', None)
-        smtp_password = getattr(settings, 'SMTP_PASSWORD', None)
+        smtp_port = insvc.effective('SMTP_PORT') or 587
+        smtp_user = insvc.effective('SMTP_USER')
+        smtp_password = insvc.effective('SMTP_PASSWORD')
 
         msg = MIMEMultipart('alternative')
         msg['Subject'] = subject
