@@ -94,6 +94,10 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("OIDC_CLIENT_SECRET", "sso", secret=True, label="Client secret"),
     SettingDef("OIDC_REDIRECT_URI", "sso", label="Redirect URI"),
     SettingDef("OIDC_POST_LOGIN_REDIRECT", "sso", label="Post-login redirect"),
+    SettingDef("PASSWORD_LOGIN_DISABLED", "sso", type="bool",
+               label="Disable password login (SSO only)",
+               description="requires a saved OIDC config; instance admins can still "
+                           "use password login as break-glass so you cannot lock yourself out"),
     # --- Policies ---
     SettingDef("MFA_REQUIRED", "policies", type="bool",
                label="Require MFA for all users",

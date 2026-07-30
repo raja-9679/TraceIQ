@@ -149,6 +149,16 @@ async def login_for_access_token(
             detail="This account has been deactivated",
         )
 
+    # SSO-only mode. Checked AFTER password verification so this endpoint
+    # never becomes an account-existence oracle, and instance admins keep
+    # password access as break-glass against a broken IdP config.
+    from app.services.instance_settings import effective as _effective
+    if _effective("PASSWORD_LOGIN_DISABLED") and not user.is_instance_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password login is disabled on this instance — sign in with SSO",
+        )
+
     # MFA gate: if enabled, don't issue tokens yet — return a short-lived
     # challenge the client redeems at /auth/mfa/login with a TOTP code.
     if user.mfa_enabled:
@@ -528,53 +538,22 @@ async def register_user(
         # We DO NOT create a default Workspace.
         
     else:
-        # 2. Standalone Flow (Tenant Creation)
-        user = User(
-            email=user_in.email,
-            hashed_password=get_password_hash(user_in.password),
-            full_name=user_in.full_name
-        )
-        session.add(user)
-        await session.flush()
-        
-        # Create New Tenant
-        from app.models import Tenant, UserSystemRole
-        # Use organization_name if provided, otherwise workspace_name, otherwise default
-        tenant_name = user_in.organization_name or user_in.workspace_name or f"{user_in.full_name or user_in.email}'s Workspace"
-        tenant = Tenant(name=tenant_name, owner_id=user.id)
-        session.add(tenant)
-        await session.flush() # Get Tenant ID
-        
-        # Assign Tenant Admin Role
-        ta_role = await rbac_service.get_role_by_name(session, "Tenant Admin")
-        if not ta_role:
-             raise HTTPException(500, "System configuration error: Tenant Admin role missing")
-             
-        usr = UserSystemRole(
-            user_id=user.id,
-            role_id=ta_role.id,
-            tenant_id=tenant.id
-        )
-        session.add(usr)
-        
-        # Create Default Workspace linked to Tenant
-        from app.services.workspace_service import workspace_service
-        # Note: workspace_service.create_workspace now accepts tenant_id
-        await workspace_service.create_workspace(
-            name=tenant_name, 
-            owner_id=user.id, 
-            session=session, 
-            commit=False, 
-            auto_create_project=True,
-            project_name=user_in.project_name,
-            tenant_id=tenant.id
-        )
-        
-        # Workspace Admin role is assigned inside create_workspace
-        
-        # Process any other pending email-based invitations (legacy / team invites)
-        await workspace_service.process_pending_invitations(user.email, user.id, session)
-        
+        # 2. Standalone Flow (own tenant + default workspace) — one code path
+        # shared with SSO JIT login and the ADMIN_EMAIL bootstrap.
+        from app.services.user_provisioning import provision_standalone_user
+        try:
+            user = await provision_standalone_user(
+                session,
+                email=user_in.email,
+                full_name=user_in.full_name,
+                hashed_password=get_password_hash(user_in.password),
+                organization_name=user_in.organization_name or user_in.workspace_name,
+                project_name=user_in.project_name,
+                commit=False,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(500, str(exc))
+
     await session.commit()
     await session.refresh(user)
     return user
@@ -768,9 +747,13 @@ def build_authorize_url(cfg: dict, state: str) -> str:
 
 @router.get("/sso/status")
 async def sso_status():
+    from app.services.instance_settings import effective as _effective
     enabled = _oidc_enabled()
     return {"enabled": enabled,
-            "issuer": _oidc("OIDC_ISSUER") if enabled else None}
+            "issuer": _oidc("OIDC_ISSUER") if enabled else None,
+            # Login page adapts: hide the password form in SSO-only mode
+            # (break-glass for instance admins stays at ?password=1).
+            "password_login_disabled": bool(_effective("PASSWORD_LOGIN_DISABLED")) and enabled}
 
 
 @router.get("/sso/login")
@@ -817,12 +800,17 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
 
     user = (await session.exec(select(User).where(User.email == email))).first()
     if not user:
-        user = User(email=email, full_name=info.get("name") or email.split("@")[0],
-                    hashed_password=get_password_hash(secrets.token_urlsafe(32)),
-                    is_active=True, is_verified=True, email_verified_at=datetime.utcnow())
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
+        # JIT provisioning through the shared standalone path, so SSO users
+        # land with a tenant + workspace instead of an empty account. The
+        # random password is unusable — they authenticate via the IdP.
+        from app.services.user_provisioning import provision_standalone_user
+        user = await provision_standalone_user(
+            session,
+            email=email,
+            full_name=info.get("name") or email.split("@")[0],
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            is_verified=True,
+        )
 
     tokens = await _issue_tokens(user, request, session)
     frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})

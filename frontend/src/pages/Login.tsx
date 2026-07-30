@@ -19,6 +19,10 @@ export default function Login() {
     // authenticator first; this holds the enrollment challenge token.
     const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
     const [ssoEnabled, setSsoEnabled] = useState(false);
+    // SSO-only mode: hide the password form. ?password=1 keeps a break-glass
+    // path for instance admins (the backend exempts them from the policy).
+    const [passwordLoginDisabled, setPasswordLoginDisabled] = useState(false);
+    const forcePasswordForm = new URLSearchParams(window.location.search).has('password');
 
     const { register, handleSubmit, formState: { errors } } = useForm();
     const API = API_BASE_URL;
@@ -26,7 +30,10 @@ export default function Login() {
     // SSO: detect the callback (#access_token=…) and finish login; also learn
     // whether SSO is configured so we can show the button.
     useEffect(() => {
-        axios.get(`${API}/auth/sso/status`).then((r) => setSsoEnabled(!!r.data?.enabled)).catch(() => {});
+        axios.get(`${API}/auth/sso/status`).then((r) => {
+            setSsoEnabled(!!r.data?.enabled);
+            setPasswordLoginDisabled(!!r.data?.password_login_disabled);
+        }).catch(() => {});
         const hash = window.location.hash.startsWith('#') ? new URLSearchParams(window.location.hash.slice(1)) : null;
         const ssoToken = hash?.get('access_token');
         if (ssoToken) {
@@ -378,7 +385,23 @@ export default function Login() {
                             </div>
 
                             <div className="bg-white/90 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-white ring-1 ring-zinc-100">
-                                {mfaSetupToken ? (
+                                {passwordLoginDisabled && !forcePasswordForm && !mfaSetupToken ? (
+                                    <div className="space-y-4">
+                                        <p className="text-sm text-zinc-500 text-center">
+                                            This instance uses single sign-on.
+                                        </p>
+                                        <a
+                                            href={`${API}/auth/sso/login`}
+                                            className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-900/10"
+                                        >
+                                            <Shield className="w-4 h-4" /> Sign in with SSO
+                                        </a>
+                                        <a href="?password=1"
+                                           className="block text-center text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors">
+                                            Administrator password sign-in
+                                        </a>
+                                    </div>
+                                ) : mfaSetupToken ? (
                                     <MfaEnrollment
                                         token={mfaSetupToken}
                                         onComplete={async (verify) => {

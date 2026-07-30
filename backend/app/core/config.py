@@ -51,6 +51,14 @@ class Settings(BaseSettings):
     # Password logins must enrol a TOTP authenticator before getting a session
     # (admin-editable at runtime via instance settings).
     MFA_REQUIRED: bool = False
+    # SSO-only mode: password login rejected for everyone except instance
+    # admins (break-glass). Admin-editable; refuses to enable without OIDC.
+    PASSWORD_LOGIN_DISABLED: bool = False
+    # First-boot instance admin (env-only, read once at startup). Created only
+    # if the email doesn't exist; changing ADMIN_PASSWORD later does NOT
+    # rewrite the stored hash.
+    ADMIN_EMAIL: Optional[str] = None
+    ADMIN_PASSWORD: Optional[str] = None
     # Hostnames always permitted regardless of where they resolve. Useful for
     # e.g. host.docker.internal on a developer machine.
     OUTBOUND_ALLOWED_HOSTS: list[str] = []

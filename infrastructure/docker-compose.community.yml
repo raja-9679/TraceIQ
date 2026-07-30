@@ -58,6 +58,11 @@ x-backend-env: &backend-env
   SMTP_FROM: ${SMTP_FROM:-noreply@example.com}
   SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
   TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-}
+  # Optional first-boot instance admin (created only if the email is new;
+  # see docs/ENTERPRISE_AUTH.md).
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+  ADMIN_FULL_NAME: ${ADMIN_FULL_NAME:-}
 
 x-hardening: &hardening
   security_opt:

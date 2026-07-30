@@ -30,11 +30,16 @@ async def get_current_instance_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Instance settings affect EVERY tenant, so tenant-admin is not enough:
-    self-registration makes each user Tenant Admin of their own tenant. The
-    instance operator is the admin of the FIRST (oldest) tenant — on a
-    self-hosted install that is the first account registered, exactly what
+    self-registration makes each user Tenant Admin of their own tenant.
+
+    Two ways in: the explicit `is_instance_admin` grant (transferable via
+    /admin/instance-admins, seeded by the ADMIN_EMAIL bootstrap), or the
+    legacy fallback — admin of the FIRST (oldest) tenant, which on a
+    self-hosted install is the first account registered, exactly what
     SELF_HOSTING.md promises.
     """
+    if current_user.is_instance_admin:
+        return current_user
     first_tenant_id = (await session.exec(
         select(func.min(Tenant.id)))).one()
     if first_tenant_id is None:
@@ -111,6 +116,16 @@ async def update_instance_settings(
     if unknown:
         raise HTTPException(status_code=400, detail=f"Unknown setting keys: {sorted(unknown)}")
 
+    # Lockout guard: SSO-only mode needs a working IdP config. (Instance
+    # admins are exempt from the setting either way — break-glass — but an
+    # instance with no SSO and no admin flag would be bricked.)
+    if body.values.get("PASSWORD_LOGIN_DISABLED") in (True, "true", "True", 1, "1"):
+        if not (insvc.effective("OIDC_ISSUER") and insvc.effective("OIDC_CLIENT_ID")
+                and insvc.effective("OIDC_CLIENT_SECRET")):
+            raise HTTPException(
+                status_code=400,
+                detail="Configure and save SSO (OIDC) before disabling password login")
+
     for key, value in body.values.items():
         d = insvc.REGISTRY[key]
         row = (await session.exec(
@@ -159,6 +174,82 @@ async def reset_instance_setting(
         await session.commit()
     insvc.invalidate_cache()
     return _read_one(key)
+
+
+class InstanceAdminRead(BaseModel):
+    id: int
+    email: str
+    full_name: str
+    explicit: bool      # holds the is_instance_admin grant (revocable here)
+    via_first_tenant: bool  # passes the legacy first-tenant-admin fallback
+
+
+@router.get("/admin/instance-admins", response_model=list[InstanceAdminRead])
+async def list_instance_admins(
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_instance_admin),
+):
+    """Everyone who passes the instance-admin guard, and why."""
+    explicit = (await session.exec(
+        select(User).where(User.is_instance_admin == True))).all()  # noqa: E712
+    first_tenant_id = (await session.exec(select(func.min(Tenant.id)))).one()
+    legacy = []
+    if first_tenant_id is not None:
+        legacy = (await session.exec(
+            select(User)
+            .join(UserSystemRole, UserSystemRole.user_id == User.id)
+            .join(Role, Role.id == UserSystemRole.role_id)
+            .where(UserSystemRole.tenant_id == first_tenant_id,
+                   Role.name == "Tenant Admin"))).all()
+    legacy_ids = {u.id for u in legacy}
+    out: dict[int, InstanceAdminRead] = {}
+    for u in explicit:
+        out[u.id] = InstanceAdminRead(
+            id=u.id, email=u.email, full_name=u.full_name,
+            explicit=True, via_first_tenant=u.id in legacy_ids)
+    for u in legacy:
+        if u.id not in out:
+            out[u.id] = InstanceAdminRead(
+                id=u.id, email=u.email, full_name=u.full_name,
+                explicit=False, via_first_tenant=True)
+    return list(out.values())
+
+
+@router.post("/admin/instance-admins/{user_id}", response_model=InstanceAdminRead)
+async def grant_instance_admin(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    _: User = Depends(get_current_instance_admin),
+):
+    user = await session.get(User, user_id)
+    if not user or not user.is_active:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_instance_admin = True
+    session.add(user)
+    await session.commit()
+    return InstanceAdminRead(id=user.id, email=user.email, full_name=user.full_name,
+                             explicit=True, via_first_tenant=False)
+
+
+@router.delete("/admin/instance-admins/{user_id}", response_model=InstanceAdminRead)
+async def revoke_instance_admin(
+    user_id: int,
+    session: AsyncSession = Depends(get_session),
+    admin: User = Depends(get_current_instance_admin),
+):
+    """Revokes the explicit grant only — the first-tenant fallback is not
+    revocable from the API, so an instance can never talk itself out of
+    having an operator."""
+    user = await session.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if user.id == admin.id:
+        raise HTTPException(status_code=400, detail="You cannot revoke your own instance-admin grant")
+    user.is_instance_admin = False
+    session.add(user)
+    await session.commit()
+    return InstanceAdminRead(id=user.id, email=user.email, full_name=user.full_name,
+                             explicit=False, via_first_tenant=False)
 
 
 @router.post("/admin/instance-settings/test-email")
