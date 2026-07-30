@@ -129,6 +129,11 @@ async def _user_from_jwt(token: str, session: AsyncSession) -> Optional[User]:
         email = payload.get("sub")
         if not email:
             return None
+        # Challenge tokens (MFA code pending / MFA enrollment pending) are NOT
+        # session tokens — without this check the 5-minute challenge returned
+        # BEFORE the TOTP code is entered would work as a full access token.
+        if payload.get("mfa_pending") or payload.get("mfa_setup_pending"):
+            return None
     except Exception:
         return None
     result = await session.exec(select(User).where(User.email == email))

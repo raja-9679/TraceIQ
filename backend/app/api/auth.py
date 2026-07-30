@@ -16,6 +16,7 @@ from app.core.auth import (
     hash_refresh_token,
     verify_password,
     get_current_user,
+    oauth2_scheme as _oauth2_scheme,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
@@ -91,6 +92,10 @@ class Token(BaseModel):
     # /auth/mfa/login with the TOTP code to obtain real tokens.
     mfa_required: bool = False
     mfa_token: Optional[str] = None
+    # MFA_REQUIRED instance policy: login succeeded but the account has no
+    # authenticator yet — the client must run enrollment (/mfa/setup +
+    # /mfa/verify) with the mfa_token before it gets a session.
+    mfa_setup_required: bool = False
 
 
 class MfaLoginRequest(BaseModel):
@@ -151,6 +156,17 @@ async def login_for_access_token(
             data={"sub": user.email, "mfa_pending": True},
             expires_delta=timedelta(minutes=5))
         return {"token_type": "bearer", "mfa_required": True, "mfa_token": challenge}
+
+    # MFA_REQUIRED instance policy: unenrolled users get an enrollment
+    # challenge instead of a session. /mfa/setup and /mfa/verify accept this
+    # token; verify then issues the real tokens. Challenge tokens are refused
+    # by every other endpoint (see core/auth._user_from_jwt).
+    from app.services.instance_settings import effective
+    if effective("MFA_REQUIRED") and not user.mfa_enabled:
+        challenge = create_access_token(
+            data={"sub": user.email, "mfa_setup_pending": True},
+            expires_delta=timedelta(minutes=15))
+        return {"token_type": "bearer", "mfa_setup_required": True, "mfa_token": challenge}
 
     return await _issue_tokens(user, request, session)
 
@@ -236,10 +252,45 @@ async def mfa_login(request: Request, body: MfaLoginRequest,
     return await _issue_tokens(user, request, session)
 
 
+class MfaEnrollmentPrincipal(BaseModel):
+    """Caller of the MFA enrollment endpoints: a normally-authenticated user
+    (Settings → Security), or a login that was stopped by the MFA_REQUIRED
+    policy and holds only the mfa_setup_pending challenge."""
+    model_config = {"arbitrary_types_allowed": True}
+    user: User
+    setup_pending: bool = False
+
+
+async def get_mfa_enrollment_principal(
+    token: Optional[str] = Depends(_oauth2_scheme),
+    session: AsyncSession = Depends(get_session),
+) -> MfaEnrollmentPrincipal:
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    email = payload.get("sub")
+    # mfa_pending (code challenge for an already-enrolled user) must NOT reach
+    # enrollment — that would let a stolen challenge re-enroll a new device.
+    if not email or payload.get("mfa_pending"):
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    user = (await session.exec(select(User).where(User.email == email))).first()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
+    return MfaEnrollmentPrincipal(
+        user=user, setup_pending=bool(payload.get("mfa_setup_pending")))
+
+
 @router.post("/mfa/setup")
-async def mfa_setup(current_user: User = Depends(get_current_user),
+async def mfa_setup(principal: MfaEnrollmentPrincipal = Depends(get_mfa_enrollment_principal),
                     session: AsyncSession = Depends(get_session)):
     """Generate a TOTP secret (not yet enforced) and return the enrollment URI."""
+    current_user = principal.user
+    if principal.setup_pending and current_user.mfa_enabled:
+        # Enrollment challenge for an account that enrolled in the meantime.
+        raise HTTPException(status_code=400, detail="MFA is already enabled; log in again")
     secret = totp.generate_secret()
     current_user.mfa_secret = encrypt_secret(secret)
     current_user.mfa_enabled = False  # not enforced until verified
@@ -250,9 +301,14 @@ async def mfa_setup(current_user: User = Depends(get_current_user),
 
 
 @router.post("/mfa/verify")
-async def mfa_verify(body: MfaCodeRequest, current_user: User = Depends(get_current_user),
+async def mfa_verify(body: MfaCodeRequest, request: Request,
+                     principal: MfaEnrollmentPrincipal = Depends(get_mfa_enrollment_principal),
                      session: AsyncSession = Depends(get_session)):
-    """Confirm a code against the pending secret and turn MFA on."""
+    """Confirm a code against the pending secret and turn MFA on.
+
+    When the caller came through the MFA_REQUIRED enrollment challenge this
+    also issues the session tokens login withheld."""
+    current_user = principal.user
     if not current_user.mfa_secret:
         raise HTTPException(status_code=400, detail="Run /mfa/setup first")
     if not totp.verify(decrypt_secret(current_user.mfa_secret), body.code):
@@ -262,7 +318,10 @@ async def mfa_verify(body: MfaCodeRequest, current_user: User = Depends(get_curr
     await session.commit()
     # Issue backup codes (shown once) so a lost device doesn't lock the user out.
     codes = await _generate_recovery_codes(current_user.id, session)
-    return {"mfa_enabled": True, "recovery_codes": codes}
+    out: dict = {"mfa_enabled": True, "recovery_codes": codes}
+    if principal.setup_pending:
+        out.update(await _issue_tokens(current_user, request, session))
+    return out
 
 
 @router.post("/mfa/disable")

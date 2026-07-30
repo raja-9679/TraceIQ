@@ -95,6 +95,10 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("OIDC_REDIRECT_URI", "sso", label="Redirect URI"),
     SettingDef("OIDC_POST_LOGIN_REDIRECT", "sso", label="Post-login redirect"),
     # --- Policies ---
+    SettingDef("MFA_REQUIRED", "policies", type="bool",
+               label="Require MFA for all users",
+               description="password logins must enrol an authenticator app before "
+                           "getting a session; SSO logins are governed by the IdP"),
     SettingDef("ALLOW_PRIVATE_NETWORK_TARGETS", "policies", type="bool",
                label="Allow tests against private networks",
                description="lets any user of this instance probe your internal network"),

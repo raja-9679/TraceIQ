@@ -6,6 +6,7 @@ import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ArrowRight, LayoutGrid, Check, X, AlertTriangle, Terminal, Zap, Shield, Workflow, Sparkles } from "lucide-react";
+import MfaEnrollment from "@/components/MfaEnrollment";
 
 export default function Login() {
     const { login } = useAuth();
@@ -14,6 +15,9 @@ export default function Login() {
     const [error, setError] = useState("");
     const [mfaToken, setMfaToken] = useState<string | null>(null);
     const [mfaCode, setMfaCode] = useState("");
+    // MFA_REQUIRED policy: login succeeded but the account must enrol an
+    // authenticator first; this holds the enrollment challenge token.
+    const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
     const [ssoEnabled, setSsoEnabled] = useState(false);
 
     const { register, handleSubmit, formState: { errors } } = useForm();
@@ -118,6 +122,11 @@ export default function Login() {
                 setMfaToken(response.data.mfa_token);
                 setError("");
                 return;  // show the code step
+            }
+            if (response.data.mfa_setup_required) {
+                setMfaSetupToken(response.data.mfa_token);
+                setError("");
+                return;  // show the enrollment step
             }
             await finishLogin(response.data.access_token);
         } catch (err: any) {
@@ -369,6 +378,20 @@ export default function Login() {
                             </div>
 
                             <div className="bg-white/90 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-white ring-1 ring-zinc-100">
+                                {mfaSetupToken ? (
+                                    <MfaEnrollment
+                                        token={mfaSetupToken}
+                                        onComplete={async (verify) => {
+                                            if (verify.access_token) {
+                                                await finishLogin(verify.access_token);
+                                            } else {
+                                                // Shouldn't happen on the policy path; fall back to a fresh login.
+                                                setMfaSetupToken(null);
+                                                setError("2FA enabled — sign in again.");
+                                            }
+                                        }}
+                                    />
+                                ) : (
                                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                                     <AnimatePresence>
                                         {error && (
@@ -449,6 +472,7 @@ export default function Login() {
                                         </a>
                                     )}
                                 </form>
+                                )}
                             </div>
 
                             <div className="mt-8 text-center flex items-center justify-center gap-2">
