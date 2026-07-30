@@ -30,7 +30,7 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'notifications', title: 'Notification channels', description: 'Which channels fire when runs finish.' },
     { id: 'ai', title: 'AI provider (legacy single-provider fallback)', description: 'Used only when NO saved providers exist above. Applies to the backend; execution workers read their own environment.' },
     { id: 'storage', title: 'Storage (S3 / MinIO)', description: 'Where artifacts (traces, videos, screenshots) live.' },
-    { id: 'sso', title: 'Single sign-on (OIDC)', description: 'Optional. Password login always stays available, so a bad value here cannot lock you out.' },
+    { id: 'sso', title: 'Single sign-on (OIDC)', description: 'Optional. Works with Entra ID, Okta, Google Workspace, Keycloak — any OIDC IdP. Instance admins always keep password login as break-glass, so a bad value here cannot lock you out.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
 ];
 

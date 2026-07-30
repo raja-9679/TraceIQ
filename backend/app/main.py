@@ -45,6 +45,14 @@ async def lifespan(app: FastAPI):
         logger.warning("[config] %s", warning)
     await init_db()
     minio_client.ensure_bucket()
+    # Optional first-boot instance admin (ADMIN_EMAIL/ADMIN_PASSWORD env).
+    try:
+        from app.core.database import async_session_factory
+        from app.services.user_provisioning import ensure_bootstrap_admin
+        async with async_session_factory() as session:
+            await ensure_bootstrap_admin(session)
+    except Exception:
+        logger.exception("bootstrap admin provisioning failed; continuing startup")
     logger.info("Startup complete")
     yield
     logger.info("Shutting down...")

@@ -703,6 +703,13 @@ class User(SQLModel, table=True):
     mfa_enabled: bool = Field(default=False)
     mfa_secret: Optional[str] = Field(default=None)
 
+    # Explicit, transferable instance-operator grant. Admins of the FIRST
+    # tenant also pass the instance-admin guard (legacy fallback) so existing
+    # installs keep working; this flag is what grant/revoke manages and what
+    # the ADMIN_EMAIL bootstrap sets. Break-glass: exempt from
+    # PASSWORD_LOGIN_DISABLED.
+    is_instance_admin: bool = Field(default=False)
+
 
 class AccountToken(SQLModel, table=True):
     """Single-use token for password reset and email verification.
