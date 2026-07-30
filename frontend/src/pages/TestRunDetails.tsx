@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl } from "@/lib/api";
+import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl } from "@/lib/api";
+import { llmProvidersApi } from "@/api/llmProviders";
 import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
@@ -99,6 +100,32 @@ export default function TestRunDetails() {
         },
         onError: (error: any) => {
             toast.error("Failed to complete test run", {
+                description: error.response?.data?.detail || "An error occurred"
+            });
+        }
+    });
+
+    // On-demand AI failure analysis with a user-chosen provider ('' = default)
+    const [analysisProviderId, setAnalysisProviderId] = useState<string>('');
+    const { data: aiProviders } = useQuery({
+        queryKey: ['llm-providers-active'],
+        queryFn: llmProvidersApi.listActive,
+        staleTime: 60_000,
+        retry: false,
+    });
+
+    const analyzeMutation = useMutation({
+        mutationFn: () => api.post(`/runs/${runId}/analyze`, {
+            provider_id: analysisProviderId ? parseInt(analysisProviderId, 10) : null,
+        }),
+        onSuccess: () => {
+            toast.success("Analysis queued — results appear here shortly");
+            // Finished runs have no live WebSocket, so poll a few times.
+            [4000, 9000, 16000, 25000].forEach((ms) =>
+                setTimeout(() => queryClient.invalidateQueries({ queryKey: ["run", runId] }), ms));
+        },
+        onError: (error: any) => {
+            toast.error("Failed to queue analysis", {
                 description: error.response?.data?.detail || "An error occurred"
             });
         }
@@ -285,12 +312,47 @@ export default function TestRunDetails() {
                             </div>
                         )}
 
-                        {run.ai_analysis && (
+                        {(run.ai_analysis || run.status === 'failed' || run.status === 'error') && (
                             <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl p-5 shadow-sm">
-                                <h3 className="text-indigo-800 font-semibold flex items-center gap-2 mb-3">
-                                    <Brain size={18} className="text-indigo-600" /> AI Root Cause Analysis
-                                </h3>
-                                {(() => {
+                                <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+                                    <h3 className="text-indigo-800 font-semibold flex items-center gap-2">
+                                        <Brain size={18} className="text-indigo-600" /> AI Root Cause Analysis
+                                    </h3>
+                                    {(run.status === 'failed' || run.status === 'error') && (
+                                        <div className="flex items-center gap-2">
+                                            {(aiProviders || []).length > 0 && (
+                                                <select
+                                                    value={analysisProviderId}
+                                                    onChange={(e) => setAnalysisProviderId(e.target.value)}
+                                                    className="text-xs border border-indigo-200 rounded-md px-2 py-1.5 bg-white/70 text-indigo-800"
+                                                    title="AI provider for this analysis"
+                                                >
+                                                    <option value="">Default provider</option>
+                                                    {(aiProviders || []).map((p) => (
+                                                        <option key={p.id} value={p.id}>
+                                                            {p.name} ({p.model})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            )}
+                                            <button
+                                                onClick={() => analyzeMutation.mutate()}
+                                                disabled={analyzeMutation.isPending}
+                                                className="text-xs font-semibold text-indigo-700 bg-white/80 border border-indigo-200 rounded-md px-3 py-1.5 hover:bg-white disabled:opacity-50 transition-colors"
+                                            >
+                                                {analyzeMutation.isPending
+                                                    ? 'Queuing…'
+                                                    : run.ai_analysis ? 'Re-analyze' : 'Analyze failures'}
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                                {!run.ai_analysis && (
+                                    <p className="text-sm text-indigo-500">
+                                        No analysis yet — pick a provider and hit Analyze failures.
+                                    </p>
+                                )}
+                                {run.ai_analysis && (() => {
                                     const analysis: any = run.ai_analysis;
                                     // Typed RunFailureAnalysis (schema_version >= 1) vs legacy freeform text
                                     if (typeof analysis === 'object' && analysis?.schema_version) {

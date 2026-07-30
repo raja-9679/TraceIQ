@@ -26,7 +26,7 @@ _MAX_PER_RUN = int(os.getenv("FAILURE_ANALYSIS_MAX_PER_RUN", "5"))
 
 
 @celery_app.task(name="app.tasks.analysis_tasks.analyze_run_failures")
-def analyze_run_failures(run_id: int) -> Dict[str, Any]:
+def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[str, Any]:
     from app.services.failure_analysis import analyze_case_failure, build_run_rollup
 
     with Session(_engine) as session:
@@ -69,6 +69,7 @@ def analyze_run_failures(run_id: int) -> Dict[str, Any]:
                     steps=steps,
                     response_status=result.response_status,
                     request_url=result.request_url,
+                    provider_id=provider_id,
                 )
                 result.ai_analysis = report.model_dump_json()
                 session.add(result)
