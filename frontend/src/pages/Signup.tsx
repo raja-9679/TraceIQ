@@ -6,6 +6,7 @@ import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, ArrowRight, Code2, Globe, Database, Rocket, Users, Lock, Check, Sparkles } from "lucide-react";
+import MfaEnrollment from "@/components/MfaEnrollment";
 
 export default function Signup() {
     const { login } = useAuth();
@@ -16,6 +17,13 @@ export default function Signup() {
 
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
+    // Post-registration 2FA step. Optional by default ("secure your account");
+    // mandatory (no skip) when the instance enforces MFA_REQUIRED, in which
+    // case mfaStep.token is the enrollment challenge and verify returns the
+    // session tokens.
+    const [mfaStep, setMfaStep] = useState<{
+        token: string; mandatory: boolean; user: any;
+    } | null>(null);
 
     const { register, handleSubmit, watch, formState: { errors } } = useForm({
         defaultValues: {
@@ -54,10 +62,21 @@ export default function Signup() {
             formData.append('password', data.password);
 
             const loginResponse = await axios.post(`${API_BASE_URL}/auth/login`, formData);
-            const { access_token } = loginResponse.data;
 
+            if (loginResponse.data.mfa_setup_required) {
+                // Instance enforces MFA: no session yet, enrollment is mandatory.
+                setMfaStep({
+                    token: loginResponse.data.mfa_token,
+                    mandatory: true,
+                    user: registerResponse.data,
+                });
+                return;
+            }
+
+            const { access_token } = loginResponse.data;
             login(access_token, registerResponse.data);
-            navigate("/");
+            // Offer (optional) 2FA enrollment before entering the app.
+            setMfaStep({ token: access_token, mandatory: false, user: registerResponse.data });
         } catch (err: any) {
             console.error("Registration failed", err);
             setError(err.response?.data?.detail || "Registration failed. Please try again.");
@@ -317,6 +336,19 @@ export default function Signup() {
                             </div>
 
                             <div className="bg-white/90 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-white ring-1 ring-zinc-100">
+                                {mfaStep ? (
+                                    <MfaEnrollment
+                                        token={mfaStep.token}
+                                        onSkip={mfaStep.mandatory ? undefined : () => navigate("/")}
+                                        onComplete={(verify) => {
+                                            if (mfaStep.mandatory && verify.access_token) {
+                                                // Enrollment unblocked the session — store it now.
+                                                login(verify.access_token, mfaStep.user);
+                                            }
+                                            navigate("/");
+                                        }}
+                                    />
+                                ) : (
                                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                                     <AnimatePresence>
                                         {error && (
@@ -413,6 +445,7 @@ export default function Signup() {
                                         )}
                                     </button>
                                 </form>
+                                )}
                             </div>
 
                             <div className="mt-8 text-center">

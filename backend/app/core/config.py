@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # lets a user probe your internal network. Link-local/metadata addresses
     # (169.254.169.254) stay blocked either way.
     ALLOW_PRIVATE_NETWORK_TARGETS: bool = False
+    # Password logins must enrol a TOTP authenticator before getting a session
+    # (admin-editable at runtime via instance settings).
+    MFA_REQUIRED: bool = False
     # Hostnames always permitted regardless of where they resolve. Useful for
     # e.g. host.docker.internal on a developer machine.
     OUTBOUND_ALLOWED_HOSTS: list[str] = []
