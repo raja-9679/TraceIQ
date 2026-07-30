@@ -377,6 +377,12 @@ Users pull prebuilt images rather than building from source. See
   the root `.dockerignore` is deny-by-default and is the only thing keeping
   `.git` and `dump.sql` out of that context — treat it like the other two.
   Chromium-only, one worker; production stays on the compose file.
+- Mobile testing ships as an optional `mobile` profile in the community
+  compose (emulator + appium + mobile-worker; worker runs
+  `node dist/mobile-worker.js` from the same execution-worker image). The
+  emulator needs `/dev/kvm` and runs privileged (deliberately outside the
+  hardening anchor). Device-cloud mode (`MOBILE_DEVICE_PROVIDER`) works
+  without KVM. See SELF_HOSTING.md → "Optional: mobile app testing".
 - Base images are pinned to `python:3.11-slim-bookworm`: the un-suffixed tag
   floated to Debian trixie, which drops `postgresql-15` and renames chromium
   runtime libs that `backend/Dockerfile` lists manually.
