@@ -23,6 +23,9 @@ export default function Login() {
     // path for instance admins (the backend exempts them from the policy).
     const [passwordLoginDisabled, setPasswordLoginDisabled] = useState(false);
     const forcePasswordForm = new URLSearchParams(window.location.search).has('password');
+    // Corporate (LDAP) login: tab appears when the instance has it configured.
+    const [ldapEnabled, setLdapEnabled] = useState(false);
+    const [loginMode, setLoginMode] = useState<'password' | 'ldap'>('password');
 
     const { register, handleSubmit, formState: { errors } } = useForm();
     const API = API_BASE_URL;
@@ -34,6 +37,7 @@ export default function Login() {
             setSsoEnabled(!!r.data?.enabled);
             setPasswordLoginDisabled(!!r.data?.password_login_disabled);
         }).catch(() => {});
+        axios.get(`${API}/auth/ldap/status`).then((r) => setLdapEnabled(!!r.data?.enabled)).catch(() => {});
         const hash = window.location.hash.startsWith('#') ? new URLSearchParams(window.location.hash.slice(1)) : null;
         const ssoToken = hash?.get('access_token');
         if (ssoToken) {
@@ -120,10 +124,17 @@ export default function Login() {
                 return;
             }
 
-            const formData = new FormData();
-            formData.append('username', data.email);
-            formData.append('password', data.password);
-            const response = await axios.post(`${API}/auth/login`, formData);
+            let response;
+            if (loginMode === 'ldap') {
+                response = await axios.post(`${API}/auth/ldap/login`, {
+                    username: data.email, password: data.password,
+                });
+            } else {
+                const formData = new FormData();
+                formData.append('username', data.email);
+                formData.append('password', data.password);
+                response = await axios.post(`${API}/auth/login`, formData);
+            }
 
             if (response.data.mfa_required) {
                 setMfaToken(response.data.mfa_token);
@@ -432,14 +443,29 @@ export default function Login() {
 
                                     {!mfaToken && (
                                         <>
+                                            {ldapEnabled && (
+                                                <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 rounded-lg">
+                                                    {(['password', 'ldap'] as const).map((mode) => (
+                                                        <button
+                                                            key={mode} type="button"
+                                                            onClick={() => setLoginMode(mode)}
+                                                            className={`py-1.5 text-[11px] font-semibold rounded-md transition-colors ${loginMode === mode ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                                                        >
+                                                            {mode === 'password' ? 'Email' : 'Corporate (LDAP)'}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
                                             <div className="space-y-2">
-                                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Work Email</label>
+                                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
+                                                    {loginMode === 'ldap' ? 'Corporate username' : 'Work Email'}
+                                                </label>
                                                 <input
                                                     {...register("email", { required: "Required" })}
-                                                    type="email"
+                                                    type={loginMode === 'ldap' ? 'text' : 'email'}
                                                     autoFocus
                                                     className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
-                                                    placeholder="name@company.com"
+                                                    placeholder={loginMode === 'ldap' ? 'jsmith' : 'name@company.com'}
                                                 />
                                                 {errors.email && <span className="text-xs text-red-500">{errors.email.message as string}</span>}
                                             </div>
@@ -447,7 +473,9 @@ export default function Login() {
                                             <div className="space-y-2">
                                                 <div className="flex justify-between items-center">
                                                     <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
+                                                    {loginMode !== 'ldap' && (
                                                     <Link to="/forgot-password" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-900 transition-colors">Forgot?</Link>
+                                                    )}
                                                 </div>
                                                 <input
                                                     {...register("password", { required: "Required" })}

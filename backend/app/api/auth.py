@@ -745,6 +745,60 @@ def build_authorize_url(cfg: dict, state: str) -> str:
     return f"{cfg['authorization_endpoint']}?{urlencode(params)}"
 
 
+class LdapLoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+@router.get("/ldap/status")
+async def ldap_status():
+    """Whether corporate (LDAP) login is configured — drives the login page tab."""
+    from app.services.ldap_auth import is_configured
+    return {"enabled": is_configured()}
+
+
+@router.post("/ldap/login", response_model=Token)
+@limiter.limit("5/minute")
+async def ldap_login(request: Request, body: LdapLoginRequest,
+                     session: AsyncSession = Depends(get_session)):
+    """Corporate login: bind against the configured directory AS the user,
+    then JIT-provision (like SSO) and issue tokens. A user-level MFA
+    enrollment still challenges; the MFA_REQUIRED policy does not apply —
+    directory-managed identity is treated like SSO.
+    """
+    import asyncio
+
+    from app.services.ldap_auth import LdapAuthError, authenticate, is_configured
+
+    if not is_configured():
+        raise HTTPException(status_code=404, detail="LDAP login is not configured")
+    try:
+        identity = await asyncio.to_thread(authenticate, body.username, body.password)
+    except LdapAuthError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+
+    user = (await session.exec(select(User).where(User.email == identity.email))).first()
+    if not user:
+        from app.services.user_provisioning import provision_standalone_user
+        user = await provision_standalone_user(
+            session,
+            email=identity.email,
+            full_name=identity.full_name,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            is_verified=True,
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been deactivated")
+
+    if user.mfa_enabled:
+        challenge = create_access_token(
+            data={"sub": user.email, "mfa_pending": True},
+            expires_delta=timedelta(minutes=5))
+        return {"token_type": "bearer", "mfa_required": True, "mfa_token": challenge}
+
+    return await _issue_tokens(user, request, session)
+
+
 @router.get("/sso/status")
 async def sso_status():
     from app.services.instance_settings import effective as _effective
