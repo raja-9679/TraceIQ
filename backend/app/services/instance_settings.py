@@ -98,6 +98,20 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="Disable password login (SSO only)",
                description="requires a saved OIDC config; instance admins can still "
                            "use password login as break-glass so you cannot lock yourself out"),
+    # --- LDAP / on-prem Active Directory ---
+    SettingDef("LDAP_SERVER_URL", "ldap", label="Server URL",
+               description="ldaps://dc01.corp.example.com:636 — prefer ldaps; plain "
+                           "ldap sends passwords in clear unless StartTLS is on"),
+    SettingDef("LDAP_BIND_DN_TEMPLATE", "ldap", label="Bind DN template",
+               description="{username} is substituted, e.g. {username}@corp.example.com "
+                           "(AD) or uid={username},ou=people,dc=example,dc=com"),
+    SettingDef("LDAP_SEARCH_BASE", "ldap", label="Search base (optional)",
+               description="dc=corp,dc=example,dc=com — enables email/name lookup after bind"),
+    SettingDef("LDAP_EMAIL_DOMAIN", "ldap", label="Email domain fallback",
+               description="used when the directory returns no mail attribute and the "
+                           "username is not an email"),
+    SettingDef("LDAP_STARTTLS", "ldap", type="bool", label="StartTLS",
+               description="upgrade a plain ldap:// connection to TLS before binding"),
     # --- Policies ---
     SettingDef("MFA_REQUIRED", "policies", type="bool",
                label="Require MFA for all users",

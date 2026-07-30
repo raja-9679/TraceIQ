@@ -59,6 +59,12 @@ class Settings(BaseSettings):
     # rewrite the stored hash.
     ADMIN_EMAIL: Optional[str] = None
     ADMIN_PASSWORD: Optional[str] = None
+    # LDAP / on-prem AD login (all admin-editable via instance settings).
+    LDAP_SERVER_URL: Optional[str] = None
+    LDAP_BIND_DN_TEMPLATE: Optional[str] = None
+    LDAP_SEARCH_BASE: Optional[str] = None
+    LDAP_EMAIL_DOMAIN: Optional[str] = None
+    LDAP_STARTTLS: bool = False
     # Hostnames always permitted regardless of where they resolve. Useful for
     # e.g. host.docker.internal on a developer machine.
     OUTBOUND_ALLOWED_HOSTS: list[str] = []

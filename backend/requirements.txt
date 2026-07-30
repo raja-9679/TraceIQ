@@ -19,5 +19,7 @@ croniter==2.0.2
 slowapi==0.1.9
 anthropic==0.39.0
 PyYAML==6.0.1
+# LDAP / on-prem Active Directory login (pure Python — no libldap needed)
+ldap3==2.9.1
 
 alembic==1.13.1
