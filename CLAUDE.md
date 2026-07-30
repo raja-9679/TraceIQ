@@ -253,6 +253,31 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   their own tenant). UI: Settings → "Instance (Admin)" tab. Execution workers
   still read their own env (LLM keys, MinIO) — worker-side config is not
   DB-driven.
+- **Multi-provider AI registry** — `llm_provider_config` table: several saved
+  LLM providers (Fernet-encrypted keys), multiple active at once, one default.
+  `app/ai/providers.py:get_provider(provider_id)`; the module-level `provider`
+  resolves the DB default first and falls back to the legacy single-provider
+  instance settings when NO rows exist. Admin CRUD + per-provider test at
+  `/api/admin/llm-providers`; user-facing picker list at
+  `/api/llm-providers/active`; `POST /api/runs/{id}/analyze` re-runs failure
+  analysis with a chosen `provider_id`. Usage events attribute per config
+  *name* (so `/ai-usage` splits per saved provider). Workers still env-only.
+- **Enterprise auth** (see `docs/ENTERPRISE_AUTH.md`) —
+  `MFA_REQUIRED` instance setting: password logins must enrol TOTP before
+  getting a session (challenge tokens carry `mfa_setup_pending` and are
+  refused as session tokens by `_user_from_jwt` — as is `mfa_pending`; that
+  rejection is a security fix, challenge tokens used to pass as full JWTs).
+  Signup offers an optional enrollment step. `ADMIN_EMAIL`/`ADMIN_PASSWORD`
+  env bootstrap a first-boot instance admin (create-only, never a rolling
+  password authority). `users.is_instance_admin` is the explicit operator
+  grant (`/api/admin/instance-admins`); first-tenant-admin remains a fallback.
+  `PASSWORD_LOGIN_DISABLED` = SSO-only mode (refuses without OIDC saved;
+  instance admins keep password break-glass, UI at `/login?password=1`).
+  SSO JIT + LDAP + register all provision through
+  `app/services/user_provisioning.py` (tenant + workspace + pending invites).
+  LDAP login (`app/services/ldap_auth.py`, ldap3, bind-as-user, instance
+  settings group `ldap`) at `POST /api/auth/ldap/login` — backend image
+  rebuild needed for the ldap3 dep.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
 
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
