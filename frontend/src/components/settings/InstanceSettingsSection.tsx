@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, RotateCcw, Save, Send, Sparkles, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
+import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
 
 // Mirrors backend/app/api/instance_settings.py::SettingRead
 interface InstanceSetting {
@@ -27,7 +28,7 @@ interface InstanceSetting {
 const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'email', title: 'Email (SMTP)', description: 'Outgoing mail for run notifications, password resets and invites.' },
     { id: 'notifications', title: 'Notification channels', description: 'Which channels fire when runs finish.' },
-    { id: 'ai', title: 'AI provider', description: 'LLM used for failure analysis and healing. Applies to the backend; execution workers read their own environment.' },
+    { id: 'ai', title: 'AI provider (legacy single-provider fallback)', description: 'Used only when NO saved providers exist above. Applies to the backend; execution workers read their own environment.' },
     { id: 'storage', title: 'Storage (S3 / MinIO)', description: 'Where artifacts (traces, videos, screenshots) live.' },
     { id: 'sso', title: 'Single sign-on (OIDC)', description: 'Optional. Password login always stays available, so a bad value here cannot lock you out.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
@@ -186,7 +187,9 @@ export default function InstanceSettingsSection() {
                 const items = byGroup(group.id);
                 if (items.length === 0) return null;
                 return (
-                    <Card key={group.id}>
+                    <div key={group.id} className="space-y-6">
+                    {group.id === 'ai' && <LLMProvidersCard />}
+                    <Card>
                         <CardHeader>
                             <CardTitle className="text-lg">{group.title}</CardTitle>
                             <CardDescription>{group.description}</CardDescription>
@@ -270,6 +273,7 @@ export default function InstanceSettingsSection() {
                             )}
                         </CardContent>
                     </Card>
+                    </div>
                 );
             })}
 

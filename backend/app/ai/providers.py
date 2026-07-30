@@ -8,8 +8,9 @@ var without touching call sites.
 from __future__ import annotations
 
 import os
+import threading
 import time
-from typing import List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 from app.services.llm_usage import llm_tokens_quota_exceeded, record_llm_usage
 
@@ -221,9 +222,7 @@ _AI_KEYS = ("LLM_PROVIDER", "LLM_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
 
 
 class _ProviderProxy:
-    """Module-level `provider` used to be a singleton frozen at import, which
-    meant admin UI changes to the AI settings needed a process restart. This
-    proxy rebuilds the underlying provider whenever the effective AI config
+    """Rebuilds the legacy single provider whenever the effective AI config
     changes (effective() is TTL-cached, so the signature check is cheap)."""
 
     def __init__(self) -> None:
@@ -237,12 +236,151 @@ class _ProviderProxy:
             self._sig = sig
         return self._built
 
+
+_legacy_proxy = _ProviderProxy()
+
+
+# ---------------------------------------------------------------------------
+# Saved provider configs (llm_provider_config table, admin-managed)
+# ---------------------------------------------------------------------------
+
+_CFG_TTL_SECONDS = 15.0
+_cfg_lock = threading.Lock()
+_cfg_cache: List[Dict[str, Any]] = []
+_cfg_cache_at: float = 0.0
+_built_from_cfg: Dict[int, tuple] = {}   # id -> (updated_at, LLMProvider)
+
+
+def _load_provider_configs_sync() -> List[Dict[str, Any]]:
+    from sqlalchemy import text
+    from app.core.secrets import decrypt_secret
+    # Shares the small sync pool instance_settings already keeps around.
+    from app.services.instance_settings import _sync_engine
+    with _sync_engine().connect() as conn:
+        rows = conn.execute(text(
+            "SELECT id, name, provider_type, model, base_url, api_key_encrypted,"
+            " is_active, is_default, updated_at FROM llm_provider_config"
+        )).fetchall()
+    out: List[Dict[str, Any]] = []
+    for r in rows:
+        api_key = ""
+        if r.api_key_encrypted:
+            try:
+                api_key = decrypt_secret(r.api_key_encrypted)
+            except Exception:
+                print(f"[LLM] cannot decrypt api key for provider config '{r.name}' "
+                      "(SECRET_KEY rotated?); treating as keyless")
+        out.append({
+            "id": r.id, "name": r.name, "provider_type": r.provider_type,
+            "model": r.model, "base_url": r.base_url, "api_key": api_key,
+            "is_active": r.is_active, "is_default": r.is_default,
+            "updated_at": r.updated_at,
+        })
+    return out
+
+
+def _provider_configs() -> List[Dict[str, Any]]:
+    """TTL-cached saved configs; empty list (legacy behavior) when the table
+    is missing or the DB is unavailable."""
+    global _cfg_cache, _cfg_cache_at
+    now = time.monotonic()
+    with _cfg_lock:
+        if now - _cfg_cache_at < _CFG_TTL_SECONDS:
+            return _cfg_cache
+    try:
+        fresh = _load_provider_configs_sync()
+    except Exception:
+        fresh = []
+    with _cfg_lock:
+        _cfg_cache, _cfg_cache_at = fresh, now
+    return fresh
+
+
+def invalidate_provider_config_cache() -> None:
+    global _cfg_cache_at
+    with _cfg_lock:
+        _cfg_cache_at = 0.0
+
+
+def build_provider_from_config(cfg: Dict[str, Any]) -> LLMProvider:
+    """Instantiate a provider from a saved config row. The instance's `name`
+    is the config's display name so LLMUsageEvent rows attribute per config."""
+    ptype = (cfg.get("provider_type") or "").strip().lower()
+    model = cfg.get("model") or ""
+    key = cfg.get("api_key") or ""
+    base_url = cfg.get("base_url") or None
+    label = cfg.get("name") or ptype
+    built: LLMProvider
+    if ptype == "anthropic":
+        if not key:
+            return NullProvider()
+        built = AnthropicProvider(api_key=key, model=model or "claude-opus-4-8")
+    elif ptype == "openai":
+        if not key:
+            return NullProvider()
+        built = OpenAICompatibleProvider(label, api_key=key, model=model or "gpt-4o",
+                                         base_url=base_url)
+    elif ptype == "gemini":
+        if not key:
+            return NullProvider()
+        built = OpenAICompatibleProvider(label, api_key=key,
+                                         model=model or "gemini-2.0-flash",
+                                         base_url=base_url or GEMINI_OPENAI_BASE_URL)
+    elif ptype == "ollama":
+        built = OpenAICompatibleProvider(label, api_key="ollama",
+                                         model=model or "llama3.1",
+                                         base_url=base_url or "http://localhost:11434/v1")
+    elif ptype in ("openai-compatible", "custom"):
+        if not base_url or not model:
+            return NullProvider()
+        built = OpenAICompatibleProvider(label, api_key=key or "not-needed",
+                                         model=model, base_url=base_url)
+    else:
+        return NullProvider()
+    built.name = label
+    return built
+
+
+def _built(cfg: Dict[str, Any]) -> LLMProvider:
+    cached = _built_from_cfg.get(cfg["id"])
+    if cached and cached[0] == cfg["updated_at"]:
+        return cached[1]
+    instance = build_provider_from_config(cfg)
+    _built_from_cfg[cfg["id"]] = (cfg["updated_at"], instance)
+    return instance
+
+
+def get_provider(provider_id: Optional[int] = None) -> LLMProvider:
+    """The provider to use for a call.
+
+    provider_id names a saved ACTIVE config; missing/inactive ids fall back to
+    the default. Default = the saved config marked is_default; with no saved
+    configs at all the legacy single-provider resolution (instance settings /
+    env) applies, so pre-registry installs behave exactly as before.
+    """
+    configs = _provider_configs()
+    cfg = None
+    if provider_id is not None:
+        cfg = next((c for c in configs if c["id"] == provider_id and c["is_active"]), None)
+        if cfg is None:
+            print(f"[LLM] provider config {provider_id} missing or inactive; using default")
+    if cfg is None:
+        cfg = next((c for c in configs if c["is_default"] and c["is_active"]), None)
+    if cfg is not None:
+        return _built(cfg)
+    return _legacy_proxy._resolve()
+
+
+class _DefaultProviderProxy:
+    """Module-level `provider`: always the CURRENT default (saved default
+    config if one exists, else legacy env/instance-settings resolution)."""
+
     @property
     def name(self) -> str:
-        return self._resolve().name
+        return get_provider().name
 
     def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
-        return self._resolve().complete(prompt, system=system, max_tokens=max_tokens)
+        return get_provider().complete(prompt, system=system, max_tokens=max_tokens)
 
 
-provider: LLMProvider = _ProviderProxy()
+provider: LLMProvider = _DefaultProviderProxy()

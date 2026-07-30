@@ -459,6 +459,33 @@ def _severity_counts(findings) -> Dict[str, int]:
     return counts
 
 
+class AnalyzeRunRequest(BaseModel):
+    # A saved LLM provider config to use for this analysis; omit for the
+    # instance default. Must be active — inactive/unknown ids fall back.
+    provider_id: Optional[int] = None
+
+
+@router.post("/runs/{run_id}/analyze", status_code=202)
+async def analyze_run(run_id: int, body: AnalyzeRunRequest = AnalyzeRunRequest(),
+                      session: AsyncSession = Depends(get_session),
+                      current_user: User = Depends(get_current_user)):
+    """(Re-)run AI failure analysis for a finished run, optionally with a
+    user-chosen LLM provider. Dispatches the same Celery task the aggregator
+    fires at finalize; results land on TestRun.ai_analysis and each failed
+    TestCaseResult.ai_analysis."""
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not await access_service.has_project_access(current_user.id, run.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+    if (run.status or "").upper() in ("PENDING", "RUNNING"):
+        raise HTTPException(status_code=409, detail="Run has not finished yet")
+
+    from app.tasks.analysis_tasks import analyze_run_failures
+    analyze_run_failures.delay(run_id, body.provider_id)
+    return {"status": "queued", "run_id": run_id, "provider_id": body.provider_id}
+
+
 @router.post("/runs/{run_id}/security-scan", response_model=SecurityScanResult)
 async def security_scan_run(run_id: int, session: AsyncSession = Depends(get_session),
                             current_user: User = Depends(get_current_user)):

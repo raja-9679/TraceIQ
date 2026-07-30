@@ -1598,6 +1598,29 @@ class InstanceSetting(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+class LLMProviderConfig(SQLModel, table=True):
+    """A saved LLM provider the instance admin manages from the UI.
+
+    Several may be active at once; users pick one per analysis (falling back
+    to the row marked is_default). When NO rows exist the legacy single-
+    provider config (LLM_PROVIDER instance setting / env) still applies, so
+    existing installs keep working untouched. api_key is Fernet-encrypted at
+    rest and never returned by the API.
+    """
+    __tablename__ = "llm_provider_config"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(unique=True, index=True)   # display label, e.g. "Ollama (office)"
+    provider_type: str                           # anthropic|openai|gemini|ollama|openai-compatible
+    model: str
+    base_url: Optional[str] = Field(default=None)
+    api_key_encrypted: Optional[str] = Field(default=None)
+    is_active: bool = Field(default=True, index=True)
+    is_default: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
 class IssueTrackerConfig(SQLModel, table=True):
     """Workspace-scoped connection to an external tracker. The credential is
     stored Fernet-encrypted (never returned by the API)."""

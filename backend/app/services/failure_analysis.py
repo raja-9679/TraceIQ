@@ -11,7 +11,7 @@ import json
 import re
 from typing import Any, Dict, List, Optional
 
-from app.ai.providers import provider
+from app.ai.providers import get_provider
 from app.schemas.failure_report import FailureEvidence, FailureReport, RunFailureAnalysis
 from app.services.llm_usage import llm_call_context
 
@@ -108,6 +108,7 @@ def analyze_case_failure(
     response_status: Optional[int] = None,
     request_url: Optional[str] = None,
     network_failures: Optional[List[dict]] = None,
+    provider_id: Optional[int] = None,
 ) -> FailureReport:
     failing_idx, failing_step = _find_failing_step(steps, error_message)
     evidence = FailureEvidence(
@@ -121,6 +122,7 @@ def analyze_case_failure(
     )
     base = heuristic_report(error_message, evidence)
 
+    provider = get_provider(provider_id)
     if provider.name == "null":
         return base
 
