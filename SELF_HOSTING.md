@@ -248,6 +248,30 @@ The backend port is exposed so CI systems and AI agents can call the API
 directly with an API key. The UI itself does not need it — it talks to `/api` on
 its own origin through the frontend's nginx.
 
+### Optional: mobile app testing (Android)
+
+Native Android journeys (`executor=mobile_appium`) run through an optional
+`mobile` profile that adds three services: a bundled Android emulator
+(budtmo/docker-android), an Appium server, and a `mobile-worker` consuming the
+`jobs:mobile:pending` stream.
+
+```bash
+docker compose -f docker-compose.community.yml --env-file .env --profile mobile up -d
+```
+
+Requirements and caveats:
+
+- The emulator needs **`/dev/kvm` on the host** (Linux with virtualization
+  enabled) and runs privileged. First boot takes a few minutes; watch the
+  device screen at `http://localhost:6080` (noVNC, port settable via
+  `MOBILE_VNC_PORT`).
+- No KVM, or need iOS? Set `MOBILE_DEVICE_PROVIDER` to `browserstack`,
+  `saucelabs`, or `lambdatest` (plus credentials) in `.env` — sessions run in
+  the device cloud and you can start the profile without the emulator:
+  `docker compose ... --profile mobile up -d mobile-worker`.
+- Upload app binaries at **Project → App builds** (or
+  `POST /api/projects/{id}/app-builds`) and pin a run with `app_build_id`.
+
 ---
 
 ## Operating it

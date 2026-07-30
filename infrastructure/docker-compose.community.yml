@@ -227,6 +227,97 @@ services:
     deploy:
       replicas: ${EXECUTION_WORKERS:-2}
 
+  # -------------------------------------------------------------------------
+  # Mobile app testing (optional) — start with:
+  #   docker compose -f docker-compose.community.yml --env-file .env --profile mobile up -d
+  # Runs native Android journeys via Appium against a bundled emulator.
+  # The emulator REQUIRES /dev/kvm on the host (Linux with virtualization
+  # enabled); without KVM, point the worker at a device cloud instead
+  # (MOBILE_DEVICE_PROVIDER in .env) and skip the emulator+appium services.
+  # Watch the device screen at http://localhost:6080 (noVNC).
+  # -------------------------------------------------------------------------
+  android-emulator:
+    image: budtmo/docker-android:emulator_11.0
+    profiles: ["mobile"]
+    # privileged + KVM are what make the emulator usable; this container is
+    # deliberately NOT under the hardening anchor (no-new-privileges would
+    # fight `privileged`). It has no credentials and only talks to appium.
+    privileged: true
+    restart: unless-stopped
+    devices:
+      - /dev/kvm
+    environment:
+      EMULATOR_DEVICE: ${MOBILE_EMULATOR_DEVICE:-Samsung Galaxy S10}
+      WEB_VNC: "true"
+    ports:
+      - "${MOBILE_VNC_PORT:-6080}:6080"
+    shm_size: 2g
+    networks: [traceiq_internal]
+
+  appium:
+    image: appium/appium:latest
+    profiles: ["mobile"]
+    <<: *hardening
+    # Keep retrying `adb connect` until the emulator container is booted,
+    # then start Appium. --allow-cors so the session survives proxying.
+    entrypoint: /bin/bash
+    command: >
+      -c "until adb connect android-emulator:5555 2>/dev/null | grep -q connected;
+          do echo 'waiting for android-emulator adb...'; sleep 5; done;
+          adb wait-for-device;
+          appium --allow-cors --base-path /"
+    depends_on:
+      - android-emulator
+    networks: [traceiq_internal]
+
+  mobile-worker:
+    image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-execution-worker:${TRACEIQ_VERSION:-latest}
+    profiles: ["mobile"]
+    <<: *hardening
+    command: node dist/mobile-worker.js
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      REDIS_JOBS_STREAM: jobs:mobile:pending
+      REDIS_RESULTS_STREAM: jobs:results
+      REDIS_CONSUMER_GROUP: mobile-workers
+      APPIUM_URL: http://appium:4723
+      # Device provider: `local` drives the bundled emulator through the
+      # appium service; a cloud provider (browserstack | saucelabs |
+      # lambdatest) runs sessions there instead — required for iOS.
+      MOBILE_DEVICE_PROVIDER: ${MOBILE_DEVICE_PROVIDER:-local}
+      MOBILE_DEVICE_NAME: ${MOBILE_DEVICE_NAME:-Android Emulator}
+      MOBILE_PLATFORM_VERSION: ${MOBILE_PLATFORM_VERSION:-}
+      BROWSERSTACK_USERNAME: ${BROWSERSTACK_USERNAME:-}
+      BROWSERSTACK_ACCESS_KEY: ${BROWSERSTACK_ACCESS_KEY:-}
+      SAUCE_USERNAME: ${SAUCE_USERNAME:-}
+      SAUCE_ACCESS_KEY: ${SAUCE_ACCESS_KEY:-}
+      SAUCE_REGION: ${SAUCE_REGION:-us-west-1}
+      LT_USERNAME: ${LT_USERNAME:-}
+      LT_ACCESS_KEY: ${LT_ACCESS_KEY:-}
+      MINIO_ENDPOINT: minio
+      MINIO_PORT: 9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET_NAME: test-artifacts
+      BACKEND_URL: http://backend:8000
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+      # AI selector heal on Appium page source; same provider vars as the
+      # browser worker (worker-side LLM config is env-only).
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      RUNTIME_HEAL_ENABLED: ${RUNTIME_HEAL_ENABLED:-false}
+    depends_on:
+      redis: {condition: service_healthy}
+      minio: {condition: service_started}
+      appium: {condition: service_started}
+    networks: [traceiq_internal, traceiq_egress]
+
 networks:
   # Internal service-to-service traffic. Not marked `internal: true` because
   # workers need outbound access to reach the sites under test; see
