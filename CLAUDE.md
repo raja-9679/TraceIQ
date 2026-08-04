@@ -278,6 +278,19 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   LDAP login (`app/services/ldap_auth.py`, ldap3, bind-as-user, instance
   settings group `ldap`) at `POST /api/auth/ldap/login` — backend image
   rebuild needed for the ldap3 dep.
+- **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
+  0.2.0, FastMCP, `mcp>=1.10,<2`): 50 tools, each with Pydantic input/output
+  models → `outputSchema` + validated structured content. stdio
+  (`traceiq-mcp`) + streamable HTTP (`traceiq-mcp-http`, POST /mcp on 8088,
+  per-request `X-API-Key`/Bearer). Add a tool = output model in
+  `schemas/<domain>.py` + client method in `client.py` + `@mcp.tool()` fn in
+  `tools/<domain>.py` + name in `smoke_test.py:EXPECTED_TOOLS`
+  (`python -m traceiq_mcp.smoke_test` asserts the full typed inventory).
+  Impact analysis v2 returns per-case `suggested_action: run|review|
+  run_then_review` + reasons; passing runs with `git_commit` stamp
+  `TestCase.last_validated_commit` and `TestCaseResult.test_case_id`
+  (aggregator; migration `f1a2b3c4d5e6`). Write policy: CaseProposal queue +
+  workspace auto-apply threshold; accept/reject human-only.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
 
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).

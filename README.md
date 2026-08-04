@@ -110,7 +110,7 @@ TraceIQ/
 │   └── env.{local,dev,prod}
 │
 ├── integrations/               ← agent / CI integrations
-│   ├── mcp-server/             ← MCP server: 26 tools, stdio transport
+│   ├── mcp-server/             ← MCP server: 50 typed tools, stdio + HTTP
 │   │   ├── AGENT_GUIDE.md      ← canonical agent runbook (Sarvajna-anchored)
 │   │   └── src/traceiq_mcp/
 │   ├── github-action/          ← gate PRs on TraceIQ regression

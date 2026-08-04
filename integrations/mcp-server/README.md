@@ -131,38 +131,77 @@ pip install -e .
 
 ---
 
-## Tools
+## Tools (50, all with typed output schemas)
+
+Every tool declares a Pydantic output model, so MCP clients receive
+`outputSchema` on `tools/list` and validated `structuredContent` on every
+call (with a JSON text fallback for older clients).
+
+### Core catalogue
 
 | Tool | Purpose |
 |------|---------|
 | `list_workspaces` | List workspaces the API key can access |
 | `create_project` | Create a new project in a workspace |
 | `list_projects` | List all projects visible to this key |
-| `list_suites` | List test suites in a project |
-| `create_suite` | Create a new test suite |
-| `get_suite` | Fetch a suite's details |
-| `delete_suite` | Delete a suite (cascade-safe) |
-| `list_cases` | List test cases |
-| `get_case` | Fetch a single case |
-| `propose_create_case` | Submit a new case for human review |
-| `propose_update_case` | Submit a case update for human review |
-| `propose_delete_case` | Submit a case deletion for human review |
-| `bulk_propose_cases` | Submit multiple proposals in one call |
-| `set_code_paths` | Set source file paths on a case |
-| `bulk_set_code_paths` | Set code paths on many cases at once |
-| `generate_case_proposal` | LLM-generate a case proposal |
-| `list_case_proposals` | List pending proposals |
-| `run_suite` | Trigger a regression run |
-| `get_run` | Fetch a run's status and counts |
-| `get_run_results` | Fetch per-case results |
-| `wait_for_run` | Poll until a run reaches terminal state |
-| `get_failure_analysis` | Fetch the AI failure analysis for a run |
-| `get_artifact_url` | Resolve a presigned artifact URL |
-| `discover_app_surface` | See what's currently tested in a project |
-| `select_tests_for_diff` | Impact analysis: match changed files to test cases |
-| `get_run_history` | Run history for a specific test case |
-| `describe_step_types` | Step-type catalog with shapes and examples |
-| `get_authoring_guide` | Full agent authoring guide |
+| `list_suites` / `get_suite` | List / fetch test suites |
+| `create_suite` / `delete_suite` | Create / delete a suite (cascade-safe) |
+| `list_cases` | List cases (slim rows: tags, priority, code_paths, last_validated_commit) |
+| `get_case` | Fetch a single case with full steps |
+
+### Runs
+
+| Tool | Purpose |
+|------|---------|
+| `run_suite` | Trigger a run — git context, `tags` filter, `environment_id`, `local_worker_id` (dev-machine worker), `app_build_id` (mobile) |
+| `get_run` / `wait_for_run` | Fetch / poll until terminal status |
+| `get_run_results` | Per-case results (incl. `test_case_id`) |
+| `get_failure_analysis` | Stored AI failure analysis + failed results |
+| `analyze_run` | (Re-)run AI analysis, optionally with a chosen LLM `provider_id` (async) |
+| `get_artifact_url` | Presigned URL for trace/video/screenshot |
+
+### Impact analysis & discovery
+
+| Tool | Purpose |
+|------|---------|
+| `select_tests_for_diff` | Changed files → cases to **run** vs **review** (`suggested_action` + `reasons`, per-pattern match detail, last result, `last_validated_commit`) + uncovered files |
+| `discover_app_surface` | What's currently tested in a project |
+| `crawl_app_surface` | Mode-2: crawl a live app you have no source for |
+| `get_run_history` | Case history (exact `matched_by: id` linking) |
+| `set_code_paths` / `bulk_set_code_paths` | Maintain the case↔code mapping |
+
+### Authoring (human-review queue)
+
+| Tool | Purpose |
+|------|---------|
+| `propose_create_case` / `propose_update_case` / `propose_delete_case` | Queue changes; high-confidence create/update may auto-apply per workspace policy |
+| `bulk_propose_cases` | Many proposals, per-item results |
+| `generate_case_proposal` | Server-side LLM drafts a case |
+| `list_case_proposals` | Your pending work queue |
+| `describe_step_types` / `get_authoring_guide` | The authoring reference |
+
+### Quality & results
+
+| Tool | Purpose |
+|------|---------|
+| `get_quality_snapshot` | Project health: pass rate, trend, flakes, monitors, security counts |
+| `evaluate_quality_gate` | Go/no-go for a commit/branch against project policy |
+| `get_run_report` | Consolidated per-run report + PR-ready markdown |
+| `get_test_effectiveness` | Per-test signal metrics (failure rate, clusters surfaced) |
+| `list_failure_clusters` / `get_failure_cluster` | Deduped root causes |
+| `list_flakes` | Flake scores + quarantine state |
+| `list_heal_proposals` | Worker-suggested selector fixes (read-only) |
+| `create_comparison_run` / `get_comparison` | Same suite vs a different deployment |
+| `ingest_junit_report` / `list_external_results` | Correlate unit-test results on the same commit |
+
+### Security & mobile
+
+| Tool | Purpose |
+|------|---------|
+| `run_security_scan` / `get_run_security_findings` | Passive scan of a run's captured traffic |
+| `start_project_security_scan` | ZAP scan (requires `authorized=true` + allowlisted host; async) |
+| `list_security_scans` / `get_security_scan` / `get_security_scan_diff` | Scan history, findings, new-vs-resolved diff |
+| `list_app_builds` / `get_app_build` | Mobile binaries to pin via `run_suite(app_build_id=…)` |
 
 ---
 

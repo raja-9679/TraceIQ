@@ -30,7 +30,12 @@ This three-way split is the contract. Don't try to bypass it.
 
 ---
 
-## 2. The standard session flow
+## 2. The standard session flows
+
+Every tool returns **typed structured content** (validated against its
+published `outputSchema`) — parse the structured result, not the text blob.
+
+### Flow A — building coverage (first session on a project)
 
 ```
 1. get_authoring_guide        ← this doc, read once
@@ -46,8 +51,29 @@ This three-way split is the contract. Don't try to bypass it.
      propose_update_case      ← fix the case, queue for review
 ```
 
-That's the loop. The first three reads ground you; everything else cycles
-between propose, run, diagnose, fix.
+### Flow B — you changed application code (every later session)
+
+```
+1. (derive the changed-file list — git diff --name-only)
+2. select_tests_for_diff      ← which cases to RUN vs REVIEW (see §3.5)
+3. (for suggested_action=review cases)
+     get_case + get_run_history → propose_update_case if the case is stale
+4. run_suite(git_commit=..., git_branch=...)   ← ALWAYS pass git context
+     • testing a dev server on localhost? start the local worker
+       (`npm run worker:local` in execution-engine/) and pass its id as
+       local_worker_id — the run's jobs route to your machine
+5. wait_for_run → get_run_report / evaluate_quality_gate
+6. (failures) get_failure_analysis / analyze_run, list_failure_clusters,
+     get_artifact_url (trace.zip)
+7. (fix app code or propose case updates; re-run the matched subset)
+8. (coverage moved?) set_code_paths / bulk_set_code_paths so the mapping
+     stays true — this is what makes step 2 work next time
+```
+
+Passing `git_commit` in step 4 is not optional bookkeeping: when a case
+passes on a run that carries a commit, TraceIQ stamps
+`last_validated_commit` on the case — the durable record that "this test
+was true of that code".
 
 ---
 
@@ -97,6 +123,24 @@ the API handler — both belong in `code_paths`.
 If you walk a codebase and need to retro-tag many existing cases at once,
 use **`bulk_set_code_paths`** with a `{case_id: [paths]}` map. One call,
 hundreds of updates.
+
+### 3.5 Reading a `select_tests_for_diff` result (v2)
+
+Each matched case tells you *why* it matched and *what to do*:
+
+| Field | Meaning |
+|---|---|
+| `matched` | exact `(file, pattern)` pairs — which code_path caught which changed file |
+| `suggested_action` | `run` — just re-run. `review` — the case likely needs EDITING first; see `reasons` (last result failed, quarantined flaky, or AI-authored & never reviewed). `run_then_review` — run it, but a bare prefix matched ≥5 changed files, so the mapping is probably too coarse — re-derive `code_paths` afterwards. |
+| `last_result` | the case's most recent recorded result (status, run, commit) |
+| `last_validated_commit` / `last_validated_at` | last commit at which the case PASSED a git-tagged run — if your edit predates it, the case has never seen this code |
+| `flake` | flake score + quarantine state |
+
+`unmatched_files` lists changed files **no case covers** — each one is a
+candidate for a new proposal. `suggested_action` is a deterministic server
+heuristic, not an oracle: you know the intent of your change, so override it
+when you know better (e.g. you deliberately changed the behavior a passing
+case asserts — that case needs `review` no matter what the server says).
 
 ---
 
@@ -534,15 +578,23 @@ final = await mcp.wait_for_run(run_id=run.id, timeout_seconds=300)
 | Learn what exists in TraceIQ for this project | `discover_app_surface`, `list_suites`, `list_cases`, `get_suite`, `get_case` |
 | Learn what step types are valid | `describe_step_types` |
 | Learn TraceIQ conventions | `get_authoring_guide` (this doc) |
-| Map a PR diff to relevant tests | `select_tests_for_diff` |
+| Map a PR diff to relevant tests | `select_tests_for_diff` (run vs review — §3.5) |
 | Propose new coverage | `propose_create_case` (one) or `bulk_propose_cases` (many) |
 | LLM-draft a case from a description | `generate_case_proposal` |
 | Modify or remove existing coverage | `propose_update_case`, `propose_delete_case` |
-| Backfill `code_paths` on existing cases | `bulk_set_code_paths` |
-| Run a suite + watch | `run_suite`, `wait_for_run`, `get_run`, `get_run_results` |
-| Diagnose a failure | `get_run`, `get_failure_analysis`, `get_artifact_url`, `get_run_history` |
+| Backfill `code_paths` on existing cases | `set_code_paths` (one), `bulk_set_code_paths` (many) |
+| Run a suite + watch | `run_suite` (git context! tags, environment_id), `wait_for_run`, `get_run`, `get_run_results` |
+| Test a dev server on localhost | `run_suite(local_worker_id=…)` + `npm run worker:local` on the dev machine |
+| Diagnose a failure | `get_failure_analysis`, `analyze_run` (re-run AI analysis, pick `provider_id`), `get_artifact_url`, `get_run_history`, `list_failure_clusters` / `get_failure_cluster` |
+| Judge the change / gate a merge | `get_run_report` (PR-ready markdown), `evaluate_quality_gate`, `get_quality_snapshot` |
+| Find weak or noisy tests | `get_test_effectiveness`, `list_flakes`, `list_heal_proposals` |
+| Compare two deployments | `create_comparison_run`, `get_comparison` |
+| Correlate unit tests on the same commit | `ingest_junit_report`, `list_external_results` |
+| Security posture | `run_security_scan` / `get_run_security_findings` (passive, per run); `start_project_security_scan` / `get_security_scan` / `get_security_scan_diff` (ZAP, needs `authorized=true` + allowlisted host) |
+| Mobile runs | `list_app_builds` / `get_app_build` → `run_suite(app_build_id=…)` |
 | Structural changes | `create_suite`, `delete_suite` (always confirm with human first) |
 | See your own pending work | `list_case_proposals` |
+| Crawl an app you have no source for (Mode 2) | `crawl_app_surface` |
 
 ---
 
