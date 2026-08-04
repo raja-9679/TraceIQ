@@ -24,7 +24,7 @@ For a full feature-coverage scorecard against a modern-platform checklist (and t
 - ✅ Outbound webhook registry (`WorkspaceWebhook`) + Celery dispatch on run finalize (HMAC-SHA256 signed).
 - ✅ LLM provider abstraction — `OpenAIProvider`, `AnthropicProvider`, `NullProvider`. Backend `app.ai.providers`, execution-engine `execution-engine/src/llm-provider.ts`. Switch via `LLM_PROVIDER` env.
 - ✅ PARALLEL execution mode routed in `app/worker.py` via `dispatch_parallel_jobs`. Capped by `PARALLEL_MAX_CONCURRENCY`.
-- ✅ MCP server scaffold at `integrations/mcp-server/` with 8 tools.
+- ✅ MCP server at `integrations/mcp-server/` (v2 2026-08-04: FastMCP, 50 typed tools — see "MCP v2" below).
 - ✅ GitHub Action scaffold at `integrations/github-action/` with `action.yml` + Node entrypoint.
 - ✅ Alembic migration `c5d8f1a2b3c4_ai_agent_integration.py`.
 
@@ -70,8 +70,8 @@ These items either require significant frontend work, external products, or desi
 ### Phase A polish
 - **Frontend UI** for API keys, refresh-token-aware auth context, outbound webhooks, personas, heal proposals, flake records, visual baselines, deployment comparison. Every entity here has working backend endpoints; React pages have not been built. Recommended follow-up: a Settings → Integrations panel with tabs.
 - **GitHub Action `dist/` build** — the action ships only sources. CI release tooling needs to run `npm run build` and commit `dist/index.js` (GitHub's convention).
-- **MCP server pip-installable distribution** — today the scaffold lives in `integrations/mcp-server/`; for adoption, publish to PyPI as `traceiq-mcp`.
-- **MCP server: streamable HTTP transport** — only stdio is wired. Hosted MCP scenarios need HTTP/SSE.
+- **MCP server pip-installable distribution** — lives in `integrations/mcp-server/`; for adoption, publish to PyPI as `traceiq-mcp`.
+- ~~**MCP server: streamable HTTP transport**~~ — SHIPPED: `server_http.py` (POST /mcp on 8088, per-request X-API-Key/Bearer, stateless).
 - **Structured failure-report schema** — `TestRun.ai_analysis` is a free-form dict. A typed `schemas/failure_report.py` would give agents a contract.
 
 ### Phase B polish
@@ -219,6 +219,40 @@ deferred pieces don't get lost.
 - ✅ **Step-type catalog.** Hand-curated list of 25 step types with shapes + examples + gotchas in `agent_reference.py`. Source of truth for what the runner supports.
 - ✅ **AGENT_GUIDE.md** at `integrations/mcp-server/AGENT_GUIDE.md` (canonical) + `backend/app/AGENT_GUIDE.md` (bundled). 12 sections, Sarvajna-anchored, includes 5 well-documented pitfalls (`feed-check` shape, `json-path` prefix, `fill` on `<select>`, `expect-url` glob, `wait-for-selector` during redirect).
 - ✅ Alembic migration `f8b3c4d5e6f7_phase_e.py`.
+
+## MCP v2 — FastMCP rebuild, typed schemas, impact-analysis v2 (2026-08-04)
+
+- ✅ **Rebuilt on FastMCP** (`mcp>=1.10,<2`): every tool is an `@mcp.tool()`
+  with Pydantic input + output models → published `outputSchema` and
+  validated `structuredContent` on every call (JSON text fallback kept for
+  older clients). All v1 tool names preserved. Layout:
+  `src/traceiq_mcp/{app,server,server_http,client}.py` + `schemas/` +
+  `tools/` (one module per domain).
+- ✅ **50 tools** (was 29): + `analyze_run` (provider_id), quality group
+  (snapshot, gate, run report, effectiveness, clusters, flakes, heal-reads,
+  comparison runs, JUnit ingest), security group (passive run scan + ZAP
+  scans/diff), mobile group (app-build reads). `run_suite` gained `tags`,
+  `local_worker_id` (dev-machine loop) and `app_build_id`.
+- ✅ **v1 client bugs fixed**: `list_cases` called `GET /api/cases` which
+  didn't exist (endpoint added, slim summaries + tag filter);
+  `set_code_paths` PATCHed a nonexistent route (now routes through
+  `bulk-set-code-paths`); dead `update_suite`/`move_suite` methods dropped.
+- ✅ **Impact analysis v2** (`POST /api/runs/impact-analysis`, additive):
+  per-case `(file, pattern)` match detail, last result, flake state,
+  `last_validated_commit`, and `suggested_action: run|review|run_then_review`
+  with human-readable `reasons`.
+- ✅ **Result↔case link**: `testcaseresult.test_case_id` (FK, SET NULL,
+  backfilled for single-case runs) — run-history matches by id first
+  (`matched_by` flag); aggregator stamps it and stamps
+  `testcase.last_validated_commit/_at` on PASSED runs carrying `git_commit`.
+  Migration `f1a2b3c4d5e6`.
+- ✅ `GET /api/flakes` now requires a `test_case_id`/`project_id` scope +
+  access check (was an unscoped cross-tenant listing).
+- Deliberately EXCLUDED from the MCP surface (per scope decision):
+  environments CRUD, personas, schedules/monitors, visual baselines,
+  traceability, OpenAPI import, app-build *upload* (multipart stays UI/CLI).
+  Write policy unchanged: proposals + workspace auto-apply threshold;
+  accept/reject stays human-only.
 
 ## Migration & rollout notes
 

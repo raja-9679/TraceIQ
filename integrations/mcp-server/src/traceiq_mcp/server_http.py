@@ -1,43 +1,36 @@
 """HTTP/Streamable-HTTP transport for the TraceIQ MCP server.
 
-Exposes the same tools as the stdio server over a single endpoint that any
-MCP client (Claude Code, Cursor, Copilot, Windsurf …) can reach with just
-a URL and an X-API-Key header.
+Same typed tools as stdio, served over a single endpoint any MCP client
+(Claude Code, Cursor, Copilot, Windsurf …) can reach with a URL + API key:
 
-  POST /mcp    — MCP Streamable-HTTP endpoint
-  GET  /health — liveness probe (no auth required)
+  POST /mcp    — MCP Streamable-HTTP endpoint (FastMCP-managed, stateless)
+  GET  /health — liveness probe (no auth)
 
 Auth: every /mcp request must carry the caller's TraceIQ workspace API key,
-either as X-API-Key or as Authorization: Bearer <key> (for MCP clients that
-can only set the Authorization header).  The key is forwarded to the TraceIQ
-backend for every tool call — no shared service account, no key storage here.
+either as X-API-Key or Authorization: Bearer <key>. The key is stashed in a
+request-scoped ContextVar and forwarded to the TraceIQ backend on every tool
+call — no shared service account, no key storage here.
 """
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
-from collections.abc import AsyncIterator
 from typing import Any
 
-import anyio
 import uvicorn
-from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 
 from traceiq_mcp._context import _api_key_ctx
-from traceiq_mcp.server import server  # Server instance with all 28 tools registered
+from traceiq_mcp.app import mcp
+from traceiq_mcp.tools import register_all
 
 logger = logging.getLogger(__name__)
 
-# ── Session manager (stateless — each POST is independent) ────────────────────
+register_all()
 
-session_manager = StreamableHTTPSessionManager(
-    app=server,
-    json_response=False,
-    stateless=True,
-)
+# FastMCP builds the Starlette app (lifespan + session manager included);
+# `stateless_http=True` on the instance makes each POST independent.
+_starlette_app = mcp.streamable_http_app()
 
-# ── Static response helpers ───────────────────────────────────────────────────
 
 async def _send_json(send: Any, status: int, body: bytes) -> None:
     await send({
@@ -51,46 +44,23 @@ async def _send_json(send: Any, status: int, body: bytes) -> None:
     await send({"type": "http.response.body", "body": body})
 
 
-# ── Core ASGI app ─────────────────────────────────────────────────────────────
+class ApiKeyMiddleware:
+    """Pure-ASGI wrapper: /health short-circuits, /mcp requires an API key and
+    runs the inner app inside the request-scoped ContextVar."""
 
-class TraceIQMCPApp:
-    """Minimal ASGI app: handles lifespan, /health, and /mcp."""
+    def __init__(self, inner: Any) -> None:
+        self._inner = inner
 
     async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
-        if scope["type"] == "lifespan":
-            await self._handle_lifespan(receive, send)
-        elif scope["type"] == "http":
-            path = scope.get("path", "")
-            if path == "/health":
-                await _send_json(send, 200, b'{"status":"ok","service":"traceiq-mcp"}')
-            elif path.rstrip("/") == "/mcp":
-                await self._handle_mcp(scope, receive, send)
-            else:
-                await _send_json(send, 404, b'{"detail":"not found"}')
-        else:
-            pass  # ignore websocket / other scopes
+        if scope["type"] != "http":
+            await self._inner(scope, receive, send)
+            return
 
-    async def _handle_lifespan(self, receive: Any, send: Any) -> None:
-        event = await receive()
-        if event["type"] == "lifespan.startup":
-            try:
-                async with anyio.create_task_group() as tg:
-                    tg.start_soon(self._run_session_manager)
-                    await send({"type": "lifespan.startup.complete"})
-                    event2 = await receive()
-                    if event2["type"] == "lifespan.shutdown":
-                        tg.cancel_scope.cancel()
-            except Exception as exc:
-                await send({"type": "lifespan.startup.failed", "message": str(exc)})
-                return
-        await send({"type": "lifespan.shutdown.complete"})
+        path = scope.get("path", "")
+        if path == "/health":
+            await _send_json(send, 200, b'{"status":"ok","service":"traceiq-mcp"}')
+            return
 
-    async def _run_session_manager(self) -> None:
-        async with session_manager.run():
-            # Yield control back; session manager stays alive until task group cancelled
-            await anyio.sleep_forever()
-
-    async def _handle_mcp(self, scope: Any, receive: Any, send: Any) -> None:
         headers = {k.lower(): v for k, v in scope.get("headers", [])}
         api_key = headers.get(b"x-api-key", b"").decode()
         if not api_key:
@@ -99,25 +69,22 @@ class TraceIQMCPApp:
                 api_key = auth[7:].strip()
         if not api_key:
             await _send_json(
-                send,
-                401,
-                b'{"detail":"X-API-Key header or Authorization: Bearer <api-key> required"}',
-            )
+                send, 401,
+                b'{"detail":"X-API-Key header or Authorization: Bearer <api-key> required"}')
             return
 
         token = _api_key_ctx.set(api_key)
         try:
-            await session_manager.handle_request(scope, receive, send)
+            await self._inner(scope, receive, send)
         finally:
             _api_key_ctx.reset(token)
 
 
-http_app = TraceIQMCPApp()
+http_app = ApiKeyMiddleware(_starlette_app)
 
-
-# ── Entrypoint ────────────────────────────────────────────────────────────────
 
 def main_http() -> None:
+    """Entrypoint registered as the `traceiq-mcp-http` console script."""
     base_url = os.environ.get("TRACEIQ_BASE_URL", "")
     if not base_url:
         raise SystemExit("TRACEIQ_BASE_URL must be set (e.g. http://backend:8000)")

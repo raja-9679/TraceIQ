@@ -1,4 +1,18 @@
-"""Thin async HTTP client wrapping the TraceIQ REST API."""
+"""Thin async HTTP client wrapping the TraceIQ REST API.
+
+Deliberately dumb: one method per backend route, dict/list in, dict/list out.
+Typing and validation live in the tool layer (schemas/*), so a backend field
+addition never breaks this file.
+
+v2 fixes over the original client:
+  - list_cases now calls the real GET /api/cases (the route was added for v2;
+    the old client called a nonexistent endpoint).
+  - set_code_paths routes through POST /api/cases/bulk-set-code-paths — the
+    single auditable write path for code_paths (the old client PATCHed a
+    route that never existed).
+  - run_suite forwards tags / local_worker_id / app_build_id.
+  - dead update_case/update_suite/move_suite methods removed.
+"""
 from __future__ import annotations
 
 import os
@@ -19,10 +33,9 @@ class TraceIQClient:
         self.base_url = (base_url or os.environ.get("TRACEIQ_BASE_URL", "")).rstrip("/")
         self.api_key = api_key or os.environ.get("TRACEIQ_API_KEY", "")
         self.agent_id = agent_id or os.environ.get("TRACEIQ_AGENT_ID")
-        # Phase E: per-session identifier. Lets the server tell creates from
-        # the same agent session apart from older creates. Default: mint a
-        # fresh UUID per client instance — one per Claude Code conversation
-        # is the typical lifespan.
+        # Per-session identifier: lets the server tell creates from this agent
+        # session apart from older ones. One per Claude Code conversation is
+        # the typical lifespan.
         import uuid as _uuid
         self.agent_session_id = (
             agent_session_id
@@ -39,7 +52,7 @@ class TraceIQClient:
         h = {
             "X-API-Key": self.api_key,
             "Accept": "application/json",
-            "User-Agent": "TraceIQ-MCP/0.1.0",
+            "User-Agent": "TraceIQ-MCP/0.2.0",
             "X-Agent-Session-Id": self.agent_session_id,
         }
         if self.agent_id:
@@ -47,15 +60,11 @@ class TraceIQClient:
         return h
 
     async def _request(self, method: str, path: str, **kw) -> Any:
-        # Allow a per-call timeout override (e.g. long-polling crawl).
         req_timeout = kw.pop("timeout", self._timeout)
+        headers = {**self._headers(), **kw.pop("headers", {})}
         async with httpx.AsyncClient(timeout=req_timeout) as client:
             resp = await client.request(
-                method,
-                f"{self.base_url}{path}",
-                headers=self._headers(),
-                **kw,
-            )
+                method, f"{self.base_url}{path}", headers=headers, **kw)
             if resp.status_code >= 400:
                 raise httpx.HTTPStatusError(
                     f"TraceIQ {method} {path} failed: {resp.status_code} {resp.text}",
@@ -66,24 +75,22 @@ class TraceIQClient:
                 return resp.json()
             return resp.text
 
+    @staticmethod
+    def _clean(d: Dict[str, Any]) -> Dict[str, Any]:
+        return {k: v for k, v in d.items() if v is not None}
+
     # ------------------------------------------------------------------
-    # API surface used by the MCP tools
+    # Core: workspaces / projects / suites / cases
     # ------------------------------------------------------------------
 
     async def list_workspaces(self) -> List[Dict[str, Any]]:
         return await self._request("GET", "/api/workspaces")
 
-    async def create_project(
-        self,
-        workspace_id: int,
-        name: str,
-        description: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    async def create_project(self, workspace_id: int, name: str,
+                             description: Optional[str] = None) -> Dict[str, Any]:
         return await self._request(
-            "POST",
-            "/api/projects",
-            json={"workspace_id": workspace_id, "name": name, "description": description},
-        )
+            "POST", "/api/projects",
+            json={"workspace_id": workspace_id, "name": name, "description": description})
 
     async def list_projects(self) -> List[Dict[str, Any]]:
         return await self._request("GET", "/api/projects")
@@ -91,18 +98,50 @@ class TraceIQClient:
     async def list_suites(self, project_id: int) -> List[Dict[str, Any]]:
         return await self._request("GET", "/api/suites", params={"project_id": project_id})
 
-    async def run_suite(
+    async def get_suite(self, suite_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/suites/{suite_id}")
+
+    async def create_suite(self, project_id: int, name: str,
+                           parent_id: Optional[int] = None,
+                           execution_mode: Optional[str] = None,
+                           description: Optional[str] = None) -> Dict[str, Any]:
+        return await self._request("POST", "/api/suites", json=self._clean({
+            "name": name, "project_id": project_id, "parent_id": parent_id,
+            "execution_mode": execution_mode, "description": description}))
+
+    async def delete_suite(self, suite_id: int) -> Dict[str, Any]:
+        return await self._request("DELETE", f"/api/suites/{suite_id}")
+
+    async def list_cases(self, project_id: int,
+                         test_suite_id: Optional[int] = None,
+                         tag: Optional[str] = None,
+                         limit: int = 100, offset: int = 0) -> Dict[str, Any]:
+        return await self._request("GET", "/api/cases", params=self._clean({
+            "project_id": project_id, "test_suite_id": test_suite_id,
+            "tag": tag, "limit": limit, "offset": offset}))
+
+    async def get_case(self, case_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/cases/{case_id}")
+
+    # ------------------------------------------------------------------
+    # Runs
+    # ------------------------------------------------------------------
+
+    async def create_run(
         self,
         suite_id: int,
         case_id: Optional[int] = None,
         browser: Optional[List[str]] = None,
         device: Optional[List[str]] = None,
+        tags: Optional[List[str]] = None,
         git_commit: Optional[str] = None,
         git_branch: Optional[str] = None,
         git_pr_url: Optional[str] = None,
         git_repo: Optional[str] = None,
         triggered_by: Optional[str] = None,
         environment_id: Optional[int] = None,
+        local_worker_id: Optional[str] = None,
+        app_build_id: Optional[int] = None,
     ) -> Any:
         params: Dict[str, Any] = {"suite_id": suite_id}
         if case_id is not None:
@@ -111,17 +150,16 @@ class TraceIQClient:
             params["browser"] = browser
         if device:
             params["device"] = device
-        body = {
-            "git_commit": git_commit,
-            "git_branch": git_branch,
-            "git_pr_url": git_pr_url,
-            "git_repo": git_repo,
-            "triggered_by": triggered_by,
-            "agent_id": self.agent_id,
+        if tags:
+            params["tags"] = tags
+        body = self._clean({
+            "git_commit": git_commit, "git_branch": git_branch,
+            "git_pr_url": git_pr_url, "git_repo": git_repo,
+            "triggered_by": triggered_by, "agent_id": self.agent_id,
             "environment_id": environment_id,
-        }
-        # Strip None so the server applies defaults.
-        body = {k: v for k, v in body.items() if v is not None}
+            "local_worker_id": local_worker_id,
+            "app_build_id": app_build_id,
+        })
         return await self._request("POST", "/api/runs", params=params, json=body)
 
     async def get_run(self, run_id: int) -> Dict[str, Any]:
@@ -130,157 +168,80 @@ class TraceIQClient:
     async def get_artifact_url(self, object_path: str) -> Dict[str, Any]:
         return await self._request("GET", f"/api/artifacts/{object_path}")
 
-    # ------------------------------------------------------------------
-    # Phase D — agent ownership tools
-    # ------------------------------------------------------------------
-
-    async def list_suites(self, project_id: int) -> List[Dict[str, Any]]:  # noqa: F811 (override)
-        return await self._request("GET", "/api/suites", params={"project_id": project_id})
-
-    async def create_suite(
-        self,
-        project_id: int,
-        name: str,
-        parent_id: Optional[int] = None,
-        execution_mode: Optional[str] = None,
-        description: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        body = {
-            "name": name,
-            "project_id": project_id,
-            "parent_id": parent_id,
-            "execution_mode": execution_mode,
-            "description": description,
-        }
-        body = {k: v for k, v in body.items() if v is not None}
-        return await self._request("POST", "/api/suites", json=body)
-
-    async def update_suite(self, suite_id: int, **fields: Any) -> Dict[str, Any]:
-        return await self._request("PATCH", f"/api/suites/{suite_id}", json=fields)
-
-    async def move_suite(self, suite_id: int, new_parent_id: Optional[int]) -> Dict[str, Any]:
+    async def analyze_run(self, run_id: int,
+                          provider_id: Optional[int] = None) -> Dict[str, Any]:
         return await self._request(
-            "POST", f"/api/suites/{suite_id}/move", json={"parent_id": new_parent_id}
-        )
+            "POST", f"/api/runs/{run_id}/analyze",
+            json=self._clean({"provider_id": provider_id}))
 
-    async def delete_suite(self, suite_id: int) -> Dict[str, Any]:
-        return await self._request("DELETE", f"/api/suites/{suite_id}")
+    async def get_run_report(self, run_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/runs/{run_id}/report")
 
-    async def list_cases(self, project_id: int, test_suite_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        params: Dict[str, Any] = {"project_id": project_id}
-        if test_suite_id is not None:
-            params["test_suite_id"] = test_suite_id
-        return await self._request("GET", "/api/cases", params=params)
+    # ------------------------------------------------------------------
+    # Impact analysis / discovery / code paths
+    # ------------------------------------------------------------------
 
-    async def update_case(self, case_id: int, **fields: Any) -> Dict[str, Any]:
-        return await self._request("PATCH", f"/api/cases/{case_id}", json=fields)
+    async def impact_analysis(self, project_id: int, changed_files: List[str],
+                              include_no_code_paths: bool = False) -> Dict[str, Any]:
+        return await self._request("POST", "/api/runs/impact-analysis", json={
+            "project_id": project_id, "changed_files": changed_files,
+            "include_no_code_paths": include_no_code_paths})
 
-    async def delete_case(self, case_id: int) -> Dict[str, Any]:
-        return await self._request("DELETE", f"/api/cases/{case_id}")
-
-    async def get_run_history(self, case_id: int, limit: int = 30) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/cases/{case_id}/run-history", params={"limit": limit})
-
-    async def discover_app_surface(self, project_id: int) -> Dict[str, Any]:
+    async def app_surface(self, project_id: int) -> Dict[str, Any]:
         return await self._request("GET", f"/api/apps/{project_id}/surface")
 
-    async def crawl_app_surface(self, project_id: int, base_url: str, max_pages: int = 10) -> Dict[str, Any]:
+    async def crawl_app_surface(self, project_id: int, base_url: str,
+                                max_pages: int = 10) -> Dict[str, Any]:
         return await self._request(
-            "POST",
-            f"/api/apps/{project_id}/discover",
+            "POST", f"/api/apps/{project_id}/discover",
             json={"base_url": base_url, "max_pages": max_pages},
-            timeout=120.0,
-        )
+            timeout=120.0)
 
-    async def select_tests_for_diff(
-        self,
-        project_id: int,
-        changed_files: List[str],
-        include_no_code_paths: bool = False,
-    ) -> Dict[str, Any]:
+    async def run_history(self, case_id: int, limit: int = 30) -> Dict[str, Any]:
         return await self._request(
-            "POST",
-            "/api/runs/impact-analysis",
-            json={
-                "project_id": project_id,
-                "changed_files": changed_files,
-                "include_no_code_paths": include_no_code_paths,
-            },
-        )
+            "GET", f"/api/cases/{case_id}/run-history", params={"limit": limit})
 
-    async def propose_case(
-        self,
-        project_id: int,
-        action: str,
-        test_suite_id: Optional[int] = None,
-        target_case_id: Optional[int] = None,
-        payload: Optional[Dict[str, Any]] = None,
-        rationale: Optional[str] = None,
-        ai_confidence: float = 0.0,
-    ) -> Dict[str, Any]:
-        return await self._request(
-            "POST",
-            "/api/case-proposals",
-            json={
-                "project_id": project_id,
-                "action": action,
-                "test_suite_id": test_suite_id,
-                "target_case_id": target_case_id,
-                "payload": payload or {},
-                "rationale": rationale,
-                "ai_confidence": ai_confidence,
-            },
-        )
-
-    async def generate_case_proposal(
-        self,
-        description: str,
-        test_suite_id: int,
-        target_url: Optional[str] = None,
-        case_name: Optional[str] = None,
-        code_paths: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        return await self._request(
-            "POST",
-            "/api/cases/generate",
-            json={
-                "description": description,
-                "test_suite_id": test_suite_id,
-                "target_url": target_url,
-                "case_name": case_name,
-                "code_paths": code_paths,
-                "mode": "propose",
-            },
-        )
+    async def bulk_set_code_paths(self, project_id: int,
+                                  mapping: Dict[int, List[str]]) -> Dict[str, Any]:
+        return await self._request("POST", "/api/cases/bulk-set-code-paths", json={
+            "project_id": project_id,
+            "mapping": {str(k): v for k, v in mapping.items()}})
 
     # ------------------------------------------------------------------
-    # Phase E — read, write, bulk, reference
+    # Authoring: proposals / generation / reference
     # ------------------------------------------------------------------
 
-    async def list_cases(self, project_id: int, test_suite_id: Optional[int] = None) -> List[Dict[str, Any]]:  # noqa: F811
-        params: Dict[str, Any] = {"project_id": project_id}
-        if test_suite_id is not None:
-            params["test_suite_id"] = test_suite_id
-        return await self._request("GET", "/api/cases", params=params)
+    async def propose_case(self, project_id: int, action: str,
+                           test_suite_id: Optional[int] = None,
+                           target_case_id: Optional[int] = None,
+                           payload: Optional[Dict[str, Any]] = None,
+                           rationale: Optional[str] = None,
+                           ai_confidence: float = 0.0) -> Dict[str, Any]:
+        return await self._request("POST", "/api/case-proposals", json={
+            "project_id": project_id, "action": action,
+            "test_suite_id": test_suite_id, "target_case_id": target_case_id,
+            "payload": payload or {}, "rationale": rationale,
+            "ai_confidence": ai_confidence})
 
-    async def get_case(self, case_id: int) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/cases/{case_id}")
+    async def list_case_proposals(self, project_id: Optional[int] = None,
+                                  status: Optional[str] = "pending",
+                                  limit: int = 100) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/api/case-proposals", params=self._clean({
+            "project_id": project_id, "status": status, "limit": limit}))
 
-    async def get_suite(self, suite_id: int) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/suites/{suite_id}")
+    async def generate_case_proposal(self, description: str, test_suite_id: int,
+                                     target_url: Optional[str] = None,
+                                     case_name: Optional[str] = None,
+                                     code_paths: Optional[List[str]] = None) -> Dict[str, Any]:
+        return await self._request("POST", "/api/cases/generate", json={
+            "description": description, "test_suite_id": test_suite_id,
+            "target_url": target_url, "case_name": case_name,
+            "code_paths": code_paths, "mode": "propose"})
 
-    async def list_case_proposals(
-        self,
-        project_id: Optional[int] = None,
-        status: Optional[str] = "pending",
-        limit: int = 100,
-    ) -> List[Dict[str, Any]]:
-        params: Dict[str, Any] = {"limit": limit}
-        if project_id is not None:
-            params["project_id"] = project_id
-        if status is not None:
-            params["status"] = status
-        return await self._request("GET", "/api/case-proposals", params=params)
+    async def bulk_propose_cases(self, project_id: int,
+                                 proposals: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return await self._request("POST", "/api/cases/bulk-propose", json={
+            "project_id": project_id, "proposals": proposals})
 
     async def describe_step_types(self) -> Dict[str, Any]:
         return await self._request("GET", "/api/step-types")
@@ -288,27 +249,129 @@ class TraceIQClient:
     async def get_authoring_guide(self) -> Dict[str, Any]:
         return await self._request("GET", "/api/agent-guide")
 
-    async def delete_suite(self, suite_id: int) -> Dict[str, Any]:  # noqa: F811
-        return await self._request("DELETE", f"/api/suites/{suite_id}")
+    # ------------------------------------------------------------------
+    # Quality & results
+    # ------------------------------------------------------------------
 
-    async def bulk_propose_cases(
-        self,
-        project_id: int,
-        proposals: List[Dict[str, Any]],
+    async def quality_snapshot(self, project_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/projects/{project_id}/quality")
+
+    async def quality_gate(self, project_id: int,
+                           git_commit: Optional[str] = None,
+                           git_branch: Optional[str] = None) -> Dict[str, Any]:
+        return await self._request(
+            "GET", f"/api/projects/{project_id}/quality-gate",
+            params=self._clean({"git_commit": git_commit, "git_branch": git_branch}))
+
+    async def test_effectiveness(self, project_id: int, days: int = 30,
+                                 limit: int = 100) -> List[Dict[str, Any]]:
+        return await self._request(
+            "GET", f"/api/analytics/projects/{project_id}/test-effectiveness",
+            params={"days": days, "limit": limit})
+
+    async def list_failure_clusters(self, project_id: int,
+                                    status: Optional[str] = None,
+                                    category: Optional[str] = None) -> List[Dict[str, Any]]:
+        return await self._request(
+            "GET", f"/api/projects/{project_id}/failure-clusters",
+            params=self._clean({"status": status, "category": category}))
+
+    async def get_failure_cluster(self, cluster_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/failure-clusters/{cluster_id}")
+
+    async def list_flakes(self, project_id: Optional[int] = None,
+                          test_case_id: Optional[int] = None,
+                          quarantined_only: bool = False) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/api/flakes", params=self._clean({
+            "project_id": project_id, "test_case_id": test_case_id,
+            "quarantined_only": quarantined_only or None}))
+
+    async def list_heal_proposals(self, status: Optional[str] = "pending",
+                                  test_case_id: Optional[int] = None,
+                                  project_id: Optional[int] = None) -> List[Dict[str, Any]]:
+        return await self._request("GET", "/api/heal-proposals", params=self._clean({
+            "status": status, "test_case_id": test_case_id,
+            "project_id": project_id}))
+
+    async def create_comparison_run(self, baseline_run_id: int, target_url: str,
+                                    browser: Optional[str] = None,
+                                    device: Optional[str] = None) -> Dict[str, Any]:
+        return await self._request("POST", "/api/runs/comparison", json=self._clean({
+            "baseline_run_id": baseline_run_id, "target_url": target_url,
+            "browser": browser, "device": device}))
+
+    async def get_comparison(self, run_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/runs/{run_id}/comparison")
+
+    async def ingest_junit(self, project_id: int, junit_xml: str,
+                           git_commit: Optional[str] = None,
+                           git_branch: Optional[str] = None,
+                           suite: Optional[str] = None) -> Dict[str, Any]:
+        return await self._request(
+            "POST", f"/api/projects/{project_id}/external-results",
+            params=self._clean({"git_commit": git_commit,
+                                "git_branch": git_branch, "suite": suite}),
+            content=junit_xml.encode("utf-8"),
+            headers={"Content-Type": "application/xml"})
+
+    async def list_external_results(self, project_id: int,
+                                    git_commit: Optional[str] = None,
+                                    limit: int = 20) -> List[Dict[str, Any]]:
+        return await self._request(
+            "GET", f"/api/projects/{project_id}/external-results",
+            params=self._clean({"git_commit": git_commit, "limit": limit}))
+
+    # ------------------------------------------------------------------
+    # Security
+    # ------------------------------------------------------------------
+
+    async def run_security_scan(self, run_id: int) -> Dict[str, Any]:
+        return await self._request("POST", f"/api/runs/{run_id}/security-scan")
+
+    async def get_run_security_findings(self, run_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/runs/{run_id}/security-findings")
+
+    async def start_project_security_scan(
+        self, project_id: int, target_url: str, authorized: bool,
+        scan_type: str = "baseline", authenticated: bool = False,
+        openapi_url: Optional[str] = None,
+        auth_header_name: Optional[str] = None,
+        auth_header_value: Optional[str] = None,
     ) -> Dict[str, Any]:
         return await self._request(
-            "POST",
-            "/api/cases/bulk-propose",
-            json={"project_id": project_id, "proposals": proposals},
-        )
+            "POST", f"/api/projects/{project_id}/security-scan",
+            json=self._clean({
+                "target_url": target_url, "authorized": authorized,
+                "scan_type": scan_type, "authenticated": authenticated,
+                "openapi_url": openapi_url,
+                "auth_header_name": auth_header_name,
+                "auth_header_value": auth_header_value}))
 
-    async def bulk_set_code_paths(
-        self,
-        project_id: int,
-        mapping: Dict[int, List[str]],
-    ) -> Dict[str, Any]:
-        return await self._request(
-            "POST",
-            "/api/cases/bulk-set-code-paths",
-            json={"project_id": project_id, "mapping": mapping},
-        )
+    async def list_security_scans(self, project_id: int) -> List[Dict[str, Any]]:
+        return await self._request("GET", f"/api/projects/{project_id}/security-scans")
+
+    async def get_security_scan(self, scan_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/security-scans/{scan_id}")
+
+    async def get_security_scan_diff(self, scan_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/security-scans/{scan_id}/diff")
+
+    # ------------------------------------------------------------------
+    # Mobile app builds
+    # ------------------------------------------------------------------
+
+    async def list_app_builds(self, project_id: int) -> List[Dict[str, Any]]:
+        return await self._request("GET", f"/api/projects/{project_id}/app-builds")
+
+    async def get_app_build(self, build_id: int) -> Dict[str, Any]:
+        return await self._request("GET", f"/api/app-builds/{build_id}")
+
+
+def new_client() -> TraceIQClient:
+    """Client for the current call: per-request API key when serving HTTP,
+    env-var credentials on stdio."""
+    from traceiq_mcp._context import get_request_api_key
+    req_key = get_request_api_key()
+    if req_key:
+        return TraceIQClient(api_key=req_key)
+    return TraceIQClient()
