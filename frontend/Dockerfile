@@ -22,6 +22,10 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # conf.d/. Override with `-e BACKEND_URL=http://my-backend:8000` to point one
 # prebuilt frontend image at a backend anywhere.
 ENV BACKEND_URL=http://backend:8000
+# DNS server nginx uses to re-resolve ${BACKEND_URL}'s hostname at request
+# time (see nginx.conf). 127.0.0.11 is Docker's embedded DNS, present on any
+# user-defined network; override when running outside Docker networking.
+ENV NGINX_RESOLVER=127.0.0.11
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
