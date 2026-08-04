@@ -2,7 +2,9 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, JSON, String, Text, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import (
+    Column, JSON, String, Text, Enum as SAEnum, UniqueConstraint, Integer,
+    ForeignKey)
 from enum import Enum
 
 # Import settings models
@@ -346,6 +348,12 @@ class TestCaseBase(SQLModel):
     last_human_reviewed_at: Optional[datetime] = Field(default=None)
     last_human_reviewed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
+    # Impact-analysis v2: the most recent git commit at which this case PASSED
+    # (stamped by the result aggregator when a run carries git_commit). Lets an
+    # agent ask "has this case been validated at/after the commit I'm editing?"
+    last_validated_commit: Optional[str] = Field(default=None)
+    last_validated_at: Optional[datetime] = Field(default=None)
+
     # Auth sessions: `is_auth_setup` marks the case whose successful run
     # captures the project's Playwright storageState (it always runs without
     # a stored session). `use_auth_session` lets a case opt out of starting
@@ -616,6 +624,7 @@ class TestCaseResultRead(SQLModel):
     request_params: Optional[dict] = {}
     result_kind: Optional[str] = None
     result_payload: Optional[dict] = None
+    test_case_id: Optional[int] = None
 
 
 class TestRunRead(TestRunBase):
@@ -664,6 +673,18 @@ class TestCaseResult(SQLModel, table=True):
 
     # Triage: the failure cluster this result was fingerprinted into (item 2).
     cluster_id: Optional[int] = Field(default=None, foreign_key="failurecluster.id", index=True)
+
+    # Which TestCase produced this result. Historically results carried only
+    # test_name (conflating same-named cases across suites); the aggregator now
+    # stamps the id — from the worker payload when present, else by resolving
+    # run/suite + name. Nullable: pre-migration rows and unresolvable names.
+    # ON DELETE SET NULL: a suite-level run's results may outlive one of its
+    # cases (case deletes only cascade that case's own single-case runs).
+    test_case_id: Optional[int] = Field(
+        default=None,
+        sa_column=Column(
+            Integer, ForeignKey("testcase.id", ondelete="SET NULL"),
+            nullable=True, index=True))
 
     test_run: TestRun = Relationship(back_populates="results")
 
@@ -1567,12 +1588,48 @@ class ImpactAnalysisRequest(SQLModel):
     include_no_code_paths: bool = False  # if True, also list cases without code_paths
 
 
+class ImpactMatch(SQLModel):
+    """One (changed file ↔ code_paths pattern) hit for a matched case."""
+    file: str
+    pattern: str
+
+
+class ImpactLastResult(SQLModel):
+    """Most recent recorded result for a case (via test_case_id, name fallback)."""
+    status: str
+    run_id: int
+    at: Optional[datetime] = None
+    git_commit: Optional[str] = None
+
+
+class ImpactFlakeInfo(SQLModel):
+    flake_score: float
+    is_quarantined: bool
+
+
 class ImpactedCase(SQLModel):
     id: int
     name: str
     test_suite_id: Optional[int]
     is_ai_authored: bool
-    matched_paths: List[str]
+    matched_paths: List[str]  # v1 field, kept for existing consumers
+
+    # --- v2 enrichment (all additive) ---
+    suite_name: Optional[str] = None
+    matched: List[ImpactMatch] = []
+    tags: List[str] = []
+    priority: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    last_human_reviewed_at: Optional[datetime] = None
+    last_validated_commit: Optional[str] = None
+    last_validated_at: Optional[datetime] = None
+    last_result: Optional[ImpactLastResult] = None
+    flake: Optional[ImpactFlakeInfo] = None
+    # "run": just re-run it. "review": the case itself likely needs editing
+    # before its result means anything. "run_then_review": run it, but treat
+    # the code_paths mapping as possibly stale (broad prefix matched widely).
+    suggested_action: str = "run"
+    reasons: List[str] = []
 
 
 class ImpactAnalysisResponse(SQLModel):

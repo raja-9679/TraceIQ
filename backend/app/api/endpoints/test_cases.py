@@ -118,6 +118,79 @@ async def create_test_case(
     await session.commit()
     return case
 
+class TestCaseSummary(BaseModel):
+    """Slim listing row for GET /api/cases — steps/dataset deliberately omitted
+    to keep list payloads small; fetch a single case for the full shape."""
+    id: int
+    name: str
+    test_suite_id: Optional[int] = None
+    project_id: Optional[int] = None
+    executor: str
+    tags: List[str] = []
+    priority: Optional[str] = None
+    is_ai_authored: bool = False
+    code_paths: List[str] = []
+    last_validated_commit: Optional[str] = None
+    last_validated_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class TestCaseListResponse(BaseModel):
+    items: List[TestCaseSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("/cases", response_model=TestCaseListResponse)
+async def list_test_cases(
+    project_id: int,
+    test_suite_id: Optional[int] = None,
+    tag: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """List test cases in a project (agent/MCP surface). Filters: suite, tag."""
+    if not await access_service.has_project_access(principal.user.id, project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+
+    stmt = select(TestCase).where(TestCase.project_id == project_id)
+    if test_suite_id is not None:
+        stmt = stmt.where(TestCase.test_suite_id == test_suite_id)
+    result = await session.exec(stmt.order_by(TestCase.id))
+    cases = result.all()
+
+    # `tags` is a JSON column — filter in Python; project-sized lists are small.
+    if tag:
+        cases = [c for c in cases if tag in (c.tags or [])]
+
+    total = len(cases)
+    page = cases[offset:offset + limit]
+    items = [
+        TestCaseSummary(
+            id=c.id,
+            name=c.name,
+            test_suite_id=c.test_suite_id,
+            project_id=c.project_id,
+            executor=(c.executor.value if hasattr(c.executor, "value") else str(c.executor)),
+            tags=c.tags or [],
+            priority=c.priority,
+            is_ai_authored=c.is_ai_authored,
+            code_paths=c.code_paths or [],
+            last_validated_commit=c.last_validated_commit,
+            last_validated_at=c.last_validated_at,
+            updated_at=c.updated_at,
+        )
+        for c in page
+    ]
+    return TestCaseListResponse(items=items, total=total, limit=limit, offset=offset)
+
+
 @router.get("/cases/{case_id}", response_model=TestCaseRead)
 async def get_test_case(case_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     case = await session.get(TestCase, case_id)
