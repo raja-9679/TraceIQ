@@ -29,13 +29,18 @@ from app.models import (
     CaseProposalAction,
     CaseProposalCreate,
     CaseProposalRead,
+    FlakeRecord,
     ImpactAnalysisRequest,
     ImpactAnalysisResponse,
     ImpactedCase,
+    ImpactFlakeInfo,
+    ImpactLastResult,
+    ImpactMatch,
     Project,
     TestCase,
     TestCaseResult,
     TestRun,
+    TestStatus,
     TestSuite,
 )
 from app.services.access_service import access_service
@@ -73,6 +78,11 @@ async def impact_analysis(
     )
     cases: List[TestCase] = list(res.all())
 
+    suites_res = await session.exec(
+        select(TestSuite.id, TestSuite.name).where(
+            TestSuite.project_id == body.project_id))
+    suite_names: Dict[int, str] = {sid: name for sid, name in suites_res.all()}
+
     matched: List[ImpactedCase] = []
     cases_without_paths = 0
     files_matched: set = set()
@@ -82,29 +92,134 @@ async def impact_analysis(
         if not code_paths:
             cases_without_paths += 1
             if body.include_no_code_paths:
-                matched.append(ImpactedCase(
-                    id=case.id, name=case.name, test_suite_id=case.test_suite_id,
-                    is_ai_authored=case.is_ai_authored, matched_paths=[],
-                ))
+                entry = await _enrich_impacted_case(
+                    session, case, suite_names, hits=[], pairs=[])
+                entry.suggested_action = "review"
+                entry.reasons.append(
+                    "no code_paths mapping — add one with set_code_paths")
+                matched.append(entry)
             continue
         hits: List[str] = []
+        pairs: List[ImpactMatch] = []
         for f in body.changed_files:
             for p in code_paths:
                 if _path_matches(f, p):
                     hits.append(f)
+                    pairs.append(ImpactMatch(file=f, pattern=p))
                     files_matched.add(f)
                     break
         if hits:
-            matched.append(ImpactedCase(
-                id=case.id, name=case.name, test_suite_id=case.test_suite_id,
-                is_ai_authored=case.is_ai_authored, matched_paths=hits,
-            ))
+            matched.append(await _enrich_impacted_case(
+                session, case, suite_names, hits=hits, pairs=pairs))
 
     unmatched = [f for f in body.changed_files if f not in files_matched]
     return ImpactAnalysisResponse(
         matched_cases=matched,
         cases_without_code_paths=cases_without_paths,
         unmatched_files=unmatched,
+    )
+
+
+# A single bare-prefix pattern swallowing this many changed files suggests the
+# mapping is too coarse to be trusted — run, but re-derive code_paths too.
+_BROAD_PREFIX_THRESHOLD = 5
+
+
+async def _enrich_impacted_case(
+    session: AsyncSession,
+    case: TestCase,
+    suite_names: Dict[int, str],
+    hits: List[str],
+    pairs: List[ImpactMatch],
+) -> ImpactedCase:
+    """Build the v2 ImpactedCase: match detail, last result, flake state, and
+    a deterministic run/review suggestion with human-readable reasons."""
+    last_result: Optional[ImpactLastResult] = None
+    row = (await session.exec(
+        select(TestCaseResult, TestRun)
+        .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+        .where(TestCaseResult.test_case_id == case.id)
+        .order_by(TestCaseResult.id.desc())
+        .limit(1)
+    )).first()
+    if row is None:
+        # Pre-migration rows: fall back to name matching within the project.
+        row = (await session.exec(
+            select(TestCaseResult, TestRun)
+            .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+            .where(
+                TestCaseResult.test_name == case.name,
+                TestRun.project_id == case.project_id,
+            )
+            .order_by(TestCaseResult.id.desc())
+            .limit(1)
+        )).first()
+    if row is not None:
+        result_row, run = row
+        last_result = ImpactLastResult(
+            status=(result_row.status.value
+                    if hasattr(result_row.status, "value") else str(result_row.status)),
+            run_id=run.id,
+            at=run.created_at,
+            git_commit=run.git_commit,
+        )
+
+    flake: Optional[ImpactFlakeInfo] = None
+    flake_row = (await session.exec(
+        select(FlakeRecord).where(
+            FlakeRecord.test_case_id == case.id,
+            FlakeRecord.step_id.is_(None))
+    )).first()
+    if flake_row is not None:
+        flake = ImpactFlakeInfo(
+            flake_score=flake_row.flake_score or 0.0,
+            is_quarantined=flake_row.is_quarantined,
+        )
+
+    reasons: List[str] = []
+    action = "run"
+    if last_result and last_result.status in (
+            TestStatus.FAILED.value, TestStatus.ERROR.value, "failed", "error"):
+        action = "review"
+        reasons.append("last recorded result failed — the case may need "
+                       "updating before its result means anything")
+    if flake and flake.is_quarantined:
+        action = "review"
+        reasons.append("case is quarantined as flaky")
+    if case.is_ai_authored and case.last_human_reviewed_at is None:
+        action = "review"
+        reasons.append("AI-authored and never human-reviewed")
+    if action == "run":
+        prefix_hits: Dict[str, int] = defaultdict(int)
+        for m in pairs:
+            if not any(ch in m.pattern for ch in "*?["):
+                prefix_hits[m.pattern] += 1
+        broad = [p for p, n in prefix_hits.items() if n >= _BROAD_PREFIX_THRESHOLD]
+        if broad:
+            action = "run_then_review"
+            reasons.append(
+                f"bare prefix {broad[0]!r} matched {prefix_hits[broad[0]]} "
+                "changed files — the code_paths mapping may be too coarse; "
+                "re-derive it after running")
+
+    return ImpactedCase(
+        id=case.id,
+        name=case.name,
+        test_suite_id=case.test_suite_id,
+        is_ai_authored=case.is_ai_authored,
+        matched_paths=hits,
+        suite_name=suite_names.get(case.test_suite_id),
+        matched=pairs,
+        tags=case.tags or [],
+        priority=case.priority,
+        ai_confidence=case.ai_confidence,
+        last_human_reviewed_at=case.last_human_reviewed_at,
+        last_validated_commit=case.last_validated_commit,
+        last_validated_at=case.last_validated_at,
+        last_result=last_result,
+        flake=flake,
+        suggested_action=action,
+        reasons=reasons,
     )
 
 
@@ -326,55 +441,79 @@ async def case_run_history(
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    # The matching is by case name within results. A more precise lookup would
-    # join through TestRun.test_case_id but that field is only set for
-    # single-case runs; suite runs surface results by name. We honor both.
-    runs_res = await session.exec(
-        select(TestRun)
-        .where(
-            (TestRun.test_case_id == case_id)
-            | (TestRun.project_id == case.project_id)
-        )
-        .order_by(TestRun.created_at.desc())
-        .limit(200)
-    )
-    runs = list(runs_res.all())
-
     history: List[Dict[str, Any]] = []
-    seen = 0
-    for run in runs:
-        if seen >= limit:
-            break
-        if run.test_case_id == case_id:
-            history.append({
-                "run_id": run.id,
-                "status": str(run.status.value) if hasattr(run.status, "value") else str(run.status),
-                "created_at": run.created_at.isoformat() if run.created_at else None,
-                "duration_ms": run.duration_ms,
-                "git_commit": run.git_commit,
-                "triggered_by": str(run.triggered_by.value) if hasattr(run.triggered_by, "value") else str(run.triggered_by),
-            })
-            seen += 1
-            continue
-        # Try to match by name in TestCaseResult rows.
-        res = await session.exec(
-            select(TestCaseResult).where(
-                TestCaseResult.test_run_id == run.id,
-                TestCaseResult.test_name == case.name,
+    covered_run_ids: set = set()
+
+    # Precise path: results stamped with this case's id (aggregator writes the
+    # link since the impact-analysis-v2 migration; single-case runs backfilled).
+    id_rows = await session.exec(
+        select(TestCaseResult, TestRun)
+        .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+        .where(TestCaseResult.test_case_id == case_id)
+        .order_by(TestCaseResult.id.desc())
+        .limit(limit)
+    )
+    for result_row, run in id_rows.all():
+        covered_run_ids.add(run.id)
+        history.append({
+            "run_id": run.id,
+            "status": str(result_row.status.value) if hasattr(result_row.status, "value") else str(result_row.status),
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+            "duration_ms": result_row.duration_ms,
+            "git_commit": run.git_commit,
+            "triggered_by": str(run.triggered_by.value) if hasattr(run.triggered_by, "value") else str(run.triggered_by),
+            "matched_by": "id",
+        })
+
+    # Fallback for pre-migration rows: run-level status of single-case runs,
+    # then name matching on unstamped result rows. Can conflate same-named
+    # cases — hence the explicit matched_by flag.
+    if len(history) < limit:
+        runs_res = await session.exec(
+            select(TestRun)
+            .where(
+                (TestRun.test_case_id == case_id)
+                | (TestRun.project_id == case.project_id)
             )
+            .order_by(TestRun.created_at.desc())
+            .limit(200)
         )
-        result_row = res.first()
-        if result_row:
-            history.append({
-                "run_id": run.id,
-                "status": str(result_row.status.value) if hasattr(result_row.status, "value") else str(result_row.status),
-                "created_at": run.created_at.isoformat() if run.created_at else None,
-                "duration_ms": result_row.duration_ms,
-                "git_commit": run.git_commit,
-                "triggered_by": str(run.triggered_by.value) if hasattr(run.triggered_by, "value") else str(run.triggered_by),
-                "via_suite_run": True,
-            })
-            seen += 1
+        for run in runs_res.all():
+            if len(history) >= limit:
+                break
+            if run.id in covered_run_ids:
+                continue
+            if run.test_case_id == case_id:
+                history.append({
+                    "run_id": run.id,
+                    "status": str(run.status.value) if hasattr(run.status, "value") else str(run.status),
+                    "created_at": run.created_at.isoformat() if run.created_at else None,
+                    "duration_ms": run.duration_ms,
+                    "git_commit": run.git_commit,
+                    "triggered_by": str(run.triggered_by.value) if hasattr(run.triggered_by, "value") else str(run.triggered_by),
+                    "matched_by": "id",
+                })
+                continue
+            res = await session.exec(
+                select(TestCaseResult).where(
+                    TestCaseResult.test_run_id == run.id,
+                    TestCaseResult.test_name == case.name,
+                    TestCaseResult.test_case_id.is_(None),
+                )
+            )
+            result_row = res.first()
+            if result_row:
+                history.append({
+                    "run_id": run.id,
+                    "status": str(result_row.status.value) if hasattr(result_row.status, "value") else str(result_row.status),
+                    "created_at": run.created_at.isoformat() if run.created_at else None,
+                    "duration_ms": result_row.duration_ms,
+                    "git_commit": run.git_commit,
+                    "triggered_by": str(run.triggered_by.value) if hasattr(run.triggered_by, "value") else str(run.triggered_by),
+                    "via_suite_run": True,
+                    "matched_by": "name",
+                })
+        history.sort(key=lambda h: h["created_at"] or "", reverse=True)
 
     # Summarize: pass/fail counts, last-failure timestamp.
     passes = sum(1 for h in history if h["status"] == "passed")

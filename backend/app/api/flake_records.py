@@ -28,13 +28,34 @@ router = APIRouter()
 @router.get("/flakes")
 async def list_flakes(
     test_case_id: Optional[int] = None,
+    project_id: Optional[int] = None,
     quarantined_only: bool = False,
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ):
+    # Scope the listing: a case filter checks that case's project; a project
+    # filter checks the project; unfiltered listings are refused (the table is
+    # cross-tenant).
+    if test_case_id is not None:
+        case = await session.get(TestCase, test_case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Test case not found")
+        if not await access_service.has_project_access(principal.user.id, case.project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+    elif project_id is not None:
+        if not await access_service.has_project_access(principal.user.id, project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+    else:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide test_case_id or project_id to scope the listing")
+
     query = select(FlakeRecord)
     if test_case_id is not None:
         query = query.where(FlakeRecord.test_case_id == test_case_id)
+    if project_id is not None:
+        query = (query.join(TestCase, TestCase.id == FlakeRecord.test_case_id)
+                 .where(TestCase.project_id == project_id))
     if quarantined_only:
         query = query.where(FlakeRecord.is_quarantined == True)  # noqa: E712
     res = await session.exec(query.order_by(FlakeRecord.flake_score.desc()).limit(200))

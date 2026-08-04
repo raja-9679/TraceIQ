@@ -266,7 +266,11 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
 
 
 def _update_flake_scores(run: TestRun, run_id: int, session: Session):
-    """Recompute flake scores for every test case touched by a finished run.
+    """Post-process results of a finished run: link, validate, flake-score.
+
+    Besides flake scoring, this stamps TestCaseResult.test_case_id on every
+    result it can resolve, and TestCase.last_validated_commit/_at when a case
+    PASSED on a run that carries git_commit.
 
     For each TestCaseResult of the run, resolve its TestCase (run.test_case_id
     when the run targeted a single case, otherwise TestCase looked up by name)
@@ -295,9 +299,13 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
 
         scored_case_ids = set()
         for res in results:
-            # Resolve the TestCase behind this result
+            # Resolve the TestCase behind this result. Prefer an id already
+            # stamped on the result (worker payload / earlier pass), then the
+            # run's single-case target, then name matching.
             test_case = None
-            if run.test_case_id:
+            if res.test_case_id:
+                test_case = session.get(TestCase, res.test_case_id)
+            if test_case is None and run.test_case_id:
                 test_case = session.get(TestCase, run.test_case_id)
             if test_case is None:
                 stmt = select(TestCase).where(
@@ -309,7 +317,23 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                     TestCase.name == res.test_name,
                     TestCase.project_id == run.project_id)
                 test_case = session.exec(stmt).first()
-            if test_case is None or test_case.id in scored_case_ids:
+            if test_case is None:
+                continue
+
+            # Stamp the resolved link on the result (impact-analysis v2 /
+            # run-history rely on this id instead of name matching).
+            if res.test_case_id is None:
+                res.test_case_id = test_case.id
+                session.add(res)
+
+            # A pass on a run that carries git context validates the case at
+            # that commit — the "does this case still match the code?" stamp.
+            if res.status == TestStatus.PASSED and run.git_commit:
+                test_case.last_validated_commit = run.git_commit
+                test_case.last_validated_at = datetime.utcnow()
+                session.add(test_case)
+
+            if test_case.id in scored_case_ids:
                 continue
             scored_case_ids.add(test_case.id)
 
@@ -480,6 +504,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 existing.status = status
                 existing.duration_ms = test_res.get('duration_ms', 0)
                 existing.error_message = test_res.get('error')
+                if existing.test_case_id is None and test_res.get('test_case_id'):
+                    existing.test_case_id = int(test_res['test_case_id'])
                 # Use job-level video/trace/HAR for all tests (shared browser)
                 existing.video_url = job_video
                 existing.trace_url = job_trace
@@ -502,6 +528,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     test_run_id=run_id,
                     test_name=test_name,
                     status=status,
+                    test_case_id=(int(test_res['test_case_id'])
+                                  if test_res.get('test_case_id') else None),
                     duration_ms=test_res.get('duration_ms', 0),
                     error_message=test_res.get('error'),
                     video_url=job_video,
@@ -611,6 +639,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             existing.status = status
             existing.duration_ms = result.get('duration_ms', 0)
             existing.error_message = result.get('error')
+            if existing.test_case_id is None and test_case_id:
+                existing.test_case_id = int(test_case_id)
             existing.video_url = artifacts.get('video')
             existing.trace_url = artifacts.get('trace')
             existing.har_url = artifacts.get('har')
@@ -635,6 +665,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 test_run_id=run_id,
                 test_name=test_name,
                 status=status,
+                test_case_id=int(test_case_id) if test_case_id else None,
                 duration_ms=result.get('duration_ms', 0),
                 error_message=result.get('error'),
                 video_url=artifacts.get('video'),
