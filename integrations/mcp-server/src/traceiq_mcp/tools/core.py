@@ -1,7 +1,7 @@
 """Workspaces, projects, suites, cases — the catalogue."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from traceiq_mcp.app import mcp
 from traceiq_mcp.client import new_client
@@ -60,12 +60,42 @@ async def get_suite(suite_id: int) -> SuiteDetail:
 async def create_suite(project_id: int, name: str,
                        parent_id: Optional[int] = None,
                        execution_mode: Optional[str] = None,
-                       description: Optional[str] = None) -> SuiteSummary:
+                       description: Optional[str] = None,
+                       settings: Optional[Dict[str, Any]] = None,
+                       inherit_settings: Optional[bool] = None) -> SuiteSummary:
     """Create a test suite under a project (optionally nested under a parent
     suite). Use only after discover_app_surface confirms a suitable home
-    doesn't already exist. execution_mode: continuous | separate | parallel."""
+    doesn't already exist. execution_mode: continuous | separate | parallel.
+
+    `settings` is the suite-level config every case in the suite (and in
+    child suites, unless they set inherit_settings=false) receives at run
+    time. Set it here instead of repeating headers on every http-request
+    step. Shape — all keys optional:
+
+      {
+        "headers": {"Authorization": "Bearer ...", "X-Env": "staging"},
+            # merged into every http-request step; a step's own
+            # params.headers win on conflict
+        "params":  {"tenant": "acme"},
+            # default query params, same merge rule
+        "allowed_domains": ["app.example.com"],
+            # extra hosts steps may touch beyond the target URL's own
+        "domain_settings": {"api.example.com": {"headers": {...}, "params": {...}}},
+            # per-host overrides, e.g. a different token for the API host
+        "browsers": ["chromium", "firefox"],
+        "devices":  ["iPhone 14"],
+            # default execution matrix; run_suite args override per run
+      }
+
+    Inheritance: child suites merge their settings OVER the parent chain's
+    (child wins per key; browsers/devices replace wholesale). Pass
+    inherit_settings=False to cut the suite off from its parent's settings.
+
+    To CHANGE settings on an existing suite, use propose_update_suite_settings
+    — direct suite edits are not exposed to agents."""
     data = await new_client().create_suite(
-        project_id, name, parent_id, execution_mode, description)
+        project_id, name, parent_id, execution_mode, description,
+        settings, inherit_settings)
     return SuiteSummary.model_validate(data)
 
 

@@ -31,6 +31,7 @@ EXPECTED_TOOLS = {
     # authoring
     "get_authoring_guide", "describe_step_types",
     "propose_create_case", "propose_update_case", "propose_delete_case",
+    "propose_update_suite_settings",
     "bulk_propose_cases", "list_case_proposals", "generate_case_proposal",
     # quality & results
     "get_quality_snapshot", "evaluate_quality_gate", "get_run_report",

@@ -6,7 +6,7 @@ from sqlmodel import select, func, or_, and_
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
-from app.services.test_service import test_service
+from app.services.test_service import normalize_steps, test_service
 from app.services.access_service import access_service
 from app.services.rbac_service import rbac_service
 from app.models import (
@@ -420,7 +420,7 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
     for case_data in data.get("test_cases", []):
         new_case = TestCase(
             name=case_data.get("name"),
-            steps=case_data.get("steps", []),
+            steps=normalize_steps(case_data.get("steps")),
             test_suite_id=new_suite.id,
             project_id=project_id,
             created_by_id=user_id,
