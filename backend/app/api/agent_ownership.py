@@ -19,12 +19,14 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.orm.attributes import flag_modified
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import (
+    AuditLog,
     CaseProposal,
     CaseProposalAction,
     CaseProposalCreate,
@@ -564,6 +566,17 @@ async def create_proposal(
     if body.action in (CaseProposalAction.UPDATE, CaseProposalAction.DELETE, CaseProposalAction.MOVE):
         if body.target_case_id is None:
             raise HTTPException(status_code=400, detail=f"{body.action.value.upper()} requires target_case_id")
+    if body.action == CaseProposalAction.UPDATE_SUITE_SETTINGS:
+        if body.test_suite_id is None:
+            raise HTTPException(status_code=400, detail="UPDATE_SUITE_SETTINGS requires test_suite_id")
+        if not isinstance((body.payload or {}).get("settings"), dict) and \
+                (body.payload or {}).get("inherit_settings") is None:
+            raise HTTPException(
+                status_code=400,
+                detail="UPDATE_SUITE_SETTINGS payload needs a settings object and/or inherit_settings")
+        suite = await session.get(TestSuite, body.test_suite_id)
+        if not suite or suite.project_id != body.project_id:
+            raise HTTPException(status_code=404, detail="Target suite not found in this project")
 
     proposal = CaseProposal(
         project_id=body.project_id,
@@ -673,7 +686,9 @@ async def reject_proposal(
 async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncSession) -> bool:
     """Auto-apply policy: merge a fresh proposal immediately when the
     workspace opted in (auto_apply_threshold) and the proposal's confidence
-    clears it. CREATE/UPDATE only — DELETE/MOVE always wait for a human.
+    clears it. CREATE/UPDATE only — DELETE/MOVE/UPDATE_SUITE_SETTINGS always
+    wait for a human (suite settings carry headers/auth sent to the app under
+    test, so they are never applied on confidence alone).
     Safe because every applied change is snapshotted in TestCaseRevision.
     Caller commits. Returns True iff the proposal was applied."""
     try:
@@ -766,18 +781,49 @@ async def set_proposal_policy(
             "auto_apply_threshold": workspace.auto_apply_threshold}
 
 
+def _validated_executor(payload: dict) -> str:
+    """Executor for a proposed case: explicit value, else inferred from steps.
+
+    Inference matters: agent-proposed mobile cases used to default to
+    ui_playwright, land on web workers, and 'pass' with every mobile-* step
+    skipped — a fake green. A case whose steps are mobile-* IS a mobile case
+    regardless of what the payload forgot to say."""
+    from app.models import ExecutorType
+
+    explicit = payload.get("executor")
+    if explicit:
+        try:
+            return ExecutorType(explicit).value
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown executor '{explicit}' — one of: "
+                       f"{[e.value for e in ExecutorType]}")
+    steps = payload.get("steps") or []
+    step_types = [s.get("type", "") for s in steps if isinstance(s, dict)]
+    if step_types and all(t.startswith("mobile-") for t in step_types):
+        return ExecutorType.MOBILE_APPIUM.value
+    return ExecutorType.UI_PLAYWRIGHT.value
+
+
 async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSession) -> None:
-    """Apply an accepted proposal: create/update/delete/move the test case."""
+    """Apply an accepted proposal: create/update/delete/move the test case,
+    or update the target suite's settings blob."""
+    from app.services.test_service import normalize_steps
+
     payload = proposal.payload or {}
     if proposal.action == CaseProposalAction.CREATE:
         case = TestCase(
             name=payload.get("name") or "Proposed case",
-            steps=payload.get("steps") or [],
+            steps=normalize_steps(payload.get("steps")),
+            executor=_validated_executor(payload),
             test_suite_id=proposal.test_suite_id,
             project_id=proposal.project_id,
             created_by_id=user_id,
             updated_by_id=user_id,
             code_paths=payload.get("code_paths") or [],
+            tags=payload.get("tags") or [],
+            priority=payload.get("priority"),
             is_ai_authored=True,
             ai_confidence=proposal.ai_confidence,
             last_human_reviewed_at=datetime.utcnow(),
@@ -794,6 +840,32 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
                               agent_id=proposal.agent_id)
         return
 
+    if proposal.action == CaseProposalAction.UPDATE_SUITE_SETTINGS:
+        suite = await session.get(TestSuite, proposal.test_suite_id)
+        if not suite:
+            raise HTTPException(status_code=404, detail="Target suite missing")
+        if isinstance(payload.get("settings"), dict):
+            if payload.get("merge", True):
+                # Shallow-merge per settings key (proposed wins) — same
+                # semantics the suite chain uses for parent→child overrides.
+                from app.services.test_service import _merge_settings
+                suite.settings = _merge_settings(suite.settings or {}, payload["settings"])
+            else:
+                suite.settings = payload["settings"]
+            flag_modified(suite, "settings")
+        if payload.get("inherit_settings") is not None:
+            suite.inherit_settings = bool(payload["inherit_settings"])
+        suite.updated_at = datetime.utcnow()
+        suite.updated_by_id = user_id
+        session.add(suite)
+        session.add(AuditLog(
+            entity_type="suite", entity_id=suite.id, action="update_settings",
+            user_id=user_id,
+            changes={"proposal_id": proposal.id, "payload": payload,
+                     "agent_id": proposal.agent_id},
+        ))
+        return
+
     case = await session.get(TestCase, proposal.target_case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Target case missing")
@@ -802,9 +874,15 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         if "name" in payload:
             case.name = payload["name"]
         if "steps" in payload:
-            case.steps = payload["steps"]
+            case.steps = normalize_steps(payload["steps"])
         if "code_paths" in payload:
             case.code_paths = payload["code_paths"]
+        if "tags" in payload:
+            case.tags = payload["tags"]
+        if "priority" in payload:
+            case.priority = payload["priority"]
+        if payload.get("executor"):
+            case.executor = _validated_executor(payload)
         case.updated_at = datetime.utcnow()
         case.updated_by_id = user_id
         case.last_human_reviewed_at = datetime.utcnow()

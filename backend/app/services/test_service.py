@@ -12,6 +12,24 @@ from app.core.storage import minio_client
 from sqlmodel import Session, select
 
 
+def normalize_steps(steps: Optional[List[Any]]) -> List[Any]:
+    """Ensure every step dict has a non-empty `id`.
+
+    Agent-supplied steps (proposal queue, imports) routinely omit ids; the
+    read models (TestCaseRead.steps) validate against TestStep, so a stored
+    step without an id used to 500 every suite/case read that included it.
+    Mutates nothing: returns new dicts for steps that needed an id.
+    """
+    import uuid
+
+    normalized = []
+    for step in steps or []:
+        if isinstance(step, dict) and not step.get("id"):
+            step = {**step, "id": f"step-{uuid.uuid4().hex[:8]}"}
+        normalized.append(step)
+    return normalized
+
+
 def _normalize_domain(d) -> Optional[Dict]:
     """Normalize an allowed_domains entry to a dict with a 'domain' key."""
     if not d:

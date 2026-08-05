@@ -104,10 +104,13 @@ class TraceIQClient:
     async def create_suite(self, project_id: int, name: str,
                            parent_id: Optional[int] = None,
                            execution_mode: Optional[str] = None,
-                           description: Optional[str] = None) -> Dict[str, Any]:
+                           description: Optional[str] = None,
+                           settings: Optional[Dict[str, Any]] = None,
+                           inherit_settings: Optional[bool] = None) -> Dict[str, Any]:
         return await self._request("POST", "/api/suites", json=self._clean({
             "name": name, "project_id": project_id, "parent_id": parent_id,
-            "execution_mode": execution_mode, "description": description}))
+            "execution_mode": execution_mode, "description": description,
+            "settings": settings, "inherit_settings": inherit_settings}))
 
     async def delete_suite(self, suite_id: int) -> Dict[str, Any]:
         return await self._request("DELETE", f"/api/suites/{suite_id}")

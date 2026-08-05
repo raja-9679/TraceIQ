@@ -222,6 +222,30 @@ third-party or staging app:
 Budget with `max_pages` (default 10, hard cap 50). The crawl skips
 assets and logout links.
 
+### Mobile cases (mobile-* steps) — four rules that are all load-bearing
+
+1. **`executor: "mobile_appium"` on the case.** Pass it explicitly to
+   `propose_create_case`. The server infers it when every step type starts
+   with `mobile-`, but don't rely on that. A mobile case with the default
+   `ui_playwright` executor is dispatched to web workers, which fail it with
+   "Unknown step type" — and before that guard existed, they *passed* it
+   silently, zero steps executed.
+2. **Pin an app build to every run**: `run_suite(app_build_id=…)` from
+   `list_app_builds`. Without it every mobile job errors immediately
+   ("No app build pinned to this run").
+3. **The app must expose its semantics tree.** Appium finds elements through
+   Android's accessibility tree; a Flutter app must call
+   `SemanticsBinding.instance.ensureSemantics()` (or be driven by a real
+   accessibility service) or every `Semantics(label:)` in the source is
+   invisible at runtime — accessibility-id waits time out while the widget
+   is plainly on screen.
+4. **Bump `versionCode` on every APK you upload.** UiAutomator2 skips
+   (re)install when the on-device versionCode matches, so a rebuilt debug
+   APK with the same `pubspec.yaml` version runs as the STALE old binary.
+   Flutter: bump the `+N` suffix in `version: 1.0.1+2`. (Deployments can
+   also set `MOBILE_ENFORCE_APP_INSTALL=true` on the mobile worker to
+   force reinstall every session.)
+
 ### Data-driven tests — one case, many rows
 
 Set `dataset` on a case to a JSON array of row objects:
@@ -413,11 +437,48 @@ TodoLite CRUD tests use `CONTINUOUS` (each case starts clean).
 
 ---
 
-## 7. Auth — Personas, headers, cookies
+## 7. Auth — Personas, headers, cookies, suite settings
+
+### Suite settings — set shared headers ONCE, not per step
+
+Every suite carries a `settings` blob that is applied to every case in it
+(and to child suites, unless a child sets `inherit_settings=false`). If all
+cases in a suite hit the same authenticated API, the `Authorization` header
+belongs HERE, not copy-pasted into every `http-request` step:
+
+```jsonc
+{
+  "headers": {"Authorization": "Bearer ${TOKEN}", "X-Env": "staging"},
+      // merged into every http-request; a step's own params.headers
+      // win on conflict, so one-off overrides still work per step
+  "params": {"tenant": "acme"},          // default query params, same rule
+  "allowed_domains": ["api.example.com"], // extra hosts steps may touch
+  "domain_settings": {                    // per-host header/param overrides
+    "api.example.com": {"headers": {"Authorization": "Bearer ${API_TOKEN}"}}
+  },
+  "browsers": ["chromium", "firefox"],    // default execution matrix —
+  "devices": ["iPhone 14"]                // child lists replace wholesale
+}
+```
+
+Inheritance is parent → child with the child winning per key. Read a suite's
+resolved chain via `get_suite` → `effective_settings`.
+
+How to set it:
+- **New suite** → pass `settings=` (and optionally `inherit_settings=`) to
+  `create_suite` directly.
+- **Existing suite** → `propose_update_suite_settings`. This rides the same
+  proposal queue as case edits but is NEVER auto-applied — a human reviews
+  every settings change, because these headers are sent to the app under
+  test with real credentials on every future run. Default `merge=true`
+  layers your keys over what's there; `merge=false` replaces the whole blob
+  (read `effective_settings` first if you use it).
 
 ### API tests (Bearer token)
 
-Embed the auth header in the `http-request` step:
+For a one-off request that needs different auth than the suite default,
+embed the header in the `http-request` step itself (it wins over suite
+settings on conflict):
 
 ```jsonc
 {
@@ -582,6 +643,7 @@ final = await mcp.wait_for_run(run_id=run.id, timeout_seconds=300)
 | Propose new coverage | `propose_create_case` (one) or `bulk_propose_cases` (many) |
 | LLM-draft a case from a description | `generate_case_proposal` |
 | Modify or remove existing coverage | `propose_update_case`, `propose_delete_case` |
+| Set suite-wide headers / params / auth | `create_suite(settings=…)` for new suites; `propose_update_suite_settings` for existing (human-reviewed, never auto-applied) |
 | Backfill `code_paths` on existing cases | `set_code_paths` (one), `bulk_set_code_paths` (many) |
 | Run a suite + watch | `run_suite` (git context! tags, environment_id), `wait_for_run`, `get_run`, `get_run_results` |
 | Test a dev server on localhost | `run_suite(local_worker_id=…)` + `npm run worker:local` on the dev machine |

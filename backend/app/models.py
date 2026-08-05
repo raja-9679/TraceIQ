@@ -289,7 +289,11 @@ class TestSuiteUpdate(SQLModel):
 
 
 class TestStep(BaseModel):
-    id: str
+    # Optional: agent-authored steps (proposal queue) historically arrived
+    # without ids and were stored verbatim, so requiring `id` made every
+    # read of such a case 500. The apply path now assigns missing ids, but
+    # rows written before that fix must still render.
+    id: Optional[str] = None
     type: str  # 'goto', 'click', 'fill', 'check', 'expect', 'http-request', 'feed-check'
     selector: Optional[str] = None
     value: Optional[str] = None
@@ -1505,6 +1509,11 @@ class CaseProposalAction(str, Enum):
     UPDATE = "update"
     DELETE = "delete"
     MOVE = "move"
+    # Change a TestSuite's settings blob (headers/params/auth config that
+    # every case in the suite inherits). Never auto-applied: a header value
+    # is sent to the app under test with real credentials, so a human must
+    # review it even in auto-apply workspaces.
+    UPDATE_SUITE_SETTINGS = "update_suite_settings"
 
 
 class CaseProposal(SQLModel, table=True):
@@ -1530,10 +1539,12 @@ class CaseProposal(SQLModel, table=True):
         )),
     )
     # Free-form proposed payload. Interpretation depends on `action`:
-    #   CREATE: { name, steps, code_paths, intent }
-    #   UPDATE: { name?, steps?, code_paths?, ... }
+    #   CREATE: { name, steps, code_paths, tags?, priority?, intent }
+    #   UPDATE: { name?, steps?, code_paths?, tags?, priority? }
     #   DELETE: { reason }
     #   MOVE:   { new_test_suite_id }
+    #   UPDATE_SUITE_SETTINGS: { settings, inherit_settings?, merge? }
+    #     (test_suite_id identifies the target suite; merge defaults true)
     payload: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     rationale: Optional[str] = None
     ai_confidence: float = Field(default=0.0)

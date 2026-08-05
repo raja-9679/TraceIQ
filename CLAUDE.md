@@ -279,7 +279,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   settings group `ldap`) at `POST /api/auth/ldap/login` — backend image
   rebuild needed for the ldap3 dep.
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
-  0.2.0, FastMCP, `mcp>=1.10,<2`): 50 tools, each with Pydantic input/output
+  0.2.0, FastMCP, `mcp>=1.10,<2`): 51 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio
   (`traceiq-mcp`) + streamable HTTP (`traceiq-mcp-http`, POST /mcp on 8088,
   per-request `X-API-Key`/Bearer). Add a tool = output model in
@@ -290,7 +290,12 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   run_then_review` + reasons; passing runs with `git_commit` stamp
   `TestCase.last_validated_commit` and `TestCaseResult.test_case_id`
   (aggregator; migration `f1a2b3c4d5e6`). Write policy: CaseProposal queue +
-  workspace auto-apply threshold; accept/reject human-only.
+  workspace auto-apply threshold; accept/reject human-only. Suite settings
+  (inherited headers/params/auth) are agent-visible: `create_suite` takes
+  `settings`/`inherit_settings`, and changes go through
+  `propose_update_suite_settings` (CaseProposalAction.UPDATE_SUITE_SETTINGS,
+  migration `a3b4c5d6e7f8`) — never auto-applied, human review always. Case
+  proposals also honor `tags`/`priority` in payload/patch.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
 
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
