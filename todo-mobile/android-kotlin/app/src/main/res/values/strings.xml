@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Todo App (Kotlin)</string>
+    <string name="title">Todo App</string>
+    <string name="input_hint">What needs to be done?</string>
+    <string name="add">Add</string>
+    <string name="empty_state">No todos yet. Add one above!</string>
+    <string name="load_error">Could not load todos. Pull down to retry.</string>
+    <string name="generic_error">Something went wrong. Please try again.</string>
+</resources>

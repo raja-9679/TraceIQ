@@ -1,0 +1,16 @@
+# Node server
+node_modules/
+
+# Flutter client
+mobile/build/
+mobile/.dart_tool/
+mobile/.idea/
+mobile/android/.gradle/
+mobile/android/local.properties
+
+# Kotlin client
+android-kotlin/.gradle/
+android-kotlin/.kotlin/
+android-kotlin/build/
+android-kotlin/app/build/
+android-kotlin/local.properties
