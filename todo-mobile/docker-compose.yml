@@ -1,0 +1,10 @@
+services:
+  todoapp:
+    build: .
+    ports:
+      - "3000:3000"
+    networks: [traceiq_net]
+networks:
+  traceiq_net:
+    name: traceiq_traceiq_internal
+    external: true
