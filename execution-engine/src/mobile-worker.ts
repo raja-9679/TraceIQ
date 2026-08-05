@@ -175,11 +175,22 @@ class MobileWorker {
         let videoBuf: Buffer | null = null;
 
         // Screen recording is best-effort: emulators and clouds support it,
-        // some targets don't — never fail the job over it.
+        // some targets don't — never fail the job over it. Record at half
+        // the screen size (rounded down to a multiple of 16, as encoders
+        // require): emulator virtual GPUs typically fail to init the encoder
+        // at native resolution (screenrecord "Encoder failed (err=-38)")
+        // and Appium then hands back a 0-byte recording with no error.
         let recording = false;
         try {
-            await this.driver.startScreenRecording(sessionId);
+            let videoSize = process.env.MOBILE_VIDEO_SIZE;
+            if (!videoSize) {
+                const win = await this.driver.getWindowRect(sessionId);
+                const half = (n: number) => Math.max(Math.floor(n / 2 / 16) * 16, 160);
+                videoSize = `${half(win.width)}x${half(win.height)}`;
+            }
+            await this.driver.startScreenRecording(sessionId, videoSize);
             recording = true;
+            console.log(`[MobileWorker] Screen recording started (${videoSize})`);
         } catch (err: any) {
             console.log(`[MobileWorker] Screen recording unavailable: ${err.message}`);
         }
@@ -192,7 +203,13 @@ class MobileWorker {
             if (recording) {
                 try {
                     const b64 = await this.driver.stopScreenRecording(sessionId);
-                    if (b64) videoBuf = Buffer.from(b64, 'base64');
+                    if (b64) {
+                        videoBuf = Buffer.from(b64, 'base64');
+                    } else {
+                        console.log('[MobileWorker] Screen recording came back EMPTY — '
+                            + 'the device encoder likely failed to start (emulators: try a '
+                            + 'smaller MOBILE_VIDEO_SIZE).');
+                    }
                 } catch (err: any) {
                     console.log(`[MobileWorker] Failed to stop screen recording: ${err.message}`);
                 }
@@ -552,6 +569,12 @@ class MobileWorker {
         const common = {
             'appium:app': appTarget,
             'appium:newCommandTimeout': 300,
+            // Debug APKs are often rebuilt without a versionCode bump, and
+            // UiAutomator2 skips (re)install when the on-device versionCode
+            // matches — sessions then silently run the STALE binary. Opt-in
+            // reinstall-every-session for dev/emulator setups.
+            ...(process.env.MOBILE_ENFORCE_APP_INSTALL === 'true'
+                ? { 'appium:enforceAppInstall': true } : {}),
             ...(process.env.MOBILE_PLATFORM_VERSION
                 ? { 'appium:platformVersion': process.env.MOBILE_PLATFORM_VERSION } : {}),
             // Read by device-cloud decorators for session/build naming.

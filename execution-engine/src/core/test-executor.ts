@@ -1523,7 +1523,14 @@ if __name__ == "__main__":
 
             default:
                 if (step.type === 'switch-frame') break; // Handled in the main loop
-                console.warn(`Unknown step type: ${step.type}`);
+                // A step this worker can't execute must FAIL the case, not
+                // silently pass it. A mobile-* case mis-routed here used to
+                // go green with zero steps executed — a fake pass that
+                // masked real regressions and overwrote real mobile results.
+                throw new Error(
+                    `Unknown step type "${step.type}" — this worker cannot execute it. ` +
+                    `If this is a mobile-* step the case's executor should be mobile_appium; ` +
+                    `if the step type is new, the worker image needs a rebuild.`);
         }
     }
 }
