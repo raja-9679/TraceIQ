@@ -181,7 +181,9 @@ services:
     build:
       context: ../backend
       dockerfile: Dockerfile
-    command: celery -A app.core.celery_app beat --loglevel=info
+    # /app is the host-mounted backend/ (owned by the host user), not writable by
+    # the container's traceiq uid — keep beat's schedule db on a writable path.
+    command: celery -A app.core.celery_app beat --loglevel=info -s /tmp/celerybeat-schedule
     volumes:
       - ../backend:/app
     environment:
