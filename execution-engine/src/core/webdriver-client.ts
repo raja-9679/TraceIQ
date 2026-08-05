@@ -186,9 +186,16 @@ export class WebDriverClient {
         return this.cmd('POST', `/session/${sessionId}/execute/sync`, { script, args });
     }
 
-    /** Start Appium screen recording (no-op error on unsupported targets). */
-    async startScreenRecording(sessionId: string): Promise<void> {
-        await this.cmd('POST', `/session/${sessionId}/appium/start_recording_screen`, {});
+    /** Start Appium screen recording (no-op error on unsupported targets).
+     *  videoSize ("WxH") matters on emulators: the virtual GPU's encoder
+     *  often can't init at native resolution (err=-38 → silent 0-byte
+     *  recording) but works fine at half size. */
+    async startScreenRecording(sessionId: string, videoSize?: string): Promise<void> {
+        // The route's payload contract nests everything under `options` —
+        // a bare {videoSize} body parses as NO options and records at
+        // native resolution.
+        await this.cmd('POST', `/session/${sessionId}/appium/start_recording_screen`,
+            videoSize ? { options: { videoSize } } : {});
     }
 
     /** Stop screen recording; returns base64 MP4 ('' when nothing recorded). */
