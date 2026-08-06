@@ -519,7 +519,10 @@ class TestRunBase(SQLModel):
     # webhooks, heal, monitor, security scan, triage) against redelivery — a
     # retried webhook would otherwise re-send customer emails and re-fire CI
     # callbacks.
-    finalized_at: Optional[datetime] = Field(default=None)
+    # index=True keeps create_all() (bootstrap_db.py) in sync with migration
+    # a2f4c6d8e0b1, which creates ix_testrun_finalized_at — otherwise fresh
+    # installs and migrated installs diverge on this index.
+    finalized_at: Optional[datetime] = Field(default=None, index=True)
     status: TestStatus = Field(default=TestStatus.PENDING)
     total_tests: int = 0
     passed_tests: int = 0

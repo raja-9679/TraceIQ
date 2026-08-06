@@ -54,11 +54,19 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
             for result in failed_results[:_MAX_PER_RUN]:
                 steps = []
                 case = None
-                if run.test_case_id:
+                # Prefer the precise link stamped by the aggregator.
+                if getattr(result, "test_case_id", None):
+                    case = session.get(TestCase, result.test_case_id)
+                if case is None and run.test_case_id:
                     case = session.get(TestCase, run.test_case_id)
                 if case is None:
+                    # Name fallback MUST be scoped to this run's project — a
+                    # global name match could pull another tenant's case steps
+                    # into this tenant's failure report.
                     case = session.exec(
-                        select(TestCase).where(TestCase.name == result.test_name)
+                        select(TestCase).where(
+                            TestCase.name == result.test_name,
+                            TestCase.project_id == run.project_id)
                     ).first()
                 if case:
                     steps = [s if isinstance(s, dict) else s.dict() for s in (case.steps or [])]

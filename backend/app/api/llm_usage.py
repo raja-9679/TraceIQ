@@ -147,8 +147,9 @@ async def ingest_worker_llm_usage(
 ):
     """Execution-worker usage ingest. Workspace/project are resolved from the
     run each event belongs to, so the worker only needs to know the run id."""
+    import hmac
     expected = settings.WEBHOOK_SECRET or settings.SECRET_KEY
-    if not x_worker_secret or x_worker_secret != expected:
+    if not x_worker_secret or not hmac.compare_digest(x_worker_secret, expected):
         raise HTTPException(status_code=403, detail="Invalid worker secret")
 
     period = datetime.utcnow().strftime("%Y-%m")

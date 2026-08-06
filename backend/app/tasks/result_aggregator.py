@@ -307,17 +307,28 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                 test_case = session.get(TestCase, res.test_case_id)
             if test_case is None and run.test_case_id:
                 test_case = session.get(TestCase, run.test_case_id)
-            if test_case is None:
-                stmt = select(TestCase).where(
+            if test_case is None and run.test_suite_id:
+                # Name match, but accept ONLY an unambiguous single match. The
+                # old code took .first() of a project-wide match, so a run of a
+                # parent suite could stamp an arbitrary same-named case from a
+                # sibling suite — and impact-analysis v2 then trusts that wrong
+                # id (plus validation/flake state) permanently.
+                matches = session.exec(select(TestCase).where(
                     TestCase.name == res.test_name,
-                    TestCase.test_suite_id == run.test_suite_id)
-                test_case = session.exec(stmt).first()
+                    TestCase.test_suite_id == run.test_suite_id)).all()
+                if len(matches) == 1:
+                    test_case = matches[0]
             if test_case is None and run.project_id:
-                stmt = select(TestCase).where(
+                # Project-scoped fallback (covers nested suites) — again only if
+                # the name is unique across the project. If it's duplicated we
+                # leave the result unresolved rather than guess.
+                matches = session.exec(select(TestCase).where(
                     TestCase.name == res.test_name,
-                    TestCase.project_id == run.project_id)
-                test_case = session.exec(stmt).first()
+                    TestCase.project_id == run.project_id)).all()
+                if len(matches) == 1:
+                    test_case = matches[0]
             if test_case is None:
+                # Unresolved or ambiguous — do NOT guess a case to stamp.
                 continue
 
             # Stamp the resolved link on the result (impact-analysis v2 /
@@ -328,10 +339,15 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
 
             # A pass on a run that carries git context validates the case at
             # that commit — the "does this case still match the code?" stamp.
+            # Don't let it move BACKWARDS: runs finish out of order (retries,
+            # bisect/backfill of old commits), so only advance the stamp when
+            # this run is at least as new as whatever last validated the case.
             if res.status == TestStatus.PASSED and run.git_commit:
-                test_case.last_validated_commit = run.git_commit
-                test_case.last_validated_at = datetime.utcnow()
-                session.add(test_case)
+                prior = test_case.last_validated_at
+                if prior is None or (run.created_at and prior <= run.created_at):
+                    test_case.last_validated_commit = run.git_commit
+                    test_case.last_validated_at = datetime.utcnow()
+                    session.add(test_case)
 
             if test_case.id in scored_case_ids:
                 continue

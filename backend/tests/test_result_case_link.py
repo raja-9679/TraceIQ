@@ -172,3 +172,24 @@ def test_unresolvable_result_is_left_alone():
 
     assert res.test_case_id is None
     assert session.added == []
+
+
+def test_ambiguous_name_is_not_stamped():
+    """Two cases share the name in the project: the resolver must NOT stamp an
+    arbitrary one (the old .first() did — corrupting impact-analysis v2)."""
+    res = _result(TestStatus.PASSED)
+    run = _run(test_case_id=None, git_commit="abc")
+    dup1, dup2 = _case(case_id=5), _case(case_id=6)
+    session = FakeSession(
+        exec_responses=[
+            [res],          # results of the run
+            [],             # suite-scoped match: none
+            [dup1, dup2],   # project-scoped match: TWO → ambiguous
+        ],
+    )
+
+    _update_flake_scores(run, 99, session)
+
+    assert res.test_case_id is None
+    assert session.added == []
+    assert dup1.last_validated_commit is None and dup2.last_validated_commit is None
