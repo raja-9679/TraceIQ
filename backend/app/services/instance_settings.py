@@ -82,7 +82,7 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="S3/MinIO endpoint", description="host:port, backend-reachable"),
     SettingDef("MINIO_PUBLIC_URL", "storage", restart_required=True,
                label="S3/MinIO public URL", description="must be reachable by the BROWSER"),
-    SettingDef("MINIO_ACCESS_KEY", "storage", restart_required=True,
+    SettingDef("MINIO_ACCESS_KEY", "storage", secret=True, restart_required=True,
                label="Access key"),
     SettingDef("MINIO_SECRET_KEY", "storage", secret=True, restart_required=True,
                label="Secret key"),
@@ -94,6 +94,10 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("OIDC_CLIENT_SECRET", "sso", secret=True, label="Client secret"),
     SettingDef("OIDC_REDIRECT_URI", "sso", label="Redirect URI"),
     SettingDef("OIDC_POST_LOGIN_REDIRECT", "sso", label="Post-login redirect"),
+    SettingDef("OIDC_ALLOWED_EMAIL_DOMAINS", "sso", label="Allowed email domains (optional)",
+               description="comma-separated list, e.g. corp.example.com,eu.corp.example.com — "
+                           "when set, only these email domains may sign in / JIT-provision via "
+                           "SSO. Leave blank ONLY if the IdP is single-tenant to your org"),
     SettingDef("PASSWORD_LOGIN_DISABLED", "sso", type="bool",
                label="Disable password login (SSO only)",
                description="requires a saved OIDC config; instance admins can still "
@@ -112,6 +116,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "username is not an email"),
     SettingDef("LDAP_STARTTLS", "ldap", type="bool", label="StartTLS",
                description="upgrade a plain ldap:// connection to TLS before binding"),
+    SettingDef("LDAP_CA_CERT", "ldap", label="CA certificate path (optional)",
+               description="path to a PEM CA bundle used to validate the directory's "
+                           "TLS certificate (ldaps:// or StartTLS)"),
+    SettingDef("LDAP_TLS_INSECURE", "ldap", type="bool", label="Disable TLS validation (unsafe)",
+               description="accept any TLS certificate from the directory — leaves the "
+                           "connection open to on-path password capture; leave OFF"),
     # --- Policies ---
     SettingDef("MFA_REQUIRED", "policies", type="bool",
                label="Require MFA for all users",
@@ -131,6 +141,7 @@ _CACHE_TTL_SECONDS = 15.0
 _lock = threading.Lock()
 _cache: Dict[str, str] = {}      # key -> decrypted raw string from DB
 _cache_at: float = 0.0
+_cache_loaded_ok: bool = False   # True once the DB has been read successfully once
 
 
 def _parse(defn: SettingDef, raw: str) -> Any:
@@ -166,14 +177,19 @@ def _sync_engine():
     # Local import + lazy creation: this module is imported early and must not
     # drag sqlalchemy engine creation into import time.
     global _engine
-    try:
-        return _engine
-    except NameError:
-        from sqlalchemy import create_engine
-        _engine = create_engine(
-            settings.DATABASE_URL.replace("+asyncpg", ""),
-            pool_pre_ping=True, pool_size=2, max_overflow=2)
-        return _engine
+    with _lock:
+        try:
+            return _engine
+        except NameError:
+            from sqlalchemy import create_engine
+            _engine = create_engine(
+                settings.DATABASE_URL.replace("+asyncpg", ""),
+                pool_pre_ping=True, pool_size=2, max_overflow=2,
+                # Bound the blocking refresh: effective() is called from async
+                # request handlers, and without a connect timeout a slow/down DB
+                # would block the whole event loop for the full libpq default.
+                connect_args={"connect_timeout": 2})
+            return _engine
 
 
 def _load_overrides_sync() -> Dict[str, str]:
@@ -194,8 +210,17 @@ def _load_overrides_sync() -> Dict[str, str]:
 
 
 def _overrides(force: bool = False) -> Dict[str, str]:
-    """Cached DB overrides; empty dict (env-only) when the DB is unavailable."""
-    global _cache, _cache_at
+    """Cached DB overrides.
+
+    On a refresh failure we keep serving the LAST-KNOWN-GOOD snapshot (stale)
+    rather than discarding it for an empty dict. Discarding it would silently
+    revert security policies (MFA_REQUIRED / PASSWORD_LOGIN_DISABLED) and the
+    active LLM provider to their env defaults during a brief DB blip — i.e.
+    fail *open*. Env-only is used only until the very first successful load
+    (bootstrap / pre-migration), which is the one case where there is no
+    good snapshot to preserve.
+    """
+    global _cache, _cache_at, _cache_loaded_ok
     now = time.monotonic()
     with _lock:
         if not force and now - _cache_at < _CACHE_TTL_SECONDS:
@@ -203,11 +228,18 @@ def _overrides(force: bool = False) -> Dict[str, str]:
     try:
         fresh = _load_overrides_sync()
     except Exception as exc:
-        # Table missing (pre-migration), DB down, bootstrap: env is the truth.
+        with _lock:
+            if _cache_loaded_ok:
+                # Serve stale; bump the timestamp so we don't hammer a down DB
+                # every call for the whole TTL window.
+                _cache_at = now
+                logger.warning("instance_settings: refresh failed, serving cached values (%s)", exc)
+                return _cache
+        # Never loaded successfully yet — env is the truth (bootstrap/pre-migration).
         logger.debug("instance_settings: falling back to environment (%s)", exc)
-        fresh = {}
+        return {}
     with _lock:
-        _cache, _cache_at = fresh, now
+        _cache, _cache_at, _cache_loaded_ok = fresh, now, True
     return fresh
 
 

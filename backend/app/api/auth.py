@@ -128,6 +128,11 @@ async def get_my_permissions(
     perms_map = await rbac_service.get_user_permissions_map(current_user.id, session)
     return PermissionsResponse(**perms_map)
 
+# Precomputed once so the "no such user" branch of /login still pays a bcrypt
+# verify (constant-time-ish w.r.t. account existence). The value is irrelevant.
+_DUMMY_PASSWORD_HASH = get_password_hash("timing-equalizer-not-a-real-password")
+
+
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")
 async def login_for_access_token(
@@ -137,7 +142,15 @@ async def login_for_access_token(
 ) -> Any:
     result = await session.exec(select(User).where(User.email == form_data.username))
     user = result.first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if user:
+        valid = verify_password(form_data.password, user.hashed_password)
+    else:
+        # Run a bcrypt verify against a fixed dummy hash even when the account
+        # doesn't exist, so a missing email isn't measurably faster to reject
+        # (an account-existence oracle). /forgot-password already avoids this.
+        verify_password(form_data.password, _DUMMY_PASSWORD_HASH)
+        valid = False
+    if not user or not valid:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -219,7 +232,11 @@ async def _generate_recovery_codes(user_id: int, session: AsyncSession, n: int =
     await session.exec(delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == user_id))
     codes: List[str] = []
     for _ in range(n):
-        raw = f"{secrets.token_hex(3)}-{secrets.token_hex(3)}"
+        # ~96 bits of entropy (was 48). Each code is a full MFA bypass at
+        # /mfa/login, and the code hashes are only SHA-256, so a low-entropy
+        # code was brute-forceable if the table ever leaked. Hex keeps the code
+        # compatible with _normalize_code (lowercase, dashes stripped).
+        raw = f"{secrets.token_hex(4)}-{secrets.token_hex(4)}-{secrets.token_hex(4)}"
         codes.append(raw)
         session.add(MfaRecoveryCode(user_id=user_id, code_hash=_hash_token(_normalize_code(raw))))
     await session.commit()
@@ -298,9 +315,15 @@ async def mfa_setup(principal: MfaEnrollmentPrincipal = Depends(get_mfa_enrollme
                     session: AsyncSession = Depends(get_session)):
     """Generate a TOTP secret (not yet enforced) and return the enrollment URI."""
     current_user = principal.user
-    if principal.setup_pending and current_user.mfa_enabled:
-        # Enrollment challenge for an account that enrolled in the meantime.
-        raise HTTPException(status_code=400, detail="MFA is already enabled; log in again")
+    if current_user.mfa_enabled:
+        # Re-enrolling an already-protected account MUST go through /mfa/disable,
+        # which requires a current TOTP code. Otherwise a plain (non-challenge)
+        # session token — e.g. one stolen via XSS — could regenerate the secret
+        # and flip mfa_enabled off here with no code, silently stripping the
+        # victim's second factor. Covers both the challenge and normal paths.
+        raise HTTPException(
+            status_code=400,
+            detail="MFA is already enabled; disable it with a current code before re-enrolling")
     secret = totp.generate_secret()
     current_user.mfa_secret = encrypt_secret(secret)
     current_user.mfa_enabled = False  # not enforced until verified
@@ -408,6 +431,14 @@ async def refresh_access_token(
     user = user_res.first()
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    # Re-check account state on every rotation — otherwise a deactivated user
+    # keeps minting fresh 30-day families indefinitely. (Login-method policies
+    # like PASSWORD_LOGIN_DISABLED / MFA_REQUIRED are intentionally NOT checked
+    # here: an SSO session refreshes the same way and must not be logged out by
+    # them; those policies are enforced at login and by revoking refresh tokens
+    # when an admin flips the policy.)
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been deactivated")
 
     new_raw, new_hashed = generate_refresh_token()
     new_expires_at = now + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
@@ -450,6 +481,21 @@ async def logout(
         await session.commit()
     return {"status": "ok"}
 
+def _validate_password_strength(password: str) -> None:
+    """Shared password policy for register / reset / invite acceptance.
+
+    Registration previously accepted ANY string, including "" — bcrypt hashes
+    the empty string and it then logs in. Reject empty/short here. bcrypt also
+    silently truncates at 72 bytes, so cap there rather than give a false sense
+    of a longer passphrase.
+    """
+    pw = password or ""
+    if len(pw) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    if len(pw.encode("utf-8")) > 72:
+        raise HTTPException(status_code=400, detail="Password must be at most 72 bytes")
+
+
 @router.post("/register", response_model=UserRead)
 @limiter.limit("5/minute")
 async def register_user(
@@ -457,6 +503,7 @@ async def register_user(
     user_in: UserCreate,
     session: AsyncSession = Depends(get_session)
 ) -> Any:
+    _validate_password_strength(user_in.password)
     result = await session.exec(select(User).where(User.email == user_in.email))
     existing_user = result.first()
     if existing_user:
@@ -615,8 +662,7 @@ async def reset_password(
 ):
     """Complete a password reset with a valid token. Revokes all of the user's
     refresh tokens so existing sessions can't continue with the old password."""
-    if len(body.new_password or "") < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    _validate_password_strength(body.new_password)
     user = await _consume_account_token(body.token, "password_reset", session)
     if not user:
         raise HTTPException(status_code=400, detail="Invalid or expired reset token")
@@ -762,13 +808,18 @@ async def ldap_status():
 async def ldap_login(request: Request, body: LdapLoginRequest,
                      session: AsyncSession = Depends(get_session)):
     """Corporate login: bind against the configured directory AS the user,
-    then JIT-provision (like SSO) and issue tokens. A user-level MFA
-    enrollment still challenges; the MFA_REQUIRED policy does not apply —
-    directory-managed identity is treated like SSO.
+    then JIT-provision (like SSO) and issue tokens.
+
+    An LDAP simple-bind is a single, password-bearing factor (the password
+    does reach TraceIQ, which forwards it to the directory), so unlike true
+    SSO this path honours BOTH instance policies: PASSWORD_LOGIN_DISABLED
+    disables it (instance admins keep break-glass), and MFA_REQUIRED forces
+    enrollment before a session is issued.
     """
     import asyncio
 
     from app.services.ldap_auth import LdapAuthError, authenticate, is_configured
+    from app.services.instance_settings import effective as _effective
 
     if not is_configured():
         raise HTTPException(status_code=404, detail="LDAP login is not configured")
@@ -790,11 +841,24 @@ async def ldap_login(request: Request, body: LdapLoginRequest,
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been deactivated")
 
+    # Password-bearing path → same SSO-only gate as /login.
+    if _effective("PASSWORD_LOGIN_DISABLED") and not user.is_instance_admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Password login is disabled on this instance — sign in with SSO")
+
     if user.mfa_enabled:
         challenge = create_access_token(
             data={"sub": user.email, "mfa_pending": True},
             expires_delta=timedelta(minutes=5))
         return {"token_type": "bearer", "mfa_required": True, "mfa_token": challenge}
+
+    # MFA_REQUIRED: unenrolled users get an enrollment challenge, not a session.
+    if _effective("MFA_REQUIRED") and not user.mfa_enabled:
+        challenge = create_access_token(
+            data={"sub": user.email, "mfa_setup_pending": True},
+            expires_delta=timedelta(minutes=15))
+        return {"token_type": "bearer", "mfa_setup_required": True, "mfa_token": challenge}
 
     return await _issue_tokens(user, request, session)
 
@@ -822,6 +886,7 @@ async def sso_login():
 @router.get("/sso/callback")
 async def sso_callback(request: Request, code: str = "", state: str = "",
                        session: AsyncSession = Depends(get_session)):
+    from app.services.instance_settings import effective as _effective
     if not _oidc_enabled():
         raise HTTPException(status_code=404, detail="SSO is not configured")
     try:
@@ -851,6 +916,22 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
     email = (info.get("email") or "").lower()
     if not email:
         raise HTTPException(status_code=400, detail="SSO provider did not return an email")
+
+    # Trust the email claim only if the IdP asserts it is verified. Without this,
+    # any IdP that lets a user self-assert an email (and any multi-tenant/open
+    # IdP) would let an attacker set their profile email to a victim's and be
+    # logged straight into the victim's existing TraceIQ account.
+    email_verified = info.get("email_verified")
+    if email_verified is False or (isinstance(email_verified, str) and email_verified.lower() == "false"):
+        raise HTTPException(status_code=403, detail="SSO provider reports this email as unverified")
+
+    # Optional domain allowlist: the single strongest guard against an open IdP
+    # (e.g. accounts.google.com) provisioning arbitrary internet users.
+    allowed = str(_effective("OIDC_ALLOWED_EMAIL_DOMAINS") or "").strip()
+    if allowed:
+        domains = {d.strip().lower().lstrip("@") for d in allowed.split(",") if d.strip()}
+        if email.rsplit("@", 1)[-1] not in domains:
+            raise HTTPException(status_code=403, detail="This email domain is not permitted to sign in")
 
     user = (await session.exec(select(User).where(User.email == email))).first()
     if not user:

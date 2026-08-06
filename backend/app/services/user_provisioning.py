@@ -88,7 +88,7 @@ async def ensure_bootstrap_admin(session: AsyncSession) -> None:
     """
     import os
 
-    from app.core.auth import get_password_hash
+    from app.core.auth import get_password_hash, verify_password
 
     email = (os.getenv("ADMIN_EMAIL") or "").strip().lower()
     password = os.getenv("ADMIN_PASSWORD") or ""
@@ -100,6 +100,15 @@ async def ensure_bootstrap_admin(session: AsyncSession) -> None:
 
     user = (await session.exec(select(User).where(User.email == email))).first()
     if user:
+        # Heal an EXISTING account to instance-admin only if ADMIN_PASSWORD
+        # matches its stored hash. Without this, an attacker who self-registered
+        # the (often predictable) ADMIN_EMAIL before the operator set ADMIN_*
+        # would be silently promoted to instance admin on the next boot.
+        if not verify_password(password, user.hashed_password):
+            logger.error(
+                "[bootstrap-admin] %s already exists and ADMIN_PASSWORD does not "
+                "match its stored password; refusing to grant instance admin", email)
+            return
         if not user.is_instance_admin:
             user.is_instance_admin = True
             session.add(user)

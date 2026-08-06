@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     LDAP_SEARCH_BASE: Optional[str] = None
     LDAP_EMAIL_DOMAIN: Optional[str] = None
     LDAP_STARTTLS: bool = False
+    LDAP_CA_CERT: Optional[str] = None
+    LDAP_TLS_INSECURE: bool = False
     # Hostnames always permitted regardless of where they resolve. Useful for
     # e.g. host.docker.internal on a developer machine.
     OUTBOUND_ALLOWED_HOSTS: list[str] = []
@@ -148,6 +150,7 @@ class Settings(BaseSettings):
     OIDC_REDIRECT_URI: str = "http://localhost:8001/api/auth/sso/callback"
     # Where to send the browser after a successful SSO login (token in fragment).
     OIDC_POST_LOGIN_REDIRECT: str = "http://localhost:5173/login"
+    OIDC_ALLOWED_EMAIL_DOMAINS: Optional[str] = None
 
     @property
     def oidc_enabled(self) -> bool:
