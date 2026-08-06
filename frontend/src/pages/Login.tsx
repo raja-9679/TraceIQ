@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
@@ -11,8 +11,10 @@ import MfaEnrollment from "@/components/MfaEnrollment";
 export default function Login() {
     const { login } = useAuth();
     const navigate = useNavigate();
+    const location = useLocation();
     const [isLoading, setIsLoading] = useState(false);
-    const [error, setError] = useState("");
+    // Seed the banner from a redirect (e.g. an expired MFA enrollment session).
+    const [error, setError] = useState((location.state as any)?.message || "");
     const [mfaToken, setMfaToken] = useState<string | null>(null);
     const [mfaCode, setMfaCode] = useState("");
     // MFA_REQUIRED policy: login succeeded but the account must enrol an
@@ -22,7 +24,9 @@ export default function Login() {
     // SSO-only mode: hide the password form. ?password=1 keeps a break-glass
     // path for instance admins (the backend exempts them from the policy).
     const [passwordLoginDisabled, setPasswordLoginDisabled] = useState(false);
-    const forcePasswordForm = new URLSearchParams(window.location.search).has('password');
+    // Break-glass password form: require ?password=1 specifically — `.has()`
+    // would also match ?password=0.
+    const forcePasswordForm = new URLSearchParams(window.location.search).get('password') === '1';
     // Corporate (LDAP) login: tab appears when the instance has it configured.
     const [ldapEnabled, setLdapEnabled] = useState(false);
     const [loginMode, setLoginMode] = useState<'password' | 'ldap'>('password');
@@ -40,10 +44,11 @@ export default function Login() {
         axios.get(`${API}/auth/ldap/status`).then((r) => setLdapEnabled(!!r.data?.enabled)).catch(() => {});
         const hash = window.location.hash.startsWith('#') ? new URLSearchParams(window.location.hash.slice(1)) : null;
         const ssoToken = hash?.get('access_token');
+        const ssoRefresh = hash?.get('refresh_token') || undefined;
         if (ssoToken) {
             window.history.replaceState(null, '', window.location.pathname);
             axios.get(`${API}/auth/me`, { headers: { Authorization: `Bearer ${ssoToken}` } })
-                .then((me) => { login(ssoToken, me.data); navigate('/'); })
+                .then((me) => { login(ssoToken, me.data, ssoRefresh); navigate('/'); })
                 .catch(() => setError('SSO sign-in failed.'));
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,11 +110,11 @@ export default function Login() {
     }, []);
 
 
-    const finishLogin = async (accessToken: string) => {
+    const finishLogin = async (accessToken: string, refreshToken?: string) => {
         const userResponse = await axios.get(`${API}/auth/me`, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
-        login(accessToken, userResponse.data);
+        login(accessToken, userResponse.data, refreshToken);
         navigate("/");
     };
 
@@ -120,7 +125,7 @@ export default function Login() {
             // Second step: an MFA challenge is pending — redeem it with the code.
             if (mfaToken) {
                 const resp = await axios.post(`${API}/auth/mfa/login`, { mfa_token: mfaToken, code: mfaCode });
-                await finishLogin(resp.data.access_token);
+                await finishLogin(resp.data.access_token, resp.data.refresh_token);
                 return;
             }
 
@@ -146,7 +151,7 @@ export default function Login() {
                 setError("");
                 return;  // show the enrollment step
             }
-            await finishLogin(response.data.access_token);
+            await finishLogin(response.data.access_token, response.data.refresh_token);
         } catch (err: any) {
             console.error("Login failed", err);
             setError(err.response?.data?.detail || (mfaToken ? "Invalid authentication code." : "Invalid credentials."));
@@ -415,9 +420,17 @@ export default function Login() {
                                 ) : mfaSetupToken ? (
                                     <MfaEnrollment
                                         token={mfaSetupToken}
+                                        onExpired={() => {
+                                            setMfaSetupToken(null);
+                                            setError("Your enrollment session expired — please sign in again.");
+                                        }}
+                                        onCancel={() => {
+                                            setMfaSetupToken(null);
+                                            setError("");
+                                        }}
                                         onComplete={async (verify) => {
                                             if (verify.access_token) {
-                                                await finishLogin(verify.access_token);
+                                                await finishLogin(verify.access_token, verify.refresh_token);
                                             } else {
                                                 // Shouldn't happen on the policy path; fall back to a fresh login.
                                                 setMfaSetupToken(null);

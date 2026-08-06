@@ -124,7 +124,19 @@ export default function InstanceSettingsSection() {
             if (!def) continue;
             if (def.secret && raw === '') continue; // untouched masked field
             if (def.type === 'bool') values[key] = raw === true || raw === 'true';
-            else if (def.type === 'int') values[key] = parseInt(String(raw) || '0', 10);
+            else if (def.type === 'int') {
+                // A cleared int field must not be sent — sending 0 would silently
+                // override the environment fallback with a real value. Skip empty
+                // and non-numeric input rather than coercing to 0 / NaN→null.
+                const s = String(raw).trim();
+                if (s === '') continue;
+                const n = parseInt(s, 10);
+                if (Number.isNaN(n)) {
+                    toast.error(`${def.label || key} must be a number`);
+                    continue;
+                }
+                values[key] = n;
+            }
             else if (def.type === 'list')
                 values[key] = String(raw).split(',').map((h) => h.trim()).filter(Boolean);
             else values[key] = raw;

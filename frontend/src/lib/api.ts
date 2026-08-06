@@ -32,15 +32,60 @@ api.interceptors.request.use((config) => {
     return config;
 });
 
+function clearSessionAndRedirect() {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refresh_token");
+    delete axios.defaults.headers.common["Authorization"];
+    window.location.href = "/login";
+}
+
+// Single-flight refresh: concurrent 401s share one in-flight refresh call so we
+// rotate the refresh token exactly once. A plain axios (not `api`) avoids the
+// interceptor re-entering on the refresh request itself.
+let refreshPromise: Promise<string> | null = null;
+
+async function refreshAccessToken(): Promise<string> {
+    const refreshToken = localStorage.getItem("refresh_token");
+    if (!refreshToken) throw new Error("No refresh token");
+    const resp = await axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
+    const newAccess: string = resp.data.access_token;
+    localStorage.setItem("token", newAccess);
+    if (resp.data.refresh_token) {
+        localStorage.setItem("refresh_token", resp.data.refresh_token);
+    }
+    axios.defaults.headers.common["Authorization"] = `Bearer ${newAccess}`;
+    return newAccess;
+}
+
 api.interceptors.response.use(
     (response) => response,
-    (error) => {
-        if (error.response?.status === 401) {
-            // Token expired or invalid — clear local session and redirect to login.
-            localStorage.removeItem("token");
-            delete axios.defaults.headers.common["Authorization"];
-            window.location.href = "/login";
-        } else if (error.response?.status === 403) {
+    async (error) => {
+        const status = error.response?.status;
+        const original = error.config as any;
+
+        if (status === 401 && original && !original._retry) {
+            const hasRefresh = !!localStorage.getItem("refresh_token");
+            const isRefreshCall = typeof original.url === "string" && original.url.includes("/auth/refresh");
+            if (hasRefresh && !isRefreshCall) {
+                original._retry = true;
+                try {
+                    // One shared refresh for all concurrent 401s.
+                    if (!refreshPromise) {
+                        refreshPromise = refreshAccessToken().finally(() => { refreshPromise = null; });
+                    }
+                    const newAccess = await refreshPromise;
+                    original.headers = original.headers || {};
+                    original.headers.Authorization = `Bearer ${newAccess}`;
+                    return api(original);
+                } catch (refreshErr) {
+                    // Refresh itself failed — the session is truly gone.
+                    clearSessionAndRedirect();
+                    return Promise.reject(refreshErr);
+                }
+            }
+            // No refresh token available — preserve the original behavior.
+            clearSessionAndRedirect();
+        } else if (status === 403) {
             toast.error("Permission Denied", {
                 description: error.response.data.detail || "You do not have permission to perform this action.",
                 duration: 5000,

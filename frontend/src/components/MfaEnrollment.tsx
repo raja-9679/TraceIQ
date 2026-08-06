@@ -20,12 +20,17 @@ interface Props {
     token: string;
     /** Optional enrollment shows a skip action; policy-forced does not. */
     onSkip?: () => void;
+    /** Fired when the challenge token is rejected (401) by setup/verify — the
+     *  enrollment session has expired and the caller should return to sign-in. */
+    onExpired?: () => void;
+    /** Explicit "Back to sign in" control; when provided a cancel button shows. */
+    onCancel?: () => void;
     onComplete: (verify: VerifyResponse) => void;
 }
 
 /** TOTP enrollment flow: QR → code check → recovery codes. Shared by the
  *  signup "secure your account" step and the MFA_REQUIRED login gate. */
-export default function MfaEnrollment({ token, onSkip, onComplete }: Props) {
+export default function MfaEnrollment({ token, onSkip, onExpired, onCancel, onComplete }: Props) {
     const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null);
     const [code, setCode] = useState("");
     const [verifyResult, setVerifyResult] = useState<VerifyResponse | null>(null);
@@ -36,9 +41,20 @@ export default function MfaEnrollment({ token, onSkip, onComplete }: Props) {
     const headers = { Authorization: `Bearer ${token}` };
 
     useEffect(() => {
+        // A `cancelled` guard so StrictMode's double-invoke (or a token change)
+        // ignores the stale /mfa/setup response. The backend stores a fresh
+        // secret per call, so honoring a stale response would render a QR that
+        // no longer matches the stored secret.
+        let cancelled = false;
+        setSetup(null);
         axios.post(`${API_BASE_URL}/auth/mfa/setup`, {}, { headers })
-            .then((r) => setSetup(r.data))
-            .catch((err) => setError(err.response?.data?.detail || "Could not start 2FA enrollment."));
+            .then((r) => { if (!cancelled) setSetup(r.data); })
+            .catch((err) => {
+                if (cancelled) return;
+                if (err.response?.status === 401) { onExpired?.(); return; }
+                setError(err.response?.data?.detail || "Could not start 2FA enrollment.");
+            });
+        return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
@@ -49,6 +65,7 @@ export default function MfaEnrollment({ token, onSkip, onComplete }: Props) {
             const r = await axios.post(`${API_BASE_URL}/auth/mfa/verify`, { code }, { headers });
             setVerifyResult(r.data);
         } catch (err: any) {
+            if (err.response?.status === 401) { onExpired?.(); return; }
             setError(err.response?.data?.detail || "Invalid authentication code.");
         } finally {
             setBusy(false);
@@ -132,6 +149,12 @@ export default function MfaEnrollment({ token, onSkip, onComplete }: Props) {
                     <button type="button" onClick={onSkip}
                         className="px-3 py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-700 transition-colors">
                         Skip for now
+                    </button>
+                )}
+                {onCancel && (
+                    <button type="button" onClick={onCancel}
+                        className="px-3 py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-700 transition-colors">
+                        Back to sign in
                     </button>
                 )}
                 <button type="button" onClick={verify} disabled={code.length !== 6 || busy || !setup}

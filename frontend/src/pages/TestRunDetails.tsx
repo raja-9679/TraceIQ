@@ -47,7 +47,7 @@ export default function TestRunDetails() {
         const wsUrl = apiWebSocketUrl(`/ws/runs/${runId}`)
             + (token ? `?token=${encodeURIComponent(token)}` : '');
 
-        console.log("Connecting to WebSocket:", wsUrl);
+        // Do not log wsUrl — it carries the JWT as a query param.
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {

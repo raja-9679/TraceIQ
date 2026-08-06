@@ -73,8 +73,8 @@ export default function Signup() {
                 return;
             }
 
-            const { access_token } = loginResponse.data;
-            login(access_token, registerResponse.data);
+            const { access_token, refresh_token } = loginResponse.data;
+            login(access_token, registerResponse.data, refresh_token);
             // Offer (optional) 2FA enrollment before entering the app.
             setMfaStep({ token: access_token, mandatory: false, user: registerResponse.data });
         } catch (err: any) {
@@ -340,12 +340,31 @@ export default function Signup() {
                                     <MfaEnrollment
                                         token={mfaStep.token}
                                         onSkip={mfaStep.mandatory ? undefined : () => navigate("/")}
+                                        onCancel={mfaStep.mandatory ? () => {
+                                            setMfaStep(null);
+                                            navigate("/login");
+                                        } : undefined}
+                                        onExpired={() => {
+                                            setMfaStep(null);
+                                            navigate("/login", {
+                                                state: { message: "Your enrollment session expired — please sign in again." },
+                                            });
+                                        }}
                                         onComplete={(verify) => {
-                                            if (mfaStep.mandatory && verify.access_token) {
-                                                // Enrollment unblocked the session — store it now.
-                                                login(verify.access_token, mfaStep.user);
+                                            if (mfaStep.mandatory) {
+                                                if (verify.access_token) {
+                                                    // Enrollment unblocked the session — store it now.
+                                                    login(verify.access_token, mfaStep.user, verify.refresh_token);
+                                                    navigate("/");
+                                                } else {
+                                                    // No session issued — can't enter the app; send to login.
+                                                    navigate("/login", {
+                                                        state: { message: "Two-factor authentication is enabled. Please sign in." },
+                                                    });
+                                                }
+                                            } else {
+                                                navigate("/");
                                             }
-                                            navigate("/");
                                         }}
                                     />
                                 ) : (
