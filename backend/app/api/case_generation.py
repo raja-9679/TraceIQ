@@ -278,6 +278,13 @@ async def cases_from_openapi(
         principal.user.id, suite.project_id, session, min_role="editor"
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
+    # This endpoint writes TestCase rows directly. Agents (API keys) must go
+    # through the CaseProposal review queue instead — same policy as
+    # /cases/generate, which forces propose-mode for API callers.
+    if principal.is_api_caller:
+        raise HTTPException(
+            status_code=403,
+            detail="API keys must propose cases via the proposal queue, not create them directly")
 
     schema = body.schema_inline
     if not schema and body.schema_url:

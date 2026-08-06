@@ -93,7 +93,9 @@ async def test_create_infers_mobile_executor_from_steps():
     reported a fake pass."""
     from app.api.agent_ownership import _apply_proposal
 
-    session = FakeSession({})
+    # CREATE re-checks the destination suite belongs to the proposal's project
+    # at apply time (tenant isolation), so the mock session must provide it.
+    session = FakeSession({TestSuite: TestSuite(id=2, name="s", project_id=1)})
     proposal = CaseProposal(
         id=21, project_id=1, test_suite_id=2,
         action=CaseProposalAction.CREATE,
@@ -116,14 +118,16 @@ async def test_create_rejects_unknown_executor():
         payload={"name": "x", "steps": [], "executor": "quantum"},
     )
     with pytest.raises(HTTPException) as exc:
-        await _apply_proposal(proposal, user_id=1, session=FakeSession({}))
+        await _apply_proposal(
+            proposal, user_id=1,
+            session=FakeSession({TestSuite: TestSuite(id=2, name="s", project_id=1)}))
     assert exc.value.status_code == 400
 
 
 async def test_create_carries_tags_and_priority():
     from app.api.agent_ownership import _apply_proposal
 
-    session = FakeSession({})
+    session = FakeSession({TestSuite: TestSuite(id=2, name="s", project_id=1)})
     proposal = CaseProposal(
         id=11, project_id=1, test_suite_id=2,
         action=CaseProposalAction.CREATE,
@@ -189,3 +193,68 @@ async def test_suite_settings_never_auto_applied():
     )
     applied = await maybe_auto_apply(proposal, user_id=1, session=MagicMock())
     assert applied is False
+
+
+# --- Tenant isolation: apply-time re-checks (regression for the cross-tenant
+#     proposal takeover). A proposal whose project_id was access-checked must
+#     never mutate a case/suite that belongs to a DIFFERENT project. ---
+
+async def test_update_rejects_cross_project_case():
+    from app.api.agent_ownership import _apply_proposal
+    from fastapi import HTTPException
+
+    # Proposal is for project 1, but the target case lives in project 2.
+    case = TestCase(id=99, name="victim", steps=[], test_suite_id=7, project_id=2)
+    proposal = CaseProposal(
+        id=30, project_id=1, target_case_id=99,
+        action=CaseProposalAction.UPDATE,
+        payload={"name": "hijacked"},
+    )
+    with pytest.raises(HTTPException) as exc:
+        await _apply_proposal(proposal, user_id=1,
+                              session=FakeSession({TestCase: case}))
+    assert exc.value.status_code == 404
+    assert case.name == "victim"  # untouched
+
+
+async def test_create_rejects_cross_project_suite():
+    from app.api.agent_ownership import _apply_proposal
+    from fastapi import HTTPException
+
+    # Proposal is for project 1, destination suite lives in project 2.
+    suite = TestSuite(id=8, name="victim-suite", project_id=2)
+    proposal = CaseProposal(
+        id=31, project_id=1, test_suite_id=8,
+        action=CaseProposalAction.CREATE,
+        payload={"name": "planted", "steps": []},
+    )
+    session = FakeSession({TestSuite: suite})
+    with pytest.raises(HTTPException) as exc:
+        await _apply_proposal(proposal, user_id=1, session=session)
+    assert exc.value.status_code == 404
+    assert not [o for o in session.added if isinstance(o, TestCase)]  # nothing planted
+
+
+async def test_move_rejects_cross_project_destination():
+    from app.api.agent_ownership import _apply_proposal
+    from fastapi import HTTPException
+
+    # Target case is in project 1 (ok), but the MOVE destination suite is in 2.
+    case = TestCase(id=50, name="c", steps=[], test_suite_id=1, project_id=1)
+    dest = TestSuite(id=9, name="other-tenant-suite", project_id=2)
+
+    class _Sess(FakeSession):
+        async def get(self, model, pk):
+            if model is TestSuite:
+                return dest
+            return self.objects.get(model)
+
+    proposal = CaseProposal(
+        id=32, project_id=1, target_case_id=50,
+        action=CaseProposalAction.MOVE,
+        payload={"new_test_suite_id": 9},
+    )
+    with pytest.raises(HTTPException) as exc:
+        await _apply_proposal(proposal, user_id=1, session=_Sess({TestCase: case}))
+    assert exc.value.status_code == 404
+    assert case.test_suite_id == 1  # not moved

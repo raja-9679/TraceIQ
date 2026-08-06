@@ -373,6 +373,14 @@ async def crawl_app_surface(
     base_url = (body or {}).get("base_url")
     if not base_url:
         raise HTTPException(status_code=400, detail="base_url is required")
+    # SSRF guard: a worker crawls this URL from inside the compose network and
+    # long-polls the result back to the caller, so validate it the same way
+    # case_generation does before dispatch.
+    from app.core.net_guard import validate_outbound_url, UnsafeUrlError
+    try:
+        await validate_outbound_url(base_url)
+    except UnsafeUrlError as exc:
+        raise HTTPException(status_code=400, detail=f"Refusing to crawl this URL: {exc}")
     max_pages = int((body or {}).get("max_pages", 10))
 
     import redis as _redis
@@ -566,6 +574,25 @@ async def create_proposal(
     if body.action in (CaseProposalAction.UPDATE, CaseProposalAction.DELETE, CaseProposalAction.MOVE):
         if body.target_case_id is None:
             raise HTTPException(status_code=400, detail=f"{body.action.value.upper()} requires target_case_id")
+    # Tenant isolation: every caller-supplied object id must resolve inside the
+    # project we just access-checked, otherwise a proposal against project X can
+    # mutate/read another tenant's case or suite once accepted (the accept path
+    # authorizes against proposal.project_id, i.e. the attacker's own project).
+    if body.test_suite_id is not None:
+        _suite = await session.get(TestSuite, body.test_suite_id)
+        if not _suite or _suite.project_id != body.project_id:
+            raise HTTPException(status_code=404, detail="Target suite not found in this project")
+    if body.target_case_id is not None:
+        _case = await session.get(TestCase, body.target_case_id)
+        if not _case or _case.project_id != body.project_id:
+            raise HTTPException(status_code=404, detail="Target case not found in this project")
+    if body.action == CaseProposalAction.MOVE:
+        _new_suite_id = (body.payload or {}).get("new_test_suite_id")
+        if _new_suite_id is None:
+            raise HTTPException(status_code=400, detail="MOVE requires payload.new_test_suite_id")
+        _new_suite = await session.get(TestSuite, _new_suite_id)
+        if not _new_suite or _new_suite.project_id != body.project_id:
+            raise HTTPException(status_code=404, detail="Destination suite not found in this project")
     if body.action == CaseProposalAction.UPDATE_SUITE_SETTINGS:
         if body.test_suite_id is None:
             raise HTTPException(status_code=400, detail="UPDATE_SUITE_SETTINGS requires test_suite_id")
@@ -620,7 +647,24 @@ async def list_proposals(
     if status:
         query = query.where(CaseProposal.status == status)
     res = await session.exec(query.order_by(CaseProposal.created_at.desc()).limit(limit))
-    return [_proposal_read(p) for p in res.all()]
+    rows = res.all()
+    if project_id is not None:
+        # Access to the single requested project was already verified above.
+        return [_proposal_read(p) for p in rows]
+    # No project filter: never return proposals for projects the caller can't
+    # access. Filter each row by access, caching the per-project decision so a
+    # long result set doesn't fan out into a query per row.
+    access_cache: dict[int, bool] = {}
+    visible: List[CaseProposal] = []
+    for p in rows:
+        allowed = access_cache.get(p.project_id)
+        if allowed is None:
+            allowed = await access_service.has_project_access(
+                principal.user.id, p.project_id, session)
+            access_cache[p.project_id] = allowed
+        if allowed:
+            visible.append(p)
+    return [_proposal_read(p) for p in visible]
 
 
 @router.post("/case-proposals/{proposal_id}/accept", response_model=CaseProposalRead)
@@ -759,14 +803,15 @@ async def set_proposal_policy(
     # measured against (same rule as accepting proposals).
     if principal.is_api_caller:
         raise HTTPException(status_code=403, detail="API keys cannot change the auto-apply policy")
-    from app.models import UserWorkspace, Workspace
-    membership = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == workspace_id,
-            UserWorkspace.user_id == principal.user.id,
-        ))
-    if not membership.first():
-        raise HTTPException(status_code=403, detail="Not a member of this workspace")
+    from app.models import Workspace
+    from app.services.rbac_service import rbac_service
+    # Raising the auto-apply bar governs whether agent proposals merge without
+    # human review — a workspace-settings decision, not something any member may
+    # flip. Require the manage-settings permission (workspace admin).
+    if not await rbac_service.has_permission(
+        session, principal.user.id, "workspace:manage_settings", workspace_id=workspace_id
+    ):
+        raise HTTPException(status_code=403, detail="Workspace admin required")
     workspace = await session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
@@ -813,6 +858,11 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
 
     payload = proposal.payload or {}
     if proposal.action == CaseProposalAction.CREATE:
+        # Re-assert the destination suite still belongs to the proposal's
+        # project at apply time (it could have been moved since propose).
+        _dest = await session.get(TestSuite, proposal.test_suite_id)
+        if not _dest or _dest.project_id != proposal.project_id:
+            raise HTTPException(status_code=404, detail="Target suite not found in this project")
         case = TestCase(
             name=payload.get("name") or "Proposed case",
             steps=normalize_steps(payload.get("steps")),
@@ -842,8 +892,8 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
 
     if proposal.action == CaseProposalAction.UPDATE_SUITE_SETTINGS:
         suite = await session.get(TestSuite, proposal.test_suite_id)
-        if not suite:
-            raise HTTPException(status_code=404, detail="Target suite missing")
+        if not suite or suite.project_id != proposal.project_id:
+            raise HTTPException(status_code=404, detail="Target suite not found in this project")
         if isinstance(payload.get("settings"), dict):
             if payload.get("merge", True):
                 # Shallow-merge per settings key (proposed wins) — same
@@ -867,8 +917,8 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         return
 
     case = await session.get(TestCase, proposal.target_case_id)
-    if not case:
-        raise HTTPException(status_code=404, detail="Target case missing")
+    if not case or case.project_id != proposal.project_id:
+        raise HTTPException(status_code=404, detail="Target case not found in this project")
 
     if proposal.action == CaseProposalAction.UPDATE:
         if "name" in payload:
@@ -897,6 +947,9 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         new_suite_id = payload.get("new_test_suite_id")
         if not new_suite_id:
             raise HTTPException(status_code=400, detail="MOVE payload missing new_test_suite_id")
+        _move_dest = await session.get(TestSuite, new_suite_id)
+        if not _move_dest or _move_dest.project_id != proposal.project_id:
+            raise HTTPException(status_code=404, detail="Destination suite not found in this project")
         case.test_suite_id = new_suite_id
         case.updated_at = datetime.utcnow()
         case.updated_by_id = user_id
