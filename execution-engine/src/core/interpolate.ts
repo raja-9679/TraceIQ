@@ -69,19 +69,22 @@ export interface TemplateContext {
 export function resolveTemplates(val: any, ctx: TemplateContext): any {
     if (typeof val === 'string') {
         let out = val;
+        // Keys may contain hyphens (e.g. an env var named "TH-URL") — the
+        // environments UI/API accepts them, so the token grammar must too.
+        // \w alone stopped at the first hyphen and left the token unresolved.
         if (ctx.envVars) {
             const envVars = ctx.envVars;
-            out = out.replace(/\{\{\s*env\.(\w+)\s*\}\}/g, (_: string, key: string) =>
+            out = out.replace(/\{\{\s*env\.([\w-]+)\s*\}\}/g, (_: string, key: string) =>
                 envVars[key] !== undefined ? String(envVars[key]) : `{{env.${key}}}`);
         }
         if (ctx.secrets) {
             const secrets = ctx.secrets;
-            out = out.replace(/\{\{\s*secret\.(\w+)\s*\}\}/g, (_: string, key: string) =>
+            out = out.replace(/\{\{\s*secret\.([\w-]+)\s*\}\}/g, (_: string, key: string) =>
                 secrets[key] !== undefined ? String(secrets[key]) : `{{secret.${key}}}`);
         }
         if (ctx.dataRow) {
             const dataRow = ctx.dataRow;
-            out = out.replace(/\{\{\s*data\.(\w+)\s*\}\}/g, (_: string, key: string) =>
+            out = out.replace(/\{\{\s*data\.([\w-]+)\s*\}\}/g, (_: string, key: string) =>
                 dataRow[key] !== undefined ? String(dataRow[key]) : `{{data.${key}}}`);
         }
         if (out.includes('{{fake.')) {
@@ -90,7 +93,7 @@ export function resolveTemplates(val: any, ctx: TemplateContext): any {
         }
         if (ctx.variables) {
             const variables = ctx.variables;
-            out = out.replace(/\{\{\s*(\w+)\s*\}\}/g, (_: string, key: string) =>
+            out = out.replace(/\{\{\s*([\w-]+)\s*\}\}/g, (_: string, key: string) =>
                 variables[key] !== undefined ? String(variables[key]) : `{{${key}}}`);
         }
         return out;

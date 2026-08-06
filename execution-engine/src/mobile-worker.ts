@@ -64,6 +64,16 @@ const POLL_IDLE_MS = 2000;
 // SELECTOR_FAILURE_RE, matching this worker's own error wording).
 const MOBILE_SELECTOR_FAILURE_RE = /element not found|no such element|timed out waiting for/i;
 
+// Every mobile step type this worker can execute — surfaced in the
+// unknown-step-type error so a version-skew failure is diagnosable. Keep in
+// sync with the switch in executeStep.
+const SUPPORTED_MOBILE_STEP_TYPES: readonly string[] = [
+    'mobile-launch-app', 'mobile-terminate-app', 'mobile-tap',
+    'mobile-long-press', 'mobile-type', 'mobile-swipe', 'mobile-press-key',
+    'mobile-wait-for', 'mobile-expect-visible', 'mobile-expect-text',
+    'mobile-screenshot', 'mobile-extract-value', 'mobile-expect-visual-match',
+];
+
 type MobileApp = NonNullable<TestJob['settings']['mobile_app']>;
 
 /** Screenshot captured during a job, uploaded to MinIO after the last case. */
@@ -181,16 +191,31 @@ class MobileWorker {
         // at native resolution (screenrecord "Encoder failed (err=-38)")
         // and Appium then hands back a 0-byte recording with no error.
         let recording = false;
-        try {
-            let videoSize = process.env.MOBILE_VIDEO_SIZE;
-            if (!videoSize) {
+        // Resolve the recording size in its OWN try/catch: a target may support
+        // recording but not window/rect (or return a non-numeric rect). If we
+        // can't derive a valid half-size, fall back to native resolution rather
+        // than skipping recording entirely or passing "NaNxNaN" (which Appium
+        // silently turns into a 0-byte file).
+        let videoSize: string | undefined = process.env.MOBILE_VIDEO_SIZE;
+        if (!videoSize) {
+            try {
                 const win = await this.driver.getWindowRect(sessionId);
                 const half = (n: number) => Math.max(Math.floor(n / 2 / 16) * 16, 160);
-                videoSize = `${half(win.width)}x${half(win.height)}`;
+                if (Number.isFinite(win.width) && Number.isFinite(win.height)) {
+                    videoSize = `${half(win.width)}x${half(win.height)}`;
+                } else {
+                    console.log('[MobileWorker] Window rect non-numeric — '
+                        + 'recording at native resolution.');
+                }
+            } catch (err: any) {
+                console.log('[MobileWorker] Could not read window rect '
+                    + `(${err.message}) — recording at native resolution.`);
             }
+        }
+        try {
             await this.driver.startScreenRecording(sessionId, videoSize);
             recording = true;
-            console.log(`[MobileWorker] Screen recording started (${videoSize})`);
+            console.log(`[MobileWorker] Screen recording started (${videoSize || 'native'})`);
         } catch (err: any) {
             console.log(`[MobileWorker] Screen recording unavailable: ${err.message}`);
         }
@@ -467,7 +492,11 @@ class MobileWorker {
                 default:
                     // Same contract as the Playwright worker: unknown types fail
                     // loudly rather than passing silently.
-                    throw new Error(`Unknown mobile step type '${type}' — is the case's executor set correctly?`);
+                    throw new Error(
+                        `Unknown mobile step type '${type}' — is the case's executor set correctly? ` +
+                        `If the step type is new, the worker image needs a rebuild. ` +
+                        `Supported mobile step types on this worker: ` +
+                        `${SUPPORTED_MOBILE_STEP_TYPES.join(', ')}.`);
             }
         } catch (err: any) {
             throw new Error(`Step '${type}'${selector ? ` (${selector})` : ''}: ${err.message}`);

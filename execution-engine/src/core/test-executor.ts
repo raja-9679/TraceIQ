@@ -26,6 +26,25 @@ export function jsonPath(obj: any, pathExpr: string): any {
 // ./interpolate so the mobile worker shares one implementation.
 
 export class TestExecutor {
+    // Every step type this worker's switch can execute (plus `switch-frame`,
+    // handled in the main loop). Surfaced in the unknown-step-type error so a
+    // version-skew failure (a case authored against a newer catalog than this
+    // worker image bakes) is diagnosable at a glance. Keep in sync with the
+    // switch below.
+    public static readonly SUPPORTED_STEP_TYPES: readonly string[] = [
+        'amp-validate', 'assert', 'block-request', 'carousel-find', 'check',
+        'check-accessibility', 'check-tls', 'click', 'count-children',
+        'double-click', 'download-file', 'drag-and-drop', 'expect-hidden',
+        'expect-not-text', 'expect-text', 'expect-title', 'expect-url',
+        'expect-visible', 'expect-visual-match', 'extract-value', 'feed-check',
+        'fill', 'goto', 'graphql', 'handle-dialog', 'hover', 'http-request',
+        'mock-response', 'oauth2-token', 'press-key', 'right-click',
+        'run-script', 'screenshot', 'scroll-to', 'select-option',
+        'set-network-latency', 'switch-frame', 'switch-tab', 'uncheck',
+        'upload-file', 'verify-nth-child', 'wait-for-response',
+        'wait-for-selector', 'wait-timeout',
+    ];
+
     public static async executeStep(
         page: Page,
         context: Page | FrameLocator,
@@ -1530,7 +1549,9 @@ if __name__ == "__main__":
                 throw new Error(
                     `Unknown step type "${step.type}" — this worker cannot execute it. ` +
                     `If this is a mobile-* step the case's executor should be mobile_appium; ` +
-                    `if the step type is new, the worker image needs a rebuild.`);
+                    `if the step type is new, the worker image needs a rebuild. ` +
+                    `Supported step types on this worker: ` +
+                    `${TestExecutor.SUPPORTED_STEP_TYPES.join(', ')}.`);
         }
     }
 }
