@@ -83,6 +83,16 @@ async def create_webhook(
         raise HTTPException(status_code=400, detail="workspace_id mismatch")
     await _ensure_workspace_member(workspace_id, principal.user.id, session)
 
+    # SSRF guard: this URL is later POSTed to by a Celery task. Validate at
+    # registration so a workspace admin can't point it at cloud metadata or an
+    # internal service. (Send-time re-validation in the dispatch task is the
+    # stronger control against DNS rebinding — see TODO in outbound_webhook_tasks.)
+    from app.core.net_guard import validate_outbound_url, UnsafeUrlError
+    try:
+        await validate_outbound_url(body.url)
+    except UnsafeUrlError as exc:
+        raise HTTPException(status_code=400, detail=f"Webhook URL rejected: {exc}")
+
     secret = secrets.token_urlsafe(32)
     webhook = WorkspaceWebhook(
         workspace_id=workspace_id,

@@ -119,14 +119,26 @@ async def validate_outbound_url(
         + list(extra_allowed_hosts)
         if h and h.strip()
     }
-    if host.lower() in allowed_hosts:
-        return raw
+    # An allowlisted host is a *private-network* exemption only. It must NOT
+    # bypass the never-allowed ranges (cloud metadata 169.254.169.254,
+    # link-local, etc.) — otherwise an allowlisted name CNAMEd to the metadata
+    # IP would reach it. So we still resolve and run _is_never_allowed; we only
+    # skip the private-address rejection for allowlisted hosts.
+    is_allowlisted = host.lower() in allowed_hosts
+    try:
+        resolved = await _resolve(host)
+    except UnsafeUrlError:
+        if is_allowlisted:
+            # Can't resolve here (e.g. an internal name only the worker can see);
+            # trust the explicit operator allowlist rather than hard-failing.
+            return raw
+        raise
 
-    for ip in await _resolve(host):
+    for ip in resolved:
         reason = _is_never_allowed(ip)
         if reason:
             raise UnsafeUrlError(f"{host} resolves to {reason} ({ip}) — refused")
-        if _is_private(ip) and not allow_private:
+        if _is_private(ip) and not allow_private and not is_allowlisted:
             raise UnsafeUrlError(
                 f"{host} resolves to the private/loopback address {ip}. If this is "
                 "an internal app you intend to test, set "

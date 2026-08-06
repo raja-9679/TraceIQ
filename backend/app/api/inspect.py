@@ -118,6 +118,15 @@ async def inspect_page(
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
 
+    # SSRF guard: this endpoint renders the URL server-side and returns the
+    # screenshot + DOM, so without validation any authenticated principal (incl.
+    # a low-privilege API key) could read cloud metadata or internal services.
+    from app.core.net_guard import validate_outbound_url, UnsafeUrlError
+    try:
+        await validate_outbound_url(url)
+    except UnsafeUrlError as exc:
+        raise HTTPException(status_code=400, detail=f"Refusing to inspect this URL: {exc}")
+
     try:
         from playwright.async_api import async_playwright
     except ImportError:
