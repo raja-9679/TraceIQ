@@ -156,6 +156,24 @@ async def update_instance_settings(
 
     await session.commit()
     insvc.invalidate_cache()
+
+    # If a login-hardening policy was just enabled, revoke every live refresh
+    # token so existing sessions can't keep rotating past the new policy.
+    # (The /refresh path deliberately can't tell which login method minted a
+    # token, so enforcement has to happen here.)
+    def _enabled(v):
+        return v in (True, "true", "True", 1, "1")
+    if _enabled(body.values.get("MFA_REQUIRED")) or _enabled(body.values.get("PASSWORD_LOGIN_DISABLED")):
+        from app.models import RefreshToken
+        now = datetime.utcnow()
+        live = (await session.exec(
+            select(RefreshToken).where(RefreshToken.revoked_at == None))).all()  # noqa: E711
+        for t in live:
+            t.revoked_at = now
+            session.add(t)
+        if live:
+            await session.commit()
+
     return [_read_one(k) for k in insvc.REGISTRY]
 
 
@@ -258,6 +276,7 @@ async def send_test_email(
     _: User = Depends(get_current_instance_admin),
 ):
     """Send a test message through the EFFECTIVE SMTP config (DB over env)."""
+    import asyncio
     import smtplib
     from email.mime.text import MIMEText
 
@@ -268,13 +287,20 @@ async def send_test_email(
     msg["Subject"] = "TraceIQ SMTP test"
     msg["From"] = insvc.effective("SMTP_FROM")
     msg["To"] = body.to
-    try:
-        with smtplib.SMTP(host, int(insvc.effective("SMTP_PORT") or 587), timeout=15) as server:
+    port = int(insvc.effective("SMTP_PORT") or 587)
+    user, password = insvc.effective("SMTP_USER"), insvc.effective("SMTP_PASSWORD")
+
+    def _send() -> None:
+        # Blocking SMTP (DNS + connect + STARTTLS + login, up to 15s each) must
+        # not run on the event loop — it would freeze every other request.
+        with smtplib.SMTP(host, port, timeout=15) as server:
             server.starttls()
-            user, password = insvc.effective("SMTP_USER"), insvc.effective("SMTP_PASSWORD")
             if user and password:
                 server.login(user, password)
             server.sendmail(msg["From"], [body.to], msg.as_string())
+
+    try:
+        await asyncio.to_thread(_send)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"SMTP test failed: {exc}")
     return {"ok": True, "detail": f"Test email sent to {body.to}"}
