@@ -13,6 +13,12 @@
 # --force.
 set -euo pipefail
 
+# Restrict the permissions of every file this script creates (.env, its backup,
+# and the .tmp splice file) so none is ever world-/group-readable during the
+# write window — the final `chmod 600 .env` only fixes .env, and only after the
+# fact. Set before anything touches the filesystem.
+umask 077
+
 cd "$(dirname "$0")"
 
 ENV_FILE=".env"
@@ -157,6 +163,17 @@ for key in POSTGRES_PASSWORD REDIS_PASSWORD; do
      && ! printf '%s' "${VALUE[$key]}" | grep -qE '^[A-Za-z0-9._~-]+$'; then
     echo "ERROR: $key may only contain letters, digits, and . _ ~ -" >&2
     echo "       (it is embedded in connection URLs). Try: openssl rand -hex 24" >&2
+    fail=1
+  fi
+done
+# The signing secrets and MinIO credentials are not embedded in connection URLs,
+# so the full charset above is too strict — but they ARE written into .env and
+# expanded by the shell/compose, where a literal '$', whitespace, or a newline
+# would corrupt the value (or splice extra lines into .env). Reject those.
+for key in SECRET_KEY WEBHOOK_SECRET MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do
+  if [ "${SOURCE[$key]}" != "generated" ] \
+     && { [[ "${VALUE[$key]}" =~ [[:space:]] ]] || [[ "${VALUE[$key]}" == *'$'* ]]; }; then
+    echo "ERROR: $key must not contain '\$', whitespace, or newlines." >&2
     fail=1
   fi
 done

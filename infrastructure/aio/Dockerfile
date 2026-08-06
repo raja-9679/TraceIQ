@@ -79,10 +79,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/nginx/sites-enabled/default
 
-# MinIO server binary (no distro package).
+# MinIO server binary (no distro package). Pinned to the SAME release the
+# compose stack pins (minio/minio:RELEASE.2025-04-22T22-12-26Z) so the AIO and
+# compose distributions ship identical MinIO versions — an unpinned `.../minio`
+# floats to whatever "latest" is at build time. Verified against the checksum
+# MinIO publishes alongside each archive (per-arch; amd64/arm64 differ).
 ARG TARGETARCH=amd64
-RUN curl -fsSL "https://dl.min.io/server/minio/release/linux-${TARGETARCH}/minio" \
-        -o /usr/local/bin/minio && chmod +x /usr/local/bin/minio
+ARG MINIO_RELEASE=RELEASE.2025-04-22T22-12-26Z
+RUN case "${TARGETARCH}" in \
+      amd64) MINIO_SHA256=53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c ;; \
+      arm64) MINIO_SHA256=6c2f3142c94240206123177f4ba1e360daa5d1e0a4962e90757ef4f92c3ab57c ;; \
+      *) echo "No pinned MinIO checksum for arch ${TARGETARCH}" >&2; exit 1 ;; \
+    esac \
+    && curl -fsSL "https://dl.min.io/server/minio/release/linux-${TARGETARCH}/archive/minio.${MINIO_RELEASE}" \
+        -o /usr/local/bin/minio \
+    && echo "${MINIO_SHA256}  /usr/local/bin/minio" | sha256sum -c - \
+    && chmod +x /usr/local/bin/minio
 
 # k6 for the load-test executor (same source as Dockerfile.worker).
 COPY --from=grafana/k6:0.57.0 /usr/bin/k6 /usr/bin/k6

@@ -95,12 +95,15 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      # redis-cli reads REDISCLI_AUTH from the environment, so we don't pass the
+      # password on argv (where it would show up in `ps`/proc for anything that
+      # can see this container's processes).
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 10
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
     networks: [traceiq_internal]
 
   minio:
@@ -185,7 +188,9 @@ services:
   celery_beat:
     image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-backend:${TRACEIQ_VERSION:-latest}
     <<: *hardening
-    command: celery -A app.core.celery_app beat --loglevel=info
+    # Write the schedule db to /tmp: beat's default path is under the (non-root)
+    # workdir and CWD isn't guaranteed writable, so keep it on a writable path.
+    command: celery -A app.core.celery_app beat --loglevel=info -s /tmp/celerybeat-schedule
     environment:
       <<: *backend-env
       RUN_MIGRATIONS: "false"
@@ -203,6 +208,10 @@ services:
       REDIS_CONSUMER_GROUP: execution-workers
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
+      # TODO(security): workers use the MinIO ROOT credentials. They only need
+      # read/write on the test-artifacts bucket. Mint a scoped MinIO service
+      # account (needs a `mc admin` init job on stack up) and hand the workers
+      # that instead, so a compromised worker can't administer object storage.
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET_NAME: test-artifacts

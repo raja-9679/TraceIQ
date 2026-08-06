@@ -22,14 +22,25 @@ RUN npm run build
 # Source protection: per-file minify+mangle of the compiled JS. tsc output is
 # otherwise as readable as the TypeScript. No bundling — module layout and
 # dynamic requires stay untouched.
+# `find -exec ... \;` swallows the child exit code, so a file that fails to
+# minify would leave the readable tsc output in place and still pass the build.
+# Pipe through xargs instead: xargs exits non-zero if ANY invocation fails, and
+# it is the last command in the pipeline, so the RUN fails.
 RUN npm install -g esbuild@0.25.9 \
-    && find dist -name '*.js' -exec esbuild {} --minify --platform=node --target=node18 --allow-overwrite --outfile={} \; \
+    && find dist -name '*.js' -print0 | xargs -0 -I{} esbuild {} --minify --platform=node --target=node18 --allow-overwrite --outfile={} \
     && npm uninstall -g esbuild
+
+# Drop the original TypeScript source and its build config: the image ships only
+# the minified dist/, so leaving src/ around would defeat the minify step above.
+RUN rm -rf src tsconfig.json
 
 # Remove devDependencies for leaner production image
 RUN npm prune --production
 
-# Install Playwright browsers
+# Install Playwright browsers. The base image already sets
+# PLAYWRIGHT_BROWSERS_PATH=/ms-playwright; pin it explicitly so the chmod below
+# (and the non-root runtime user) target a known path.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npx playwright install chromium firefox webkit
 
 # Create artifacts directory
@@ -41,6 +52,17 @@ ENV ARTIFACTS_DIR=/tmp/artifacts
 ENV WORKER_IDLE_TIMEOUT=60000
 ENV MAX_JOBS_BEFORE_RESTART=50
 ENV DEFAULT_TIMEOUT=30000
+
+# Run as an unprivileged user, same uid as backend/Dockerfile and the AIO image
+# (which already runs this same worker code as uid 10001). The worker can
+# execute user-supplied Playwright specs when RAW_PLAYWRIGHT_ENABLED is set, so
+# root would hand those a root shell. Browsers under /ms-playwright are made
+# world-readable so the non-root user can launch them.
+RUN groupadd --system --gid 10001 traceiq \
+    && useradd --system --uid 10001 --gid traceiq --create-home traceiq \
+    && chown -R traceiq:traceiq /app /tmp/artifacts \
+    && chmod -R a+rX /ms-playwright
+USER traceiq
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
