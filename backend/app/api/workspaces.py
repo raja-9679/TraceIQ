@@ -167,14 +167,14 @@ async def invite_to_workspace(workspace_id: int, invite: WorkspaceInvite, sessio
 
 @router.get("/workspaces/{workspace_id}/invitations")
 async def list_workspace_invitations(workspace_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    # Check if user is in workspace
-    result = await session.exec(
-        select(UserWorkspace)
-        .where(UserWorkspace.user_id == current_user.id, UserWorkspace.workspace_id == workspace_id)
-    )
-    if not result.first():
-        raise HTTPException(status_code=403, detail="Not a member of this workspace")
-        
+    # Only members who can manage users may view pending invites. A raw invite
+    # token lets its holder register as that email with that (possibly admin)
+    # role, so a plain viewer must not see the queue.
+    if not await rbac_service.has_permission(
+        session, current_user.id, "workspace:manage_users", workspace_id=workspace_id
+    ):
+        raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
+
     return await workspace_service.get_workspace_invitations(workspace_id, session)
 
 @router.delete("/teams/{team_id}/users/{user_id}")

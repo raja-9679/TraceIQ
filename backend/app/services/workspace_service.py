@@ -132,9 +132,25 @@ class WorkspaceService:
 
     @staticmethod
     async def link_team_to_project(team_id: int, project_id: int, access_level: str, session: AsyncSession) -> bool:
-        from app.models import TeamProjectAccess
+        from fastapi import HTTPException
+        from app.models import TeamProjectAccess, Team, Project
         from app.services.rbac_service import rbac_service
-        
+
+        # Tenant isolation: a team may only be granted access to a project in the
+        # SAME workspace. Without this a caller who can create a team in their own
+        # workspace could link it (at admin level) to another tenant's project and
+        # inherit full access to it.
+        team = await session.get(Team, team_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        project = await session.get(Project, project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        if team.workspace_id != project.workspace_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Team and project must belong to the same workspace")
+
         # Map access_level to Role
         role_name = "Project Viewer"
         if access_level == "admin": role_name = "Project Admin"
@@ -484,7 +500,9 @@ class WorkspaceService:
                 "role": i.role,
                 "created_at": i.created_at,
                 "status": "invited",
-                "token": i.token
+                # NOTE: the raw invite token is intentionally NOT returned — it
+                # is a bearer credential that lets its holder register as this
+                # email with this role. It's delivered out-of-band (email link).
             }
             for i in invites
         ]

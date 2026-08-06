@@ -476,8 +476,11 @@ async def analyze_run(run_id: int, body: AnalyzeRunRequest = AnalyzeRunRequest()
     run = await session.get(TestRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not await access_service.has_project_access(current_user.id, run.project_id, session):
-        raise HTTPException(status_code=403, detail="Access denied")
+    # Editor, not viewer: this dispatches billable LLM work, so a read-only user
+    # (or any API key) must not be able to loop it and burn token spend.
+    if not await access_service.has_project_access(
+        current_user.id, run.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Editor access required")
     if (run.status or "").upper() in ("PENDING", "RUNNING"):
         raise HTTPException(status_code=409, detail="Run has not finished yet")
 

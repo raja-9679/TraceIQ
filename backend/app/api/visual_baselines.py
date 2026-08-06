@@ -102,6 +102,25 @@ async def list_baselines(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> List[VisualBaselineRead]:
+    # A baseline read mints a presigned MinIO URL for the screenshot, so an
+    # unscoped list would leak every tenant's images. Require a scope
+    # (project_id or test_case_id) and verify the caller can access it.
+    if project_id is None and test_case_id is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Provide project_id or test_case_id to scope the query")
+    if test_case_id is not None:
+        case = await session.get(TestCase, test_case_id)
+        if not case:
+            raise HTTPException(status_code=404, detail="Test case not found")
+        if not await access_service.has_project_access(
+            principal.user.id, case.project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+    if project_id is not None:
+        if not await access_service.has_project_access(
+            principal.user.id, project_id, session):
+            raise HTTPException(status_code=403, detail="Access denied")
+
     query = select(VisualBaseline)
     if test_case_id is not None:
         query = query.where(VisualBaseline.test_case_id == test_case_id)
@@ -142,8 +161,9 @@ async def internal_resolve_baseline(
     localhost URL is unreachable from inside worker containers."""
     from app.core.storage import minio_client
 
+    import hmac
     expected = settings.WEBHOOK_SECRET or settings.SECRET_KEY
-    if not x_worker_secret or x_worker_secret != expected:
+    if not x_worker_secret or not hmac.compare_digest(x_worker_secret, expected):
         raise HTTPException(status_code=403, detail="Invalid worker secret")
 
     res = await session.exec(

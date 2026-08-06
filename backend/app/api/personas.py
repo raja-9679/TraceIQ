@@ -57,6 +57,17 @@ async def _ensure_member(workspace_id: int, user_id: int, session: AsyncSession)
     return m
 
 
+async def _ensure_editor(workspace_id: int, user_id: int, session: AsyncSession) -> UserWorkspace:
+    """Editor+ gate for persona routes that read or write session_state — the
+    saved storage-state is live session cookies/tokens for the customer's app,
+    so a read-only member must not be able to exfiltrate or overwrite it."""
+    from app.services.access_service import _workspace_role_level
+    m = await _ensure_member(workspace_id, user_id, session)
+    if await _workspace_role_level(m, session) < 2:  # 2 == editor
+        raise HTTPException(status_code=403, detail="Editor access required")
+    return m
+
+
 def _to_read(p: Persona) -> PersonaRead:
     return PersonaRead(
         id=p.id, workspace_id=p.workspace_id, project_id=p.project_id,
@@ -79,7 +90,13 @@ async def create_persona(
 ) -> PersonaRead:
     if body.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id mismatch")
-    await _ensure_member(workspace_id, principal.user.id, session)
+    await _ensure_editor(workspace_id, principal.user.id, session)
+    # A persona's project must live in this workspace (tenant isolation).
+    if body.project_id is not None:
+        from app.models import Project
+        proj = await session.get(Project, body.project_id)
+        if not proj or proj.workspace_id != workspace_id:
+            raise HTTPException(status_code=404, detail="Project not found in this workspace")
 
     p = Persona(
         workspace_id=workspace_id,
@@ -123,8 +140,8 @@ async def get_persona(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ):
-    """Includes session_state. Only members can fetch."""
-    await _ensure_member(workspace_id, principal.user.id, session)
+    """Includes session_state (live app credentials) — editor+ only."""
+    await _ensure_editor(workspace_id, principal.user.id, session)
     p = await session.get(Persona, persona_id)
     if not p or p.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -146,7 +163,7 @@ async def patch_persona(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> PersonaRead:
-    await _ensure_member(workspace_id, principal.user.id, session)
+    await _ensure_editor(workspace_id, principal.user.id, session)
     p = await session.get(Persona, persona_id)
     if not p or p.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -170,7 +187,7 @@ async def delete_persona(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ):
-    await _ensure_member(workspace_id, principal.user.id, session)
+    await _ensure_editor(workspace_id, principal.user.id, session)
     p = await session.get(Persona, persona_id)
     if not p or p.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -190,7 +207,7 @@ async def refresh_persona(
     the new storageState. Returns immediately with a job id; clients poll
     the persona to observe `last_refreshed_at` change.
     """
-    await _ensure_member(workspace_id, principal.user.id, session)
+    await _ensure_editor(workspace_id, principal.user.id, session)
     p = await session.get(Persona, persona_id)
     if not p or p.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Persona not found")
