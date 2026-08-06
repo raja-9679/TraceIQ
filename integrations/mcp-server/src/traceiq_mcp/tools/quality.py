@@ -85,6 +85,9 @@ async def list_flakes(project_id: Optional[int] = None,
     """Flake records (alternation-based score over the last 20 results;
     quarantined cases are skipped at dispatch). Scope by project_id or
     test_case_id — one is required."""
+    if project_id is None and test_case_id is None:
+        raise ValueError(
+            "list_flakes requires a scope: pass project_id or test_case_id.")
     data = await new_client().list_flakes(project_id, test_case_id,
                                           quarantined_only)
     return FlakeList(items=data)
