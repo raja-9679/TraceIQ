@@ -319,8 +319,10 @@ gone from the backend and user-supplied URLs go through
 production instance on weak/placeholder secrets, `minioadmin`, or CORS `*`.
 
 Still open:
-- Worker image bakes code at build time — new step types need an image rebuild
-  or workers log "Unknown step type" and skip silently
+- Worker image bakes code at build time — new step types need an image rebuild.
+  Workers now HARD-FAIL an unknown step type (the error lists the worker's
+  supported types) rather than skipping it silently, so a backend-newer-than-
+  worker version skew turns those cases red instead of faking a pass.
 - `celery_beat` is required for run finalization (drains `jobs:results` every 2s)
 - Credential hygiene: committed `.env` history was never scrubbed, and a
   tracked database dump at the repo root carries account data that should not be

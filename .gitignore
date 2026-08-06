@@ -86,3 +86,7 @@ __pycache__/
 
 # Celery beat runtime state
 backend/celerybeat-schedule
+
+# Database dumps — never commit (contains real account data + bcrypt hashes)
+dump.sql
+*.sql.dump
