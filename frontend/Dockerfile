@@ -1,4 +1,6 @@
 # Build stage
+# TODO(security): bump the Node base from 18 to 22 (18 is EOL). Deferred here
+# because it needs a full build to verify the Vite build still passes.
 FROM node:18-alpine as build
 
 WORKDIR /app
@@ -13,7 +15,9 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM nginx:alpine
+# Pinned to a minor tag rather than the floating `nginx:alpine`, so a rebuild
+# is reproducible and doesn't silently jump nginx major versions.
+FROM nginx:1.27-alpine
 
 COPY --from=build /app/dist /usr/share/nginx/html
 

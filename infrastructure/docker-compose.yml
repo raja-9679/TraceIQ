@@ -408,7 +408,10 @@ services:
       context: ../integrations/mcp-server
       dockerfile: Dockerfile
     ports:
-      - "8088:8088"
+      # Bind to loopback: the MCP HTTP endpoint takes a per-request API key but
+      # otherwise brokers full workspace access, so don't expose it on all host
+      # interfaces (LAN) by default. Reach it at 127.0.0.1:8088 from the host.
+      - "127.0.0.1:8088:8088"
     environment:
       # Points to the backend container — no API key here, each client passes their own
       TRACEIQ_BASE_URL: http://backend:8000
@@ -426,7 +429,9 @@ services:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "8014:80"
+      # Admin UI with default creds — bind to loopback so it isn't reachable
+      # from the LAN. Reach it at 127.0.0.1:8014 from the host.
+      - "127.0.0.1:8014:80"
     depends_on:
       - postgres
     networks:

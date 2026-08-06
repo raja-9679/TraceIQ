@@ -1,0 +1,22 @@
+# Keep the image build hermetic and keep local state out of a distributed image.
+
+# Installed fresh inside the build; copying the host's copy is slow and can
+# carry platform-specific binaries. dist/ is rebuilt (and minified) in-image.
+node_modules
+dist
+
+# CRITICAL: never bake a developer's local configuration/secrets into the image.
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+*.log
+npm-debug.log*
+.DS_Store
+coverage
+.vscode
+.idea
+Dockerfile*
+.dockerignore

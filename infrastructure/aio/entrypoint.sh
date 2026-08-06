@@ -52,6 +52,17 @@ if [ ! -f "${DATA}/secrets.env" ]; then
       exit 1
     fi
   done
+  # MinIO creds are written into per-service env files and expanded by the
+  # shell; a literal '$', whitespace, or newline would corrupt the value (or
+  # splice extra lines). Reject those (looser than the URL charset above, since
+  # these are not embedded in DSNs).
+  for v in MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do
+    val="${!v:-}"
+    if [ -n "${val}" ] && { [[ "${val}" =~ [[:space:]] ]] || [[ "${val}" == *'$'* ]]; }; then
+      log "ERROR: supplied ${v} must not contain '\$', whitespace, or newlines."
+      exit 1
+    fi
+  done
 
   log "First boot: writing instance secrets -> /data/secrets.env"
   umask 077
