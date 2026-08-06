@@ -9,7 +9,37 @@ per-request API-key model (_context.py) — no server-side session state.
 """
 from __future__ import annotations
 
+import os
+
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+
+
+def _transport_security() -> TransportSecuritySettings:
+    """DNS-rebinding protection for the streamable-HTTP transport.
+
+    Without an explicit Host allowlist a browser page on any origin can drive
+    this endpoint via DNS rebinding. Allowed hosts come from
+    MCP_ALLOWED_HOSTS (comma-separated Host header values, `:*` wildcards
+    permitted); the default covers localhost on any port. Set it to your
+    deployment's public host(s) when serving off-box.
+    """
+    default_hosts = "127.0.0.1:*,localhost:*,[::1]:*"
+    hosts = [
+        h.strip()
+        for h in os.environ.get("MCP_ALLOWED_HOSTS", default_hosts).split(",")
+        if h.strip()
+    ]
+    origins: list[str] = []
+    for h in hosts:
+        origins.append(f"http://{h}")
+        origins.append(f"https://{h}")
+    return TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=hosts,
+        allowed_origins=origins,
+    )
+
 
 mcp = FastMCP(
     "traceiq",
@@ -24,4 +54,5 @@ mcp = FastMCP(
     ),
     stateless_http=True,
     streamable_http_path="/mcp",
+    transport_security=_transport_security(),
 )

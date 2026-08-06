@@ -78,8 +78,13 @@ async def set_code_paths(case_id: int, code_paths: List[str]) -> CodePathsResult
     # The only write path for code_paths is the project-scoped bulk endpoint;
     # resolve the case's project first.
     case = await client.get_case(case_id)
+    project_id = case.get("project_id")
+    if project_id is None:
+        raise ValueError(
+            f"Case {case_id} has no project_id — cannot set code_paths. "
+            "Confirm the case id is correct and the case still exists.")
     data = await client.bulk_set_code_paths(
-        case["project_id"], {case_id: code_paths})
+        project_id, {case_id: code_paths})
     return CodePathsResult.model_validate(data)
 
 
@@ -89,6 +94,13 @@ async def bulk_set_code_paths(project_id: int,
     """Set `code_paths` on MANY cases in one call: {case_id: [paths]}. Use
     after walking source locally to map every case to the files it exercises.
     Cases outside the project are skipped per-row (no info leak)."""
-    data = await new_client().bulk_set_code_paths(
-        project_id, {int(k): v for k, v in mapping.items()})
+    parsed: Dict[int, List[str]] = {}
+    for k, v in mapping.items():
+        try:
+            parsed[int(k)] = v
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"bulk_set_code_paths mapping keys must be numeric case ids; "
+                f"got {k!r}.")
+    data = await new_client().bulk_set_code_paths(project_id, parsed)
     return CodePathsResult.model_validate(data)

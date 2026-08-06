@@ -15,10 +15,53 @@ v2 fixes over the original client:
 """
 from __future__ import annotations
 
+import json
+import logging
 import os
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote, urlparse
 
 import httpx
+
+logger = logging.getLogger(__name__)
+
+# Keys whose values are credentials and must never appear in an error message.
+# FastAPI 422 validation errors echo the submitted body back, so a bad request
+# to propose_update_suite_settings (headers: {Authorization: Bearer ...}) or
+# start_project_security_scan (auth_header_value) would otherwise round-trip a
+# live token into the tool result.
+_CREDENTIAL_KEYS = frozenset({
+    "authorization", "auth_header_value", "api_key", "secret", "secrets",
+    "password", "token", "headers",
+})
+_MAX_ERROR_BODY = 600
+
+
+def _redact(obj: Any) -> Any:
+    """Recursively replace credential-keyed values with '***'."""
+    if isinstance(obj, dict):
+        return {
+            k: ("***" if isinstance(k, str) and k.lower() in _CREDENTIAL_KEYS
+                else _redact(v))
+            for k, v in obj.items()
+        }
+    if isinstance(obj, list):
+        return [_redact(v) for v in obj]
+    return obj
+
+
+def _safe_error_body(text: str, limit: int = _MAX_ERROR_BODY) -> str:
+    """Sanitize a backend response body for inclusion in an exception message:
+    redact credential-keyed values if it's JSON, then truncate. Falls back to a
+    plain truncation when the body isn't JSON."""
+    if not text:
+        return ""
+    try:
+        parsed = json.loads(text)
+    except (ValueError, TypeError):
+        return text[:limit]
+    redacted = json.dumps(_redact(parsed))
+    return redacted[:limit]
 
 
 class TraceIQClient:
@@ -46,15 +89,25 @@ class TraceIQClient:
             raise RuntimeError(
                 "TraceIQClient: TRACEIQ_BASE_URL and TRACEIQ_API_KEY must be set"
             )
+        if urlparse(self.base_url).scheme == "http":
+            logger.warning(
+                "TRACEIQ_BASE_URL uses http:// — the API key is sent in "
+                "cleartext on every request; use https:// in production.")
         self._timeout = timeout
 
     def _headers(self) -> Dict[str, str]:
         h = {
-            "X-API-Key": self.api_key,
             "Accept": "application/json",
             "User-Agent": "TraceIQ-MCP/0.2.0",
             "X-Agent-Session-Id": self.agent_session_id,
         }
+        # Workspace API keys are `tiq_...` and authenticate via X-API-Key; the
+        # backend rejects non-`tiq_` values there. Anything else is treated as
+        # a JWT and forwarded as a Bearer token so HTTP callers can pass one.
+        if self.api_key.startswith("tiq_"):
+            h["X-API-Key"] = self.api_key
+        else:
+            h["Authorization"] = f"Bearer {self.api_key}"
         if self.agent_id:
             h["X-Agent-Id"] = self.agent_id
         return h
@@ -67,7 +120,8 @@ class TraceIQClient:
                 method, f"{self.base_url}{path}", headers=headers, **kw)
             if resp.status_code >= 400:
                 raise httpx.HTTPStatusError(
-                    f"TraceIQ {method} {path} failed: {resp.status_code} {resp.text}",
+                    f"TraceIQ {method} {path} failed: {resp.status_code} "
+                    f"{_safe_error_body(resp.text)}",
                     request=resp.request,
                     response=resp,
                 )
@@ -169,7 +223,19 @@ class TraceIQClient:
         return await self._request("GET", f"/api/runs/{run_id}")
 
     async def get_artifact_url(self, object_path: str) -> Dict[str, Any]:
-        return await self._request("GET", f"/api/artifacts/{object_path}")
+        # Artifact object keys look like `runs/{run_id}/screenshots/…` — slashes
+        # are legitimate, but a `..` segment or a leading `/` would (after httpx
+        # normalizes the URL) escape /api/artifacts/ and reach other backend
+        # routes. Reject those, then percent-encode everything else so a key
+        # can't smuggle in query/fragment or additional path segments.
+        path = object_path or ""
+        if path.startswith("/") or ".." in path.split("/"):
+            raise ValueError(
+                f"Invalid artifact object_path {object_path!r}: must be a "
+                "relative key with no '..' segments (e.g. "
+                "'runs/123/screenshots/foo.png').")
+        return await self._request(
+            "GET", f"/api/artifacts/{quote(path, safe='/')}")
 
     async def analyze_run(self, run_id: int,
                           provider_id: Optional[int] = None) -> Dict[str, Any]:
