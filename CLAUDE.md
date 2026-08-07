@@ -328,6 +328,51 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   bypassable. Object key shapes are asserted in tests because
   `GET /api/runs/{id}/artifact` parses `runs/{run_id}/…` to enforce access.
 
+- **Encryption + transport (workstream D)** — `app/core/secrets.py` writes a
+  `v1:` envelope over a **MultiFernet ring**: first key encrypts, any key
+  decrypts, so rotation has an overlap window. `SECRETS_KEY` is independent of
+  `SECRET_KEY` (previously the same value signed JWTs *and* derived the secret
+  key, so neither could be rotated); `SECRETS_KEY_PREVIOUS` holds retired keys,
+  and `scripts/rotate_secrets.py` re-encrypts. `legacy_fernet_key()` reproduces
+  the pre-envelope derivation and is **pinned by test** — changing it makes
+  every existing deployment's secrets unreadable.
+  Stored browser sessions (`AuthSession.storage_state`, `Persona.session_state`)
+  are wrapped in a `{"__enc__": …}` envelope — still valid JSON, so no migration
+  and rows written by a lagging Celery worker stay readable.
+  `db_url_for(url, sync=)` is the **only** way to build a DB URL (1 async + 19
+  sync engines). Operators write `sslmode=`; it renames to `ssl=` for asyncpg
+  **preserving the value** — `ssl=true` raises `ClientConfigurationError`, and
+  coercing `verify-full` to a boolean would silently downgrade cert
+  verification. `MINIO_USE_SSL` / `MINIO_SSE_ALGORITHM`; SSE is re-stated on
+  `copy_object` because a server-side copy does **not** inherit the source
+  object's encryption (that path promotes visual baselines).
+  `REQUIRE_TRANSPORT_SECURITY` promotes the startup transport findings from
+  warnings to a boot refusal — opt-in, because unconditional fatality would
+  stop every existing deployment upgrading and push operators to
+  `ENVIRONMENT=development`, which disables the secret checks too.
+
+- **Audit trail (workstream E)** — `app/services/audit.py`, migration
+  `c8d9e0f1a2b3`. Two complementary mechanisms: a **DB trigger** rejects UPDATE
+  always and DELETE except for the retention task (which arms it with a
+  transaction-local `SET LOCAL traceiq.audit_retention='on'`), and a **hash
+  chain** (`prev_hash`/`row_hash`) makes any edit that bypasses the trigger
+  detectable — verified: disabling the trigger, rewriting a row and re-enabling
+  it is still caught. Rows predating this verify as *unverifiable*, not intact.
+  Rows are sealed by a **`before_flush` listener**, so the 17 legacy inline
+  `AuditLog(...)` sites are chained without being rewritten and a new one
+  can't break the chain. `record()` is still preferred — it adds actor_type /
+  actor_label / IP / user_agent.
+  **The trigger DDL is duplicated in `audit.py` as an `after_create` event on
+  purpose**: `bootstrap_db.py` builds a fresh schema from model metadata and
+  stamps head *without running migrations*, so a migration-only trigger would
+  be absent on new installs. Any future non-model DDL has this trap.
+  `auditlog` has **no FKs** to workspace/users — an FK from append-only history
+  into a mutable table forces a choice between destroying history and blocking
+  deletion.
+  Read/export at `/api/workspaces/{id}/audit{,/export,/verify}`, admin-gated.
+  `AUDIT_RETENTION_DAYS` is separate from run retention (PCI DSS Req 10 wants a
+  year regardless of artifact retention) and defaults to keeping forever.
+
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of
