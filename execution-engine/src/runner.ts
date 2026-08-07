@@ -6,6 +6,7 @@ import { BrowserManager } from './core/browser-manager';
 import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
 import { ArtifactStore, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
+import { policyFromDataPolicy, redactJobResult, redactNetworkEvents } from './core/redact';
 import { calculateOptimalConcurrency } from './utils/concurrency-utils';
 
 

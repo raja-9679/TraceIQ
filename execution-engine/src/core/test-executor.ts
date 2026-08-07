@@ -6,6 +6,7 @@ import addFormats from 'ajv-formats';
 import * as path from 'path';
 import { spawn } from 'child_process';
 import { resolveTemplates } from './interpolate';
+import { maskSelectorsFrom } from './redact';
 
 // Dot-path lookup into a parsed JSON body. Supports `a.b.c`, numeric array
 // segments (`items.0.id`), and bracket indexing (`items[0].id`). Returns
@@ -44,6 +45,25 @@ export class TestExecutor {
         'upload-file', 'verify-nth-child', 'wait-for-response',
         'wait-for-selector', 'wait-timeout',
     ];
+
+    /**
+     * Playwright screenshot options carrying the project's mask selectors.
+     *
+     * Masking happens at capture time — Playwright paints a solid box over
+     * each locator before the PNG is encoded — so the sensitive pixels are
+     * never written to disk, let alone uploaded. A selector that matches
+     * nothing is harmless; one that throws must not fail the run, so the
+     * whole mask list is dropped if it cannot be built.
+     */
+    public static screenshotOptions(page: Page, globalSettings: any, extra: any = {}): any {
+        try {
+            const selectors = maskSelectorsFrom(globalSettings?.data_policy);
+            if (!selectors.length) return extra;
+            return { ...extra, mask: selectors.map(sel => page.locator(sel)) };
+        } catch {
+            return extra;
+        }
+    }
 
     public static async executeStep(
         page: Page,
@@ -884,7 +904,8 @@ export class TestExecutor {
                 const screenshotName = step.value || `screenshot-${Date.now()}`;
                 const videoPath = await page.video()?.path();
                 const screenshotPath = path.join(videoPath ? path.dirname(videoPath) : '/tmp', `${screenshotName}.png`);
-                await page.screenshot({ path: screenshotPath, fullPage: true });
+                await page.screenshot(TestExecutor.screenshotOptions(
+                    page, globalSettings, { path: screenshotPath, fullPage: true }));
                 console.log(`Screenshot saved to: ${screenshotPath}`);
                 break;
             }
@@ -901,7 +922,8 @@ export class TestExecutor {
                 const videoPathVisual = await page.video()?.path();
                 const candidateDir = videoPathVisual ? path.dirname(videoPathVisual) : '/tmp';
                 const candidatePath = path.join(candidateDir, `visual-${stepId}.png`);
-                await page.screenshot({ path: candidatePath, fullPage: true });
+                await page.screenshot(TestExecutor.screenshotOptions(
+                    page, globalSettings, { path: candidatePath, fullPage: true }));
 
                 // Lazy require to keep this branch optional: a deployment
                 // without pixelmatch installed continues working (with the
