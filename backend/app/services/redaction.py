@@ -378,6 +378,86 @@ def redact_steps(steps: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
     return out
 
 
+def _redact_response_data(data: Any, policy: RedactionPolicy) -> Any:
+    if not isinstance(data, dict):
+        return data
+    out = dict(data)
+    if "headers" in out:
+        out["headers"] = redact_headers(out["headers"], policy)
+    if "body" in out:
+        out["body"] = redact_body(out["body"], out.get("mimeType") or out.get("content_type"), policy)
+    request = out.get("request")
+    if isinstance(request, dict):
+        req = dict(request)
+        if "headers" in req:
+            req["headers"] = redact_headers(req["headers"], policy)
+        if "body" in req:
+            req["body"] = redact_body(req["body"], None, policy)
+        if isinstance(req.get("url"), str):
+            req["url"] = redact_text(req["url"], policy)
+        out["request"] = req
+    if isinstance(out.get("url"), str):
+        out["url"] = redact_text(out["url"], policy)
+    return out
+
+
+_RESULT_TEXT_FIELDS = ("error", "error_message")
+_RESULT_HEADER_FIELDS = ("request_headers", "response_headers")
+_RESULT_BODY_FIELDS = ("request_body", "response_body")
+
+
+def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
+    if not isinstance(result, dict):
+        return result
+    out = dict(result)
+    if "response_data" in out:
+        out["response_data"] = _redact_response_data(out["response_data"], policy)
+    if "network_events" in out:
+        out["network_events"] = redact_network_events(out["network_events"], policy)
+    for field in _RESULT_TEXT_FIELDS:
+        if isinstance(out.get(field), str):
+            out[field] = redact_text(out[field], policy)
+    for field in _RESULT_HEADER_FIELDS:
+        if field in out:
+            out[field] = redact_headers(out[field], policy)
+    for field in _RESULT_BODY_FIELDS:
+        if field in out:
+            out[field] = redact_body(out[field], None, policy)
+    if isinstance(out.get("execution_log"), list):
+        out["execution_log"] = _redact_json(out["execution_log"], policy.body_key_set(), policy)
+    if isinstance(out.get("steps"), list):
+        out["steps"] = redact_steps(out["steps"], policy)
+    return out
+
+
+def redact_worker_result(payload: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Scrub a worker result on ingestion, before anything is written to the DB.
+
+    Applied once at each of the three ingestion entry points rather than at the
+    ten individual column assignments they contain — those are duplicated
+    across `result_aggregator`, `webhook_tasks` and `test_service`, and a
+    per-assignment approach would need to be repeated correctly in all three
+    forever.
+
+    This deliberately applies only the *built-in* denylist and pattern set, not
+    the project's extras. The worker has already applied the project-specific
+    policy at capture time; the backend's job here is the universal baseline
+    for the case where the worker is an older image that did not scrub at all.
+    Loading the project's policy would mean a DB round-trip in the aggregator's
+    hot path to re-apply rules that are almost always already applied.
+
+    Routing and status fields are untouched — the aggregator finalizes runs
+    from them.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    out = _redact_case_result(payload, policy)
+    for key in ("test_results", "results"):
+        if isinstance(out.get(key), list):
+            out[key] = [_redact_case_result(item, policy) for item in out[key]]
+    return out
+
+
 def redact_audit_changes(changes: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
     """Scrub an `AuditLog.changes` payload.
 

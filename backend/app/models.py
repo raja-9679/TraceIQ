@@ -143,6 +143,14 @@ class Project(SQLModel, table=True):
     # authorized-target allowlist. Shape mirrors SecuritySettings.
     security_settings: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
+    # What this project's runs may capture, and what to scrub from it
+    # (info/REGULATED_READINESS.md workstream B). None → DEFAULT_DATA_POLICY,
+    # i.e. capture_level "standard": masked screenshots and scrubbed logs, but
+    # no video, trace or HAR. Always resolved through
+    # app.services.data_policy.resolve_for_project, which clamps it to the
+    # instance-wide MAX_CAPTURE_LEVEL ceiling. Shape mirrors DataPolicy.
+    data_policy: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
 
     # Relationships
     workspace: Workspace = Relationship(back_populates="projects")
@@ -1065,6 +1073,48 @@ class QualityGateResult(SQLModel):
 
 
 DEFAULT_QUALITY_GATE = QualityGatePolicy()
+
+
+# =============================================================================
+# Data-capture policy (info/REGULATED_READINESS.md workstream B)
+# =============================================================================
+
+
+class DataPolicy(SQLModel):
+    """Per-project control over what a run records and what is scrubbed from it.
+
+    `capture_level` is the headline control:
+        none      pass/fail and timing only
+        minimal   + a masked failure screenshot
+        standard  + masked screenshots, scrubbed console and network logs
+        full      + video, Playwright trace and HAR
+
+    Video, trace and HAR sit above `standard` because none of them can be
+    meaningfully redacted — a trace is a full DOM-snapshot recording and a
+    video records whatever was on screen — so they require an explicit opt-in.
+
+    The effective level is always the lower of this and the instance-wide
+    MAX_CAPTURE_LEVEL; see app/services/data_policy.py.
+    """
+    capture_level: str = "standard"
+    # When false, request/response bodies are dropped rather than persisted to
+    # TestCaseResult. Headers and status are kept, so failures stay triageable.
+    store_bodies: bool = True
+    # Extra header names to redact beyond the built-in denylist.
+    redact_headers: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    # Extra body/form field names to redact beyond the built-in denylist.
+    redact_body_fields: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    # Value patterns to scan for: pan | aadhaar | jwt | email | phone.
+    # None means the built-in set (pan, aadhaar, jwt); [] disables value
+    # scanning entirely and relies on field names alone.
+    redact_patterns: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    # CSS selectors painted over in every screenshot at capture time.
+    mask_selectors: List[str] = Field(default_factory=list, sa_column=Column(JSON))
+    # Per-project run retention. 0 → fall back to the instance RUN_RETENTION_DAYS.
+    retention_days: int = 0
+
+
+DEFAULT_DATA_POLICY = DataPolicy()
 
 
 # =============================================================================

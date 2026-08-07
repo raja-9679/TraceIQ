@@ -100,6 +100,11 @@ class Settings(BaseSettings):
     # to requiring an authenticated principal — it is never anonymous.
     METRICS_TOKEN: str = ""
 
+    # Instance-wide ceiling on what any project may capture:
+    # none | minimal | standard | full. Enforced at dispatch, so no project
+    # setting can exceed it. See app/services/data_policy.py.
+    MAX_CAPTURE_LEVEL: str = "standard"
+
     # Notification Settings
     # Master switch - if false, no notifications are sent regardless of other settings
     NOTIFICATIONS_ENABLED: bool = False

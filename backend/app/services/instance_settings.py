@@ -134,6 +134,15 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="Always-allowed hostnames"),
     SettingDef("RUN_RETENTION_DAYS", "policies", type="int",
                label="Run retention (days)", description="0 keeps everything forever"),
+    SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
+               label="Maximum capture level",
+               description="ceiling no project may exceed: none | minimal | standard | "
+                           "full. 'standard' allows masked screenshots and scrubbed "
+                           "logs; 'full' additionally allows video, Playwright traces "
+                           "and HAR, none of which can be redacted. Set this to "
+                           "'minimal' or lower for deployments near regulated data — "
+                           "it is enforced at dispatch, so no project setting can "
+                           "override it"),
 ]}
 
 _CACHE_TTL_SECONDS = 15.0

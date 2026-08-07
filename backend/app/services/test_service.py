@@ -8,6 +8,7 @@ from app.models import (
     AuditLog, ExecutionMode, TestStatus
 )
 from app.core.storage import minio_client
+from app.services.redaction import redact_worker_result
 
 from sqlmodel import Session, select
 
@@ -314,6 +315,10 @@ class TestService:
 
     @staticmethod
     async def process_test_run_result(run_id: int, result_data: Dict[str, Any], session: AsyncSession):
+        # Defence in depth — see process_single_result in result_aggregator.
+        # This path is reachable over HTTP by anything holding the webhook
+        # secret, so it must not assume a well-behaved caller either.
+        result_data = redact_worker_result(result_data)
         run = await session.get(TestRun, run_id)
         if not run:
             print(f"Error: Run {run_id} not found during result processing")
