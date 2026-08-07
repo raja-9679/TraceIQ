@@ -17,14 +17,15 @@ from urllib.parse import urlsplit
 from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import AuthSession, SecurityFinding, SecurityScan
+from app.core.secrets import decrypt_json, encrypt_json
 from app.services.zap_client import (
     ZapClient, ZapError, map_alerts, cookie_header_from_storage_state)
 
 logger = logging.getLogger(__name__)
 
-sync_engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""), echo=False)
+sync_engine = create_engine(db_url_for(settings.DATABASE_URL, sync=True), echo=False)
 
 
 def _scan_origin(url: str) -> str:
@@ -37,7 +38,7 @@ def _scan_origin(url: str) -> str:
 def _auth_cookie(session: Session, project_id: int):
     row = session.exec(
         select(AuthSession).where(AuthSession.project_id == project_id)).first()
-    return cookie_header_from_storage_state(row.storage_state) if row else None
+    return cookie_header_from_storage_state(decrypt_json(row.storage_state)) if row else None
 
 
 def _poll_to_complete(status_fn, timeout_s: int, interval_s: int = 3) -> bool:

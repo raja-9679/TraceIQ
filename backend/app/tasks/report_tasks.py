@@ -15,14 +15,14 @@ from croniter import croniter
 from sqlmodel import Session, create_engine, select, func
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import (
     ReportSchedule, TestRun, TestStatus, TestCaseResult, FailureCluster, Project,
 )
 
 logger = logging.getLogger(__name__)
 
-sync_engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""), echo=False)
+sync_engine = create_engine(db_url_for(settings.DATABASE_URL, sync=True), echo=False)
 _FINISHED = [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]
 _FAIL = [TestStatus.FAILED, TestStatus.ERROR]
 

@@ -1,5 +1,59 @@
+from typing import Any, Dict, Optional
+
 import boto3
 from botocore.client import Config
+
+#: Algorithms boto3/MinIO accept for at-rest encryption.
+_SSE_ALGORITHMS = {"AES256": "AES256", "AWS:KMS": "aws:kms"}
+
+
+def normalize_endpoint(endpoint: Optional[str], use_ssl: bool) -> str:
+    """Resolve an endpoint into a full URL boto3 can use.
+
+    Previously this hardcoded `http://` onto anything without a scheme, and
+    compose ships `MINIO_ENDPOINT: minio:9000` — so the internal client always
+    spoke plaintext however the deployment was configured, and presigned URLs
+    were signed against a plain-HTTP host.
+
+    An endpoint that already names a scheme is respected as written, including
+    an explicit `http://` under `use_ssl`: silently upgrading it would turn an
+    operator's stated intent into a confusing connection error.
+    """
+    raw = (endpoint or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("http://") or raw.startswith("https://"):
+        return raw
+    return f"{'https' if use_ssl else 'http'}://{raw}"
+
+
+def sse_extra_args(
+    algorithm: Optional[str],
+    kms_key_id: Optional[str] = None,
+    base: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Build the `ExtraArgs`/copy kwargs that request server-side encryption.
+
+    Returns `base` unchanged when no algorithm is configured, so deployments
+    without SSE are unaffected. An unrecognised algorithm raises rather than
+    being dropped — a typo must not silently disable encryption on every
+    upload, which is the failure mode you would never notice.
+    """
+    args: Dict[str, Any] = dict(base or {})
+    if not algorithm or not str(algorithm).strip():
+        return args
+
+    key = str(algorithm).strip().upper()
+    if key not in _SSE_ALGORITHMS:
+        raise ValueError(
+            f"Unknown MINIO_SSE_ALGORITHM {algorithm!r}; expected one of "
+            f"{', '.join(sorted(_SSE_ALGORITHMS.values()))}")
+
+    args["ServerSideEncryption"] = _SSE_ALGORITHMS[key]
+    if key == "AWS:KMS" and kms_key_id:
+        args["SSEKMSKeyId"] = kms_key_id
+    return args
+
 
 class MinioClient:
     """S3/MinIO access. Config is resolved lazily on FIRST USE (not import),
@@ -12,17 +66,25 @@ class MinioClient:
         self._s3 = None
         self._s3_public = None
         self._bucket = None
+        self._sse = None
+        self._sse_kms_key_id = None
 
     def _init_clients(self):
         from app.services.instance_settings import effective
 
-        # We need to parse the MINIO_ENDPOINT to handle http/https if present,
-        # but boto3 expects endpoint_url to include scheme.
-        endpoint = str(effective("MINIO_ENDPOINT") or "")
-        if not endpoint.startswith("http"):
-            endpoint = f"http://{endpoint}"
+        # boto3 wants a full URL. `MINIO_USE_SSL` decides the scheme for a
+        # scheme-less endpoint (which is what compose ships); an endpoint that
+        # spells out its own scheme wins.
+        use_ssl = str(effective("MINIO_USE_SSL") or "").strip().lower() == "true"
+        endpoint = normalize_endpoint(effective("MINIO_ENDPOINT"), use_ssl)
         access_key = effective("MINIO_ACCESS_KEY")
         secret_key = effective("MINIO_SECRET_KEY")
+
+        self._sse = effective("MINIO_SSE_ALGORITHM") or None
+        self._sse_kms_key_id = effective("MINIO_SSE_KMS_KEY_ID") or None
+        # Validate once at client construction rather than on every upload, so
+        # a typo surfaces at startup instead of silently disabling encryption.
+        sse_extra_args(self._sse, self._sse_kms_key_id)
 
         self._s3 = boto3.client(
             "s3",
@@ -91,15 +153,22 @@ class MinioClient:
             if "NotImplemented" not in str(e):
                 print(f"Failed to set CORS: {e}")
 
-    def upload_file(self, file_path: str, object_name: str):
-        self.s3.upload_file(file_path, self.bucket, object_name)
+    def _extra_args(self, base: dict = None) -> dict:
+        """Caller extras plus whatever server-side encryption is configured."""
+        if self._s3 is None:
+            self._init_clients()
+        return sse_extra_args(self._sse, self._sse_kms_key_id, base=base)
+
+    def upload_file(self, file_path: str, object_name: str, content_type: str = None):
+        extra = self._extra_args({"ContentType": content_type} if content_type else None)
+        self.s3.upload_file(file_path, self.bucket, object_name, ExtraArgs=extra or None)
         return object_name
 
     def upload_fileobj(self, fileobj, object_name: str, content_type: str = None):
         """Stream an open file-like object (e.g. FastAPI UploadFile.file)
         straight to MinIO without buffering it on disk. Used for app-build
         binaries, which can be hundreds of MB."""
-        extra = {"ContentType": content_type} if content_type else {}
+        extra = self._extra_args({"ContentType": content_type} if content_type else None)
         self.s3.upload_fileobj(
             fileobj, self.bucket, object_name,
             ExtraArgs=extra or None,
@@ -111,11 +180,18 @@ class MinioClient:
 
     def copy_object(self, source_key: str, dest_key: str):
         """Server-side copy within the bucket (used to promote a run's
-        candidate screenshot into a durable baseline object)."""
+        candidate screenshot into a durable baseline object).
+
+        SSE has to be re-stated on a copy: S3 does not carry the source
+        object's encryption over to the destination. Missing it here would
+        leave promoted visual baselines unencrypted in a deployment that had
+        SSE switched on everywhere else — the kind of gap nobody notices.
+        """
         self.s3.copy_object(
             Bucket=self.bucket,
             CopySource={"Bucket": self.bucket, "Key": source_key},
             Key=dest_key,
+            **self._extra_args(),
         )
         return dest_key
 

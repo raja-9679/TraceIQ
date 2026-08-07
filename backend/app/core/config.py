@@ -1,5 +1,65 @@
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+# sslmode values that mean "TLS is on". Used by validate_for_deployment; the
+# URL translation below preserves whatever value was given.
+_SSLMODE_ON = {"require", "verify-ca", "verify-full", "prefer", "allow"}
+
+
+def db_url_for(database_url: str, sync: bool) -> str:
+    """Return `database_url` shaped for the driver that will consume it.
+
+    Ten places in this codebase build an engine — one async, nine sync — and
+    each previously did its own `.replace("+asyncpg", "")`. Centralising it is
+    what makes TLS configurable at all: the two drivers spell the same setting
+    differently, and neither tolerates the other's spelling.
+
+    psycopg2 takes `sslmode`. SQLAlchemy's asyncpg dialect takes `ssl`, and
+    rejects a `sslmode` key outright. The *values* are the same vocabulary
+    (`require`, `verify-full`, `disable`, …), so translation is a rename and
+    the value is preserved — coercing it to a boolean produces
+    `ClientConfigurationError: sslmode parameter must be one of …`, because the
+    dialect maps `ssl` straight back onto sslmode semantics.
+
+    Operators therefore write `sslmode=` everywhere (what psql and every
+    Postgres doc use) and this adapts it per driver.
+    """
+    if not database_url:
+        return database_url
+
+    url = database_url.replace("+asyncpg", "") if sync else database_url
+    parts = urlsplit(url)
+    if not parts.query:
+        return url
+
+    if sync:
+        # psycopg2 speaks sslmode natively; nothing to translate.
+        return url
+
+    translated = [
+        ("ssl", value) if key.lower() == "sslmode" else (key, value)
+        for key, value in parse_qsl(parts.query, keep_blank_values=True)
+    ]
+    return urlunsplit(parts._replace(query=urlencode(translated)))
+
+
+def redis_url_with_tls(redis_url: str, use_tls: bool) -> str:
+    """Upgrade a `redis://` URL to `rediss://` when TLS is requested.
+
+    redis-py and Celery both select TLS from the scheme, so this is the whole
+    mechanism — but Celery additionally needs `broker_use_ssl` /
+    `redis_backend_use_ssl` to control certificate verification; see
+    core/celery_app.py.
+    """
+    if not redis_url or not use_tls:
+        return redis_url
+    if redis_url.startswith("rediss://"):
+        return redis_url
+    if redis_url.startswith("redis://"):
+        return "rediss://" + redis_url[len("redis://"):]
+    return redis_url
 
 
 class Settings(BaseSettings):
@@ -12,6 +72,13 @@ class Settings(BaseSettings):
     MINIO_ACCESS_KEY: str
     MINIO_SECRET_KEY: str
     MINIO_BUCKET_NAME: str = "test-artifacts"
+    # TLS to the object store. A scheme-less MINIO_ENDPOINT (what compose
+    # ships) picks its scheme from this; an endpoint that spells out http://
+    # or https:// wins outright.
+    MINIO_USE_SSL: bool = False
+    # Server-side encryption at rest: "AES256" or "aws:kms". Unset = none.
+    MINIO_SSE_ALGORITHM: str = ""
+    MINIO_SSE_KMS_KEY_ID: str = ""
     OPENAI_API_KEY: str = ""
     EXECUTION_ENGINE_URL: str = "http://execution-engine:3000/run"
     # Set in the environment as a JSON list, e.g.
@@ -104,6 +171,29 @@ class Settings(BaseSettings):
     # none | minimal | standard | full. Enforced at dispatch, so no project
     # setting can exceed it. See app/services/data_policy.py.
     MAX_CAPTURE_LEVEL: str = "standard"
+
+    # Key material for secrets at rest (project secrets, MFA seeds, provider
+    # API keys, stored session state). Independent of SECRET_KEY so JWT signing
+    # can be rotated without destroying every stored secret. Accepts a real
+    # Fernet key (from a KMS or `Fernet.generate_key()`) or a passphrase.
+    # Unset falls back to SECRET_KEY, which is the legacy behaviour.
+    SECRETS_KEY: str = ""
+    # Comma-separated retired keys, kept readable during a rotation overlap.
+    # Drop a key from here once `scripts/rotate_secrets.py` reports nothing
+    # left to re-encrypt. See app/core/secrets.py.
+    SECRETS_KEY_PREVIOUS: str = ""
+
+    # Promote the transport/at-rest checks in validate_for_deployment() from
+    # warnings to boot-refusing errors. Off by default so an upgrade cannot
+    # brick an existing deployment; regulated deployments turn it on, and it
+    # is the switch to point an auditor at.
+    REQUIRE_TRANSPORT_SECURITY: bool = False
+
+    # Certificate verification for a rediss:// broker. The scheme alone gives
+    # an encrypted channel to an UNVERIFIED peer; this is what checks who is
+    # on the other end. "required" | "optional" | "none".
+    CELERY_REDIS_SSL_CERT_REQS: str = "required"
+    CELERY_REDIS_SSL_CA_CERTS: str = ""
 
     # Notification Settings
     # Master switch - if false, no notifications are sent regardless of other settings
@@ -256,6 +346,74 @@ class Settings(BaseSettings):
                     "at your internal network. Correct for a trusted "
                     "single-tenant deployment; unsafe if users are untrusted."
                 )
+
+            # --- Transport and at-rest security -------------------------
+            # Everything above checks credentials. These check the channels
+            # they travel over and the media they land on, which was the
+            # larger gap: captured request bodies, decrypted job secrets and
+            # session cookies all crossed these connections in clear.
+            #
+            # These are WARNINGS by default and fatal only under
+            # REQUIRE_TRANSPORT_SECURITY. Making them unconditionally fatal
+            # would stop every existing deployment from booting on upgrade,
+            # and the escape hatch operators reach for is ENVIRONMENT=
+            # development — which switches off the secret checks above too.
+            # A check people route around by disabling all checks is worse
+            # than no check. Regulated deployments opt in; the SELF_HOSTING
+            # guide tells them to.
+            strict = self.REQUIRE_TRANSPORT_SECURITY
+            transport: list[str] = []
+
+            db_query = dict(parse_qsl(urlsplit(self.DATABASE_URL or "").query))
+            sslmode = (db_query.get("sslmode") or db_query.get("ssl") or "").lower()
+            if sslmode in ("", "disable", "false"):
+                transport.append(
+                    "DATABASE_URL has no TLS (add ?sslmode=require, or "
+                    "verify-full with a CA). Test results carry captured "
+                    "request and response bodies, so this connection is not "
+                    "metadata-only."
+                )
+
+            broker = (self.CELERY_BROKER_URL or "").lower()
+            broker_tls = broker.startswith("rediss://")
+            # A password appears as redis://:pw@host or redis://user:pw@host.
+            broker_authed = "@" in broker.split("//", 1)[-1]
+            if not broker_tls and not broker_authed:
+                transport.append(
+                    "CELERY_BROKER_URL is neither TLS (rediss://) nor "
+                    "password-protected. Dispatched jobs carry DECRYPTED "
+                    "project secrets across this connection."
+                )
+            elif not broker_tls:
+                transport.append(
+                    "Redis is password-protected but not TLS. Job payloads "
+                    "containing decrypted secrets cross it in clear; prefer "
+                    "rediss:// unless the link is already private."
+                )
+
+            store_endpoint = (self.MINIO_ENDPOINT or "").lower()
+            if not self.MINIO_USE_SSL and not store_endpoint.startswith("https://"):
+                transport.append(
+                    "MinIO/object store is plaintext (set MINIO_USE_SSL=true or "
+                    "an https:// endpoint). Artifacts and presigned URLs — which "
+                    "are bearer credentials — cross it in clear."
+                )
+            if not (self.MINIO_SSE_ALGORITHM or "").strip():
+                transport.append(
+                    "No server-side encryption configured for the object store "
+                    "(MINIO_SSE_ALGORITHM). Screenshots and logs are stored "
+                    "unencrypted at rest."
+                )
+
+            if not (self.SECRETS_KEY or "").strip():
+                warnings.append(
+                    "SECRETS_KEY is unset, so secret encryption falls back to "
+                    "SECRET_KEY. Rotating your JWT signing key would then "
+                    "require re-encrypting every stored secret at the same "
+                    "moment. Set SECRETS_KEY and run scripts/rotate_secrets.py."
+                )
+
+            (fatal if strict else warnings).extend(transport)
 
         if fatal:
             raise RuntimeError(

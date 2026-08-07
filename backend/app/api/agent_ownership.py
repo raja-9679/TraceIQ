@@ -46,6 +46,7 @@ from app.models import (
     TestSuite,
 )
 from app.services.access_service import access_service
+from app.core.secrets import decrypt_json, encrypt_json
 
 router = APIRouter()
 
@@ -396,7 +397,7 @@ async def crawl_app_surface(
     if auth and auth.storage_state:
         age_min = (datetime.utcnow() - auth.captured_at).total_seconds() / 60
         if age_min < auth.max_age_minutes:
-            storage_state = auth.storage_state
+            storage_state = decrypt_json(auth.storage_state)
 
     discovery_id = str(uuid.uuid4())
     job = {

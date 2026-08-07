@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,18 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="Secret key"),
     SettingDef("MINIO_BUCKET_NAME", "storage", restart_required=True,
                label="Bucket"),
+    SettingDef("MINIO_USE_SSL", "storage", type="bool", restart_required=True,
+               label="Use TLS to the object store",
+               description="picks the scheme for a scheme-less endpoint; an endpoint "
+                           "that spells out http:// or https:// wins"),
+    SettingDef("MINIO_SSE_ALGORITHM", "storage", restart_required=True,
+               label="Server-side encryption",
+               description="AES256 or aws:kms. Blank disables it. Applies to every "
+                           "upload and to baseline promotion (a server-side copy does "
+                           "not inherit the source object's encryption)"),
+    SettingDef("MINIO_SSE_KMS_KEY_ID", "storage", secret=True, restart_required=True,
+               label="SSE-KMS key id",
+               description="only used with aws:kms; blank uses the backend's default key"),
     # --- SSO (OIDC) ---
     SettingDef("OIDC_ISSUER", "sso", label="Issuer URL"),
     SettingDef("OIDC_CLIENT_ID", "sso", label="Client ID"),
@@ -192,7 +204,7 @@ def _sync_engine():
         except NameError:
             from sqlalchemy import create_engine
             _engine = create_engine(
-                settings.DATABASE_URL.replace("+asyncpg", ""),
+                db_url_for(settings.DATABASE_URL, sync=True),
                 pool_pre_ping=True, pool_size=2, max_overflow=2,
                 # Bound the blocking refresh: effective() is called from async
                 # request handlers, and without a connect timeout a slow/down DB
@@ -214,7 +226,16 @@ def _load_overrides_sync() -> Dict[str, str]:
         try:
             out[key] = decrypt_secret(value) if is_secret else value
         except Exception:
-            logger.warning("instance_settings: cannot decrypt %s (SECRET_KEY rotated?); ignoring", key)
+            # Falling back to the env value is deliberate — a stuck admin
+            # setting must not take the instance down. But it IS silent
+            # degradation: SMTP, OIDC and LLM credentials revert to whatever
+            # the environment says. The usual cause is key material missing
+            # from the ring; put it back in SECRETS_KEY_PREVIOUS and run
+            # scripts/rotate_secrets.py.
+            logger.warning(
+                "instance_settings: cannot decrypt %s — falling back to the env value. "
+                "Is the key that wrote it still in SECRETS_KEY / SECRETS_KEY_PREVIOUS?",
+                key)
     return out
 
 

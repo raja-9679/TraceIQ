@@ -4,12 +4,12 @@ Celery tasks for cleaning up stuck test runs and enforcing data retention.
 from datetime import datetime, timedelta
 from sqlmodel import Session, select
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import TestRun, TestStatus, TestCaseResult
 from sqlmodel import create_engine
 
 # Use sync engine for Celery worker
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 TIMEOUT_MINUTES = getattr(settings, 'STALE_RUN_INACTIVITY_MINUTES', 15)

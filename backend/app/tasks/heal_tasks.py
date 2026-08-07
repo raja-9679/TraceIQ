@@ -24,7 +24,7 @@ from typing import Any, Dict, List
 from sqlmodel import Session, create_engine
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import (
     Project,
     SelectorHealProposal,
@@ -33,7 +33,7 @@ from app.models import (
 )
 from app.services.llm_usage import llm_call_context
 
-_sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+_sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 _engine = create_engine(_sync_db_url, echo=False)
 
 

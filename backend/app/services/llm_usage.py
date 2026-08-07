@@ -26,9 +26,9 @@ from typing import Iterator, Optional
 
 from sqlmodel import Session, create_engine, select
 
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 
-_sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+_sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 _engine = create_engine(_sync_db_url, echo=False, pool_pre_ping=True)
 
 _ctx: ContextVar[dict] = ContextVar("llm_call_context", default={})

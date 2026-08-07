@@ -30,8 +30,17 @@ def make(**overrides) -> Settings:
 
 
 def test_strong_production_config_passes():
+    """Strong secrets boot without complaint *about the secrets*.
+
+    BASE deliberately has no TLS and no at-rest encryption, so the transport
+    checks added alongside the redaction work do warn here — that is their job.
+    This test is about credential strength, so it asserts on that specifically
+    rather than on an empty list, which would otherwise make it a tripwire for
+    every future warning anyone adds.
+    """
     s = make(ENVIRONMENT="production", SECRET_KEY=STRONG, WEBHOOK_SECRET=OTHER_STRONG)
-    assert s.validate_for_deployment() == []
+    warnings = s.validate_for_deployment()  # must not raise
+    assert not [w for w in warnings if w.startswith("WEBHOOK_SECRET")]
 
 
 def test_development_is_not_blocked_by_weak_secrets():

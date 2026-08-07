@@ -25,12 +25,13 @@ from typing import Dict, Any, Optional
 import redis
 from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import TestRun, TestCaseResult, TestStatus, TestCase
 from app.services.redaction import redact_worker_result
+from app.core.secrets import decrypt_json, encrypt_json
 
 # Sync database engine for Celery
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 # Sync Redis client
@@ -161,14 +162,18 @@ def _persist_auth_state(result: Dict[str, Any]):
                 select(AuthSession).where(
                     AuthSession.project_id == case.project_id)
             ).first()
+            # Live session cookies + localStorage for a logged-in account on
+            # the app under test. Encrypted at rest so DB read access does
+            # not hand over resumable sessions.
+            sealed = encrypt_json(auth_state)
             if auth:
-                auth.storage_state = auth_state
+                auth.storage_state = sealed
                 auth.captured_by_case_id = case.id
                 auth.captured_at = datetime.utcnow()
             else:
                 auth = AuthSession(
                     project_id=case.project_id,
-                    storage_state=auth_state,
+                    storage_state=sealed,
                     captured_by_case_id=case.id,
                 )
             session.add(auth)

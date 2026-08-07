@@ -8,14 +8,15 @@ Architecture:
 from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
+from app.core.secrets import decrypt_json, encrypt_json
 from app.models import TestRun, TestStatus, ExecutionMode, ExecutorType
 import requests
 import json
 import redis
 
 # Use sync engine for Celery worker
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 # Redis client for job dispatching
@@ -424,7 +425,7 @@ def _load_auth_state(project_id, session):
         print(f"[Worker] Auth session for project {project_id} is stale "
               f"({int(age_seconds // 60)} min old) — dispatching without it")
         return None
-    return auth.storage_state
+    return decrypt_json(auth.storage_state)
 
 
 def _local_queue_key(run: TestRun, session: Session) -> str | None:

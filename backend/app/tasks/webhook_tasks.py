@@ -7,13 +7,13 @@ import json
 import redis
 from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import TestRun, TestCase, TestCaseResult, TestStatus
 from app.services.redaction import redact_worker_result
 import time
 
 # Use sync engine for Celery worker (same as worker.py)
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 # Use synchronous Redis client for Celery worker
