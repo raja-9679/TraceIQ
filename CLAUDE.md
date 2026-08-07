@@ -67,7 +67,11 @@ celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue
 # Celery beat (scheduled tasks)
 celery -A app.core.celery_app beat --loglevel=info
 
-# Run tests
+# Run tests. The host may have Python >3.11, for which psycopg2-binary ships
+# no wheel; ./run-tests.sh borrows the backend image (3.11 + every runtime dep)
+# and mounts the tree over it. Plain `pytest` works if your venv is 3.11.
+./run-tests.sh                      # whole unit suite (what CI runs)
+./run-tests.sh tests/test_redaction.py -q
 pytest
 
 # Run a single test file (tests live at tests/ root, tests/e2e/, or tests/integration/)
@@ -97,6 +101,7 @@ npm run lint         # ESLint
 npm run dev          # Dev server (legacy engine, port 3000)
 npm run dev:worker   # Distributed worker in dev mode
 npm run build        # TypeScript compile to dist/
+npm test             # node:test via ts-node; *.test.ts are excluded from the build
 ```
 
 ---
@@ -298,6 +303,31 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   proposals also honor `tags`/`priority` in payload/patch.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
 
+- **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
+  `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
+  declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,
+  `redact_headers`/`redact_body_fields`/`redact_patterns`, `mask_selectors`,
+  `retention_days`. Resolved by `app/services/data_policy.py:resolve_for_project`
+  and **clamped at dispatch** to the `MAX_CAPTURE_LEVEL` instance setting, so a
+  worker can't be talked past the ceiling by a crafted job. Unknown levels
+  resolve to `standard`, never `full`.
+  Video/trace/HAR require `full` — none of them can be meaningfully redacted
+  (a trace is a full DOM-snapshot recording), so they are opt-in only.
+  **This changed default behaviour**: projects that predate the column no longer
+  record video/traces/HAR until opted back up.
+  Redaction is two mirrored implementations —
+  `execution-engine/src/core/redact.ts` (capture time: the only layer that keeps
+  secrets out of MinIO) and `app/services/redaction.py` (ingestion: the worker
+  image bakes code at build time and can be older than the backend). Their
+  corpora (`redact.test.ts`, `tests/test_redaction.py`) are deliberate twins —
+  change one, change both. Key denylist + checksum-validated patterns (Luhn for
+  PAN, Verhoeff for Aadhaar, JWT); `email`/`phone` exist but are OFF by default
+  because blanket-redacting them breaks stored assertions.
+  All artifact uploads funnel through `core/artifact-store.ts` — there is no
+  other MinIO client in the engine; keep it that way or the policy gate is
+  bypassable. Object key shapes are asserted in tests because
+  `GET /api/runs/{id}/artifact` parses `runs/{run_id}/…` to enforce access.
+
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of
@@ -318,8 +348,21 @@ gone from the backend and user-supplied URLs go through
 `app/core/net_guard.py`; `Settings.validate_for_deployment()` refuses to boot a
 production instance on weak/placeholder secrets, `minioadmin`, or CORS `*`.
 
+Also FIXED 2026-08-07 (Phases 1-2 of info/REGULATED_READINESS.md, verified
+against a real Postgres and the compiled dist): `fill` now interpolates, so
+`{{secret.X}}` works for UI logins instead of forcing plaintext passwords into
+`TestCase.steps` (the same omission was in select-option/expect-text/expect-url
+and the selector paths of click/check/hover/press-key/expect-*); AuditLog
+changes are redacted at write and revision snapshots on read (storage stays
+faithful so restore still works); `GET /api/jobs/poll` is editor-gated and
+honours `ApiKey.project_id` instead of handing decrypted secrets to any
+workspace key; `/metrics` needs `METRICS_TOKEN` or a principal.
+
 Still open:
 - Worker image bakes code at build time — new step types need an image rebuild.
+  **This is also why the backend redacts on ingestion**: an un-upgraded worker
+  ships raw headers and bodies, so `app/services/redaction.py` runs again at all
+  three ingestion entry points rather than trusting the worker.
   Workers now HARD-FAIL an unknown step type (the error lists the worker's
   supported types) rather than skipping it silently, so a backend-newer-than-
   worker version skew turns those cases red instead of faking a pass.
