@@ -49,16 +49,14 @@ const { JobQueue } = require('./core/job-queue') as typeof import('./core/job-qu
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
 import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
+import { ArtifactStore, CaptureLevel, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
 import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
-import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-const MinioClient = (Minio as any).Client || Minio;
-const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 const POLL_IDLE_MS = 2000;
 // Locator-shaped failures eligible for AI heal (mirrors the web worker's
 // SELECTOR_FAILURE_RE, matching this worker's own error wording).
@@ -99,13 +97,6 @@ class MobileWorker {
     private driver = new WebDriverClient(this.provider.webdriverUrl, this.provider.authHeader);
     private aiEngine = new AIEngine();
     private running = true;
-    private minio = new MinioClient({
-        endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-        port: parseInt(process.env.MINIO_PORT || '9000'),
-        useSSL: process.env.MINIO_USE_SSL === 'true',
-        accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-        secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
-    });
 
     async start(): Promise<void> {
         await this.queue.initialize();
@@ -550,6 +541,14 @@ class MobileWorker {
     }
 
     /**
+     * The capture level the backend attached to this job, defaulting safely
+     * when a job predates the policy or names a level this build doesn't know.
+     */
+    private captureLevelFor(job: TestJob): CaptureLevel {
+        return normalizeCaptureLevel((job as any)?.data_policy?.capture_level);
+    }
+
+    /**
      * Upload captured screenshots to MinIO under the same key layout the
      * Playwright worker uses (`runs/{run_id}/screenshots/…`) and return the
      * object keys. Best-effort: an unreachable MinIO fails the artifacts,
@@ -559,15 +558,11 @@ class MobileWorker {
         if (shots.length === 0) return [];
         const keys: string[] = [];
         try {
-            const exists = await this.minio.bucketExists(BUCKET_NAME);
-            if (!exists) await this.minio.makeBucket(BUCKET_NAME);
+            const store = new ArtifactStore(this.captureLevelFor(job));
             for (let i = 0; i < shots.length; i++) {
-                const label = (shots[i].label || 'screenshot').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 60);
-                const key = `runs/${job.run_id}/screenshots/${job.job_id}-${i}-${label}.png`;
-                await this.minio.putObject(BUCKET_NAME, key, shots[i].png, shots[i].png.length, {
-                    'Content-Type': 'image/png',
-                });
-                keys.push(key);
+                const key = artifactKeys.mobileScreenshot(job.run_id, job.job_id, i, shots[i].label || '');
+                const put = await store.putBuffer('screenshot', key, shots[i].png, 'image/png');
+                if (put.key) keys.push(put.key);
             }
             console.log(`[MobileWorker] Uploaded ${keys.length} screenshot(s) for job ${job.job_id}`);
         } catch (err: any) {
@@ -580,14 +575,12 @@ class MobileWorker {
     private async uploadVideo(job: TestJob, videoBuf: Buffer | null): Promise<string | null> {
         if (!videoBuf || videoBuf.length === 0) return null;
         try {
-            const exists = await this.minio.bucketExists(BUCKET_NAME);
-            if (!exists) await this.minio.makeBucket(BUCKET_NAME);
-            const key = `runs/${job.run_id}/videos/${job.job_id}.mp4`;
-            await this.minio.putObject(BUCKET_NAME, key, videoBuf, videoBuf.length, {
-                'Content-Type': 'video/mp4',
-            });
+            const store = new ArtifactStore(this.captureLevelFor(job));
+            const key = artifactKeys.video(job.run_id, job.job_id, 'mp4');
+            const put = await store.putBuffer('video', key, videoBuf, 'video/mp4');
+            if (!put.key) return null;
             console.log(`[MobileWorker] Uploaded video: ${key} (${(videoBuf.length / 1e6).toFixed(1)} MB)`);
-            return key;
+            return put.key;
         } catch (err: any) {
             console.error(`[MobileWorker] Video upload failed (job continues): ${err.message}`);
             return null;

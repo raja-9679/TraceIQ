@@ -1,25 +1,16 @@
 import { Browser, BrowserContext, devices, Page, FrameLocator } from 'playwright';
-import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
 import Redis from 'ioredis';
 import { BrowserManager } from './core/browser-manager';
 import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
+import { ArtifactStore, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
 import { calculateOptimalConcurrency } from './utils/concurrency-utils';
 
 
-const MinioClient = (Minio as any).Client || Minio;
 
-const minioClient = new MinioClient({
-    endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-    port: parseInt(process.env.MINIO_PORT || '9000'),
-    useSSL: false,
-    accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-    secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin'
-});
 
-const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 
 // Redis client for webhook queue
 const redisClient = new Redis({
@@ -322,14 +313,19 @@ export class PlaywrightRunner {
             await this.stop(); // Close browser
 
             try {
+                // Legacy CONTINUOUS path. Key shapes below differ from the
+                // distributed worker's and are preserved as-is; only the
+                // client and the capture-policy gate are shared.
+                const store = new ArtifactStore(
+                    normalizeCaptureLevel(globalSettings?.data_policy?.capture_level));
                 if (fs.existsSync(artifactsDir)) {
                     const files = fs.readdirSync(artifactsDir);
 
                     // Process Screenshots
                     for (const file of files.filter(f => f.endsWith('.png'))) {
                         const key = `runs/${runId}/screenshots/${file}`;
-                        await minioClient.fPutObject(BUCKET_NAME, key, path.join(artifactsDir, file));
-                        screenshots.push(key);
+                        const put = await store.putFile('screenshot', key, path.join(artifactsDir, file), 'image/png');
+                        if (put.key) screenshots.push(put.key);
                     }
 
                     // Process Videos
@@ -343,11 +339,12 @@ export class PlaywrightRunner {
                             const ext = path.extname(res.video_path);
                             // Unique video name per case
                             const vKey = `runs/${runId}/videos/${res.test_case_id}${ext}`;
-                            await minioClient.fPutObject(BUCKET_NAME, vKey, res.video_path);
-                            res.video = vKey; // Update result with public key
+                            const put = await store.putFile('video', vKey, res.video_path, 'video/webm');
                             delete res.video_path; // Remove local path
-                            // Set main videoKey to first one if null
-                            if (!videoKey) videoKey = vKey;
+                            if (put.key) {
+                                res.video = put.key;
+                                if (!videoKey) videoKey = put.key;
+                            }
                         }
                     }
 
@@ -358,8 +355,8 @@ export class PlaywrightRunner {
                         // Check if already uploaded (by size/name? hard to know, Playwright uses random names)
                         // Simple: Just upload as run video if we don't have one
                         if (!videoKey) {
-                            videoKey = `runs/${runId}/video.webm`;
-                            await minioClient.fPutObject(BUCKET_NAME, videoKey, vPath);
+                            const put = await store.putFile('video', `runs/${runId}/video.webm`, vPath, 'video/webm');
+                            videoKey = put.key;
                         }
                     }
 
@@ -369,7 +366,8 @@ export class PlaywrightRunner {
                     const traceFiles = files.filter(f => f.endsWith('.zip'));
                     for (const tFile of traceFiles) {
                         const tKey = `runs/${runId}/traces/${tFile}`;
-                        await minioClient.fPutObject(BUCKET_NAME, tKey, path.join(artifactsDir, tFile));
+                        const tracePut = await store.putFile('trace', tKey, path.join(artifactsDir, tFile));
+                        if (!tracePut.key) continue;
                         // Link to specific result?
                         if (tFile === 'trace.zip') traceKey = tKey;
                         else {
