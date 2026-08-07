@@ -161,6 +161,8 @@ class Settings(BaseSettings):
     RUN_RETENTION_DAYS: int = 0
     # How many runs to purge per pass, to bound each task's work.
     RETENTION_BATCH_SIZE: int = 500
+    # Audit history retention, separate from run retention. 0 keeps forever.
+    AUDIT_RETENTION_DAYS: int = 0
 
     # Bearer token for GET /metrics. Prometheus cannot present a JWT, so a
     # scraper authenticates with this instead. Unset means /metrics falls back

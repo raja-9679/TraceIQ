@@ -125,3 +125,54 @@ def purge_old_runs():
         print(f"[Retention] Error purging old runs: {e}")
 
     return purged
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_old_audit_logs")
+def purge_old_audit_logs():
+    """Expire audit rows past AUDIT_RETENTION_DAYS.
+
+    Deliberately separate from purge_old_runs. Audit retention is a compliance
+    obligation with its own clock — PCI DSS Requirement 10 wants a year, with
+    three months immediately available — and coupling it to how long you keep
+    test artifacts would mean that shortening one to save disk silently
+    shortens the other.
+
+    Defaults to 0 (keep forever), which is the right default for a compliance
+    record: nobody is harmed by keeping too much history, and deletion here is
+    irreversible by construction.
+
+    This is the ONLY path permitted to delete from `auditlog`. The append-only
+    trigger rejects DELETE unless the session announces itself with
+    `traceiq.audit_retention = 'on'`. SET LOCAL scopes that to the surrounding
+    transaction, so it cannot leak into any other statement or connection.
+    """
+    from sqlalchemy import text
+    from app.services.instance_settings import effective
+
+    retention_days = int(effective('AUDIT_RETENTION_DAYS') or 0)
+    if retention_days <= 0:
+        return 0
+
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    batch = int(getattr(settings, 'RETENTION_BATCH_SIZE', 500) or 500)
+
+    with Session(sync_engine) as session:
+        session.execute(text("SET LOCAL traceiq.audit_retention = 'on'"))
+        result = session.execute(
+            text("""
+                DELETE FROM auditlog
+                 WHERE id IN (
+                    SELECT id FROM auditlog
+                     WHERE timestamp < :cutoff
+                     ORDER BY id
+                     LIMIT :batch
+                 )
+            """),
+            {"cutoff": cutoff, "batch": batch},
+        )
+        deleted = result.rowcount or 0
+        session.commit()
+
+    if deleted:
+        print(f"[Cleanup] Expired {deleted} audit row(s) older than {retention_days} days")
+    return deleted

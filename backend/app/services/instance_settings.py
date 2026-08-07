@@ -146,6 +146,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="Always-allowed hostnames"),
     SettingDef("RUN_RETENTION_DAYS", "policies", type="int",
                label="Run retention (days)", description="0 keeps everything forever"),
+    SettingDef("AUDIT_RETENTION_DAYS", "policies", type="int",
+               label="Audit-log retention (days)",
+               description="0 keeps audit history forever, which is the safe default "
+                           "for a compliance record. Separate from run retention on "
+                           "purpose: PCI DSS Req 10 wants a year of audit history "
+                           "regardless of how long you keep test artifacts"),
     SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
                label="Maximum capture level",
                description="ceiling no project may exceed: none | minimal | standard | "
