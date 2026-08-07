@@ -1,11 +1,21 @@
 import { BrowserContext } from 'playwright';
+import { RedactionPolicy, redactHeaders, redactText } from './redact';
 
 export class NetworkInterceptor {
+    /**
+     * @param policy Redaction policy from the job's `data_policy`. Headers are
+     *   scrubbed here, at the listener, rather than later on the result: every
+     *   request the page makes carries the session cookie and often a bearer
+     *   token, and this array is uploaded to MinIO as `network.json` as well as
+     *   being persisted to `TestRun.network_events`. Redacting at the point of
+     *   capture means the raw values never outlive the callback.
+     */
     public static async setupNetworkListeners(
         context: BrowserContext,
         requestStartTimes: Map<string, number>,
         networkEvents: any[],
-        testCaseContext: { id: number | null, name: string | null }
+        testCaseContext: { id: number | null, name: string | null },
+        policy?: RedactionPolicy
     ) {
         context.on('request', request => {
             requestStartTimes.set(request.url(), Date.now());
@@ -28,15 +38,15 @@ export class NetworkInterceptor {
                 networkEvents.push({
                     testCaseId: testCaseContext.id,
                     testCaseName: testCaseContext.name,
-                    url: url,
+                    url: redactText(url, policy),
                     method: request.method(),
                     resourceType: request.resourceType(),
                     status: response.status(),
                     startTime,
                     endTime,
                     duration,
-                    requestHeaders: reqHeaders,
-                    responseHeaders: headers
+                    requestHeaders: redactHeaders(reqHeaders, policy),
+                    responseHeaders: redactHeaders(headers, policy)
                 });
             } catch (e) {
                 console.error('Error capturing network event:', e);

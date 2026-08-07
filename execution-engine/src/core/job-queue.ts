@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
+import { RedactionPolicy, redactJobResult } from './redact';
 
 // Types for job queue system
 // Single test case structure
@@ -381,10 +382,19 @@ export class JobQueue {
     }
 
     /**
-     * Mark job as completed and publish result
+     * Mark job as completed and publish result.
+     *
+     * Every result — web worker and mobile worker alike — passes through this
+     * one method, which makes it the backstop for redaction. The individual
+     * capture points scrub as well, but a single miss there would otherwise
+     * put a credential straight onto the results stream and into Postgres.
+     *
+     * `policy` comes from the job's `data_policy`; omitting it applies the
+     * built-in defaults rather than nothing.
      */
-    async completeJob(streamId: string, result: JobResult): Promise<void> {
+    async completeJob(streamId: string, result: JobResult, policy?: RedactionPolicy): Promise<void> {
         const pipeline = this.redis.pipeline();
+        const safeResult = redactJobResult(result, policy);
 
         // Acknowledge the job
         pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
@@ -398,7 +408,7 @@ export class JobQueue {
             '*',
             'job_id', result.job_id,
             'run_id', result.run_id.toString(),
-            'result', JSON.stringify(result)
+            'result', JSON.stringify(safeResult)
         );
 
         // Update run progress

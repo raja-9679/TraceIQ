@@ -29,6 +29,9 @@ import { collectWebVitals, WebVitals } from './web-vitals';
 import {
     ArtifactStore, CaptureLevel, PutResult, artifactKeys, normalizeCaptureLevel,
 } from './core/artifact-store';
+import {
+    RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents,
+} from './core/redact';
 
 // Errors that look like a selector no longer matching the page — the only
 // failures worth an LLM heal attempt.
@@ -42,6 +45,10 @@ const MAX_JOBS_BEFORE_RESTART = parseInt(process.env.MAX_JOBS_BEFORE_RESTART || 
 // Maximum wall-clock time a single job may run before it is aborted (default 10 min)
 const MAX_JOB_DURATION_MS = parseInt(process.env.MAX_JOB_DURATION_MS || '600000');
 const MAX_CONSOLE_LOG_ENTRIES = parseInt(process.env.MAX_CONSOLE_LOG_ENTRIES || '5000');
+// A HAR above this size is dropped rather than uploaded unscrubbed — it has
+// to be held in memory to be redacted, and an un-redactable HAR is precisely
+// the file that must not reach object storage.
+const MAX_HAR_REDACT_BYTES = parseInt(process.env.MAX_HAR_REDACT_BYTES || '134217728');
 
 class ExecutionWorker {
     private jobQueue: JobQueue;
@@ -149,6 +156,19 @@ class ExecutionWorker {
     }
 
     /**
+     * The data policy the backend attached to this job. A job dispatched by
+     * an older backend carries none, in which case the safe defaults apply
+     * rather than nothing.
+     */
+    private captureLevelFor(job: TestJob): CaptureLevel {
+        return normalizeCaptureLevel((job as any)?.data_policy?.capture_level);
+    }
+
+    private redactionPolicyFor(job: TestJob): RedactionPolicy {
+        return policyFromDataPolicy((job as any)?.data_policy);
+    }
+
+    /**
      * Start the worker loop
      */
     async start(): Promise<void> {
@@ -221,7 +241,7 @@ class ExecutionWorker {
                 const result = await Promise.race([this.executeJob(job), timeout]);
 
                 // Complete the job
-                await this.jobQueue.completeJob(streamId, result);
+                await this.jobQueue.completeJob(streamId, result, this.redactionPolicyFor(job));
 
                 this.jobsProcessed++;
                 console.log(`[Worker] Completed job ${job.job_id} (total: ${this.jobsProcessed})`);
@@ -370,7 +390,8 @@ class ExecutionWorker {
         const outcome = await runLoadTest(spec, job.settings, artifactsDir);
 
         const artifacts = await this.uploadArtifacts(
-            job.run_id, job.job_id, artifactsDir, null, null, [], []);
+            job.run_id, job.job_id, artifactsDir, null, null, [], [],
+            this.captureLevelFor(job), this.redactionPolicyFor(job));
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
         return {
@@ -516,7 +537,8 @@ class ExecutionWorker {
                 context,
                 requestStartTimes,
                 networkEvents,
-                contextData
+                contextData,
+                this.redactionPolicyFor(job)
             );
             await NetworkInterceptor.setupRouteInterception(
                 context,
@@ -646,7 +668,8 @@ class ExecutionWorker {
             if (page && !page.isClosed()) {
                 try {
                     const screenshotPath = path.join(artifactsDir, 'failure.png');
-                    await page.screenshot({ path: screenshotPath, fullPage: true });
+                    await page.screenshot(TestExecutor.screenshotOptions(
+                        page, job.settings, { path: screenshotPath, fullPage: true }));
                 } catch (screenshotErr) {
                     console.warn('[Worker] Failed to capture failure screenshot');
                 }
@@ -703,7 +726,9 @@ class ExecutionWorker {
             videoPath,
             tracePath,
             consoleLogs,
-            networkEvents
+            networkEvents,
+            this.captureLevelFor(job),
+            this.redactionPolicyFor(job)
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
@@ -815,7 +840,8 @@ class ExecutionWorker {
                 sharedContext,
                 sharedRequestStartTimes,
                 networkEvents,
-                sharedContextData
+                sharedContextData,
+                this.redactionPolicyFor(job)
             );
             await NetworkInterceptor.setupRouteInterception(
                 sharedContext,
@@ -980,7 +1006,8 @@ class ExecutionWorker {
                     if (page && !page.isClosed()) {
                         try {
                             const screenshotPath = path.join(artifactsDir, `failure-${testCase.id}.png`);
-                            await page.screenshot({ path: screenshotPath, fullPage: true });
+                            await page.screenshot(TestExecutor.screenshotOptions(
+                        page, job.settings, { path: screenshotPath, fullPage: true }));
                         } catch (screenshotErr) {
                             console.warn('[Worker] Failed to capture failure screenshot');
                         }
@@ -1057,7 +1084,9 @@ class ExecutionWorker {
             videoPath,
             tracePath,
             consoleLogs,
-            networkEvents
+            networkEvents,
+            this.captureLevelFor(job),
+            this.redactionPolicyFor(job)
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
 
@@ -1160,6 +1189,30 @@ class ExecutionWorker {
      * Returns uploaded keys and a list of local paths that were successfully
      * uploaded so callers can safely delete only those files.
      */
+    /**
+     * Parse, scrub and upload a HAR. Returns a suppressed result when the file
+     * cannot be made safe, so the caller still cleans up the local copy but
+     * nothing raw reaches MinIO.
+     */
+    private async uploadRedactedHar(
+        store: ArtifactStore, key: string, localPath: string, policy?: RedactionPolicy
+    ): Promise<PutResult> {
+        if (!store.allows('har')) return { key: null, suppressed: true };
+        try {
+            const stat = fs.statSync(localPath);
+            if (stat.size > MAX_HAR_REDACT_BYTES) {
+                console.warn(`[Worker] HAR ${localPath} is ${stat.size} bytes — too large to scrub, dropping`);
+                return { key: null, suppressed: true };
+            }
+            const parsed = JSON.parse(fs.readFileSync(localPath, 'utf8'));
+            const body = Buffer.from(JSON.stringify(redactHar(parsed, policy)));
+            return await store.putBuffer('har', key, body, 'application/json');
+        } catch (err: any) {
+            console.warn(`[Worker] HAR could not be scrubbed (${err.message}) — dropping rather than uploading raw`);
+            return { key: null, suppressed: true };
+        }
+    }
+
     private async uploadArtifacts(
         runId: number,
         jobId: string,
@@ -1168,7 +1221,8 @@ class ExecutionWorker {
         tracePath: string | null,
         consoleLogs?: any[],
         networkEvents?: any[],
-        captureLevel: CaptureLevel = 'full'
+        captureLevel: CaptureLevel = 'full',
+        policy?: RedactionPolicy
     ): Promise<{ video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
         const result: { video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
             screenshots: [],
@@ -1213,10 +1267,19 @@ class ExecutionWorker {
 
                 // HAR network archive (written by recordHar on context.close()
                 // when har_capture is enabled — one per job).
+                //
+                // A HAR carries every request header, cookie and body the
+                // browser saw, so it is never uploaded as-written. It is
+                // parsed, scrubbed and re-serialised. If it cannot be scrubbed
+                // — unparseable, or too large to hold in memory — it is
+                // dropped rather than uploaded raw. Failing closed is the
+                // whole point: an un-redactable HAR is exactly the file you
+                // least want in object storage.
                 const harFile = files.find(f => f.endsWith('.har'));
                 if (harFile) {
                     const localPath = path.join(artifactsDir, harFile);
-                    const put = await store.putFile('har', artifactKeys.har(runId, jobId), localPath);
+                    const put = await this.uploadRedactedHar(
+                        store, artifactKeys.har(runId, jobId), localPath, policy);
                     consumed(localPath, put, key => { result.har = key; });
                 }
             }
@@ -1228,7 +1291,9 @@ class ExecutionWorker {
                 if (put.key) result.console_log = put.key;
             }
             if (networkEvents && networkEvents.length) {
-                const body = Buffer.from(JSON.stringify(networkEvents, null, 1));
+                // Scrubbed again on the way out: these are also uploaded as a
+                // standalone artifact, not only carried on the result.
+                const body = Buffer.from(JSON.stringify(redactNetworkEvents(networkEvents, policy), null, 1));
                 const put = await store.putBuffer(
                     'network_log', artifactKeys.networkLog(runId, jobId), body, 'application/json');
                 if (put.key) result.network_log = put.key;
