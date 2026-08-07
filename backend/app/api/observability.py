@@ -1,28 +1,46 @@
 """Operational observability — Prometheus metrics, readiness, queue health.
 
 Three endpoints, three audiences:
-    GET /metrics                  Prometheus scraper (text exposition; aggregate
-                                  gauges only — no tenant data, safe to scrape)
+    GET /metrics                  Prometheus scraper (text exposition). Set
+                                  METRICS_TOKEN and scrape with a bearer token;
+                                  without one configured, a logged-in principal
+                                  is required. Never anonymous.
     GET /health/ready             orchestrator readiness probe: DB + Redis must
                                   answer (unlike /health, which is a bare 200)
     GET /api/admin/queue-health   humans/dashboards (JWT): queue depths,
                                   consumer-group backlogs, dead letters,
                                   stale runs, engine worker metrics
 """
+import hmac
 import time
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from sqlalchemy import text
 from sqlmodel import select, func
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_principal, get_current_user
 from app.core.config import settings
 from app.core.database import get_session
 from app.models import TestRun, TestStatus, User
 
 router = APIRouter()
+
+
+def metrics_token_accepted(configured: str, authorization: Optional[str]) -> bool:
+    """Whether an Authorization header satisfies the configured METRICS_TOKEN.
+
+    An unset token never grants access — the caller falls back to requiring an
+    authenticated principal instead. Comparison is constant-time so the token
+    cannot be recovered a byte at a time.
+    """
+    if not configured or not authorization:
+        return False
+    scheme, _, value = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not value:
+        return False
+    return hmac.compare_digest(value, configured)
 
 _JOB_STREAMS = ("jobs:pending", "jobs:mobile:pending", "jobs:results", "jobs:dead-letter")
 
@@ -65,9 +83,32 @@ async def _queue_snapshot() -> Dict[str, Any]:
 
 
 @router.get("/metrics", include_in_schema=False)
-async def prometheus_metrics(session: AsyncSession = Depends(get_session)) -> Response:
+async def prometheus_metrics(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    authorization: Optional[str] = Header(default=None),
+) -> Response:
     """Prometheus text exposition. Hand-rendered (a dozen gauges — not worth a
-    client dependency). Aggregate counts only; nothing tenant-identifiable."""
+    client dependency). Aggregate counts only; nothing tenant-identifiable —
+    but queue depth and run volume are still operational intelligence about a
+    deployment, so this is never anonymous.
+
+    Scrapers set METRICS_TOKEN and send `Authorization: Bearer <token>`. With
+    no token configured, any authenticated principal may read it.
+    """
+    if not metrics_token_accepted(settings.METRICS_TOKEN, authorization):
+        token = None
+        if authorization and authorization.lower().startswith("bearer "):
+            token = authorization.split(" ", 1)[1]
+        try:
+            await get_current_principal(request, token, session)
+        except HTTPException:
+            raise HTTPException(
+                status_code=401,
+                detail="Metrics require a METRICS_TOKEN bearer token or an authenticated session",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
     lines = [
         "# HELP traceiq_runs_total Test runs by status (all time)",
         "# TYPE traceiq_runs_total gauge",

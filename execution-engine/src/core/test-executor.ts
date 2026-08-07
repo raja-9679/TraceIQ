@@ -660,7 +660,7 @@ export class TestExecutor {
             }
 
             case 'click': {
-                const clickSelector = step.selector || step.value;
+                const clickSelector = resolve(step.selector || step.value);
                 if (clickSelector) {
                     const locator = getLocator(clickSelector);
                     const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
@@ -671,18 +671,24 @@ export class TestExecutor {
                 break;
             }
 
-            case 'fill':
-                if (step.selector) {
-                    const locator = getLocator(step.selector);
+            case 'fill': {
+                const fillSelector = resolve(step.selector);
+                if (fillSelector) {
+                    const locator = getLocator(fillSelector);
                     const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
                     await locator.waitFor({ state: 'visible', timeout });
                     await moveMouseTo(locator);
-                    await locator.fill(step.value || '', { timeout });
+                    // resolve() is what lets {{secret.X}} be used for credentials.
+                    // Without it users are forced to put real passwords in the
+                    // step JSON, which is stored unencrypted and copied into
+                    // audit rows and case revisions.
+                    await locator.fill(resolve(step.value) || '', { timeout });
                 }
                 break;
+            }
 
             case 'check': {
-                const checkSelector = step.selector || step.value;
+                const checkSelector = resolve(step.selector || step.value);
                 if (checkSelector) {
                     const locator = getLocator(checkSelector);
                     const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
@@ -694,7 +700,7 @@ export class TestExecutor {
             }
 
             case 'expect-visible': {
-                const visibleSelector = step.selector || step.value;
+                const visibleSelector = resolve(step.selector || step.value);
                 if (visibleSelector) {
                     const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
                     if ('waitForSelector' in context) {
@@ -707,7 +713,7 @@ export class TestExecutor {
             }
 
             case 'wait-for-selector': {
-                const waitSelector = step.selector || step.value;
+                const waitSelector = resolve(step.selector || step.value);
                 if (waitSelector) {
                     const timeout = step.timeout ? parseInt(String(step.timeout)) : 30000;
                     if ('waitForSelector' in context) {
@@ -720,7 +726,7 @@ export class TestExecutor {
             }
 
             case 'expect-hidden': {
-                const hiddenSelector = step.selector || step.value;
+                const hiddenSelector = resolve(step.selector || step.value);
                 if (hiddenSelector) {
                     if ('waitForSelector' in context) {
                         await (context as Page).waitForSelector(hiddenSelector, { state: 'hidden', timeout: 50000 });
@@ -731,19 +737,22 @@ export class TestExecutor {
                 break;
             }
 
-            case 'expect-text':
-                if (step.selector && step.value) {
-                    const locator = getLocator(step.selector);
+            case 'expect-text': {
+                const textSelector = resolve(step.selector);
+                const expectedText = resolve(step.value);
+                if (textSelector && expectedText) {
+                    const locator = getLocator(textSelector);
                     await locator.waitFor({ state: 'visible', timeout: 50000 });
                     const text = await locator.textContent();
-                    if (!text?.includes(step.value)) {
-                        throw new Error(`Expected text "${step.value}" not found in element "${step.selector}"`);
+                    if (!text?.includes(expectedText)) {
+                        throw new Error(`Expected text "${expectedText}" not found in element "${textSelector}"`);
                     }
                 }
                 break;
+            }
 
             case 'expect-url': {
-                const expectedUrl = step.value || step.selector;
+                const expectedUrl = resolve(step.value || step.selector);
                 if (expectedUrl) await page.waitForURL(expectedUrl, { timeout: 15000 });
                 break;
             }
@@ -768,7 +777,7 @@ export class TestExecutor {
             }
 
             case 'hover': {
-                const hoverSelector = step.selector || step.value;
+                const hoverSelector = resolve(step.selector || step.value);
                 if (hoverSelector) {
                     const locator = getLocator(hoverSelector);
                     await locator.hover();
@@ -776,16 +785,19 @@ export class TestExecutor {
                 break;
             }
 
-            case 'select-option':
-                if (step.selector && step.value) {
-                    const locator = getLocator(step.selector);
+            case 'select-option': {
+                const optionSelector = resolve(step.selector);
+                const optionValue = resolve(step.value);
+                if (optionSelector && optionValue) {
+                    const locator = getLocator(optionSelector);
                     await moveMouseTo(locator);
-                    await locator.selectOption(step.value);
+                    await locator.selectOption(optionValue);
                 }
                 break;
+            }
 
             case 'press-key': {
-                const key = step.value || step.selector;
+                const key = resolve(step.value || step.selector);
                 if (key) await page.keyboard.press(key);
                 break;
             }

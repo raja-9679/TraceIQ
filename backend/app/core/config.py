@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     # How many runs to purge per pass, to bound each task's work.
     RETENTION_BATCH_SIZE: int = 500
 
+    # Bearer token for GET /metrics. Prometheus cannot present a JWT, so a
+    # scraper authenticates with this instead. Unset means /metrics falls back
+    # to requiring an authenticated principal — it is never anonymous.
+    METRICS_TOKEN: str = ""
+
     # Notification Settings
     # Master switch - if false, no notifications are sent regardless of other settings
     NOTIFICATIONS_ENABLED: bool = False

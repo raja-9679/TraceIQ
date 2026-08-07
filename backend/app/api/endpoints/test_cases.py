@@ -9,6 +9,7 @@ from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
 from app.core.storage import minio_client
 from app.services.access_service import access_service
 from app.services.rbac_service import rbac_service
+from app.services.redaction import redact_audit_changes
 from app.models import (
     User, AuditLog, TestCase, TestCaseRead, TestCaseUpdate, TestSuite, TestRun, TestCaseResult,
     ExecutorType
@@ -113,7 +114,8 @@ async def create_test_case(
     from app.services.case_revisions import record_revision
     await record_revision(session, case, "create", user_id=current_user.id,
                           agent_id=principal.agent_id)
-    audit = AuditLog(entity_type="case", entity_id=case.id, action="create", user_id=current_user.id, changes=case.model_dump(mode='json'))
+    audit = AuditLog(entity_type="case", entity_id=case.id, action="create", user_id=current_user.id,
+                     changes=redact_audit_changes(case.model_dump(mode='json')))
     session.add(audit)
     await session.commit()
     return case
@@ -241,7 +243,8 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
         session.add(db_case)
         from app.services.case_revisions import record_revision
         await record_revision(session, db_case, "update", user_id=current_user.id)
-        audit = AuditLog(entity_type="case", entity_id=case_id, action="update", user_id=current_user.id, changes=changes)
+        audit = AuditLog(entity_type="case", entity_id=case_id, action="update", user_id=current_user.id,
+                         changes=redact_audit_changes(changes))
         session.add(audit)
         await session.commit()
         await session.refresh(db_case)
