@@ -2,12 +2,15 @@ from sqlmodel import SQLModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.orm import sessionmaker
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from contextlib import asynccontextmanager
 
 # Connection pool settings to prevent hanging connections
+# db_url_for translates a psql-style `?sslmode=` into the `ssl=` asyncpg
+# expects — asyncpg raises on sslmode, so a URL written for psql would
+# otherwise fail to connect rather than silently skipping TLS.
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    db_url_for(settings.DATABASE_URL, sync=False),
     echo=False,
     future=True,
     pool_size=5,

@@ -13,7 +13,7 @@ from typing import List, Tuple
 from sqlmodel import Session, create_engine
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.core.secrets import decrypt_secret
 from app.core.storage import minio_client
 from app.models import IssueTicket, IssueTrackerConfig, TestRun
@@ -21,7 +21,7 @@ from app.services.issue_trackers import get_provider, IssueTrackerError
 
 logger = logging.getLogger(__name__)
 
-sync_engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""), echo=False)
+sync_engine = create_engine(db_url_for(settings.DATABASE_URL, sync=True), echo=False)
 
 _CONTENT_TYPES = {
     ".zip": "application/zip", ".webm": "video/webm", ".mp4": "video/mp4",

@@ -27,14 +27,14 @@ import requests
 from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import MonitorCheck, TestRun, TestSchedule, TestStatus, Project
 from app.tasks.notification_tasks import get_notification_settings
 
 logger = logging.getLogger(__name__)
 
 # Sync engine for the Celery worker (mirror notification_tasks).
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 # Terminal statuses that count as a completed check.

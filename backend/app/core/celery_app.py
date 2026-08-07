@@ -1,6 +1,29 @@
 from celery import Celery
 from celery.schedules import crontab
+import ssl
+
 from app.core.config import settings
+
+# Celery selects TLS from the rediss:// scheme, but certificate *verification*
+# is a separate option and defaults to none — so `rediss://` alone gives you an
+# encrypted channel to an unverified peer. CELERY_REDIS_SSL_CERT_REQS controls
+# it: "required" (default, verify) | "optional" | "none" (self-signed dev).
+def _redis_ssl_options():
+    if not str(settings.CELERY_BROKER_URL or "").startswith("rediss://"):
+        return None
+    mode = (settings.CELERY_REDIS_SSL_CERT_REQS or "required").strip().lower()
+    cert_reqs = {
+        "none": ssl.CERT_NONE,
+        "optional": ssl.CERT_OPTIONAL,
+        "required": ssl.CERT_REQUIRED,
+    }.get(mode, ssl.CERT_REQUIRED)
+    options = {"ssl_cert_reqs": cert_reqs}
+    if settings.CELERY_REDIS_SSL_CA_CERTS:
+        options["ssl_ca_certs"] = settings.CELERY_REDIS_SSL_CA_CERTS
+    return options
+
+
+_REDIS_SSL = _redis_ssl_options()
 
 celery_app = Celery(
     "worker",
@@ -46,6 +69,10 @@ celery_app.conf.task_routes = {
 }
 
 # Configure Celery Beat schedule for periodic tasks
+if _REDIS_SSL:
+    celery_app.conf.broker_use_ssl = _REDIS_SSL
+    celery_app.conf.redis_backend_use_ssl = _REDIS_SSL
+
 celery_app.conf.beat_schedule = {
     'process-webhook-queue': {
         'task': 'app.tasks.webhook_tasks.process_webhook_queue',

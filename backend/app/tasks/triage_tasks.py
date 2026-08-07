@@ -12,13 +12,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import FailureCluster, TestCaseResult, TestRun, TestStatus
 from app.services.failure_signature import compute_signature
 
 logger = logging.getLogger(__name__)
 
-sync_engine = create_engine(settings.DATABASE_URL.replace("+asyncpg", ""), echo=False)
+sync_engine = create_engine(db_url_for(settings.DATABASE_URL, sync=True), echo=False)
 
 _FAILING = (TestStatus.FAILED, TestStatus.ERROR)
 

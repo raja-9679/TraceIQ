@@ -14,13 +14,13 @@ from typing import Dict
 from sqlmodel import Session, create_engine, delete, select
 
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.models import SecurityFinding, TestRun
 from app.services.passive_security import analyze_run, summarize
 
 logger = logging.getLogger(__name__)
 
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 

@@ -31,7 +31,7 @@ from email.mime.multipart import MIMEMultipart
 import requests
 from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
-from app.core.config import settings
+from app.core.config import db_url_for, settings
 from app.services import instance_settings as insvc
 from app.models import TestRun, TestSuite, Project, User, TestStatus
 import logging
@@ -39,7 +39,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Use sync engine for Celery worker
-sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
+sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
 

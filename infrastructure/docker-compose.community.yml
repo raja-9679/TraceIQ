@@ -41,6 +41,24 @@ x-backend-env: &backend-env
   # Finished runs and their artifacts are purged after this many days.
   # 0 keeps everything forever and will grow your disk without bound.
   RUN_RETENTION_DAYS: ${RUN_RETENTION_DAYS:-90}
+  # Ceiling on what any project may capture: none | minimal | standard | full.
+  # Enforced at dispatch, so no project setting can exceed it. Lower it if this
+  # instance goes anywhere near regulated data — see SELF_HOSTING.md.
+  MAX_CAPTURE_LEVEL: ${MAX_CAPTURE_LEVEL:-standard}
+  # Encryption key for secrets at rest, separate from SECRET_KEY so JWT signing
+  # can be rotated without re-encrypting every stored secret. Falls back to
+  # SECRET_KEY when unset (the pre-0.3 behaviour).
+  SECRETS_KEY: ${SECRETS_KEY:-}
+  SECRETS_KEY_PREVIOUS: ${SECRETS_KEY_PREVIOUS:-}
+  # Transport + at-rest hardening. Off by default so an upgrade cannot stop an
+  # existing deployment from booting; see SELF_HOSTING.md before enabling.
+  MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+  MINIO_SSE_ALGORITHM: ${MINIO_SSE_ALGORITHM:-}
+  MINIO_SSE_KMS_KEY_ID: ${MINIO_SSE_KMS_KEY_ID:-}
+  REQUIRE_TRANSPORT_SECURITY: ${REQUIRE_TRANSPORT_SECURITY:-false}
+  # Bearer token for GET /metrics. Unset means /metrics requires a logged-in
+  # principal instead — it is never anonymous.
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
   LLM_PROVIDER: ${LLM_PROVIDER:-}
   LLM_MODEL: ${LLM_MODEL:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

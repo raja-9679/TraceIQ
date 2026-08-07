@@ -25,6 +25,7 @@ from sqlmodel import select
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
+from app.core.secrets import decrypt_json, encrypt_json
 from app.models import (
     Persona,
     PersonaCreate,
@@ -103,7 +104,7 @@ async def create_persona(
         project_id=body.project_id,
         name=body.name,
         description=body.description,
-        session_state=body.session_state,
+        session_state=encrypt_json(body.session_state),
         auth_headers=body.auth_headers or {},
         login_steps=body.login_steps or [],
         refresh_after_hours=body.refresh_after_hours,
@@ -147,7 +148,7 @@ async def get_persona(
         raise HTTPException(status_code=404, detail="Persona not found")
     return {
         **_to_read(p).model_dump(),
-        "session_state": p.session_state,
+        "session_state": decrypt_json(p.session_state),
         "login_steps": p.login_steps,
     }
 
@@ -169,7 +170,7 @@ async def patch_persona(
         raise HTTPException(status_code=404, detail="Persona not found")
     if body.name is not None: p.name = body.name
     if body.description is not None: p.description = body.description
-    if body.session_state is not None: p.session_state = body.session_state
+    if body.session_state is not None: p.session_state = encrypt_json(body.session_state)
     if body.auth_headers is not None: p.auth_headers = body.auth_headers
     if body.login_steps is not None: p.login_steps = body.login_steps
     if body.refresh_after_hours is not None: p.refresh_after_hours = body.refresh_after_hours
