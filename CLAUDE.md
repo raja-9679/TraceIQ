@@ -8,6 +8,11 @@ TraceIQ is a UI Testing & Automation SaaS platform. Teams record Playwright brow
 
 A comprehensive architecture and data model reference lives in `info/CODEBASE.md`.
 
+**Resuming work in progress: read `info/HANDOFF.md` first.** It records where the
+regulated-readiness effort stands (`info/REGULATED_READINESS.md`), what is next,
+how to run the test suites on a fresh machine, and the traps that are expensive
+to rediscover.
+
 ---
 
 ## Services
