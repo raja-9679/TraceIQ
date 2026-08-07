@@ -17,7 +17,6 @@
  */
 
 import { Browser, BrowserContext, Page, FrameLocator, devices } from 'playwright';
-import * as Minio from 'minio';
 import * as fs from 'fs';
 import * as path from 'path';
 import { JobQueue, TestJob, JobResult, TestCase, TestCaseResult, getJobQueue } from './core/job-queue';
@@ -27,16 +26,17 @@ import { TestExecutor } from './core/test-executor';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
 import { collectWebVitals, WebVitals } from './web-vitals';
+import {
+    ArtifactStore, CaptureLevel, PutResult, artifactKeys, normalizeCaptureLevel,
+} from './core/artifact-store';
 
 // Errors that look like a selector no longer matching the page — the only
 // failures worth an LLM heal attempt.
 const SELECTOR_FAILURE_RE = /waiting for locator|not found|no element|Timeout \d+ms exceeded|failed to find element|strict mode violation/i;
 
-const MinioClient = (Minio as any).Client || Minio;
 
 // Configuration
 const ARTIFACTS_BASE_DIR = process.env.ARTIFACTS_DIR || '/tmp/artifacts';
-const BUCKET_NAME = process.env.MINIO_BUCKET_NAME || 'test-artifacts';
 const IDLE_TIMEOUT_MS = parseInt(process.env.WORKER_IDLE_TIMEOUT || '60000');
 const MAX_JOBS_BEFORE_RESTART = parseInt(process.env.MAX_JOBS_BEFORE_RESTART || '50');
 // Maximum wall-clock time a single job may run before it is aborted (default 10 min)
@@ -46,7 +46,6 @@ const MAX_CONSOLE_LOG_ENTRIES = parseInt(process.env.MAX_CONSOLE_LOG_ENTRIES || 
 class ExecutionWorker {
     private jobQueue: JobQueue;
     private browserManager: BrowserManager;
-    private minioClient: any;
     private isShuttingDown: boolean = false;
     private jobsProcessed: number = 0;
     private idleTimer: NodeJS.Timeout | null = null;
@@ -147,13 +146,6 @@ class ExecutionWorker {
     constructor() {
         this.jobQueue = getJobQueue();
         this.browserManager = new BrowserManager();
-        this.minioClient = new MinioClient({
-            endPoint: process.env.MINIO_ENDPOINT || 'localhost',
-            port: parseInt(process.env.MINIO_PORT || '9000'),
-            useSSL: process.env.MINIO_USE_SSL === 'true',
-            accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-            secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin'
-        });
     }
 
     /**
@@ -1175,47 +1167,48 @@ class ExecutionWorker {
         videoPath: string | null,
         tracePath: string | null,
         consoleLogs?: any[],
-        networkEvents?: any[]
+        networkEvents?: any[],
+        captureLevel: CaptureLevel = 'full'
     ): Promise<{ video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
         const result: { video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
             screenshots: [],
             uploadedLocalPaths: []
         };
 
+        // One store per job: it carries the job's capture level, and every
+        // write below is gated on it. Nothing in this method talks to MinIO
+        // directly any more.
+        const store = new ArtifactStore(captureLevel);
+
+        // A suppressed artifact still needs its local file cleaned up —
+        // otherwise a `capture_level: none` worker slowly fills its disk.
+        const consumed = (localPath: string, put: PutResult, assign?: (key: string) => void) => {
+            if (put.key) {
+                result.uploadedLocalPaths.push(localPath);
+                assign?.(put.key);
+            } else if (put.suppressed) {
+                result.uploadedLocalPaths.push(localPath);
+            }
+        };
+
         try {
-            // Ensure bucket exists
-            const bucketExists = await this.minioClient.bucketExists(BUCKET_NAME);
-            if (!bucketExists) {
-                await this.minioClient.makeBucket(BUCKET_NAME);
+            if (videoPath) {
+                const put = await store.putFile('video', artifactKeys.video(runId, jobId), videoPath);
+                consumed(videoPath, put, key => { result.video = key; });
             }
 
-            // Upload video
-            if (videoPath && fs.existsSync(videoPath)) {
-                const videoKey = `runs/${runId}/videos/${jobId}.webm`;
-                await this.minioClient.fPutObject(BUCKET_NAME, videoKey, videoPath);
-                result.video = videoKey;
-                result.uploadedLocalPaths.push(videoPath);
-                console.log(`[Worker] Uploaded video: ${videoKey}`);
+            if (tracePath) {
+                const put = await store.putFile('trace', artifactKeys.trace(runId, jobId), tracePath);
+                consumed(tracePath, put, key => { result.trace = key; });
             }
 
-            // Upload trace
-            if (tracePath && fs.existsSync(tracePath)) {
-                const traceKey = `runs/${runId}/traces/${jobId}.zip`;
-                await this.minioClient.fPutObject(BUCKET_NAME, traceKey, tracePath);
-                result.trace = traceKey;
-                result.uploadedLocalPaths.push(tracePath);
-                console.log(`[Worker] Uploaded trace: ${traceKey}`);
-            }
-
-            // Upload screenshots
             if (fs.existsSync(artifactsDir)) {
                 const files = fs.readdirSync(artifactsDir);
                 for (const file of files.filter(f => f.endsWith('.png'))) {
                     const localPath = path.join(artifactsDir, file);
-                    const screenshotKey = `runs/${runId}/screenshots/${jobId}-${file}`;
-                    await this.minioClient.fPutObject(BUCKET_NAME, screenshotKey, localPath);
-                    result.screenshots.push(screenshotKey);
-                    result.uploadedLocalPaths.push(localPath);
+                    const put = await store.putFile(
+                        'screenshot', artifactKeys.screenshot(runId, jobId, file), localPath, 'image/png');
+                    consumed(localPath, put, key => { result.screenshots.push(key); });
                 }
 
                 // HAR network archive (written by recordHar on context.close()
@@ -1223,28 +1216,22 @@ class ExecutionWorker {
                 const harFile = files.find(f => f.endsWith('.har'));
                 if (harFile) {
                     const localPath = path.join(artifactsDir, harFile);
-                    const harKey = `runs/${runId}/har/${jobId}.har`;
-                    await this.minioClient.fPutObject(BUCKET_NAME, harKey, localPath);
-                    result.har = harKey;
-                    result.uploadedLocalPaths.push(localPath);
-                    console.log(`[Worker] Uploaded HAR: ${harKey}`);
+                    const put = await store.putFile('har', artifactKeys.har(runId, jobId), localPath);
+                    consumed(localPath, put, key => { result.har = key; });
                 }
             }
 
-            // Upload console + network logs as JSON artifacts
             if (consoleLogs && consoleLogs.length) {
-                const consoleKey = `runs/${runId}/logs/${jobId}-console.json`;
                 const body = Buffer.from(JSON.stringify(consoleLogs, null, 1));
-                await this.minioClient.putObject(BUCKET_NAME, consoleKey, body, body.length, { 'Content-Type': 'application/json' });
-                result.console_log = consoleKey;
-                console.log(`[Worker] Uploaded console log: ${consoleKey}`);
+                const put = await store.putBuffer(
+                    'console_log', artifactKeys.consoleLog(runId, jobId), body, 'application/json');
+                if (put.key) result.console_log = put.key;
             }
             if (networkEvents && networkEvents.length) {
-                const networkKey = `runs/${runId}/logs/${jobId}-network.json`;
                 const body = Buffer.from(JSON.stringify(networkEvents, null, 1));
-                await this.minioClient.putObject(BUCKET_NAME, networkKey, body, body.length, { 'Content-Type': 'application/json' });
-                result.network_log = networkKey;
-                console.log(`[Worker] Uploaded network log: ${networkKey}`);
+                const put = await store.putBuffer(
+                    'network_log', artifactKeys.networkLog(runId, jobId), body, 'application/json');
+                if (put.key) result.network_log = put.key;
             }
         } catch (err) {
             console.error('[Worker] Error uploading artifacts:', err);
