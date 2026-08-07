@@ -539,12 +539,24 @@ class WorkspaceService:
     async def delete_workspace(workspace_id: int, session: AsyncSession):
         ws = await session.get(Workspace, workspace_id)
         if ws:
-            # 1. Nullify Audit Logs (preserve history)
-            from app.models import AuditLog
-            audit_logs = await session.exec(select(AuditLog).where(AuditLog.workspace_id == workspace_id))
-            for log in audit_logs.all():
-                log.workspace_id = None
-                session.add(log)
+            # 1. Record the deletion rather than rewriting history.
+            #
+            # This used to NULL out workspace_id on every audit row for the
+            # workspace, to satisfy the foreign key. That was an UPDATE against
+            # an append-only table — it destroyed the very association an
+            # auditor needs ("what happened in the workspace that was deleted?")
+            # and it now raises, because a trigger rejects UPDATE on auditlog.
+            #
+            # The FK is nullable and ON DELETE is not cascading, so the rows
+            # survive with a dangling workspace_id, which is the correct
+            # outcome: the history outlives the object it describes.
+            from app.services.audit import record
+            await record(
+                session,
+                entity_type="workspace", entity_id=workspace_id,
+                action="delete", workspace_id=workspace_id,
+                changes={"name": ws.name},
+            )
 
             # 2. Delete Dependent Teams
             teams = await session.exec(select(Team).where(Team.workspace_id == workspace_id))

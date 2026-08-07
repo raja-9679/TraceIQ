@@ -1165,17 +1165,52 @@ class RunReport(SQLModel):
 
 
 class AuditLog(SQLModel, table=True):
+    """Append-only record of who did what.
+
+    Write through `app.services.audit.record()` — never construct this
+    directly. The helper computes the hash chain, and a row written without
+    one is indistinguishable from a forged one during verification.
+
+    A database trigger rejects UPDATE and DELETE (migration c8d9e0f1a2b3), and
+    `prev_hash`/`row_hash` make any edit that bypasses the trigger detectable.
+    """
     id: Optional[int] = Field(default=None, primary_key=True)
-    entity_type: str  # 'suite', 'case', 'workspace', 'team', 'project'
+    entity_type: str  # 'suite', 'case', 'workspace', 'team', 'project', 'auth', ...
     entity_id: int
-    action: str  # 'create', 'update', 'delete', 'import', 'invite'
-    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
-    workspace_id: Optional[int] = Field(
-        default=None, foreign_key="workspace.id")
+    action: str  # 'create', 'update', 'delete', 'import', 'invite', 'login', ...
+    # Neither FK is a foreign key any more — see migration c8d9e0f1a2b3.
+    user_id: Optional[int] = Field(default=None, index=True)
+    # Deliberately NOT a foreign key: a history table must outlive the objects
+    # it describes. With an FK, deleting a workspace either failed or forced
+    # the old code to NULL these out, destroying the association. See
+    # migration c8d9e0f1a2b3.
+    workspace_id: Optional[int] = Field(default=None, index=True)
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     changes: Optional[dict] = Field(default={}, sa_column=Column(JSON))
 
-    user: Optional["User"] = Relationship()
+    # Actor context. `user_id` alone cannot answer "was this the user or their
+    # CI key, and from where" — the question every incident review starts with.
+    actor_type: Optional[str] = Field(default=None)   # user | api_key | agent | system
+    actor_label: Optional[str] = Field(default=None)  # key prefix / agent id / email
+    ip_address: Optional[str] = Field(default=None)
+    user_agent: Optional[str] = Field(default=None)
+
+    # Tamper-evident chain. Nullable because rows written before this shipped
+    # have neither; verify_chain reports those as unverifiable rather than
+    # intact.
+    prev_hash: Optional[str] = Field(default=None)
+    row_hash: Optional[str] = Field(default=None, index=True)
+
+    # The join has to be spelled out because user_id is no longer a real FK
+    # (see above). viewonly so the ORM can never try to write through it — this
+    # table is append-only.
+    user: Optional["User"] = Relationship(
+        sa_relationship_kwargs={
+            "primaryjoin": "foreign(AuditLog.user_id) == User.id",
+            "viewonly": True,
+            "lazy": "selectin",
+        }
+    )
 
 
 class AuditLogRead(SQLModel):
@@ -1186,6 +1221,9 @@ class AuditLogRead(SQLModel):
     user_id: Optional[int]
     timestamp: datetime
     changes: Optional[dict]
+    actor_type: Optional[str] = None
+    actor_label: Optional[str] = None
+    ip_address: Optional[str] = None
     user: Optional[UserRead] = None
 
 
@@ -2163,3 +2201,21 @@ class RequirementCoverage(SQLModel):
     failing: int
     untested: int
     test_names: List[str] = []
+
+
+# Seal every AuditLog row as it is flushed, in whichever process created it —
+# the API, a Celery worker, a script. Installed here rather than in a startup
+# hook because models.py is imported by every path that can write an audit row,
+# and a row written without a chain hash is indistinguishable from a forged one
+# during verification. Idempotent.
+from app.services.audit import (  # noqa: E402
+    install_append_only_ddl as _install_audit_ddl,
+    install_chain_listener as _install_audit_chain,
+)
+
+_install_audit_chain()
+# Emit the append-only trigger when the table is created from metadata, which
+# is how a FRESH install is built (bootstrap_db.py -> create_all -> stamp head,
+# never running the migration). Without this a new deployment would get the
+# table and no guard.
+_install_audit_ddl()
