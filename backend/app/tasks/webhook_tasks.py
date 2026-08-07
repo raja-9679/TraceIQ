@@ -9,6 +9,7 @@ from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models import TestRun, TestCase, TestCaseResult, TestStatus
+from app.services.redaction import redact_worker_result
 import time
 
 # Use sync engine for Celery worker (same as worker.py)
@@ -30,6 +31,9 @@ def process_test_run_result_sync(run_id: int, result_data: Dict[str, Any], sessi
     """
     Synchronous version of process_test_run_result for Celery workers.
     """
+    # Defence in depth — see process_single_result in result_aggregator.
+    result_data = redact_worker_result(result_data)
+
     run = session.get(TestRun, run_id)
     if not run:
         print(f"[Webhook] Run {run_id} not found")

@@ -27,6 +27,7 @@ from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
 from app.core.config import settings
 from app.models import TestRun, TestCaseResult, TestStatus, TestCase
+from app.services.redaction import redact_worker_result
 
 # Sync database engine for Celery
 sync_db_url = settings.DATABASE_URL.replace("+asyncpg", "")
@@ -108,6 +109,12 @@ def process_job_results():
 
 def process_single_result(result: Dict[str, Any]):
     """Process a single job result and update database"""
+    # Defence in depth. The worker already scrubbed this at capture time,
+    # but the worker image bakes its code at build time and can be older
+    # than this backend — in that window it ships raw headers and bodies.
+    # Redacting here means an un-upgraded worker cannot write a credential
+    # into an unencrypted column. Routing/status fields are untouched.
+    result = redact_worker_result(result)
     run_id = result.get('run_id')
     job_id = result.get('job_id')
 

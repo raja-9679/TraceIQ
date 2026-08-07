@@ -22,6 +22,7 @@ from app.services.redaction import (
     redact_audit_changes,
     redact_steps,
     redact_text,
+    redact_worker_result,
 )
 
 # A card number that passes Luhn (the canonical Visa test number).
@@ -310,3 +311,79 @@ def test_audit_changes_without_steps_is_untouched():
 def test_audit_changes_tolerates_non_dict():
     assert redact_audit_changes(None) is None
     assert redact_audit_changes([]) == []
+
+
+# --------------------------------------------------------------------------
+# Worker results on ingestion — the backend must not trust the worker image
+# --------------------------------------------------------------------------
+
+def _worker_payload():
+    return {
+        "job_id": "j-1",
+        "run_id": 7,
+        "status": "failed",
+        "duration": 900,
+        "error": f"declined {VALID_PAN}",
+        "request_headers": {"Authorization": "Bearer tok", "Accept": "application/json"},
+        "response_headers": {"Set-Cookie": "sid=abc"},
+        "request_body": json.dumps({"cvv": "123", "amount": 10}),
+        "response_body": json.dumps({"card": VALID_PAN, "ok": False}),
+        "network_events": [{"url": "https://x/y", "requestHeaders": {"cookie": "a=b"}}],
+        "test_results": [
+            {"test_case_id": 3, "status": "failed", "error": f"pan {VALID_PAN}",
+             "response_headers": {"set-cookie": "s=1"}},
+        ],
+    }
+
+
+def test_worker_result_redacts_top_level_headers_and_bodies():
+    out = redact_worker_result(_worker_payload())
+    assert out["request_headers"]["Authorization"] == REDACTED
+    assert out["request_headers"]["Accept"] == "application/json"
+    assert out["response_headers"]["Set-Cookie"] == REDACTED
+    assert json.loads(out["request_body"])["cvv"] == REDACTED
+    assert VALID_PAN not in out["response_body"]
+
+
+def test_worker_result_redacts_nested_test_results():
+    out = redact_worker_result(_worker_payload())
+    assert VALID_PAN not in out["test_results"][0]["error"]
+    assert out["test_results"][0]["response_headers"]["set-cookie"] == REDACTED
+
+
+def test_worker_result_redacts_network_events_and_error():
+    out = redact_worker_result(_worker_payload())
+    assert out["network_events"][0]["requestHeaders"]["cookie"] == REDACTED
+    assert VALID_PAN not in out["error"]
+
+
+def test_worker_result_preserves_routing_and_status():
+    # These drive aggregation and finalization; losing one loses a result.
+    out = redact_worker_result(_worker_payload())
+    assert out["job_id"] == "j-1"
+    assert out["run_id"] == 7
+    assert out["status"] == "failed"
+    assert out["duration"] == 900
+    assert out["test_results"][0]["test_case_id"] == 3
+    assert out["test_results"][0]["status"] == "failed"
+
+
+def test_worker_result_handles_the_legacy_results_key():
+    payload = {"run_id": 1, "results": [{"test_case_id": 1, "response_body": '{"password":"p"}'}]}
+    out = redact_worker_result(payload)
+    assert json.loads(out["results"][0]["response_body"])["password"] == REDACTED
+
+
+def test_worker_result_tolerates_a_minimal_payload():
+    minimal = {"job_id": "j", "run_id": 1, "status": "passed"}
+    assert redact_worker_result(minimal) == minimal
+
+
+def test_worker_result_tolerates_junk():
+    assert redact_worker_result(None) is None
+    assert redact_worker_result("nonsense") == "nonsense"
+
+
+def test_worker_result_redaction_is_idempotent():
+    once = redact_worker_result(_worker_payload())
+    assert redact_worker_result(once) == once

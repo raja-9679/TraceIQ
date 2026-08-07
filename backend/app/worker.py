@@ -159,6 +159,15 @@ def run_test_suite(run_id: int, tags: list = None):
                 print(f"[Worker] Run {run_id}: mobile app build "
                       f"{mobile_app['app_build_id']} ({mobile_app['platform']})")
 
+            # Capture policy: what this run may record and what to scrub from
+            # it. Resolved here rather than in the worker so the instance-wide
+            # MAX_CAPTURE_LEVEL ceiling is applied at dispatch — a worker
+            # cannot be talked into exceeding it by a crafted job.
+            data_policy = _load_data_policy(auth_project_id, session)
+            effective_settings['data_policy'] = data_policy
+            print(f"[Worker] Run {run_id}: capture level "
+                  f"'{data_policy['capture_level']}'")
+
             # Update total tests count
             run.total_tests = len(cases_to_run)
 
@@ -292,10 +301,34 @@ def _settings_payload(settings: dict) -> dict:
     # Mobile app binary (presigned URL + capabilities) for mobile_appium jobs.
     if settings.get('mobile_app'):
         payload['mobile_app'] = settings['mobile_app']
-    # Opt-in HAR network archive (inherited suite setting).
+    # Opt-in HAR network archive (inherited suite setting). Note the capture
+    # level still governs: har_capture=true on a `standard` project records
+    # nothing, because a HAR cannot be fully redacted.
     if settings.get('har_capture'):
         payload['har_capture'] = True
+    # What this run may capture and what to scrub from it. Always present:
+    # a job with no data_policy would fall back to the worker's own defaults,
+    # and a run's policy should be decided here, not there.
+    if settings.get('data_policy'):
+        payload['data_policy'] = settings['data_policy']
     return payload
+
+
+def _load_data_policy(project_id, session) -> dict:
+    """Effective capture policy for a run, clamped to the instance ceiling.
+
+    Always returns a policy. A project with none configured gets the defaults
+    (`standard`), and a project that cannot be loaded gets them too — the one
+    thing this must never do is fall through to "capture everything".
+    """
+    from app.services.data_policy import effective_data_policy, resolve_for_project
+    project = None
+    if project_id:
+        from app.models import Project
+        project = session.get(Project, project_id)
+    if project is None:
+        return effective_data_policy(None, ceiling=None)
+    return resolve_for_project(project)
 
 
 def _load_mobile_app(run, session) -> dict | None:
