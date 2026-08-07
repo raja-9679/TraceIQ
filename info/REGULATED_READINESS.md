@@ -7,10 +7,10 @@ working tree at that point — re-check before acting on an old copy of this doc
 
 ## Status
 
-**Phases 1 and 2 are DONE** (2026-08-07, four commits). Workstreams C, A and B
-have landed; the file:line references in those sections describe the code as it
-was *before* the fix and are kept as the rationale record, not as a map of the
-current tree.
+**Phases 1, 2 and 3 are DONE** (2026-08-07, eight commits). Workstreams C, A,
+B, D and E have landed; the file:line references in those sections describe the
+code as it was *before* the fix and are kept as the rationale record, not as a
+map of the current tree.
 
 | Workstream | State |
 |---|---|
@@ -18,22 +18,61 @@ current tree.
 | A1 — upload chokepoint | done |
 | A2–A8 — redaction | done |
 | B — capture policy | done |
-| D — encryption/TLS | **next** |
-| E — audit trail | not started |
-| F — identity (SCIM/SAML/tenant bug) | not started |
+| D — encryption at rest + TLS + key rotation | done |
+| E — audit trail (E1–E5) | done |
+| F — identity (SCIM/SAML/tenant bug) | **next** |
 | G — deletion/residency | not started |
 | H — operability | not started |
-| I — proving it | partial: CI now runs the full unit suite + a new engine suite |
+| I — proving it | partial: CI runs the full unit suite + a new engine suite |
 
 What exists now that did not before:
-`execution-engine/src/core/redact.ts` and `backend/app/services/redaction.py`
-(mirror implementations, mirror corpora), `core/artifact-store.ts` (the single
-upload chokepoint with capture-level gating), `app/services/data_policy.py`
-(policy resolution + instance ceiling), `Project.data_policy` (migration
-`b7c8d9e0f1a2`), and the `MAX_CAPTURE_LEVEL` instance setting.
 
-Test counts went from 18 running in CI to 274 (188 backend, 86 engine), and
-the engine had no test runner at all before this.
+- `execution-engine/src/core/redact.ts` + `backend/app/services/redaction.py` —
+  mirror implementations with mirror corpora.
+- `core/artifact-store.ts` — the single upload chokepoint, capture-level gated.
+- `app/services/data_policy.py` + `Project.data_policy` (migration
+  `b7c8d9e0f1a2`) + the `MAX_CAPTURE_LEVEL` instance ceiling.
+- `app/core/secrets.py` — `v1:` envelope over a MultiFernet ring, `SECRETS_KEY`
+  independent of `SECRET_KEY`, `scripts/rotate_secrets.py`.
+- `db_url_for()` / `redis_url_with_tls()` — one derivation for the twenty engine
+  and client constructions; `REQUIRE_TRANSPORT_SECURITY` for strict mode.
+- `app/services/audit.py` + `app/api/audit.py` (migration `c8d9e0f1a2b3`) —
+  hash chain, append-only trigger, actor context, CSV export, verify endpoint,
+  and independent audit retention.
+
+Test counts went from 18 running in CI to 377 (291 backend, 86 engine), and the
+engine had no test runner at all before this.
+
+### Corrections to this document, found by building it
+
+Three claims in the sections below turned out to be wrong or incomplete, and
+the fix is in the code rather than here:
+
+1. **D3 said nine sync engines. There are nineteen.** Repointing them was
+   mechanical but the count matters for anyone estimating.
+2. **D3's `sslmode` → `ssl=true` translation is wrong.** SQLAlchemy's asyncpg
+   dialect maps `ssl` back onto sslmode semantics, so `ssl=true` raises
+   `ClientConfigurationError`. The translation must PRESERVE the value;
+   coercing `verify-full` to a boolean would silently downgrade certificate
+   verification to bare encryption.
+3. **E2's trigger would not have existed on a fresh install.**
+   `bootstrap_db.py` builds the schema from model metadata and stamps head
+   without running migrations, and metadata cannot express a trigger — so new
+   deployments, the ones most likely to be audited, would have had the table
+   and no guard. The DDL is now attached to the table's `after_create` event as
+   well. Any future migration that adds non-model DDL has the same trap.
+
+Also: `auditlog` had foreign keys to `workspace` and `users` with no `ON
+DELETE`, so deleting either was already blocked or forced the old code to
+rewrite history. Both are dropped — an FK from an append-only history table
+into a mutable entity table forces a choice between destroying history and
+blocking deletion.
+
+D5's transport checks WARN by default and are fatal only under
+`REQUIRE_TRANSPORT_SECURITY`. Making them unconditionally fatal broke four
+existing tests, which was the useful signal: it would stop every deployment
+booting on upgrade, and the escape hatch operators reach for is
+`ENVIRONMENT=development`, which disables the secret checks too.
 
 The ordering is deliberate. Workstream C is small and must go first, because
 every downstream protection is pointless while the product is actively writing
