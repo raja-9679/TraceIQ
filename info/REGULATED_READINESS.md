@@ -5,6 +5,36 @@ enterprise SaaS procurement. Written 2026-08-07 against
 `feature/enterprise-auth-ai`. Every file:line below was verified against the
 working tree at that point — re-check before acting on an old copy of this doc.
 
+## Status
+
+**Phases 1 and 2 are DONE** (2026-08-07, four commits). Workstreams C, A and B
+have landed; the file:line references in those sections describe the code as it
+was *before* the fix and are kept as the rationale record, not as a map of the
+current tree.
+
+| Workstream | State |
+|---|---|
+| C — credential leaks | done |
+| A1 — upload chokepoint | done |
+| A2–A8 — redaction | done |
+| B — capture policy | done |
+| D — encryption/TLS | **next** |
+| E — audit trail | not started |
+| F — identity (SCIM/SAML/tenant bug) | not started |
+| G — deletion/residency | not started |
+| H — operability | not started |
+| I — proving it | partial: CI now runs the full unit suite + a new engine suite |
+
+What exists now that did not before:
+`execution-engine/src/core/redact.ts` and `backend/app/services/redaction.py`
+(mirror implementations, mirror corpora), `core/artifact-store.ts` (the single
+upload chokepoint with capture-level gating), `app/services/data_policy.py`
+(policy resolution + instance ceiling), `Project.data_policy` (migration
+`b7c8d9e0f1a2`), and the `MAX_CAPTURE_LEVEL` instance setting.
+
+Test counts went from 18 running in CI to 274 (188 backend, 86 engine), and
+the engine had no test runner at all before this.
+
 The ordering is deliberate. Workstream C is small and must go first, because
 every downstream protection is pointless while the product is actively writing
 plaintext credentials into three tables. Workstream A is the single biggest
