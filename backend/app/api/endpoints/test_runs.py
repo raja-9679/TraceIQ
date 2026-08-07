@@ -11,6 +11,7 @@ from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
 from app.core.storage import minio_client
 from app.services.test_service import test_service
 from app.services.access_service import access_service
+from app.services.audit import record as audit_record
 from app.models import (
     User, AuditLog, AuditLogRead, Project, UserWorkspace, UserTeam, UserProjectAccess,
     TeamProjectAccess, TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode,
@@ -556,6 +557,17 @@ async def delete_run(run_id: int, session: AsyncSession = Depends(get_session), 
     if not await access_service.has_project_access(current_user.id, run.project_id, session, min_role="editor"):
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Recorded before the delete, while the run still exists to describe. This
+    # destroys MinIO artifacts as well as rows, and previously left no trace at
+    # all — "who deleted the evidence" was unanswerable.
+    await audit_record(
+        session,
+        entity_type="test_run", entity_id=run_id, action="delete",
+        user_id=current_user.id, workspace_id=None,
+        changes={"suite_id": run.test_suite_id, "status": str(run.status),
+                 "project_id": run.project_id, "artifacts_deleted": True},
+    )
+
     # Delete artifacts from MinIO
     minio_client.delete_run_artifacts(run_id)
 
@@ -610,6 +622,14 @@ async def delete_runs(
                 await session.delete(res)
             await session.delete(run)
             deleted += 1
+        # One summary row, not one per run: a 500-run purge is a single
+        # administrative act, and 500 near-identical rows would bury it.
+        await audit_record(
+            session,
+            entity_type="test_run", entity_id=0, action="delete_all",
+            user_id=current_user.id,
+            changes={"runs_deleted": deleted, "artifacts_deleted": True},
+        )
         await session.commit()
         return {"status": "success", "message": f"All {deleted} runs deleted"}
 
@@ -631,6 +651,13 @@ async def delete_runs(
                 await session.delete(res)
             await session.delete(run)
             deleted += 1
+        await audit_record(
+            session,
+            entity_type="test_run", entity_id=0, action="delete_bulk",
+            user_id=current_user.id,
+            changes={"run_ids": run_ids, "runs_deleted": deleted,
+                     "denied": denied, "artifacts_deleted": True},
+        )
         await session.commit()
         if denied and not deleted:
             raise HTTPException(status_code=403, detail="Access denied for all requested runs")
@@ -684,8 +711,19 @@ async def get_audit_log(entity_type: str, entity_id: int, session: AsyncSession 
         query = query.where(AuditLog.entity_type ==
                             entity_type, AuditLog.entity_id == entity_id)
     else:
-        # Fallback security
-        query = query.where(AuditLog.user_id == current_user.id)
+        # Previously this silently fell back to "return the caller's own rows",
+        # which is a fail-OPEN shape: asking for an entity type this endpoint
+        # cannot authorize returned 200 with unrelated data instead of saying
+        # no. An audit endpoint that answers the wrong question with a 200 is
+        # worse than one that answers nothing.
+        #
+        # Workspace-scoped history lives at GET /api/workspaces/{id}/audit,
+        # which can actually check membership.
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported entity_type '{entity_type}'. This endpoint covers "
+                   f"'suite' and 'case'; use /api/workspaces/{{id}}/audit for "
+                   f"workspace-wide history.")
 
     result = await session.exec(query)
     return result.all()
