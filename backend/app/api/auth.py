@@ -8,6 +8,7 @@ from sqlmodel import select, delete
 from typing import List, Optional
 
 from app.core.database import get_session
+from app.services.audit import record as audit_record
 from app.core.limiter import limiter
 from app.core.auth import (
     create_access_token,
@@ -151,12 +152,31 @@ async def login_for_access_token(
         verify_password(form_data.password, _DUMMY_PASSWORD_HASH)
         valid = False
     if not user or not valid:
+        # Recorded before the 401. A credential-stuffing run is otherwise
+        # visible only in access logs, which are not part of the audit trail
+        # and are usually the first thing rotated away.
+        await audit_record(
+            session,
+            entity_type="auth", entity_id=(user.id if user else 0),
+            action="login_failed", user_id=(user.id if user else None),
+            request=request,
+            changes={"email": form_data.username,
+                     "reason": "bad_password" if user else "no_such_account"},
+        )
+        await session.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     if not user.is_active:
+        await audit_record(
+            session,
+            entity_type="auth", entity_id=user.id, action="login_denied",
+            user_id=user.id, request=request,
+            changes={"email": user.email, "reason": "account_deactivated"},
+        )
+        await session.commit()
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This account has been deactivated",
@@ -194,7 +214,8 @@ async def login_for_access_token(
     return await _issue_tokens(user, request, session)
 
 
-async def _issue_tokens(user: User, request: Request, session: AsyncSession) -> dict:
+async def _issue_tokens(user: User, request: Request, session: AsyncSession,
+                        method: str = "password") -> dict:
     """Mint an access token + a rotating refresh token for a fully-authenticated
     user. Shared by password login, MFA login, and SSO."""
     access_token = create_access_token(
@@ -213,6 +234,17 @@ async def _issue_tokens(user: User, request: Request, session: AsyncSession) -> 
     ))
     user.last_login_at = datetime.utcnow()
     session.add(user)
+
+    # Every successful authentication passes through here — password, MFA and
+    # SSO all call this — so it is the one place that has to record one.
+    # `method` distinguishes them for anyone reviewing the trail.
+    await audit_record(
+        session,
+        entity_type="auth", entity_id=user.id, action="login",
+        user_id=user.id, request=request,
+        changes={"email": user.email, "method": method},
+    )
+
     await session.commit()
     return {
         "access_token": access_token,
@@ -276,7 +308,7 @@ async def mfa_login(request: Request, body: MfaLoginRequest,
         ok = await _consume_recovery_code(user.id, body.code, session)
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid authentication or recovery code")
-    return await _issue_tokens(user, request, session)
+    return await _issue_tokens(user, request, session, method="mfa_totp")
 
 
 class MfaEnrollmentPrincipal(BaseModel):
@@ -353,7 +385,7 @@ async def mfa_verify(body: MfaCodeRequest, request: Request,
     codes = await _generate_recovery_codes(current_user.id, session)
     out: dict = {"mfa_enabled": True, "recovery_codes": codes}
     if principal.setup_pending:
-        out.update(await _issue_tokens(current_user, request, session))
+        out.update(await _issue_tokens(current_user, request, session, method="mfa_enrollment"))
     return out
 
 
@@ -860,7 +892,7 @@ async def ldap_login(request: Request, body: LdapLoginRequest,
             expires_delta=timedelta(minutes=15))
         return {"token_type": "bearer", "mfa_setup_required": True, "mfa_token": challenge}
 
-    return await _issue_tokens(user, request, session)
+    return await _issue_tokens(user, request, session, method="ldap")
 
 
 @router.get("/sso/status")
@@ -947,6 +979,6 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
             is_verified=True,
         )
 
-    tokens = await _issue_tokens(user, request, session)
+    tokens = await _issue_tokens(user, request, session, method="sso_oidc")
     frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})
     return RedirectResponse(f"{_oidc('OIDC_POST_LOGIN_REDIRECT')}#{frag}")

@@ -7,7 +7,7 @@ from app.core.database import init_db, close_db
 from app.core.storage import minio_client
 from app.core.limiter import limiter
 from app.api import (
-    api_keys, auth, settings, workspaces, projects, admin,
+    api_keys, audit, auth, settings, workspaces, projects, admin,
     workspace_webhooks, visual_baselines, personas, heal_proposals,
     flake_records, case_generation, comparison_runs, agent_ownership,
     agent_reference, environments, analytics, inspect,
@@ -87,6 +87,7 @@ app.include_router(llm_providers_api.router, prefix="/api", tags=["llm-providers
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(api_keys.router, prefix="/api", tags=["api-keys"])
+app.include_router(audit.router, prefix="/api", tags=["audit"])
 app.include_router(workspace_webhooks.router, prefix="/api", tags=["webhooks"])
 app.include_router(visual_baselines.router, prefix="/api", tags=["visual-baselines"])
 app.include_router(personas.router, prefix="/api", tags=["personas"])

@@ -18,6 +18,7 @@ from app.core.auth import (
     get_current_principal,
 )
 from app.core.database import get_session
+from app.services.audit import record as audit_record
 from app.models import (
     ApiKey,
     ApiKeyCreate,
@@ -76,6 +77,18 @@ async def create_api_key(
         expires_at=expires_at,
     )
     session.add(key)
+    await session.flush()   # need key.id for the audit row
+    # Minting a credential is never silent. The prefix identifies the key
+    # without revealing it, and is what later audit rows carry as actor_label,
+    # so the two can be correlated.
+    await audit_record(
+        session,
+        entity_type="api_key", entity_id=key.id, action="create",
+        user_id=principal.user.id, workspace_id=key.workspace_id,
+        changes={"name": key.name, "prefix": key.prefix,
+                 "project_id": key.project_id, "role_id": key.role_id,
+                 "expires_at": expires_at.isoformat() if expires_at else None},
+    )
     await session.commit()
     await session.refresh(key)
 
@@ -145,5 +158,11 @@ async def revoke_api_key(
 
     key.revoked_at = datetime.utcnow()
     session.add(key)
+    await audit_record(
+        session,
+        entity_type="api_key", entity_id=key.id, action="revoke",
+        user_id=principal.user.id, workspace_id=key.workspace_id,
+        changes={"name": key.name, "prefix": key.prefix},
+    )
     await session.commit()
     return {"status": "revoked", "id": key_id}
