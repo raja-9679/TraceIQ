@@ -4,6 +4,7 @@
   "description": "TraceIQ Test Execution Engine",
   "main": "dist/server.js",
   "scripts": {
+    "test": "node -r ts-node/register --test \"src/**/*.test.ts\"",
     "build": "tsc",
     "start": "node dist/server.js",
     "worker": "node --expose-gc dist/worker.js",

@@ -22,6 +22,7 @@ from app.core.database import get_session
 from app.models import AuditLog, TestCase, TestCaseRevision, TestCaseRevisionRead
 from app.services.access_service import access_service
 from app.services.case_revisions import apply_snapshot, record_revision
+from app.services.redaction import redact_audit_changes
 
 router = APIRouter()
 
@@ -41,6 +42,11 @@ async def _case_with_access(
 
 def _to_read(rev: TestCaseRevision, with_snapshot: bool = False) -> TestCaseRevisionRead:
     snapshot = rev.snapshot or {}
+    # Redaction happens on read, not on write. A revision is the source for
+    # restore, so the *stored* snapshot has to stay faithful — scrubbing it at
+    # write would silently destroy the user's step values the next time they
+    # rolled back. Redacting the response narrows who can read a credential
+    # without breaking what the feature is for.
     return TestCaseRevisionRead(
         id=rev.id,
         test_case_id=rev.test_case_id,
@@ -51,7 +57,7 @@ def _to_read(rev: TestCaseRevision, with_snapshot: bool = False) -> TestCaseRevi
         created_at=rev.created_at,
         name=snapshot.get("name"),
         step_count=len(snapshot.get("steps") or []),
-        snapshot=snapshot if with_snapshot else None,
+        snapshot=redact_audit_changes(snapshot) if with_snapshot else None,
     )
 
 

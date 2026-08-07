@@ -24,7 +24,8 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
-from app.models import Project, TestRun
+from app.models import ApiKey, Project, TestRun
+from app.services.access_service import AccessService
 
 router = APIRouter()
 
@@ -42,23 +43,67 @@ def _require_api_key_workspace(principal: AuthPrincipal) -> int:
     return principal.api_key.workspace_id
 
 
+def api_key_allows_project(api_key: ApiKey, project_id: Optional[int]) -> bool:
+    """Whether `api_key` may act on `project_id`.
+
+    A key with `project_id` set is narrowed to that one project; the column
+    existed on the model but the local-worker bridge never consulted it, so a
+    project-scoped key could poll jobs — and therefore the decrypted secrets
+    baked into them — for every project in the workspace.
+
+    A job with no project is never releasable: there is nothing to authorize
+    against.
+    """
+    if project_id is None:
+        return False
+    if api_key.project_id is None:
+        return True
+    return api_key.project_id == project_id
+
+
 @router.get("/jobs/poll")
 async def poll_local_job(
     worker_id: str = Query(..., min_length=1, max_length=64),
+    session: AsyncSession = Depends(get_session),
     principal: AuthPrincipal = Depends(get_current_principal),
 ):
-    """Pop the next pending job for this local worker (204 when idle)."""
+    """Pop the next pending job for this local worker (204 when idle).
+
+    The payload carries decrypted project secrets, so this is an editor-level
+    operation scoped to the key's project — not a read.
+    """
     workspace_id = _require_api_key_workspace(principal)
+    queue_key = f"jobs:local:{workspace_id}:{worker_id}"
 
     from app.core.redis import RedisClient
     redis = RedisClient.get_instance()
-    raw = await redis.lpop(f"jobs:local:{workspace_id}:{worker_id}")
+    raw = await redis.lpop(queue_key)
     if not raw:
         return Response(status_code=204)
     try:
-        return json.loads(raw)
+        job = json.loads(raw)
     except (TypeError, ValueError):
         raise HTTPException(status_code=500, detail="Corrupt job payload in queue")
+
+    # Authorize before releasing secrets. On refusal the job goes back on the
+    # head of the queue so a misconfigured key cannot silently drain a run.
+    async def _refuse(detail: str):
+        await redis.lpush(queue_key, raw)
+        raise HTTPException(status_code=403, detail=detail)
+
+    run_id = job.get("run_id")
+    run = await session.get(TestRun, run_id) if run_id else None
+    project_id = run.project_id if run else None
+
+    if not api_key_allows_project(principal.api_key, project_id):
+        await _refuse("This API key is not scoped to the project that owns this job")
+
+    if not await AccessService.has_project_access(
+        principal.user.id, project_id, session, min_role="editor"
+    ):
+        await _refuse("Executing jobs requires at least the editor role on the project")
+
+    return job
 
 
 @router.post("/jobs/result", status_code=202)
@@ -82,6 +127,10 @@ async def submit_local_job_result(
     project = await session.get(Project, run.project_id) if run.project_id else None
     if not project or project.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="Run does not belong to this API key's workspace")
+    if not api_key_allows_project(principal.api_key, run.project_id):
+        raise HTTPException(
+            status_code=403,
+            detail="This API key is not scoped to the project that owns this run")
     if not run.local_worker_id:
         raise HTTPException(status_code=403, detail="Run is not a local-worker run")
 

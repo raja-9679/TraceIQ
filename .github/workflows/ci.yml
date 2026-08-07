@@ -27,17 +27,47 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt -r requirements-dev.txt
 
-      # Unit tests only. tests/e2e and tests/integration need a live stack
-      # (Postgres, Redis, MinIO, workers) and are excluded here deliberately —
-      # see the note in info/I18N_SOC2_IMPLEMENTATION_PLAN.md about building out
-      # the DB-backed test layer.
+      # The whole unit suite. tests/e2e and tests/integration need a live stack
+      # (Postgres, Redis, MinIO, workers) and are excluded deliberately, as are
+      # the tests/verify_*.py files, which are ad-hoc manual scripts rather than
+      # pytest modules — converting those is tracked in
+      # info/REGULATED_READINESS.md (workstream I).
+      #
+      # This used to run two files out of the suite. Everything else was written
+      # and then never executed by CI, which is how tests/test_stale_run_detection.py
+      # and friends could have rotted unnoticed.
       - name: Run unit tests
         working-directory: backend
         run: |
-          python -m pytest \
-            tests/test_net_guard.py \
-            tests/test_config_validation.py \
+          python -m pytest tests/ \
+            --ignore=tests/e2e \
+            --ignore=tests/integration \
+            --ignore-glob='tests/verify_*.py' \
             -v --tb=short
+
+  engine-tests:
+    # The redaction module is the worker's only defence against writing
+    # credentials and PII into MinIO artifacts. It must be exercised on every
+    # change, not just when someone remembers to run it locally.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: execution-engine/package-lock.json
+
+      - working-directory: execution-engine
+        run: npm ci
+
+      - working-directory: execution-engine
+        run: npm test
+
+      # tsc must stay clean, and must not emit the .test.ts files into dist/.
+      - working-directory: execution-engine
+        run: npm run build
 
   frontend-build:
     runs-on: ubuntu-latest
