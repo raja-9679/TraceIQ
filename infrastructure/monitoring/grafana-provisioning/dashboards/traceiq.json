@@ -1,0 +1,69 @@
+{
+  "title": "TraceIQ — execution pipeline",
+  "uid": "traceiq-pipeline",
+  "timezone": "utc",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Scheduler (celery_beat)",
+      "description": "0 means nothing is finalising runs, aggregating results, firing schedules or enforcing retention.",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [{ "expr": "traceiq_beat_healthy", "refId": "A" }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "OK", "color": "green" } } }
+          ]
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Heartbeat age (s)",
+      "description": "-1 means the scheduler has never reported.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [{ "expr": "traceiq_beat_heartbeat_age_seconds", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Dead-lettered jobs",
+      "description": "Jobs that exhausted their retries. Their runs are short a result and will not complete on their own. Replay via POST /api/admin/dead-letter/replay.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [{ "expr": "traceiq_dead_letter_depth", "refId": "A" }]
+    },
+    {
+      "type": "stat",
+      "title": "Runs created (last hour)",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "targets": [{ "expr": "traceiq_runs_created_last_hour", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue depth by stream",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [{ "expr": "traceiq_queue_depth", "legendFormat": "{{stream}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Live consumers per group",
+      "description": "Zero while jobs are queued means every run is stalled.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [{ "expr": "traceiq_queue_group_consumers", "legendFormat": "{{stream}}/{{group}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Claimed but unacknowledged",
+      "description": "Workers claimed these and never acked — usually a crash mid-run.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "targets": [{ "expr": "traceiq_queue_group_pending", "legendFormat": "{{stream}}/{{group}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Runs by status",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "targets": [{ "expr": "traceiq_runs_total", "legendFormat": "{{status}}", "refId": "A" }]
+    }
+  ]
+}

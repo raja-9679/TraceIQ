@@ -30,6 +30,7 @@ from app.api import onboarding as onboarding_api
 from app.api import instance_settings as instance_settings_api
 from app.api import llm_providers as llm_providers_api
 from app.api import scim as scim_api
+from app.api import dead_letter as dead_letter_api
 from app.core.config import settings as core_settings
 import logging
 
@@ -101,6 +102,7 @@ app.include_router(llm_providers_api.router, prefix="/api", tags=["llm-providers
 # bare path. Both resolve to the same handlers.
 app.include_router(scim_api.router, tags=["scim"])
 app.include_router(scim_api.router, prefix="/api", tags=["scim"])
+app.include_router(dead_letter_api.router, prefix="/api", tags=["dead-letter"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(api_keys.router, prefix="/api", tags=["api-keys"])

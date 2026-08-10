@@ -26,8 +26,9 @@ map of the current tree.
 | F5 — roles cleanup | done (2026-08-10) |
 | F3 — SAML 2.0 | deferred — see SCOPE_NOTES.md |
 | G — deletion/residency (G1–G4) | done (2026-08-10) |
-| H — operability | **next** |
-| I — proving it | partial: CI runs the full unit suite + a new engine suite |
+| H1–H4 — operability | done (2026-08-10) |
+| H5 — Helm chart | not started |
+| I — proving it | **next** (partial: CI runs the full unit suite + engine suite) |
 
 What exists now that did not before:
 
@@ -599,36 +600,80 @@ boundary in both directions).
 
 ---
 
-## Workstream H — Operability
+## Workstream H — Operability — H1-H4 done, H5 deferred (2026-08-10)
 
-- **H1. Beat HA.** Exactly one `celery_beat` with no leader election, using the
-  default file-backed `PersistentScheduler` on a container-local path
-  (`docker-compose.community.yml:188-199`). It drains `jobs:results` every 2s
-  (`core/celery_app.py:60-63`), so if it dies the entire execution pipeline
-  stalls silently — no finalization, no aggregation, no schedules, no retention,
-  no alert. `redbeat` is a drop-in `beat_scheduler` backed by a Redis lock; a
-  pg advisory lock wrapper is the alternative.
-- **H2. DLQ replay and alerting.** `core/job-queue.ts:370-373` dead-letters
-  after three retries; `:459-466` only `console.error`s every hundred loop
-  iterations. Dead jobs sit forever with no requeue path. Add a replay endpoint
-  and surface `dead_letter_depth` (already computed in
-  `api/observability.py:170`) as an alertable metric.
-- **H3. A real initial migration.** The baseline `1f266105057e` is an empty
-  `pass` stub with `down_revision = None`; `init_db()` has `create_all`
-  commented out (`core/database.py:31-35`); the entrypoint shells out to
-  `scripts/bootstrap_db.py` instead (`docker-entrypoint.sh:51-57`). Net effect:
-  schema truth lives in the SQLModel definitions rather than the migration
-  chain, and **there is no trustworthy rollback for a failed upgrade**. That is
-  a hard blocker in any change-controlled environment. Also: three merge points
-  with tuple `down_revision`s, and no advisory lock guarding `RUN_MIGRATIONS`
-  across replicas.
-- **H4. Observability.** `/metrics` exists and is real but nothing scrapes it —
-  no Prometheus config, no Grafana dashboard, no alert rules anywhere in
-  `infrastructure/`. No tracing at all (zero OTel), so a slow run must be
-  correlated across three services by hand. No structured logging — stdlib
-  `logging` plus raw `print()` in hot paths (`job_dispatcher.py:118`, all of
-  `cleanup_tasks.py`, `llm_usage.py:145`). No error tracking.
-- **H5. Helm chart / K8s manifests.** Compose only today.
+- **H1. Beat HA — done, both halves.** The single point of failure was real, but
+  what made it a production hazard is that **nothing noticed**: beat could die
+  and the first symptom was a user asking why their run had been "running" for
+  an hour.
+
+  *Knowing* (`app/services/beat_health.py`, `app/tasks/heartbeat_tasks.py`): beat
+  dispatches a heartbeat task every 30s which a **worker** executes — so it
+  proves beat can *dispatch*, not merely that its process exists; a beat that is
+  up but cannot reach the broker is the same silent stall. Written with a TTL, so
+  the failure mode is "reports unknown", never "reports healthy from a stale
+  key". Surfaced as `GET /health/beat` and as
+  `traceiq_beat_healthy` / `traceiq_beat_heartbeat_age_seconds` (`-1` = never
+  reported, so an alert can tell "not started" from "stopped").
+  Deliberately **not** in `/health/ready`: readiness gates load-balancer
+  rotation, and removing the API because a scheduler is down turns degradation
+  into an outage.
+
+  *Surviving* — `celery-redbeat` is a dependency and
+  `CELERY_BEAT_SCHEDULER=redbeat.RedBeatScheduler` switches it on, opt-in.
+  Defaulting it would migrate every existing deployment's schedule state from a
+  file to Redis during an upgrade, and a schedule that silently fails to migrate
+  is worse than the SPOF it replaces.
+
+- **H2. DLQ replay and alerting — done.** `app/api/dead_letter.py`.
+  There was no requeue path *at all*, so a job that hit a transient crash three
+  times was gone and its run stayed short a result permanently. List / replay /
+  discard, instance-admin gated because a dead-letter payload is the job as
+  dispatched, **including resolved project secrets** — which is also why the list
+  endpoint summarises rather than echoes.
+  Replay clears `jobs:retries` for the job: the counter is what dead-lettered it,
+  so a replay that left it would be re-killed on first claim and the button would
+  look like it worked while changing nothing. Discard is a separate endpoint —
+  "these are not coming back" is a different decision from "try again", and
+  conflating them means clearing a backlog silently re-runs production traffic.
+  `dead_letter_depth` is now a metric (`traceiq_dead_letter_depth`) with an alert
+  rule.
+
+- **H3. Migration safety — advisory lock done, squashed baseline deferred.**
+  `RUN_MIGRATIONS` defaults to true and *every* replica ran it with nothing
+  serialising them, so two API containers starting together both ran
+  `alembic upgrade head` concurrently — which Alembic is not safe under.
+  `scripts/bootstrap_db.py` now holds a Postgres session advisory lock, blocking
+  rather than skipping (a replica that skipped would serve against a schema it
+  has not verified). Verified by launching three bootstraps simultaneously
+  against one empty database: one creates, two wait then no-op, final revision
+  consistent.
+
+  **The empty baseline is NOT fixed** and remains the honest gap: there is still
+  no verified rollback to an arbitrary earlier revision. `docs/OPERATIONS.md`
+  states that plainly and prescribes snapshot-then-upgrade as the rollback plan
+  for change-controlled environments. Writing a real squashed initial migration
+  is still open.
+
+- **H4. Observability — done.** `/metrics` was real but nothing scraped it: no
+  scrape config, no alert rules, no dashboard anywhere in the repo.
+  `infrastructure/monitoring/` now has a Prometheus config, `alerts.yml` covering
+  every failure above (each annotation states the user-visible consequence,
+  because "queue depth is high" does not tell whoever is paged what to do), a
+  Grafana dashboard, and an optional compose overlay. `metrics_token` is
+  gitignored.
+  Still not done inside this item: OpenTelemetry tracing, structured logging (the
+  codebase still mixes stdlib `logging` with raw `print()`), and error tracking.
+
+- **H5. Helm chart / K8s manifests — not done.** Compose only. Mechanical rather
+  than a design problem — the images are stateless apart from the object store —
+  but it does not exist, and `docs/OPERATIONS.md` says so rather than implying
+  otherwise.
+
+Verified end to end against a live API: heartbeat absent → `unknown` 200,
+heartbeat written → `ok`, back-dated heartbeat → `stale` 503 with
+`traceiq_beat_healthy 0`, and a seeded dead-lettered job listed with its payload
+withheld, replayed onto `jobs:pending` with the retry counter cleared.
 
 ---
 

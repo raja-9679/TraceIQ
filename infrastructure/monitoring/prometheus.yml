@@ -1,0 +1,39 @@
+# Prometheus scrape configuration for TraceIQ — workstream H4.
+#
+# /metrics existed and was real, but nothing scraped it: no scrape config, no
+# alert rules, no dashboard. A metric nobody reads is not observability.
+#
+# Bring it up alongside the stack:
+#   docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+#
+# /metrics is never anonymous (it exposes queue depth and run volume, which are
+# operational intelligence about the deployment). Prometheus cannot present a
+# JWT, so set METRICS_TOKEN in the backend environment and put the same value in
+# monitoring/metrics_token — the bearer_token_file below.
+
+global:
+  scrape_interval: 30s
+  scrape_timeout: 10s
+  external_labels:
+    instance_name: traceiq
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []   # point at your Alertmanager
+
+scrape_configs:
+  - job_name: traceiq-backend
+    metrics_path: /metrics
+    # Same value as METRICS_TOKEN in the backend environment.
+    bearer_token_file: /etc/prometheus/metrics_token
+    static_configs:
+      - targets: ['backend:8000']
+
+# Scheduler liveness comes from traceiq_beat_healthy / traceiq_beat_heartbeat_age_seconds
+# on the job above, not a separate probe: /health/beat returns JSON, which
+# Prometheus cannot parse without a blackbox exporter. Use it from a uptime
+# checker if you have one; the metric is the thing to alert on.

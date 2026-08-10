@@ -1,0 +1,108 @@
+# TraceIQ alert rules — workstream H4.
+#
+# Every rule here corresponds to a failure that previously had NO signal at all.
+# The annotations say what breaks in user-visible terms, because "queue depth is
+# high" does not tell whoever is paged what to do about it.
+
+groups:
+  - name: traceiq-pipeline
+    interval: 30s
+    rules:
+      # The one that matters most. celery_beat drains jobs:results every two
+      # seconds; when it stops, nothing finalises runs, aggregates results, fires
+      # schedules or enforces retention — and the only previous symptom was a
+      # user asking why their run had been "running" for an hour.
+      - alert: TraceIQBeatDown
+        expr: traceiq_beat_healthy == 0 and traceiq_beat_heartbeat_age_seconds >= 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "celery_beat is not reporting ({{ $value }})"
+          description: >-
+            The scheduler has missed its heartbeat. While it is down no test run
+            will be finalised, no results aggregated, no schedule fired and no
+            retention enforced. Runs will sit at RUNNING with no other symptom.
+            Check `docker compose logs celery_beat`. If it is running but cannot
+            reach Redis, the heartbeat also fails — that is deliberate.
+
+      # -1 means "never reported". Distinguished from stale so a fresh deployment
+      # that has not enabled beat does not page anybody, while an instance that
+      # has been up for an hour without one does.
+      - alert: TraceIQBeatNeverStarted
+        expr: traceiq_beat_heartbeat_age_seconds == -1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "celery_beat has never reported a heartbeat"
+          description: >-
+            No heartbeat has been recorded since this instance started. Either
+            celery_beat is not deployed, or it has never managed to dispatch a
+            task. The execution pipeline cannot complete runs without it.
+
+      # Dead-lettered jobs used to sit forever with no requeue path and no
+      # metric — the only trace was a console.error every hundred loop
+      # iterations.
+      - alert: TraceIQDeadLetterBacklog
+        expr: traceiq_dead_letter_depth > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} job(s) dead-lettered"
+          description: >-
+            Jobs exhausted their retries and are waiting in jobs:dead-letter.
+            Their runs are short a result and will never complete on their own.
+            Inspect with GET /api/admin/dead-letter and requeue with
+            POST /api/admin/dead-letter/replay once the cause is fixed.
+
+      - alert: TraceIQQueueBacklog
+        expr: traceiq_queue_depth{stream="jobs:pending"} > 100
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} jobs waiting on jobs:pending"
+          description: >-
+            Jobs are being dispatched faster than workers consume them. Either
+            scale execution-worker, or check whether the workers are alive —
+            traceiq_queue_group_consumers tells you which.
+
+      - alert: TraceIQNoWorkers
+        expr: max(traceiq_queue_group_consumers{stream="jobs:pending"}) == 0 and traceiq_queue_depth{stream="jobs:pending"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Jobs are queued but no worker is consuming them"
+          description: >-
+            The consumer group on jobs:pending has no live consumers while work
+            is waiting. Every queued run is stalled.
+
+      - alert: TraceIQStuckClaims
+        expr: traceiq_queue_group_pending{stream="jobs:pending"} > 20
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} jobs claimed but never acknowledged"
+          description: >-
+            Workers claimed these jobs and did not acknowledge them, which
+            usually means they crashed mid-run. They will be reclaimed and
+            eventually dead-lettered after three attempts.
+
+  - name: traceiq-availability
+    interval: 30s
+    rules:
+      - alert: TraceIQBackendDown
+        expr: up{job="traceiq-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TraceIQ backend is not answering scrapes"
+          description: >-
+            Prometheus cannot reach /metrics. If the backend is up, check
+            METRICS_TOKEN — an unset or mismatched token returns 401, which looks
+            identical to a down target on this alert.
