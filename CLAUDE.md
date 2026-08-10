@@ -454,6 +454,32 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `caseproposal_created_by_id_fkey`. Pass `None` so both paths agree. Same
   family as the audit-trigger trap.
 
+- **Deletion and retention (workstream G)** — `app/services/purge.py`,
+  `app/services/retention.py`, `app/services/erasure.py`;
+  operator-facing summary in `docs/DATA_RESIDENCY.md`.
+  `DELETE /api/workspaces/{id}` now cascades (39 tables + MinIO prefixes) behind
+  `confirm=<workspace name>`, with `dry_run=true`. **The real guarantee is
+  `tests/test_purge_plan.py`**: it walks the FK graph in `SQLModel.metadata` and
+  fails if a table that can reach `workspace` is neither in `PURGE_PLAN` nor in
+  `PURGE_EXEMPT` with a reason — so a table added later cannot silently leak.
+  Object keys are collected BEFORE the rows are deleted (they are derived from
+  run/build ids). `auditlog` is exempt on purpose.
+  Retention is per project now: `data_policy.retention_days` combined with
+  `RUN_RETENTION_DAYS`, **shorter window wins** (instance = ceiling), and
+  0/absent/negative all mean "keep forever" — never delete-now.
+  New sweeps: `purge_derived_records` (`DERIVED_RETENTION_DAYS`; always keeps the
+  newest revision per case) and `purge_orphaned_artifacts`
+  (`ARTIFACT_ORPHAN_SWEEP_ENABLED`, **report-only by default** — a sweep keyed on
+  "the DB doesn't mention this" deletes live artifacts if its query is wrong).
+  `storage.delete_prefix` is paginated; the old code silently stopped at
+  `list_objects_v2`'s 1000-key cap.
+  Erasure (`DELETE /api/auth/me`) returns three parts — erased / retained
+  de-identified / retained with reason. Authorship columns keep pointing at the
+  scrubbed row (they are the customer's records; deleting them would destroy a
+  workspace's test history because an employee left), and the audit trail is
+  retained under legal obligation. The erasure audit row deliberately omits the
+  email.
+
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of

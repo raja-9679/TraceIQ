@@ -229,20 +229,61 @@ class MinioClient:
             ExpiresIn=expiration,
         )
 
+    def delete_prefix(self, prefix: str) -> int:
+        """Delete every object under `prefix`, returning how many were removed.
+
+        Paginated deliberately: `list_objects_v2` caps at 1000 keys per call, so
+        the unpaginated version silently left the rest behind on any run with a
+        lot of screenshots — a deletion that reports success and does most of the
+        job is worse than one that fails.
+        """
+        if not prefix:
+            return 0
+        deleted = 0
+        token = None
+        while True:
+            kwargs = {"Bucket": self.bucket, "Prefix": prefix}
+            if token:
+                kwargs["ContinuationToken"] = token
+            listing = self.s3.list_objects_v2(**kwargs)
+            keys = [{"Key": obj["Key"]} for obj in listing.get("Contents", [])]
+            if keys:
+                # delete_objects also caps at 1000 per request.
+                for chunk_start in range(0, len(keys), 1000):
+                    chunk = keys[chunk_start:chunk_start + 1000]
+                    self.s3.delete_objects(Bucket=self.bucket,
+                                           Delete={"Objects": chunk})
+                    deleted += len(chunk)
+            if not listing.get("IsTruncated"):
+                break
+            token = listing.get("NextContinuationToken")
+            if not token:
+                break
+        return deleted
+
+    def list_prefixes(self, prefix: str, delimiter: str = "/") -> list:
+        """Immediate 'directory' names under `prefix` (for orphan detection)."""
+        out = []
+        token = None
+        while True:
+            kwargs = {"Bucket": self.bucket, "Prefix": prefix, "Delimiter": delimiter}
+            if token:
+                kwargs["ContinuationToken"] = token
+            listing = self.s3.list_objects_v2(**kwargs)
+            out.extend(cp["Prefix"] for cp in listing.get("CommonPrefixes", []))
+            if not listing.get("IsTruncated"):
+                break
+            token = listing.get("NextContinuationToken")
+            if not token:
+                break
+        return out
+
     def delete_run_artifacts(self, run_id: int):
         """Delete all artifacts associated with a run ID (prefix match)"""
         try:
-            prefix = f"runs/{run_id}/"
-            # List all objects with the prefix
-            objects_to_delete = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
-            
-            if 'Contents' in objects_to_delete:
-                delete_keys = [{'Key': obj['Key']} for obj in objects_to_delete['Contents']]
-                self.s3.delete_objects(
-                    Bucket=self.bucket,
-                    Delete={'Objects': delete_keys}
-                )
-                print(f"Deleted {len(delete_keys)} artifacts for run {run_id}")
+            count = self.delete_prefix(f"runs/{run_id}/")
+            if count:
+                print(f"Deleted {count} artifacts for run {run_id}")
         except Exception as e:
             print(f"Failed to delete artifacts for run {run_id}: {e}")
 

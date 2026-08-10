@@ -759,33 +759,31 @@ async def verify_email(
 
 @router.delete("/me")
 async def delete_my_account(
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Self-serve account deactivation (GDPR).
+    """Self-serve erasure (GDPR Art. 17) — see app/services/erasure.py.
 
-    Deactivates the account, scrubs PII from the email/name, and revokes all
-    refresh tokens. Kept as a soft delete (not a hard row delete) because the
-    user is referenced as owner/creator across tenants, suites, cases and runs;
-    hard deletion would orphan or cascade those. The account can no longer log
-    in and its personal data is removed.
+    This used to scrub the `users` row and revoke refresh tokens, and nothing
+    else: the account tokens, MFA secrets and recovery codes, notification
+    settings and API keys the person had created all survived. It now returns a
+    report of what was erased, what was retained de-identified (authorship on the
+    workspace's own test records) and what was retained deliberately (the
+    append-only audit trail, under the legal-obligation basis). A
+    data-protection officer needs a defensible statement of scope, not a promise
+    that nothing survived anywhere.
+
+    Still a soft delete: the row is referenced as owner/creator across tenants,
+    suites, cases and runs, so a hard delete would either cascade into a
+    customer's test history or leave dangling references. What matters is that
+    the row no longer identifies anyone.
     """
-    now = datetime.utcnow()
-    # Scrub PII, keep a stable non-identifying placeholder unique per user.
-    current_user.email = f"deleted+{current_user.id}@deleted.traceiq.local"
-    current_user.full_name = "Deleted User"
-    current_user.hashed_password = get_password_hash(secrets.token_urlsafe(32))
-    current_user.is_active = False
-    session.add(current_user)
+    from app.services.erasure import erase_user
 
-    fam = await session.exec(
-        select(RefreshToken).where(
-            RefreshToken.user_id == current_user.id, RefreshToken.revoked_at.is_(None)))
-    for tok in fam.all():
-        tok.revoked_at = now
-        session.add(tok)
+    report = await erase_user(session, current_user, request=request)
     await session.commit()
-    return {"status": "ok", "message": "Account deleted"}
+    return {"status": "ok", "message": "Account erased", **report.as_dict()}
 
 
 # ---------------------------------------------------------------------------

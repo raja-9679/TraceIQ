@@ -25,8 +25,8 @@ map of the current tree.
 | F4 — separation of duties | done (2026-08-10) |
 | F5 — roles cleanup | done (2026-08-10) |
 | F3 — SAML 2.0 | deferred — see SCOPE_NOTES.md |
-| G — deletion/residency | **next** |
-| H — operability | not started |
+| G — deletion/residency (G1–G4) | done (2026-08-10) |
+| H — operability | **next** |
 | I — proving it | partial: CI runs the full unit suite + a new engine suite |
 
 What exists now that did not before:
@@ -524,29 +524,78 @@ which is what a QSA needs.
 
 ---
 
-## Workstream G — Deletion and residency
+## Workstream G — Deletion and residency — DONE (2026-08-10)
 
-- **G1. Real workspace/tenant purge.** `workspace_service.delete_workspace`
-  (`:538-556`) deletes teams and nulls audit rows — it does **not** delete
-  projects, suites, cases, runs, results, secrets, personas, baselines, app
-  builds, or any MinIO object. Build a cascading async purge behind a typed
-  confirmation.
-- **G2. Per-project retention.** `purge_old_runs`
-  (`tasks/cleanup_tasks.py:70-127`) reads only the global
-  `RUN_RETENTION_DAYS` (`:80`) and is **disabled by default** (`:80-82`).
-  `Plan.limits.retention_days` and `settings_models.py:45-46` `retention_period`
-  / `auto_cleanup` are scaffolding nothing reads. Wire B1's `retention_days`
-  through, and add retention for `AuditLog`, `TestCaseRevision`,
-  `LLMUsageEvent`, and orphaned MinIO prefixes (only `runs/{id}/` is ever
-  deleted — `baselines/` and app binaries leak forever).
-- **G3. Erasure that actually erases.** `POST` erasure (`api/auth.py:725-753`)
-  scrubs the `users` row only. The same person's PII survives in
-  `AuditLog.changes`, `TestCaseRevision.snapshot`, `TestRun.execution_log`, and
-  every stored artifact.
-- **G4. Residency — don't build multi-region.** There is no `region` column
-  anywhere and one shared Postgres/Redis/bucket, so per-tenant routing is a
-  rewrite. The correct answer is a documented deployment topology: one
-  self-hosted instance per jurisdiction. Document it rather than engineering it.
+- **G1. Real workspace/tenant purge — done.** `app/services/purge.py`.
+  `delete_workspace` deleted the workspace row and its teams; 39 tables of
+  customer data and every MinIO object survived as orphans — invisible through
+  the API, still there, still the wrong answer to "have you deleted our data?".
+  `DELETE /api/workspaces/{id}` now purges the whole tree behind a typed
+  confirmation (`confirm=<workspace name>`), with `dry_run=true` reporting what
+  would go, and returns per-table row counts.
+
+  The guarantee is not the code, it is
+  `tests/test_purge_plan.py`: it walks the foreign-key graph in
+  `SQLModel.metadata` and **fails if any table that can reach `workspace` is
+  neither in `PURGE_PLAN` nor in `PURGE_EXEMPT` with a stated reason.** A
+  hand-written list would have rotted on the next feature; this cannot. Object
+  keys are collected *before* the rows are deleted — they are derived from run
+  and build ids, so the ordering is the difference between a purge and a purge
+  that leaves every video in the bucket.
+
+  `auditlog` is exempt, deliberately: append-only by trigger, no FK to
+  workspace, and its whole value is outliving what it describes.
+
+- **G2. Per-project retention — done.** `app/services/retention.py`.
+  `Project.data_policy.retention_days` was scaffolding nothing read, so a project
+  whose data-policy screen said "keep runs 30 days" kept them forever — the screen
+  was a false statement to whoever read it in a security review. `purge_old_runs`
+  now resolves the window per project (once per project, not per run) and the
+  **shorter** of project/instance always wins: an instance-wide setting is a
+  ceiling, not a suggestion. 0 / absent / unparseable means keep forever, never
+  delete-now — a negative value would put the cutoff in the future and empty the
+  table, so it is treated as unset.
+
+  Two new sweeps: `purge_derived_records` (`DERIVED_RETENTION_DAYS`) expires
+  `TestCaseRevision` snapshots, `LLMUsageEvent` rows and orphaned `FlakeRecord`s
+  — always keeping the newest revision per case so restore still works — and
+  `purge_orphaned_artifacts` (`ARTIFACT_ORPHAN_SWEEP_ENABLED`, **report-only by
+  default**) deletes objects whose owning row is gone. Only `runs/` was ever
+  cleaned; `baselines/` and app binaries leaked permanently.
+  `storage.delete_prefix` is now paginated — the old code capped at
+  `list_objects_v2`'s 1000 keys and silently left the rest, which is worse than
+  failing.
+
+- **G3. Erasure that actually erases — done.** `app/services/erasure.py`.
+  `DELETE /api/auth/me` scrubbed the `users` row and revoked refresh tokens;
+  account tokens, MFA secret and recovery codes, notification settings and the
+  API keys the person had minted all survived. Now: those are erased, the SCIM
+  external id is cleared (otherwise the next directory sync recognises it and
+  resurrects the account), and their API keys are **revoked** — a live credential
+  belonging to a deleted human is a standing liability with nobody left to rotate
+  it.
+
+  The endpoint returns a three-part report: erased / retained de-identified /
+  retained with reason. Authorship columns (`TestCase.created_by_id`,
+  `TestRun.user_id`, …) are the *customer's* business records and stay pointing
+  at the scrubbed row — the id survives, the identity does not. Deleting them
+  would destroy a customer's test history because an employee left, which would
+  be a worse bug than the one being fixed. The audit trail is retained under the
+  legal-obligation basis and bounded by `AUDIT_RETENTION_DAYS`; the erasure
+  record itself deliberately does not contain the email.
+
+  A data-protection officer needs a defensible statement of scope, not a promise
+  that nothing survived anywhere.
+
+- **G4. Residency — documented, not engineered.** `docs/DATA_RESIDENCY.md`.
+  One instance per jurisdiction, stated as the supported topology with its
+  trade-offs (account per instance, no cross-region reporting) rather than
+  pretending per-tenant routing exists. Also documents that hosted-LLM failure
+  analysis leaves the instance, and how to keep it inside the network.
+
+Tests: 22 unit (purge completeness) + 14 unit (retention selection) + 11 live
+(purge execution, audit survival, chain still verifies) + 16 live (erasure
+boundary in both directions).
 
 ---
 

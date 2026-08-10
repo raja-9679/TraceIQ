@@ -37,6 +37,22 @@ PGPASS_="$(docker exec "$PGC" printenv POSTGRES_PASSWORD)"
 NET="$(docker inspect "$PGC" -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')"
 URL="postgresql+asyncpg://${PGUSER_}:${PGPASS_}@${PGC}:5432/${SCRATCH}"
 
+# Point the object store at the real MinIO with a SCRATCH bucket. Not for
+# coverage — for speed: code that deletes artifacts (the purge, retention) hits
+# an unreachable endpoint otherwise and boto3's retry/backoff turned a 10-second
+# test file into two minutes. A reachable endpoint that answers NoSuchBucket
+# fails immediately.
+MINIOC="${TRACEIQ_MINIO_CONTAINER:-traceiq-minio-1}"
+MINIO_EP=""; MINIO_AK="scratch"; MINIO_SK="scratch"
+if docker inspect "$MINIOC" >/dev/null 2>&1; then
+  MINIO_EP="${MINIOC}:9000"
+  MINIO_AK="$(docker exec "$MINIOC" printenv MINIO_ROOT_USER 2>/dev/null || echo scratch)"
+  MINIO_SK="$(docker exec "$MINIOC" printenv MINIO_ROOT_PASSWORD 2>/dev/null || echo scratch)"
+else
+  echo "note: '$MINIOC' not running — artifact-deletion paths will report errors."
+  MINIO_EP="127.0.0.1:9000"
+fi
+
 cleanup() {
   [ -n "${KEEP_DB:-}" ] && { echo "Keeping scratch database '$SCRATCH'."; return; }
   docker exec "$PGC" psql -U "$PGUSER_" -d postgres -q \
@@ -57,8 +73,9 @@ run() {
     -e DATABASE_URL="$URL" \
     -e CELERY_BROKER_URL=redis://localhost:6379/0 \
     -e CELERY_RESULT_BACKEND=redis://localhost:6379/0 \
-    -e MINIO_ENDPOINT=localhost:9000 \
-    -e MINIO_ACCESS_KEY=scratch -e MINIO_SECRET_KEY=scratch \
+    -e MINIO_ENDPOINT="$MINIO_EP" \
+    -e MINIO_ACCESS_KEY="$MINIO_AK" -e MINIO_SECRET_KEY="$MINIO_SK" \
+    -e MINIO_BUCKET_NAME="${TRACEIQ_SCRATCH_BUCKET:-traceiq-scratch-tests}" \
     -e SECRET_KEY=test-only-secret-value-not-real \
     -e TRACEIQ_LIVE_DB=1 \
     "$IMAGE" "${@:2}"
