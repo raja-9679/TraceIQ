@@ -29,6 +29,7 @@ from app.api import observability as observability_api
 from app.api import onboarding as onboarding_api
 from app.api import instance_settings as instance_settings_api
 from app.api import llm_providers as llm_providers_api
+from app.api import scim as scim_api
 from app.core.config import settings as core_settings
 import logging
 
@@ -65,6 +66,16 @@ app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+
+# SCIM errors must come back in SCIM's own envelope with SCIM's own status —
+# identity providers branch on both (a 409 without scimType=uniqueness makes
+# Okta retry a create forever), so they cannot go through FastAPI's default
+# HTTPException shape.
+@app.exception_handler(scim_api.ScimError)
+async def _scim_error_handler(request: Request, exc: scim_api.ScimError):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=exc.status, content=exc.to_dict())
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[str(origin)
@@ -84,6 +95,12 @@ app.include_router(projects.router, prefix="/api", tags=["projects"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(instance_settings_api.router, prefix="/api", tags=["instance-settings"])
 app.include_router(llm_providers_api.router, prefix="/api", tags=["llm-providers"])
+# SCIM is mounted twice on purpose: the shipped nginx only proxies /api/, so a
+# compose or all-in-one deployment can only reach the /api variant from outside,
+# while a split deployment points the IdP straight at the backend and uses the
+# bare path. Both resolve to the same handlers.
+app.include_router(scim_api.router, tags=["scim"])
+app.include_router(scim_api.router, prefix="/api", tags=["scim"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(api_keys.router, prefix="/api", tags=["api-keys"])

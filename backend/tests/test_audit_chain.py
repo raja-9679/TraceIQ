@@ -175,3 +175,29 @@ def test_rows_without_hashes_are_treated_as_unverifiable_not_valid():
     # Rows written before chaining existed must not be reported as verified.
     legacy = [dict(_entry(), row_hash=None, prev_hash=None)]
     assert verify_chain(legacy)[0] is False
+
+
+# --- Actor attribution -------------------------------------------------------
+#
+# `_actor_from` derives the actor from an AuthPrincipal, which covers users,
+# API keys and agents. SCIM (workstream F2) introduced a fourth kind: a machine
+# acting on the identity provider's behalf with no TraceIQ principal at all.
+# Recording those as actor_type="system" would make "who removed this person's
+# access" unanswerable, which is the first question in any offboarding review.
+
+def test_explicit_actor_overrides_the_derived_one():
+    from app.services.audit import build_entry
+
+    entry = build_entry(
+        session=None, entity_type="user", entity_id=7, action="scim_deactivate",
+        actor_type="service", actor_label="scim (identity provider)")
+    assert entry.actor_type == "service"
+    assert entry.actor_label == "scim (identity provider)"
+
+
+def test_derived_actor_still_wins_when_no_override_is_given():
+    from app.services.audit import build_entry
+
+    entry = build_entry(session=None, entity_type="case", entity_id=1,
+                        action="update", user_id=3)
+    assert entry.actor_type == "user"

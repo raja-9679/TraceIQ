@@ -120,6 +120,8 @@ def build_entry(
     principal: Any = None,
     request: Any = None,
     redact: bool = True,
+    actor_type: Optional[str] = None,
+    actor_label: Optional[str] = None,
 ) -> Any:
     """Construct a chained `AuditLog` row. Caller adds it and commits.
 
@@ -134,6 +136,15 @@ def build_entry(
         changes = redact_audit_changes(changes)
 
     actor = _actor_from(principal, user_id)
+    # Explicit override for actors that have no TraceIQ principal — SCIM acting
+    # on the identity provider's behalf is the first of these. Recorded as
+    # "system" they would be indistinguishable from a cron task, and
+    # "who removed this person's access" is the first question in an
+    # offboarding review.
+    if actor_type:
+        actor["actor_type"] = actor_type
+    if actor_label:
+        actor["actor_label"] = actor_label
     context = _request_context(request)
     timestamp = datetime.utcnow()
 

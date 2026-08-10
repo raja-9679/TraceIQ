@@ -157,6 +157,47 @@ A team named in the map that doesn't exist is the one exception: it logs a
 warning and the user simply doesn't get that access. Refusing the login would
 take the whole organisation offline because somebody renamed a team.
 
+## SCIM 2.0 provisioning and deprovisioning
+
+**Instance (Admin) → Federated provisioning → SCIM bearer token.**
+
+SSO automates only the joining half. Without SCIM, someone removed from Okta or
+Entra keeps their TraceIQ account, and a live refresh token keeps minting
+sessions for them. SCIM is what closes that.
+
+**Base URL:** `https://your-traceiq/api/scim/v2`
+**Auth:** HTTP header token / OAuth bearer token — the value of `SCIM_TOKEN`.
+
+Blank `SCIM_TOKEN` disables the endpoints entirely (they answer 404, so an
+unconfigured instance is not an open provisioning API). SCIM provisions into
+`FEDERATED_WORKSPACE_ID` and refuses to run without it.
+
+| Operation | Behaviour |
+|---|---|
+| `POST /Users` | Creates the account in the target workspace with `FEDERATED_DEFAULT_ROLE`. An email that already exists is **adopted** (linked to its `externalId`), not rejected — so enabling SCIM on an instance with existing users works. |
+| `PATCH /Users/{id}` `active:false` | Deactivates **and revokes every live refresh token**. |
+| `DELETE /Users/{id}` | Same as `active:false`. It never destroys the row — see below. |
+| `PATCH /Users/{id}` `active:true` | Reactivates. |
+| `GET /Users?filter=userName eq "…"` | The lookup Okta and Entra do before creating. A miss is `200` with zero results, never `404`. |
+| `POST /Groups` | Creates (or adopts) a **team** in the target workspace. |
+| `PATCH /Groups/{id}` members | Adds/removes team membership. Teams carry project access, so this is how SCIM-provisioned users get to see projects. |
+| `DELETE /Groups/{id}` | Deletes the team only. Members keep their accounts. |
+
+Everything is scoped to the target workspace: a SCIM credential cannot read or
+mutate accounts or teams outside it.
+
+**Why DELETE deactivates instead of deleting.** IdPs issue DELETE routinely
+during offboarding, and a hard delete would orphan runs, results and audit
+history irreversibly. Deactivation is immediate (`is_active` is re-checked on
+every request, in both the JWT and API-key paths), reversible, and recorded in
+the append-only audit log as `scim_deactivate` with the identity provider as
+the actor — which is what an auditor asks for.
+
+**Group membership vs. group→role mapping.** SCIM Groups and
+`FEDERATED_GROUP_TEAM_MAP` both manage team membership and *will* fight each
+other if you configure both for the same team. Pick one: SCIM Groups if the IdP
+pushes membership, the group map if TraceIQ pulls it from the login claim.
+
 ## SSO-only mode (disable password login)
 
 **Instance (Admin) → Single sign-on → "Disable password login (SSO only)"**.
