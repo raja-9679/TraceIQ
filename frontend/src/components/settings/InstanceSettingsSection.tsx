@@ -32,6 +32,7 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'storage', title: 'Storage (S3 / MinIO)', description: 'Where artifacts (traces, videos, screenshots) live.' },
     { id: 'sso', title: 'Single sign-on (OIDC)', description: 'Optional. Works with Entra ID, Okta, Google Workspace, Keycloak — any OIDC IdP. Instance admins always keep password login as break-glass, so a bad value here cannot lock you out.' },
     { id: 'ldap', title: 'LDAP / Active Directory', description: 'Optional corporate login for on-prem AD. TraceIQ binds as the logging-in user — no service account, no password sync. See docs/ENTERPRISE_AUTH.md.' },
+    { id: 'federation', title: 'Federated provisioning (SSO + LDAP)', description: 'Where users who sign in through your IdP land. The default gives every one of them their own tenant, which is right for a single user and wrong for an organisation — set a target workspace before rolling SSO out to a team. See docs/ENTERPRISE_AUTH.md.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
 ];
 

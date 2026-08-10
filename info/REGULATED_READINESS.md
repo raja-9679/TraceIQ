@@ -378,14 +378,46 @@ which is what a QSA needs.
 
 ## Workstream F — Identity (~6 weeks)
 
-- **F1. The OIDC tenant bug — fix before anything else here.** SSO JIT
-  (`api/auth.py:942`) and LDAP JIT (`:834`) both call
-  `provision_standalone_user` (`services/user_provisioning.py:23-76`), which
-  creates a **new Tenant** (`:51`) and grants the user **Tenant Admin**
-  (`:55-58`). Enabling SSO for a 500-person org produces 500 isolated,
-  self-administered tenants. Add `provision_federated_user()` that joins a
-  configured target tenant and workspace with a default role, plus IdP
-  group → role mapping. This is a functional blocker, not a compliance one.
+- **F1. The OIDC tenant bug — DONE.** SSO JIT and LDAP JIT both called
+  `provision_standalone_user`, which creates a **new Tenant** and grants the
+  user **Tenant Admin** of it, so enabling SSO for a 500-person org produced
+  500 isolated, self-administered tenants. Both paths now go through
+  `provision_federated_user()` / `sync_federated_access()`, governed by
+  `app/services/federation.py` (instance settings group `federation`):
+
+  - `FEDERATED_PROVISIONING_MODE` — `standalone` (the legacy behaviour, kept as
+    the **default** so existing installs upgrade unchanged) / `workspace` (join
+    `FEDERATED_WORKSPACE_ID` with `FEDERATED_DEFAULT_ROLE`, no tenant of their
+    own) / `deny` (no JIT provisioning at all — 403 for an unknown email; the
+    mode a SCIM-driven deployment will want once F2 lands).
+  - `FEDERATED_GROUP_ROLE_MAP` / `FEDERATED_GROUP_TEAM_MAP` — IdP group
+    mapping, **re-evaluated on every login** so losing a group in the IdP
+    removes the access here. Create-only mapping would look authoritative and
+    never revoke anything. With no role map configured the role is never
+    overwritten, so an in-app promotion survives.
+  - Group→role is restricted to `Workspace Admin` / `Workspace Member`.
+    Directory groups are frequently self-service, so letting one name
+    `Tenant Admin` would hand out a privilege-escalation path.
+  - Misconfiguration **fails closed** (503), never a silent fall back to
+    standalone — that would recreate the bug in a deployment whose admin
+    believes it is fixed. `PUT /api/admin/instance-settings` validates the
+    policy on save, including that the target workspace exists.
+  - OIDC groups come from `OIDC_GROUPS_CLAIM` (default `groups`); LDAP reads
+    `memberOf` and reduces each DN to its CN. Also fixed alongside: the SSO
+    callback issued tokens for a **deactivated** account (the principal paths
+    re-check `is_active` per request, so the window was small, but it was wrong).
+  - Tests: 35 unit (`tests/test_federated_provisioning.py`) + 21 against a real
+    Postgres (`tests/integration/test_federated_provisioning_db.py`, run via
+    `backend/run-tests-live.sh`). Verified end to end over HTTP against a mock
+    OIDC provider: provisioning into the target workspace with no new tenant,
+    group→role and group→team, demotion on group removal, `deny` → 403,
+    vanished workspace → 503 with no account created, and `standalone`
+    unchanged. **Documented in `docs/ENTERPRISE_AUTH.md`.**
+
+  Not covered, deliberately: no UI for picking the workspace from a dropdown
+  (the settings screen is a flat key/value form), and no migration of the
+  tenants an existing SSO deployment has already accumulated — merging tenants
+  is a data-surgery problem, not a provisioning one.
 - **F2. SCIM 2.0.** `/scim/v2/Users` and `/Groups`, with PATCH `active:false`
   mapping to deactivation. Foundation is good: `is_active` is already enforced
   in both the JWT and API-key principal paths, so deprovision bites immediately.

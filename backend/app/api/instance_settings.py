@@ -126,6 +126,24 @@ async def update_instance_settings(
                 status_code=400,
                 detail="Configure and save SSO (OIDC) before disabling password login")
 
+    # Federation settings fail closed at login time, so a typo here would take
+    # every SSO/LDAP login down until someone noticed. Check the proposed values
+    # against the same rules the login path applies, while the admin is still
+    # looking at the form.
+    from app.services.federation import (
+        MODE_WORKSPACE, FederationConfigError, validate_proposed)
+    try:
+        policy = validate_proposed(body.values)
+    except FederationConfigError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if policy and policy.mode == MODE_WORKSPACE:
+        from app.models import Workspace
+        if await session.get(Workspace, policy.workspace_id) is None:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Workspace {policy.workspace_id} does not exist — federated "
+                       "users would have nowhere to land")
+
     for key, value in body.values.items():
         d = insvc.REGISTRY[key]
         row = (await session.exec(

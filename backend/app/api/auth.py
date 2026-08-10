@@ -1,5 +1,6 @@
 from typing import Any
 from datetime import datetime, timedelta
+import logging
 import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordRequestForm
@@ -29,6 +30,8 @@ from app.core import totp
 from app.core.secrets import encrypt_secret, decrypt_secret
 from jose import jwt, JWTError
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -823,6 +826,58 @@ def build_authorize_url(cfg: dict, state: str) -> str:
     return f"{cfg['authorization_endpoint']}?{urlencode(params)}"
 
 
+async def _provision_federated(session: AsyncSession, *, email: str, full_name: str,
+                               groups: list, source: str) -> User:
+    """JIT-provision an IdP-authenticated user, per the instance's federation
+    policy (see app/services/federation.py).
+
+    Shared by the OIDC callback and LDAP login so both honour the same policy —
+    they used to call provision_standalone_user directly, which gave every
+    federated user their own tenant and made them its Tenant Admin.
+    """
+    from app.services.federation import FederationConfigError
+    from app.services.user_provisioning import (
+        FederatedProvisioningDenied, provision_federated_user)
+
+    try:
+        return await provision_federated_user(
+            session, email=email, full_name=full_name,
+            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+            groups=groups, is_verified=True)
+    except FederatedProvisioningDenied as exc:
+        logger.info("[%s] refused unprovisioned login for %s: %s", source, email, exc)
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have a TraceIQ account on this instance. Ask an "
+                   "administrator to invite you.")
+    except FederationConfigError as exc:
+        # Fail closed and say so. Falling back to a tenant per user here is what
+        # F1 exists to prevent, and a silent fallback would hide the misconfig
+        # until someone noticed 500 tenants.
+        logger.error("[%s] federation is misconfigured, refusing login: %s", source, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Single sign-on is misconfigured on this instance — contact your "
+                   "administrator.")
+
+
+async def _sync_federated(session: AsyncSession, user: User, groups: list,
+                          source: str) -> None:
+    """Re-apply group→role/team mapping on an existing user's login, so removing
+    someone from a group in the IdP actually removes their access here."""
+    from app.services.federation import FederationConfigError
+    from app.services.user_provisioning import sync_federated_access
+
+    try:
+        await sync_federated_access(session, user, groups)
+    except FederationConfigError as exc:
+        logger.error("[%s] federation is misconfigured, refusing login: %s", source, exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Single sign-on is misconfigured on this instance — contact your "
+                   "administrator.")
+
+
 class LdapLoginRequest(BaseModel):
     username: str
     password: str
@@ -862,14 +917,11 @@ async def ldap_login(request: Request, body: LdapLoginRequest,
 
     user = (await session.exec(select(User).where(User.email == identity.email))).first()
     if not user:
-        from app.services.user_provisioning import provision_standalone_user
-        user = await provision_standalone_user(
-            session,
-            email=identity.email,
-            full_name=identity.full_name,
-            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
-            is_verified=True,
-        )
+        user = await _provision_federated(
+            session, email=identity.email, full_name=identity.full_name,
+            groups=identity.groups or [], source="ldap")
+    else:
+        await _sync_federated(session, user, identity.groups or [], source="ldap")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="This account has been deactivated")
 
@@ -965,19 +1017,30 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
         if email.rsplit("@", 1)[-1] not in domains:
             raise HTTPException(status_code=403, detail="This email domain is not permitted to sign in")
 
+    # IdP groups, when the deployment maps them onto roles/teams. The claim name
+    # varies by provider (Okta/Keycloak use `groups`, some Entra setups `roles`).
+    from app.services.federation import normalize_groups
+    groups_claim = str(_effective("OIDC_GROUPS_CLAIM") or "groups")
+    groups = normalize_groups(info.get(groups_claim))
+
     user = (await session.exec(select(User).where(User.email == email))).first()
     if not user:
-        # JIT provisioning through the shared standalone path, so SSO users
-        # land with a tenant + workspace instead of an empty account. The
-        # random password is unusable — they authenticate via the IdP.
-        from app.services.user_provisioning import provision_standalone_user
-        user = await provision_standalone_user(
-            session,
-            email=email,
+        # JIT provisioning through the federation policy, so SSO users land
+        # where the operator said they should. The random password is unusable —
+        # they authenticate via the IdP.
+        user = await _provision_federated(
+            session, email=email,
             full_name=info.get("name") or email.split("@")[0],
-            hashed_password=get_password_hash(secrets.token_urlsafe(32)),
-            is_verified=True,
-        )
+            groups=groups, source="sso")
+    else:
+        await _sync_federated(session, user, groups, source="sso")
+
+    # A deactivated account must not get a session just because the IdP still
+    # authenticates it. The JWT and API-key principal paths already re-check
+    # is_active on every request, so this closes the window rather than opening
+    # one, but issuing the token at all was wrong.
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been deactivated")
 
     tokens = await _issue_tokens(user, request, session, method="sso_oidc")
     frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})

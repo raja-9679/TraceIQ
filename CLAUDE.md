@@ -79,6 +79,13 @@ celery -A app.core.celery_app beat --loglevel=info
 ./run-tests.sh tests/test_redaction.py -q
 pytest
 
+# Tests that need a real Postgres. Creates a SCRATCH database inside the
+# running postgres container, bootstraps the schema, runs pytest, drops it.
+# tests/integration/ modules skip themselves unless TRACEIQ_LIVE_DB is set,
+# which this script does. Not in CI yet (no Postgres service — workstream I1).
+./run-tests-live.sh
+./run-tests-live.sh tests/integration/test_federated_provisioning_db.py -q
+
 # Run a single test file (tests live at tests/ root, tests/e2e/, or tests/integration/)
 pytest tests/test_stale_run_detection.py
 pytest tests/e2e/test_parallel_execution.py
@@ -288,6 +295,30 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   LDAP login (`app/services/ldap_auth.py`, ldap3, bind-as-user, instance
   settings group `ldap`) at `POST /api/auth/ldap/login` — backend image
   rebuild needed for the ldap3 dep.
+  **Federated provisioning (workstream F1)** — `app/services/federation.py`
+  decides where an IdP-authenticated user lands, replacing the old
+  "SSO/LDAP call `provision_standalone_user`" behaviour that gave every
+  federated user their own Tenant *and made them its Tenant Admin* (SSO for a
+  500-person org produced 500 isolated tenants). Instance settings group
+  `federation`: `FEDERATED_PROVISIONING_MODE` =
+  `standalone` (legacy, still the DEFAULT so existing installs are unchanged) |
+  `workspace` (join `FEDERATED_WORKSPACE_ID`, no tenant of their own) |
+  `deny` (no JIT at all — 403 for unknown emails), plus
+  `FEDERATED_DEFAULT_ROLE` and `FEDERATED_GROUP_{ROLE,TEAM}_MAP`.
+  Two non-obvious commitments: **misconfiguration fails closed** (503, never a
+  silent fall back to standalone — that would recreate the bug in a deployment
+  that believes it is fixed), and **group maps are re-applied on EVERY login**
+  via `sync_federated_access`, so losing an IdP group actually removes the role.
+  With no role map configured the role is never overwritten, so an in-app
+  promotion survives. Group→role is restricted to `Workspace Admin`/`Workspace
+  Member` — directory groups are often self-service, so allowing `Tenant Admin`
+  would be a privilege-escalation path. Teams are the reason group→team exists:
+  `Workspace Member` carries no project access by design.
+  Also validated at save time in `PUT /api/admin/instance-settings` (including
+  that the workspace exists) so a typo surfaces on the form, not at 9am.
+  OIDC groups come from `OIDC_GROUPS_CLAIM` (default `groups`); LDAP from
+  `memberOf`, DN-reduced to CNs. The SSO callback now also refuses a
+  deactivated account instead of issuing tokens for it.
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
   0.2.0, FastMCP, `mcp>=1.10,<2`): 51 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio

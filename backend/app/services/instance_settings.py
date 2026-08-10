@@ -114,6 +114,38 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="Disable password login (SSO only)",
                description="requires a saved OIDC config; instance admins can still "
                            "use password login as break-glass so you cannot lock yourself out"),
+    SettingDef("OIDC_GROUPS_CLAIM", "sso", label="Groups claim (optional)",
+               description="userinfo claim carrying the user's IdP groups — 'groups' "
+                           "for Okta/Keycloak, 'roles' for some Entra setups. Only "
+                           "needed if you map groups to TraceIQ roles or teams"),
+    # --- Federated provisioning (shared by SSO and LDAP) ---
+    SettingDef("FEDERATED_PROVISIONING_MODE", "federation",
+               label="Where federated users land",
+               description="standalone = every SSO/LDAP user gets their own tenant "
+                           "(the legacy default — wrong for an organisation, it makes "
+                           "one isolated tenant per employee); workspace = they join "
+                           "the workspace below; deny = no just-in-time provisioning, "
+                           "only invited or SCIM-provisioned accounts may sign in"),
+    SettingDef("FEDERATED_WORKSPACE_ID", "federation", type="int",
+               label="Target workspace id",
+               description="required in 'workspace' mode; its tenant is derived from "
+                           "the workspace, so the two can never disagree"),
+    SettingDef("FEDERATED_DEFAULT_ROLE", "federation", label="Default workspace role",
+               description="'Workspace Member' (default) or 'Workspace Admin'. Members "
+                           "get no project access by design — grant it via teams, which "
+                           "is what the group→team map below is for"),
+    SettingDef("FEDERATED_GROUP_ROLE_MAP", "federation", label="IdP group → role",
+               description="comma-separated 'group=Role' pairs, e.g. "
+                           "traceiq-admins=Workspace Admin,qa=Workspace Member. "
+                           "Re-evaluated on EVERY login, so removing a group in the "
+                           "IdP removes the role here. Only 'Workspace Admin' and "
+                           "'Workspace Member' are accepted — a directory group "
+                           "cannot grant tenant administration"),
+    SettingDef("FEDERATED_GROUP_TEAM_MAP", "federation", label="IdP group → team",
+               description="comma-separated 'group=Team name' pairs. Teams carry "
+                           "project access, so this is how federated users get to "
+                           "see projects. Teams must already exist in the target "
+                           "workspace. Also re-evaluated on every login"),
     # --- LDAP / on-prem Active Directory ---
     SettingDef("LDAP_SERVER_URL", "ldap", label="Server URL",
                description="ldaps://dc01.corp.example.com:636 — prefer ldaps; plain "
