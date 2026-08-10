@@ -20,7 +20,9 @@ map of the current tree.
 | B — capture policy | done |
 | D — encryption at rest + TLS + key rotation | done |
 | E — audit trail (E1–E5) | done |
-| F — identity (SCIM/SAML/tenant bug) | **next** |
+| F1 — federated provisioning (the tenant bug) | done (2026-08-10) |
+| F2 — SCIM 2.0 + deprovisioning | **next** |
+| F3–F5 — SAML, separation of duties, roles | not started |
 | G — deletion/residency | not started |
 | H — operability | not started |
 | I — proving it | partial: CI runs the full unit suite + a new engine suite |
