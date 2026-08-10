@@ -146,6 +146,13 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "project access, so this is how federated users get to "
                            "see projects. Teams must already exist in the target "
                            "workspace. Also re-evaluated on every login"),
+    SettingDef("SCIM_TOKEN", "federation", secret=True,
+               label="SCIM bearer token",
+               description="paste this into Okta/Entra as the provisioning API "
+                           "token. Blank disables the /scim/v2 endpoints entirely "
+                           "(they answer 404). SCIM provisions into the target "
+                           "workspace above and needs it set. Deactivating a user "
+                           "via SCIM also revokes their live refresh tokens"),
     # --- LDAP / on-prem Active Directory ---
     SettingDef("LDAP_SERVER_URL", "ldap", label="Server URL",
                description="ldaps://dc01.corp.example.com:636 — prefer ldaps; plain "

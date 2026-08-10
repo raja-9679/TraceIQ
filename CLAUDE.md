@@ -319,6 +319,30 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   OIDC groups come from `OIDC_GROUPS_CLAIM` (default `groups`); LDAP from
   `memberOf`, DN-reduced to CNs. The SSO callback now also refuses a
   deactivated account instead of issuing tokens for it.
+  **SCIM 2.0 (workstream F2)** — `app/api/scim.py` + `app/services/scim.py`
+  (pure wire-format mapping), migration `d9e0f1a2b3c4` adds
+  `users.scim_external_id` / `team.scim_external_id`. Mounted at BOTH
+  `/scim/v2/...` and `/api/scim/v2/...` on purpose: the shipped nginx only
+  proxies `/api/`. Guarded by the `SCIM_TOKEN` instance setting — blank means
+  the endpoints answer **404**, so an unconfigured instance is not an open
+  provisioning API; comparison is `compare_digest`.
+  Users land in `FEDERATED_WORKSPACE_ID` (SCIM refuses to run without it) and
+  everything is scoped to that workspace. `DELETE` deactivates and never
+  destroys (IdPs DELETE routinely on offboarding; a hard delete would orphan
+  runs/results/audit history), and deactivation **revokes live refresh tokens** —
+  without that, deactivation only stops new logins while an existing session
+  keeps rotating. A `POST` for an existing email **adopts** that account rather
+  than 409ing forever, so SCIM can be switched on for an instance that already
+  has users. Groups map to Teams; deleting a Group never touches its members'
+  accounts. Note SCIM Groups and `FEDERATED_GROUP_TEAM_MAP` both write team
+  membership and will fight over the same team — use one or the other.
+  Provider quirks are the real work: Okta sends `{"op":"replace","value":
+  {"active":false}}` with no path, Entra sends `{"op":"Replace","path":"active",
+  "value":"False"}` — a **string**, and `bool("False")` is `True`, which would
+  silently leave a deprovisioned user active. `app/services/audit.py:build_entry`
+  gained explicit `actor_type`/`actor_label` overrides for this (SCIM has no
+  TraceIQ principal; recording it as `system` makes "who removed this person's
+  access" unanswerable).
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
   0.2.0, FastMCP, `mcp>=1.10,<2`): 51 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio

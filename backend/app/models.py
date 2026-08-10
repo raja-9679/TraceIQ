@@ -177,6 +177,8 @@ class Team(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     workspace_id: int = Field(foreign_key="workspace.id")
+    # SCIM Groups map onto teams; see User.scim_external_id.
+    scim_external_id: Optional[str] = Field(default=None, index=True)
 
     # Relationships
     workspace: Workspace = Relationship(back_populates="teams")
@@ -745,6 +747,12 @@ class User(SQLModel, table=True):
     # the ADMIN_EMAIL bootstrap sets. Break-glass: exempt from
     # PASSWORD_LOGIN_DISABLED.
     is_instance_admin: bool = Field(default=False)
+
+    # SCIM: the identity provider's own id for this person. Okta and Entra
+    # reconcile on it, so without storing and echoing it back every sync looks
+    # like a brand-new user and duplicates the account. Nullable because local
+    # and self-registered accounts have no IdP counterpart.
+    scim_external_id: Optional[str] = Field(default=None, index=True)
 
 
 class AccountToken(SQLModel, table=True):

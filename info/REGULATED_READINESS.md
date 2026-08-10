@@ -21,8 +21,9 @@ map of the current tree.
 | D — encryption at rest + TLS + key rotation | done |
 | E — audit trail (E1–E5) | done |
 | F1 — federated provisioning (the tenant bug) | done (2026-08-10) |
-| F2 — SCIM 2.0 + deprovisioning | **next** |
-| F3–F5 — SAML, separation of duties, roles | not started |
+| F2 — SCIM 2.0 + deprovisioning | done (2026-08-10) |
+| F4 — separation of duties | **next** |
+| F3, F5 — SAML, roles | not started |
 | G — deletion/residency | not started |
 | H — operability | not started |
 | I — proving it | partial: CI runs the full unit suite + a new engine suite |
@@ -420,13 +421,44 @@ which is what a QSA needs.
   (the settings screen is a flat key/value form), and no migration of the
   tenants an existing SSO deployment has already accumulated — merging tenants
   is a data-surgery problem, not a provisioning one.
-- **F2. SCIM 2.0.** `/scim/v2/Users` and `/Groups`, with PATCH `active:false`
-  mapping to deactivation. Foundation is good: `is_active` is already enforced
-  in both the JWT and API-key principal paths, so deprovision bites immediately.
-  Today `user_provisioning.py` has **no** deprovision path of any kind — an
-  employee removed from Okta or Entra keeps their TraceIQ account and refresh
-  token indefinitely. This is the item most likely to fail an IT security
-  review outright.
+- **F2. SCIM 2.0 — DONE.** `app/api/scim.py` + `app/services/scim.py`,
+  migration `d9e0f1a2b3c4`. Users, Groups, filtering, PATCH, PUT, DELETE and
+  ServiceProviderConfig, mounted at both `/scim/v2` and `/api/scim/v2` (the
+  shipped nginx only proxies `/api/`).
+
+  - Guarded by the `SCIM_TOKEN` instance setting, constant-time compared. Blank
+    means the endpoints answer **404** — an unconfigured instance must not be an
+    open provisioning API, and 404 does not advertise it either.
+  - Provisions into `FEDERATED_WORKSPACE_ID` and refuses to run without it;
+    every read and write is scoped to that workspace, so a SCIM credential
+    cannot enumerate accounts elsewhere.
+  - **Deactivation revokes live refresh tokens.** `is_active` was already
+    enforced in both principal paths so access tokens died within minutes, but a
+    live refresh token kept minting new ones — that was the half of the finding
+    that actually left a door open.
+  - `DELETE` deactivates rather than destroying: IdPs issue it routinely on
+    offboarding and a hard delete would orphan runs, results and audit history
+    irreversibly. Recorded as `scim_deactivate` in the append-only log with the
+    IdP as the actor, which needed a new explicit `actor_type`/`actor_label`
+    override in `audit.build_entry` (SCIM has no TraceIQ principal, and
+    recording it as `system` makes "who removed this access" unanswerable).
+  - A `POST` for an email that already exists **adopts** the account instead of
+    409ing forever, so SCIM can be enabled on an instance that already has
+    users, without duplicating anyone.
+  - Groups map onto Teams (teams are what carry project access). Deleting a
+    Group never touches its members' accounts.
+  - The real work is provider disagreement: Okta sends
+    `{"op":"replace","value":{"active":false}}` with no path; Entra sends
+    `{"op":"Replace","path":"active","value":"False"}` — a **string**. Since
+    `bool("False")` is `True`, the naive implementation silently leaves a
+    deprovisioned user active. Both shapes are tested explicitly.
+  - Tests: 34 unit (`tests/test_scim.py`) + 30 over real HTTP against a real
+    Postgres (`tests/integration/test_scim_db.py`). Migration verified
+    upgrade → downgrade → re-upgrade against a real database.
+
+  Known interaction, documented rather than resolved: SCIM Groups and
+  `FEDERATED_GROUP_TEAM_MAP` both write team membership and will fight over the
+  same team. Operators pick one.
 - **F3. SAML 2.0.** Zero code today (grep for `saml` returns only roadmap
   lines). A large share of insurance and banking IdPs remain SAML-first, so
   this gates those deals regardless of OIDC support.
