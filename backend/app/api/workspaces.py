@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
@@ -227,12 +227,50 @@ async def delete_team(team_id: int, session: AsyncSession = Depends(get_session)
     return {"status": "success"}
 
 @router.delete("/workspaces/{workspace_id}")
-async def delete_workspace(workspace_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def delete_workspace(
+    workspace_id: int,
+    request: Request,
+    confirm: Optional[str] = None,
+    dry_run: bool = False,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+):
+    """Purge a workspace and everything reachable from it (workstream G1).
+
+    This used to delete the workspace row and its teams only, leaving projects,
+    suites, cases, runs, results, secrets, personas, baselines, app builds,
+    webhooks, API keys and every MinIO object behind as orphans — invisible
+    through the API but still holding customer data.
+
+    Now irreversible, so it is gated on typing the workspace name in `confirm`.
+    `dry_run=true` reports what would go without touching anything; the UI shows
+    that first. Audit history is deliberately retained (see
+    `app/services/purge.py`).
+    """
     if not await rbac_service.has_permission(session, current_user.id, "workspace:delete_workspace", workspace_id=workspace_id):
         raise HTTPException(status_code=403, detail="Permission denied: workspace:delete_workspace")
-        
-    await workspace_service.delete_workspace(workspace_id, session)
-    return {"status": "success"}
+
+    from app.models import Workspace
+    from app.services.purge import purge_workspace
+
+    workspace = await session.get(Workspace, workspace_id)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+
+    if not dry_run and (confirm or "") != workspace.name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"This permanently deletes every project, test, run and "
+                   f"artifact in '{workspace.name}'. Pass confirm="
+                   f"'{workspace.name}' to proceed, or dry_run=true to see what "
+                   f"would be removed.")
+
+    try:
+        report = await purge_workspace(session, workspace_id, dry_run=dry_run,
+                                       actor_id=current_user.id, request=request)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"status": "dry-run" if dry_run else "success", **report.as_dict()}
 
 @router.delete("/workspaces/{workspace_id}/users/{user_id}")
 async def remove_user_from_workspace(workspace_id: int, user_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):

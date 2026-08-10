@@ -57,6 +57,8 @@ celery_app.conf.task_routes = {
     "app.tasks.cleanup_tasks.cleanup_stuck_tests": "main-queue",
     "app.tasks.cleanup_tasks.purge_old_runs": "main-queue",
     "app.tasks.cleanup_tasks.purge_old_audit_logs": "main-queue",
+    "app.tasks.cleanup_tasks.purge_derived_records": "main-queue",
+    "app.tasks.cleanup_tasks.purge_orphaned_artifacts": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
@@ -102,7 +104,18 @@ celery_app.conf.beat_schedule = {
     },
     'purge-old-runs': {
         'task': 'app.tasks.cleanup_tasks.purge_old_runs',
-        'schedule': 3600.0,  # Hourly; no-op unless RUN_RETENTION_DAYS > 0
+        # Hourly; no-op unless some project or the instance sets a retention
+        # window (per-project since workstream G2).
+        'schedule': 3600.0,
+    },
+    'purge-derived-records': {
+        'task': 'app.tasks.cleanup_tasks.purge_derived_records',
+        'schedule': 86400.0,  # Daily; no-op unless DERIVED_RETENTION_DAYS > 0
+    },
+    'purge-orphaned-artifacts': {
+        'task': 'app.tasks.cleanup_tasks.purge_orphaned_artifacts',
+        # Daily and opt-in. Lists before it deletes — see the task docstring.
+        'schedule': 86400.0,
     },
     'send-scheduled-reports': {
         'task': 'app.tasks.report_tasks.send_scheduled_reports',

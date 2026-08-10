@@ -205,6 +205,25 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "for a compliance record. Separate from run retention on "
                            "purpose: PCI DSS Req 10 wants a year of audit history "
                            "regardless of how long you keep test artifacts"),
+    SettingDef("DERIVED_RETENTION_DAYS", "policies", type="int",
+               label="Derived-record retention (days)",
+               description="expires TestCaseRevision snapshots, LLM usage events "
+                           "and orphaned flake records. Separate from run "
+                           "retention on purpose: shortening artifact retention to "
+                           "save disk should not silently discard your edit "
+                           "history. 0 = keep forever. The newest revision of "
+                           "each case is always kept so restore still works"),
+    SettingDef("ARTIFACT_ORPHAN_SWEEP_ENABLED", "policies", type="bool",
+               label="Sweep orphaned artifacts",
+               description="deletes MinIO objects whose owning row is gone. Only "
+                           "runs/ was ever cleaned, and only via retention — "
+                           "baselines/ and app binaries leaked forever. Leave the "
+                           "dry-run switch below on until you have read a report"),
+    SettingDef("ARTIFACT_ORPHAN_SWEEP_DRY_RUN", "policies", type="bool",
+               label="Orphan sweep: report only",
+               description="list what would be deleted instead of deleting it. A "
+                           "sweep keyed on 'the database does not mention this' is "
+                           "exactly the job to run in report mode first"),
     SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
                label="Maximum capture level",
                description="ceiling no project may exceed: none | minimal | standard | "
