@@ -38,6 +38,11 @@ class LdapIdentity:
     email: str
     full_name: str
     username: str
+    # Directory group names (memberOf, reduced from DNs). Consumed by
+    # app/services/federation.py to map onto workspace roles and teams. Empty
+    # when the directory returns no memberOf or no search was possible — a
+    # federated login then falls back to the configured default role.
+    groups: Optional[list] = None
 
 
 def is_configured() -> bool:
@@ -117,6 +122,7 @@ def authenticate(username: str, password: str) -> LdapIdentity:
 
     email = ""
     full_name = ""
+    groups: list = []
 
     def _single(entry, attr) -> str:
         # ldap3 returns a list for multi-valued attributes. Never stringify a
@@ -130,10 +136,19 @@ def authenticate(username: str, password: str) -> LdapIdentity:
             return str(v[0]) if len(v) == 1 else ""
         return str(v) if v is not None else ""
 
+    def _member_of(entry) -> list:
+        # memberOf is inherently multi-valued, so _single's "a list means
+        # ambiguous, treat as empty" rule does not apply here.
+        from app.services.federation import group_names_from_dns
+        if "memberOf" not in entry:
+            return []
+        raw = entry["memberOf"].value
+        return group_names_from_dns(raw if isinstance(raw, (list, tuple)) else [raw])
+
     def _take(entry) -> tuple:
         return _single(entry, "mail"), (_single(entry, "displayName") or _single(entry, "cn"))
 
-    attrs = ["mail", "displayName", "cn"]
+    attrs = ["mail", "displayName", "cn", "memberOf"]
     bind_is_dn = "=" in bind_dn
     try:
         if bind_is_dn:
@@ -146,6 +161,7 @@ def authenticate(username: str, password: str) -> LdapIdentity:
                         search_scope=ldap3.BASE, attributes=attrs)
             if len(conn.entries) == 1:
                 email, full_name = _take(conn.entries[0])
+                groups = _member_of(conn.entries[0])
         elif search_base:
             # UPN/username bind: no DN to self-read. Enrich the display name from
             # an UNAMBIGUOUS single match, but never let a searched `mail`
@@ -158,6 +174,7 @@ def authenticate(username: str, password: str) -> LdapIdentity:
                 attributes=attrs)
             if len(conn.entries) == 1:
                 _, full_name = _take(conn.entries[0])
+                groups = _member_of(conn.entries[0])
     except LDAPException as exc:
         # Attribute lookup is best-effort; the bind already proved identity.
         logger.info("[ldap] attribute search failed (continuing): %s", exc)
@@ -180,4 +197,5 @@ def authenticate(username: str, password: str) -> LdapIdentity:
     return LdapIdentity(
         email=email.lower(),
         full_name=full_name or username,
-        username=username)
+        username=username,
+        groups=groups)

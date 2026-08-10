@@ -15,6 +15,7 @@ it belongs here rather than in a chat history.
 TraceIQ sellable into insurance, payments, and enterprise SaaS procurement.
 
 **Done and pushed:** workstreams C, A, B (phases 1–2) and D, E (phase 3).
+**Done, not yet pushed:** F1.
 
 | Workstream | State |
 |---|---|
@@ -23,12 +24,15 @@ TraceIQ sellable into insurance, payments, and enterprise SaaS procurement.
 | B — capture policy | done |
 | D — encryption at rest, TLS, key rotation | done |
 | E — audit trail (E1–E5) | done |
-| **F — identity (SCIM, SAML, OIDC tenant bug)** | **next** |
+| F1 — federated provisioning (the OIDC tenant bug) | done |
+| **F2 — SCIM 2.0 with real deprovisioning** | **next** |
+| F3–F5 — SAML, separation of duties, roles | not started |
 | G — deletion / residency | not started |
 | H — operability (beat HA, DLQ replay, real migration baseline) | not started |
 | I — proving it (CI coverage, pen test, SOC 2) | partial |
 
-Tests: **377** — 291 backend, 86 engine. CI ran 18 before this work.
+Tests: **433** — 326 backend unit, 21 backend live-Postgres, 86 engine. CI runs
+the 326 (it has no Postgres service, so the live ones are opt-in — see below).
 
 The nine commits for phases 1–3 are `5ad603a` … `1d90480`, plus `4e038b9`.
 Everything below `4e038b9` in the push is earlier security-hardening work from
@@ -82,9 +86,27 @@ npm run build     # must stay clean; dist/ must contain no *.test.js
 
 ### Verifying against a real database
 
-Several things in D and E cannot be proven by unit tests — the `sslmode`
-translation, the append-only trigger, migration round-trips. The pattern used
-throughout was a scratch database inside the already-running Postgres:
+There is now a script for this: **`backend/run-tests-live.sh`**. It creates a
+scratch database inside the running Postgres container, bootstraps the schema,
+runs pytest with `TRACEIQ_LIVE_DB=1`, and drops the database again. Modules
+under `tests/integration/` skip themselves without that variable, so they stay
+out of the unit suite and out of CI (which has no Postgres service — I1).
+
+```bash
+cd backend
+./run-tests-live.sh                                              # all of tests/integration
+./run-tests-live.sh tests/integration/test_federated_provisioning_db.py -q
+KEEP_DB=1 ./run-tests-live.sh ...     # leave the scratch DB behind for psql
+```
+
+One trap if you add fixtures there: `pytest.ini` sets
+`asyncio_default_fixture_loop_scope = session`, and the installed pytest-asyncio
+(0.25) ignores `asyncio_default_test_loop_scope`, so tests are function-scoped.
+An async fixture must declare `@pytest_asyncio.fixture(loop_scope="function")`
+or its engine ends up on a different event loop than the test.
+
+The underlying manual pattern, for the things a pytest module can't express
+(the `sslmode` translation, the append-only trigger, migration round-trips):
 
 ```bash
 PGC=traceiq-postgres-1
@@ -113,17 +135,20 @@ and gives up. Never point this at the `traceiq` database itself.
 
 ## Next up: workstream F (identity)
 
-Read `info/REGULATED_READINESS.md` § "Workstream F" for the full detail. Order
-matters here — F1 is a functional bug, not a compliance item, and it should go
-first because it makes SSO usable at all.
+Read `info/REGULATED_READINESS.md` § "Workstream F" for the full detail.
 
-**F1. OIDC and LDAP JIT provisioning mint a tenant per user.**
-`app/api/auth.py` SSO callback and LDAP login both call
-`user_provisioning.provision_standalone_user()`, which creates a new `Tenant`
-and grants the user **Tenant Admin** of it. Enabling SSO for a 500-person
-company therefore produces 500 isolated, self-administered tenants. Needs a
-`provision_federated_user()` that joins a *configured* target tenant and
-workspace with a default role, plus IdP group → role mapping.
+**F1 is done** — `app/services/federation.py` plus
+`provision_federated_user()` / `sync_federated_access()` in
+`user_provisioning.py`. Operators pick a mode (`standalone` / `workspace` /
+`deny`) and optional IdP group → role/team maps in Settings → Instance (Admin) →
+Federated provisioning. Two things to know before touching it: the default is
+still `standalone` (the legacy tenant-per-user behaviour) so existing installs
+upgrade unchanged, and group maps are re-applied on **every** login — the whole
+point, since create-only mapping never revokes anything. `docs/ENTERPRISE_AUTH.md`
+has the operator-facing version. Verified end to end against a mock OIDC
+provider; a throwaway mock-IdP recipe is not kept in the repo, but it is ~30
+lines of FastAPI serving discovery/token/userinfo, and the userinfo `groups`
+claim is the only interesting part.
 
 **F2. SCIM 2.0 with real deprovisioning.** There is no deprovision path of any
 kind today, so someone removed from Okta or Entra keeps their TraceIQ account
