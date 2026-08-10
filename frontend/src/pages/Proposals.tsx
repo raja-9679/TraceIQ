@@ -38,12 +38,15 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
   });
 
   const saveMutation = useMutation({
-    mutationFn: async (threshold: number | null) =>
-      (await api.put(`/workspaces/${workspaceId}/proposal-policy`, { auto_apply_threshold: threshold })).data,
+    // Only the fields being changed are sent: omitting a field leaves it alone
+    // server-side, so editing the threshold cannot silently switch the
+    // separate-approver control off.
+    mutationFn: async (patch: { auto_apply_threshold?: number | null; require_separate_approver?: boolean }) =>
+      (await api.put(`/workspaces/${workspaceId}/proposal-policy`, patch)).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['proposal-policy', workspaceId] });
       setEditing(false);
-      toast.success('Auto-apply policy updated');
+      toast.success('Proposal policy updated');
     },
     onError: (err: any) => toast.error('Failed to update policy', {
       description: err.response?.data?.detail,
@@ -52,7 +55,13 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
 
   if (!workspaceId) return null;
   const threshold: number | null = policy?.auto_apply_threshold ?? null;
-  const enabled = !!threshold && threshold > 0;
+  const autoApplyOff = policy?.auto_apply_disabled_by_instance === true;
+  const enabled = !!threshold && threshold > 0 && !autoApplyOff;
+  // The instance policy is a floor the workspace cannot lower, so the stored
+  // flag and the effective one can differ.
+  const separationStored = policy?.require_separate_approver === true;
+  const separationEnforced = policy?.separation_enforced === true;
+  const forcedByInstance = separationEnforced && !separationStored;
 
   return (
     <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border shadow-sm ${enabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
@@ -74,7 +83,7 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
                 toast.error('Threshold must be between 0 and 1 (empty = off)');
                 return;
               }
-              saveMutation.mutate(value.trim() === '' || n === 0 ? null : n);
+              saveMutation.mutate({ auto_apply_threshold: value.trim() === '' || n === 0 ? null : n });
             }}>
             Save
           </Button>
@@ -86,6 +95,8 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
             <span className="font-bold text-slate-700">Auto-apply: </span>
             {enabled ? (
               <span className="font-mono font-bold text-amber-700">confidence ≥ {threshold!.toFixed(2)}</span>
+            ) : autoApplyOff ? (
+              <span className="text-slate-500">disabled instance-wide by an administrator</span>
             ) : (
               <span className="text-slate-400">off — every proposal waits here</span>
             )}
@@ -97,6 +108,27 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
           >
             Edit
           </button>
+          <span className="h-4 w-px bg-slate-200" aria-hidden />
+          <div className="text-xs">
+            <span className="font-bold text-slate-700">Second approver: </span>
+            {separationEnforced ? (
+              <span className="font-semibold text-emerald-700">required</span>
+            ) : (
+              <span className="text-slate-400">not required</span>
+            )}
+            {forcedByInstance && (
+              <span className="text-slate-400"> · enforced instance-wide</span>
+            )}
+          </div>
+          {!forcedByInstance && (
+            <button
+              onClick={() => saveMutation.mutate({ require_separate_approver: !separationStored })}
+              disabled={saveMutation.isPending}
+              className="text-xs font-semibold text-indigo-600 hover:underline disabled:opacity-50"
+            >
+              {separationStored ? 'Allow self-approval' : 'Require a second person'}
+            </button>
+          )}
         </>
       )}
     </div>

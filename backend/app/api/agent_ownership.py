@@ -615,6 +615,11 @@ async def create_proposal(
         rationale=body.rationale,
         ai_confidence=body.ai_confidence,
         agent_id=principal.agent_id,
+        # Separation of duties (F4): the human behind this call, whether they
+        # filed it in the UI or their API key did. An agent acting under a
+        # developer's key IS that developer for review purposes — otherwise
+        # "propose via key, accept in the UI" is a trivial way around the queue.
+        created_by_id=principal.user.id if principal.user else None,
         # Phase E: provenance — sets together so the reviewer can later
         # auto-approve "same agent, same session" delete proposals.
         created_by_agent_id=principal.agent_id,
@@ -688,6 +693,11 @@ async def accept_proposal(
     if principal.is_api_caller:
         raise HTTPException(status_code=403, detail="API keys cannot accept proposals")
 
+    # Separation of duties (F4). Blocking API keys was never enough on its own:
+    # the same human could file a proposal with their key and accept it in the
+    # UI a second later, which is a review queue in name only.
+    await _enforce_separation(proposal, principal.user.id, session)
+
     await _apply_proposal(proposal, principal.user.id, session)
     proposal.status = "accepted"
     proposal.decided_at = datetime.utcnow()
@@ -728,6 +738,27 @@ async def reject_proposal(
     return _proposal_read(proposal)
 
 
+async def _enforce_separation(proposal: CaseProposal, approver_id: int,
+                              session: AsyncSession) -> None:
+    """Refuse self-approval when the workspace or the instance requires a second
+    person. Rejection is deliberately NOT gated — withdrawing your own proposal
+    is harmless, and blocking it would leave proposals stuck with nobody able to
+    clear them."""
+    from app.models import Project, Workspace
+    from app.services.proposal_policy import approver_conflict, separation_required
+
+    project = await session.get(Project, proposal.project_id)
+    workspace = await session.get(Workspace, project.workspace_id) if project else None
+    required = separation_required(
+        workspace_flag=bool(getattr(workspace, "require_separate_approver", False)))
+    if approver_conflict(created_by_id=proposal.created_by_id,
+                         approver_id=approver_id, required=required):
+        raise HTTPException(
+            status_code=403,
+            detail="You filed this proposal, so you cannot accept it. This "
+                   "workspace requires a second person to approve agent changes.")
+
+
 async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncSession) -> bool:
     """Auto-apply policy: merge a fresh proposal immediately when the
     workspace opted in (auto_apply_threshold) and the proposal's confidence
@@ -740,6 +771,13 @@ async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncS
         if proposal.status != "pending" or proposal.ai_confidence is None:
             return False
         if proposal.action not in (CaseProposalAction.CREATE, CaseProposalAction.UPDATE):
+            return False
+        # Instance-wide kill switch (F4). An auto-applied change has no human
+        # reviewer at any point, so an operator has to be able to switch that off
+        # for the whole instance and demonstrate that it is off — which is why it
+        # is an instance setting rather than an environment variable.
+        from app.services.proposal_policy import auto_apply_disabled
+        if auto_apply_disabled():
             return False
         from app.models import Project, Workspace
         project = await session.get(Project, proposal.project_id)
@@ -770,6 +808,9 @@ async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncS
 class ProposalPolicyBody(BaseModel):
     # None or 0 disables auto-apply.
     auto_apply_threshold: Optional[float] = None
+    # F4: the proposer may not accept their own proposal. Optional so a caller
+    # that only wants to change the threshold does not silently reset it.
+    require_separate_approver: Optional[bool] = None
 
 
 @router.get("/workspaces/{workspace_id}/proposal-policy")
@@ -789,8 +830,16 @@ async def get_proposal_policy(
     workspace = await session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
+    from app.services.proposal_policy import auto_apply_disabled, separation_required
+    workspace_flag = bool(workspace.require_separate_approver)
     return {"workspace_id": workspace_id,
-            "auto_apply_threshold": workspace.auto_apply_threshold}
+            "auto_apply_threshold": workspace.auto_apply_threshold,
+            "require_separate_approver": workspace_flag,
+            # Both instance policies are floors this workspace cannot lower, so
+            # the UI has to be able to show that the effective answer differs
+            # from the stored one.
+            "separation_enforced": separation_required(workspace_flag=workspace_flag),
+            "auto_apply_disabled_by_instance": auto_apply_disabled()}
 
 
 @router.put("/workspaces/{workspace_id}/proposal-policy")
@@ -821,10 +870,18 @@ async def set_proposal_policy(
     if threshold is not None and not (0 <= threshold <= 1):
         raise HTTPException(status_code=400, detail="auto_apply_threshold must be between 0 and 1")
     workspace.auto_apply_threshold = threshold or None
+    if body.require_separate_approver is not None:
+        workspace.require_separate_approver = bool(body.require_separate_approver)
     session.add(workspace)
     await session.commit()
+
+    from app.services.proposal_policy import auto_apply_disabled, separation_required
+    workspace_flag = bool(workspace.require_separate_approver)
     return {"workspace_id": workspace_id,
-            "auto_apply_threshold": workspace.auto_apply_threshold}
+            "auto_apply_threshold": workspace.auto_apply_threshold,
+            "require_separate_approver": workspace_flag,
+            "separation_enforced": separation_required(workspace_flag=workspace_flag),
+            "auto_apply_disabled_by_instance": auto_apply_disabled()}
 
 
 def _validated_executor(payload: dict) -> str:

@@ -433,6 +433,27 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `AUDIT_RETENTION_DAYS` is separate from run retention (PCI DSS Req 10 wants a
   year regardless of artifact retention) and defaults to keeping forever.
 
+- **Separation of duties on proposals (workstream F4)** —
+  `app/services/proposal_policy.py`, migration `e0f1a2b3c4d5`.
+  `CaseProposal.created_by_id` did not exist, so nothing could compare it to
+  `decided_by_id` and an editor could accept their own proposal. It now records
+  the human behind the call **even for API-key callers** — otherwise "propose
+  with my key, accept in the UI" walks around the queue.
+  `workspace.require_separate_approver` is opt-in; the `REQUIRE_SEPARATE_APPROVER`
+  instance setting is a **floor** a workspace cannot lower; `AUTO_APPLY_DISABLED`
+  kills auto-apply instance-wide. Both are instance settings rather than env vars
+  so an operator can *show* the control is on. Defaults are off — a solo user
+  proposing via their own agent and accepting in the UI is a normal workflow.
+  Unattributed (pre-migration) proposals are not conflicts, and **reject is not
+  gated** (withdrawing your own proposal is harmless; gating it would strand
+  proposals). `GET/PUT /workspaces/{id}/proposal-policy` returns
+  `separation_enforced` next to the stored flag; omitted PUT fields are left
+  alone so editing the threshold can't silently disable the control.
+  **Migration trap:** naming the FK explicitly broke `downgrade` on fresh
+  installs — `bootstrap_db.py` builds from metadata and SQLAlchemy names it
+  `caseproposal_created_by_id_fkey`. Pass `None` so both paths agree. Same
+  family as the audit-trigger trap.
+
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of
