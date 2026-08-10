@@ -1,0 +1,34 @@
+# Coverage configuration — workstream I4.
+#
+# pytest-cov has been in requirements-dev.txt for a long time with nothing wired
+# to it: no --cov, no config, no threshold. So coverage was never measured, let
+# alone defended.
+#
+# Two gates, because one global number is not useful here (see ci.yml):
+#   * a low global floor that catches a large regression
+#   * a high floor on the modules where a coverage drop means a security
+#     guarantee stopped being tested
+#
+# The global number is genuinely low (~24%) and that is not hidden: most of the
+# uncovered code is API endpoints and Celery tasks, which the unit suite has no
+# database for. Those are covered by tests/integration against a real Postgres —
+# a separate CI job that this configuration does not measure.
+
+[run]
+source = app
+branch = false
+omit =
+    # Generated / vendored migration scripts. Their correctness is proven by the
+    # upgrade->downgrade->re-upgrade round trip in CI, not by line coverage.
+    app/alembic/*
+    # Import-time only.
+    app/main.py
+
+[report]
+show_missing = true
+skip_covered = false
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    if __name__ == .__main__.:

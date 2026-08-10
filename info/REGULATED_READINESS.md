@@ -7,10 +7,24 @@ working tree at that point — re-check before acting on an old copy of this doc
 
 ## Status
 
-**Phases 1, 2 and 3 are DONE** (2026-08-07, eight commits). Workstreams C, A,
-B, D and E have landed; the file:line references in those sections describe the
-code as it was *before* the fix and are kept as the rationale record, not as a
-map of the current tree.
+**Phases 1-5 are DONE** (2026-08-07 and 2026-08-10). Workstreams C, A, B, D, E,
+F (except F3), G, H (except H5) and I (except I5) have landed; the file:line
+references in those sections describe the code as it was *before* the fix and are
+kept as the rationale record, not as a map of the current tree.
+
+What is left, and why:
+- **F3 (SAML 2.0)** — needs `xmlsec` system libraries in the backend image; the
+  only remaining item that gates a class of buyer (SAML-first insurance and
+  banking IdPs). Parked in `SCOPE_NOTES.md`.
+- **H3's squashed initial migration** — the advisory lock landed, the empty
+  Alembic baseline did not. There is still no verified rollback to an arbitrary
+  revision; `docs/OPERATIONS.md` prescribes snapshot-then-upgrade meanwhile.
+- **H4's remainder** — no OpenTelemetry, no structured logging, no error tracking.
+- **H5 (Helm/K8s)** — compose only.
+- **I5 (pen test, SOC 2 Type II)** — external and calendar-bound.
+- **C5 (credential hygiene)** — committed `.env` history and the old tracked
+  `dump.sql` still need rotation plus a `git filter-repo` rewrite. Rotation does
+  not depend on the rewrite and should not wait for it.
 
 | Workstream | State |
 |---|---|
@@ -28,7 +42,8 @@ map of the current tree.
 | G — deletion/residency (G1–G4) | done (2026-08-10) |
 | H1–H4 — operability | done (2026-08-10) |
 | H5 — Helm chart | not started |
-| I — proving it | **next** (partial: CI runs the full unit suite + engine suite) |
+| I1–I4 — proving it | done (2026-08-10) |
+| I5 — pen test, SOC 2 | external / calendar-bound |
 
 What exists now that did not before:
 
@@ -45,8 +60,10 @@ What exists now that did not before:
   hash chain, append-only trigger, actor context, CSV export, verify endpoint,
   and independent audit retention.
 
-Test counts went from 18 running in CI to 377 (291 backend, 86 engine), and the
-engine had no test runner at all before this.
+Test counts went from 18 running in CI to **624**: 424 backend unit, 114 backend
+integration against a real Postgres, 86 engine. The engine had no test runner at
+all before this, and CI had no database — both of the suites that prove tenant
+isolation and data deletion now run on every push.
 
 ### Corrections to this document, found by building it
 
@@ -677,30 +694,71 @@ withheld, replayed onto `jobs:pending` with the retry counter cleared.
 
 ---
 
-## Workstream I — Proving it (the part buyers actually check)
+## Workstream I — Proving it — I1-I4 done, I5 is calendar work (2026-08-10)
 
-- **I1. Run the tests.** 80 `def test_` functions exist across
-  `backend/tests/`; CI (`.github/workflows/ci.yml:33-37`) runs **two files, 18
-  tests**. It excludes pure-unit files that need no live stack
-  (`test_impact_analysis_v2.py`, `test_case_proposal_apply.py`,
-  `test_stale_run_detection.py`, `test_instance_settings.py`,
-  `test_result_case_link.py`). Frontend CI is `npm run build` only — no tests.
-- **I2. Convert the `verify_*.py` scripts.** Eight of the 22 files in
-  `backend/tests/` contain zero test functions — they are ad-hoc manual
-  scripts. Critically, **every RBAC and multi-tenant-isolation check is in that
-  category**, so the isolation guarantees are entirely unverified by CI. Given
-  that tenant isolation is application-layer only (no RLS, no `CREATE POLICY`
-  anywhere, one shared bucket), these need to be real, running tests.
-- **I3. A redaction test corpus.** Build a fixture set of realistic payloads —
-  card numbers, Aadhaar, JWTs, session cookies, health fields — and assert none
-  survive any of the three ingestion paths. This is the artifact you hand a
-  buyer's security team, and it is worth more than any doc in this repo.
-- **I4. CI hygiene.** Coverage gate (`pytest-cov` is already in
-  `requirements-dev.txt:9` but unwired — no `--cov`, no `.coveragerc`, no
-  threshold), plus `pip-audit`, `npm audit`, SAST, and secret scanning. None
-  exist today.
-- **I5. Third-party pen test, then SOC 2 Type II.** Calendar-bound; start the
-  clock as soon as D and E land.
+- **I1. Run the tests — done.** CI already ran the whole unit suite; what it had
+  no way to run was anything needing a database. A new `integration-tests` job
+  brings up Postgres, Redis and MinIO as services and runs `tests/integration`
+  (114 tests), plus an `alembic downgrade -3 && upgrade head` round trip —
+  because a downgrade that fails is a failed upgrade with no way back, and one
+  such bug has already been caught this way.
+
+  MinIO is `bitnami/minio`, not `minio/minio`: GitHub service containers cannot
+  supply a command and the upstream image needs `server /data`. Readiness is
+  polled from the runner rather than a container `health-cmd`, which would depend
+  on which tools the image happens to ship.
+
+- **I2. Convert the `verify_*.py` scripts — done, and the finding was worse than
+  recorded.** The plan said every RBAC and isolation check lived in ad-hoc
+  scripts. In fact **five of the eight cannot even import**: they reference
+  `Organization`, `UserOrganization` and `org_service`, replaced by `Workspace`
+  long ago. They had been dead for as long as that took, and nobody noticed
+  because nothing ran them. There was nothing to convert.
+
+  `tests/integration/test_tenant_isolation_db.py` is written from intent: two
+  unrelated tenants, every question asked from the wrong side — access service,
+  RBAC permission scoping, workspace and member listing, suite/case/run reads,
+  run **deletion**, proposal creation, impact analysis (an unchecked version is a
+  directory listing of someone else's suite), API-key binding, immediate
+  deactivation, and cross-tenant suite re-parenting. This matters more than
+  anywhere else in the codebase because isolation is **application-layer only**:
+  no RLS, no `CREATE POLICY`, one shared Postgres and one shared bucket. Every
+  boundary is a Python `if`.
+
+  The five dead scripts are deleted.
+
+  **It found a real bug**: `get_run` and `create_run` wrapped everything in
+  `except Exception` and re-raised as 500, so "Access denied" reached the client
+  as `500 Internal Server Error: 403: Access denied`. That misreports an
+  authorization decision as a server fault — it pages whoever watches the 5xx
+  rate, and tells a client to retry something that can never succeed. Both now
+  re-raise `HTTPException` unchanged.
+
+- **I3. Redaction corpus — already done** in workstream A: mirrored corpora in
+  `execution-engine/src/core/redact.test.ts` and `backend/tests/test_redaction.py`
+  covering card numbers (Luhn), Aadhaar (Verhoeff), JWTs and session cookies.
+
+- **I4. CI hygiene — done.** The plan said none of this existed; gitleaks and
+  CodeQL in fact already did. What was genuinely missing:
+  - **Coverage gates.** `pytest-cov` had been in `requirements-dev.txt` with
+    nothing wired to it. Two floors, because one global number is not useful
+    here: a low global floor (22%, real figure ~24%) that catches a large
+    regression, and a **70% floor on the security-critical modules** — redaction,
+    capture policy, federated provisioning, SCIM, proposal policy, retention,
+    secret encryption, SSRF guard — currently at 86%. A global floor set where
+    aspiration lies rather than where the code is becomes theatre nobody can
+    satisfy; the second gate is the one that means something.
+  - **`pip-audit` / `npm audit`**, advisory for now. A blocking gate on a
+    transitive CVE with no available fix stops every unrelated PR, which is how a
+    job gets ignored and then deleted.
+
+- **I5. Third-party pen test, then SOC 2 Type II — not startable from here.**
+  Calendar-bound external work. What it needs from the codebase now exists:
+  redaction with a corpus, an enforceable capture floor, encryption at rest with
+  key rotation, a tamper-evident audit trail with an export and a verify
+  endpoint, SSO/SCIM with real deprovisioning, separation of duties, a cascading
+  purge, documented retention and residency, and CI that exercises the isolation
+  guarantees. The remaining blockers are commercial and calendar, not technical.
 
 ---
 

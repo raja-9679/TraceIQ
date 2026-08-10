@@ -43,7 +43,188 @@ jobs:
             --ignore=tests/e2e \
             --ignore=tests/integration \
             --ignore-glob='tests/verify_*.py' \
-            -v --tb=short
+            -v --tb=short \
+            --cov=app --cov-report=term --cov-report=xml
+
+      # Workstream I4. pytest-cov had been in requirements-dev.txt for a long
+      # time with nothing wired to it. Two gates, because one global number is
+      # not useful here:
+      #
+      #  * The global floor is deliberately LOW (the real figure is ~24%). Most
+      #    uncovered code is API endpoints and Celery tasks, which the unit suite
+      #    has no database for — the integration job covers those. A floor set
+      #    where the code actually is catches a large regression without being
+      #    aspirational theatre nobody can satisfy.
+      #  * The second gate is the one that matters: on the modules where a
+      #    coverage drop means a security guarantee stopped being tested.
+      - name: Coverage floor (whole app)
+        working-directory: backend
+        run: python -m coverage report --fail-under=22
+
+      - name: Coverage floor (security-critical modules)
+        working-directory: backend
+        run: |
+          python -m coverage report --fail-under=70 --include='\
+          app/services/redaction.py,\
+          app/services/data_policy.py,\
+          app/services/federation.py,\
+          app/services/scim.py,\
+          app/services/proposal_policy.py,\
+          app/services/retention.py,\
+          app/services/beat_health.py,\
+          app/core/secrets.py,\
+          app/core/net_guard.py' \
+          || { echo "::error::Coverage on a security-critical module dropped below 70%. These are the modules where an untested line is a guarantee nobody is checking: redaction, capture policy, federated provisioning, SCIM, proposal policy, retention, secret encryption, SSRF guard."; exit 1; }
+
+  integration-tests:
+    # Workstream I1/I2. The unit suite has no database, so everything that only a
+    # real Postgres can prove — that a workspace purge actually deletes 39 tables
+    # in a valid order, that SCIM deactivation revokes refresh tokens, that
+    # federated SSO lands users in the configured workspace instead of minting a
+    # tenant each, that self-approval is refused — was verified by hand and by
+    # nothing else. Tenant isolation is application-layer only (no RLS, one shared
+    # bucket), so "verified by hand" is not good enough for it.
+    #
+    # tests/integration/ modules skip themselves unless TRACEIQ_LIVE_DB is set,
+    # which keeps them out of the unit job while letting this one run them.
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: traceiq
+          POSTGRES_PASSWORD: traceiq_ci
+          POSTGRES_DB: traceiq_ci
+        ports: ["5432:5432"]
+        # Without a healthcheck the job races the database and fails on the first
+        # connection rather than waiting for it.
+        options: >-
+          --health-cmd "pg_isready -U traceiq"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      redis:
+        image: redis:7
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      # A real object store, so the artifact-deletion paths (workspace purge,
+      # retention, the orphan sweep) are genuinely exercised. No health-cmd:
+      # that runs inside the container and depends on which tools this image
+      # happens to ship. The wait step below polls from the runner instead.
+      # bitnami/minio, not minio/minio: GitHub service containers cannot supply a
+      # command, and the upstream image needs `server /data` to do anything. This
+      # one starts the server from its own entrypoint.
+      minio:
+        image: bitnami/minio:2024
+        env:
+          MINIO_ROOT_USER: ci
+          MINIO_ROOT_PASSWORD: ci-secret-key
+          MINIO_DEFAULT_BUCKETS: traceiq-ci
+        ports: ["9000:9000"]
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://traceiq:traceiq_ci@localhost:5432/traceiq_ci
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/0
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_ACCESS_KEY: ci
+      MINIO_SECRET_KEY: ci-secret-key
+      MINIO_BUCKET_NAME: traceiq-ci
+      SECRET_KEY: ci-only-secret-not-for-any-real-deployment
+      WEBHOOK_SECRET: ci-only-webhook-secret
+      TRACEIQ_LIVE_DB: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+
+      - name: Install dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # Polled from the runner, not via a container health-cmd: an unreachable
+      # object store does not fail the tests, it makes them SLOW (botocore
+      # retries with backoff), which reads as a flaky timeout rather than a
+      # missing service.
+      - name: Wait for MinIO
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live; then
+              echo "MinIO is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MinIO did not become ready" >&2; exit 1
+
+      - name: Create the bucket
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import boto3
+          from botocore.client import Config
+          s3 = boto3.client("s3", endpoint_url="http://localhost:9000",
+                            aws_access_key_id="ci",
+                            aws_secret_access_key="ci-secret-key",
+                            config=Config(signature_version="s3v4"),
+                            region_name="us-east-1")
+          try:
+              s3.create_bucket(Bucket="traceiq-ci")
+          except s3.exceptions.BucketAlreadyOwnedByYou:
+              pass
+          print("bucket ready")
+          PY
+
+      # bootstrap_db.py, not `alembic upgrade head`: the Alembic baseline is an
+      # empty stub, so migrations alone cannot build a schema from scratch (H3).
+      - name: Create the schema
+        working-directory: backend
+        run: python scripts/bootstrap_db.py
+
+      # A fresh database has no roles until something seeds them. The fixtures
+      # call init_rbac themselves, but doing it once here fails loudly if the
+      # seeding path itself is broken, rather than as 90 confusing fixture errors.
+      - name: Seed RBAC
+        working-directory: backend
+        run: |
+          python - <<'PY'
+          import asyncio
+          from app.core.database import get_session_context
+          from app.core.rbac_init import init_rbac
+
+          async def main():
+              async with get_session_context() as session:
+                  await init_rbac(session)
+
+          asyncio.run(main())
+          PY
+
+      - name: Run integration tests
+        working-directory: backend
+        run: python -m pytest tests/integration -v --tb=short
+
+      # Migrations must round-trip, not just apply. A downgrade that fails is a
+      # failed upgrade with no way back — and one has already been caught this
+      # way (an explicitly named FK that only exists on migrated databases).
+      - name: Verify the migration chain round-trips
+        working-directory: backend
+        run: |
+          alembic downgrade -3
+          alembic upgrade head
+          alembic current
 
   engine-tests:
     # The redaction module is the worker's only defence against writing
@@ -140,6 +321,43 @@ jobs:
         # Known finding: committed .env history and dump.sql predate this
         # workflow. Advisory until that history is rewritten, then flip to
         # blocking so nothing new lands.
+        continue-on-error: true
+
+  dependency-audit:
+    # Workstream I4. Neither pip-audit nor npm audit ran anywhere, so a known-CVE
+    # dependency could sit in the image indefinitely.
+    #
+    # Advisory for now (continue-on-error). A blocking gate on a transitive CVE
+    # with no available fix stops every unrelated PR, which is how teams learn to
+    # ignore the job — or delete it. Flip these to blocking once the existing
+    # backlog is triaged.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: pip-audit (backend)
+        working-directory: backend
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --desc
+        continue-on-error: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: npm audit (execution engine)
+        working-directory: execution-engine
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: npm audit --audit-level=high
         continue-on-error: true
 
   codeql:
