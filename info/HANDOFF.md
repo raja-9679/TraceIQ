@@ -1,6 +1,7 @@
 # Handoff — resuming the regulated-readiness work
 
-Written 2026-08-07, end of session. Branch `feature/enterprise-auth-ai`.
+Written 2026-08-07, substantially rewritten 2026-08-10. Branch
+`feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
 machine. Assistant session memory does **not** — it sits in
@@ -11,39 +12,62 @@ it belongs here rather than in a chat history.
 
 ## Where we are
 
-`info/REGULATED_READINESS.md` is the plan: nine workstreams (A–I) to make
+`info/REGULATED_READINESS.md` is the plan: nine workstreams (A-I) to make
 TraceIQ sellable into insurance, payments, and enterprise SaaS procurement.
 
-**Done and pushed:** workstreams C, A, B (phases 1–2) and D, E (phase 3).
-**Done, not yet pushed:** F1.
+**Done and pushed:** C, A, B (phases 1-2) and D, E (phase 3).
+**Done, NOT yet pushed:** F1, F2, F4, F5, G, H1-H4, I1-I4 (7 commits,
+`4a913c6`..`a2401ff`).
 
 | Workstream | State |
 |---|---|
-| C — credential leaks | done |
-| A — redaction (A1–A8) | done |
-| B — capture policy | done |
-| D — encryption at rest, TLS, key rotation | done |
-| E — audit trail (E1–E5) | done |
-| F1 — federated provisioning (the OIDC tenant bug) | done |
-| **F2 — SCIM 2.0 with real deprovisioning** | **next** |
-| F3–F5 — SAML, separation of duties, roles | not started |
-| G — deletion / residency | not started |
-| H — operability (beat HA, DLQ replay, real migration baseline) | not started |
-| I — proving it (CI coverage, pen test, SOC 2) | partial |
+| C - credential leaks | done (except C5, below) |
+| A - redaction (A1-A8) | done |
+| B - capture policy | done |
+| D - encryption at rest, TLS, key rotation | done |
+| E - audit trail (E1-E5) | done |
+| F1 - federated provisioning (the OIDC tenant bug) | done |
+| F2 - SCIM 2.0 + real deprovisioning | done |
+| F4 - separation of duties | done |
+| F5 - roles cleanup | done |
+| **F3 - SAML 2.0** | **deferred - see below** |
+| G - deletion, retention, erasure, residency | done |
+| H1-H4 - beat HA, DLQ replay, migration lock, monitoring | done |
+| **H5 - Helm chart** | **not started** |
+| I1-I4 - CI database, isolation tests, coverage gates | done |
+| **I5 - pen test, SOC 2 Type II** | **external / calendar** |
 
-Tests: **433** — 326 backend unit, 21 backend live-Postgres, 86 engine. CI runs
-the 326 (it has no Postgres service, so the live ones are opt-in — see below).
+Tests: **624** - 424 backend unit, 114 backend integration (real Postgres), 86
+engine. CI ran 18 before any of this work, and had no database at all until I1.
 
-The nine commits for phases 1–3 are `5ad603a` … `1d90480`, plus `4e038b9`.
-Everything below `4e038b9` in the push is earlier security-hardening work from
-2026-08-06.
+### What is actually left, and why
 
-Architecture decisions and traps are recorded in `CLAUDE.md` under
-"Data-capture policy + redaction", "Encryption + transport", and "Audit trail".
-Read those before touching any of it — several are counter-intuitive and
-expensive to rediscover.
+1. **C5 credential hygiene.** Committed `.env` history and the old tracked
+   `dump.sql` mean "have credentials been exposed in version control" is still
+   honestly *yes*. Needs rotation, then a `git filter-repo` rewrite. **Rotation
+   does not depend on the rewrite and should not wait for it.** Every regulated
+   buyer's questionnaire asks this. This is the highest-value remaining item and
+   it is not a coding task.
+2. **F3 SAML 2.0.** Zero code. Gates SAML-first insurance and banking IdPs
+   regardless of OIDC support. Deferred here because it needs `xmlsec` system
+   libraries in the backend image (like ldap3 before it, but heavier) and an IdP
+   to test against - a mock SAML IdP is doable, the mock OIDC one used for F1 is
+   ~30 lines of FastAPI. Parked in `SCOPE_NOTES.md`.
+3. **H3's squashed initial migration.** The advisory lock landed; the empty
+   Alembic baseline did not. There is still no verified rollback to an arbitrary
+   revision - `docs/OPERATIONS.md` prescribes snapshot-then-upgrade meanwhile.
+4. **H4's remainder:** no OpenTelemetry, no structured logging (stdlib `logging`
+   still mixed with raw `print()`), no error tracking.
+5. **H5 Helm/K8s.** Compose only.
+6. **I5 pen test then SOC 2 Type II.** External, calendar-bound. Everything it
+   needs from the codebase now exists.
 
----
+New operator-facing docs worth knowing about: `docs/OPERATIONS.md` (H) and
+`docs/DATA_RESIDENCY.md` (G). `docs/ENTERPRISE_AUTH.md` grew federated
+provisioning and SCIM sections.
+
+Architecture decisions and traps are in `CLAUDE.md`. Read those before touching
+any of it - several are counter-intuitive and expensive to rediscover.
 
 ## Setting up a fresh laptop
 
@@ -90,7 +114,8 @@ There is now a script for this: **`backend/run-tests-live.sh`**. It creates a
 scratch database inside the running Postgres container, bootstraps the schema,
 runs pytest with `TRACEIQ_LIVE_DB=1`, and drops the database again. Modules
 under `tests/integration/` skip themselves without that variable, so they stay
-out of the unit suite and out of CI (which has no Postgres service — I1).
+out of the unit suite while the CI `integration-tests` job (which has Postgres,
+Redis and MinIO services) sets it and runs them.
 
 ```bash
 cd backend
@@ -133,49 +158,28 @@ and gives up. Never point this at the `traceiq` database itself.
 
 ---
 
-## Next up: workstream F (identity)
+## Two traps found this session, both worth remembering
 
-Read `info/REGULATED_READINESS.md` § "Workstream F" for the full detail.
+**Anything a migration NAMES that model metadata also creates will diverge.**
+`bootstrap_db.py` builds fresh schemas from metadata, so an explicitly named
+foreign key in a migration exists only on *migrated* databases - and F4's
+`downgrade` failed on every fresh install with "constraint does not exist".
+Pass `None` and let SQLAlchemy generate the same default name on both paths.
+This is the same family as the audit-trigger trap in `c8d9e0f1a2b3`, and it will
+happen again.
 
-**F1 is done** — `app/services/federation.py` plus
-`provision_federated_user()` / `sync_federated_access()` in
-`user_provisioning.py`. Operators pick a mode (`standalone` / `workspace` /
-`deny`) and optional IdP group → role/team maps in Settings → Instance (Admin) →
-Federated provisioning. Two things to know before touching it: the default is
-still `standalone` (the legacy tenant-per-user behaviour) so existing installs
-upgrade unchanged, and group maps are re-applied on **every** login — the whole
-point, since create-only mapping never revokes anything. `docs/ENTERPRISE_AUTH.md`
-has the operator-facing version. Verified end to end against a mock OIDC
-provider; a throwaway mock-IdP recipe is not kept in the repo, but it is ~30
-lines of FastAPI serving discovery/token/userinfo, and the userinfo `groups`
-claim is the only interesting part.
-
-**F2. SCIM 2.0 with real deprovisioning.** There is no deprovision path of any
-kind today, so someone removed from Okta or Entra keeps their TraceIQ account
-and refresh token indefinitely. This is the item most likely to fail an IT
-security review on its own. Good news: `is_active` is already enforced in both
-the JWT and API-key principal paths, so a SCIM `active:false` bites immediately.
-
-**F3. SAML 2.0.** Zero code today. A large share of insurance and banking IdPs
-are SAML-first, so this gates those deals regardless of OIDC support.
-
-**F4. Separation of duties.** `app/api/agent_ownership.py` lets an editor accept
-their own proposal — creating and accepting both require the same role and
-nothing checks `decided_by_id != created_by_id`. `maybe_auto_apply` also applies
-changes with no human at all above the workspace threshold.
-
-**F5. Roles.** `Role.tenant_id` exists but nothing ever creates a tenant-scoped
-role — no API, no UI, dead column. Also reconcile or delete
-`backend/scripts/setup_rbac.py`, which seeds an `org:`-scoped permission
-vocabulary incompatible with the `workspace:`/`test:` scopes the live code
-checks; running it produces roles that grant nothing.
-
----
+**pytest-asyncio 0.25 ignores `asyncio_default_test_loop_scope`.** `pytest.ini`
+sets fixture loop scope to `session` and tests are function-scoped, so an async
+fixture must declare `@pytest_asyncio.fixture(loop_scope="function")` or its
+engine lands on a different event loop ("attached to a different loop"). Also:
+`session.rollback()` expires every instance, so capture ids as plain ints before
+one - `tests/integration/test_scim_db.py` has the `Ws` NamedTuple pattern for it.
 
 ## Loose ends and things to know
 
 **The stack is running old images.** Your local compose stack uses published
-images that predate all of this. A real end-to-end run still exercises the
+images that predate all of this. The backend image additionally needs rebuilding
+for two new dependencies: `ldap3` (F1-era) and `celery-redbeat` (H1). A real end-to-end run still exercises the
 pre-redaction worker until you rebuild:
 
 ```bash
