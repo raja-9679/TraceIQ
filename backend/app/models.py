@@ -38,8 +38,15 @@ class RolePermission(SQLModel, table=True):
 class Role(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
+    # NULL = system role, seeded by app/core/rbac_init.py. A non-NULL tenant_id
+    # would be a tenant's own custom role — RESERVED, nothing creates one yet
+    # (no API, no UI; parked in SCOPE_NOTES.md). Kept rather than dropped so the
+    # feature stays open, but `rbac_service.get_role_by_name` no longer matches
+    # on name alone: a bare lookup considers system roles ONLY. It used to take
+    # whichever row came back first, which the moment such a role existed would
+    # let one tenant's custom role be granted to another tenant's workspace.
     tenant_id: Optional[int] = Field(
-        default=None, foreign_key="tenant.id")  # Null means system role
+        default=None, foreign_key="tenant.id")
     description: Optional[str] = None
 
     # Relationships

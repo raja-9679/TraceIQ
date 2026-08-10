@@ -67,6 +67,31 @@ For a full feature-coverage scorecard against a modern-platform checklist (and t
 
 These items either require significant frontend work, external products, or design decisions that need stakeholder input.
 
+### Identity (workstream F)
+
+- **Tenant-scoped custom roles.** `Role.tenant_id` exists and is documented as
+  "NULL means system role", but nothing creates a tenant-scoped role: no API, no
+  UI. F5 deliberately kept the column rather than dropping it, so the feature
+  stays open, and made the lookup safe in the meantime —
+  `rbac_service.get_role_by_name` now considers **system roles only** unless a
+  caller passes `tenant_id` explicitly. Before this, it matched on name alone
+  and returned whichever row came back first, so the first tenant-scoped
+  "Workspace Admin" anyone created could have been granted to another tenant's
+  workspace owner. Building the feature means: CRUD for tenant roles, a
+  permission picker in the UI, and passing `tenant_id` at every grant site
+  (`workspace_service.create_workspace`, invitation accept, federated
+  provisioning, SCIM).
+- **SAML 2.0 (F3).** Zero code. A large share of insurance and banking IdPs are
+  SAML-first, so it gates those deals regardless of OIDC support. Needs a
+  signature-verification dependency (`python3-saml` pulls in `xmlsec`, which
+  needs system libraries in the backend image) — the reason it is not bundled
+  with F1/F2/F4.
+- **Merging tenants an existing SSO deployment already accumulated.** F1 stops
+  new tenant-per-user provisioning but does not consolidate what a pre-F1
+  deployment created. That is data surgery (re-parenting workspaces, projects,
+  runs and audit rows), not provisioning, and needs a decision about what
+  happens to each stranded tenant's audit history.
+
 ### Phase A polish
 - **Frontend UI** for API keys, refresh-token-aware auth context, outbound webhooks, personas, heal proposals, flake records, visual baselines, deployment comparison. Every entity here has working backend endpoints; React pages have not been built. Recommended follow-up: a Settings → Integrations panel with tabs.
 - **GitHub Action `dist/` build** — the action ships only sources. CI release tooling needs to run `npm run build` and commit `dist/index.js` (GitHub's convention).

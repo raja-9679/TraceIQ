@@ -26,7 +26,14 @@ class WorkspaceService:
         # Link owner as Workspace Admin
         admin_role = await rbac_service.get_role_by_name(session, "Workspace Admin")
         if not admin_role:
-             raise Exception("System Role 'Workspace Admin' not found. Run setup_rbac.py")
+             # init_rbac (app lifespan / scripts/bootstrap_db.py) is the only
+             # thing that seeds system roles. The old message pointed at
+             # setup_rbac.py, which seeded an incompatible `org:` permission
+             # vocabulary and is deleted.
+             raise Exception(
+                 "System role 'Workspace Admin' not found — RBAC has not been "
+                 "initialised. Run scripts/bootstrap_db.py, or start the backend "
+                 "once so its lifespan hook runs init_rbac.")
              
         user_ws = UserWorkspace(user_id=owner_id, workspace_id=ws.id, role_id=admin_role.id, role="admin")
         session.add(user_ws)
