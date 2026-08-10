@@ -55,6 +55,27 @@ def sse_extra_args(
     return args
 
 
+def _client_config() -> Config:
+    """boto3 client config with BOUNDED retries and timeouts.
+
+    botocore's defaults retry with exponential backoff and no connect timeout,
+    so an unreachable object store makes every call hang for minutes instead of
+    failing. That is visible in two places: a request handler blocks while a
+    user waits, and the retention/purge paths (which delete artifacts
+    best-effort and are supposed to degrade gracefully) took 100 seconds per
+    handful of objects when the endpoint was down.
+
+    Five seconds to connect, three attempts. A genuinely slow store still gets a
+    30-second read window, which is generous for the object sizes here.
+    """
+    return Config(
+        signature_version="s3v4",
+        connect_timeout=5,
+        read_timeout=30,
+        retries={"max_attempts": 3, "mode": "standard"},
+    )
+
+
 class MinioClient:
     """S3/MinIO access. Config is resolved lazily on FIRST USE (not import),
     through the effective instance settings (admin UI DB override, else env).
@@ -91,7 +112,7 @@ class MinioClient:
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4"),
+            config=_client_config(),
             region_name="us-east-1"
         )
 
@@ -103,7 +124,7 @@ class MinioClient:
             endpoint_url=effective("MINIO_PUBLIC_URL"),
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4"),
+            config=_client_config(),
             region_name="us-east-1"
         )
 

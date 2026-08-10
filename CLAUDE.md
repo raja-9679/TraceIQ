@@ -506,6 +506,26 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   overlay); `metrics_token` is gitignored. Still missing: OTel, structured
   logging, error tracking. **H5 (Helm) not done.**
 
+- **Proving it (workstream I)** — CI now has an `integration-tests` job with
+  Postgres + Redis + **`bitnami/minio`** service containers (the upstream
+  `minio/minio` image needs `server /data` and GitHub services cannot supply a
+  command; readiness is polled from the runner, not a container `health-cmd`).
+  It runs `tests/integration` and an `alembic downgrade -3 && upgrade head`
+  round trip. `tests/integration/*` self-skip unless `TRACEIQ_LIVE_DB` is set.
+  `tests/integration/test_tenant_isolation_db.py` is the important one: isolation
+  here is **application-layer only** (no RLS, one shared bucket), so every
+  boundary is a Python `if`. Five of the eight old `verify_*.py` scripts could not
+  even import (they referenced the long-gone `Organization` model) and are
+  deleted — they were never convertible.
+  Coverage gates: a low global floor (22%; real ~24%) plus a **70% floor on the
+  security-critical modules** (currently 86%). A global floor set at aspiration
+  rather than reality is theatre; the second gate is the one that means something.
+  `pip-audit`/`npm audit` are advisory — a blocking gate on an unfixable
+  transitive CVE stops every unrelated PR and the job gets deleted.
+  Also fixed here: `get_run`/`create_run` wrapped everything in
+  `except Exception` and re-raised as 500, so access denial reached clients as
+  `500 Internal Server Error: 403: Access denied`.
+
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of

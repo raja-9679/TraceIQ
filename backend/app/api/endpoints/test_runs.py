@@ -308,6 +308,11 @@ async def create_run(
             except Exception as e:
                 print(f"Failed to record run usage for workspace {_ws_id}: {e}")
 
+    except HTTPException:
+        # Same trap as get_run: this handler used to turn every deliberate 4xx
+        # raised above (access denied, quota exceeded, suite not found) into a
+        # 500. An authorization or quota decision is not a server fault.
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -445,6 +450,13 @@ async def get_run(run_id: int, session: AsyncSession = Depends(get_session), cur
             user=run.user
         )
         return response
+    except HTTPException:
+        # The blanket handler below used to swallow these and re-raise as 500, so
+        # "Access denied" reached the client as "Internal Server Error: 403:
+        # Access denied". That misreports an authorization decision as a server
+        # fault: it pages whoever watches the 5xx rate, and it tells a client
+        # to retry something that will never succeed.
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
