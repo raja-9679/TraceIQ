@@ -170,8 +170,27 @@ class RBACService:
 
         return False
 
-    async def get_role_by_name(self, session: AsyncSession, role_name: str) -> Optional[Role]:
-        stmt = select(Role).where(Role.name == role_name)
+    async def get_role_by_name(self, session: AsyncSession, role_name: str,
+                               tenant_id: Optional[int] = None) -> Optional[Role]:
+        """Look up a role by name.
+
+        `Role.tenant_id` is NULL for system roles and set for tenant-scoped ones
+        (nothing creates the latter yet — see SCOPE_NOTES.md). This used to match
+        on name alone and return whichever row came back first, which is a
+        cross-tenant hazard the moment such a role exists: every caller that
+        grants "Workspace Admin" by name (workspace_service.create_workspace,
+        invitations, federated provisioning) would grant whatever won the race.
+
+        Without `tenant_id`, only system roles are considered. With it, a
+        tenant's own role wins and the system role is the fallback.
+        """
+        if tenant_id is not None:
+            scoped = (await session.exec(
+                select(Role).where(Role.name == role_name,
+                                   Role.tenant_id == tenant_id))).first()
+            if scoped:
+                return scoped
+        stmt = select(Role).where(Role.name == role_name, Role.tenant_id == None)  # noqa: E711
         return (await session.exec(stmt)).first()
 
     async def get_user_permissions_map(self, user_id: int, session: AsyncSession) -> dict:

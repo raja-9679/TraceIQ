@@ -20,7 +20,9 @@ async def assign_tenant_admin(email: str):
         # 2. Find Tenant Admin Role
         role = (await session.exec(select(Role).where(Role.name == "Tenant Admin"))).first()
         if not role:
-            print("Error: 'Tenant Admin' role not found. Run setup_rbac.py first.")
+            print("Error: 'Tenant Admin' role not found — RBAC has not been "
+                  "initialised. Run scripts/bootstrap_db.py, or start the backend "
+                  "once so its lifespan hook runs init_rbac.")
             return
 
         # 3. Find Tenant (Assuming single tenant or first tenant for now)

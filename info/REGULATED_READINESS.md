@@ -23,9 +23,9 @@ map of the current tree.
 | F1 — federated provisioning (the tenant bug) | done (2026-08-10) |
 | F2 — SCIM 2.0 + deprovisioning | done (2026-08-10) |
 | F4 — separation of duties | done (2026-08-10) |
-| F5 — roles cleanup | **next** |
-| F3 — SAML 2.0 | not started |
-| G — deletion/residency | not started |
+| F5 — roles cleanup | done (2026-08-10) |
+| F3 — SAML 2.0 | deferred — see SCOPE_NOTES.md |
+| G — deletion/residency | **next** |
 | H — operability | not started |
 | I — proving it | partial: CI runs the full unit suite + a new engine suite |
 
@@ -495,13 +495,32 @@ which is what a QSA needs.
   `caseproposal_created_by_id_fkey` instead. Passing `None` gets the same name
   on both paths. Same family as the audit-trigger trap in `c8d9e0f1a2b3`:
   anything a migration names that metadata also creates will diverge.
-- **F5. Roles.** `Role.tenant_id` exists (`models.py:41`, "Null means system
-  role") but nothing ever creates a tenant-scoped role — there is no API and no
-  UI, so the column is dead. Also reconcile or delete
-  `backend/scripts/setup_rbac.py`, which seeds an `org:`-scoped permission
-  vocabulary incompatible with the `workspace:`/`test:` scopes the live code
-  actually checks (`core/rbac_init.py`). Running the legacy script produces
-  roles that grant nothing.
+- **F5. Roles — DONE (reconciled, not built out).**
+
+  `scripts/setup_rbac.py` is **deleted** and replaced by
+  `scripts/backfill_rbac.py`. The old script seeded an `org:`-scoped permission
+  vocabulary that no live check asks for, so running it produced
+  plausible-looking roles granting nothing — and two error messages in the
+  codebase told operators to run it when a role was missing. Seeding now has one
+  owner (`init_rbac`); the replacement keeps only the parts that were genuinely
+  useful and idempotent: backfilling `UserProjectAccess.role_id` and
+  `TeamProjectAccess.role_id` from the legacy `access_level` string, and granting
+  Tenant Admin to tenant owners who have no system role. Both stale messages now
+  point at `bootstrap_db.py`.
+
+  `Role.tenant_id` is **kept, documented as reserved, and made safe**, rather
+  than dropped or built out. The real problem was not that the column was dead —
+  it was that `rbac_service.get_role_by_name` matched on **name alone and
+  returned whichever row came back first**. Every grant site looks up
+  "Workspace Admin" by name, so the first tenant-scoped role with that name
+  could have been granted to another tenant's workspace owner. A bare lookup now
+  considers system roles only; passing `tenant_id` prefers that tenant's role
+  and falls back to the system one. 7 tests against a real Postgres, including
+  the shadowing case and cross-tenant invisibility.
+
+  Building tenant-scoped roles properly (CRUD, a permission picker, and passing
+  `tenant_id` at every grant site) is parked in `SCOPE_NOTES.md` — it is a
+  feature, not cleanup.
 
 ---
 
