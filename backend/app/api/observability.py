@@ -149,7 +149,56 @@ async def prometheus_metrics(
         lines.append(f"traceiq_queue_group_pending{{{label}}} {g['pending']}")
         lines.append(f"traceiq_queue_group_consumers{{{label}}} {g['consumers']}")
 
+    # celery_beat proof of life (workstream H1). Beat drains jobs:results every
+    # two seconds; when it dies nothing finalises, aggregates, schedules or
+    # expires, and the only previous symptom was a user asking why their run had
+    # been "running" for an hour. -1 means "never reported" so an alert rule can
+    # tell "not running yet" from "stopped".
+    from app.services.beat_health import read_beat_health
+    beat = await read_beat_health()
+    lines += [
+        "# HELP traceiq_beat_heartbeat_age_seconds Seconds since celery_beat last reported (-1 = never)",
+        "# TYPE traceiq_beat_heartbeat_age_seconds gauge",
+        f"traceiq_beat_heartbeat_age_seconds {beat.age_seconds if beat.age_seconds is not None else -1}",
+        "# HELP traceiq_beat_healthy 1 when celery_beat is reporting within BEAT_STALE_SECONDS",
+        "# TYPE traceiq_beat_healthy gauge",
+        f"traceiq_beat_healthy {1 if beat.healthy else 0}",
+    ]
+
+    # Dead-lettered jobs (H2). Already computed in the snapshot but never
+    # exposed as a metric, so nothing could alert on it: dead jobs sat forever
+    # and the only trace was a console.error every hundred loop iterations.
+    lines += [
+        "# HELP traceiq_dead_letter_depth Jobs that exhausted their retries and are awaiting replay",
+        "# TYPE traceiq_dead_letter_depth gauge",
+        f"traceiq_dead_letter_depth {snapshot['streams'].get('jobs:dead-letter', 0)}",
+    ]
+
     return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
+
+
+@router.get("/health/beat", include_in_schema=False)
+async def beat_health() -> Response:
+    """Is the scheduler alive?
+
+    Deliberately NOT folded into /health/ready: readiness gates load-balancer
+    rotation, and pulling the API out of service because a scheduler is down
+    turns a degraded system into an outage. This is a separate probe for
+    monitoring to watch, and it is unauthenticated for the same reason
+    /health/ready is — it exposes one timestamp and no tenant data.
+    """
+    import json
+
+    from app.services.beat_health import read_beat_health
+
+    health = await read_beat_health()
+    return Response(
+        json.dumps(health.as_dict()),
+        # 200 for unknown: a just-started instance, or a deployment deliberately
+        # running no beat, must not read as broken.
+        status_code=503 if health.state in ("stale", "skewed") else 200,
+        media_type="application/json",
+    )
 
 
 @router.get("/health/ready", include_in_schema=False)

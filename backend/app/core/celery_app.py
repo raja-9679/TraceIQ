@@ -35,6 +35,7 @@ celery_app = Celery(
         "app.tasks.cleanup_tasks",
         "app.tasks.result_aggregator",  # New distributed execution aggregator
         "app.tasks.schedule_tasks",     # Cron test scheduler task
+        "app.tasks.heartbeat_tasks",   # Beat proof-of-life (H1)
         "app.tasks.analysis_tasks",     # Typed failure analysis on failed runs
         # Phase B–E task modules (were missing from include, so their tasks
         # never registered on workers):
@@ -58,6 +59,7 @@ celery_app.conf.task_routes = {
     "app.tasks.cleanup_tasks.purge_old_runs": "main-queue",
     "app.tasks.cleanup_tasks.purge_old_audit_logs": "main-queue",
     "app.tasks.cleanup_tasks.purge_derived_records": "main-queue",
+    "app.tasks.heartbeat_tasks.beat_heartbeat": "main-queue",
     "app.tasks.cleanup_tasks.purge_orphaned_artifacts": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
@@ -108,6 +110,13 @@ celery_app.conf.beat_schedule = {
         # window (per-project since workstream G2).
         'schedule': 3600.0,
     },
+    'beat-heartbeat': {
+        # Proof of life for celery_beat (H1). Dispatched by beat and executed by
+        # a worker, so it proves beat can reach the broker — a beat process that
+        # is up but cannot dispatch is the silent stall this exists to catch.
+        'task': 'app.tasks.heartbeat_tasks.beat_heartbeat',
+        'schedule': 30.0,
+    },
     'purge-derived-records': {
         'task': 'app.tasks.cleanup_tasks.purge_derived_records',
         'schedule': 86400.0,  # Daily; no-op unless DERIVED_RETENTION_DAYS > 0
@@ -129,3 +138,36 @@ celery_app.conf.timezone = 'UTC'
 # can clean up; hard limit sends SIGKILL if the task is still running after it.
 celery_app.conf.task_soft_time_limit = 3600   # 1 hour
 celery_app.conf.task_time_limit = 3900        # 5 min grace period beyond soft limit
+
+
+# ---------------------------------------------------------------------------
+# Beat HA (workstream H1)
+# ---------------------------------------------------------------------------
+# One celery_beat with no leader election, using the default file-backed
+# PersistentScheduler on a container-local path. It drains jobs:results every two
+# seconds, so if it dies the entire execution pipeline stalls silently — nothing
+# finalises, aggregates, schedules or expires.
+#
+# redbeat replaces the scheduler with a Redis-backed one that holds a lock, so
+# two or more beat processes can run and exactly one is active. It is OPT-IN:
+# switching it on by default would move every existing deployment's schedule
+# state from a file to Redis during an upgrade, and a schedule that silently
+# fails to migrate is worse than the single point of failure it replaces.
+#
+#   CELERY_BEAT_SCHEDULER=redbeat.RedBeatScheduler
+#
+# See docs/OPERATIONS.md. The heartbeat above is the complementary half: it makes
+# a dead scheduler *observable* whether or not you run two of them.
+import os as _os
+
+_beat_scheduler = _os.getenv("CELERY_BEAT_SCHEDULER", "").strip()
+if _beat_scheduler:
+    celery_app.conf.beat_scheduler = _beat_scheduler
+    # redbeat needs its own Redis URL; default it to the broker so a deployment
+    # only has to set one variable.
+    celery_app.conf.redbeat_redis_url = _os.getenv(
+        "REDBEAT_REDIS_URL", settings.CELERY_BROKER_URL)
+    # Lock TTL must exceed the longest gap between beat ticks or the lock expires
+    # mid-cycle and a second beat starts firing the same schedule.
+    celery_app.conf.redbeat_lock_timeout = int(
+        _os.getenv("REDBEAT_LOCK_TIMEOUT", "300"))

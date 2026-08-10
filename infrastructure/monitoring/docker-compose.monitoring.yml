@@ -1,0 +1,58 @@
+# Optional monitoring stack — workstream H4.
+#
+# Overlay on the main compose file:
+#   cd infrastructure
+#   echo -n "$METRICS_TOKEN" > monitoring/metrics_token && chmod 600 monitoring/metrics_token
+#   docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+#
+# Prometheus at :9090, Grafana at :3001 (dashboard pre-provisioned).
+#
+# Deliberately NOT part of the default stack: it is another two containers and a
+# volume, and a self-hoster evaluating TraceIQ should not have to run them. But
+# "nothing scrapes /metrics" was a real gap for anyone running this in
+# production, so the config exists and is one flag away.
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      # The bearer token Prometheus presents to /metrics. Create it yourself and
+      # keep it out of git — it is the same value as METRICS_TOKEN.
+      - ./monitoring/metrics_token:/etc/prometheus/metrics_token:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks: [traceiq_internal]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      # No anonymous access: the dashboards show queue depth and run volume,
+      # which is operational intelligence about the deployment.
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      prometheus: {condition: service_started}
+    networks: [traceiq_internal]
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  traceiq_internal:
+    external: true
+    name: traceiq_traceiq_internal

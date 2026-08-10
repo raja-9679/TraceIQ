@@ -480,6 +480,32 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   retained under legal obligation. The erasure audit row deliberately omits the
   email.
 
+- **Operability (workstream H)** — operator guide in `docs/OPERATIONS.md`.
+  **H1 beat**: `app/services/beat_health.py` + `app/tasks/heartbeat_tasks.py`.
+  Beat *dispatches* the heartbeat and a **worker** executes it — that is the
+  point: a beat that is up but can't reach the broker is the same silent stall.
+  Written with a TTL so the failure mode is "unknown", not "healthy from a stale
+  key". `GET /health/beat` + `traceiq_beat_healthy` /
+  `traceiq_beat_heartbeat_age_seconds` (`-1` = never reported).
+  Deliberately NOT in `/health/ready` — readiness gates LB rotation, so failing it
+  because a scheduler is down converts degradation into an outage.
+  `celery-redbeat` is a dep; `CELERY_BEAT_SCHEDULER=redbeat.RedBeatScheduler` is
+  opt-in (defaulting it would migrate every existing deployment's schedule state
+  file→Redis mid-upgrade). `REDBEAT_LOCK_TIMEOUT` must exceed the longest tick gap
+  or two beats fire the same schedule.
+  **H2 DLQ**: `app/api/dead_letter.py` — list/replay/discard, instance-admin only
+  because the payload carries **resolved project secrets** (hence the list
+  summarises, never echoes). Replay MUST clear `jobs:retries` or the job is
+  re-killed on first claim; discard is a separate endpoint on purpose.
+  **H3**: `bootstrap_db.py` now takes a Postgres session advisory lock
+  (key 8534217601) and **blocks** rather than skipping — a replica that skipped
+  would serve against an unverified schema. The empty Alembic baseline is still
+  NOT fixed: no verified rollback, so snapshot-then-upgrade is the documented
+  plan.
+  **H4**: `infrastructure/monitoring/` (Prometheus + alerts + Grafana + compose
+  overlay); `metrics_token` is gitignored. Still missing: OTel, structured
+  logging, error tracking. **H5 (Helm) not done.**
+
 See `SCOPE_NOTES.md` for what's intentionally deferred (semantic selectors, full visual diff, browser recorder, test-from-intent).
 
 ## Known issues to be aware of

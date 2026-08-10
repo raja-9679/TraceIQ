@@ -164,6 +164,12 @@ class Settings(BaseSettings):
     # Audit history retention, separate from run retention. 0 keeps forever.
     AUDIT_RETENTION_DAYS: int = 0
 
+    # How long celery_beat may go without a heartbeat before it is reported
+    # stale (workstream H1). Beat ticks every 30s, so this is three missed
+    # ticks — long enough not to fire on scheduling jitter, short enough that a
+    # stalled pipeline is noticed in minutes rather than by a user complaining.
+    BEAT_STALE_SECONDS: int = 180
+
     # Bearer token for GET /metrics. Prometheus cannot present a JWT, so a
     # scraper authenticates with this instead. Unset means /metrics falls back
     # to requiring an authenticated principal — it is never anonymous.

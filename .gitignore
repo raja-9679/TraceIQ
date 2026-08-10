@@ -90,3 +90,4 @@ backend/celerybeat-schedule
 # Database dumps — never commit (contains real account data + bcrypt hashes)
 dump.sql
 *.sql.dump
+infrastructure/monitoring/metrics_token

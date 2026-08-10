@@ -110,7 +110,55 @@ async def _async_phase() -> tuple[str, str | None, int]:
     return "stamp", None, table_count
 
 
+# Postgres advisory-lock key. Arbitrary but stable — every replica must pick the
+# same number or the lock does not serialise anything.
+_MIGRATION_LOCK_KEY = 8534217601
+
+
+def _with_migration_lock(fn):
+    """Run `fn` while holding a session-scoped Postgres advisory lock.
+
+    Workstream H3. `RUN_MIGRATIONS` defaults to true and every replica ran this,
+    with nothing serialising them: two API containers starting together both
+    executed `alembic upgrade head` concurrently. Alembic is not safe under
+    that — the losers fail on a duplicate DDL, or worse, half-apply while the
+    other is mid-migration.
+
+    A blocking lock, not a try-and-skip: a replica that skipped migrating would
+    start serving against a schema it has not verified. Waiting is correct;
+    starting early is not.
+    """
+    from sqlalchemy import create_engine, text
+
+    from app.core.config import db_url_for, settings
+
+    engine = create_engine(db_url_for(settings.DATABASE_URL, sync=True),
+                           pool_pre_ping=True)
+    try:
+        with engine.connect() as conn:
+            # pg_advisory_lock is held for the life of the SESSION, so it must
+            # be taken on the same connection that is kept open — not inside a
+            # transaction that commits.
+            log("Waiting for the schema lock (another replica may be migrating)...")
+            conn.execute(text("SELECT pg_advisory_lock(:key)"),
+                         {"key": _MIGRATION_LOCK_KEY})
+            conn.commit()
+            log("Schema lock acquired.")
+            try:
+                return fn()
+            finally:
+                conn.execute(text("SELECT pg_advisory_unlock(:key)"),
+                             {"key": _MIGRATION_LOCK_KEY})
+                conn.commit()
+    finally:
+        engine.dispose()
+
+
 def main() -> int:
+    return _with_migration_lock(_migrate)
+
+
+def _migrate() -> int:
     try:
         action, stamp, table_count = asyncio.run(_async_phase())
     except Exception as exc:
