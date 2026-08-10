@@ -174,6 +174,20 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                description="accept any TLS certificate from the directory — leaves the "
                            "connection open to on-path password capture; leave OFF"),
     # --- Policies ---
+    SettingDef("REQUIRE_SEPARATE_APPROVER", "policies", type="bool",
+               label="Agent proposals need a second person",
+               description="the person who filed a proposal cannot accept it. "
+                           "Turning this on here forces it for EVERY workspace — a "
+                           "workspace admin cannot opt back out. Off by default "
+                           "because a solo user proposing through their own agent "
+                           "and accepting in the UI is a normal workflow"),
+    SettingDef("AUTO_APPLY_DISABLED", "policies", type="bool",
+               label="Disable auto-apply of agent proposals",
+               description="kills policy-driven application instance-wide, whatever "
+                           "each workspace's confidence threshold says. Auto-applied "
+                           "changes have no human reviewer at any point, so a "
+                           "regulated environment needs to be able to switch it off "
+                           "and demonstrate that it is off"),
     SettingDef("MFA_REQUIRED", "policies", type="bool",
                label="Require MFA for all users",
                description="password logins must enrol an authenticator app before "

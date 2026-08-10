@@ -22,8 +22,9 @@ map of the current tree.
 | E — audit trail (E1–E5) | done |
 | F1 — federated provisioning (the tenant bug) | done (2026-08-10) |
 | F2 — SCIM 2.0 + deprovisioning | done (2026-08-10) |
-| F4 — separation of duties | **next** |
-| F3, F5 — SAML, roles | not started |
+| F4 — separation of duties | done (2026-08-10) |
+| F5 — roles cleanup | **next** |
+| F3 — SAML 2.0 | not started |
 | G — deletion/residency | not started |
 | H — operability | not started |
 | I — proving it | partial: CI runs the full unit suite + a new engine suite |
@@ -462,15 +463,38 @@ which is what a QSA needs.
 - **F3. SAML 2.0.** Zero code today (grep for `saml` returns only roadmap
   lines). A large share of insurance and banking IdPs remain SAML-first, so
   this gates those deals regardless of OIDC support.
-- **F4. Separation of duties.** Creating a proposal requires editor
-  (`api/agent_ownership.py:566-569`); accepting requires the **same** editor
-  role (`:682-684`) with no check that `decided_by_id != created_by_id`. The
-  only guard is that API-key principals cannot accept (`:687-688`). And
-  `maybe_auto_apply` (`:728-760`) applies CREATE/UPDATE with no human at all
-  when the workspace `auto_apply_threshold` is met, setting
-  `decided_by_id = None` (`:755`). Add proposer≠approver enforcement, make it
-  configurable per workspace, and let an instance admin disable auto-apply
-  outright.
+- **F4. Separation of duties — DONE.** `app/services/proposal_policy.py`,
+  migration `e0f1a2b3c4d5`.
+
+  The finding understated it: `CaseProposal` had **no `created_by_id` column at
+  all**, so there was nothing to compare `decided_by_id` against and the check
+  could not have existed even in principle. The column now records the human
+  behind the call — including when an API key made it, because "propose with my
+  key, accept in the UI a second later" was otherwise a trivial way around the
+  queue.
+  - `workspace.require_separate_approver` (opt-in) refuses self-approval;
+    `REQUIRE_SEPARATE_APPROVER` is an instance-level **floor** a workspace
+    cannot lower. `AUTO_APPLY_DISABLED` kills policy-driven application
+    instance-wide. Both are instance *settings*, not env vars, so "prove
+    auto-apply is off" is a screenshot rather than trust.
+  - Defaults are off. A solo user whose own agent files proposals and who then
+    accepts them in the UI is a normal workflow; enforcing by default would
+    break every existing install for a control nobody asked for.
+  - Unattributed proposals (rows predating the column) are **not** conflicts —
+    treating "we don't know" as a violation would freeze every existing queue.
+  - Rejection is deliberately not gated: withdrawing your own proposal is
+    harmless, and gating it would leave proposals nobody can clear.
+  - The policy endpoint reports `separation_enforced` alongside the stored flag
+    so the UI can show when the instance is overriding the workspace; the
+    Proposals page grew a toggle and reads it.
+  - Tests: 11 unit + 12 against a real Postgres.
+
+  **Migration trap found here, worth remembering:** naming the foreign key
+  explicitly made `downgrade` fail on every *fresh* install, because
+  `bootstrap_db.py` builds from model metadata and SQLAlchemy names it
+  `caseproposal_created_by_id_fkey` instead. Passing `None` gets the same name
+  on both paths. Same family as the audit-trigger trap in `c8d9e0f1a2b3`:
+  anything a migration names that metadata also creates will diverge.
 - **F5. Roles.** `Role.tenant_id` exists (`models.py:41`, "Null means system
   role") but nothing ever creates a tenant-scoped role — there is no API and no
   UI, so the column is dead. Also reconcile or delete

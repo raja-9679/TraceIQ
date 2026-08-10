@@ -109,6 +109,13 @@ class Workspace(SQLModel, table=True):
     # None/0 = disabled, every proposal waits for human review. Safe to enable
     # because every applied proposal is snapshotted in TestCaseRevision.
     auto_apply_threshold: Optional[float] = Field(default=None)
+    # Separation of duties (F4): when true, whoever filed a proposal cannot
+    # accept it. Off by default — a solo user whose own agent files proposals and
+    # who then reviews them in the UI is a normal workflow, and enabling this for
+    # everyone would break it. The REQUIRE_SEPARATE_APPROVER instance setting is
+    # a floor above this: an instance admin can force it on and a workspace
+    # cannot opt back out.
+    require_separate_approver: bool = Field(default=False)
 
     # Max number of runs that may be RUNNING concurrently across this
     # workspace's projects. Enforced at dispatch — runs over the cap stay
@@ -1651,6 +1658,12 @@ class CaseProposal(SQLModel, table=True):
     source_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id")
     status: str = Field(default="pending", index=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Separation of duties (workstream F4): without a recorded proposer there is
+    # nothing for the accept path to compare `decided_by_id` against, so an
+    # editor could file and accept their own proposal. Nullable — rows that
+    # predate the column are unattributed, and treating "unknown" as a conflict
+    # would freeze every existing queue.
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     decided_at: Optional[datetime] = Field(default=None)
     decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     decision_note: Optional[str] = None
