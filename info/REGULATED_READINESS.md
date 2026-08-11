@@ -22,9 +22,10 @@ What is left, and why:
 - **H4's remainder** — no OpenTelemetry, no structured logging, no error tracking.
 - **H5 (Helm/K8s)** — compose only.
 - **I5 (pen test, SOC 2 Type II)** — external and calendar-bound.
-- **C5 (credential hygiene)** — committed `.env` history and the old tracked
-  `dump.sql` still need rotation plus a `git filter-repo` rewrite. Rotation does
-  not depend on the rewrite and should not wait for it.
+- **C5 (credential hygiene)** — committed `.env` history and `dump.sql`
+  (untracked 2026-08-11, still in history) need rotation plus a
+  `git filter-repo` rewrite. Rotation does not depend on the rewrite and should
+  not wait for it.
 
 | Workstream | State |
 |---|---|
@@ -151,8 +152,10 @@ else is undermined without it.
 - **C4. `/metrics` is unauthenticated.** `backend/app/api/observability.py:67`
   has no `Depends`, while the adjacent `queue_health` (`:150-152`) is guarded.
 - **C5. Rotate committed credentials, then `git filter-repo`.** Committed `.env`
-  history and the tracked `dump.sql` mean the honest answer to "have credentials
-  been exposed in version control" is currently yes. Rotation is independent of
+  history and `dump.sql` mean the honest answer to "have credentials been
+  exposed in version control" is currently yes. `dump.sql` was untracked on
+  2026-08-11 (`4983c51` had only added the `.gitignore` line, which does nothing
+  for an already-tracked file); it remains in history. Rotation is independent of
   the history rewrite and should not wait for it. Every regulated buyer's
   security questionnaire asks this.
 
