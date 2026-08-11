@@ -195,10 +195,13 @@ one, and `env.community.example` documents every new setting (capture level,
 Never commit it.
 
 **Credential hygiene is still outstanding (workstream C5).** Committed `.env`
-history and — until commit `4983c51` — a tracked `dump.sql` mean the honest
-answer to "have credentials been exposed in version control" is still yes.
-Untracking the file does not remove it from history. This needs a
-`git filter-repo` rewrite, and the affected credentials need rotating first.
+history and a tracked `dump.sql` mean the honest answer to "have credentials
+been exposed in version control" is still yes. `dump.sql` was actually
+untracked on 2026-08-11 — commit `4983c51` claimed to do it but only added the
+`.gitignore` line, which does nothing for a file already in the index, so the
+7.6 MB dump stayed in `HEAD` and on `main`. Untracking does not remove it from
+history either. This needs a `git filter-repo` rewrite, and the affected
+credentials need rotating first.
 Rotation does not depend on the rewrite and should not wait for it. Every
 regulated buyer's security questionnaire asks this, so it will surface.
 

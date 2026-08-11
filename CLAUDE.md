@@ -565,12 +565,15 @@ Still open:
   supported types) rather than skipping it silently, so a backend-newer-than-
   worker version skew turns those cases red instead of faking a pass.
 - `celery_beat` is required for run finalization (drains `jobs:results` every 2s)
-- Credential hygiene: committed `.env` history was never scrubbed, and a
-  tracked database dump at the repo root carries account data that should not be
-  in version control. Both need a `git filter-repo` rewrite, and the affected
-  credentials need rotating first — rotation is independent of the rewrite and
-  should not wait for it. Treat anything that has ever been committed here as
-  disclosed.
+- Credential hygiene: committed `.env` history was never scrubbed, and
+  `dump.sql` (account data + bcrypt hashes) was tracked at the repo root from
+  `e0488a2` until it was finally untracked on 2026-08-11. Note `4983c51`
+  claimed to untrack it but only added the `.gitignore` line — `.gitignore`
+  does nothing for an already-tracked file, so it stayed in `HEAD` and on
+  `main` for five more days. Both still need a `git filter-repo` rewrite to
+  leave history, and the affected credentials need rotating first — rotation is
+  independent of the rewrite and should not wait for it. Treat anything that
+  has ever been committed here as disclosed.
 - **The Alembic chain cannot build a schema from scratch.** The baseline
   revision `1f266105057e` is an empty `pass` stub — it was stamped onto a
   database that `SQLModel.metadata.create_all()` had already built, and no
