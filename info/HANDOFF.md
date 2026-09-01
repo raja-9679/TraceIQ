@@ -1,6 +1,6 @@
 # Handoff — resuming the regulated-readiness work
 
-Written 2026-08-07, substantially rewritten 2026-08-10. Branch
+Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-01. Branch
 `feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
@@ -15,9 +15,13 @@ it belongs here rather than in a chat history.
 `info/REGULATED_READINESS.md` is the plan: nine workstreams (A-I) to make
 TraceIQ sellable into insurance, payments, and enterprise SaaS procurement.
 
-**Done and pushed:** C, A, B (phases 1-2) and D, E (phase 3).
-**Done, NOT yet pushed:** F1, F2, F4, F5, G, H1-H4, I1-I4 (7 commits,
-`4a913c6`..`a2401ff`).
+**Everything below is DONE and PUSHED.** Branch head `7af0aac`, tree clean,
+remote in sync — there is no unpushed work.
+
+Last session (2026-09-01) did two things: deployed the accumulated work to the
+local stack, and closed the one gap that deploy exposed — the per-project data
+policy had no API and no UI, so it was enforceable but not configurable. Both
+now exist (`7af0aac`). See "The local deployment" below, which is new.
 
 | Workstream | State |
 |---|---|
@@ -61,6 +65,14 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
 5. **H5 Helm/K8s.** Compose only.
 6. **I5 pen test then SOC 2 Type II.** External, calendar-bound. Everything it
    needs from the codebase now exists.
+
+Closed on 2026-09-01: `Project.data_policy` had no API and no UI, so the
+capture policy was enforceable but only settable by direct SQL. Now
+`GET`/`PUT /api/projects/{id}/data-policy` (viewer read, admin write, partial,
+audited) plus a "Data capture & redaction" panel on the Quality Dashboard,
+below the Gate policy and CI cards. The read model returns the *effective*
+policy next to the stored one with a `clamped` flag, because MAX_CAPTURE_LEVEL
+can hold a project below its request and a screen that hid that would be lying.
 
 New operator-facing docs worth knowing about: `docs/OPERATIONS.md` (H) and
 `docs/DATA_RESIDENCY.md` (G). `docs/ENTERPRISE_AUTH.md` grew federated
@@ -158,7 +170,7 @@ and gives up. Never point this at the `traceiq` database itself.
 
 ---
 
-## Two traps found this session, both worth remembering
+## Traps worth remembering
 
 **Anything a migration NAMES that model metadata also creates will diverge.**
 `bootstrap_db.py` builds fresh schemas from metadata, so an explicitly named
@@ -175,12 +187,119 @@ engine lands on a different event loop ("attached to a different loop"). Also:
 `session.rollback()` expires every instance, so capture ids as plain ints before
 one - `tests/integration/test_scim_db.py` has the `Ws` NamedTuple pattern for it.
 
+**`frontend/dist` is root-owned, so `npm run build` fails on the host** with
+`EACCES ... /frontend/dist/assets`. A past container build wrote it as root.
+The image build is unaffected (it compiles inside the container), so this only
+bites a host build. `sudo rm -rf frontend/dist` clears it.
+
+**`cleanup_stuck_tests` has been broken for a long time and is only noise.**
+It references `TestRun.updated_at` three times and `TestRun` has no such column,
+so it throws every 5 minutes into a broad `except` and logs
+`[Cleanup] Error cleaning up stuck tests: updated_at`. Stuck-run detection is
+NOT affected — the working reaper is `check_stale_runs` in
+`app/tasks/result_aggregator.py`, which uses `last_result_at` and is scheduled
+alongside it. So there are two reapers and the legacy one is dead code. Either
+point it at `last_result_at` or delete it as superseded; it was left alone
+because deleting a scheduled task is a behaviour decision, not a cleanup.
+
+## The local deployment
+
+**The running stack is NOT driven from `infrastructure/`.** It lives in a
+separate, hand-managed directory:
+
+    /home/raja/traceiq-test/
+        docker-compose.community.yml    <- a COPY of infrastructure/'s
+        .env                            <- real secrets, mode 600, gitignored
+        env.community.example
+
+Because that compose file is a copy, it drifts. On 2026-09-01 it was six weeks
+stale: the images had every line of the redaction/encryption/audit code, but the
+compose predated the settings that code reads, so `MAX_CAPTURE_LEVEL`,
+`SECRETS_KEY`, `MINIO_USE_SSL`, `REQUIRE_TRANSPORT_SECURITY` and `METRICS_TOKEN`
+were all unset in the containers. **Check for drift before concluding a feature
+is broken:**
+
+```bash
+diff /home/raja/traceiq-test/docker-compose.community.yml \
+     infrastructure/docker-compose.community.yml
+```
+
+If you would rather remove the copy step entirely, run the community stack
+directly out of `infrastructure/` with `--env-file` pointing at a gitignored
+`.env` there. That was not done because it moves a working deployment.
+
+### Rebuilding and rolling it
+
+The community compose has no `build:` contexts (it pulls), so images are built
+by hand and tagged `:dev` — `TRACEIQ_VERSION=dev` in that `.env` is what selects
+them.
+
+```bash
+cd /home/raja/Work/repos/TraceIQ
+docker build -t ghcr.io/raja-9679/traceiq-backend:dev          -f backend/Dockerfile backend
+docker build -t ghcr.io/raja-9679/traceiq-frontend:dev         -f frontend/Dockerfile frontend
+docker build -t ghcr.io/raja-9679/traceiq-execution-worker:dev -f execution-engine/Dockerfile.worker execution-engine
+
+cd /home/raja/traceiq-test
+docker compose -f docker-compose.community.yml --env-file .env up -d
+```
+
+**The worker MUST be built from `Dockerfile.worker`, not `Dockerfile`.** This
+cost time on 2026-09-01. Two Dockerfiles sit side by side in
+`execution-engine/`:
+
+| File | CMD | What it is |
+|---|---|---|
+| `Dockerfile` | `npm start` -> `dist/server.js` | the LEGACY continuous engine |
+| `Dockerfile.worker` | `node dist/worker.js` | the distributed worker |
+
+`.github/workflows/release-images.yml` is authoritative and uses
+`Dockerfile.worker`. Building the wrong one yields a container that looks
+healthy, consumes nothing from `jobs:pending`, and spams
+`Redis connection error: NOAUTH Authentication required` — because `server.ts`
+imports `runner.ts`, whose Redis client is built from `REDIS_HOST`/`REDIS_PORT`
+with **no password**, and the compose only supplies `REDIS_URL`. Verify after
+building:
+
+```bash
+docker image inspect ghcr.io/raja-9679/traceiq-execution-worker:dev \
+  --format '{{join .Config.Cmd " "}}'      # must be: node dist/worker.js
+```
+
+### Ports and quick health checks
+
+Backend `18000`, frontend `8080` (both from that `.env`).
+
+```bash
+curl -s localhost:18000/health/ready                      # {"ready": true, ...}
+curl -s -o /dev/null -w '%{http_code}\n' localhost:8080/api/step-types   # 200 via nginx proxy
+```
+
+`/api/health` returns 404 and that is correct — the backend route is `/health`,
+not under `/api`.
+
+`/metrics` needs the bearer token from `METRICS_TOKEN` in that `.env` (the same
+value is in `infrastructure/monitoring/metrics_token` for the optional
+Prometheus overlay). Anonymous is 401 by design.
+
+### Things deliberately NOT enabled locally
+
+`SECRETS_KEY` is **empty** on purpose. Setting it is safe to read — existing
+ciphertext still decrypts via the legacy path — but once
+`scripts/rotate_secrets.py` re-encrypts under it, removing it later makes those
+secrets unreadable. That is a one-way door and should be a deliberate act, not a
+deploy side effect. The `.env` block documents the three-step adoption.
+
+`REQUIRE_TRANSPORT_SECURITY=false` because nothing in the local stack terminates
+TLS; `true` would correctly refuse to boot. The five startup `[config]`
+advisories about plaintext Postgres/Redis/MinIO and missing SSE are that check
+working as designed, not errors.
+
 ## Loose ends and things to know
 
-**The stack is running old images.** Your local compose stack uses published
-images that predate all of this. The backend image additionally needs rebuilding
-for two new dependencies: `ldap3` (F1-era) and `celery-redbeat` (H1). A real end-to-end run still exercises the
-pre-redaction worker until you rebuild:
+**The local stack is current** as of 2026-09-01 — see "The local deployment"
+below for where it lives and how to rebuild it. It was ~6 weeks behind on
+configuration before that (the code was current; the compose file was not).
 
 ```bash
 cd infrastructure
