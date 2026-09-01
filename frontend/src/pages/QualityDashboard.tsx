@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { getProjects } from '@/lib/api';
 import { qualityApi, QualityGatePolicy, CiSettings } from '@/api/quality';
+import { DataPolicySection } from '@/components/settings/DataPolicySection';
 
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 
@@ -328,6 +329,11 @@ export default function QualityDashboard() {
                             </div>
                         )}
                     </div>
+
+                    {/* Data-capture policy. Sits with the other per-project policies
+                        rather than in global Settings, because it is scoped to a project
+                        and reads alongside the gate it feeds. */}
+                    {projectId && <DataPolicySection projectId={projectId} />}
 
                     {(externalQ.data?.length ?? 0) > 0 && (
                         <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
