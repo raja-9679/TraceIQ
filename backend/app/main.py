@@ -32,8 +32,13 @@ from app.api import llm_providers as llm_providers_api
 from app.api import scim as scim_api
 from app.api import dead_letter as dead_letter_api
 from app.core.config import settings as core_settings
+from app.core import telemetry
 import logging
 
+# Structured logging and error tracking first, so everything below — including
+# the config validation warnings — comes out in the configured format.
+telemetry.configure_logging(service="traceiq-backend")
+telemetry.configure_error_tracking(service_name="traceiq-backend")
 logger = logging.getLogger(__name__)
 
 
@@ -63,6 +68,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
+
+# X-Request-ID in, contextvar for the logs, X-Request-ID out. Added before the
+# tracer so the span and the log lines for one request can be joined.
+app.add_middleware(telemetry.RequestIdMiddleware)
+# OpenTelemetry: only active when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+from app.core.database import engine as _db_engine  # noqa: E402
+telemetry.configure_tracing(app, service_name="traceiq-backend", sqlalchemy_engine=_db_engine)
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)

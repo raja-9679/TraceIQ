@@ -13,8 +13,6 @@ references in those sections describe the code as it was *before* the fix and ar
 kept as the rationale record, not as a map of the current tree.
 
 What is left, and why:
-- **H4's remainder** — no OpenTelemetry, no structured logging, no error tracking.
-- **H5 (Helm/K8s)** — compose only.
 - **I5 (pen test, SOC 2 Type II)** — external and calendar-bound.
 - **C5 (credential hygiene)** — committed `.env` history and `dump.sql`
   (untracked 2026-08-11, still in history) need rotation plus a
@@ -35,7 +33,8 @@ What is left, and why:
 | F5 — roles cleanup | done (2026-08-10) |
 | F3 — SAML 2.0 | done (2026-09-07) |
 | G — deletion/residency (G1–G4) | done (2026-08-10) |
-| H1–H4 — operability | done (2026-08-10) |
+| H1–H4 — operability | done (2026-08-10; H4 remainder — OTel, JSON logs, Sentry — 2026-09-07) |
+| H5 — Helm chart | done (2026-09-07) |
 | H5 — Helm chart | not started |
 | I1–I4 — proving it | done (2026-08-10) |
 | I5 — pen test, SOC 2 | external / calendar-bound |
@@ -701,6 +700,27 @@ boundary in both directions).
   database, and the legacy bridge lands at head. Diffing the models against the
   live deployment found four index-only drifts, reconciled by `f2a3b4c5d6e7`.
 
+- **H4 remainder — done 2026-09-07.** `app/core/telemetry.py`: `LOG_FORMAT=json`
+  (one object per line, request/trace/span ids, uvicorn + Celery folded in,
+  `sys.stdout` wrapped so 150 legacy `print()`s become records instead of a
+  hand conversion touching every task); `X-Request-ID` middleware (pure ASGI, so
+  WebSockets are untouched); OpenTelemetry on `OTEL_EXPORTER_OTLP_ENDPOINT`
+  (FastAPI, SQLAlchemy, httpx, redis, Celery via `worker_process_init` — the
+  instrumentor must run post-fork or the child never exports); Sentry on
+  `SENTRY_DSN` with PII off, bodies off, cookies/query dropped, our secret names
+  in the scrubber, tracing left to OTel. All no-ops when unset; importing the
+  module never requires the optional packages. Verified live against Jaeger.
+  Node execution worker not instrumented. 15 tests.
+- **H5. Helm chart — done 2026-09-07.** `deploy/helm/traceiq/`: mirrors the
+  community compose (same env contract via a shared `backendEnv` helper,
+  connection URLs assembled with `$(VAR)` so passwords stay in the Secret),
+  memory-backed `/dev/shm` for Chromium, beat `Recreate` strategy (two beats
+  fire twice), optional HPA/Ingress/ServiceMonitor (bearer `METRICS_TOKEN`),
+  optional single-replica Postgres/Redis/MinIO for evaluation. No default
+  secrets — `required` plus `fail` on `webhookSecret == secretKey` and
+  `minioadmin`, the same rule CI asserts for compose. Lint + template +
+  kubeconform in CI. Not in the chart: the Android emulator (privileged +
+  /dev/kvm), the monitoring overlay, the AIO image.
 - **H4. Observability — done.** `/metrics` was real but nothing scraped it: no
   scrape config, no alert rules, no dashboard anywhere in the repo.
   `infrastructure/monitoring/` now has a Prometheus config, `alerts.yml` covering

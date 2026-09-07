@@ -264,6 +264,15 @@ class Settings(BaseSettings):
     def oidc_enabled(self) -> bool:
         return bool(self.OIDC_ISSUER and self.OIDC_CLIENT_ID and self.OIDC_CLIENT_SECRET)
 
+    # Observability (workstream H4). LOG_FORMAT=json for shippers; the
+    # OpenTelemetry SDK and Sentry read OTEL_* / SENTRY_* from the environment
+    # themselves — see app/core/telemetry.py and docs/OPERATIONS.md.
+    LOG_FORMAT: str = "text"
+    LOG_LEVEL: str = "INFO"
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = None
+    OTEL_SERVICE_NAME: Optional[str] = None
+    SENTRY_DSN: Optional[str] = None
+
     # SSO (SAML 2.0, workstream F3). Normally configured in the admin UI
     # (instance settings group `saml`); these are the environment fallbacks.
     # See app/services/saml_auth.py for what each one means.

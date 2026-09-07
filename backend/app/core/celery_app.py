@@ -1,8 +1,32 @@
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import after_setup_logger, after_setup_task_logger, worker_process_init
 import ssl
 
 from app.core.config import settings
+from app.core import telemetry
+
+# Same three layers as the API process (app/main.py): JSON logs, error
+# tracking, traces. Celery sets up its own log handlers late via signals, so
+# they are folded into ours there rather than here.
+telemetry.configure_logging(service="traceiq-celery")
+telemetry.configure_error_tracking(service_name="traceiq-celery")
+
+
+@after_setup_logger.connect
+def _fold_celery_logger(logger, *args, **kwargs):
+    telemetry.attach_json_formatter(logger)
+
+
+@after_setup_task_logger.connect
+def _fold_celery_task_logger(logger, *args, **kwargs):
+    telemetry.attach_json_formatter(logger)
+
+
+@worker_process_init.connect
+def _instrument_worker(**kwargs):
+    # Must run after the fork or the child never exports spans.
+    telemetry.instrument_celery()
 
 # Celery selects TLS from the rediss:// scheme, but certificate *verification*
 # is a separate option and defaults to none — so `rediss://` alone gives you an
