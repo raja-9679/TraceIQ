@@ -47,9 +47,10 @@ except Exception as exc:
   done
   log "Database reachable."
 
-  # bootstrap_db.py, not `alembic upgrade head` directly: the Alembic baseline is
-  # an empty stub, so migrations alone cannot build a schema from scratch. The
-  # script creates it on an empty database and upgrades an existing one.
+  # bootstrap_db.py rather than `alembic upgrade head` directly: it is the same
+  # thing on an empty or current database, plus the advisory lock that
+  # serialises replicas and the bridge for databases stamped inside the legacy
+  # (pre-squash) migration chain, which plain alembic cannot locate.
   log "Applying schema..."
   if ! python scripts/bootstrap_db.py; then
     log "ERROR: schema setup failed. See the output above."

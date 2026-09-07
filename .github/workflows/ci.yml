@@ -188,8 +188,8 @@ jobs:
           print("bucket ready")
           PY
 
-      # bootstrap_db.py, not `alembic upgrade head`: the Alembic baseline is an
-      # empty stub, so migrations alone cannot build a schema from scratch (H3).
+      # bootstrap_db.py is what the container entrypoint runs; on an empty
+      # database it is `alembic upgrade head` behind an advisory lock (H3).
       - name: Create the schema
         working-directory: backend
         run: python scripts/bootstrap_db.py
@@ -216,15 +216,14 @@ jobs:
         working-directory: backend
         run: python -m pytest tests/integration -v --tb=short
 
-      # Migrations must round-trip, not just apply. A downgrade that fails is a
-      # failed upgrade with no way back — and one has already been caught this
-      # way (an explicitly named FK that only exists on migrated databases).
-      - name: Verify the migration chain round-trips
+      # Migrations must build exactly the model schema, roll back to an empty
+      # database, and bridge a database stamped inside the legacy (pre-squash)
+      # chain. Runs on the populated scratch database on purpose: a downgrade
+      # that only works on empty tables is not a rollback. Destroys the data
+      # the integration tests left, so it runs last.
+      - name: Verify the migration chain
         working-directory: backend
-        run: |
-          alembic downgrade -3
-          alembic upgrade head
-          alembic current
+        run: python scripts/verify_migrations.py
 
   engine-tests:
     # The redaction module is the worker's only defence against writing

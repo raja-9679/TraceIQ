@@ -3,6 +3,13 @@
 This document lists every database change introduced in this improvement batch,
 in the order they must be applied, with verification queries and rollback steps.
 
+> **Historical (2026-09-07).** The revisions below are now in
+> `backend/app/alembic/versions_legacy/` and are not on Alembic's
+> `version_locations`; `alembic upgrade <rev>` / `alembic downgrade <rev>` with
+> these ids no longer resolve. A database stamped at any of them is brought to
+> the current head by `python scripts/bootstrap_db.py`. The verification SQL
+> here is still valid.
+
 ---
 
 ## Pre-flight checklist

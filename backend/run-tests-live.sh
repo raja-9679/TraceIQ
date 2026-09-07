@@ -14,6 +14,7 @@
 # Usage:
 #   ./run-tests-live.sh                                  # all of tests/integration
 #   ./run-tests-live.sh tests/integration/test_x.py -q   # one file
+#   ./run-tests-live.sh --migrations                     # scripts/verify_migrations.py
 #   KEEP_DB=1 ./run-tests-live.sh ...                    # leave the scratch DB for psql
 set -euo pipefail
 
@@ -83,6 +84,12 @@ run() {
 
 run python scripts/bootstrap_db.py >/dev/null
 echo "Schema bootstrapped."
+
+if [ "${1:-}" = "--migrations" ]; then
+  # upgrade/check, downgrade-to-empty/rebuild, legacy bridge — see the script.
+  run python scripts/verify_migrations.py
+  exit $?
+fi
 
 if [ $# -eq 0 ]; then
   set -- tests/integration -q
