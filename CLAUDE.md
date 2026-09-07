@@ -603,15 +603,23 @@ Still open:
   supported types) rather than skipping it silently, so a backend-newer-than-
   worker version skew turns those cases red instead of faking a pass.
 - `celery_beat` is required for run finalization (drains `jobs:results` every 2s)
-- Credential hygiene: committed `.env` history was never scrubbed, and
-  `dump.sql` (account data + bcrypt hashes) was tracked at the repo root from
-  `e0488a2` until it was finally untracked on 2026-08-11. Note `4983c51`
-  claimed to untrack it but only added the `.gitignore` line — `.gitignore`
-  does nothing for an already-tracked file, so it stayed in `HEAD` and on
-  `main` for five more days. Both still need a `git filter-repo` rewrite to
-  leave history, and the affected credentials need rotating first — rotation is
-  independent of the rewrite and should not wait for it. Treat anything that
-  has ever been committed here as disclosed.
+- Credential hygiene (C5): inventoried, locally rotated and history-rewritten
+  on 2026-09-07 — see `docs/CREDENTIAL_HYGIENE.md`. The rewritten repo is
+  prepared in `~/traceiq-history-backup/` but **the force-push has not been
+  done** (human step; every commit id changes, all clones must re-clone, SHAs
+  quoted in older notes go stale). Until then treat everything ever committed
+  as disclosed. Production `*.thehindu.co.in` credentials and three
+  third-party `appKey` values in the old dump are the operator's to rotate.
+  CI now runs gitleaks over full history (`.gitleaks.toml` allowlists the
+  redaction test corpora by path — fingerprints would break on the rewrite).
+- Security baseline (I5 prep): `docs/SECURITY_ASSESSMENT.md` (ZAP/Trivy/
+  pip-audit/npm-audit before/after, fixes, accepted risks, tester scope) and
+  `docs/SOC2_CONTROLS.md` (TSC → implementation → evidence). nginx now sends a
+  CSP (`script-src 'self'`; img/media/connect open because artifacts come from
+  the deployment-specific object-store URL), Permissions-Policy, COOP, CORP —
+  from `frontend/security-headers.conf`, included at every `add_header` site
+  because nginx's add_header in a location replaces inherited headers. The
+  remaining pip-audit items need a FastAPI/Starlette major bump: own branch.
 - **Migrations (fixed 2026-09-07, verified against a real Postgres).** The
   live chain in `app/alembic/versions/` starts with a real squashed root,
   `e0f1a2b3c4d5_squashed_initial_schema.py` — the whole model schema plus the

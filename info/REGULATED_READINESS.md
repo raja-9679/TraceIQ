@@ -14,14 +14,16 @@ kept as the rationale record, not as a map of the current tree.
 
 What is left, and why:
 - **I5 (pen test, SOC 2 Type II)** — external and calendar-bound.
-- **C5 (credential hygiene)** — committed `.env` history and `dump.sql`
-  (untracked 2026-08-11, still in history) need rotation plus a
-  `git filter-repo` rewrite. Rotation does not depend on the rewrite and should
-  not wait for it.
+- **C5 (credential hygiene)** — inventory, local rotation and a verified
+  `git filter-repo` rewrite done 2026-09-07 (`docs/CREDENTIAL_HYGIENE.md`);
+  the force-push, the production-credential rotation and the third-party
+  `appKey` rotation are the operator's.
+- **I5** — internal pre-assessment done (`docs/SECURITY_ASSESSMENT.md`,
+  `docs/SOC2_CONTROLS.md`); the external test and audit remain external.
 
 | Workstream | State |
 |---|---|
-| C — credential leaks | done |
+| C — credential leaks | done; C5 rewrite prepared 2026-09-07, push pending (operator) |
 | A1 — upload chokepoint | done |
 | A2–A8 — redaction | done |
 | B — capture policy | done |

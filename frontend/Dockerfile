@@ -19,6 +19,10 @@ RUN npm run build
 # is reproducible and doesn't silently jump nginx major versions.
 FROM nginx:1.27-alpine
 
+# Take Alpine's pending security updates (openssl et al.) at build time; the
+# pinned tag lags the package index and Trivy showed fixable CRITICALs without it.
+RUN apk upgrade --no-cache
+
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Where nginx proxies /api/ to, resolved at CONTAINER START (not build time):
@@ -37,6 +41,7 @@ COPY docker-entrypoint.d/16-traceiq-resolver.envsh /docker-entrypoint.d/16-trace
 # not executable") — and then NGINX_RESOLVER is empty and nginx refuses to
 # start. Do not rely on the checkout preserving the mode bit.
 RUN chmod +x /docker-entrypoint.d/16-traceiq-resolver.envsh
+COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 EXPOSE 80

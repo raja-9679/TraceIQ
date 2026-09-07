@@ -46,12 +46,15 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
 
 ### What is actually left, and why
 
-1. **C5 credential hygiene.** Committed `.env` history and the old tracked
-   `dump.sql` mean "have credentials been exposed in version control" is still
-   honestly *yes*. Needs rotation, then a `git filter-repo` rewrite. **Rotation
-   does not depend on the rewrite and should not wait for it.** Every regulated
-   buyer's questionnaire asks this. This is the highest-value remaining item and
-   it is not a coding task.
+1. **C5 credential hygiene — 90% done 2026-09-07, one human step left.**
+   Full inventory, rotation of everything under local control, and a verified
+   `git filter-repo` rewrite are in `docs/CREDENTIAL_HYGIENE.md`. **Not done:**
+   the force-push of the rewritten history (needs a person: it rewrites every
+   commit id on GitHub; `~/traceiq-history-backup/` holds the pre-rewrite bundle
+   and the rewritten bare repo, with the exact commands), rotation of the
+   production `*.thehindu.co.in` credentials, and the three third-party
+   `appKey` values of the application under test. After the push, every clone
+   must re-clone, and commit SHAs quoted in older docs/memory are stale.
 2. ~~F3 SAML 2.0~~ — **done 2026-09-07**. `app/services/saml_auth.py`,
    `/api/auth/saml/*`, settings group `saml`, `docs/ENTERPRISE_AUTH.md`. The
    "needs xmlsec system libraries" premise was wrong: `xmlsec` has manylinux
@@ -69,7 +72,10 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
    day (all pods ready, proxy, login, beat). The three first-install traps —
    numeric uid for `runAsNonRoot`, nginx resolver + FQDN, empty
    `MINIO_PUBLIC_URL` — are fixed and recorded in the chart README.
-6. **I5 pen test then SOC 2 Type II.** External, calendar-bound. Everything it
+6. **I5 pen test then SOC 2 Type II.** External, calendar-bound. The internal
+   pre-assessment is done (`docs/SECURITY_ASSESSMENT.md`: ZAP/Trivy/pip-audit/
+   npm-audit baseline, fixes, accepted risks, tester scope) and the control
+   matrix an auditor samples is `docs/SOC2_CONTROLS.md`. Everything it
    needs from the codebase now exists.
 
 Closed on 2026-09-01: `Project.data_policy` had no API and no UI, so the
@@ -324,16 +330,9 @@ one, and `env.community.example` documents every new setting (capture level,
 `SECRETS_KEY`, MinIO TLS/SSE, `REQUIRE_TRANSPORT_SECURITY`, `METRICS_TOKEN`).
 Never commit it.
 
-**Credential hygiene is still outstanding (workstream C5).** Committed `.env`
-history and a tracked `dump.sql` mean the honest answer to "have credentials
-been exposed in version control" is still yes. `dump.sql` was actually
-untracked on 2026-08-11 — commit `4983c51` claimed to do it but only added the
-`.gitignore` line, which does nothing for a file already in the index, so the
-7.6 MB dump stayed in `HEAD` and on `main`. Untracking does not remove it from
-history either. This needs a `git filter-repo` rewrite, and the affected
-credentials need rotating first.
-Rotation does not depend on the rewrite and should not wait for it. Every
-regulated buyer's security questionnaire asks this, so it will surface.
+**Credential hygiene (C5): see `docs/CREDENTIAL_HYGIENE.md`.** The rewrite is
+prepared and verified but not pushed; that page has the commands and the
+remaining rotation items that are not under this laptop's control.
 
 **Migrations at head:** `f2a3b4c5d6e7` (index reconciliation) on top of the
 squashed root `e0f1a2b3c4d5`. Verified against a real Postgres by
