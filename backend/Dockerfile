@@ -6,7 +6,9 @@ FROM python:3.11-slim-bookworm
 WORKDIR /app
 
 # Install system dependencies for Playwright and others
-RUN apt-get update && apt-get install -y \
+# `upgrade` pulls the base image's pending security updates (the pinned
+# bookworm tag lags the archive); Trivy showed fixable HIGHs without it.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

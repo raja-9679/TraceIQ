@@ -1,0 +1,18 @@
+# gitleaks configuration (CI job `secret-scan`, docs/CREDENTIAL_HYGIENE.md).
+# Extends the default rules; the allowlist covers the redaction test corpora,
+# which contain synthetic JWTs and keys ON PURPOSE (they prove the redactor
+# catches them). Path-based rather than fingerprint-based because fingerprints
+# embed commit SHAs and the 2026-09 history rewrite changed every one.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Redaction test corpora and example env files"
+paths = [
+  '''backend/tests/test_redaction\.py''',
+  '''backend/tests/test_connection_urls\.py''',
+  '''backend/tests/test_config_validation\.py''',
+  '''backend/tests/test_saml_auth\.py''',
+  '''execution-engine/src/core/redact\.test\.ts''',
+  '''.*\.example$''',
+]

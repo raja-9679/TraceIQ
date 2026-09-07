@@ -226,6 +226,23 @@ jobs:
         working-directory: backend
         run: python scripts/verify_migrations.py
 
+  secret-scan:
+    # Workstream C5. Credentials were committed here in the past (see
+    # docs/CREDENTIAL_HYGIENE.md); after the history rewrite this is what keeps
+    # it from happening again. Full history on every push, so a secret that
+    # lands in one commit and is removed in the next is still caught. Blocking:
+    # a leaked secret is not a CVE in a transitive dependency, it is ours.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_SUMMARY: "true"
+
   helm-chart:
     # Workstream H5. A chart that renders is not a chart that deploys, but a
     # chart that does not even render is worse. Lint + template + kubeconform
