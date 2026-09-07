@@ -521,9 +521,21 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   would serve against an unverified schema. The empty Alembic baseline was
   replaced on 2026-09-07 by a real squashed root — see "Migrations" under
   *Known issues* below.
-  **H4**: `infrastructure/monitoring/` (Prometheus + alerts + Grafana + compose
-  overlay); `metrics_token` is gitignored. Still missing: OTel, structured
-  logging, error tracking. **H5 (Helm) not done.**
+  **H4**: `infrastructure/monitoring/` (Prometheus + alerts + Grafana + Jaeger
+  overlay); `metrics_token` is gitignored. **H4 remainder (2026-09-07)**:
+  `app/core/telemetry.py` — `LOG_FORMAT=json` (uvicorn/Celery folded in;
+  `sys.stdout` wrapped so legacy `print()` becomes JSON — new code uses
+  `logging`), `X-Request-ID` middleware (pure ASGI), OpenTelemetry on
+  `OTEL_EXPORTER_OTLP_ENDPOINT` (Celery instrumented in `worker_process_init`,
+  post-fork, or spans never leave the child), Sentry on `SENTRY_DSN` (PII off,
+  bodies off, our secret names in the scrubber, tracing left to OTel). All
+  no-ops when unset. Node worker not instrumented. **H5 (2026-09-07)**:
+  `deploy/helm/traceiq/` — same env contract as compose via a shared helper,
+  `$(VAR)`-assembled URLs so passwords stay in the Secret, memory-backed
+  `/dev/shm`, beat on `Recreate`, optional HPA/Ingress/ServiceMonitor and
+  eval-grade in-cluster Postgres/Redis/MinIO; `required` on every secret plus
+  `fail` on `webhookSecret == secretKey`; lint/template/kubeconform in CI
+  (`helm-chart` job). Not yet applied to a real cluster.
 
 - **Proving it (workstream I)** — CI now has an `integration-tests` job with
   Postgres + Redis + **`bitnami/minio`** service containers (the upstream

@@ -5,7 +5,8 @@
 #   echo -n "$METRICS_TOKEN" > monitoring/metrics_token && chmod 600 monitoring/metrics_token
 #   docker compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
 #
-# Prometheus at :9090, Grafana at :3001 (dashboard pre-provisioned).
+# Prometheus at :9090, Grafana at :3001 (dashboard pre-provisioned), Jaeger UI
+# at :16686 (set OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318 in .env to feed it).
 #
 # Deliberately NOT part of the default stack: it is another two containers and a
 # volume, and a self-hoster evaluating TraceIQ should not have to run them. But
@@ -45,6 +46,18 @@ services:
       - "3001:3000"
     depends_on:
       prometheus: {condition: service_started}
+    networks: [traceiq_internal]
+    restart: unless-stopped
+
+  # Traces (H4). The backend and Celery export OTLP here when the main stack
+  # has OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318. All-in-one with
+  # in-memory storage: enough to look at a slow request, not a trace archive.
+  jaeger:
+    image: jaegertracing/all-in-one:1.60
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"   # UI
     networks: [traceiq_internal]
     restart: unless-stopped
 

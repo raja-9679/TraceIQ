@@ -178,6 +178,63 @@ hand. Autogenerate cannot see it, `alembic check` cannot miss it, and the old
 "attach it to the table's `after_create` event too" workaround is no longer the
 path fresh installs take.
 
+## Logs, traces, errors
+
+Three independent, all-optional layers (workstream H4), each a single
+environment variable away. Everything lives in `app/core/telemetry.py`; the
+API process wires it in `app/main.py`, Celery in `app/core/celery_app.py`.
+
+**Structured logs.** `LOG_FORMAT=json` makes every line one JSON object —
+`ts`, `level`, `logger`, `msg`, `service`, plus `request_id`, `trace_id` and
+`span_id` when present, any `extra=` fields, and `exc` for tracebacks. uvicorn's
+own loggers are folded in, Celery's are folded in through its logging signals,
+and `sys.stdout` is wrapped so the ~150 legacy `print()` calls come out as JSON
+too (logger `stdout`). The only non-JSON lines left are the two the shell
+entrypoint prints before Python starts. `LOG_LEVEL` sets the root level; third-
+party chatter (SQLAlchemy, httpx, botocore) stays at WARNING unless DEBUG. The
+compose stack defaults to `text` because `docker compose logs` is how a
+single-host install is read; the Helm chart defaults to `json`.
+
+**Request ids.** Every API response carries `X-Request-ID` — the caller's if it
+sent a clean one (printable, no whitespace, ≤128 chars), a fresh one otherwise.
+The same id is on every log line for that request and, when Sentry is on, on
+the event as a tag.
+
+**Traces.** Set `OTEL_EXPORTER_OTLP_ENDPOINT` (OTLP over HTTP, e.g.
+`http://jaeger:4318`, or a vendor endpoint plus `OTEL_EXPORTER_OTLP_HEADERS`)
+and the backend and every Celery process export spans for FastAPI requests,
+SQL statements, Redis commands, outbound HTTP, and Celery tasks. Each compose
+service and each Helm workload sets its own `OTEL_SERVICE_NAME`, so a trace
+shows `traceiq-backend → traceiq-celery-worker` as separate services. The
+`/health*` and `/metrics` endpoints are excluded. Sampling is the standard
+`OTEL_TRACES_SAMPLER` / `OTEL_TRACES_SAMPLER_ARG`
+(`parentbased_traceidratio` + `0.1` under load); `OTEL_SDK_DISABLED=true` is
+the kill switch. The monitoring overlay ships Jaeger all-in-one (UI :16686) as
+somewhere to look. Verified 2026-09-07 against Jaeger: request, `SELECT`,
+`PING` and outbound spans arrive under the configured service name, and the
+`trace_id` in the JSON log line matches the trace. The Node execution worker
+is **not** instrumented — its jobs appear as Celery/HTTP edges only.
+
+**Error tracking.** `SENTRY_DSN` turns on Sentry (or a compatible receiver).
+PII is off, request bodies are never sent, cookies and the query string are
+dropped, and TraceIQ's secret-bearing names (`X-API-Key`, `X-Worker-Secret`,
+`X-TraceIQ-Secret`, refresh/access/MFA tokens, SAML private key, SMTP password…)
+are added to Sentry's scrubber. Tracing is left to OpenTelemetry (Sentry's
+`traces_sample_rate` is 0). Events are tagged with `request_id` and `trace_id`
+so an issue, its log lines and its trace can be joined.
+
+## Kubernetes (Helm)
+
+`deploy/helm/traceiq/` (workstream H5) deploys the community stack: backend,
+Celery worker/aggregator/beat, execution workers with a memory-backed
+`/dev/shm` and optional HPA, frontend + Ingress, and single-replica PostgreSQL/
+Redis/MinIO StatefulSets for evaluation that you switch off in favour of
+managed services for production. Same rule as compose: **no default secrets** —
+`required` on every one, plus refusals for `webhookSecret == secretKey` and
+`minioRootUser=minioadmin`. `helm lint`, `helm template` and kubeconform run in
+CI (`helm-chart` job). The chart README covers install, the production shape,
+and what is deliberately not in it (mobile emulator, the monitoring overlay).
+
 ## Retention and deletion
 
 See `docs/DATA_RESIDENCY.md`. Everything is off by default; the orphaned-artifact
