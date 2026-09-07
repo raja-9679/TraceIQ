@@ -569,6 +569,12 @@ on `jobs:mobile:pending` can be deleted: `redis-cli DEL jobs:mobile:pending`.
 
 ## 3.2 Migration history (newest first)
 
+> **2026-09-07:** every revision in this table is now in
+> `backend/app/alembic/versions_legacy/`. The live chain starts with a squashed
+> root that reuses the old head id `e0f1a2b3c4d5`; `scripts/bootstrap_db.py`
+> bridges databases stamped at any revision below. See `docs/OPERATIONS.md`
+> → "Rollback". The table is kept as history.
+
 | Revision | Phase | What |
 |---|---|---|
 | `b3c4d5e6f7a8` | Phase MOB | `mobileappbuild` table + `testrun.app_build_id` (mobile app testing). Applies on top of `a1b2c3d4e5f6` — the ~15 revisions between Phase E and here (auth sessions, executor keystone, security scans, monitoring, billing, local-worker, …) are not itemised in this table; `ls backend/app/alembic/versions/` is authoritative |

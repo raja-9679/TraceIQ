@@ -1,6 +1,6 @@
 # Handoff — resuming the regulated-readiness work
 
-Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-01. Branch
+Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-07. Branch
 `feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
@@ -57,9 +57,8 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
    libraries in the backend image (like ldap3 before it, but heavier) and an IdP
    to test against - a mock SAML IdP is doable, the mock OIDC one used for F1 is
    ~30 lines of FastAPI. Parked in `SCOPE_NOTES.md`.
-3. **H3's squashed initial migration.** The advisory lock landed; the empty
-   Alembic baseline did not. There is still no verified rollback to an arbitrary
-   revision - `docs/OPERATIONS.md` prescribes snapshot-then-upgrade meanwhile.
+3. ~~H3's squashed initial migration~~ — **done 2026-09-07**, see "Migrations"
+   below.
 4. **H4's remainder:** no OpenTelemetry, no structured logging (stdlib `logging`
    still mixed with raw `print()`), no error tracking.
 5. **H5 Helm/K8s.** Compose only.
@@ -173,12 +172,13 @@ and gives up. Never point this at the `traceiq` database itself.
 ## Traps worth remembering
 
 **Anything a migration NAMES that model metadata also creates will diverge.**
-`bootstrap_db.py` builds fresh schemas from metadata, so an explicitly named
-foreign key in a migration exists only on *migrated* databases - and F4's
-`downgrade` failed on every fresh install with "constraint does not exist".
-Pass `None` and let SQLAlchemy generate the same default name on both paths.
-This is the same family as the audit-trigger trap in `c8d9e0f1a2b3`, and it will
-happen again.
+Historically `bootstrap_db.py` built fresh schemas from metadata, so an
+explicitly named foreign key in a migration existed only on *migrated*
+databases - F4's `downgrade` failed on every fresh install with "constraint does
+not exist". Fresh installs run the migrations now (see "Migrations" below), so
+the two populations can no longer diverge silently — but keep passing `None`:
+`alembic check` in `scripts/verify_migrations.py` compares migrated schema to
+models, and a name that differs shows up as drift and fails CI.
 
 **pytest-asyncio 0.25 ignores `asyncio_default_test_loop_scope`.** `pytest.ini`
 sets fixture loop scope to `session` and tests are function-scoped, so an async
@@ -297,8 +297,10 @@ working as designed, not errors.
 
 ## Loose ends and things to know
 
-**The local stack is current** as of 2026-09-01 — see "The local deployment"
-below for where it lives and how to rebuild it. It was ~6 weeks behind on
+**The local stack is current** as of 2026-09-07 (backend `:dev` rebuilt and
+rolled; its startup log showed `e0f1a2b3c4d5 -> f2a3b4c5d6e7`, the first real
+migration a current database has run through `bootstrap_db.py`) — see
+"The local deployment" below for where it lives and how to rebuild it. It was ~6 weeks behind on
 configuration before that (the code was current; the compose file was not).
 
 ```bash
@@ -324,34 +326,53 @@ credentials need rotating first.
 Rotation does not depend on the rewrite and should not wait for it. Every
 regulated buyer's security questionnaire asks this, so it will surface.
 
-**Migrations at head:** `c8d9e0f1a2b3` (audit chain), preceded by
-`b7c8d9e0f1a2` (`Project.data_policy`). Both verified against a real Postgres
-for bootstrap-from-empty, upgrade, downgrade and re-upgrade.
+**Migrations at head:** `f2a3b4c5d6e7` (index reconciliation) on top of the
+squashed root `e0f1a2b3c4d5`. Verified against a real Postgres by
+`scripts/verify_migrations.py` (fresh upgrade, drift check, downgrade to empty,
+legacy bridge).
 
 **Behaviour change worth remembering:** the default capture level is now
 `standard`, so pre-existing projects stopped recording video, traces and HAR
 until someone opts them up to `full`. That was deliberate — backfilling every
 row to `full` to preserve the old behaviour was considered and rejected.
 
-### The trap most likely to bite you
+### Migrations (2026-09-07)
 
-**`scripts/bootstrap_db.py` never runs migrations.** It calls
-`SQLModel.metadata.create_all()` and stamps head, because the Alembic baseline
-is an empty stub. So **any DDL that exists only in a migration — triggers,
-functions, grants, RLS policies — is absent on fresh installs.** The audit
-trigger had exactly this bug; it is fixed by also attaching the DDL to the
-table's `after_create` event in `app/services/audit.py`. Check this for any new
-non-model DDL.
+The chain in `app/alembic/versions/` now starts with a real squashed root,
+`e0f1a2b3c4d5_squashed_initial_schema.py`, and `scripts/bootstrap_db.py` is
+`alembic upgrade head` behind the advisory lock — it no longer calls
+`create_all()`. The 49 pre-squash revisions are in `versions_legacy/`, off
+`version_locations`; their head id equals the new root id, so a database that
+finished them is already current, and one stamped inside legacy history is
+bridged by `bootstrap_db.py` (legacy chain to its head, then the live chain).
+Design notes are in the root migration's docstring and
+`versions_legacy/README.md`.
 
-Two smaller ones found alongside it: SQLAlchemy's `DDL()` applies
-`%`-interpolation, so literal `%` in plpgsql must be doubled; and asyncpg
-rejects multiple statements in one execute, so each DDL statement needs its own
-event.
+What to run: `./run-tests-live.sh --migrations` (= `scripts/verify_migrations.py`,
+also in CI) proves `upgrade head` == models via `alembic check`, that
+`downgrade base` leaves an empty database, and that the bridge works.
+`tests/test_migration_chain.py` pins the chain shape without a database.
+
+Traps that remain:
+- Non-model DDL (triggers, functions, grants, RLS) must be *in a migration*;
+  autogenerate cannot see it. The audit trigger is restated in the root.
+- `teststatus` is used by two tables — enum types in the root are created once
+  with `create_type=False`, and autogenerate will emit `sa.Enum(...)` per column
+  again if you regenerate; hoist them.
+- `alembic.ini`'s `version_path_separator` must not carry an inline comment
+  (configparser keeps it; every use of `version_locations` then fails).
+- `script.py.mako` imports `sqlmodel` because autogenerate emits
+  `sqlmodel.sql.sqltypes.AutoString()` without importing it.
+- The old trap — "bootstrap builds from metadata so migration-only DDL is
+  missing on fresh installs" — is gone, and with it the reason for the
+  `after_create` copy of the audit trigger in `app/services/audit.py`; it stays
+  only for the unit-test `create_all()` path. Keep the two texts identical.
+- SQLAlchemy's `DDL()` applies `%`-interpolation (double literal `%`), and
+  asyncpg rejects multiple statements per execute.
 
 ### Workstream H is worth pulling forward if procurement gets real
 
 Not because of compliance, but because two items block a serious deployment:
 `celery_beat` is a single point of failure with no leader election that stalls
-the whole execution pipeline silently if it dies, and the Alembic baseline being
-an empty stub means there is **no trustworthy rollback for a failed upgrade** —
-which a change-controlled environment will reject outright.
+the whole execution pipeline silently if it dies (RedBeat is wired but opt-in),
+and Helm/K8s (H5) does not exist. The rollback gap is closed — see "Migrations".

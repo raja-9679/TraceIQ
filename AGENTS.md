@@ -422,10 +422,10 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `AuditLog(...)` sites are chained without being rewritten and a new one
   can't break the chain. `record()` is still preferred — it adds actor_type /
   actor_label / IP / user_agent.
-  **The trigger DDL is duplicated in `audit.py` as an `after_create` event on
-  purpose**: `bootstrap_db.py` builds a fresh schema from model metadata and
-  stamps head *without running migrations*, so a migration-only trigger would
-  be absent on new installs. Any future non-model DDL has this trap.
+  The trigger DDL also lives in `audit.py` as an `after_create` event: since
+  the 2026-09 squash fresh installs get it from the root migration like every
+  other deployment, and the event copy only serves the `create_all()` path the
+  unit-test fixtures use. Keep the two texts identical.
   `auditlog` has **no FKs** to workspace/users — an FK from append-only history
   into a mutable table forces a choice between destroying history and blocking
   deletion.
@@ -449,10 +449,12 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   proposals). `GET/PUT /workspaces/{id}/proposal-policy` returns
   `separation_enforced` next to the stored flag; omitted PUT fields are left
   alone so editing the threshold can't silently disable the control.
-  **Migration trap:** naming the FK explicitly broke `downgrade` on fresh
-  installs — `bootstrap_db.py` builds from metadata and SQLAlchemy names it
-  `caseproposal_created_by_id_fkey`. Pass `None` so both paths agree. Same
-  family as the audit-trigger trap.
+  **Migration trap (historical):** naming the FK explicitly broke `downgrade`
+  on fresh installs, because `bootstrap_db.py` then built from metadata and
+  SQLAlchemy named it `caseproposal_created_by_id_fkey`. Fresh installs run the
+  migrations now, but still pass `None` — `alembic check` in
+  `scripts/verify_migrations.py` compares the two and a named constraint that
+  differs from the model's shows up as drift.
 
 - **Deletion and retention (workstream G)** — `app/services/purge.py`,
   `app/services/retention.py`, `app/services/erasure.py`;
@@ -497,11 +499,11 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   because the payload carries **resolved project secrets** (hence the list
   summarises, never echoes). Replay MUST clear `jobs:retries` or the job is
   re-killed on first claim; discard is a separate endpoint on purpose.
-  **H3**: `bootstrap_db.py` now takes a Postgres session advisory lock
+  **H3**: `bootstrap_db.py` takes a Postgres session advisory lock
   (key 8534217601) and **blocks** rather than skipping — a replica that skipped
-  would serve against an unverified schema. The empty Alembic baseline is still
-  NOT fixed: no verified rollback, so snapshot-then-upgrade is the documented
-  plan.
+  would serve against an unverified schema. The empty Alembic baseline was
+  replaced on 2026-09-07 by a real squashed root — see "Migrations" under
+  *Known issues* below.
   **H4**: `infrastructure/monitoring/` (Prometheus + alerts + Grafana + compose
   overlay); `metrics_token` is gitignored. Still missing: OTel, structured
   logging, error tracking. **H5 (Helm) not done.**
@@ -574,14 +576,30 @@ Still open:
   leave history, and the affected credentials need rotating first — rotation is
   independent of the rewrite and should not wait for it. Treat anything that
   has ever been committed here as disclosed.
-- **The Alembic chain cannot build a schema from scratch.** The baseline
-  revision `1f266105057e` is an empty `pass` stub — it was stamped onto a
-  database that `SQLModel.metadata.create_all()` had already built, and no
-  revision creates the core tables. `alembic upgrade head` against an empty
-  database fails at `CREATE INDEX ... ON testrun`. Use
-  `python scripts/bootstrap_db.py` (what the container entrypoint runs), which
-  creates the schema and stamps head on an empty database and upgrades an
-  existing one. A real squashed initial migration is still worth writing.
+- **Migrations (fixed 2026-09-07, verified against a real Postgres).** The
+  live chain in `app/alembic/versions/` starts with a real squashed root,
+  `e0f1a2b3c4d5_squashed_initial_schema.py` — the whole model schema plus the
+  audit trigger, generated with autogenerate and hand-adjusted. Its revision id
+  is deliberately the OLD head's: the 49 pre-squash files moved to
+  `app/alembic/versions_legacy/` (off `version_locations`), so a database that
+  finished them is already at the new root with no stamp. `bootstrap_db.py`
+  no longer calls `create_all()`; empty DB = `alembic upgrade head`, and a DB
+  stamped *inside* legacy history is bridged by running the legacy chain to its
+  head first (plain alembic would say "Can't locate revision"). The trap
+  family "bootstrap builds from metadata so migration-only DDL is missing" is
+  therefore gone — but non-model DDL still has to be *in the root migration*
+  (autogenerate cannot see it). `teststatus` is used by two tables, so enum
+  types are created once with `create_type=False`. `f2a3b4c5d6e7` backfills
+  four indexes that only one of the two populations (migrated vs. built by
+  create_all) had — found by `compare_metadata` against the live DB; its
+  downgrade is a no-op on purpose. `scripts/verify_migrations.py`
+  (`./run-tests-live.sh --migrations`, and CI) proves upgrade == models
+  (`alembic check`), downgrade base leaves an empty database, and the bridge
+  works. `tests/test_migration_chain.py` pins the shape without a DB. Two
+  small fixes found on the way: `alembic.ini` had an inline comment on
+  `version_path_separator` that broke any use of `version_locations`, and
+  `script.py.mako` never imported `sqlmodel` although autogenerate emits
+  `sqlmodel.sql.sqltypes.AutoString()`.
 - `executionmode` enum labels are lowercase in Postgres while `teststatus`
   labels are uppercase. Any raw SQL touching either must account for that; the
   `finalized_at` backfill uses `UPPER(status::text)` for exactly this reason.

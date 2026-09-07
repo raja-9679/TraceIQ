@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import (
-    Column, JSON, String, Text, Enum as SAEnum, UniqueConstraint, Integer,
+    Column, JSON, String, Text, Enum as SAEnum, UniqueConstraint, Integer, Index,
     ForeignKey)
 from enum import Enum
 
@@ -1196,6 +1196,13 @@ class AuditLog(SQLModel, table=True):
     A database trigger rejects UPDATE and DELETE (migration c8d9e0f1a2b3), and
     `prev_hash`/`row_hash` make any edit that bypasses the trigger detectable.
     """
+    # The workspace-scoped list and CSV export read by (workspace_id, timestamp).
+    # Declared here, not only in migration c8d9e0f1a2b3: the schema of record is
+    # the model metadata (the squashed initial migration is generated from it),
+    # so an index that lived only in a migration was absent on fresh installs.
+    __table_args__ = (
+        Index("ix_auditlog_workspace_timestamp", "workspace_id", "timestamp"),
+    )
     id: Optional[int] = Field(default=None, primary_key=True)
     entity_type: str  # 'suite', 'case', 'workspace', 'team', 'project', 'auth', ...
     entity_id: int

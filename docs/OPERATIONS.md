@@ -129,10 +129,9 @@ token before assuming the worst.
 
 ## Schema upgrades
 
-`scripts/bootstrap_db.py` is what the container entrypoint runs. It creates the
-schema on an empty database and upgrades an existing one. (It cannot be replaced
-by `alembic upgrade head`: the Alembic baseline is an empty stub, so migrations
-alone cannot build a schema from scratch. See below.)
+`scripts/bootstrap_db.py` is what the container entrypoint runs. On an empty or
+a current database it is `alembic upgrade head`; it adds the advisory lock below
+and the legacy bridge described under "Rollback".
 
 **Concurrent replicas are now serialised by a Postgres advisory lock.**
 `RUN_MIGRATIONS` defaults to true and every replica ran this, with nothing
@@ -148,26 +147,36 @@ consistent.
 Set `RUN_MIGRATIONS=false` on replicas anyway — the lock makes concurrency safe,
 not free.
 
-### Known gap: there is no trustworthy rollback
+### Rollback
 
-The Alembic baseline (`1f266105057e`) is an empty `pass` stub. Schema truth lives
-in the SQLModel definitions, not in the migration chain, so:
+Since 2026-09 the chain's root is a real migration
+(`e0f1a2b3c4d5_squashed_initial_schema.py`): `alembic upgrade head` builds the
+full schema from an empty database, `alembic downgrade <rev>` goes back to any
+revision on the live chain, and `alembic downgrade base` leaves a genuinely empty
+database. `scripts/verify_migrations.py` proves all three against a real
+Postgres on every CI run, including that the schema after `upgrade head` is
+byte-for-byte the models' (`alembic check`).
 
-- `alembic upgrade head` against an empty database **fails**.
-- **A failed upgrade cannot be rolled back with confidence.** Individual
-  migrations have `downgrade()` and are tested, but there is no verified path
-  back to an arbitrary earlier revision.
+Rollback of a release is therefore `alembic downgrade <previous head>` with the
+*previous* image's code — a downgrade is only defined by the revision files that
+know about the change. Still snapshot first: downgrades that drop a column drop
+its data, and Postgres cannot remove an enum label.
 
-For a change-controlled environment, take a database snapshot before upgrading
-and treat restore-from-snapshot as the rollback plan. Writing a real squashed
-initial migration is tracked as H3 in `info/REGULATED_READINESS.md` and is the
-correct fix.
+**Databases that predate the squash.** The 49 earlier revisions live in
+`backend/app/alembic/versions_legacy/` and are not on Alembic's
+`version_locations`. Their head has the same id as the new root, so a database
+that had reached it needs nothing. A database stamped at an *earlier* legacy
+revision is bridged by `bootstrap_db.py` automatically (it runs the legacy chain
+to its head, then continues). Plain `alembic upgrade head` on such a database
+fails with "Can't locate revision" — run the bootstrap script instead. To
+downgrade *into* legacy history, point a `Config` at that directory (its README
+shows how).
 
-One trap for anyone writing migrations here: **`bootstrap_db.py` never runs
-them.** Any DDL that exists only in a migration — triggers, functions, grants,
-RLS policies — is absent on fresh installs, and anything a migration *names* that
-metadata also creates (constraint names, index names) will diverge between the
-two paths. Both have already bitten once.
+One rule for anyone writing migrations here: DDL that is not model metadata —
+triggers, functions, grants, RLS policies — must be written into a migration by
+hand. Autogenerate cannot see it, `alembic check` cannot miss it, and the old
+"attach it to the table's `after_create` event too" workaround is no longer the
+path fresh installs take.
 
 ## Retention and deletion
 

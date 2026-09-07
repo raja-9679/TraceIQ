@@ -432,14 +432,15 @@ alembic revision --autogenerate -m "your change"
 
 Current migration chain (newest first):
 ```
-f8b3c4d5e6f7  phase_e                                    (created_by_agent_id + agent_session_id on testsuite/testcase/caseproposal)
-e7a1b2c3d4e5  phase_d                                    (caseproposal table, TestCase agent-ownership cols, workspace daily AI cap)
-d6f9a3b4c5d6  phase_b_c                                  (personas, heal proposals, flake records, comparison cols)
-c5d8f1a2b3c4  ai_agent_integration                       (api keys, refresh tokens, webhooks, visual baselines, git context, run trigger)
-b2c4e6f8a0d1  backfill_role_id_from_string_fields        (RBAC migration)
-a7b3c9d2e1f4  add_performance_indexes                    (hot-column indexes)
-1f266105057e  baseline_with_schedules                    (baseline schema)
+f2a3b4c5d6e7  reconcile_legacy_indexes   (IF NOT EXISTS backfill of four indexes; downgrade is a no-op)
+e0f1a2b3c4d5  squashed_initial_schema    (ROOT — the whole schema + audit trigger, 2026-09-07)
 ```
+The 49 revisions from `1f266105057e` (an empty stub) to the old head
+`e0f1a2b3c4d5` live in `backend/app/alembic/versions_legacy/`, off Alembic's
+`version_locations`. The new root reuses the old head's id, so a database that
+finished the legacy chain is already at the root; `scripts/bootstrap_db.py`
+bridges databases stamped inside legacy history. `scripts/verify_migrations.py`
+proves upgrade == models, downgrade-to-empty, and the bridge.
 
 ### 12.3 Required env vars (the ones that actually matter)
 

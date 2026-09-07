@@ -16,9 +16,6 @@ What is left, and why:
 - **F3 (SAML 2.0)** — needs `xmlsec` system libraries in the backend image; the
   only remaining item that gates a class of buyer (SAML-first insurance and
   banking IdPs). Parked in `SCOPE_NOTES.md`.
-- **H3's squashed initial migration** — the advisory lock landed, the empty
-  Alembic baseline did not. There is still no verified rollback to an arbitrary
-  revision; `docs/OPERATIONS.md` prescribes snapshot-then-upgrade meanwhile.
 - **H4's remainder** — no OpenTelemetry, no structured logging, no error tracking.
 - **H5 (Helm/K8s)** — compose only.
 - **I5 (pen test, SOC 2 Type II)** — external and calendar-bound.
@@ -659,7 +656,7 @@ boundary in both directions).
   `dead_letter_depth` is now a metric (`traceiq_dead_letter_depth`) with an alert
   rule.
 
-- **H3. Migration safety — advisory lock done, squashed baseline deferred.**
+- **H3. Migration safety — done (advisory lock 2026-08-10, squashed root 2026-09-07).**
   `RUN_MIGRATIONS` defaults to true and *every* replica ran it with nothing
   serialising them, so two API containers starting together both ran
   `alembic upgrade head` concurrently — which Alembic is not safe under.
@@ -669,11 +666,16 @@ boundary in both directions).
   against one empty database: one creates, two wait then no-op, final revision
   consistent.
 
-  **The empty baseline is NOT fixed** and remains the honest gap: there is still
-  no verified rollback to an arbitrary earlier revision. `docs/OPERATIONS.md`
-  states that plainly and prescribes snapshot-then-upgrade as the rollback plan
-  for change-controlled environments. Writing a real squashed initial migration
-  is still open.
+  The empty baseline is replaced by a real squashed root, `e0f1a2b3c4d5`, whose
+  id is deliberately the old head's so every database that finished the old
+  chain is already at it; the 49 old files moved to `versions_legacy/` and
+  `bootstrap_db.py` bridges databases stamped inside that history.
+  `bootstrap_db.py` no longer calls `create_all()` at all, which closes the
+  "migration-only DDL is missing on fresh installs" trap family for good.
+  `scripts/verify_migrations.py` runs in CI against a populated database:
+  `upgrade head` == models (`alembic check`), `downgrade base` leaves an empty
+  database, and the legacy bridge lands at head. Diffing the models against the
+  live deployment found four index-only drifts, reconciled by `f2a3b4c5d6e7`.
 
 - **H4. Observability — done.** `/metrics` was real but nothing scraped it: no
   scrape config, no alert rules, no dashboard anywhere in the repo.

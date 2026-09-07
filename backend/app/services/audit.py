@@ -229,18 +229,14 @@ def record_sync(session: Any, **kwargs: Any) -> Any:
 
 # The append-only guard, as DDL.
 #
-# This is duplicated in migration c8d9e0f1a2b3 on purpose, and the duplication
-# is load-bearing rather than sloppy. The two paths that create this schema do
-# not overlap:
-#
-#   - an EXISTING database is upgraded by Alembic, which runs the migration;
-#   - a NEW database is built by scripts/bootstrap_db.py, which calls
-#     SQLModel.metadata.create_all() and then stamps head WITHOUT running any
-#     migration (the Alembic baseline is an empty stub — see CLAUDE.md).
-#
-# So a fresh install would get the table and no trigger, silently losing the
-# guarantee on exactly the deployments most likely to be audited. Attaching it
-# to the table's after_create event covers that path too.
+# The same statements live in the squashed root migration e0f1a2b3c4d5 (and in
+# legacy c8d9e0f1a2b3). Deployments get the trigger from the migration now —
+# fresh installs run `alembic upgrade head` like everyone else since 2026-09.
+# This copy is attached to the table's after_create event for the one path that
+# still builds the schema from metadata: SQLModel.metadata.create_all() in the
+# unit-test fixtures. Before the squash it was load-bearing in production too,
+# because scripts/bootstrap_db.py used create_all() + `stamp head` and never
+# ran a migration on a new database. Keep the two texts identical.
 APPEND_ONLY_GUARD_SQL = """
 CREATE OR REPLACE FUNCTION traceiq_auditlog_append_only()
 RETURNS TRIGGER AS $$
