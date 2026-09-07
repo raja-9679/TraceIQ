@@ -21,6 +21,9 @@ export default function Login() {
     // authenticator first; this holds the enrollment challenge token.
     const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
     const [ssoEnabled, setSsoEnabled] = useState(false);
+    // One button per configured protocol (OIDC and/or SAML). Older backends
+    // return no `providers`, so fall back to the single OIDC entry point.
+    const [ssoProviders, setSsoProviders] = useState<{ type: string; label: string; login_path: string }[]>([]);
     // SSO-only mode: hide the password form. ?password=1 keeps a break-glass
     // path for instance admins (the backend exempts them from the policy).
     const [passwordLoginDisabled, setPasswordLoginDisabled] = useState(false);
@@ -40,6 +43,10 @@ export default function Login() {
         axios.get(`${API}/auth/sso/status`).then((r) => {
             setSsoEnabled(!!r.data?.enabled);
             setPasswordLoginDisabled(!!r.data?.password_login_disabled);
+            const providers = Array.isArray(r.data?.providers) ? r.data.providers : [];
+            setSsoProviders(providers.length || !r.data?.enabled
+                ? providers
+                : [{ type: 'oidc', label: 'Sign in with SSO', login_path: '/auth/sso/login' }]);
         }).catch(() => {});
         axios.get(`${API}/auth/ldap/status`).then((r) => setLdapEnabled(!!r.data?.enabled)).catch(() => {});
         const hash = window.location.hash.startsWith('#') ? new URLSearchParams(window.location.hash.slice(1)) : null;
@@ -406,12 +413,15 @@ export default function Login() {
                                         <p className="text-sm text-zinc-500 text-center">
                                             This instance uses single sign-on.
                                         </p>
-                                        <a
-                                            href={`${API}/auth/sso/login`}
-                                            className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-900/10"
-                                        >
-                                            <Shield className="w-4 h-4" /> Sign in with SSO
-                                        </a>
+                                        {ssoProviders.map((p) => (
+                                            <a
+                                                key={p.type}
+                                                href={`${API}${p.login_path}`}
+                                                className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-900/10"
+                                            >
+                                                <Shield className="w-4 h-4" /> {p.label}
+                                            </a>
+                                        ))}
                                         <a href="?password=1"
                                            className="block text-center text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors">
                                             Administrator password sign-in
@@ -527,14 +537,15 @@ export default function Login() {
                                         )}
                                     </button>
 
-                                    {ssoEnabled && !mfaToken && (
+                                    {ssoEnabled && !mfaToken && ssoProviders.map((p) => (
                                         <a
-                                            href={`${API}/auth/sso/login`}
+                                            key={p.type}
+                                            href={`${API}${p.login_path}`}
                                             className="w-full py-2.5 px-4 border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2"
                                         >
-                                            <Shield className="w-4 h-4" /> Sign in with SSO
+                                            <Shield className="w-4 h-4" /> {p.label}
                                         </a>
-                                    )}
+                                    ))}
                                 </form>
                                 )}
                             </div>

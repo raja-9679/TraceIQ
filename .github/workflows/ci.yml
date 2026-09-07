@@ -69,12 +69,13 @@ jobs:
           app/services/data_policy.py,\
           app/services/federation.py,\
           app/services/scim.py,\
+          app/services/saml_auth.py,\
           app/services/proposal_policy.py,\
           app/services/retention.py,\
           app/services/beat_health.py,\
           app/core/secrets.py,\
           app/core/net_guard.py' \
-          || { echo "::error::Coverage on a security-critical module dropped below 70%. These are the modules where an untested line is a guarantee nobody is checking: redaction, capture policy, federated provisioning, SCIM, proposal policy, retention, secret encryption, SSRF guard."; exit 1; }
+          || { echo "::error::Coverage on a security-critical module dropped below 70%. These are the modules where an untested line is a guarantee nobody is checking: redaction, capture policy, federated provisioning, SCIM, SAML, proposal policy, retention, secret encryption, SSRF guard."; exit 1; }
 
   integration-tests:
     # Workstream I1/I2. The unit suite has no database, so everything that only a

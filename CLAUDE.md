@@ -295,6 +295,23 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   LDAP login (`app/services/ldap_auth.py`, ldap3, bind-as-user, instance
   settings group `ldap`) at `POST /api/auth/ldap/login` — backend image
   rebuild needed for the ldap3 dep.
+  **SAML 2.0 (workstream F3, 2026-09-07)** — `app/services/saml_auth.py`
+  (python3-saml, `strict`; no apt deps — `xmlsec` ships manylinux wheels,
+  pinned with lxml because a libxml2 mismatch segfaults at import) behind
+  `/api/auth/saml/{metadata,login,acs}`, instance settings group `saml`,
+  `docs/ENTERPRISE_AUTH.md`. SP-initiated: AuthnRequest id parked in Redis
+  under a nonce in a signed RelayState so the ACS insists on `InResponseTo`;
+  assertion ids cached in Redis for their validity window (replay); Redis down
+  fails closed. Destination/Recipient are checked against the CONFIGURED ACS
+  URL, never request headers. **python3-saml only compares `InResponseTo`
+  when handed a request id** (no `rejectUnsolicitedResponsesWithInResponseTo`
+  like the PHP toolkit), so `process_acs` refuses an unsolicited Response that
+  carries one itself — without that, IdP-initiated mode would accept a
+  replayed SP-initiated Response. Settings validated (metadata fetched via
+  net_guard) at save time. `sso/status` now returns `providers[]`; the login
+  page renders a button per protocol; SSO-only mode accepts SAML or OIDC.
+  Tested with a self-signed mock IdP (`tests/test_saml_auth.py`), not yet
+  against a real tenant. No SLO, no artifact binding.
   **Federated provisioning (workstream F1)** — `app/services/federation.py`
   decides where an IdP-authenticated user lands, replacing the old
   "SSO/LDAP call `provision_standalone_user`" behaviour that gave every

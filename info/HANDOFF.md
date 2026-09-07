@@ -34,7 +34,7 @@ now exist (`7af0aac`). See "The local deployment" below, which is new.
 | F2 - SCIM 2.0 + real deprovisioning | done |
 | F4 - separation of duties | done |
 | F5 - roles cleanup | done |
-| **F3 - SAML 2.0** | **deferred - see below** |
+| F3 - SAML 2.0 | done (2026-09-07) |
 | G - deletion, retention, erasure, residency | done |
 | H1-H4 - beat HA, DLQ replay, migration lock, monitoring | done |
 | **H5 - Helm chart** | **not started** |
@@ -52,11 +52,13 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
    does not depend on the rewrite and should not wait for it.** Every regulated
    buyer's questionnaire asks this. This is the highest-value remaining item and
    it is not a coding task.
-2. **F3 SAML 2.0.** Zero code. Gates SAML-first insurance and banking IdPs
-   regardless of OIDC support. Deferred here because it needs `xmlsec` system
-   libraries in the backend image (like ldap3 before it, but heavier) and an IdP
-   to test against - a mock SAML IdP is doable, the mock OIDC one used for F1 is
-   ~30 lines of FastAPI. Parked in `SCOPE_NOTES.md`.
+2. ~~F3 SAML 2.0~~ — **done 2026-09-07**. `app/services/saml_auth.py`,
+   `/api/auth/saml/*`, settings group `saml`, `docs/ENTERPRISE_AUTH.md`. The
+   "needs xmlsec system libraries" premise was wrong: `xmlsec` has manylinux
+   wheels, so python3-saml installs into the slim image with no apt packages.
+   Tested with a self-signed mock IdP (`tests/test_saml_auth.py`, 40 tests);
+   NOT yet exercised against a real Entra/Okta tenant — the first customer
+   pilot should budget an afternoon for attribute-name surprises.
 3. ~~H3's squashed initial migration~~ — **done 2026-09-07**, see "Migrations"
    below.
 4. **H4's remainder:** no OpenTelemetry, no structured logging (stdlib `logging`
@@ -297,10 +299,12 @@ working as designed, not errors.
 
 ## Loose ends and things to know
 
-**The local stack is current** as of 2026-09-07 (backend `:dev` rebuilt and
-rolled; its startup log showed `e0f1a2b3c4d5 -> f2a3b4c5d6e7`, the first real
-migration a current database has run through `bootstrap_db.py`) — see
-"The local deployment" below for where it lives and how to rebuild it. It was ~6 weeks behind on
+**The local stack is current** as of 2026-09-07 (backend and frontend `:dev`
+rebuilt and rolled twice that day: once for the squashed migration — the
+backend log showed `e0f1a2b3c4d5 -> f2a3b4c5d6e7`, the first real migration a
+current database has run through `bootstrap_db.py` — and once for SAML, whose
+endpoints answer 404 until configured). The worker image was not rebuilt (no
+worker code changed). See "The local deployment" below. It was ~6 weeks behind on
 configuration before that (the code was current; the compose file was not).
 
 ```bash

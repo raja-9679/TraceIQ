@@ -81,11 +81,10 @@ These items either require significant frontend work, external products, or desi
   permission picker in the UI, and passing `tenant_id` at every grant site
   (`workspace_service.create_workspace`, invitation accept, federated
   provisioning, SCIM).
-- **SAML 2.0 (F3).** Zero code. A large share of insurance and banking IdPs are
-  SAML-first, so it gates those deals regardless of OIDC support. Needs a
-  signature-verification dependency (`python3-saml` pulls in `xmlsec`, which
-  needs system libraries in the backend image) — the reason it is not bundled
-  with F1/F2/F4.
+- **SAML Single Logout and the artifact binding.** SAML 2.0 login shipped
+  2026-09-07 (`app/services/saml_auth.py`); SLO (IdP-initiated logout
+  propagating to TraceIQ sessions) and the HTTP-Artifact binding did not. Both
+  are rare asks; SLO would need a session registry keyed by `SessionIndex`.
 - **Merging tenants an existing SSO deployment already accumulated.** F1 stops
   new tenant-per-user provisioning but does not consolidate what a pre-F1
   deployment created. That is data surgery (re-parenting workspaces, projects,

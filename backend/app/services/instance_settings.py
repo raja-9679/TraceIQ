@@ -44,7 +44,7 @@ class SettingDef:
     description: str = ""
 
 
-# Groups: email | notifications | ai | storage | sso | policies
+# Groups: email | notifications | ai | storage | sso | saml | ldap | federation | policies
 REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     # --- Email (SMTP) ---
     SettingDef("SMTP_HOST", "email", label="SMTP host"),
@@ -118,6 +118,62 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                description="userinfo claim carrying the user's IdP groups — 'groups' "
                            "for Okta/Keycloak, 'roles' for some Entra setups. Only "
                            "needed if you map groups to TraceIQ roles or teams"),
+    # --- SSO (SAML 2.0) ---
+    SettingDef("SAML_SP_ACS_URL", "saml", label="Assertion consumer URL (this instance)",
+               description="https://<your-traceiq>/api/auth/saml/acs — the exact URL "
+                           "the IdP posts responses to. Also decides what Destination "
+                           "a response must name; it is never read from request headers"),
+    SettingDef("SAML_SP_ENTITY_ID", "saml", label="SP entity id (optional)",
+               description="defaults to https://<your-traceiq>/api/auth/saml/metadata, "
+                           "which is also where the IdP can download our metadata"),
+    SettingDef("SAML_IDP_METADATA_URL", "saml", label="IdP metadata URL",
+               description="the simplest setup: paste the IdP's federation metadata URL "
+                           "and entity id, SSO endpoint and signing certificates are read "
+                           "from it (re-read hourly, so certificate rotation just works)"),
+    SettingDef("SAML_IDP_METADATA_XML", "saml", label="IdP metadata XML (alternative)",
+               description="paste the metadata document instead, for IdPs that do not "
+                           "publish a URL the server can reach"),
+    SettingDef("SAML_IDP_ENTITY_ID", "saml", label="IdP entity id (manual)",
+               description="only needed without metadata, or to override it"),
+    SettingDef("SAML_IDP_SSO_URL", "saml", label="IdP single sign-on URL (manual)",
+               description="HTTP-Redirect binding endpoint; only needed without metadata"),
+    SettingDef("SAML_IDP_X509_CERT", "saml", label="IdP signing certificate (manual)",
+               description="PEM or bare base64. Pinning it here overrides the "
+                           "certificates from metadata — then YOU own rotation"),
+    SettingDef("SAML_SP_X509_CERT", "saml", label="SP certificate (optional)",
+               description="enables signed AuthnRequests and encrypted assertions. "
+                           "Set together with the private key"),
+    SettingDef("SAML_SP_PRIVATE_KEY", "saml", secret=True, label="SP private key (optional)",
+               description="PEM. Stored encrypted. Publish the matching certificate to "
+                           "the IdP via our metadata"),
+    SettingDef("SAML_ATTR_EMAIL", "saml", label="Email attribute (optional)",
+               description="attribute name(s) carrying the email, comma-separated. Blank "
+                           "tries the usual names (email, mail, the WS-Fed emailaddress "
+                           "claim, urn:oid:0.9.2342…) and finally an email-format NameID"),
+    SettingDef("SAML_ATTR_NAME", "saml", label="Display-name attribute (optional)",
+               description="blank tries displayName/name/cn/the WS-Fed name claim, "
+                           "then givenName + sn"),
+    SettingDef("SAML_ATTR_GROUPS", "saml", label="Groups attribute (optional)",
+               description="attribute carrying group names for the federation maps. "
+                           "Blank tries groups/memberOf/roles and the Entra groups claim. "
+                           "Entra sends group OBJECT IDS unless the claim is configured "
+                           "to emit names — map whatever it actually sends"),
+    SettingDef("SAML_WANT_ASSERTIONS_SIGNED", "saml", type="bool",
+               label="Require signed assertions",
+               description="on (default): the Assertion element must be signed. Off: the "
+                           "whole Response message must be signed instead. One of the two "
+                           "is always required — an unsigned response is never accepted"),
+    SettingDef("SAML_ALLOW_IDP_INITIATED", "saml", type="bool",
+               label="Allow IdP-initiated sign-in",
+               description="off by default. IdP-initiated responses have no request of "
+                           "ours to match, so the only replay defence is the assertion-id "
+                           "cache. Turn on only if users must start from the IdP portal"),
+    SettingDef("SAML_ALLOWED_EMAIL_DOMAINS", "saml", label="Allowed email domains (optional)",
+               description="comma-separated; when set, only these domains may sign in or "
+                           "be provisioned through SAML"),
+    SettingDef("SAML_POST_LOGIN_REDIRECT", "saml", label="Post-login redirect (optional)",
+               description="where the browser lands with its session; defaults to the "
+                           "OIDC post-login redirect, i.e. https://<your-traceiq>/login"),
     # --- Federated provisioning (shared by SSO and LDAP) ---
     SettingDef("FEDERATED_PROVISIONING_MODE", "federation",
                label="Where federated users land",
