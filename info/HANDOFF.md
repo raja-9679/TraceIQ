@@ -295,6 +295,17 @@ not under `/api`.
 value is in `infrastructure/monitoring/metrics_token` for the optional
 Prometheus overlay). Anonymous is 401 by design.
 
+### Tracing is on locally (2026-09-07)
+
+`~/traceiq-test/.env` has `OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318` and
+a Jaeger all-in-one runs in the same compose project (`traceiq-jaeger-1`,
+started from `infrastructure/monitoring/docker-compose.monitoring.yml` with
+`-p traceiq` and only the `jaeger` service). UI at http://localhost:16686 —
+services `traceiq-backend`, `traceiq-celery-worker`, `traceiq-celery-aggregator`
+report. In-memory storage: traces vanish when the container restarts. Logs stay
+`LOG_FORMAT=text` for readability; set `json` in that `.env` to see the
+structured form.
+
 ### Things deliberately NOT enabled locally
 
 `SECRETS_KEY` is **empty** on purpose. Setting it is safe to read — existing
