@@ -1,0 +1,208 @@
+{{- $secret := include "traceiq.secretName" . -}}
+{{- if .Values.postgresql.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "traceiq.fullname" . }}-postgresql
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  clusterIP: None
+  ports: [{name: postgres, port: 5432, targetPort: postgres}]
+  selector:
+    {{- include "traceiq.selectorLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "traceiq.fullname" . }}-postgresql
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ include "traceiq.fullname" . }}-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traceiq.selectorLabels" (dict "root" . "component" "postgresql") | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 70          # postgres:15-alpine's postgres uid/gid
+        runAsUser: 70
+        runAsGroup: 70
+      containers:
+        - name: postgresql
+          image: {{ .Values.postgresql.image }}
+          ports: [{name: postgres, containerPort: 5432}]
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.external.user | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.external.database | quote }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            {{- include "traceiq.secretEnv" (dict "name" "POSTGRES_PASSWORD" "secret" $secret "key" "POSTGRES_PASSWORD") | nindent 12 }}
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB"]
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgresql.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.storage }}
+{{- end }}
+{{- if .Values.redis.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "traceiq.fullname" . }}-redis
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  clusterIP: None
+  ports: [{name: redis, port: 6379, targetPort: redis}]
+  selector:
+    {{- include "traceiq.selectorLabels" (dict "root" . "component" "redis") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "traceiq.fullname" . }}-redis
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+spec:
+  serviceName: {{ include "traceiq.fullname" . }}-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traceiq.selectorLabels" (dict "root" . "component" "redis") | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 999
+        runAsUser: 999
+        runAsGroup: 999
+      containers:
+        - name: redis
+          image: {{ .Values.redis.image }}
+          # appendonly so a restart keeps the job streams; requirepass from the
+          # Secret via $(...) so the password is not in the pod spec.
+          command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$REDIS_PASSWORD\""]
+          ports: [{name: redis, containerPort: 6379}]
+          env:
+            {{- include "traceiq.secretEnv" (dict "name" "REDIS_PASSWORD" "secret" $secret "key" "REDIS_PASSWORD") | nindent 12 }}
+            - name: REDISCLI_AUTH
+              value: "$(REDIS_PASSWORD)"
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "redis-cli ping | grep -q PONG"]
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.redis.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.storage }}
+{{- end }}
+{{- if .Values.minio.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "traceiq.fullname" . }}-minio
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  ports:
+    - {name: s3, port: 9000, targetPort: s3}
+    - {name: console, port: 9001, targetPort: console}
+  selector:
+    {{- include "traceiq.selectorLabels" (dict "root" . "component" "minio") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "traceiq.fullname" . }}-minio
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: minio
+spec:
+  serviceName: {{ include "traceiq.fullname" . }}-minio
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "minio") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traceiq.selectorLabels" (dict "root" . "component" "minio") | nindent 8 }}
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 1000
+        runAsGroup: 1000
+      containers:
+        - name: minio
+          image: {{ .Values.minio.image }}
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - {name: s3, containerPort: 9000}
+            - {name: console, containerPort: 9001}
+          env:
+            {{- include "traceiq.secretEnv" (dict "name" "MINIO_ROOT_USER" "secret" $secret "key" "MINIO_ROOT_USER") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "MINIO_ROOT_PASSWORD" "secret" $secret "key" "MINIO_ROOT_PASSWORD") | nindent 12 }}
+          readinessProbe:
+            httpGet: {path: /minio/health/ready, port: s3}
+            periodSeconds: 15
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.minio.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.storage }}
+{{- end }}

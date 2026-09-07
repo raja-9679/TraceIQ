@@ -326,6 +326,12 @@ Test a restore before you need one. An untested backup is a guess.
 
 ---
 
+## Kubernetes
+
+There is a Helm chart at `deploy/helm/traceiq/` that deploys the same stack
+(with optional in-cluster PostgreSQL/Redis/MinIO for evaluation). Same rule as
+here: no default secrets — the install command in its README generates them.
+
 ## Optional features
 
 **AI failure analysis** is off unless you configure a provider. Leave

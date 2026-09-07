@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "traceiq.fullname" . }}-frontend
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "frontend") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traceiq.selectorLabels" (dict "root" . "component" "frontend") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "traceiq.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: frontend
+          image: {{ include "traceiq.image" (dict "root" . "name" "frontend") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # nginx binds :80 and writes its pid/cache under /var/... in this
+          # image, so it keeps the image's own user rather than the pod default.
+          env:
+            # The image envsubsts this into nginx's proxy_pass at start.
+            - name: BACKEND_URL
+              value: http://{{ include "traceiq.fullname" . }}-backend:{{ .Values.backend.service.port }}
+          ports:
+            - name: http
+              containerPort: 80
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.frontend.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "traceiq.fullname" . }}-frontend
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: {{ .Values.frontend.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.frontend.service.port }}
+      targetPort: http
+  selector:
+    {{- include "traceiq.selectorLabels" (dict "root" . "component" "frontend") | nindent 4 }}

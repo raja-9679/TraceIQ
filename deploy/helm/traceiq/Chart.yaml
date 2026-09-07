@@ -1,0 +1,14 @@
+apiVersion: v2
+name: traceiq
+description: >-
+  TraceIQ — UI, API and mobile test automation with AI failure analysis.
+  Backend API, Celery workers and beat, Playwright execution workers, frontend,
+  with optional in-cluster PostgreSQL, Redis and MinIO for evaluation.
+type: application
+version: 0.1.0
+appVersion: "latest"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/raja-9679/TraceIQ
+sources:
+  - https://github.com/raja-9679/TraceIQ
+keywords: [testing, playwright, qa, ci]
