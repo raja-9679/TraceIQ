@@ -1,0 +1,78 @@
+{{- $root := . -}}
+{{- $procs := list
+  (dict "name" "celery-worker" "vals" .Values.celeryWorker "replicas" .Values.celeryWorker.replicas
+        "args" (list "celery" "-A" "app.core.celery_app" "worker" "--loglevel=info" "-Q" "main-queue" "-c" (toString .Values.celeryWorker.concurrency)))
+  (dict "name" "celery-aggregator" "vals" .Values.celeryAggregator "replicas" .Values.celeryAggregator.replicas
+        "args" (list "celery" "-A" "app.core.celery_app" "worker" "--loglevel=info" "-Q" "aggregator-queue" "-c" (toString .Values.celeryAggregator.concurrency)))
+  (dict "name" "celery-beat" "vals" .Values.celeryBeat "replicas" 1
+        "args" (list "celery" "-A" "app.core.celery_app" "beat" "--loglevel=info" "-s" "/tmp/celerybeat-schedule"))
+-}}
+{{- range $p := $procs }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "traceiq.fullname" $root }}-{{ $p.name }}
+  labels:
+    {{- include "traceiq.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $p.name }}
+spec:
+  replicas: {{ $p.replicas }}
+  {{- if eq $p.name "celery-beat" }}
+  # Two beats fire every schedule twice. Recreate, never a rolling update.
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" $root "component" $p.name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traceiq.selectorLabels" (dict "root" $root "component" $p.name) | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $root.Template.BasePath "/configmap.yaml") $root | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "traceiq.serviceAccountName" $root }}
+      automountServiceAccountToken: false
+      {{- with $root.Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $p.name }}
+          image: {{ include "traceiq.image" (dict "root" $root "name" "backend") }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $root.Values.containerSecurityContext | nindent 12 }}
+          args:
+            {{- toYaml $p.args | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "traceiq.fullname" $root }}-config
+          env:
+            - name: RUN_MIGRATIONS
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: traceiq-{{ $p.name }}
+            {{- include "traceiq.backendEnv" $root | nindent 12 }}
+            {{- with $p.vals.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml $p.vals.resources | nindent 12 }}
+      {{- with $p.vals.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $p.vals.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $p.vals.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,25 @@
+TraceIQ {{ include "traceiq.imageTag" . }} is rolling out in namespace {{ .Release.Namespace }}.
+
+Watch it come up (the first backend pod builds the schema, ~1 min):
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }} -w
+
+{{- if .Values.ingress.enabled }}
+Open:  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else }}
+No Ingress. Port-forward the frontend (it proxies /api/ to the backend):
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "traceiq.fullname" . }}-frontend 8080:80
+  open http://localhost:8080
+{{- end }}
+
+{{- if .Values.config.adminEmail }}
+First-boot instance admin: {{ .Values.config.adminEmail }} (ADMIN_PASSWORD from the Secret).
+{{- else }}
+No ADMIN_EMAIL set — the first account to sign up becomes admin of its own tenant.
+{{- end }}
+
+{{- if or .Values.postgresql.enabled .Values.redis.enabled .Values.minio.enabled }}
+
+NOTE: in-cluster data services are single-replica StatefulSets meant for
+evaluation. For production set postgresql/redis/minio.enabled=false and point
+the `external` blocks at managed services. See deploy/helm/traceiq/README.md.
+{{- end }}

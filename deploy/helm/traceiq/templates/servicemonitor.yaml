@@ -1,0 +1,25 @@
+{{- if .Values.metrics.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "traceiq.fullname" . }}-backend
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    {{- with .Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "backend") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.metrics.serviceMonitor.interval }}
+      # /metrics is never anonymous: Prometheus presents METRICS_TOKEN.
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ include "traceiq.secretName" . }}
+          key: METRICS_TOKEN
+{{- end }}

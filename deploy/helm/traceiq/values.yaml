@@ -1,0 +1,231 @@
+# Default values for the TraceIQ chart. Every secret is REQUIRED with no
+# default — a default in a published chart is a shared secret across every
+# deployment (for SECRET_KEY, anyone could forge a JWT against any instance).
+# Either fill in `secrets.*` or point `secrets.existingSecret` at a Secret you
+# manage (keys listed below).
+
+image:
+  registry: ghcr.io/raja-9679
+  # Empty = the chart's appVersion. Pin a release tag in production.
+  tag: ""
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Applied to every TraceIQ pod. The execution worker additionally needs a
+# writable /dev/shm (mounted from an emptyDir below); nothing runs as root.
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+
+# ---------------------------------------------------------------------------
+# Secrets. Either set these or provide `existingSecret` with the same keys.
+# Passwords for Postgres/Redis are embedded in connection URLs verbatim, so
+# keep them to [A-Za-z0-9._~-] (openssl rand -hex N is fine).
+# ---------------------------------------------------------------------------
+secrets:
+  existingSecret: ""
+  # Expected keys in existingSecret:
+  #   SECRET_KEY, WEBHOOK_SECRET, POSTGRES_PASSWORD, REDIS_PASSWORD,
+  #   MINIO_ROOT_USER, MINIO_ROOT_PASSWORD
+  # Optional keys: SECRETS_KEY, SECRETS_KEY_PREVIOUS, METRICS_TOKEN, SENTRY_DSN,
+  #   OTEL_EXPORTER_OTLP_HEADERS, ADMIN_PASSWORD
+  secretKey: ""            # openssl rand -hex 32 — signs JWTs
+  webhookSecret: ""        # openssl rand -hex 32 — MUST differ from secretKey
+  postgresPassword: ""     # openssl rand -hex 24
+  redisPassword: ""        # openssl rand -hex 24
+  minioRootUser: ""        # anything but minioadmin
+  minioRootPassword: ""    # openssl rand -hex 24
+  secretsKey: ""           # optional: Fernet key ring for stored secrets (see docs)
+  secretsKeyPrevious: ""
+  metricsToken: ""         # optional: bearer token Prometheus presents to /metrics
+  sentryDsn: ""            # optional
+  otelExporterOtlpHeaders: ""  # optional vendor auth header(s)
+  adminPassword: ""        # optional first-boot instance admin (with config.adminEmail)
+
+# ---------------------------------------------------------------------------
+# Application configuration (non-secret). Anything not modelled here can go
+# in `config.extra` as KEY: value.
+# ---------------------------------------------------------------------------
+config:
+  environment: production
+  # Public URL of the frontend — used in emails, CORS and the OIDC/SAML
+  # defaults. Set to https://<ingress host>.
+  frontendBaseUrl: http://traceiq.local
+  corsOrigins: '["http://traceiq.local"]'
+  minioPublicUrl: ""          # browser-reachable object-store URL; empty = via frontend proxy is NOT supported, set it when using in-cluster MinIO with an Ingress
+  maxCaptureLevel: standard   # none|minimal|standard|full — ceiling per project policy
+  runRetentionDays: 90
+  auditRetentionDays: 0       # 0 = keep audit history forever
+  requireTransportSecurity: false
+  allowPrivateNetworkTargets: false
+  outboundAllowedHosts: "[]"
+  logFormat: json
+  logLevel: INFO
+  # OpenTelemetry: set to your collector's OTLP/HTTP endpoint to turn on traces.
+  otelExporterOtlpEndpoint: ""
+  otelTracesSampler: parentbased_always_on
+  otelTracesSamplerArg: "1.0"
+  adminEmail: ""
+  adminFullName: ""
+  extra: {}
+
+# ---------------------------------------------------------------------------
+# Workloads
+# ---------------------------------------------------------------------------
+backend:
+  replicas: 2
+  # Only the API pods run scripts/bootstrap_db.py; an advisory lock serialises
+  # replicas, so two starting together is safe.
+  runMigrations: true
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  service:
+    type: ClusterIP
+    port: 8000
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+celeryWorker:
+  replicas: 1
+  concurrency: 4
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+celeryAggregator:
+  replicas: 1
+  concurrency: 2
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+celeryBeat:
+  # Exactly one beat. Set redbeat=true to keep the schedule in Redis (with a
+  # lock) so a restarted or rescheduled pod resumes without a state file.
+  redbeat: true
+  redbeatLockTimeout: 300
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+executionWorker:
+  replicas: 2
+  # Chromium needs a large /dev/shm; mounted as a memory-backed emptyDir.
+  shmSize: 1Gi
+  defaultTimeoutMs: 30000
+  runtimeHealEnabled: false
+  rawPlaywrightEnabled: false   # arbitrary code execution — read SELF_HOSTING.md first
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {cpu: "2", memory: 3Gi}
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+frontend:
+  replicas: 1
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  service:
+    type: ClusterIP
+    port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+    # nginx.ingress.kubernetes.io/proxy-body-size: 200m   # app-build uploads
+  host: traceiq.local
+  tls: []
+    # - secretName: traceiq-tls
+    #   hosts: [traceiq.local]
+
+# Prometheus Operator ServiceMonitor for /metrics (needs secrets.metricsToken).
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
+
+# ---------------------------------------------------------------------------
+# Data services. `enabled: true` runs a single-replica StatefulSet in the
+# cluster — fine for evaluation and small teams, NOT an HA database. For
+# production point `external` at managed services and set enabled: false.
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  image: postgres:15-alpine
+  storage: 20Gi
+  storageClass: ""
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  external:
+    host: ""
+    port: 5432
+    database: traceiq
+    user: traceiq
+    sslmode: require      # rewritten to asyncpg's ssl= by the backend, value preserved
+
+redis:
+  enabled: true
+  image: redis:7-alpine
+  storage: 5Gi
+  storageClass: ""
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  external:
+    host: ""
+    port: 6379
+    tls: false            # rediss:// when true
+
+minio:
+  enabled: true
+  image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+  storage: 50Gi
+  storageClass: ""
+  bucket: test-artifacts
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  external:
+    endpoint: ""          # host:port of an S3-compatible store
+    useSSL: true
+    sseAlgorithm: ""      # AES256 or aws:kms

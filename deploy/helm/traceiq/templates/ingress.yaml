@@ -1,0 +1,34 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "traceiq.fullname" . }}
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    # Everything goes to the frontend; its nginx proxies /api/ to the backend,
+    # exactly as in the compose stack, so one host serves both. SCIM and the
+    # SAML ACS live under /api/ too.
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "traceiq.fullname" . }}-frontend
+                port:
+                  name: http
+{{- end }}

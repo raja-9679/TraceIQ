@@ -226,6 +226,53 @@ jobs:
         working-directory: backend
         run: python scripts/verify_migrations.py
 
+  helm-chart:
+    # Workstream H5. A chart that renders is not a chart that deploys, but a
+    # chart that does not even render is worse. Lint + template + kubeconform
+    # against the k8s schemas, in the two shapes that matter (in-cluster data
+    # services for evaluation; external services for production), and a check
+    # that the no-default-secrets rule holds — the same one compose has.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+      - name: Lint
+        run: |
+          helm lint deploy/helm/traceiq \
+            --set secrets.secretKey=a --set secrets.webhookSecret=b \
+            --set secrets.postgresPassword=c --set secrets.redisPassword=d \
+            --set secrets.minioRootUser=traceiq --set secrets.minioRootPassword=f
+      - name: Render both shapes
+        run: |
+          S="--set secrets.secretKey=a --set secrets.webhookSecret=b --set secrets.postgresPassword=c --set secrets.redisPassword=d --set secrets.minioRootUser=traceiq --set secrets.minioRootPassword=f"
+          helm template traceiq deploy/helm/traceiq $S \
+            --set ingress.enabled=true --set executionWorker.autoscaling.enabled=true \
+            --set metrics.serviceMonitor.enabled=true --set config.otelExporterOtlpEndpoint=http://otel:4318 \
+            > /tmp/full.yaml
+          helm template traceiq deploy/helm/traceiq $S \
+            --set postgresql.enabled=false --set postgresql.external.host=pg \
+            --set redis.enabled=false --set redis.external.host=redis --set redis.external.tls=true \
+            --set minio.enabled=false --set minio.external.endpoint=s3:443 \
+            > /tmp/external.yaml
+      - name: Refuse to render without secrets
+        run: |
+          if helm template traceiq deploy/helm/traceiq > /dev/null 2>&1; then
+            echo "::error::the chart rendered with no secrets set — a default has crept in"; exit 1
+          fi
+          if helm template traceiq deploy/helm/traceiq --set secrets.secretKey=a --set secrets.webhookSecret=a \
+               --set secrets.postgresPassword=c --set secrets.redisPassword=d \
+               --set secrets.minioRootUser=traceiq --set secrets.minioRootPassword=f > /dev/null 2>&1; then
+            echo "::error::webhookSecret == secretKey was accepted"; exit 1
+          fi
+      - name: kubeconform
+        run: |
+          docker run --rm -v /tmp:/out ghcr.io/yannh/kubeconform:v0.6.7 -strict -summary \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            /out/full.yaml /out/external.yaml
+
   engine-tests:
     # The redaction module is the worker's only defence against writing
     # credentials and PII into MinIO artifacts. It must be exercised on every

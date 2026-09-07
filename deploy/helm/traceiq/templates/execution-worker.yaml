@@ -1,0 +1,121 @@
+{{- $secret := include "traceiq.secretName" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "traceiq.fullname" . }}-execution-worker
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+    app.kubernetes.io/component: execution-worker
+spec:
+  {{- if not .Values.executionWorker.autoscaling.enabled }}
+  replicas: {{ .Values.executionWorker.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "execution-worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "traceiq.selectorLabels" (dict "root" . "component" "execution-worker") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "traceiq.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      # Drain in-flight Playwright jobs before the pod goes; the worker acks a
+      # job only when its result is posted, so anything cut off is re-claimed.
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: execution-worker
+          image: {{ include "traceiq.image" (dict "root" . "name" "execution-worker") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            {{- include "traceiq.secretEnv" (dict "name" "REDIS_PASSWORD" "secret" $secret "key" "REDIS_PASSWORD") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "MINIO_ACCESS_KEY" "secret" $secret "key" "MINIO_ROOT_USER") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "MINIO_SECRET_KEY" "secret" $secret "key" "MINIO_ROOT_PASSWORD") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "WEBHOOK_SECRET" "secret" $secret "key" "WEBHOOK_SECRET") | nindent 12 }}
+            - name: REDIS_URL
+              value: {{ printf "%s://:$(REDIS_PASSWORD)@%s:%s/0" (include "traceiq.redisScheme" .) (include "traceiq.redisHost" .) (include "traceiq.redisPort" .) | quote }}
+            - name: REDIS_JOBS_STREAM
+              value: jobs:pending
+            - name: REDIS_RESULTS_STREAM
+              value: jobs:results
+            - name: REDIS_CONSUMER_GROUP
+              value: execution-workers
+            - name: MINIO_ENDPOINT
+              value: {{ (splitList ":" (include "traceiq.minioEndpoint" .)) | first | quote }}
+            - name: MINIO_PORT
+              value: {{ (splitList ":" (include "traceiq.minioEndpoint" .)) | last | quote }}
+            - name: MINIO_USE_SSL
+              value: {{ include "traceiq.minioUseSSL" . | quote }}
+            - name: MINIO_BUCKET_NAME
+              value: {{ .Values.minio.bucket | quote }}
+            - name: BACKEND_URL
+              value: http://{{ include "traceiq.fullname" . }}-backend:{{ .Values.backend.service.port }}
+            - name: DEFAULT_TIMEOUT
+              value: {{ .Values.executionWorker.defaultTimeoutMs | quote }}
+            - name: ARTIFACTS_DIR
+              value: /tmp/artifacts
+            - name: RUNTIME_HEAL_ENABLED
+              value: {{ .Values.executionWorker.runtimeHealEnabled | quote }}
+            - name: RAW_PLAYWRIGHT_ENABLED
+              value: {{ .Values.executionWorker.rawPlaywrightEnabled | quote }}
+            {{- with .Values.executionWorker.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+            - name: artifacts
+              mountPath: /tmp/artifacts
+          resources:
+            {{- toYaml .Values.executionWorker.resources | nindent 12 }}
+      volumes:
+        # Chromium crashes with the default 64Mi /dev/shm; compose sets shm_size.
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.executionWorker.shmSize }}
+        - name: artifacts
+          emptyDir: {}
+      {{- with .Values.executionWorker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.executionWorker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.executionWorker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.executionWorker.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "traceiq.fullname" . }}-execution-worker
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "traceiq.fullname" . }}-execution-worker
+  minReplicas: {{ .Values.executionWorker.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.executionWorker.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.executionWorker.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
