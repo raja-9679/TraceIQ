@@ -70,6 +70,24 @@ Passwords are embedded in connection URLs verbatim — keep them to
   your cluster's.
 - The all-in-one evaluation image.
 
+## Verified
+
+Installed on a kind v1.31 cluster on 2026-09-07 with in-cluster data services:
+all ten pods ready, `/health/ready` and `/health/beat` (RedBeat) green, the
+frontend proxying `/api/` to the backend, the first-boot admin able to log in,
+`X-Request-ID` round-tripping. Three things broke on the way and are fixed in
+the chart/images — remember them if you fork it:
+
+- `runAsNonRoot` alone fails with *"image has non-numeric user (traceiq)"*; the
+  chart sets `runAsUser/runAsGroup/fsGroup: 10001` and the images now declare
+  `USER 10001:10001`.
+- nginx's `resolver` does not use the pod's DNS search list and the image used
+  to hardcode Docker's `127.0.0.11`; the frontend now reads `/etc/resolv.conf`
+  at start and the chart passes the backend's fully qualified service name.
+- An **empty** `MINIO_PUBLIC_URL` is an invalid boto3 endpoint and crashed the
+  backend at startup; the chart omits the key when blank and the backend falls
+  back to the internal endpoint.
+
 ## Validate locally
 
 ```bash

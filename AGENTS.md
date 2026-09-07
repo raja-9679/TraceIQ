@@ -535,7 +535,14 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `/dev/shm`, beat on `Recreate`, optional HPA/Ingress/ServiceMonitor and
   eval-grade in-cluster Postgres/Redis/MinIO; `required` on every secret plus
   `fail` on `webhookSecret == secretKey`; lint/template/kubeconform in CI
-  (`helm-chart` job). Not yet applied to a real cluster.
+  (`helm-chart` job); installed on kind 2026-09-07. Three traps found there,
+  all fixed: kubelet refuses `runAsNonRoot` with a non-numeric image USER
+  (images now `USER 10001:10001`); nginx's `resolver` ignores the DNS search
+  list and the frontend image hardcoded Docker's `127.0.0.11` (now read from
+  resolv.conf by `docker-entrypoint.d/16-traceiq-resolver.envsh` — which must
+  be executable or the base entrypoint silently ignores it — and the chart
+  passes the backend FQDN); an empty `MINIO_PUBLIC_URL` is an invalid boto3
+  endpoint (chart omits it; `storage.py` falls back to the internal one).
 
 - **Proving it (workstream I)** — CI now has an `integration-tests` job with
   Postgres + Redis + **`bitnami/minio`** service containers (the upstream

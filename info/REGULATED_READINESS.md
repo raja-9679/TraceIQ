@@ -719,7 +719,14 @@ boundary in both directions).
   optional single-replica Postgres/Redis/MinIO for evaluation. No default
   secrets — `required` plus `fail` on `webhookSecret == secretKey` and
   `minioadmin`, the same rule CI asserts for compose. Lint + template +
-  kubeconform in CI. Not in the chart: the Android emulator (privileged +
+  kubeconform in CI, and installed on a kind v1.31 cluster (all pods ready,
+  proxy/login/beat verified). First-install findings, all fixed: the kubelet
+  refuses `runAsNonRoot` with a non-numeric image USER (images now `USER
+  10001:10001`, chart sets the ids); nginx's resolver ignores the DNS search
+  list and the image hardcoded Docker's 127.0.0.11 (frontend now reads
+  resolv.conf at start, chart passes the backend FQDN); an empty
+  `MINIO_PUBLIC_URL` is an invalid boto3 endpoint (chart omits it, backend
+  falls back). Not in the chart: the Android emulator (privileged +
   /dev/kvm), the monitoring overlay, the AIO image.
 - **H4. Observability — done.** `/metrics` was real but nothing scraped it: no
   scrape config, no alert rules, no dashboard anywhere in the repo.

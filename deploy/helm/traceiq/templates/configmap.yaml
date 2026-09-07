@@ -11,7 +11,9 @@ data:
   MINIO_ENDPOINT: {{ include "traceiq.minioEndpoint" . | quote }}
   MINIO_USE_SSL: {{ include "traceiq.minioUseSSL" . | quote }}
   MINIO_BUCKET_NAME: {{ .Values.minio.bucket | quote }}
-  MINIO_PUBLIC_URL: {{ .Values.config.minioPublicUrl | quote }}
+  {{- with .Values.config.minioPublicUrl }}
+  MINIO_PUBLIC_URL: {{ . | quote }}
+  {{- end }}
   {{- if and (not .Values.minio.enabled) .Values.minio.external.sseAlgorithm }}
   MINIO_SSE_ALGORITHM: {{ .Values.minio.external.sseAlgorithm | quote }}
   {{- end }}

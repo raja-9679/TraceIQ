@@ -119,9 +119,15 @@ class MinioClient:
         # separate client for generating public URLs (localhost)
         # Boto3 uses the endpoint URL to generate the signature's Host header.
         # So we must use the external hostname here for signatures to match user's browser requests.
+        # A blank public URL (an env var set to "" by an orchestrator) is not
+        # "no override" to boto3 — it is an invalid endpoint that kills startup.
+        # Fall back to the internal endpoint so the process comes up; presigned
+        # links will then only work from inside the network, which the startup
+        # transport check reports.
+        public_url = str(effective("MINIO_PUBLIC_URL") or "").strip() or endpoint
         self._s3_public = boto3.client(
             "s3",
-            endpoint_url=effective("MINIO_PUBLIC_URL"),
+            endpoint_url=public_url,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             config=_client_config(),

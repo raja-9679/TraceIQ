@@ -27,9 +27,16 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # prebuilt frontend image at a backend anywhere.
 ENV BACKEND_URL=http://backend:8000
 # DNS server nginx uses to re-resolve ${BACKEND_URL}'s hostname at request
-# time (see nginx.conf). 127.0.0.11 is Docker's embedded DNS, present on any
-# user-defined network; override when running outside Docker networking.
-ENV NGINX_RESOLVER=127.0.0.11
+# time (see nginx.conf). Left EMPTY here on purpose: docker-entrypoint.d/
+# 16-traceiq-resolver.envsh fills it from the container's /etc/resolv.conf at
+# start (Docker's 127.0.0.11 on compose, CoreDNS on Kubernetes). Set it
+# explicitly only for a non-standard resolver.
+ENV NGINX_RESOLVER=""
+COPY docker-entrypoint.d/16-traceiq-resolver.envsh /docker-entrypoint.d/16-traceiq-resolver.envsh
+# The base entrypoint silently IGNORES a non-executable script ("Ignoring …,
+# not executable") — and then NGINX_RESOLVER is empty and nginx refuses to
+# start. Do not rely on the checkout preserving the mode bit.
+RUN chmod +x /docker-entrypoint.d/16-traceiq-resolver.envsh
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
 EXPOSE 80
