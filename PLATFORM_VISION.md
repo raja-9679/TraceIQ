@@ -33,6 +33,47 @@ head-to-head. The defensible wedge is **unification**:
 
 No single-category tool tells that story. That is what we build toward.
 
+### 1.1 The longer horizon: verification after code review
+
+A second, longer-term thesis sits behind the first (recorded 2026-08-12; this is
+a product *direction*, not a feature list).
+
+AI agents already write most diffs in AI-forward teams, and human review of
+AI-generated code at AI-generated volume is degrading into rubber-stamping.
+Rough timeline we're betting on: code-*writing* displacement is here now;
+code-*review* displacement plays out over the next ~2–3 years; the
+senior-judgment hollow-out is generational, ~5–10 years, as the pipeline that
+forms senior engineers stops forming them. **When nobody reads the diff,
+behavioral verification is what replaces code review.** A journey asserting
+"user logs in, creates an order, sees the receipt" stays meaningful in an org
+where no human can read the implementation. That is the world TraceIQ's
+agent-facing surface (MCP, impact analysis, quality gates, heal) is built for —
+the merge decision keys on behavior, not on a human's LGTM.
+
+The tension to design around: **our own safety model still assumes a competent
+human at the choke points** (CaseProposal accept/reject is human-only, SoD
+wants a separate approver, suite-settings changes are never auto-applied —
+all deliberate). In the world above, the human clicking "accept" can judge
+whether behavior *sounds right* but not whether the test code is *correct* —
+review theater migrating from the PR into our proposal queue. Three
+implications, in priority order:
+
+1. **Make proposals judgeable by non-experts.** A proposal should carry
+   evidence — a recording of the journey passing against a live environment, a
+   diff of *asserted behavior* (not steps) vs. the case it replaces — so a
+   product person can approve on behavior alone. Judging behavior is the skill
+   that survives; lean the whole review UX into it.
+2. **Adversarial verification, not just verification.** A suite written by the
+   same class of agent that wrote the code inherits its blind spots.
+   Independent test generation — different provider, different context; the
+   multi-provider registry is already the substrate — keeps the check
+   meaningful.
+3. **The regression corpus is the org's institutional memory.** When no human
+   remembers why the system behaves a certain way, the suite *is* the spec.
+   Capture provenance at proposal time — "why does this assertion exist, what
+   change or incident created it" — and the retention/audit machinery built
+   for compliance doubles as knowledge preservation.
+
 ---
 
 ## 2. The one architectural bet (keystone)
