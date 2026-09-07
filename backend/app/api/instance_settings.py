@@ -120,11 +120,37 @@ async def update_instance_settings(
     # admins are exempt from the setting either way — break-glass — but an
     # instance with no SSO and no admin flag would be bricked.)
     if body.values.get("PASSWORD_LOGIN_DISABLED") in (True, "true", "True", 1, "1"):
-        if not (insvc.effective("OIDC_ISSUER") and insvc.effective("OIDC_CLIENT_ID")
-                and insvc.effective("OIDC_CLIENT_SECRET")):
+        from app.services import saml_auth
+        oidc_ok = bool(insvc.effective("OIDC_ISSUER") and insvc.effective("OIDC_CLIENT_ID")
+                       and insvc.effective("OIDC_CLIENT_SECRET"))
+        if not (oidc_ok or saml_auth.is_configured()):
             raise HTTPException(
                 status_code=400,
-                detail="Configure and save SSO (OIDC) before disabling password login")
+                detail="Configure and save SSO (OIDC or SAML) before disabling password login")
+
+    # SAML settings are validated the way the login path will use them — the
+    # settings dict is built and, if a metadata URL is involved, fetched right
+    # now — so a bad certificate or unreachable IdP surfaces on the form rather
+    # than as a 503 for the first person who clicks the button.
+    if any(k.startswith("SAML_") for k in body.values):
+        from app.services import saml_auth
+
+        def proposed(key: str):
+            if key in body.values:
+                v = body.values[key]
+                if v is None:
+                    return insvc.env_default(key)
+                if insvc.REGISTRY[key].secret and v == "":
+                    return insvc.effective(key)   # masked field left untouched
+                return v
+            return insvc.effective(key)
+
+        if saml_auth.is_configured(proposed):
+            try:
+                cfg = saml_auth.load_config(proposed)
+                await saml_auth.load_settings(cfg, force_refresh=True)
+            except saml_auth.SamlConfigError as exc:
+                raise HTTPException(status_code=400, detail=f"SAML: {exc}")
 
     # Federation settings fail closed at login time, so a typo here would take
     # every SSO/LDAP login down until someone noticed. Check the proposed values

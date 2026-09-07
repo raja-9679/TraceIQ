@@ -13,9 +13,6 @@ references in those sections describe the code as it was *before* the fix and ar
 kept as the rationale record, not as a map of the current tree.
 
 What is left, and why:
-- **F3 (SAML 2.0)** — needs `xmlsec` system libraries in the backend image; the
-  only remaining item that gates a class of buyer (SAML-first insurance and
-  banking IdPs). Parked in `SCOPE_NOTES.md`.
 - **H4's remainder** — no OpenTelemetry, no structured logging, no error tracking.
 - **H5 (Helm/K8s)** — compose only.
 - **I5 (pen test, SOC 2 Type II)** — external and calendar-bound.
@@ -36,7 +33,7 @@ What is left, and why:
 | F2 — SCIM 2.0 + deprovisioning | done (2026-08-10) |
 | F4 — separation of duties | done (2026-08-10) |
 | F5 — roles cleanup | done (2026-08-10) |
-| F3 — SAML 2.0 | deferred — see SCOPE_NOTES.md |
+| F3 — SAML 2.0 | done (2026-09-07) |
 | G — deletion/residency (G1–G4) | done (2026-08-10) |
 | H1–H4 — operability | done (2026-08-10) |
 | H5 — Helm chart | not started |
@@ -478,9 +475,36 @@ which is what a QSA needs.
   Known interaction, documented rather than resolved: SCIM Groups and
   `FEDERATED_GROUP_TEAM_MAP` both write team membership and will fight over the
   same team. Operators pick one.
-- **F3. SAML 2.0.** Zero code today (grep for `saml` returns only roadmap
-  lines). A large share of insurance and banking IdPs remain SAML-first, so
-  this gates those deals regardless of OIDC support.
+- **F3. SAML 2.0 — DONE (2026-09-07).** `app/services/saml_auth.py` +
+  `/api/auth/saml/{metadata,login,acs}`, instance-settings group `saml`,
+  documented in `docs/ENTERPRISE_AUTH.md`. The deferral reason turned out to be
+  moot: `xmlsec` ships manylinux wheels bundling libxmlsec1, so python3-saml
+  installs into the slim image with no apt packages (pinned together with lxml
+  because a mismatched libxml2 segfaults at import).
+  - python3-saml does the XML and signature work in `strict` mode — that is
+    where the signature-wrapping and canonicalisation defences live; nothing
+    here parses a SAML document by hand.
+  - Destination/Recipient are checked against the *configured* ACS URL, never
+    against `Host`/`X-Forwarded-*`, which a proxy or attacker can set.
+  - SP-initiated only by default. The AuthnRequest id is parked in Redis under a
+    nonce carried in a signed RelayState, so the ACS insists on `InResponseTo`.
+    IdP-initiated sign-in is opt-in, and even then a Response that answers a
+    request is refused — python3-saml (unlike the PHP toolkit) has no
+    `rejectUnsolicitedResponsesWithInResponseTo` and only compares
+    `InResponseTo` when handed a request id, so a captured SP-initiated
+    Response re-posted without its RelayState would otherwise pass. Found by
+    the test that expected the library to refuse it.
+  - Assertion ids are cached in Redis for the assertion's own validity window;
+    Redis down refuses the login (fail closed) rather than skipping the check.
+  - Settings are validated at save time, including fetching the metadata URL
+    through `net_guard`, so a bad certificate shows up on the form.
+  - 40 tests drive it with a self-signed mock IdP: signature from another key,
+    tampering after signing, wrong audience/destination/recipient/issuer/
+    InResponseTo, expired and not-yet-valid windows, unsigned assertion with a
+    signed message and vice versa, IdP-initiated on/off, Entra claim URIs, DN
+    groups.
+  - Not supported: Single Logout, artifact binding. Encrypted assertions and
+    signed requests work once an SP key pair is configured.
 - **F4. Separation of duties — DONE.** `app/services/proposal_policy.py`,
   migration `e0f1a2b3c4d5`.
 

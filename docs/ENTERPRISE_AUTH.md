@@ -83,6 +83,67 @@ Their password is random and unusable — the IdP is the only way in. Pending
 email invitations to other workspaces are applied on first login, whichever
 mode is in force.
 
+## SSO (SAML 2.0) — Entra ID enterprise apps, Okta, ADFS, PingFederate, Shibboleth
+
+For IdPs that are SAML-first, or where the OIDC app registration is not an
+option. TraceIQ is the service provider (SP): SP-initiated web SSO,
+HTTP-Redirect for the request, HTTP-POST for the response, signed assertions
+required. Configure in **Instance (Admin) → Single sign-on (SAML 2.0)**:
+
+| Setting | Value |
+|---|---|
+| `SAML_SP_ACS_URL` | `https://<your-traceiq>/api/auth/saml/acs` — the IdP posts responses here, and a response must name exactly this as its `Destination` |
+| `SAML_IDP_METADATA_URL` | the IdP's federation-metadata URL (Entra: *Enterprise application → Single sign-on → App Federation Metadata Url*; Okta: *Sign On → Metadata URL*; ADFS: `https://adfs.yourco.com/FederationMetadata/2007-06/FederationMetadata.xml`) |
+
+Everything else is optional. Give the IdP administrator **our metadata** from
+`https://<your-traceiq>/api/auth/saml/metadata` (entity id, ACS URL,
+certificate if one is configured), or enter the two values by hand: entity id
+`https://<your-traceiq>/api/auth/saml/metadata`, reply/ACS URL as above.
+Ask them to send **email** (the `emailaddress` claim, `mail`, or an
+email-format NameID), a display name, and groups if you map groups.
+
+- **Metadata vs. manual.** Metadata is re-read hourly and refetched once when a
+  signature fails, so IdP certificate rotation needs no action here. Pasting
+  `SAML_IDP_X509_CERT` pins a certificate and overrides metadata — then rotation
+  is on you. Without a reachable URL, paste the XML into
+  `SAML_IDP_METADATA_XML`, or set `SAML_IDP_ENTITY_ID` + `SAML_IDP_SSO_URL` +
+  `SAML_IDP_X509_CERT`.
+- **Saving validates.** The form refuses a configuration python3-saml would
+  refuse at login, and fetches the metadata URL (through the same outbound-URL
+  guard as webhooks) before accepting it.
+- **Signed requests / encrypted assertions.** Set `SAML_SP_X509_CERT` and
+  `SAML_SP_PRIVATE_KEY` (stored encrypted). Our metadata then advertises the
+  certificate; the IdP can require signed AuthnRequests and encrypt assertions
+  to it.
+- **Attributes.** Blank attribute settings try the usual names (`email`/`mail`/
+  the WS-Fed `emailaddress` claim, `displayName`/`name`/`givenName`+`sn`,
+  `groups`/`memberOf`/`roles`/the Entra groups claim). Set `SAML_ATTR_EMAIL`,
+  `SAML_ATTR_NAME`, `SAML_ATTR_GROUPS` when the IdP uses something else.
+  Group values in DN form are reduced to their CN. **Entra emits group object
+  ids** unless the group claim is configured to emit names — map whatever it
+  actually sends.
+- **IdP-initiated sign-in** (starting from the IdP's app portal) is off.
+  `SAML_ALLOW_IDP_INITIATED` turns it on; with it on, the only replay defence
+  is the assertion-id cache below, and a response that answers a request
+  (`InResponseTo`) is still refused as unsolicited.
+- **Provisioning** follows the same [federated provisioning](#federated-provisioning-sso--ldap)
+  policy as OIDC and LDAP, including group→role/team maps re-applied on every
+  login. `SAML_ALLOWED_EMAIL_DOMAINS` restricts who may sign in at all.
+- **SSO-only mode** accepts a saved SAML configuration as well as OIDC. Both
+  protocols can be configured at once; the login page shows one button each.
+
+What a response has to pass: signature over the Assertion (or the whole
+Response when `SAML_WANT_ASSERTIONS_SIGNED` is off) against the IdP
+certificate(s); `Issuer`; `Destination` and SubjectConfirmation `Recipient`
+against the configured ACS URL (derived from the setting, never from
+`Host`/`X-Forwarded-*`); `Audience`; `NotBefore`/`NotOnOrAfter`;
+`InResponseTo` against the AuthnRequest we issued (its id is parked in Redis
+under a nonce carried in a signed `RelayState`); and an assertion id not seen
+before (Redis, TTL = the assertion's own validity). Redis being unreachable
+refuses the login rather than skipping either check. Rejection reasons are
+logged, never shown to the browser. Not supported: Single Logout, the artifact
+binding.
+
 ## Federated provisioning (SSO + LDAP)
 
 **Instance (Admin) → Federated provisioning.** Governs both OIDC and LDAP
@@ -202,7 +263,7 @@ pushes membership, the group map if TraceIQ pulls it from the login claim.
 
 **Instance (Admin) → Single sign-on → "Disable password login (SSO only)"**.
 
-- Refuses to turn on until a working OIDC config is saved.
+- Refuses to turn on until a working OIDC or SAML config is saved.
 - Password login then returns 403 for everyone **except instance admins** —
   deliberate break-glass so a broken IdP config can't lock the operator out.
   The login page shows only the SSO button; admins reach the password form at

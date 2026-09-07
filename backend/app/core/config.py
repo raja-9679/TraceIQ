@@ -264,6 +264,26 @@ class Settings(BaseSettings):
     def oidc_enabled(self) -> bool:
         return bool(self.OIDC_ISSUER and self.OIDC_CLIENT_ID and self.OIDC_CLIENT_SECRET)
 
+    # SSO (SAML 2.0, workstream F3). Normally configured in the admin UI
+    # (instance settings group `saml`); these are the environment fallbacks.
+    # See app/services/saml_auth.py for what each one means.
+    SAML_SP_ENTITY_ID: Optional[str] = None
+    SAML_SP_ACS_URL: Optional[str] = None
+    SAML_IDP_METADATA_URL: Optional[str] = None
+    SAML_IDP_METADATA_XML: Optional[str] = None
+    SAML_IDP_ENTITY_ID: Optional[str] = None
+    SAML_IDP_SSO_URL: Optional[str] = None
+    SAML_IDP_X509_CERT: Optional[str] = None
+    SAML_SP_X509_CERT: Optional[str] = None
+    SAML_SP_PRIVATE_KEY: Optional[str] = None
+    SAML_ATTR_EMAIL: Optional[str] = None
+    SAML_ATTR_NAME: Optional[str] = None
+    SAML_ATTR_GROUPS: Optional[str] = None
+    SAML_WANT_ASSERTIONS_SIGNED: bool = True
+    SAML_ALLOW_IDP_INITIATED: bool = False
+    SAML_POST_LOGIN_REDIRECT: Optional[str] = None
+    SAML_ALLOWED_EMAIL_DOMAINS: Optional[str] = None
+
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT.strip().lower() in ("production", "prod")

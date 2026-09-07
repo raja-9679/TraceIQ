@@ -945,12 +945,36 @@ async def ldap_login(request: Request, body: LdapLoginRequest,
     return await _issue_tokens(user, request, session, method="ldap")
 
 
+def _email_domain_allowed(email: str, allowed_raw: Any) -> bool:
+    """Optional domain allowlist shared by the OIDC and SAML callbacks: the
+    single strongest guard against an open or multi-tenant IdP provisioning
+    arbitrary internet users. Blank allows every domain."""
+    allowed = str(allowed_raw or "").strip()
+    if not allowed:
+        return True
+    domains = {d.strip().lower().lstrip("@") for d in allowed.split(",") if d.strip()}
+    return email.rsplit("@", 1)[-1] in domains
+
+
 @router.get("/sso/status")
 async def sso_status():
+    from app.services import saml_auth
     from app.services.instance_settings import effective as _effective
-    enabled = _oidc_enabled()
+    oidc = _oidc_enabled()
+    saml = saml_auth.is_configured()
+    enabled = oidc or saml
+    # One entry per configured protocol; the login page renders a button each,
+    # so an instance can run OIDC and SAML side by side during a migration.
+    providers = []
+    if oidc:
+        providers.append({"type": "oidc", "label": "Sign in with SSO",
+                          "login_path": "/auth/sso/login"})
+    if saml:
+        providers.append({"type": "saml", "label": "Sign in with SSO (SAML)" if oidc else "Sign in with SSO",
+                          "login_path": "/auth/saml/login"})
     return {"enabled": enabled,
-            "issuer": _oidc("OIDC_ISSUER") if enabled else None,
+            "issuer": _oidc("OIDC_ISSUER") if oidc else None,
+            "providers": providers,
             # Login page adapts: hide the password form in SSO-only mode
             # (break-glass for instance admins stays at ?password=1).
             "password_login_disabled": bool(_effective("PASSWORD_LOGIN_DISABLED")) and enabled}
@@ -1009,11 +1033,8 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
 
     # Optional domain allowlist: the single strongest guard against an open IdP
     # (e.g. accounts.google.com) provisioning arbitrary internet users.
-    allowed = str(_effective("OIDC_ALLOWED_EMAIL_DOMAINS") or "").strip()
-    if allowed:
-        domains = {d.strip().lower().lstrip("@") for d in allowed.split(",") if d.strip()}
-        if email.rsplit("@", 1)[-1] not in domains:
-            raise HTTPException(status_code=403, detail="This email domain is not permitted to sign in")
+    if not _email_domain_allowed(email, _effective("OIDC_ALLOWED_EMAIL_DOMAINS")):
+        raise HTTPException(status_code=403, detail="This email domain is not permitted to sign in")
 
     # IdP groups, when the deployment maps them onto roles/teams. The claim name
     # varies by provider (Okta/Keycloak use `groups`, some Entra setups `roles`).
@@ -1043,3 +1064,158 @@ async def sso_callback(request: Request, code: str = "", state: str = "",
     tokens = await _issue_tokens(user, request, session, method="sso_oidc")
     frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})
     return RedirectResponse(f"{_oidc('OIDC_POST_LOGIN_REDIRECT')}#{frag}")
+
+
+# ---------------------------------------------------------------------------
+# SSO (SAML 2.0, workstream F3). The protocol work is in
+# app/services/saml_auth.py (python3-saml); this layer does HTTP, the
+# RelayState <-> AuthnRequest-id bookkeeping, replay protection, and the same
+# provisioning path as OIDC and LDAP.
+# ---------------------------------------------------------------------------
+from fastapi import Form
+from fastapi.responses import Response as RawResponse
+
+
+async def _saml_settings(force_refresh: bool = False):
+    """(config, python3-saml settings) or the right HTTP error."""
+    from app.services import saml_auth
+    if not saml_auth.is_configured():
+        raise HTTPException(status_code=404, detail="SAML SSO is not configured")
+    try:
+        cfg = saml_auth.load_config()
+        settings_dict = await saml_auth.load_settings(cfg, force_refresh=force_refresh)
+    except saml_auth.SamlConfigError as exc:
+        logger.error("[saml] misconfigured, refusing: %s", exc)
+        raise HTTPException(
+            status_code=503,
+            detail="SAML single sign-on is misconfigured on this instance — contact "
+                   "your administrator.")
+    return cfg, settings_dict
+
+
+@router.get("/saml/metadata")
+async def saml_metadata():
+    """SP metadata for the IdP administrator to import. Public by design — it
+    holds our entity id, ACS URL and (if configured) our certificate."""
+    from app.services import saml_auth
+    cfg, settings_dict = await _saml_settings()
+    try:
+        xml = saml_auth.sp_metadata_xml(settings_dict)
+    except saml_auth.SamlConfigError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    return RawResponse(content=xml, media_type="application/samlmetadata+xml")
+
+
+@router.get("/saml/login")
+async def saml_login():
+    """Start SP-initiated sign-in: redirect the browser to the IdP with an
+    AuthnRequest. The request id is parked in Redis under a one-time nonce and
+    the nonce travels in a signed RelayState, so the ACS can insist the
+    Response answers a request WE made (InResponseTo)."""
+    from app.core.redis import RedisClient
+    from app.services import saml_auth
+    cfg, settings_dict = await _saml_settings()
+    nonce = secrets.token_urlsafe(24)
+    relay_state = create_access_token(
+        data={"saml_state": True, "nonce": nonce}, expires_delta=timedelta(minutes=10))
+    try:
+        url, request_id = saml_auth.start_login(settings_dict, cfg, relay_state)
+    except Exception as exc:
+        logger.error("[saml] could not build AuthnRequest: %s", exc)
+        raise HTTPException(status_code=503, detail="Could not start SAML sign-in")
+    try:
+        await RedisClient.get_instance().set(f"saml:req:{nonce}", request_id, ex=600)
+    except Exception as exc:
+        # Fail closed: without the stored id the ACS could not verify
+        # InResponseTo, and accepting any response would be IdP-initiated
+        # sign-in through the back door.
+        logger.error("[saml] redis unavailable, refusing to start login: %s", exc)
+        raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable")
+    return RedirectResponse(url)
+
+
+async def _saml_request_id(relay_state: str) -> Optional[str]:
+    """Map the RelayState back to our AuthnRequest id.
+
+    Returns None for a Response that carries no RelayState of ours (IdP-
+    initiated; the service decides whether that is allowed). A RelayState that
+    IS ours but whose nonce is expired or already used is an error, not a
+    downgrade to IdP-initiated — otherwise a replayed SP-initiated Response
+    would sail through on an instance that allows IdP-initiated sign-in."""
+    if not relay_state:
+        return None
+    try:
+        payload = jwt.decode(relay_state, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        return None  # not ours (an IdP-initiated RelayState is a free-form URL)
+    if not payload.get("saml_state") or not payload.get("nonce"):
+        return None
+    from app.core.redis import RedisClient
+    key = f"saml:req:{payload['nonce']}"
+    redis = RedisClient.get_instance()
+    request_id = await redis.getdel(key) if hasattr(redis, "getdel") else await redis.get(key)
+    if not request_id:
+        raise HTTPException(
+            status_code=400,
+            detail="This sign-in attempt has expired or was already used — start again")
+    return str(request_id)
+
+
+@router.post("/saml/acs")
+@limiter.limit("30/minute")
+async def saml_acs(request: Request,
+                   SAMLResponse: str = Form(...),
+                   RelayState: str = Form(""),
+                   session: AsyncSession = Depends(get_session)):
+    """Assertion Consumer Service: the IdP posts the signed Response here."""
+    from app.services import saml_auth
+    cfg, settings_dict = await _saml_settings()
+    request_id = await _saml_request_id(RelayState)
+
+    try:
+        identity = saml_auth.process_acs(settings_dict, cfg, SAMLResponse, request_id)
+    except saml_auth.SamlAuthError as exc:
+        # A signature failure right after the IdP rotated its certificate is
+        # the one case worth a retry: refetch metadata once and try again.
+        if cfg.idp_metadata_url and "signature" in exc.reason.lower():
+            logger.warning("[saml] signature rejected, refetching IdP metadata once: %s", exc.reason)
+            cfg, settings_dict = await _saml_settings(force_refresh=True)
+            try:
+                identity = saml_auth.process_acs(settings_dict, cfg, SAMLResponse, request_id)
+            except saml_auth.SamlAuthError as exc2:
+                logger.warning("[saml] response rejected: %s", exc2.reason)
+                raise HTTPException(status_code=401, detail="SAML sign-in was rejected")
+        else:
+            # The reason names internals (expected Destination, audience…):
+            # log it, do not echo it.
+            logger.warning("[saml] response rejected: %s", exc.reason)
+            raise HTTPException(status_code=401, detail="SAML sign-in was rejected")
+
+    try:
+        fresh = await saml_auth.remember_assertion(identity)
+    except Exception as exc:
+        logger.error("[saml] redis unavailable, refusing login (replay cache): %s", exc)
+        raise HTTPException(status_code=503, detail="Sign-in is temporarily unavailable")
+    if not fresh:
+        logger.warning("[saml] replayed assertion %s for %s refused", identity.assertion_id, identity.email)
+        raise HTTPException(status_code=403, detail="SAML sign-in was rejected")
+
+    email = identity.email
+    if not _email_domain_allowed(email, cfg.allowed_email_domains):
+        raise HTTPException(status_code=403, detail="This email domain is not permitted to sign in")
+
+    user = (await session.exec(select(User).where(User.email == email))).first()
+    if not user:
+        user = await _provision_federated(
+            session, email=email, full_name=identity.full_name,
+            groups=identity.groups, source="saml")
+    else:
+        await _sync_federated(session, user, identity.groups, source="saml")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account has been deactivated")
+
+    tokens = await _issue_tokens(user, request, session, method="sso_saml")
+    frag = urlencode({"access_token": tokens["access_token"], "refresh_token": tokens["refresh_token"]})
+    target = cfg.post_login_redirect or _oidc("OIDC_POST_LOGIN_REDIRECT")
+    # 303 so the browser turns the IdP's POST into a GET of the login page.
+    return RedirectResponse(f"{target}#{frag}", status_code=303)
