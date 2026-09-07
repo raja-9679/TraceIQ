@@ -37,7 +37,7 @@ now exist (`7af0aac`). See "The local deployment" below, which is new.
 | F3 - SAML 2.0 | done (2026-09-07) |
 | G - deletion, retention, erasure, residency | done |
 | H1-H4 - beat HA, DLQ replay, migration lock, monitoring, OTel/JSON logs/Sentry | done |
-| H5 - Helm chart | done (2026-09-07, not yet applied to a real cluster) |
+| H5 - Helm chart | done (2026-09-07, verified on kind) |
 | I1-I4 - CI database, isolation tests, coverage gates | done |
 | **I5 - pen test, SOC 2 Type II** | **external / calendar** |
 
@@ -65,8 +65,10 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
    (`LOG_FORMAT=json`, `X-Request-ID`, `OTEL_EXPORTER_OTLP_ENDPOINT`,
    `SENTRY_DSN`), verified against Jaeger. Node worker not instrumented.
 5. ~~H5 Helm/K8s~~ — **done 2026-09-07**: `deploy/helm/traceiq/`, lint +
-   template + kubeconform in CI. NOT yet installed on a real cluster — the
-   first `helm install` on a kind/k3d cluster is the obvious next check.
+   template + kubeconform in CI, and **installed on a kind cluster** the same
+   day (all pods ready, proxy, login, beat). The three first-install traps —
+   numeric uid for `runAsNonRoot`, nginx resolver + FQDN, empty
+   `MINIO_PUBLIC_URL` — are fixed and recorded in the chart README.
 6. **I5 pen test then SOC 2 Type II.** External, calendar-bound. Everything it
    needs from the codebase now exists.
 

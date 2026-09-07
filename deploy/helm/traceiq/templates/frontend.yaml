@@ -28,9 +28,15 @@ spec:
           # nginx binds :80 and writes its pid/cache under /var/... in this
           # image, so it keeps the image's own user rather than the pod default.
           env:
-            # The image envsubsts this into nginx's proxy_pass at start.
+            # The image envsubsts this into nginx's proxy_pass at start. Fully
+            # qualified on purpose: nginx's resolver does not apply the pod's
+            # DNS search list, so the bare service name never resolves.
             - name: BACKEND_URL
-              value: http://{{ include "traceiq.fullname" . }}-backend:{{ .Values.backend.service.port }}
+              value: http://{{ include "traceiq.fullname" . }}-backend.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.backend.service.port }}
+            {{- with .Values.frontend.resolver }}
+            - name: NGINX_RESOLVER
+              value: {{ . | quote }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 80

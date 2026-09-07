@@ -1,0 +1,17 @@
+#!/bin/sh
+# Pick the DNS server nginx uses to re-resolve ${BACKEND_URL} at request time.
+#
+# Sourced (not executed) by the nginx base image's entrypoint. An explicit
+# NGINX_RESOLVER always wins. Otherwise read the container's own resolver from
+# /etc/resolv.conf: Docker's embedded DNS (127.0.0.11) on a compose network,
+# CoreDNS on Kubernetes. The old hardcoded 127.0.0.11 default made every /api/
+# request fail on Kubernetes with "connection refused while resolving" — found
+# on the first Helm install. (The base image's own 15-local-resolvers.envsh
+# does the same thing but only when NGINX_ENTRYPOINT_LOCAL_RESOLVERS is set,
+# so it cannot be relied on.) IPv4 only: an IPv6 nameserver would need
+# brackets in the resolver directive.
+if [ -z "${NGINX_RESOLVER:-}" ]; then
+  _ns="$(awk '/^nameserver[ \t]+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/ {printf "%s ", $2}' /etc/resolv.conf 2>/dev/null)"
+  export NGINX_RESOLVER="${_ns:-127.0.0.11}"
+  unset _ns
+fi

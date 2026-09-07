@@ -64,7 +64,8 @@ RUN if [ "$STRIP_SOURCE" = "1" ]; then \
 RUN groupadd --system --gid 10001 traceiq \
     && useradd --system --uid 10001 --gid traceiq --create-home traceiq \
     && chown -R traceiq:traceiq /app
-USER traceiq
+# Numeric so Kubernetes can verify runAsNonRoot without a runAsUser override.
+USER 10001:10001
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

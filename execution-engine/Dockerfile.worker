@@ -62,7 +62,8 @@ RUN groupadd --system --gid 10001 traceiq \
     && useradd --system --uid 10001 --gid traceiq --create-home traceiq \
     && chown -R traceiq:traceiq /app /tmp/artifacts \
     && chmod -R a+rX /ms-playwright
-USER traceiq
+# Numeric so Kubernetes can verify runAsNonRoot without a runAsUser override.
+USER 10001:10001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

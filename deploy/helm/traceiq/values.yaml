@@ -19,10 +19,16 @@ serviceAccount:
   name: ""
   annotations: {}
 
-# Applied to every TraceIQ pod. The execution worker additionally needs a
-# writable /dev/shm (mounted from an emptyDir below); nothing runs as root.
+# Applied to every TraceIQ pod (backend, Celery, execution worker; the frontend
+# image is nginx and keeps its own user). Both images create `traceiq` as uid
+# 10001. The numeric ids are required: with `runAsNonRoot` alone the kubelet
+# refuses to start an image whose USER is a name ("cannot verify user is
+# non-root") — found on the first real install.
 podSecurityContext:
   runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
   seccompProfile:
     type: RuntimeDefault
 containerSecurityContext:
@@ -65,7 +71,13 @@ config:
   # defaults. Set to https://<ingress host>.
   frontendBaseUrl: http://traceiq.local
   corsOrigins: '["http://traceiq.local"]'
-  minioPublicUrl: ""          # browser-reachable object-store URL; empty = via frontend proxy is NOT supported, set it when using in-cluster MinIO with an Ingress
+  # Browser-reachable URL of the object store: presigned artifact links point
+  # here. REQUIRED for real use (expose in-cluster MinIO on its own host, or
+  # use your S3 endpoint). Empty leaves the backend's default,
+  # http://localhost:9000, which only works with a port-forward to the MinIO
+  # service — fine for a first look, wrong for anything else. An empty string
+  # must not reach the container: boto3 rejects "" as an endpoint at startup.
+  minioPublicUrl: ""
   maxCaptureLevel: standard   # none|minimal|standard|full — ceiling per project policy
   runRetentionDays: 90
   auditRetentionDays: 0       # 0 = keep audit history forever
@@ -159,6 +171,11 @@ executionWorker:
 
 frontend:
   replicas: 1
+  # nginx resolves the backend hostname at request time through this DNS
+  # server. Empty = the image reads the first `nameserver` in the pod's
+  # /etc/resolv.conf (CoreDNS), which is right for every normal cluster. Set
+  # it only if your pods use a non-standard resolver.
+  resolver: ""
   resources:
     requests: {cpu: 50m, memory: 64Mi}
     limits: {cpu: 500m, memory: 256Mi}
