@@ -374,3 +374,73 @@ async def test_llm(_: User = Depends(get_current_instance_admin)):
             detail=f"LLM test failed: provider '{provider.name}' returned no reply "
                    f"(check the API key / base URL; details are in the backend log)")
     return {"ok": True, "provider": provider.name, "reply": reply.strip()[:100]}
+
+
+# ---------------------------------------------------------------------------
+# Named IdP presets (app/services/idp_catalog.py)
+#
+# The protocol support is generic and already complete; these two endpoints
+# only help an admin fill the form. `derive` is PURE — it writes nothing, and
+# the client PUTs its output to /admin/instance-settings above, so there stays
+# exactly one write path with one set of validations. It also means the admin
+# sees precisely what is about to be saved before committing to it.
+# ---------------------------------------------------------------------------
+
+class PresetFieldRead(BaseModel):
+    name: str
+    label: str
+    placeholder: str = ""
+    help: str = ""
+    required: bool = True
+    secret: bool = False
+
+
+class PresetRead(BaseModel):
+    id: str
+    label: str
+    protocol: str
+    fields: list[PresetFieldRead]
+    warnings: list[str] = []
+    docs_url: str = ""
+
+
+class DeriveRequest(BaseModel):
+    answers: Dict[str, Optional[str]] = {}
+
+
+class DerivedRead(BaseModel):
+    values: Dict[str, str]
+    warnings: list[str] = []
+
+
+@router.get("/admin/idp-catalog", response_model=list[PresetRead])
+async def list_idp_presets(_: User = Depends(get_current_instance_admin)):
+    from app.services import idp_catalog
+
+    return [
+        PresetRead(
+            id=p.id, label=p.label, protocol=p.protocol,
+            fields=[PresetFieldRead(**vars(f)) for f in p.fields],
+            warnings=list(p.warnings), docs_url=p.docs_url)
+        for p in idp_catalog.list_presets()
+    ]
+
+
+@router.post("/admin/idp-catalog/{preset_id}/derive", response_model=DerivedRead)
+async def derive_idp_preset(
+    preset_id: str,
+    body: DeriveRequest,
+    _: User = Depends(get_current_instance_admin),
+):
+    from app.services import idp_catalog
+
+    try:
+        idp_catalog.get_preset(preset_id)
+    except idp_catalog.PresetError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    try:
+        derived = idp_catalog.derive(preset_id, {k: v or "" for k, v in body.answers.items()})
+    except idp_catalog.PresetError as exc:
+        # A missing answer is the admin's to fix, not a server fault.
+        raise HTTPException(status_code=400, detail=str(exc))
+    return DerivedRead(values=derived.values, warnings=derived.warnings)

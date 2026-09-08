@@ -9,6 +9,7 @@ import { Loader2, RotateCcw, Save, Send, Sparkles, AlertTriangle, ShieldAlert } 
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
+import IdpQuickSetupCard from '@/components/settings/IdpQuickSetupCard';
 
 // Mirrors backend/app/api/instance_settings.py::SettingRead
 interface InstanceSetting {
@@ -204,6 +205,7 @@ export default function InstanceSettingsSection() {
                 return (
                     <div key={group.id} className="space-y-6">
                     {group.id === 'ai' && <LLMProvidersCard />}
+                    {group.id === 'sso' && <IdpQuickSetupCard />}
                     <Card>
                         <CardHeader>
                             <CardTitle className="text-lg">{group.title}</CardTitle>
