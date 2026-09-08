@@ -114,6 +114,48 @@ below the Gate policy and CI cards. The read model returns the *effective*
 policy next to the stored one with a `clamped` flag, because MAX_CAPTURE_LEVEL
 can hold a project below its request and a screen that hid that would be lying.
 
+Closed on 2026-09-08: SSO setup required insider knowledge. `app/services/
+idp_catalog.py` adds 12 named IdP presets (Entra/Okta/Google/Keycloak/Auth0
+OIDC, Entra/Okta/ADFS SAML, AD/OpenLDAP, plus generic escape hatches) behind
+`GET /api/admin/idp-catalog` and `POST /api/admin/idp-catalog/{id}/derive`,
+with a picker card above the SSO section in Settings → Instance (Admin). A
+preset is a **form-filling layer, not a new integration**: it only emits keys
+already in `instance_settings.REGISTRY`, and `derive()` is pure — the client
+PUTs to the existing settings endpoint, so there stays one write path with one
+set of validations (including the save-time SAML metadata fetch). Presets carry
+the provider quirks that cost an afternoon each: Entra emits group OBJECT IDs,
+Google emits no groups claim at all, Keycloak needs a group-membership mapper.
+The two load-bearing tests are guards — every derived key must exist in the
+registry, and a preset must not write another protocol's keys.
+
+Also 2026-09-08: `users.is_instance_admin` granted to raja.d@thehindu.co.in by
+direct SQL. Worth knowing *why* by hand: `POST /api/admin/instance-admins/{id}`
+is guarded by the very dependency it grants, so a fresh instance's only clean
+route to its first instance admin is the create-only `ADMIN_EMAIL`/
+`ADMIN_PASSWORD` env bootstrap — which cannot promote an account that already
+exists. That grant therefore has no audit row; later grants should go through
+the API. Tenant 1's test account (`user@email.com`) still qualifies via the
+first-tenant fallback; making that fallback conditional on "no explicit admin
+exists" would close it.
+
+**Per-tenant (multi-tenant SaaS) SSO — designed in conversation, NOT written up.**
+Three findings worth not rediscovering if it is picked up:
+1. `saml_auth.load_config(get=...)` and `federation.resolve_policy(get=...)`
+   already take an injectable key→value getter (`effective = get or _effective`),
+   so per-connection config is a *parameterisation*, not a fork — store
+   connections in the same key namespace, not typed columns. OIDC has no config
+   object at all (`_oidc(key)` inline at eight sites) and needs one first.
+2. `load_config` derives `sp_entity_id` as `acs.rsplit("/acs", 1)[0] + "/metadata"`,
+   which with a per-connection slug in the path yields an IDENTICAL SP entity id
+   for every tenant — breaking app separation in Okta/Entra. Synthesise both the
+   ACS URL and the entity id per connection rather than storing them.
+3. `users.email` is globally UNIQUE, so a tenant's own IdP asserting another
+   company's address would resolve to that existing global account. GitHub's
+   model (an assertion grants membership in *that* org, never global identity)
+   is a safer fix than a domain allowlist — but a domain-verification gate is
+   what Entra, Google and Atlassian all require before federating, and it is an
+   authorization boundary, not a routing convenience.
+
 New operator-facing docs worth knowing about: `docs/OPERATIONS.md` (H) and
 `docs/DATA_RESIDENCY.md` (G). `docs/ENTERPRISE_AUTH.md` grew federated
 provisioning and SCIM sections.
