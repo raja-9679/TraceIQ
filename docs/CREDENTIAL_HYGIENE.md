@@ -71,12 +71,20 @@ cd ~/traceiq-history-backup/TraceIQ-rewritten.git
 git remote add origin git@github-work:raja-9679/TraceIQ.git   # if not present
 git push --mirror origin
 
-# 2. Re-point the working clone (its history is the OLD one). Tree is clean.
+# 2. ALREADY DONE (2026-09-07): the working clone at ~/Work/repos/TraceIQ was
+#    re-pointed to the rewritten history — local `main` == the bare repo's
+#    `main`. It has since gained commits of its own on
+#    feature/enterprise-auth-ai, so do NOT re-run the checkout below; after
+#    step 1, just push that branch normally to carry them over:
 cd ~/Work/repos/TraceIQ
 git fetch origin --prune
-git checkout -B feature/enterprise-auth-ai origin/feature/enterprise-auth-ai
-git branch -f main origin/main
-git reflog expire --expire=now --all && git gc --prune=now
+git push origin feature/enterprise-auth-ai
+
+#    Only if a clone is still on the OLD history, re-point it like this:
+#      git fetch origin --prune
+#      git checkout -B feature/enterprise-auth-ai origin/feature/enterprise-auth-ai
+#      git branch -f main origin/main
+#      git reflog expire --expire=now --all && git gc --prune=now
 
 # 3. Every other clone must re-clone (or repeat step 2). Pull will not work.
 ```

@@ -1,7 +1,7 @@
 # Handoff — resuming the regulated-readiness work
 
-Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-07. Branch
-`feature/enterprise-auth-ai`.
+Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-07, status corrected
+2026-09-08. Branch `feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
 machine. Assistant session memory does **not** — it sits in
@@ -15,13 +15,31 @@ it belongs here rather than in a chat history.
 `info/REGULATED_READINESS.md` is the plan: nine workstreams (A-I) to make
 TraceIQ sellable into insurance, payments, and enterprise SaaS procurement.
 
-**Everything below is DONE and PUSHED.** Branch head `7af0aac`, tree clean,
-remote in sync — there is no unpushed work.
+**Everything below is DONE and COMMITTED. None of it is on GitHub yet** — and
+that is not an oversight, it is where C5 left the repository. Branch head is
+`163c248` plus this correction; tree clean.
 
-Last session (2026-09-01) did two things: deployed the accumulated work to the
-local stack, and closed the one gap that deploy exposed — the per-project data
-policy had no API and no UI, so it was enforceable but not configurable. Both
-now exist (`7af0aac`). See "The local deployment" below, which is new.
+> **Read this before you touch git.** The C5 history rewrite has already been
+> applied to *this working clone*: local `main` is `4e24f56`, byte-identical to
+> `~/traceiq-history-backup/TraceIQ-rewritten.git`. GitHub still carries the
+> old, secret-bearing history (`origin/main` = `8b32d4a`), so the two have no
+> shared recent ancestry — `git status` reports the branch as ~204 ahead and
+> ~205 behind, which is the rewrite, not lost work. **Do not `git pull`, merge,
+> or rebase onto `origin/*`**: that would splice the removed secrets back in.
+> The only correct next git operation is the force-push in
+> `docs/CREDENTIAL_HYGIENE.md`. Every SHA quoted in docs or notes written
+> before 2026-09-07 belongs to the old history and will not resolve here.
+
+Sessions since the last full rewrite of this file:
+
+- **2026-09-01** — deployed the accumulated work to the local stack and closed
+  the gap that deploy exposed: the per-project data policy had no API and no
+  UI, so it was enforceable but not configurable. Both now exist. See "The
+  local deployment" below.
+- **2026-09-07** — F3 (SAML), H3 (squashed migration), H4 remainder (JSON logs,
+  request ids, OTel, Sentry), H5 (Helm, installed on kind), and C5 (rotation,
+  history rewrite, evidence) plus the I5 pre-assessment docs. A-H are now all
+  done; only I5 remains and it is external.
 
 | Workstream | State |
 |---|---|
@@ -46,15 +64,25 @@ engine. CI ran 18 before any of this work, and had no database at all until I1.
 
 ### What is actually left, and why
 
-1. **C5 credential hygiene — 90% done 2026-09-07, one human step left.**
-   Full inventory, rotation of everything under local control, and a verified
-   `git filter-repo` rewrite are in `docs/CREDENTIAL_HYGIENE.md`. **Not done:**
-   the force-push of the rewritten history (needs a person: it rewrites every
-   commit id on GitHub; `~/traceiq-history-backup/` holds the pre-rewrite bundle
-   and the rewritten bare repo, with the exact commands), rotation of the
-   production `*.thehindu.co.in` credentials, and the three third-party
-   `appKey` values of the application under test. After the push, every clone
-   must re-clone, and commit SHAs quoted in older docs/memory are stale.
+1. **C5 credential hygiene — the force-push, and two rotations that are not
+   this laptop's to do.** Full inventory, rotation of everything under local
+   control, and a verified `git filter-repo` rewrite are in
+   `docs/CREDENTIAL_HYGIENE.md`. Done: the rewrite itself, and this working
+   clone is already re-pointed to it — so step 2 of that page's command block
+   is already satisfied and must not be re-run (it would reset this branch onto
+   the old history). **Not done:**
+   - the **force-push** (`git push --mirror origin` from
+     `~/traceiq-history-backup/TraceIQ-rewritten.git`, with `main`
+     temporarily unprotected). Note that bare repo's branch tip is `c919776`,
+     a couple of commits behind this clone, so follow the mirror push with an
+     ordinary `git push origin feature/enterprise-auth-ai` from here.
+   - asking GitHub Support to purge cached views of the old commits. Until
+     that happens the old SHAs stay fetchable: **treat everything ever
+     committed as disclosed.**
+   - rotating the production `*.thehindu.co.in` credentials and the three
+     third-party `appKey` values of the application under test.
+
+   After the push, every *other* clone must re-clone; pull will not work.
 2. ~~F3 SAML 2.0~~ — **done 2026-09-07**. `app/services/saml_auth.py`,
    `/api/auth/saml/*`, settings group `saml`, `docs/ENTERPRISE_AUTH.md`. The
    "needs xmlsec system libraries" premise was wrong: `xmlsec` has manylinux
@@ -342,8 +370,10 @@ one, and `env.community.example` documents every new setting (capture level,
 Never commit it.
 
 **Credential hygiene (C5): see `docs/CREDENTIAL_HYGIENE.md`.** The rewrite is
-prepared and verified but not pushed; that page has the commands and the
-remaining rotation items that are not under this laptop's control.
+prepared, verified, and already applied to this clone — but **not pushed**, so
+`origin` and this repo have divergent histories. See the git warning under
+"Where we are" before running any git command that touches `origin`. That page
+has the push commands and the rotation items outside this laptop's control.
 
 **Migrations at head:** `f2a3b4c5d6e7` (index reconciliation) on top of the
 squashed root `e0f1a2b3c4d5`. Verified against a real Postgres by
