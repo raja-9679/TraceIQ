@@ -76,6 +76,14 @@ celery_app = Celery(
     ]
 )
 
+# Every deployment (compose, AIO, Helm) runs workers with `-Q main-queue` and
+# `-Q aggregator-queue` only. Without this, any task missing from task_routes
+# went to Celery's implicit "celery" queue, which nothing consumes — run
+# notifications, outbound CI webhooks, account emails, failure analysis,
+# proactive heal and persona refresh were all silently never executed.
+# tests/test_celery_routing.py pins that every task lands on a consumed queue.
+celery_app.conf.task_default_queue = "main-queue"
+
 celery_app.conf.task_routes = {
     "app.worker.run_test_suite": "main-queue",
     "app.tasks.webhook_tasks.process_webhook_queue": "main-queue",
