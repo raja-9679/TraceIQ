@@ -30,6 +30,21 @@ that is not an oversight, it is where C5 left the repository. Branch head is
 > `docs/CREDENTIAL_HYGIENE.md`. Every SHA quoted in docs or notes written
 > before 2026-09-07 belongs to the old history and will not resolve here.
 
+> **Deferred, agreed 2026-10-12 — getting this work into `main`.** All work is
+> pushed to GitHub as **`feature/enterprise-auth-ai-2026-10`** (rewritten
+> history; contains every one of origin's 20 branches plus everything since).
+> **Do not merge it into GitHub's `main` with a PR or `git merge`:** a trial
+> merge gave 98 conflicted files (the histories share nothing after
+> 2025-12-20), and the result would keep the secret-bearing old commits
+> reachable from `main`. The planned order, to be done later:
+> 1. Owner allows force pushes on `main` (GitHub → Settings → Branches).
+> 2. Run the C5 mirror push from `docs/CREDENTIAL_HYGIENE.md` — `main`
+>    becomes the rewritten `main`, which is an ancestor of the branch above.
+> 3. Re-push `feature/enterprise-auth-ai-2026-10` (`--mirror` deletes refs the
+>    bare repo doesn't have), then fast-forward `main` to it — no conflicts.
+> 4. Re-enable force-push protection; everyone re-clones; ask GitHub Support
+>    to purge cached views of the old commits.
+
 Sessions since the last full rewrite of this file:
 
 - **2026-09-01** — deployed the accumulated work to the local stack and closed

@@ -53,6 +53,12 @@ the original minus exactly the removed files** (main and 18 older branches had
 
 ### State at the time of writing
 
+> **2026-10-12:** still not pushed (deferred by the owner). Meanwhile the
+> rewritten-history work branch is on GitHub as
+> `feature/enterprise-auth-ai-2026-10`. Never merge it into the old `main` —
+> do the mirror push first, re-push that branch, then fast-forward `main`.
+> Full plan: `info/HANDOFF.md`, "Deferred … getting this work into `main`".
+
 The rewritten repository is prepared but **not yet pushed**: the force-push is
 the one step that requires a human decision, because it rewrites every commit
 id on the shared remote. Pre-rewrite history is preserved in full:
