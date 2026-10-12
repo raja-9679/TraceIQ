@@ -63,7 +63,36 @@ export const visualBaselinesApi = {
         const response = await api.delete(`/visual-baselines/${id}`);
         return response.data;
     },
+
+    // Record a "keep the current baseline" decision for a run's visual change.
+    keep: async (id: number, runId?: number | null): Promise<{ status: string }> => {
+        const response = await api.post(`/visual-baselines/${id}/keep`, { run_id: runId ?? null });
+        return response.data;
+    },
+
+    // Accept / keep / rollback decisions for a baseline, newest first.
+    history: async (id: number): Promise<BaselineHistoryEntry[]> => {
+        const response = await api.get(`/visual-baselines/${id}/history`);
+        return response.data;
+    },
+
+    // Re-pin an earlier version (must be one this baseline has used).
+    rollback: async (id: number, image: string): Promise<VisualBaseline> => {
+        const response = await api.post(`/visual-baselines/${id}/rollback`, { image });
+        return response.data;
+    },
 };
+
+export interface BaselineHistoryEntry {
+    action: 'accept' | 'keep' | 'rollback' | string;
+    at: string;
+    user_id: number | null;
+    actor_label: string | null;
+    run_id: number | null;
+    image: string | null;
+    previous_image: string | null;
+    is_current: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Run-artifact helpers — the worker uploads `visual-{stepId}.png` (candidate)

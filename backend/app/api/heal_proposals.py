@@ -78,21 +78,22 @@ async def accept_proposal(
     if not p:
         raise HTTPException(status_code=404, detail="Proposal not found")
     case = await _check_editor_on_case(p.test_case_id, principal.user.id, session)
+    if p.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Proposal is already {p.status}")
 
     # Apply the heal: rewrite the matching step's selector inside testcase.steps.
-    steps = case.steps or []
-    updated = False
-    for idx, step in enumerate(steps):
-        sid = step.get("id") if isinstance(step, dict) else getattr(step, "id", None)
-        if sid == p.step_id:
-            if isinstance(step, dict):
-                step["selector"] = p.new_selector
-            else:
-                step.selector = p.new_selector
-            steps[idx] = step
-            updated = True
-            break
+    steps = [s if isinstance(s, dict) else s.dict() for s in (case.steps or [])]
+    idx = next((i for i, s in enumerate(steps) if s.get("id") == p.step_id), None)
+    refusal = heal_refusal(steps[idx] if idx is not None else None, p.old_selector)
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+    steps[idx] = {**steps[idx], "selector": p.new_selector}
+    updated = True
+    # A new list object: mutating the stored JSON in place is not reliably
+    # detected as a change, so the heal could silently never persist.
     case.steps = steps
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(case, "steps")
     p.status = "accepted"
     p.decided_at = datetime.utcnow()
     p.decided_by_id = principal.user.id
@@ -115,9 +116,31 @@ async def reject_proposal(
     p = await session.get(SelectorHealProposal, proposal_id)
     if not p:
         raise HTTPException(status_code=404, detail="Proposal not found")
+    await _check_editor_on_case(p.test_case_id, principal.user.id, session)
     p.status = "rejected"
     p.decided_at = datetime.utcnow()
     p.decided_by_id = principal.user.id
     session.add(p)
     await session.commit()
     return {"status": "rejected"}
+
+
+# Steps whose selector IS the assertion. Re-pointing one at "whatever matches
+# now" can turn a check that should fail into one that passes, which is the
+# one thing a heal must never do. These get fixed by a human in the builder.
+_ASSERTION_PREFIXES = ("expect-", "assert", "mobile-expect-")
+_ASSERTION_TYPES = {"count-children", "verify-nth-child", "check-accessibility"}
+
+
+def heal_refusal(step, old_selector):
+    """Why this heal must not be applied, or None if it is safe to apply."""
+    if step is None:
+        return "The step this proposal targets no longer exists in the case."
+    step_type = str(step.get("type") or "")
+    if step_type.startswith(_ASSERTION_PREFIXES) or step_type in _ASSERTION_TYPES:
+        return (f"'{step_type}' is an assertion step; changing its selector could "
+                "make a failing check pass. Edit it in the test builder instead.")
+    if old_selector and step.get("selector") != old_selector:
+        return ("The step's selector has changed since this proposal was made; "
+                "it is stale. Reject it and let the next run re-propose.")
+    return None

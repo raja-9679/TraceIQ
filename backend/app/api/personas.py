@@ -214,6 +214,16 @@ async def refresh_persona(
         raise HTTPException(status_code=404, detail="Persona not found")
     if not p.login_steps:
         raise HTTPException(status_code=400, detail="Persona has no login_steps to execute")
+    # A project-scoped refresh runs the login steps with that project's
+    # decrypted secrets. Workspace editor alone isn't project access, and the
+    # login steps are editable here, so without this a workspace editor could
+    # script the secrets of a project they cannot see out to anywhere.
+    if p.project_id is not None:
+        from app.services.access_service import access_service
+        if not await access_service.has_project_access(
+                principal.user.id, p.project_id, session, min_role="editor"):
+            raise HTTPException(status_code=403,
+                                detail="Editor access to the persona's project required")
 
     # Lazy import — Celery may not be importable in all contexts (e.g. unit tests).
     try:

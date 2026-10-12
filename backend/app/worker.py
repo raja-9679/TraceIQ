@@ -13,6 +13,7 @@ from app.core.secrets import decrypt_json, encrypt_json
 from app.models import TestRun, TestStatus, ExecutionMode, ExecutorType
 import requests
 import json
+import os
 import redis
 
 # Use sync engine for Celery worker
@@ -141,6 +142,24 @@ def run_test_suite(run_id: int, tags: list = None):
                 effective_settings['storage_state'] = auth_state
                 print(f"[Worker] Run {run_id}: injecting stored auth session "
                       f"for project {auth_project_id}")
+
+            # A persona pinned on the run replaces the project session: the
+            # point of a persona is to run "as" a specific identity, so falling
+            # back to the project's (different) login would silently test the
+            # wrong user. Its auth headers merge over the suite's.
+            persona = _load_persona(run, session)
+            if persona:
+                state, persona_headers = persona
+                if state:
+                    effective_settings['storage_state'] = state
+                else:
+                    effective_settings.pop('storage_state', None)
+                if persona_headers:
+                    effective_settings['headers'] = {
+                        **(effective_settings.get('headers') or {}),
+                        **persona_headers,
+                    }
+                print(f"[Worker] Run {run_id}: running as persona {run.persona_id}")
 
             # Environment ({{env.X}}, base_url) + decrypted secrets
             # ({{secret.X}}) for worker-side interpolation.
@@ -312,7 +331,21 @@ def _settings_payload(settings: dict) -> dict:
     # and a run's policy should be decided here, not there.
     if settings.get('data_policy'):
         payload['data_policy'] = settings['data_policy']
+    if wants_step_dom(settings.get('data_policy')):
+        payload['capture_step_dom'] = True
     return payload
+
+
+def wants_step_dom(data_policy) -> bool:
+    """Should workers record a compact DOM per step for proactive heal?
+
+    Only when proactive heal is on (nothing else reads it) AND the run may
+    capture at level `full`: a DOM snapshot carries page content that cannot
+    be meaningfully redacted, the same reason traces and video need `full`.
+    """
+    if os.getenv("PROACTIVE_HEAL_ENABLED", "false").lower() != "true":
+        return False
+    return (data_policy or {}).get('capture_level') == 'full'
 
 
 def _load_data_policy(project_id, session) -> dict:
@@ -405,6 +438,32 @@ def _load_secrets(project_id, session):
             print(f"[Worker] Could not decrypt secret '{s.key}' "
                   f"(SECRET_KEY rotated?): {e}")
     return out or None
+
+
+def _load_persona(run, session):
+    """(storage_state, auth_headers) for the run's persona, or None.
+
+    The persona was validated against the run's project when the run was
+    created; it is re-read here because it may have been refreshed since.
+    """
+    persona_id = getattr(run, 'persona_id', None)
+    if not persona_id:
+        return None
+    from app.models import Persona
+
+    persona = session.get(Persona, persona_id)
+    if not persona:
+        print(f"[Worker] Persona {persona_id} no longer exists — "
+              f"dispatching without it")
+        return None
+    state = None
+    if persona.session_state:
+        try:
+            state = decrypt_json(persona.session_state)
+        except Exception as e:
+            print(f"[Worker] Could not decrypt persona {persona_id} "
+                  f"session (key rotated?): {e}")
+    return state, dict(persona.auth_headers or {})
 
 
 def _load_auth_state(project_id, session):

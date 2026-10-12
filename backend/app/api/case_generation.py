@@ -217,8 +217,10 @@ async def generate_case(
             code_paths=code_paths,
             is_ai_authored=True,
             ai_confidence=0.7,
-            last_human_reviewed_at=datetime.utcnow(),
-            last_human_reviewed_by_id=principal.user.id,
+            # Not reviewed yet: the user is sent to the builder, and saving
+            # there is what stamps last_human_reviewed_* (test_cases.py PUT).
+            # Stamping it here hid fresh AI cases from tautology detection
+            # and impact analysis's "needs review" signal.
             # Phase E: provenance.
             created_by_agent_id=principal.agent_id,
             agent_session_id=principal.agent_session_id,

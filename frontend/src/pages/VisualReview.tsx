@@ -2,14 +2,14 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Images, RefreshCw, AlertCircle, Check, ShieldCheck, ChevronDown, ChevronRight,
-  Monitor, Smartphone, Clock, ImageOff, ExternalLink, Trash2,
+  Monitor, Smartphone, Clock, ImageOff, ExternalLink, Trash2, History, Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import {
   visualBaselinesApi, findLatestComparison, resolveImageUrl,
-  VisualBaseline, VisualComparisonArtifacts,
+  VisualBaseline, VisualComparisonArtifacts, BaselineHistoryEntry,
 } from '@/api/visual';
 import { getTestCaseInfo, TestCaseInfo } from '@/api/proposals';
 
@@ -93,12 +93,26 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visual-baselines'] });
+      queryClient.invalidateQueries({ queryKey: ['visual-baseline-history', baseline.id] });
       toast.success('New baseline accepted', {
         description: `The latest screenshot is now the pinned baseline for "${caseName}".`,
       });
     },
     onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
       toast.error(`Failed to accept baseline: ${err.response?.data?.detail || err.message}`),
+  });
+
+  // "Keep" is a review decision too: it is recorded (who, which run) so a
+  // rejected visual change is as traceable as an accepted one.
+  const keepMutation = useMutation({
+    mutationFn: () => visualBaselinesApi.keep(baseline.id, data?.artifacts?.runId ?? null),
+    onSuccess: () => {
+      setKept(true);
+      queryClient.invalidateQueries({ queryKey: ['visual-baseline-history', baseline.id] });
+      toast.info('Baseline kept', { description: 'The existing baseline remains pinned. Your decision was recorded.' });
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
+      toast.error(`Failed to record decision: ${err.response?.data?.detail || err.message}`),
   });
 
   if (isLoading) {
@@ -155,16 +169,85 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
         <Button
           size="sm"
           variant="outline"
-          disabled={kept || acceptMutation.isPending}
-          onClick={() => {
-            setKept(true);
-            toast.info('Baseline kept', { description: 'The existing baseline remains pinned; no change was made.' });
-          }}
+          disabled={kept || acceptMutation.isPending || keepMutation.isPending}
+          onClick={() => keepMutation.mutate()}
           className="text-slate-600 hover:bg-slate-50 border-slate-200 rounded-xl h-9 px-4"
         >
           <ShieldCheck className="w-4 h-4 mr-1.5" /> {kept ? 'Baseline kept' : 'Keep baseline'}
         </Button>
       </div>
+
+      <BaselineHistory baseline={baseline} />
+    </div>
+  );
+}
+
+const HISTORY_LABEL: Record<string, string> = {
+  accept: 'Accepted new baseline',
+  keep: 'Kept baseline',
+  rollback: 'Rolled back',
+};
+
+function BaselineHistory({ baseline }: { baseline: VisualBaseline }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const { data: entries = [], isLoading } = useQuery<BaselineHistoryEntry[]>({
+    queryKey: ['visual-baseline-history', baseline.id],
+    queryFn: () => visualBaselinesApi.history(baseline.id),
+    enabled: open,
+  });
+  const rollbackMutation = useMutation({
+    mutationFn: (image: string) => visualBaselinesApi.rollback(baseline.id, image),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['visual-baselines'] });
+      queryClient.invalidateQueries({ queryKey: ['visual-comparison', baseline.id] });
+      queryClient.invalidateQueries({ queryKey: ['visual-baseline-history', baseline.id] });
+      toast.success('Baseline rolled back');
+    },
+    onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
+      toast.error(`Rollback failed: ${err.response?.data?.detail || err.message}`),
+  });
+
+  return (
+    <div className="border-t border-slate-100 pt-3">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-700"
+      >
+        <History className="w-3.5 h-3.5" /> {open ? 'Hide history' : 'Decision history'}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-1.5">
+          {isLoading && <p className="text-xs text-slate-400">Loading…</p>}
+          {!isLoading && entries.length === 0 && (
+            <p className="text-xs text-slate-400 italic">No recorded decisions yet. Decisions made before this change were not recorded.</p>
+          )}
+          {entries.map((e, i) => (
+            <div key={i} className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+              <span className="font-medium">{HISTORY_LABEL[e.action] || e.action}</span>
+              <span className="text-slate-400">{formatDate(e.at)}</span>
+              {e.actor_label && <span className="text-slate-400">by {e.actor_label}</span>}
+              {e.run_id && <span className="text-slate-400">· run #{e.run_id}</span>}
+              {e.is_current && e.action !== 'keep' && (
+                <Badge variant="outline" className="rounded-md text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200">current</Badge>
+              )}
+              {e.action !== 'keep' && e.previous_image && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={rollbackMutation.isPending}
+                  onClick={() => rollbackMutation.mutate(e.previous_image!)}
+                  className="h-6 px-2 text-xs text-slate-500"
+                  title="Re-pin the baseline that this change replaced"
+                >
+                  <Undo2 className="w-3 h-3 mr-1" /> Restore previous
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

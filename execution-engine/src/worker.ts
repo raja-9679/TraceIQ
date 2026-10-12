@@ -32,6 +32,31 @@ import {
 import {
     RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents,
 } from './core/redact';
+import { caseStepDom, consoleErrorsFor } from './core/evidence';
+
+// Per-step DOM excerpt for proactive selector heal (backend reads 8000 chars).
+const MAX_STEP_DOM_CHARS = 8000;
+
+/**
+ * Compact DOM of the page body (scripts/styles/svg stripped, inputs' values
+ * dropped) for the backend's proactive selector-heal audit. Only captured when
+ * the dispatcher sets `capture_step_dom` — which it does only at capture level
+ * `full`, because like a trace a DOM snapshot cannot be meaningfully redacted.
+ */
+async function captureStepDom(page: Page): Promise<string | null> {
+    try {
+        const html: string = await page.evaluate(() => {
+            const clone = document.body ? document.body.cloneNode(true) as HTMLElement : null;
+            if (!clone) return '';
+            clone.querySelectorAll('script,style,svg,noscript,template').forEach(n => n.remove());
+            clone.querySelectorAll('input,textarea').forEach(n => n.removeAttribute('value'));
+            return clone.outerHTML.replace(/\s+/g, ' ');
+        });
+        return html ? html.slice(0, MAX_STEP_DOM_CHARS) : null;
+    } catch {
+        return null;
+    }
+}
 
 // Errors that look like a selector no longer matching the page — the only
 // failures worth an LLM heal attempt.
@@ -234,6 +259,14 @@ class ExecutionWorker {
                     continue;
                 }
 
+                // Persona session refresh: run the login steps, hand the
+                // captured storageState back. Also not a test run.
+                if ((job as any).job_type === 'persona_refresh') {
+                    await this.handlePersonaRefreshJob(streamId, job as any);
+                    this.jobsProcessed++;
+                    continue;
+                }
+
                 // Process the job with a hard wall-clock timeout.
                 const timeout = new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${MAX_JOB_DURATION_MS}ms)`)), MAX_JOB_DURATION_MS)
@@ -281,6 +314,40 @@ class ExecutionWorker {
         }
         await this.jobQueue.completeDiscoveryJob(streamId, job.job_id, discoveryId, result);
         console.log(`[Worker] Discovery job ${discoveryId} done: ${result.pages_visited} page(s)`);
+    }
+
+    /**
+     * Handle a persona session-refresh job: execute `login_steps` in a fresh
+     * context and return its storageState. The backend task long-polls for
+     * the result and stores it encrypted on the Persona.
+     */
+    private async handlePersonaRefreshJob(streamId: string, job: any): Promise<void> {
+        const refreshId = job.refresh_id || job.job_id;
+        console.log(`[Worker] Persona refresh ${refreshId} (persona ${job.persona_id})`);
+        let result: any;
+        try {
+            const browser = await this.browserManager.start(job.browser || 'chromium');
+            try {
+                const context = await browser.newContext({
+                    extraHTTPHeaders: job.settings?.headers || {},
+                });
+                const page = await context.newPage();
+                for (const step of job.login_steps || []) {
+                    await TestExecutor.executeStep(page, page, step, job.settings || {}, {});
+                }
+                result = { status: 'ok', storage_state: await context.storageState() };
+                await context.close();
+            } finally {
+                await this.browserManager.stop();
+            }
+        } catch (err: any) {
+            result = { status: 'error', error: err.message };
+        }
+        // The result is a live session: short TTL, and the backend deletes it
+        // as soon as it reads it.
+        await this.jobQueue.completeSideJob(
+            streamId, job.job_id, `persona_refresh:result:${refreshId}`, result, 180);
+        console.log(`[Worker] Persona refresh ${refreshId}: ${result.status}`);
     }
 
     /**
@@ -455,6 +522,7 @@ class ExecutionWorker {
 
         const networkEvents: any[] = [];
         const consoleLogs: any[] = [];
+        const stepDom: Record<string, string> = {};
         const screenshots: string[] = [];
 
         let status: 'passed' | 'failed' | 'error' = 'passed';
@@ -589,6 +657,10 @@ class ExecutionWorker {
                             job.settings,
                             contextData
                         );
+                        if (job.settings?.capture_step_dom && step.id && step.selector && step.intent) {
+                            const dom = await captureStepDom(page);
+                            if (dom) stepDom[step.id] = dom;
+                        }
                         if (stepResponse?.__switchToPage) {
                             page = stepResponse.__switchToPage as Page;
                             currentContext = page;
@@ -744,6 +816,8 @@ class ExecutionWorker {
             response_data: responseData,
             network_events: networkEvents,
             ...(webVitals ? { web_vitals: webVitals } : {}),
+            console_errors: consoleErrorsFor(consoleLogs, testCase.name, this.redactionPolicyFor(job)),
+            ...(Object.keys(stepDom).length ? { step_dom: stepDom } : {}),
             ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
             completed_at: new Date().toISOString()
@@ -766,6 +840,7 @@ class ExecutionWorker {
 
         const networkEvents: any[] = [];
         const consoleLogs: any[] = [];
+        const stepDom: Record<string, string> = {};
         const testResults: TestCaseResult[] = [];
         let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
         let overallError: string | undefined;
@@ -939,6 +1014,10 @@ class ExecutionWorker {
                                     job.settings,
                                     sharedContextData
                                 );
+                                if (job.settings?.capture_step_dom && step.id && step.selector && step.intent) {
+                                    const dom = await captureStepDom(page);
+                                    if (dom) stepDom[`${testCase.id}:${step.id}`] = dom;
+                                }
                                 if (stepResponse?.__switchToPage) {
                                     page = stepResponse.__switchToPage;
                                     currentContext = page;
@@ -1029,6 +1108,8 @@ class ExecutionWorker {
                     error: caseError,
                     response_data: responseData,
                     network_events: networkEvents.slice(netStartIdx),
+                    console_errors: consoleErrorsFor(consoleLogs, testCase.name, this.redactionPolicyFor(job)),
+                    ...(caseStepDom(stepDom, testCase.id)),
                     ...(caseVitals ? { web_vitals: caseVitals } : {})
                 });
 

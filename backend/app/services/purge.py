@@ -227,12 +227,29 @@ async def collect_object_keys(session, workspace_id: int) -> List[str]:
     # Only the former is ours to delete — see _resolve_image_url in
     # api/visual_baselines.py, which makes the same distinction.
     baselines = await session.exec(
-        text("SELECT image_url FROM visualbaseline WHERE test_case_id IN "
-             f"({_CASES}) AND image_url IS NOT NULL"),
+        text("SELECT DISTINCT test_case_id FROM visualbaseline "
+             f"WHERE test_case_id IN ({_CASES})"),
         params={"workspace_id": workspace_id})
-    prefixes.extend(key for (key,) in baselines.all()
-                    if key and not key.startswith(("http://", "https://")))
+    prefixes.extend(baseline_purge_prefix(case_id)
+                    for (case_id,) in baselines.all() if case_id)
     return prefixes
+
+
+def baseline_purge_prefix(test_case_id: int) -> str:
+    """The object folder holding every version of a case's baselines.
+
+    Derived from the row's test_case_id (already filtered to this workspace),
+    never from the stored image_url: keys used to be caller-supplied, and these
+    are delete PREFIXES in a bucket shared by every tenant — a row whose key
+    named another tenant's case (or `runs/`) would have aimed this workspace's
+    purge at their objects. Versions are kept for rollback, so the folder, not
+    the current key, is what has to go. External http(s) images aren't ours.
+    """
+    return f"baselines/{int(test_case_id)}/"
+    parts = key.split("/")
+    if len(parts) >= 3 and parts[0] == "baselines" and parts[1].isdigit():
+        return f"baselines/{parts[1]}/"
+    return None
 
 
 async def purge_workspace(session, workspace_id: int, *, dry_run: bool = False,

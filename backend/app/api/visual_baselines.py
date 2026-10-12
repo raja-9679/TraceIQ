@@ -9,6 +9,7 @@ Surface:
     GET    /api/visual-baselines?test_case_id=&step_id=
     DELETE /api/visual-baselines/{id}
 """
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -76,6 +77,17 @@ async def create_baseline(
         principal.user.id, case.project_id, session, min_role="editor"
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
+    # A bare key is presigned back to the caller (and used as a purge prefix),
+    # so it must live in this case's own baseline folder; anything else in the
+    # shared bucket may belong to another tenant. Promote is the normal way
+    # to create a stored baseline; external images use a full URL.
+    if (not body.image_url.startswith(("http://", "https://"))
+            and not body.image_url.startswith(f"baselines/{body.test_case_id}/")):
+        raise HTTPException(
+            status_code=400,
+            detail="image_url must be an http(s) URL or a key under "
+                   f"baselines/{body.test_case_id}/ (use /visual-baselines/promote "
+                   "to pin a run's screenshot)")
 
     baseline = VisualBaseline(
         test_case_id=body.test_case_id,
@@ -228,7 +240,11 @@ async def promote_baseline(
             status_code=404,
             detail=f"No candidate screenshot for step {body.step_id} in run {body.run_id}; "
                    "run the case with an expect-visual-match step first")
-    dest_key = f"baselines/{body.test_case_id}/{body.step_id}/{body.browser}-{body.device or 'default'}.png"
+    # Versioned key: the previous baseline object is kept so the change can
+    # be rolled back (it used to be overwritten in place).
+    stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S%f")
+    dest_key = (f"baselines/{body.test_case_id}/{body.step_id}/"
+                f"{body.browser}-{body.device or 'default'}-{stamp}.png")
     minio_client.copy_object(source_key, dest_key)
 
     res = await session.exec(
@@ -240,8 +256,10 @@ async def promote_baseline(
         )
     )
     baseline = res.first()
+    previous_image = baseline.image_url if baseline else None
     if baseline:
         baseline.image_url = dest_key
+        baseline.updated_at = datetime.utcnow()
         baseline.tolerance = body.tolerance
         if body.mask_regions is not None:
             baseline.mask_regions = body.mask_regions
@@ -257,6 +275,147 @@ async def promote_baseline(
             created_by_id=principal.user.id,
         )
     session.add(baseline)
+    await session.flush()
+    await _audit(session, case, baseline, "visual_baseline.accept", principal, {
+        "image": dest_key, "previous_image": previous_image,
+        "run_id": body.run_id, "step_id": body.step_id,
+    })
+    await session.commit()
+    await session.refresh(baseline)
+    return _to_read(baseline)
+
+
+class BaselineDecision(BaseModel):
+    run_id: Optional[int] = None
+    note: Optional[str] = None
+
+
+class BaselineRollback(BaseModel):
+    image: str
+
+
+async def _baseline_for_editor(baseline_id: int, principal: AuthPrincipal,
+                               session: AsyncSession):
+    baseline = await session.get(VisualBaseline, baseline_id)
+    if not baseline:
+        raise HTTPException(status_code=404, detail="Baseline not found")
+    case = await session.get(TestCase, baseline.test_case_id)
+    if not case or not await access_service.has_project_access(
+        principal.user.id, case.project_id, session, min_role="editor"
+    ):
+        raise HTTPException(status_code=403, detail="Editor access required")
+    return baseline, case
+
+
+async def _audit(session, case, baseline, action, principal, changes):
+    from app.models import Project
+    from app.services import audit
+    project = await session.get(Project, case.project_id) if case.project_id else None
+    await audit.record(
+        session, entity_type="visual_baseline", entity_id=baseline.id,
+        action=action, principal=principal, user_id=principal.user.id,
+        workspace_id=project.workspace_id if project else None,
+        changes={**changes, "test_case_id": baseline.test_case_id},
+    )
+
+
+@router.post("/visual-baselines/{baseline_id}/keep")
+async def keep_baseline(
+    baseline_id: int,
+    body: BaselineDecision,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """Record that a reviewer looked at a run's visual change and kept the
+    current baseline (i.e. judged the change a regression). Nothing about the
+    baseline changes; the decision is what gets recorded."""
+    baseline, case = await _baseline_for_editor(baseline_id, principal, session)
+    await _audit(session, case, baseline, "visual_baseline.keep", principal, {
+        "image": baseline.image_url, "run_id": body.run_id,
+        "note": (body.note or "")[:500] or None,
+    })
+    await session.commit()
+    return {"status": "kept", "id": baseline_id}
+
+
+@router.get("/visual-baselines/{baseline_id}/history")
+async def baseline_history(
+    baseline_id: int,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """Accept / keep / rollback decisions for this baseline, newest first,
+    read from the audit trail (which is append-only and hash-chained)."""
+    baseline = await session.get(VisualBaseline, baseline_id)
+    if not baseline:
+        raise HTTPException(status_code=404, detail="Baseline not found")
+    case = await session.get(TestCase, baseline.test_case_id)
+    if not case or not await access_service.has_project_access(
+        principal.user.id, case.project_id, session, min_role="viewer"
+    ):
+        raise HTTPException(status_code=403, detail="Access denied")
+    rows = await _history_rows(session, baseline_id)
+    return [{
+        "action": r.action.removeprefix("visual_baseline."),
+        "at": r.timestamp,
+        "user_id": r.user_id,
+        "actor_label": r.actor_label,
+        "run_id": (r.changes or {}).get("run_id"),
+        "image": (r.changes or {}).get("image"),
+        "previous_image": (r.changes or {}).get("previous_image"),
+        "is_current": (r.changes or {}).get("image") == baseline.image_url,
+    } for r in rows]
+
+
+async def _history_rows(session, baseline_id: int):
+    from app.models import AuditLog
+    res = await session.exec(
+        select(AuditLog).where(
+            AuditLog.entity_type == "visual_baseline",
+            AuditLog.entity_id == baseline_id,
+        ).order_by(AuditLog.id.desc()).limit(100))
+    return res.all()
+
+
+@router.post("/visual-baselines/{baseline_id}/rollback", response_model=VisualBaselineRead)
+async def rollback_baseline(
+    baseline_id: int,
+    body: BaselineRollback,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+) -> VisualBaselineRead:
+    """Re-pin an earlier version of this baseline.
+
+    Only an image this baseline has actually used (per its audit history) is
+    accepted — otherwise the endpoint would let an editor point a baseline at
+    any object key in the shared bucket, including another tenant's."""
+    baseline, case = await _baseline_for_editor(baseline_id, principal, session)
+    known = set()
+    for r in await _history_rows(session, baseline_id):
+        for key in ("image", "previous_image"):
+            v = (r.changes or {}).get(key)
+            if v:
+                known.add(v)
+    own_folder = f"baselines/{baseline.test_case_id}/"
+    if body.image not in known or not (
+            body.image.startswith(own_folder)
+            or body.image.startswith(("http://", "https://"))):
+        raise HTTPException(status_code=400,
+                            detail="That image is not a previous version of this baseline")
+    if body.image == baseline.image_url:
+        raise HTTPException(status_code=409, detail="That version is already the baseline")
+    from app.core.storage import minio_client
+    if (not body.image.startswith(("http://", "https://"))
+            and not minio_client.object_exists(body.image)):
+        raise HTTPException(status_code=410,
+                            detail="That version's image no longer exists in storage")
+    previous_image = baseline.image_url
+    baseline.image_url = body.image
+    baseline.updated_at = datetime.utcnow()
+    session.add(baseline)
+    await _audit(session, case, baseline, "visual_baseline.rollback", principal, {
+        "image": body.image, "previous_image": previous_image,
+    })
     await session.commit()
     await session.refresh(baseline)
     return _to_read(baseline)

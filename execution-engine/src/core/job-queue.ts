@@ -65,6 +65,9 @@ export interface TestJob {
         // Opt-in HAR network archive (inherited suite setting; also
         // enable globally with HAR_CAPTURE_ENABLED on the worker).
         har_capture?: boolean;
+        // Record a compact per-step DOM for proactive selector heal. Set by
+        // the dispatcher only at capture level `full` with heal enabled.
+        capture_step_dom?: boolean;
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
         // MinIO URL + metadata the mobile worker needs to install/launch it.
         mobile_app?: {
@@ -95,6 +98,8 @@ export interface TestCaseResult {
     video?: string;  // Per-case video for continuous jobs
     network_events?: any[];  // Network events captured during this test case
     web_vitals?: any;  // Performance metrics for the case's final document
+    console_errors?: any[];  // Redacted console errors/warnings for failure analysis
+    step_dom?: Record<string, string>;  // step id -> compact DOM (capture level full only)
 }
 
 // Job result - can contain single or multiple test results
@@ -112,6 +117,11 @@ export interface JobResult {
     // Web vitals (LCP/CLS/TTFB/FCP…) for the final document of a single-test
     // job; continuous jobs carry them per-case on test_results instead.
     web_vitals?: any;
+
+    // Failure-analysis evidence for single-test jobs (continuous jobs carry
+    // these per case on test_results).
+    console_errors?: any[];
+    step_dom?: Record<string, string>;
 
     // Type-aware result payload for non-UI executors (keystone). e.g. a load
     // job reports result_kind='load' with aggregate k6 metrics + threshold
@@ -511,11 +521,19 @@ export class JobQueue {
      * they never touch run-progress counters.
      */
     async completeDiscoveryJob(streamId: string, jobId: string, discoveryId: string, result: any): Promise<void> {
+        // 10-minute TTL — the backend long-poll picks it up well within that.
+        await this.completeSideJob(streamId, jobId, `discovery:result:${discoveryId}`, result, 600);
+    }
+
+    /**
+     * Ack a job that is not a test run (discovery, persona refresh) and park
+     * its result under `resultKey` for the backend to long-poll.
+     */
+    async completeSideJob(streamId: string, jobId: string, resultKey: string, result: any, ttlSeconds: number): Promise<void> {
         const pipeline = this.redis.pipeline();
         pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
         pipeline.hdel('jobs:retries', jobId);
-        // 10-minute TTL — the backend long-poll picks it up well within that.
-        pipeline.set(`discovery:result:${discoveryId}`, JSON.stringify(result), 'EX', 600);
+        pipeline.set(resultKey, JSON.stringify(result), 'EX', ttlSeconds);
         await pipeline.exec();
     }
 

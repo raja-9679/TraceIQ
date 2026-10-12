@@ -21,6 +21,9 @@ class FailureEvidence(BaseModel):
     http_status: Optional[int] = None
     request_url: Optional[str] = None
     network_failures: List[dict] = Field(default_factory=list)
+    # Browser console errors/warnings during the test (redacted by the
+    # worker, re-redacted on ingestion). Empty for results from older workers.
+    console_errors: List[dict] = Field(default_factory=list)
 
 
 class FailureReport(BaseModel):

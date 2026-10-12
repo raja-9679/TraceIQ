@@ -205,7 +205,8 @@ async def get_test_case(case_id: int, session: AsyncSession = Depends(get_sessio
     return case
 
 @router.put("/cases/{case_id}", response_model=TestCaseRead)
-async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: AsyncSession = Depends(get_session), principal: AuthPrincipal = Depends(get_current_principal)):
+    current_user = principal.user
     db_case = await session.get(TestCase, case_id)
     if not db_case:
         raise HTTPException(status_code=404, detail="Test case not found")
@@ -237,6 +238,15 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
         elif not has_mobile_step and db_case.executor == ExecutorType.MOBILE_APPIUM:
             db_case.executor = ExecutorType.UI_PLAYWRIGHT
 
+    # A person saving an AI-authored case in the builder is the human review
+    # of it (generation no longer pre-stamps that). API-key callers never
+    # count: an agent re-saving its own case is not a review.
+    reviewed = db_case.is_ai_authored and not principal.is_api_caller
+    if reviewed:
+        db_case.last_human_reviewed_at = datetime.utcnow()
+        db_case.last_human_reviewed_by_id = current_user.id
+        session.add(db_case)
+
     if changes:
         db_case.updated_by_id = current_user.id
         db_case.updated_at = datetime.utcnow()
@@ -246,6 +256,9 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
         audit = AuditLog(entity_type="case", entity_id=case_id, action="update", user_id=current_user.id,
                          changes=redact_audit_changes(changes))
         session.add(audit)
+        await session.commit()
+        await session.refresh(db_case)
+    elif reviewed:
         await session.commit()
         await session.refresh(db_case)
 

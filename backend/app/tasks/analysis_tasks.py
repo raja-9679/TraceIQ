@@ -77,6 +77,9 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
                     steps=steps,
                     response_status=result.response_status,
                     request_url=result.request_url,
+                    network_failures=network_failures_for(
+                        run.network_events, result.test_name),
+                    console_errors=(result.result_payload or {}).get("console_errors"),
                     provider_id=provider_id,
                 )
                 result.ai_analysis = report.model_dump_json()
@@ -93,3 +96,20 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
               f"({rollup.categories})")
         return {"status": "ok", "analyzed": len(reports),
                 "categories": rollup.categories}
+
+
+def network_failures_for(events, test_name: str) -> list:
+    """This test's failed responses (HTTP >= 400) from the run's network log.
+
+    Events carry only redacted URLs and headers; bodies are not included.
+    Trimmed to the fields the analysis needs so the prompt stays small.
+    """
+    out = []
+    for e in events or []:
+        if not isinstance(e, dict) or e.get("testCaseName") != test_name:
+            continue
+        status = e.get("status")
+        if isinstance(status, int) and status >= 400:
+            out.append({"method": e.get("method"), "url": e.get("url"),
+                        "status": status, "resourceType": e.get("resourceType")})
+    return out[:10]

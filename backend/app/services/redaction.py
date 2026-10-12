@@ -427,6 +427,17 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
         out["execution_log"] = _redact_json(out["execution_log"], policy.body_key_set(), policy)
     if isinstance(out.get("steps"), list):
         out["steps"] = redact_steps(out["steps"], policy)
+    if isinstance(out.get("console_errors"), list):
+        out["console_errors"] = [
+            {**e, "text": redact_text(e.get("text"), policy)}
+            if isinstance(e, dict) and isinstance(e.get("text"), str) else e
+            for e in out["console_errors"]
+        ]
+    if isinstance(out.get("step_dom"), dict):
+        out["step_dom"] = {
+            k: redact_text(v, policy) if isinstance(v, str) else v
+            for k, v in out["step_dom"].items()
+        }
     return out
 
 

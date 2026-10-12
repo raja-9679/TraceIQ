@@ -44,6 +44,10 @@ class RunCreateContext(BaseModel):
     # Phase MOB: which uploaded MobileAppBuild a mobile_appium run installs
     # and tests. Required for suites whose cases use the mobile executor.
     app_build_id: Optional[int] = None
+    # Run "as" a saved Persona (its session + auth headers replace the
+    # project's stored auth session). Must belong to this suite's workspace,
+    # and to this project when the persona is project-scoped.
+    persona_id: Optional[int] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -129,6 +133,24 @@ async def create_run(
                 status_code=400,
                 detail="environment_id does not belong to this project")
         run_defaults["environment_id"] = context.environment_id
+
+    # A persona carries live session cookies for some identity; one from
+    # another workspace (or another project) must never be usable here.
+    if context and context.persona_id:
+        from app.models import Persona
+        persona = await session.get(Persona, context.persona_id)
+        if (not persona or persona.workspace_id != _ws_id
+                or (persona.project_id and persona.project_id != suite.project_id)):
+            raise HTTPException(
+                status_code=400,
+                detail="persona_id does not belong to this project")
+        # A workspace-wide persona isn't covered by this project's access:
+        # using it hands the run another identity's live session, so require
+        # the same workspace-editor role that managing personas requires.
+        if persona.project_id is None:
+            from app.api.personas import _ensure_editor
+            await _ensure_editor(_ws_id, current_user.id, session)
+        run_defaults["persona_id"] = context.persona_id
 
     # ── Execution-matrix resolution ──────────────────────────────────────
     # Precedence per test case:

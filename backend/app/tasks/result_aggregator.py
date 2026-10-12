@@ -206,9 +206,15 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
             run.error_message = None
             # Kick off typed failure analysis (heuristic always; LLM when a
             # provider is configured). Fire-and-forget.
+            # Queue it only once THIS transaction commits: the run's network
+            # events and final results are written in it, and a worker that
+            # picked the task up immediately read the run before they existed
+            # (failure analysis then saw no network failures).
             try:
+                from sqlalchemy import event
                 from app.tasks.analysis_tasks import analyze_run_failures
-                analyze_run_failures.delay(run_id)
+                event.listen(session, "after_commit",
+                             lambda _s: analyze_run_failures.delay(run_id), once=True)
             except Exception as e:
                 print(f"[Aggregator] Could not queue failure analysis: {e}")
         else:
@@ -310,6 +316,8 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
         ).all()
 
         scored_case_ids = set()
+        case_of_result: Dict[int, int] = {}
+        score_of_case: Dict[int, float] = {}
         for res in results:
             # Resolve the TestCase behind this result. Prefer an id already
             # stamped on the result (worker payload / earlier pass), then the
@@ -361,6 +369,7 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                     test_case.last_validated_at = datetime.utcnow()
                     session.add(test_case)
 
+            case_of_result[res.id] = test_case.id
             if test_case.id in scored_case_ids:
                 continue
             scored_case_ids.add(test_case.id)
@@ -404,6 +413,7 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
             if record is None:
                 record = FlakeRecord(test_case_id=test_case.id, step_id=None)
 
+            score_of_case[test_case.id] = flake_score
             record.flake_score = round(flake_score, 4)
             record.sample_count = sample_count
             if last_failure:
@@ -424,11 +434,60 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
 
             session.add(record)
 
+        for res in results:
+            score = score_of_case.get(case_of_result.get(res.id))
+            is_flaky, confidence = flake_verdict(
+                res.status, res.retry_count or 0, score)
+            if res.is_flaky != is_flaky or res.confidence != confidence:
+                res.is_flaky = is_flaky
+                res.confidence = confidence
+                session.add(res)
+
         if scored_case_ids:
             print(f"[Aggregator] Updated flake scores for "
                   f"{len(scored_case_ids)} case(s) after run {run_id}")
     except Exception as e:
         print(f"[Aggregator] Flake scoring failed for run {run_id}: {e}")
+
+
+def _evidence_payload(res: Dict[str, Any]) -> Dict[str, Any]:
+    """Failure-analysis evidence a worker attached to one test's result.
+
+    `console_errors` feed failure analysis; `step_dom` (step id -> compact
+    DOM, sent only at capture level `full`) feeds proactive selector heal.
+    Older workers send neither, so both are optional.
+    """
+    out: Dict[str, Any] = {}
+    if res.get('console_errors'):
+        out['console_errors'] = res['console_errors'][:20]
+    if isinstance(res.get('step_dom'), dict) and res['step_dom']:
+        out['step_dom'] = res['step_dom']
+    return out
+
+
+def _case_payload(test_res: Dict[str, Any]) -> Dict[str, Any]:
+    """result_payload for one case of a continuous job."""
+    out = _evidence_payload(test_res)
+    if test_res.get('web_vitals'):
+        out['web_vitals'] = test_res['web_vitals']
+    return out
+
+
+def flake_verdict(status, retry_count: int, flake_score: Optional[float]):
+    """(is_flaky, confidence) for one result.
+
+    A result is flaky when it only passed after a retry, or when its case's
+    pass/fail history alternates at the quarantine threshold. `confidence` is
+    how sure we are a FAILURE is real: the complement of the case's flake
+    score, so a failure of a historically stable case is ~1.0 and one from a
+    coin-flip case is low. Passes carry no confidence (None). Retries are
+    never hidden: a pass-after-retry is still reported as flaky.
+    """
+    score = flake_score or 0.0
+    passed = status == TestStatus.PASSED
+    is_flaky = (passed and retry_count > 0) or score >= 0.4
+    confidence = None if passed else round(max(0.0, min(1.0, 1.0 - score)), 2)
+    return is_flaky, confidence
 
 
 def _persist_heal_suggestions(result: Dict[str, Any]):
@@ -546,9 +605,10 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 existing.request_url = request_data.get('url')
                 existing.request_method = request_data.get('method')
                 existing.request_params = request_data.get('params')
-                if test_res.get('web_vitals'):
+                case_payload = _case_payload(test_res)
+                if case_payload:
                     existing.result_payload = {**(existing.result_payload or {}),
-                                               'web_vitals': test_res['web_vitals']}
+                                               **case_payload}
                 session.add(existing)
             else:
                 # Create new result
@@ -572,7 +632,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     request_url=request_data.get('url'),
                     request_method=request_data.get('method'),
                     request_params=request_data.get('params'),
-                    result_payload={'web_vitals': test_res['web_vitals']} if test_res.get('web_vitals') else None
+                    result_payload=_case_payload(test_res) or None
                 )
                 session.add(test_result)
 
@@ -655,8 +715,9 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
         typed_payload = result.get('result_payload')
         typed_kind = result.get('result_kind')
         merged_payload = None
-        if typed_payload or web_vitals:
-            merged_payload = {**(typed_payload or {})}
+        evidence = _evidence_payload(result)
+        if typed_payload or web_vitals or evidence:
+            merged_payload = {**(typed_payload or {}), **evidence}
             if web_vitals:
                 merged_payload['web_vitals'] = web_vitals
 

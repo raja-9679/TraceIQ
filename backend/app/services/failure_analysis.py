@@ -46,6 +46,7 @@ _HEURISTICS = [
 
 _MAX_STEPS_CHARS = 6_000
 _MAX_ERROR_CHARS = 2_000
+_MAX_CONSOLE_CHARS = 3_000
 
 
 def heuristic_report(error_message: str, evidence: FailureEvidence) -> FailureReport:
@@ -108,6 +109,7 @@ def analyze_case_failure(
     response_status: Optional[int] = None,
     request_url: Optional[str] = None,
     network_failures: Optional[List[dict]] = None,
+    console_errors: Optional[List[dict]] = None,
     provider_id: Optional[int] = None,
 ) -> FailureReport:
     failing_idx, failing_step = _find_failing_step(steps, error_message)
@@ -119,6 +121,7 @@ def analyze_case_failure(
         http_status=response_status,
         request_url=request_url,
         network_failures=(network_failures or [])[:10],
+        console_errors=(console_errors or [])[:10],
     )
     base = heuristic_report(error_message, evidence)
 
@@ -133,7 +136,8 @@ def analyze_case_failure(
         f"Test steps (JSON):\n{steps_json}\n\n"
         f"HTTP status observed: {response_status}\n"
         f"Request URL: {request_url}\n"
-        f"Failed network requests: {json.dumps(evidence.network_failures)}\n\n"
+        f"Failed network requests: {json.dumps(evidence.network_failures)}\n"
+        f"Browser console errors: {json.dumps(evidence.console_errors)[:_MAX_CONSOLE_CHARS]}\n\n"
         f"Heuristic first guess: {base.root_cause_category} — {base.summary}\n"
         "Classify the failure."
     )
