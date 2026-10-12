@@ -594,7 +594,24 @@ faithful so restore still works); `GET /api/jobs/poll` is editor-gated and
 honours `ApiKey.project_id` instead of handing decrypted secrets to any
 workspace key; `/metrics` needs `METRICS_TOKEN` or a principal.
 
+Also FIXED 2026-10-12 (see `info/FEATURE_ROADMAP_2026-10.md` §1):
+**Celery routing.** Workers in every deployment consume only `main-queue` and
+`aggregator-queue`; `task_default_queue` was unset, so any task missing from
+`task_routes` went to the implicit `celery` queue and never ran — run
+notifications, outbound webhooks, account emails, failure analysis, proactive
+heal, persona refresh, tautology scan. Default is now `main-queue`;
+`tests/test_celery_routing.py` fails if a task lands on an unconsumed queue.
+A new queue needs a worker in EVERY deployment file (compose ×N, AIO
+supervisord, Helm) plus the test's `CONSUMED` set. Personas are wired
+(`POST /api/runs` body `persona_id`; refresh is a `job_type=persona_refresh`
+worker job); `POST /visual-baselines` only accepts bare keys under
+`baselines/{case_id}/` (they are presigned back and used as purge prefixes).
+
 Still open:
+- Per-entity deletes 500 on FKs added after they were written: project delete
+  (`testcase_project_id_fkey`), suite delete once a case has revisions
+  (`testcaserevision_…`), run delete once it produced a heal proposal
+  (`selectorhealproposal_source_run_id_fkey`). Workspace purge is fine.
 - Worker image bakes code at build time — new step types need an image rebuild.
   **This is also why the backend redacts on ingestion**: an un-upgraded worker
   ships raw headers and bodies, so `app/services/redaction.py` runs again at all

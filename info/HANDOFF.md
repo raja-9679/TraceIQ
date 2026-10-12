@@ -40,6 +40,23 @@ Sessions since the last full rewrite of this file:
   request ids, OTel, Sentry), H5 (Helm, installed on kind), and C5 (rotation,
   history rewrite, evidence) plus the I5 pre-assessment docs. A-H are now all
   done; only I5 remains and it is external.
+- **2026-10-12** — feature analysis (10 roles × run/test lenses, plus 24 AI /
+  security / platform candidates checked against the code) saved as
+  `info/FEATURE_ROADMAP_2026-10.md`. Its "fix first" list was fixed and
+  verified live: personas now reach the worker (and refresh via a
+  `persona_refresh` worker job), proactive heal gets per-step DOM (capture
+  `full` only), AI generation no longer fakes a human review, failure analysis
+  gets console + network evidence, `is_flaky`/`confidence` are written, visual
+  baselines are versioned with audited keep/accept/rollback, heal accept
+  refuses assertion steps. **Biggest find: seven Celery tasks had never run on
+  any deployment** (no default queue; workers only consume `main-queue` /
+  `aggregator-queue`) — notifications, outbound webhooks, account emails,
+  failure analysis, heal, persona refresh, tautology scan. Fixed with
+  `task_default_queue`; `tests/test_celery_routing.py` guards it. Also closed a
+  cross-tenant hole in `POST /visual-baselines` (arbitrary bare keys were
+  presigned back, and purge used them as delete prefixes). Three per-entity
+  delete 500s found and left open — see the roadmap doc §1. Uncommitted at
+  time of writing unless a later commit says otherwise.
 
 | Workstream | State |
 |---|---|
