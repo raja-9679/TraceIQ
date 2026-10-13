@@ -401,7 +401,7 @@ export default function TestBuilder() {
                 />
             </div>
 
-            <div className="mx-auto flex w-full max-w-4xl flex-col gap-5">
+            <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
                 {/* ── Name + case options ── */}
                 <section className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-5 sm:p-6" aria-label="Test details">
                     <div className="flex flex-col gap-1.5">
@@ -507,10 +507,10 @@ export default function TestBuilder() {
                     {steps.length === 0 ? (
                         <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-dashed border-border bg-background px-6 py-14 text-center">
                             <p className="text-base font-semibold text-ink">No steps yet</p>
-                            <p className="max-w-sm text-sm text-ink-soft">Start with a Go to step, then add clicks, typing and checks from the bar below.</p>
+                            <p className="max-w-sm text-sm text-ink-soft">Start with a Go to step, then add clicks, typing and checks with the buttons below.</p>
                         </div>
                     ) : (
-                        <div className="flex flex-col gap-6">
+                        <div className="flex flex-col gap-4">
                             <AnimatePresence mode='popLayout'>
                                 {steps.map((step, index) => (
                                     <motion.div
@@ -540,8 +540,8 @@ export default function TestBuilder() {
                 </section>
 
                 {/* ── Add step bar ── */}
-                <div className="pointer-events-none fixed bottom-6 left-1/2 z-30 w-full -translate-x-1/2 px-4 sm:sticky sm:bottom-8 sm:left-auto sm:translate-x-0 sm:px-0">
-                    <div role="toolbar" aria-label="Add a step" className="pointer-events-auto mx-auto flex max-w-full flex-wrap justify-center gap-1 rounded-3xl border border-border bg-white p-1.5 shadow-[0_12px_40px_rgba(28,27,34,0.12)] sm:max-w-fit sm:flex-nowrap sm:rounded-full">
+                <div className="flex justify-center">
+                    <div role="toolbar" aria-label="Add a step" className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-3xl border border-input bg-white p-1.5 sm:rounded-full">
                         <Button className="h-10 shrink-0 px-4" onClick={() => addStep('' as TestStep['type'])}>
                             <Plus className="h-4 w-4" /> Step
                         </Button>

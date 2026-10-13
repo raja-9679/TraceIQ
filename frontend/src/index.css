@@ -5,7 +5,7 @@
 @layer base {
   :root {
     /* Redesign A tokens. Hex equivalents: background #F7F6F2, ink #1C1B22,
-       muted ink #4B4A57, border #E8E6DF, input #DCD9D0, accent lavender #F1EFFD. */
+       muted ink #4B4A57, border #E8E6DF, input #C9C4B8, accent lavender #F1EFFD. */
     --background: 48 24% 96%;
     --foreground: 248 11% 12%;
     --card: 0 0% 100%;
@@ -23,7 +23,7 @@
     --destructive: 13 90% 40%;
     --destructive-foreground: 0 0% 100%;
     --border: 46 17% 89%;
-    --input: 45 14% 84%;
+    --input: 43 12% 76%;
     --ring: 248 11% 12%;
     --radius: 1rem;
   }

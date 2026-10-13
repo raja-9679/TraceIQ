@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { ScheduleModal } from "@/components/ScheduleModal";
 import { GenerateCaseDialog } from "@/components/GenerateCaseDialog";
 import {
-    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles, Smartphone, MoreHorizontal
+    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles, Smartphone, MoreHorizontal, ChevronDown
 } from 'lucide-react';
 import {
     Select,
@@ -469,7 +469,7 @@ export default function SuiteDetails() {
                     <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
                         {canExecute && (environments?.length ?? 0) > 0 && (
                             <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
-                                <SelectTrigger className="h-9 w-auto max-w-[230px] gap-1.5 rounded-full border-0 bg-transparent px-3 text-[13px] text-ink-soft shadow-none hover:bg-white hover:text-ink focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="Environment for runs from this page" title="Environment for runs from this page">
+                                <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="Environment for runs from this page" title="Environment for runs from this page">
                                     <Globe className="h-4 w-4 shrink-0" /><SelectValue placeholder="Environment" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -484,7 +484,7 @@ export default function SuiteDetails() {
                         )}
                         {canExecute && (appBuilds?.length ?? 0) > 0 && (
                             <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
-                                <SelectTrigger className="h-9 w-auto max-w-[230px] gap-1.5 rounded-full border-0 bg-transparent px-3 text-[13px] text-ink-soft shadow-none hover:bg-white hover:text-ink focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
+                                <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
                                     <Smartphone className="h-4 w-4 shrink-0" /><SelectValue placeholder="App build" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -504,7 +504,7 @@ export default function SuiteDetails() {
                         )}
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="icon" aria-label="More suite actions" title="More"><MoreHorizontal className="h-4 w-4" /></Button>
+                                <Button variant="outline" aria-label="More suite actions"><MoreHorizontal className="h-4 w-4" /> More</Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
                                 {canExecute && (
@@ -547,7 +547,7 @@ export default function SuiteDetails() {
                         </div>
                         <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="icon" aria-label="Add or import" title="Add or import"><Plus className="h-4 w-4" /></Button>
+                                <Button variant="outline" aria-label="Add or import"><Plus className="h-4 w-4" /> Add <ChevronDown className="h-3.5 w-3.5" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
                                 <DropdownMenuItem onClick={() => setShowSubModuleDialog(true)}><FolderOpen className="mr-2 h-4 w-4" /> New sub-module</DropdownMenuItem>

@@ -1,8 +1,9 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone, Heading } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
+import { describeStep } from '@/components/redesign/steps';
 import {
     Select,
     SelectContent,
@@ -15,7 +16,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
     selector?: string;
     value?: string;
     params?: {
@@ -113,7 +114,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'expect-hidden': return { border: 'border-border', bg: 'bg-pastel-mint text-pastel-ink-mint', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
             case 'expect-text': return { border: 'border-border', bg: 'bg-pastel-mint text-pastel-ink-mint', hue: 'cyan', icon: <Search size={18} />, label: 'Expect Text' };
             case 'expect-url': return { border: 'border-border', bg: 'bg-pastel-mint text-pastel-ink-mint', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect URL' };
+            case 'expect-title': return { border: 'border-border', bg: 'bg-pastel-mint text-pastel-ink-mint', hue: 'cyan', icon: <Heading size={18} />, label: 'Expect Title' };
             case 'expect-visual-match': return { border: 'border-border', bg: 'bg-pastel-mint text-pastel-ink-mint', hue: 'cyan', icon: <Camera size={18} />, label: 'Visual Match' };
+            case 'wait-timeout': return { border: 'border-border', bg: 'bg-pastel-peach text-pastel-ink-peach', hue: 'rose', icon: <Clock size={18} />, label: 'Wait' };
             case 'hover': return { border: 'border-border', bg: 'bg-secondary text-ink-soft', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
             case 'press-key': return { border: 'border-border', bg: 'bg-secondary text-ink-soft', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
             case 'http-request': return { border: 'border-border', bg: 'bg-pastel-butter text-pastel-ink-butter', hue: 'amber', icon: <FileJson size={18} />, label: 'API Request' };
@@ -139,31 +142,36 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'mobile-extract-value': return { border: 'border-border', bg: 'bg-pastel-pink text-pastel-ink-pink', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
             case 'mobile-expect-visual-match': return { border: 'border-border', bg: 'bg-pastel-pink text-pastel-ink-pink', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
             case '': return { border: 'border-dashed border-ink-muted', bg: 'bg-secondary text-ink-soft', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
-            default: return { border: 'border-border', bg: 'bg-secondary text-ink-soft', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
+            default: return { border: 'border-border', bg: 'bg-secondary text-ink-soft', hue: 'slate', icon: <PlayCircle size={18} />, label: type ? type.charAt(0).toUpperCase() + type.slice(1).replace(/-/g, ' ') : type };
         }
     };
 
     const meta = getStepMeta(step.type);
+    const summary = step.type ? describeStep(step as Parameters<typeof describeStep>[0]).text : 'Choose what this step does';
 
     return (
-        <div className="relative group pb-1">
-            {/* Timeline Connectors & Number Badge */}
-            <div className="absolute left-[13px] top-6 bottom-0 w-px bg-[#E6E3DC] -z-10 group-last:hidden" />
-            <div className="absolute left-0 top-[18px] w-7 h-7 rounded-full bg-white border border-border flex items-center justify-center z-10 font-mono text-xs text-ink-soft group-hover:border-ink-muted group-hover:text-ink" aria-hidden="true">
-                {index + 1}
-            </div>
-
-            {/* Main Node Card */}
-            <div className={`ml-10 sm:ml-12 bg-white rounded-2xl border ${meta.border} transition-shadow hover:shadow-[0_4px_16px_rgba(28,27,34,0.07)] group overflow-visible relative`}>
+        <div className="relative">
+            <div className={`rounded-2xl border ${step.type ? 'border-input' : 'border-dashed border-ink-muted'} bg-white`}>
+                <div className="flex items-center gap-3 border-b border-[#F0EEE8] px-3 py-2">
+                    <span className="flex h-7 min-w-7 flex-none items-center justify-center rounded-full bg-secondary px-1.5 font-mono text-xs font-semibold text-ink" aria-hidden="true">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink-soft" title={summary}>{summary}</span>
+                    <div role="toolbar" aria-label={`Step ${index + 1} actions`} className="flex flex-none items-center gap-0.5">
+                        <Button variant="ghost" size="icon" title="Move up" aria-label={`Move step ${index + 1} up`} onClick={() => moveStep(index, 'up')} disabled={isFirst} className="h-8 w-8 text-ink-soft hover:text-ink disabled:opacity-30"><ArrowUp size={15} /></Button>
+                        <Button variant="ghost" size="icon" title="Move down" aria-label={`Move step ${index + 1} down`} onClick={() => moveStep(index, 'down')} disabled={isLast} className="h-8 w-8 text-ink-soft hover:text-ink disabled:opacity-30"><ArrowDown size={15} /></Button>
+                        <Button variant="ghost" size="icon" title="Insert a step below" aria-label={`Insert a step below step ${index + 1}`} onClick={() => insertStep(index)} className="h-8 w-8 text-ink-soft hover:text-ink"><PlusCircle size={15} /></Button>
+                        <Button variant="ghost" size="icon" title="Delete step" aria-label={`Delete step ${index + 1}`} onClick={() => removeStep(step.id)} className="h-8 w-8 text-ink-soft hover:bg-pastel-peach hover:text-pastel-ink-peach"><Trash2 size={15} /></Button>
+                    </div>
+                </div>
                 {/* Node Header & Core Inputs */}
-                <div className="flex flex-col md:flex-row p-2 gap-2 relative rounded-t-2xl md:rounded-2xl">
+                <div className={`flex flex-col ${step.type === 'assert' ? '' : 'md:flex-row md:items-end'} p-3 gap-3 relative`}>
                     {/* Action Selector Badge */}
-                    <div className="relative w-full md:w-48 shrink-0">
+                    <div className="relative flex w-full shrink-0 flex-col gap-1 md:w-52">
+                        <span className="text-xs font-medium text-ink-soft">Action</span>
                         <Select
                             value={step.type}
                             onValueChange={(value) => updateStep(step.id, 'type', value)}
                         >
-                            <SelectTrigger aria-label={`Step ${index + 1} action`} className="w-full h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none flex items-center px-3 hover:bg-background transition-colors">
+                            <SelectTrigger aria-label={`Step ${index + 1} action`} className="w-full h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none flex items-center px-3 hover:bg-background transition-colors">
                                 <div className={`w-8 h-8 rounded-[10px] ${meta.bg} flex items-center justify-center mr-3 shrink-0`} aria-hidden="true">
                                     {meta.icon}
                                 </div>
@@ -194,6 +202,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-ink-soft"/> Expect Text</div></SelectItem>
                                 <SelectItem value="expect-not-text"><div className="flex items-center gap-2"><SearchX size={14} className="text-ink-soft"/> Expect Not Text</div></SelectItem>
                                 <SelectItem value="expect-url"><div className="flex items-center gap-2"><Link2 size={14} className="text-ink-soft"/> Expect URL</div></SelectItem>
+                                <SelectItem value="expect-title"><div className="flex items-center gap-2"><Heading size={14} className="text-ink-soft"/> Expect Title</div></SelectItem>
                                 <SelectItem value="expect-visual-match"><div className="flex items-center gap-2"><Camera size={14} className="text-ink-soft"/> Visual Match</div></SelectItem>
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-ink-soft"/> Custom Assert</div></SelectItem>
                                 <div className="px-2 pb-1 pt-2.5 text-xs font-semibold text-ink-soft border-t border-border mt-1">API & Data</div>
@@ -232,11 +241,13 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                     <div className="flex-1 flex flex-col sm:flex-row gap-2">
                         {step.type === 'http-request' ? (
                             <>
-                                <Select
+                                <label className="flex shrink-0 flex-col gap-1">
+                                    <span className="text-xs font-medium text-ink-soft">Method</span>
+                                    <Select
                                     value={step.params?.method || 'GET'}
                                     onValueChange={(value) => updateParams('method', value)}
                                 >
-                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none font-mono font-bold text-ink`}>
+                                    <SelectTrigger className={`w-32 shrink-0 h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none font-mono font-bold text-ink`}>
                                         <SelectValue placeholder="Method" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -247,26 +258,33 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         <SelectItem value="PATCH">PATCH</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <Input
+                                </label>
+                                <label className="flex min-w-0 flex-1 flex-col gap-1">
+                                    <span className="text-xs font-medium text-ink-soft">URL</span>
+                                    <Input
                                     placeholder="API Endpoint (e.g. https://api.example.com/v1/users)"
                                     value={step.value || ''}
                                     onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                    className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
+                                    className={`w-full min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
                                 />
+                                </label>
                             </>
                         ) : step.type === 'feed-check' ? (
-                            <Input
+                            <label className="flex min-w-0 flex-1 flex-col gap-1">
+                                <span className="text-xs font-medium text-ink-soft">Feed URL</span>
+                                <Input
                                 placeholder="Feed URL (RSS/Atom/JSON)"
                                 value={step.value || ''}
                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                className={`w-full min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
+                                className={`w-full min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
                             />
+                            </label>
                         ) : step.type === 'amp-validate' ? (
                             <Input
                                 placeholder="AMP Page URL (e.g. https://example.com/amp/article)"
                                 value={step.value || ''}
                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                className={`w-full min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
+                                className={`w-full min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
                             />
                         ) : step.type === 'run-script' ? (
                             <>
@@ -274,7 +292,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     value={step.params?.language || 'javascript'}
                                     onValueChange={(value) => updateParams('language', value)}
                                 >
-                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none font-mono font-semibold text-ink`}>
+                                    <SelectTrigger className={`w-32 shrink-0 h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none font-mono font-semibold text-ink`}>
                                         <SelectValue placeholder="Lang" />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -286,76 +304,82 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     placeholder="Inline script snippet (optional)"
                                     value={step.value || ''}
                                     onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                    className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono text-ink-soft`}
+                                    className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono text-ink-soft`}
                                 />
                                 <Input
                                     placeholder="Store in var..."
                                     value={step.params?.variableName || ''}
                                     onChange={(e) => updateParams('variableName', e.target.value)}
-                                    className={`w-32 shrink-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                    className={`w-32 shrink-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                 />
                             </>
                         ) : step.type === 'assert' ? (
-                            <div className="flex-1 flex gap-2 w-full flex-wrap sm:flex-nowrap">
-                                <Input
-                                    placeholder="Selector/Location"
-                                    value={step.selector || ''}
-                                    onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
-                                    className={`flex-1 min-w-[150px] h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono text-sm`}
-                                />
-                                <Select
-                                    value={step.params?.source || 'text'}
-                                    onValueChange={(value) => updateParams('source', value)}
-                                >
-                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none font-semibold text-ink`}>
-                                        <SelectValue placeholder="Source" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="text">Text Content</SelectItem>
-                                        <SelectItem value="value">Input Value</SelectItem>
-                                        <SelectItem value="attribute">Attribute</SelectItem>
-                                        <SelectItem value="count">Count</SelectItem>
-                                    </SelectContent>
-                                </Select>
-
-                                {step.params?.source === 'attribute' && (
+                            <div className="grid w-full flex-1 grid-cols-2 gap-3 sm:grid-cols-[minmax(160px,1.4fr)_minmax(120px,0.9fr)_auto_minmax(120px,0.9fr)_minmax(120px,1fr)]">
+                                <label className="col-span-2 flex min-w-0 flex-col gap-1 sm:col-span-1">
+                                    <span className="text-xs font-medium text-ink-soft">Element</span>
                                     <Input
-                                        placeholder="Attr"
-                                        value={step.params?.attribute || ''}
-                                        onChange={(e) => updateParams('attribute', e.target.value)}
-                                        className={`w-28 shrink-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                        placeholder="CSS selector"
+                                        value={step.selector || ''}
+                                        onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
+                                        className="h-11 w-full min-w-0 rounded-xl border border-input bg-white px-4 font-mono text-sm shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
                                     />
-                                )}
-
-                                <Select
-                                    value={step.params?.operator || 'equals'}
-                                    onValueChange={(value) => updateParams('operator', value)}
-                                >
-                                    <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none font-semibold text-ink`}>
-                                        <SelectValue placeholder="Op" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="equals">Equals</SelectItem>
-                                        <SelectItem value="contains">Contains</SelectItem>
-                                        <SelectItem value="matches">Regex</SelectItem>
-                                        <SelectItem value="gt">Greater &gt;</SelectItem>
-                                        <SelectItem value="lt">Less &lt;</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                
-                                <Input
-                                    placeholder="Expected"
-                                    value={step.value || ''}
-                                    onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                    className={`flex-1 min-w-[100px] h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-pastel-mint text-pastel-ink-mint font-semibold px-4`}
-                                />
+                                </label>
+                                <label className="flex min-w-0 flex-col gap-1">
+                                    <span className="text-xs font-medium text-ink-soft">Read</span>
+                                    <Select value={step.params?.source || 'text'} onValueChange={(value) => updateParams('source', value)}>
+                                        <SelectTrigger aria-label="What to read from the element" className="h-11 w-full rounded-xl border border-input bg-white text-ink shadow-none focus:ring-ring/30">
+                                            <SelectValue placeholder="Source" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="text">Text content</SelectItem>
+                                            <SelectItem value="value">Input value</SelectItem>
+                                            <SelectItem value="attribute">Attribute</SelectItem>
+                                            <SelectItem value="count">Count</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </label>
+                                {step.params?.source === 'attribute' ? (
+                                    <label className="flex min-w-0 flex-col gap-1 sm:w-32">
+                                        <span className="text-xs font-medium text-ink-soft">Attribute</span>
+                                        <Input
+                                            placeholder="e.g. class"
+                                            value={step.params?.attribute || ''}
+                                            onChange={(e) => updateParams('attribute', e.target.value)}
+                                            className="h-11 w-full min-w-0 rounded-xl border border-input bg-white px-4 shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                                        />
+                                    </label>
+                                ) : <span className="hidden sm:block" aria-hidden="true" />}
+                                <label className="flex min-w-0 flex-col gap-1">
+                                    <span className="text-xs font-medium text-ink-soft">Compare</span>
+                                    <Select value={step.params?.operator || 'equals'} onValueChange={(value) => updateParams('operator', value)}>
+                                        <SelectTrigger aria-label="How to compare" className="h-11 w-full rounded-xl border border-input bg-white text-ink shadow-none focus:ring-ring/30">
+                                            <SelectValue placeholder="Operator" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="equals">Equals</SelectItem>
+                                            <SelectItem value="contains">Contains</SelectItem>
+                                            <SelectItem value="matches">Matches (regex)</SelectItem>
+                                            <SelectItem value="gt">Greater than</SelectItem>
+                                            <SelectItem value="lt">Less than</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </label>
+                                <label className="flex min-w-0 flex-col gap-1">
+                                    <span className="text-xs font-medium text-ink-soft">Expected</span>
+                                    <Input
+                                        placeholder="Expected value"
+                                        value={step.value || ''}
+                                        onChange={(e) => updateStep(step.id, 'value', e.target.value)}
+                                        className="h-11 w-full min-w-0 rounded-xl border border-input bg-white px-4 font-medium shadow-none focus-visible:ring-2 focus-visible:ring-ring/30"
+                                    />
+                                </label>
                             </div>
                         ) : (step.type as string) === '' ? (
-                            <div className="flex-1 min-w-0 min-h-12 rounded-xl px-4 flex items-center text-sm text-ink-soft">
+                            <div className="flex-1 min-w-0 min-h-11 rounded-xl px-4 flex items-center text-sm text-ink-soft">
                                 Choose an action from the menu to set up this step
                             </div>
                         ) : step.type === 'expect-visual-match' ? (
-                            <div className={`flex-1 min-w-0 min-h-12 rounded-xl bg-background px-4 py-2 flex items-center text-sm text-ink-soft`}>
+                            <div className={`flex-1 min-w-0 min-h-11 rounded-xl bg-background px-4 py-2 flex items-center text-sm text-ink-soft`}>
                                 Captures a full-page screenshot and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.
                             </div>
                         ) : step.type.startsWith('mobile-') ? (
@@ -365,7 +389,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                app build pinned at run time. */
                             <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
                                 {(step.type === 'mobile-launch-app' || step.type === 'mobile-terminate-app' || step.type === 'mobile-screenshot' || step.type === 'mobile-expect-visual-match') ? (
-                                    <div className="flex-1 min-w-0 min-h-12 rounded-xl bg-background px-4 py-2 flex items-center text-sm text-ink-soft">
+                                    <div className="flex-1 min-w-0 min-h-11 rounded-xl bg-background px-4 py-2 flex items-center text-sm text-ink-soft">
                                         {step.type === 'mobile-launch-app' ? "Launches the run's pinned app build — no inputs needed." :
                                             step.type === 'mobile-terminate-app' ? 'Force-stops the app (cold-start / state tests) — no inputs needed.' :
                                                 step.type === 'mobile-expect-visual-match' ? 'Captures the device screen and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.' :
@@ -377,7 +401,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             value={step.params?.direction || 'up'}
                                             onValueChange={(value) => updateParams('direction', value)}
                                         >
-                                            <SelectTrigger className={`w-40 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none text-ink`}>
+                                            <SelectTrigger className={`w-40 shrink-0 h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none text-ink`}>
                                                 <SelectValue placeholder="Direction" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -391,7 +415,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             placeholder="Distance 0–1 (default 0.5)"
                                             value={step.params?.distance || ''}
                                             onChange={(e) => updateParams('distance', e.target.value)}
-                                            className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                            className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                         />
                                     </>
                                 ) : step.type === 'mobile-press-key' ? (
@@ -399,7 +423,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         value={step.value || 'back'}
                                         onValueChange={(value) => updateStep(step.id, 'value', value)}
                                     >
-                                        <SelectTrigger className={`w-48 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none text-ink`}>
+                                        <SelectTrigger className={`w-48 shrink-0 h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none text-ink`}>
                                             <SelectValue placeholder="Key" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -414,7 +438,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             placeholder="Locator: ~accessibility-id, xpath=…, id=…, android=…, ios=…"
                                             value={step.selector || ''}
                                             onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
-                                            className={`flex-[2] min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
+                                            className={`flex-[2] min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
                                         />
                                         {(step.type === 'mobile-type' || step.type === 'mobile-expect-text' || step.type === 'mobile-extract-value') && (
                                             <Input
@@ -423,7 +447,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                         'Expected text (substring)'}
                                                 value={step.value || ''}
                                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                                className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                                className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                             />
                                         )}
                                         {step.type === 'mobile-wait-for' && (
@@ -431,7 +455,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                 placeholder="Timeout ms (default 10000)"
                                                 value={step.params?.timeout_ms || ''}
                                                 onChange={(e) => updateParams('timeout_ms', e.target.value)}
-                                                className={`w-48 shrink-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                                className={`w-48 shrink-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                             />
                                         )}
                                         {step.type === 'mobile-long-press' && (
@@ -439,7 +463,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                 placeholder="Hold ms (default 800)"
                                                 value={step.params?.duration_ms || ''}
                                                 onChange={(e) => updateParams('duration_ms', e.target.value)}
-                                                className={`w-44 shrink-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                                className={`w-44 shrink-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                             />
                                         )}
                                     </>
@@ -447,10 +471,13 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             </div>
                         ) : (
                             /* Default UI for other steps */
-                            <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row">
+                            <div className="flex-1 flex gap-2 w-full flex-col sm:flex-row sm:items-end">
+                                <label className="flex min-w-0 flex-[2] flex-col gap-1">
+                                    <span className="text-xs font-medium text-ink-soft">{step.type === 'goto' ? 'URL' : step.type === 'expect-url' ? 'URL should contain' : step.type === 'expect-title' ? 'Page title' : step.type === 'press-key' ? 'Key' : step.type === 'wait-timeout' ? 'Wait (ms)' : step.type === 'screenshot' ? 'Screenshot name' : step.type === 'switch-tab' ? 'Tab' : step.type === 'wait-for-response' ? 'Response URL contains' : step.type === 'download-file' ? 'Trigger element (optional)' : 'Element'}</span>
                                 <Input
                                     placeholder={
                                         step.type === 'goto' ? "https://example.com" :
+                                            step.type === 'expect-title' ? "Text the page title should contain" :
                                             step.type === 'press-key' ? "Key (e.g., Enter)" :
                                                 step.type === 'wait-timeout' ? "Timeout in ms" :
                                                     step.type === 'screenshot' ? "Screenshot name" :
@@ -459,39 +486,62 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                                 step.type === 'download-file' ? "(optional) trigger selector" :
                                                                     "Selector (e.g., #submit-btn)"
                                     }
-                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
-                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
-                                    className={`flex-[2] min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
+                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
+                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
+                                    className={`w-full min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
                                 />
+                                </label>
 
-                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
+                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
                                     <Button
                                         type="button"
                                         variant="ghost"
                                         onClick={() => setShowPicker(true)}
                                         title="Pick element from a rendered page"
                                         aria-label="Pick element from a rendered page"
-                                        className="h-12 w-12 shrink-0 rounded-xl border border-border bg-white text-ink-soft hover:text-ink hover:bg-background"
+                                        className="h-11 shrink-0 gap-1.5 rounded-xl border border-input bg-white px-3 text-ink hover:bg-background"
                                     >
-                                        <Crosshair size={18} />
+                                        <Crosshair size={16} /> Pick
                                     </Button>
                                 )}
 
                                 {step.type === 'extract-value' && (
                                     <Input
-                                        placeholder="Variable Name"
+                                        aria-label="Save as variable"
+                                        placeholder="Save as variable (use as {{name}})"
                                         value={step.value || ''}
                                         onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                        className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                        className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                     />
                                 )}
 
+                                {step.type === 'expect-title' && (
+                                    <label className="flex shrink-0 flex-col gap-1">
+                                        <span className="text-xs font-medium text-ink-soft">Compare</span>
+                                        <Select
+                                        value={step.params?.operator || 'contains'}
+                                        onValueChange={(value) => updateParams('operator', value)}
+                                    >
+                                        <SelectTrigger aria-label="How to compare the title" className="h-11 w-40 rounded-xl border border-input bg-white shadow-none">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="contains">Contains</SelectItem>
+                                            <SelectItem value="equals">Equals</SelectItem>
+                                            <SelectItem value="matches">Matches (regex)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    </label>
+                                )}
+
                                 {step.type === 'goto' && (
-                                    <Select
+                                    <label className="flex shrink-0 flex-col gap-1">
+                                        <span className="text-xs font-medium text-ink-soft">Wait until</span>
+                                        <Select
                                         value={step.params?.wait_until || 'domcontentloaded'}
                                         onValueChange={(value) => updateParams('wait_until', value)}
                                     >
-                                        <SelectTrigger className={`w-36 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none text-ink`}>
+                                        <SelectTrigger className={`w-40 h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none text-ink`}>
                                             <SelectValue placeholder="Wait Until" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -501,10 +551,13 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             <SelectItem value="commit">Commit</SelectItem>
                                         </SelectContent>
                                     </Select>
+                                    </label>
                                 )}
 
                                 {(step.type === 'fill' || step.type === 'expect-text' || step.type === 'expect-not-text' || step.type === 'select-option' || step.type === 'drag-and-drop' || step.type === 'upload-file') && (
-                                    <Input
+                                    <label className="flex min-w-0 flex-1 flex-col gap-1">
+                                        <span className="text-xs font-medium text-ink-soft">{step.type === 'fill' ? 'Text to type' : step.type === 'select-option' ? 'Option' : step.type === 'drag-and-drop' ? 'Drop target' : step.type === 'upload-file' ? 'File path(s), optional' : step.type === 'expect-not-text' ? 'Must not show' : 'Should show'}</span>
+                                        <Input
                                         placeholder={
                                             step.type === 'fill' ? "Value to format" :
                                                 step.type === 'select-option' ? "Option value" :
@@ -515,8 +568,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         }
                                         value={step.value || ''}
                                         onChange={(e) => updateStep(step.id, 'value', e.target.value)}
-                                        className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                        className={`w-full min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                     />
+                                    </label>
                                 )}
 
                                 {step.type === 'handle-dialog' && (
@@ -525,7 +579,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             value={step.params?.action || 'accept'}
                                             onValueChange={(value) => updateParams('action', value)}
                                         >
-                                            <SelectTrigger className={`w-32 shrink-0 h-12 rounded-xl focus:ring-ring/30 bg-white border border-border shadow-none text-ink`}>
+                                            <SelectTrigger className={`w-32 shrink-0 h-11 rounded-xl focus:ring-ring/30 bg-white border border-input shadow-none text-ink`}>
                                                 <SelectValue placeholder="Action" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -537,7 +591,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             placeholder="Prompt text (optional)"
                                             value={step.params?.prompt_text || ''}
                                             onChange={(e) => updateParams('prompt_text', e.target.value)}
-                                            className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                            className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                         />
                                     </>
                                 )}
@@ -547,7 +601,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         placeholder="Trigger selector (optional click)"
                                         value={step.params?.trigger_selector || ''}
                                         onChange={(e) => updateParams('trigger_selector', e.target.value)}
-                                        className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
+                                        className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4 font-mono`}
                                     />
                                 )}
 
@@ -556,7 +610,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         placeholder="Status (optional)"
                                         value={step.params?.status || ''}
                                         onChange={(e) => updateParams('status', e.target.value)}
-                                        className={`w-28 shrink-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                        className={`w-28 shrink-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                     />
                                 )}
 
@@ -565,7 +619,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         placeholder="Filename contains (optional)"
                                         value={step.params?.filename_contains || ''}
                                         onChange={(e) => updateParams('filename_contains', e.target.value)}
-                                        className={`flex-1 min-w-0 h-12 rounded-xl border border-border shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
+                                        className={`flex-1 min-w-0 h-11 rounded-xl border border-input shadow-none focus-visible:ring-2 focus-visible:ring-ring/30 bg-white px-4`}
                                     />
                                 )}
                             </div>
@@ -917,17 +971,6 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                         </div>
                     </div>
                 )}
-            </div>
-
-            {/* Step actions: shown on hover and whenever focus is inside the step */}
-            <div className="absolute -bottom-5 right-4 items-center flex pointer-events-none z-30 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-                <div role="toolbar" aria-label={`Step ${index + 1} actions`} className="bg-white border border-border shadow-[0_4px_16px_rgba(28,27,34,0.10)] rounded-full p-1 flex flex-row items-center gap-0.5 pointer-events-auto">
-                    <Button variant="ghost" size="icon" title="Move up" aria-label="Move step up" onClick={() => moveStep(index, 'up')} disabled={isFirst} className="h-9 w-9 text-ink-soft hover:text-ink disabled:opacity-30"><ArrowUp size={15} /></Button>
-                    <Button variant="ghost" size="icon" title="Move down" aria-label="Move step down" onClick={() => moveStep(index, 'down')} disabled={isLast} className="h-9 w-9 text-ink-soft hover:text-ink disabled:opacity-30"><ArrowDown size={15} /></Button>
-                    <Button variant="ghost" size="icon" title="Insert step below" aria-label="Insert step below" onClick={() => insertStep(index)} className="h-9 w-9 text-ink-soft hover:text-ink"><PlusCircle size={15} /></Button>
-                    <div className="h-5 w-px bg-border mx-0.5" aria-hidden="true" />
-                    <Button variant="ghost" size="icon" title="Delete step" aria-label="Delete step" onClick={() => removeStep(step.id)} className="h-9 w-9 text-ink-soft hover:text-pastel-ink-peach hover:bg-pastel-peach"><Trash2 size={15} /></Button>
-                </div>
             </div>
 
             <ElementPickerDialog
