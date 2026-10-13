@@ -81,6 +81,8 @@ export default function Billing() {
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3" aria-busy="true" aria-label="Loading">
                     {[0, 1, 2].map((i) => <div key={i} className="h-[112px] animate-pulse rounded-2xl bg-white/70" />)}
                 </div>
+            ) : status.isError ? (
+                <EmptyState title="Couldn't load this workspace's plan">{errDetail(status.error)}</EmptyState>
             ) : st && (
                 <div className="flex flex-col gap-5">
                     <section aria-label="Current plan" className="flex flex-col gap-3">
