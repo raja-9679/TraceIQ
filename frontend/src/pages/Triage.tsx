@@ -1,43 +1,61 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-    Bug, RefreshCw, AlertCircle, Layers, Ticket, ExternalLink, ChevronRight,
-} from 'lucide-react';
+import { formatDistanceToNowStrict } from 'date-fns';
+import { RefreshCw, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getProjects, getWorkspaces } from '@/lib/api';
+import { getWorkspaces } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { triageApi, FailureCluster } from '@/api/triage';
 import { ticketsApi } from '@/api/tickets';
+import {
+    DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import type { Tone } from '@/components/redesign/kinds';
+import { cn } from '@/lib/utils';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
+const ago = (iso: string | null | undefined) => (iso ? formatDistanceToNowStrict(new Date(iso), { addSuffix: true }) : 'never');
 
-const CAT_TONE: Record<string, string> = {
-    selector: 'bg-violet-50 text-violet-700 border-violet-200',
-    timeout: 'bg-amber-50 text-amber-700 border-amber-200',
-    assertion: 'bg-sky-50 text-sky-700 border-sky-200',
-    network: 'bg-rose-50 text-rose-700 border-rose-200',
-    navigation: 'bg-orange-50 text-orange-700 border-orange-200',
-    other: 'bg-slate-50 text-slate-600 border-slate-200',
+const CATEGORY: Record<string, { label: string; tone: Tone; explain: string }> = {
+    selector: { label: 'Selector', tone: 'lavender', explain: 'An element the test looks for could not be found. Usually the page changed, so the locator needs updating.' },
+    timeout: { label: 'Timeout', tone: 'butter', explain: 'Something took longer than the test was willing to wait. Check for a slow backend or an environment problem before blaming the test.' },
+    assertion: { label: 'Assertion', tone: 'neutral', explain: 'The page loaded but showed something different from what the test expects. This is the most likely kind to be a real bug.' },
+    network: { label: 'Network', tone: 'peach', explain: 'A request failed or never got a response. Often the environment, not the code.' },
+    navigation: { label: 'Navigation', tone: 'pink', explain: 'The browser could not reach or finish loading a page.' },
+    other: { label: 'Other', tone: 'neutral', explain: 'These failures share the same error fingerprint but do not fit a known category.' },
 };
-const STATUS_TONE: Record<string, string> = {
-    open: 'bg-rose-50 text-rose-700 border-rose-200',
-    investigating: 'bg-amber-50 text-amber-700 border-amber-200',
-    resolved: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    ignored: 'bg-slate-50 text-slate-500 border-slate-200',
+const cat = (c: string) => CATEGORY[c] ?? { ...CATEGORY.other, label: c };
+
+const STATUS: Record<FailureCluster['status'], { label: string; tone: Tone }> = {
+    open: { label: 'Open', tone: 'peach' },
+    investigating: { label: 'Investigating', tone: 'butter' },
+    resolved: { label: 'Resolved', tone: 'mint' },
+    ignored: { label: 'Ignored', tone: 'neutral' },
 };
 const STATUSES = ['open', 'investigating', 'resolved', 'ignored'];
+const FILTERS = [...STATUSES, 'all'];
 
-function ClusterCard({ cluster }: { cluster: FailureCluster }) {
+function Fact({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="flex flex-col gap-1 rounded-2xl bg-background p-4">
+            <span className="text-xs text-ink-soft">{label}</span>
+            <span className="text-xl font-bold tracking-tight tabular-nums text-ink">{value}</span>
+        </div>
+    );
+}
+
+function ClusterDetail({ cluster }: { cluster: FailureCluster }) {
     const qc = useQueryClient();
-    const [open, setOpen] = useState(false);
-    const detail = useQuery({ queryKey: ['cluster', cluster.id], queryFn: () => triageApi.get(cluster.id), enabled: open });
+    const detail = useQuery({ queryKey: ['cluster', cluster.id], queryFn: () => triageApi.get(cluster.id) });
 
     // trackers for the one-ticket-per-cluster action
-    const { data: workspaces } = useQuery({ queryKey: ['workspaces'], queryFn: getWorkspaces, enabled: open });
+    const { data: workspaces } = useQuery({ queryKey: ['workspaces'], queryFn: getWorkspaces });
     const wsId = workspaces?.[0]?.id ?? null;
-    const trackers = useQuery({ queryKey: ['trackers', wsId], queryFn: () => ticketsApi.listConfigs(wsId!), enabled: open && !!wsId });
+    const trackers = useQuery({ queryKey: ['trackers', wsId], queryFn: () => ticketsApi.listConfigs(wsId!), enabled: !!wsId });
     const [trackerId, setTrackerId] = useState('');
 
     const setStatus = useMutation({
@@ -51,147 +69,175 @@ function ClusterCard({ cluster }: { cluster: FailureCluster }) {
         onError: (e) => toast.error(errDetail(e)),
     });
 
+    const c = cat(cluster.category);
+    const enabledTrackers = (trackers.data || []).filter((t) => t.enabled);
+
     return (
-        <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-3 p-4">
-                <button onClick={() => setOpen(!open)} className="text-slate-400 hover:text-slate-700 shrink-0">
-                    <ChevronRight className={`w-4 h-4 transition-transform ${open ? 'rotate-90' : ''}`} />
-                </button>
-                <div className="min-w-0 flex-1 cursor-pointer" onClick={() => setOpen(!open)}>
-                    <div className="font-semibold text-slate-800 text-sm truncate">{cluster.title}</div>
-                    <div className="text-xs text-slate-400 mt-0.5">
-                        last seen {new Date(cluster.last_seen_at).toLocaleString()}
-                        {cluster.last_run_id ? ` · run #${cluster.last_run_id}` : ''}
-                    </div>
+        <DetailCard label="Selected failure cluster">
+            <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                    <Pill tone={STATUS[cluster.status]?.tone ?? 'neutral'}>{STATUS[cluster.status]?.label ?? cluster.status}</Pill>
+                    <Pill tone={c.tone}>{c.label}</Pill>
                 </div>
-                <Badge variant="outline" className={`rounded-md text-[10px] font-bold uppercase shrink-0 ${CAT_TONE[cluster.category] || CAT_TONE.other}`}>{cluster.category}</Badge>
-                <span className="text-sm font-bold text-slate-700 tabular-nums shrink-0" title="occurrences">×{cluster.occurrence_count}</span>
-                <Select value={cluster.status} onValueChange={(v) => setStatus.mutate(v)}>
-                    <SelectTrigger className={`h-7 w-[130px] text-xs rounded-md border ${STATUS_TONE[cluster.status]}`}><SelectValue /></SelectTrigger>
-                    <SelectContent>{STATUSES.map((st) => <SelectItem key={st} value={st}>{st}</SelectItem>)}</SelectContent>
-                </Select>
+                <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{cluster.title}</h2>
+                <span className="text-sm text-ink-soft">
+                    Last seen {ago(cluster.last_seen_at)}{cluster.last_run_id ? ` in run #${cluster.last_run_id}` : ''}
+                </span>
             </div>
-            {open && (
-                <div className="border-t border-slate-100 p-4 bg-slate-50/30 space-y-4">
-                    {cluster.sample_error && (
-                        <pre className="text-xs bg-slate-900 text-slate-100 rounded-lg p-3 overflow-x-auto whitespace-pre-wrap">{cluster.sample_error}</pre>
-                    )}
-                    <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Occurrences</div>
-                        {!detail.data ? <RefreshCw className="animate-spin w-4 h-4 text-slate-400" /> : (
-                            <div className="space-y-1">
-                                {detail.data.occurrences.map((o) => (
-                                    <a key={o.result_id} href={`/runs/${o.run_id}`} className="flex items-center justify-between text-sm hover:bg-white rounded px-2 py-1">
-                                        <span className="text-slate-600 truncate">{o.test_name}</span>
-                                        <span className="text-xs text-indigo-600 shrink-0">run #{o.run_id} <ExternalLink className="w-3 h-3 inline" /></span>
-                                    </a>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <div className="flex items-end gap-2 border-t border-slate-100 pt-3">
-                        <div className="flex-1 max-w-xs">
-                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">File one ticket for this cluster</div>
-                            <Select value={trackerId} onValueChange={setTrackerId}>
-                                <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select tracker" /></SelectTrigger>
-                                <SelectContent>{(trackers.data || []).filter((c) => c.enabled).map((c) => <SelectItem key={c.id} value={c.id.toString()}>{c.name} ({c.provider})</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                        <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs gap-1.5" disabled={!trackerId || fileTicket.isPending} onClick={() => fileTicket.mutate()}>
-                            <Ticket className="w-3.5 h-3.5" /> Create ticket
-                        </Button>
-                    </div>
+
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
+                <Fact label="Times it failed" value={String(cluster.occurrence_count)} />
+                <Fact label="First seen" value={ago(cluster.first_seen_at)} />
+                <Fact label="Last seen" value={ago(cluster.last_seen_at)} />
+            </div>
+
+            <Panel title="What this means" callout>
+                {cluster.occurrence_count === 1 ? 'One failure' : `${cluster.occurrence_count} failures`} share the same root cause, so fixing it once clears the group. {c.explain}
+            </Panel>
+
+            {cluster.sample_error && (
+                <div className="flex flex-col gap-2">
+                    <Eyebrow>Sample error</Eyebrow>
+                    <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-border bg-background p-4 font-mono text-xs leading-relaxed text-ink">{cluster.sample_error}</pre>
                 </div>
             )}
-        </div>
+
+            {!detail.data ? (
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading occurrences">
+                    {[0, 1].map((i) => <div key={i} className="h-12 animate-pulse rounded-2xl bg-background" />)}
+                </div>
+            ) : (
+                <EvidenceList
+                    items={detail.data.occurrences.map((o) => ({
+                        tag: `run #${o.run_id}`,
+                        text: o.test_name,
+                        to: `/runs/${o.run_id}`,
+                    }))}
+                />
+            )}
+
+            <div className="flex flex-col gap-3 border-t border-border pt-5">
+                <div className="flex flex-wrap items-end gap-3">
+                    <label className="flex flex-col gap-1.5 text-[13px] text-ink-soft">
+                        Status
+                        <Select value={cluster.status} onValueChange={(v) => setStatus.mutate(v)}>
+                            <SelectTrigger className="h-10 w-[170px] rounded-full bg-white text-ink" aria-label="Cluster status"><SelectValue /></SelectTrigger>
+                            <SelectContent>{STATUSES.map((st) => <SelectItem key={st} value={st}>{STATUS[st as FailureCluster['status']].label}</SelectItem>)}</SelectContent>
+                        </Select>
+                    </label>
+                    <label className="flex min-w-[200px] flex-1 flex-col gap-1.5 text-[13px] text-ink-soft sm:max-w-xs">
+                        File one ticket for this whole group
+                        <Select value={trackerId} onValueChange={setTrackerId}>
+                            <SelectTrigger className="h-10 rounded-full bg-white text-ink" aria-label="Issue tracker"><SelectValue placeholder="Select tracker" /></SelectTrigger>
+                            <SelectContent>{enabledTrackers.map((t) => <SelectItem key={t.id} value={t.id.toString()}>{t.name} ({t.provider})</SelectItem>)}</SelectContent>
+                        </Select>
+                    </label>
+                    <Button variant="outline" disabled={!trackerId || fileTicket.isPending} onClick={() => fileTicket.mutate()}>
+                        <Ticket className="h-4 w-4" /> Create ticket
+                    </Button>
+                </div>
+                <div className="flex flex-wrap gap-2.5">
+                    {cluster.last_run_id && (
+                        <Button asChild size="lg"><Link to={`/runs/${cluster.last_run_id}`}>Open latest failing run</Link></Button>
+                    )}
+                </div>
+            </div>
+        </DetailCard>
     );
 }
 
 export default function Triage() {
-    const [projectId, setProjectId] = useState<number | null>(() => {
-        const s = localStorage.getItem('activeProjectId'); return s ? parseInt(s) : null;
-    });
-    useEffect(() => {
-        const h = () => { const s = localStorage.getItem('activeProjectId'); setProjectId(s ? parseInt(s) : null); };
-        window.addEventListener('projectChanged', h);
-        return () => window.removeEventListener('projectChanged', h);
-    }, []);
+    const projectId = useActiveProjectId();
     const [statusFilter, setStatusFilter] = useState('open');
+    const [selectedId, setSelectedId] = useState<number | null>(null);
 
-    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
-    const selectProject = (idStr: string) => {
-        const id = parseInt(idStr); setProjectId(id);
-        localStorage.setItem('activeProjectId', id.toString());
-        window.dispatchEvent(new Event('projectChanged'));
-    };
     const clusters = useQuery({
         queryKey: ['clusters', projectId, statusFilter],
         queryFn: () => triageApi.list(projectId!, statusFilter === 'all' ? undefined : statusFilter),
         enabled: !!projectId,
     });
 
+    // Group by root-cause category; the biggest groups (by total failures) first,
+    // and the most frequent cluster first within each group.
+    const list = clusters.data ?? [];
+    const byCat = new Map<string, FailureCluster[]>();
+    for (const c of [...list].sort((a, b) => b.occurrence_count - a.occurrence_count)) {
+        byCat.set(c.category, [...(byCat.get(c.category) ?? []), c]);
+    }
+    const groups = [...byCat.entries()]
+        .map(([category, items]) => ({ category, items, total: items.reduce((n, c) => n + c.occurrence_count, 0) }))
+        .sort((a, b) => b.total - a.total);
+    const top = [...list].sort((a, b) => b.occurrence_count - a.occurrence_count)[0] ?? null;
+    const selected = list.find((c) => c.id === selectedId) ?? top;
+    const totalFailures = list.reduce((n, c) => n + c.occurrence_count, 0);
+
     return (
-        <div className="max-w-[1200px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Triage</span>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Triage"
+                subtitle={
+                    !projectId ? 'Pick a project in the sidebar.'
+                        : clusters.data ? `${list.length} problem${list.length === 1 ? '' : 's'} behind ${totalFailures} failure${totalFailures === 1 ? '' : 's'}. Fix one, and every failure in its group goes away.`
+                            : 'Failures grouped by root cause, so one problem is one item.'
+                }
+                actions={projectId ? (
+                    <Button variant="outline" onClick={() => clusters.refetch()} aria-label="Refresh clusters">
+                        <RefreshCw className={cn('h-4 w-4', clusters.isFetching && 'animate-spin')} /> Refresh
+                    </Button>
+                ) : undefined}
+            />
+
+            {projectId && (
+                <div role="tablist" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
+                    {FILTERS.map((f) => (
+                        <button
+                            key={f}
+                            type="button"
+                            role="tab"
+                            aria-selected={statusFilter === f}
+                            onClick={() => setStatusFilter(f)}
+                            className={cn(
+                                'min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors',
+                                statusFilter === f ? 'border-ink bg-ink text-white' : 'border-border bg-white text-ink hover:bg-secondary'
+                            )}
+                        >
+                            {f === 'all' ? 'All' : STATUS[f as FailureCluster['status']].label}
+                        </button>
+                    ))}
                 </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Failure Triage</h1>
-                        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Failures are fingerprinted and grouped by root cause, so one problem is one item —
-                            not forty. Triage a cluster, then file a single ticket for the whole group.
-                        </p>
-                    </div>
-                    <div className="sm:ml-auto flex items-end gap-3 shrink-0">
-                        <div>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Status</p>
-                            <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                <SelectTrigger className="w-[140px] h-10 rounded-xl bg-white border-slate-200"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="open">Open</SelectItem>
-                                    <SelectItem value="investigating">Investigating</SelectItem>
-                                    <SelectItem value="resolved">Resolved</SelectItem>
-                                    <SelectItem value="ignored">Ignored</SelectItem>
-                                    <SelectItem value="all">All</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</p>
-                            <Select value={projectId?.toString() ?? ''} onValueChange={selectProject}>
-                                <SelectTrigger className="w-[220px] h-10 rounded-xl bg-white border-slate-200">
-                                    <div className="flex items-center gap-2 min-w-0"><Layers className="w-4 h-4 text-indigo-500 shrink-0" /><SelectValue placeholder="Select a project" /></div>
-                                </SelectTrigger>
-                                <SelectContent>{(projects || []).map((p) => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            )}
 
             {!projectId ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500 text-sm">Select a project to see its failure clusters.</p>
-                </div>
+                <EmptyState title="Pick a project">Choose a project in the sidebar to see its failure clusters.</EmptyState>
             ) : clusters.isLoading ? (
-                <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
+                </div>
             ) : clusters.error ? (
-                <div className="p-10 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-                    <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" /><p className="text-rose-700 font-semibold">{errDetail(clusters.error)}</p>
-                </div>
-            ) : !clusters.data || clusters.data.length === 0 ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-                    <Bug className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-bold text-slate-800 mb-1">No {statusFilter === 'all' ? '' : statusFilter} failure clusters</h3>
-                    <p className="text-slate-500 text-sm max-w-md mx-auto">Failing runs are clustered automatically as they finalize.</p>
-                </div>
+                <EmptyState title="Couldn't load failure clusters">{errDetail(clusters.error)}</EmptyState>
+            ) : list.length === 0 ? (
+                <EmptyState title={`No ${statusFilter === 'all' ? '' : `${STATUS[statusFilter as FailureCluster['status']].label.toLowerCase()} `}failure clusters`}>
+                    Failing runs are grouped automatically as they finish.
+                </EmptyState>
             ) : (
-                <div className="space-y-2">
-                    {clusters.data.map((c) => <ClusterCard key={c.id} cluster={c} />)}
-                </div>
+                <SplitView
+                    list={groups.map((g) => (
+                        <ListGroup key={g.category} title={cat(g.category).label} count={g.items.length}>
+                            {g.items.map((c) => (
+                                <ListRow
+                                    key={c.id}
+                                    selected={selected?.id === c.id}
+                                    onSelect={() => setSelectedId(c.id)}
+                                    leading={<KindChip kind={c.status === 'resolved' ? 'pass' : c.status === 'ignored' ? 'skip' : 'failure'} size="sm" />}
+                                    title={<span className="line-clamp-2 break-words">{c.title}</span>}
+                                    meta={`${STATUS[c.status]?.label ?? c.status} · last seen ${ago(c.last_seen_at)}`}
+                                    trailing={<span className="font-mono text-[13px] tabular-nums text-ink" title="Times it failed">×{c.occurrence_count}</span>}
+                                />
+                            ))}
+                        </ListGroup>
+                    ))}
+                    detail={selected && <ClusterDetail key={selected.id} cluster={selected} />}
+                />
             )}
         </div>
     );
