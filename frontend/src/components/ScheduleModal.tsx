@@ -27,7 +27,7 @@ interface ScheduleModalProps {
 }
 
 const COMMON_CRON_EXPRESSIONS = [
-  { label: 'Every hour (* * * * *)', value: '0 * * * *' },
+  { label: 'Every hour (0 * * * *)', value: '0 * * * *' },
   { label: 'Every day at midnight (0 0 * * *)', value: '0 0 * * *' },
   { label: 'Every Monday at 9AM (0 9 * * 1)', value: '0 9 * * 1' },
   { label: 'Every Friday at 5PM (0 17 * * 5)', value: '0 17 * * 5' },
@@ -143,11 +143,11 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="rounded-3xl p-6 sm:max-w-[460px] sm:p-7">
         <DialogHeader>
-          <DialogTitle>{scheduleToEdit ? 'Edit Schedule' : 'Schedule Test Execution'}</DialogTitle>
-          <DialogDescription>
-            {scheduleToEdit ? 'Modify your existing test schedule' : <>Create a recurring schedule for <span className="font-semibold text-foreground">{targetName}</span></>}
+          <DialogTitle className="text-xl font-bold text-ink">{scheduleToEdit ? 'Edit schedule' : 'Schedule a test run'}</DialogTitle>
+          <DialogDescription className="text-ink-soft">
+            {scheduleToEdit ? 'Change when and where this schedule runs.' : <>Run <span className="font-semibold text-ink">{targetName}</span> automatically on a timer.</>}
           </DialogDescription>
         </DialogHeader>
         
@@ -156,6 +156,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
             <Label htmlFor="name">Name</Label>
             <Input 
               id="name" 
+              className="h-10 rounded-full"
               value={name} 
               onChange={e => setName(e.target.value)} 
               placeholder="E.g., Nightly Regression" 
@@ -163,9 +164,10 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
           </div>
           
           <div className="grid gap-2">
-            <Label htmlFor="description">Description (Optional)</Label>
+            <Label htmlFor="description">Description (optional)</Label>
             <Input 
               id="description" 
+              className="h-10 rounded-full"
               value={description} 
               onChange={e => setDescription(e.target.value)} 
               placeholder="Run every night to check critical flows" 
@@ -173,12 +175,12 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
           </div>
           
           <div className="grid gap-2">
-            <Label>Frequency (Cron Expression)</Label>
+            <Label htmlFor="schedule-frequency">How often</Label>
             <Select 
               value={isCustom ? 'custom' : cronExpression} 
               onValueChange={handleCronChange}
             >
-              <SelectTrigger>
+              <SelectTrigger id="schedule-frequency" className="h-10 rounded-full">
                 <SelectValue placeholder="Select frequency" />
               </SelectTrigger>
               <SelectContent>
@@ -192,7 +194,8 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
             
             {isCustom && (
               <Input 
-                className="mt-2"
+                className="mt-2 h-10 rounded-full font-mono"
+                aria-label="Custom cron expression"
                 placeholder="* * * * *" 
                 value={customCron} 
                 onChange={e => {
@@ -201,14 +204,14 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
                 }} 
               />
             )}
-            <p className="text-xs text-muted-foreground">Times are evaluated in UTC.</p>
+            <p className="text-xs text-ink-soft">Times are evaluated in UTC.</p>
           </div>
           
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
-              <Label>Browser</Label>
+              <Label htmlFor="schedule-browser">Browser</Label>
               <Select value={browser} onValueChange={setBrowser}>
-                <SelectTrigger>
+                <SelectTrigger id="schedule-browser" className="h-10 rounded-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -220,9 +223,9 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
             </div>
             
             <div className="grid gap-2">
-              <Label>Device</Label>
+              <Label htmlFor="schedule-device">Device</Label>
               <Select value={device} onValueChange={setDevice}>
-                <SelectTrigger>
+                <SelectTrigger id="schedule-device" className="h-10 rounded-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -236,13 +239,13 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
           </div>
         </div>
         
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button variant="outline" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={isPending}>
             {isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            {scheduleToEdit ? 'Save Changes' : 'Create Schedule'}
+            {scheduleToEdit ? 'Save changes' : 'Create schedule'}
           </Button>
         </DialogFooter>
       </DialogContent>

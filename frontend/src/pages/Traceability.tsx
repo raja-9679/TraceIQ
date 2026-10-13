@@ -1,61 +1,78 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-    GitMerge, RefreshCw, AlertCircle, Layers, CheckCircle2, XCircle, MinusCircle, HelpCircle, Link2, ExternalLink,
-} from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getProjects } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { traceApi, RequirementCoverage } from '@/api/traceability';
+import {
+    DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import type { Kind, Tone } from '@/components/redesign/kinds';
+import { SkeletonRows } from '@/components/redesign-local/groupB/bits';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
-const STATUS: Record<string, { tone: string; icon: any }> = {
-    passing: { tone: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-    failing: { tone: 'bg-rose-50 text-rose-700 border-rose-200', icon: XCircle },
-    mixed: { tone: 'bg-amber-50 text-amber-700 border-amber-200', icon: MinusCircle },
-    unknown: { tone: 'bg-slate-50 text-slate-500 border-slate-200', icon: HelpCircle },
-};
 
-function CoverageRow({ c }: { c: RequirementCoverage }) {
-    const [open, setOpen] = useState(false);
-    const S = STATUS[c.status] || STATUS.unknown;
+const STATUS: Record<RequirementCoverage['status'], { kind: Kind; tone: Tone; label: string; group: string }> = {
+    failing: { kind: 'failure', tone: 'peach', label: 'Failing', group: 'Failing' },
+    mixed: { kind: 'flaky', tone: 'butter', label: 'Mixed', group: 'Mixed results' },
+    passing: { kind: 'pass', tone: 'mint', label: 'Passing', group: 'Passing' },
+    unknown: { kind: 'skip', tone: 'neutral', label: 'Not run yet', group: 'Not run yet' },
+};
+const look = (s: string) => STATUS[s as RequirementCoverage['status']] ?? STATUS.unknown;
+
+function Count({ label, value }: { label: string; value: number }) {
     return (
-        <div className="border border-slate-200 rounded-xl overflow-hidden">
-            <button className="w-full flex items-center gap-3 p-4 hover:bg-slate-50/50 text-left" onClick={() => setOpen(!open)}>
-                <div className="min-w-0 flex-1">
-                    <div className="font-semibold text-slate-800 text-sm flex items-center gap-2">
-                        {c.url ? <a href={c.url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline" onClick={(e) => e.stopPropagation()}>{c.ref} <ExternalLink className="w-3 h-3 inline" /></a> : c.ref}
-                        {c.title && <span className="text-slate-400 font-normal">— {c.title}</span>}
-                    </div>
-                    <div className="text-xs text-slate-400 mt-0.5">{c.test_count} test(s) · {c.passing} passing · {c.failing} failing · {c.untested} untested</div>
-                </div>
-                <Badge variant="outline" className={`rounded-md text-[10px] font-bold uppercase shrink-0 ${S.tone}`}><S.icon className="w-3 h-3 mr-1" /> {c.status}</Badge>
-            </button>
-            {open && (
-                <div className="border-t border-slate-100 p-4 bg-slate-50/30">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Covered by</div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {c.test_names.map((n) => <Badge key={n} variant="outline" className="rounded-md bg-white text-slate-600 border-slate-200">{n}</Badge>)}
-                    </div>
-                </div>
-            )}
+        <div className="flex flex-col gap-1 rounded-2xl bg-background p-4">
+            <span className="text-xs text-ink-soft">{label}</span>
+            <span className="text-2xl font-bold tracking-tight text-ink tabular-nums">{value}</span>
         </div>
+    );
+}
+
+function RequirementDetail({ c }: { c: RequirementCoverage }) {
+    const S = look(c.status);
+    return (
+        <DetailCard label="Selected requirement">
+            <div className="flex flex-col gap-2">
+                <Pill tone={S.tone} className="self-start">{S.label}</Pill>
+                <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">
+                    {c.url ? (
+                        <a href={c.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 hover:underline">
+                            {c.ref} <ExternalLink className="h-4 w-4 text-ink-soft" aria-label="opens in a new tab" />
+                        </a>
+                    ) : c.ref}
+                </h2>
+                {c.title && <span className="text-sm text-ink-soft">{c.title}</span>}
+            </div>
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(120px,1fr))] gap-3">
+                <Count label="Tests" value={c.test_count} />
+                <Count label="Passing" value={c.passing} />
+                <Count label="Failing" value={c.failing} />
+                <Count label="Not run yet" value={c.untested} />
+            </div>
+            <div className="flex flex-col gap-2">
+                <Eyebrow>Covered by</Eyebrow>
+                {c.test_names.length === 0 ? (
+                    <p className="text-sm text-ink-soft">No tests linked.</p>
+                ) : (
+                    <ul className="flex flex-wrap gap-1.5">
+                        {c.test_names.map((n) => (
+                            <li key={n} className="rounded-full border border-border px-3 py-1 text-[13px] text-ink">{n}</li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </DetailCard>
     );
 }
 
 export default function Traceability() {
     const qc = useQueryClient();
-    const [projectId, setProjectId] = useState<number | null>(() => { const s = localStorage.getItem('activeProjectId'); return s ? parseInt(s) : null; });
-    useEffect(() => {
-        const h = () => { const s = localStorage.getItem('activeProjectId'); setProjectId(s ? parseInt(s) : null); };
-        window.addEventListener('projectChanged', h);
-        return () => window.removeEventListener('projectChanged', h);
-    }, []);
-    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
-    const selectProject = (idStr: string) => { const id = parseInt(idStr); setProjectId(id); localStorage.setItem('activeProjectId', id.toString()); window.dispatchEvent(new Event('projectChanged')); };
+    const projectId = useActiveProjectId();
+    const [selectedRef, setSelectedRef] = useState<string | null>(null);
 
     const reqs = useQuery({ queryKey: ['requirements', projectId], queryFn: () => traceApi.requirements(projectId!), enabled: !!projectId });
     const gaps = useQuery({ queryKey: ['trace-gaps', projectId], queryFn: () => traceApi.gaps(projectId!), enabled: !!projectId });
@@ -69,77 +86,96 @@ export default function Traceability() {
 
     const tracedPct = gaps.data && gaps.data.total_cases ? Math.round((gaps.data.traced_cases / gaps.data.total_cases) * 100) : 0;
 
+    const list = reqs.data ?? [];
+    const groups = (['failing', 'mixed', 'passing', 'unknown'] as const)
+        .map((s) => ({ name: STATUS[s].group, items: list.filter((c) => (STATUS[c.status] ? c.status : 'unknown') === s) }))
+        .filter((g) => g.items.length > 0);
+    const selected = list.find((c) => c.ref === selectedRef) ?? groups[0]?.items[0] ?? null;
+
     return (
-        <div className="max-w-[1200px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Traceability</span>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Requirements Traceability</h1>
-                        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Link tests to requirements or tickets (e.g. <code className="text-sm bg-slate-100 px-1 rounded">JIRA-123</code>) to answer
-                            "is this covered and passing?" and see what's untested.
-                        </p>
-                    </div>
-                    <div className="sm:ml-auto shrink-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</p>
-                        <Select value={projectId?.toString() ?? ''} onValueChange={selectProject}>
-                            <SelectTrigger className="w-[220px] h-10 rounded-xl bg-white border-slate-200"><div className="flex items-center gap-2 min-w-0"><Layers className="w-4 h-4 text-indigo-500 shrink-0" /><SelectValue placeholder="Select a project" /></div></SelectTrigger>
-                            <SelectContent>{(projects || []).map((p) => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </div>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Traceability"
+                subtitle={<>Link tests to requirements or tickets (like <code className="rounded bg-secondary px-1 text-[13px]">JIRA-123</code>) to see what is covered, passing, or untested.</>}
+            />
 
             {!projectId ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl"><AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-sm">Select a project.</p></div>
+                <EmptyState title="Pick a project">Choose a project in the sidebar to see its requirements.</EmptyState>
             ) : (
-                <div className="space-y-6">
+                <>
                     {gaps.data && (
-                        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                            <div className="flex items-center justify-between mb-2">
-                                <h3 className="font-bold text-slate-800">Coverage</h3>
-                                <span className="text-sm text-slate-500 tabular-nums">{gaps.data.traced_cases} / {gaps.data.total_cases} tests linked ({tracedPct}%)</span>
+                        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-white px-5 py-4">
+                            <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                <span className="text-[13px] text-ink-soft">Tests linked to a requirement</span>
+                                <span className="text-sm text-ink-soft tabular-nums">{gaps.data.traced_cases} of {gaps.data.total_cases}</span>
                             </div>
-                            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${Math.max(2, tracedPct)}%` }} />
+                            <span className="text-[26px] font-bold leading-tight tracking-tight text-ink tabular-nums">{tracedPct}%</span>
+                            <div
+                                className="h-2 overflow-hidden rounded-full bg-secondary"
+                                role="progressbar" aria-valuenow={tracedPct} aria-valuemin={0} aria-valuemax={100} aria-label="Share of tests linked"
+                            >
+                                <div className="h-full rounded-full bg-ink" style={{ width: `${Math.max(2, tracedPct)}%` }} />
                             </div>
                         </div>
                     )}
 
-                    <div>
-                        <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><GitMerge className="w-4 h-4 text-slate-500" /> Requirements</h3>
-                        {reqs.isLoading ? <div className="p-8 flex justify-center"><RefreshCw className="animate-spin w-5 h-5 text-slate-400" /></div>
-                            : reqs.error ? <p className="text-sm text-rose-600">{errDetail(reqs.error)}</p>
-                                : !reqs.data || reqs.data.length === 0 ? (
-                                    <div className="p-10 text-center bg-white border border-slate-200 rounded-2xl">
-                                        <GitMerge className="w-9 h-9 text-slate-300 mx-auto mb-3" />
-                                        <p className="text-slate-500 text-sm">No requirements linked yet. Link some untraced tests below.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-2">{reqs.data.map((c) => <CoverageRow key={c.ref} c={c} />)}</div>
-                                )}
-                    </div>
+                    {reqs.isLoading ? (
+                        <SkeletonRows count={3} className="max-w-[440px]" />
+                    ) : reqs.error ? (
+                        <EmptyState title="Couldn't load requirements">{errDetail(reqs.error)}</EmptyState>
+                    ) : list.length === 0 ? (
+                        <EmptyState title="No requirements linked yet">Link some untraced tests below.</EmptyState>
+                    ) : (
+                        <SplitView
+                            list={groups.map((g) => (
+                                <ListGroup key={g.name} title={g.name} count={g.items.length}>
+                                    {g.items.map((c) => (
+                                        <ListRow
+                                            key={c.ref}
+                                            selected={selected?.ref === c.ref}
+                                            onSelect={() => setSelectedRef(c.ref)}
+                                            leading={<KindChip kind={look(c.status).kind} size="sm" />}
+                                            title={<>{c.ref}{c.title && <span className="font-normal text-ink-soft"> — {c.title}</span>}</>}
+                                            meta={`${c.test_count} test${c.test_count === 1 ? '' : 's'} · ${c.passing} passing · ${c.failing} failing · ${c.untested} untested`}
+                                        />
+                                    ))}
+                                </ListGroup>
+                            ))}
+                            detail={selected && <RequirementDetail c={selected} />}
+                        />
+                    )}
 
                     {gaps.data && gaps.data.untraced_cases.length > 0 && (
-                        <div>
-                            <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><Link2 className="w-4 h-4 text-slate-500" /> Untraced tests ({gaps.data.untraced_cases.length})</h3>
-                            <div className="bg-white border border-slate-200 rounded-2xl divide-y divide-slate-100 max-h-[420px] overflow-y-auto">
-                                {gaps.data.untraced_cases.slice(0, 200).map((c) => (
-                                    <div key={c.id} className="flex items-center gap-2 px-4 py-2">
-                                        <span className="text-sm text-slate-600 flex-1 truncate">{c.name}</span>
-                                        <Input value={linkRefs[c.id] || ''} onChange={(e) => setLinkRefs((m) => ({ ...m, [c.id]: e.target.value }))} placeholder="REQ / ticket ref" className="h-8 w-44" />
-                                        <Button size="sm" variant="outline" className="h-8 text-xs" disabled={!(linkRefs[c.id] || '').trim() || link.isPending}
-                                            onClick={() => link.mutate({ caseId: c.id, ref: (linkRefs[c.id] || '').trim() })}>Link</Button>
-                                    </div>
-                                ))}
-                                {gaps.data.untraced_cases.length > 200 && <div className="px-4 py-2 text-xs text-slate-400">…and {gaps.data.untraced_cases.length - 200} more</div>}
+                        <section className="flex flex-col gap-3 rounded-3xl border border-border bg-white p-6">
+                            <div className="flex flex-col gap-1">
+                                <h2 className="text-base font-semibold text-ink">Untraced tests · {gaps.data.untraced_cases.length}</h2>
+                                <p className="text-[13px] text-ink-soft">Type a requirement or ticket reference next to a test and link it.</p>
                             </div>
-                        </div>
+                            <ul className="max-h-[420px] overflow-y-auto">
+                                {gaps.data.untraced_cases.slice(0, 200).map((c, i) => (
+                                    <li key={c.id} className={`flex min-h-12 flex-wrap items-center gap-2 py-2 ${i > 0 ? 'border-t border-[#F0EEE8]' : ''}`}>
+                                        <span className="min-w-0 flex-1 truncate text-sm text-ink">{c.name}</span>
+                                        <Input
+                                            value={linkRefs[c.id] || ''}
+                                            onChange={(e) => setLinkRefs((m) => ({ ...m, [c.id]: e.target.value }))}
+                                            placeholder="REQ / ticket ref"
+                                            aria-label={`Requirement reference for ${c.name}`}
+                                            className="h-10 w-44 rounded-full"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            disabled={!(linkRefs[c.id] || '').trim() || link.isPending}
+                                            onClick={() => link.mutate({ caseId: c.id, ref: (linkRefs[c.id] || '').trim() })}
+                                        >
+                                            Link
+                                        </Button>
+                                    </li>
+                                ))}
+                            </ul>
+                            {gaps.data.untraced_cases.length > 200 && <p className="text-xs text-ink-soft">…and {gaps.data.untraced_cases.length - 200} more</p>}
+                        </section>
                     )}
-                </div>
+                </>
             )}
         </div>
     );
