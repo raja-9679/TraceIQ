@@ -274,29 +274,20 @@ async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_ses
     infer that runs must be deleted before the case. The session sometimes
     issued the case DELETE first, hitting the FK on testrun.test_case_id.
 
-    Phase B/C/D added more references too: VisualBaseline, FlakeRecord,
-    SelectorHealProposal, CaseProposal.target_case_id. Each has its own FK
-    that would block the delete.
-
-    This handler uses explicit `sqlalchemy.delete()` statements (bulk DELETEs)
-    for each dependent table, flushed before the case delete. Order is
-    guaranteed; partial state is impossible because everything runs in the
-    same transaction.
+    Every hand-maintained list of dependents this handler had then went stale
+    in turn (baselines, flakes, heal proposals, then revisions, requirement
+    links, auth sessions). The cascade is now derived from the FK graph in
+    app/services/entity_delete.py, where a guard test fails the build for any
+    reference without a declared policy. It runs as bulk statements in FK
+    order inside this transaction, so partial state is impossible.
 
     Special case: TestSchedule references are NOT auto-deleted. A schedule
     is a user-configured artifact; silently breaking it on case delete is
     surprising. We return 409 Conflict and force the caller to update or
     delete the schedule first.
     """
-    from sqlalchemy import delete as sa_delete
-    from app.models import (
-        VisualBaseline,
-        FlakeRecord,
-        SelectorHealProposal,
-        CaseProposal,
-        UserTestCaseAccess,
-        TestSchedule,
-    )
+    from app.models import TestSchedule
+    from app.services.entity_delete import cascade_delete, delete_objects
 
     case = await session.get(TestCase, case_id)
     if not case:
@@ -318,41 +309,11 @@ async def delete_test_case(case_id: int, session: AsyncSession = Depends(get_ses
             },
         )
 
-    # 1. Best-effort MinIO artifact cleanup for the case's runs.
-    run_ids_result = await session.exec(select(TestRun.id).where(TestRun.test_case_id == case_id))
-    run_ids = list(run_ids_result.all())
-    for run_id in run_ids:
-        try:
-            minio_client.delete_run_artifacts(run_id)
-        except Exception as exc:  # noqa: BLE001
-            # Don't let a missing object or storage hiccup abort the delete.
-            print(f"[DeleteCase] MinIO cleanup for run {run_id} failed (continuing): {exc}")
-
-    # 2. Bulk-delete TestCaseResult rows whose run pointed at this case.
-    if run_ids:
-        await session.exec(
-            sa_delete(TestCaseResult).where(TestCaseResult.test_run_id.in_(run_ids))
-        )
-
-    # 3. Bulk-delete the runs themselves.
-    await session.exec(sa_delete(TestRun).where(TestRun.test_case_id == case_id))
-
-    # 4. Phase B/C/D dependents.
-    await session.exec(sa_delete(VisualBaseline).where(VisualBaseline.test_case_id == case_id))
-    await session.exec(sa_delete(FlakeRecord).where(FlakeRecord.test_case_id == case_id))
-    await session.exec(sa_delete(SelectorHealProposal).where(SelectorHealProposal.test_case_id == case_id))
-    await session.exec(sa_delete(CaseProposal).where(CaseProposal.target_case_id == case_id))
-
-    # 5. Granular per-user case access overrides.
-    await session.exec(sa_delete(UserTestCaseAccess).where(UserTestCaseAccess.test_case_id == case_id))
-
-    # 6. Flush so all dependent DELETEs hit the DB before the case DELETE.
-    await session.flush()
-
-    # 7. Now safe.
-    await session.delete(case)
+    report = await cascade_delete(session, "testcase", [case_id])
     audit = AuditLog(entity_type="case", entity_id=case_id, action="delete", user_id=current_user.id, changes={})
     session.add(audit)
     await session.commit()
+    # Artifacts only after the rows are committed.
+    delete_objects(report)
     return {"status": "success", "message": f"Test case {case_id} deleted",
-            "runs_deleted": len(run_ids)}
+            "runs_deleted": report.deleted("testrun")}

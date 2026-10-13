@@ -352,11 +352,15 @@ async def delete_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
             },
         )
 
-    await test_service.recursive_delete_suite(suite_id, session)
+    report = await test_service.recursive_delete_suite(suite_id, session)
 
     audit = AuditLog(entity_type="suite", entity_id=suite_id, action="delete", user_id=current_user.id, changes={})
     session.add(audit)
     await session.commit()
+    # Artifacts only after the rows are committed: a rolled-back delete must
+    # not have destroyed the evidence it failed to delete.
+    from app.services.entity_delete import delete_objects
+    delete_objects(report)
     return {"status": "success", "message": f"Suite {suite_id} and all its contents deleted",
             "suites_deleted": len(descendant_ids)}
 

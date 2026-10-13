@@ -607,11 +607,19 @@ supervisord, Helm) plus the test's `CONSUMED` set. Personas are wired
 worker job); `POST /visual-baselines` only accepts bare keys under
 `baselines/{case_id}/` (they are presigned back and used as purge prefixes).
 
+Also FIXED 2026-10-13 (branch `fix/per-entity-deletes`): **per-entity
+deletes** (project, suite, case, run — single/bulk/all — and the retention
+sweep) 500'd on FKs added after they were written. They now share
+`app/services/entity_delete.py:cascade_delete`, which walks the FK graph and
+applies a per-edge `ON_DELETE` policy (`DELETE` or `NULLIFY`; e.g. heal/case
+proposals, issue tickets and monitor checks outlive a deleted run with the link
+cleared; project-scoped API keys/webhooks/personas are deleted, never nulled,
+because NULL means workspace-wide). `tests/test_entity_delete_plan.py` fails
+for any FK into a deletable table without a policy — a new FK into
+project/suite/case/run needs an `ON_DELETE` entry. Artifacts are deleted after
+commit. Suite/case deletes still 409 on a referencing schedule.
+
 Still open:
-- Per-entity deletes 500 on FKs added after they were written: project delete
-  (`testcase_project_id_fkey`), suite delete once a case has revisions
-  (`testcaserevision_…`), run delete once it produced a heal proposal
-  (`selectorhealproposal_source_run_id_fkey`). Workspace purge is fine.
 - Worker image bakes code at build time — new step types need an image rebuild.
   **This is also why the backend redacts on ingestion**: an un-upgraded worker
   ships raw headers and bodies, so `app/services/redaction.py` runs again at all
