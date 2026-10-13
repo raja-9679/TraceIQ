@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Settings as SettingsIcon, User, Bell, Database, Zap, Save, X, Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle, Server } from 'lucide-react';
+import { Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle } from 'lucide-react';
 import InstanceSettingsSection from '@/components/settings/InstanceSettingsSection';
 import { toast } from 'sonner';
 import {
@@ -11,9 +10,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
     Dialog,
     DialogContent,
@@ -32,19 +29,15 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
 import { api, getSettings, updateSettings, getWorkspaces, type Workspace } from '@/lib/api';
 import { mfaApi } from '@/api/mfa';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { PageHeader, Pill } from '@/components/redesign/primitives';
+import {
+    CheckRow, FieldRow, RowGroup, SectionNav, SettingsCard, inputClass, warnCalloutClass,
+} from '@/components/redesign-local/groupD/settingsForm';
 
 // ---- API key types & calls (backend/app/api/api_keys.py) ----
 
@@ -104,9 +97,27 @@ const keyStatus = (key: ApiKeyRead): KeyStatus => {
     return 'active';
 };
 
+type SectionId = 'general' | 'execution' | 'notifications' | 'storage' | 'account' | 'security' | 'instance';
+
+const BROWSER_OPTIONS: { id: string; name: string; hint: string }[] = [
+    { id: 'chromium', name: 'Chromium', hint: 'Chrome, Edge, Brave' },
+    { id: 'firefox', name: 'Firefox', hint: 'Mozilla Firefox' },
+    { id: 'webkit', name: 'WebKit', hint: 'Safari engine' },
+];
+
+const DEVICE_OPTIONS: { id: string; name: string; hint: string }[] = [
+    { id: 'Desktop', name: 'Desktop', hint: 'Standard desktop viewport' },
+    { id: 'Mobile (Generic)', name: 'Mobile (Generic)', hint: 'Generic mobile viewport' },
+    { id: 'iPhone 13', name: 'iPhone 13', hint: 'Apple iPhone 13' },
+    { id: 'Pixel 5', name: 'Pixel 5', hint: 'Google Pixel 5' },
+];
+
+const noteClass = 'rounded-2xl bg-background px-4 py-3 text-[13px] leading-relaxed text-ink-soft';
+const selectTriggerClass = 'h-10 w-full rounded-full';
+
 export default function Settings() {
     const queryClient = useQueryClient();
-    const [activeSection, setActiveSection] = useState('general');
+    const [activeSection, setActiveSection] = useState<SectionId>('general');
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
     // General Settings
@@ -256,73 +267,66 @@ export default function Settings() {
         setHasUnsavedChanges(false);
     };
 
-    const sections = [
-        { id: 'general', name: 'General', icon: SettingsIcon },
-        { id: 'execution', name: 'Test Execution', icon: Zap },
-        { id: 'notifications', name: 'Notifications', icon: Bell },
-        { id: 'storage', name: 'Storage & Retention', icon: Database },
-        { id: 'account', name: 'Account', icon: User },
-        { id: 'security', name: 'Security (MFA)', icon: KeyRound },
+    // Small helper so every preference control marks the form dirty, as before.
+    const dirty = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setHasUnsavedChanges(true); };
+
+    const toggleIn = (list: string[], id: string, on: boolean) =>
+        on ? [...list, id] : list.filter((x) => x !== id);
+
+    const sections: { id: SectionId; name: string }[] = [
+        { id: 'general', name: 'General' },
+        { id: 'execution', name: 'Test execution' },
+        { id: 'notifications', name: 'Notifications' },
+        { id: 'storage', name: 'Storage and retention' },
+        { id: 'account', name: 'Account and API keys' },
+        { id: 'security', name: 'Two-factor sign-in' },
         // Tenant-admin only; the section itself shows an access message to
         // non-admins (the API 403s), matching the Tenant Admin page pattern.
-        { id: 'instance', name: 'Instance (Admin)', icon: Server },
+        { id: 'instance', name: 'Instance (admin)' },
     ];
 
+    // Every preference section saves through the same request, so each card's
+    // Save sends the whole preference set — exactly what the old sticky bar did.
+    const saveFooter = (
+        <>
+            <Button onClick={handleSave} disabled={saveMutation.isPending || !hasUnsavedChanges}>
+                {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                {saveMutation.isPending ? 'Saving…' : 'Save changes'}
+            </Button>
+            {hasUnsavedChanges && (
+                <Button variant="outline" onClick={handleCancel} disabled={saveMutation.isPending}>
+                    Discard
+                </Button>
+            )}
+            <span className="text-xs text-ink-soft" aria-live="polite">
+                {hasUnsavedChanges ? 'You have unsaved changes.' : 'No unsaved changes.'}
+            </span>
+        </>
+    );
+
     return (
-        <div className="min-h-screen bg-gray-50">
-            <div className="max-w-7xl mx-auto px-4 py-8">
-                <div className="mb-8">
-                    <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-                    <p className="text-gray-500 mt-1">Manage your application preferences and configurations</p>
-                </div>
+        <div className="flex flex-col gap-6">
+            <PageHeader title="Settings" subtitle="Your preferences, account, sign-in security and instance configuration." />
 
-                <div className="grid grid-cols-12 gap-6">
-                    {/* Sidebar Navigation */}
-                    <div className="col-span-3">
-                        <Card>
-                            <CardContent className="p-4">
-                                <nav className="space-y-1">
-                                    {sections.map((section) => {
-                                        const Icon = section.icon;
-                                        return (
-                                            <button
-                                                key={section.id}
-                                                onClick={() => setActiveSection(section.id)}
-                                                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeSection === section.id
-                                                    ? 'bg-primary text-white'
-                                                    : 'text-gray-700 hover:bg-gray-100'
-                                                    }`}
-                                            >
-                                                <Icon className="h-4 w-4" />
-                                                {section.name}
-                                            </button>
-                                        );
-                                    })}
-                                </nav>
-                            </CardContent>
-                        </Card>
-                    </div>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+                <aside className="lg:sticky lg:top-6 lg:w-60 lg:flex-none">
+                    <SectionNav label="Settings sections" sections={sections} active={activeSection} onChange={setActiveSection} />
+                </aside>
 
-                    {/* Main Content */}
-                    <div className="col-span-9 space-y-6">
-                        {/* General Settings */}
-                        {activeSection === 'general' && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>General Settings</CardTitle>
-                                    <CardDescription>Configure your general application preferences</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Theme</label>
-                                        <Select
-                                            value={theme}
-                                            onValueChange={(value) => {
-                                                setTheme(value);
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                        >
-                                            <SelectTrigger className="w-full">
+                <div className="flex min-w-0 flex-1 flex-col gap-5">
+                    {/* General Settings */}
+                    {activeSection === 'general' && (
+                        <>
+                            <SettingsCard
+                                labelledBy="settings-display"
+                                title="Display"
+                                description="How TraceIQ looks and how it shows times and dates."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <FieldRow label="Theme" htmlFor="set-theme">
+                                        <Select value={theme} onValueChange={dirty(setTheme)}>
+                                            <SelectTrigger id="set-theme" className={selectTriggerClass}>
                                                 <SelectValue placeholder="Select theme" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -331,18 +335,10 @@ export default function Settings() {
                                                 <SelectItem value="auto">Auto (System)</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Timezone</label>
-                                        <Select
-                                            value={timezone}
-                                            onValueChange={(value) => {
-                                                setTimezone(value);
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                        >
-                                            <SelectTrigger className="w-full">
+                                    </FieldRow>
+                                    <FieldRow label="Timezone" htmlFor="set-timezone">
+                                        <Select value={timezone} onValueChange={dirty(setTimezone)}>
+                                            <SelectTrigger id="set-timezone" className={selectTriggerClass}>
                                                 <SelectValue placeholder="Select timezone" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -353,18 +349,10 @@ export default function Settings() {
                                                 <SelectItem value="Asia/Kolkata">India Standard Time</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Date Format</label>
-                                        <Select
-                                            value={dateFormat}
-                                            onValueChange={(value) => {
-                                                setDateFormat(value);
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                        >
-                                            <SelectTrigger className="w-full">
+                                    </FieldRow>
+                                    <FieldRow label="Date format" htmlFor="set-date-format">
+                                        <Select value={dateFormat} onValueChange={dirty(setDateFormat)}>
+                                            <SelectTrigger id="set-date-format" className={selectTriggerClass}>
                                                 <SelectValue placeholder="Select date format" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -373,514 +361,260 @@ export default function Settings() {
                                                 <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                    </div>
+                                    </FieldRow>
+                                </div>
+                            </SettingsCard>
 
-                                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                                        <div>
-                                            <p className="font-medium text-gray-900">AI Test Generation</p>
-                                            <p className="text-sm text-gray-500">Show the ✨ Generate button on suite pages (drafts test cases via the configured LLM)</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={aiGeneration}
-                                                onChange={(e) => {
-                                                    setAiGeneration(e.target.checked);
-                                                    localStorage.setItem('traceiq.ui.aiGeneration', e.target.checked ? 'on' : 'off');
-                                                }}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
+                            <SettingsCard
+                                labelledBy="settings-features"
+                                title="Features in this browser"
+                                description="Applies straight away and is remembered by this browser only — no Save needed."
+                            >
+                                <CheckRow
+                                    id="set-ai-generation"
+                                    label="AI test generation"
+                                    hint="Show the Generate button on suite pages. It drafts test cases with the configured AI provider."
+                                    checked={aiGeneration}
+                                    onChange={(v) => {
+                                        setAiGeneration(v);
+                                        localStorage.setItem('traceiq.ui.aiGeneration', v ? 'on' : 'off');
+                                    }}
+                                />
+                            </SettingsCard>
+                        </>
+                    )}
 
-                        {/* Test Execution Defaults */}
-                        {activeSection === 'execution' && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Test Execution Defaults</CardTitle>
-                                    <CardDescription>Set default values for test execution</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Default Browser</label>
-                                            <Select
-                                                value={defaultBrowser}
-                                                onValueChange={(value) => {
-                                                    setDefaultBrowser(value);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                            >
-                                                <SelectTrigger className="w-full">
-                                                    <SelectValue placeholder="Select browser" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="chromium">Chromium</SelectItem>
-                                                    <SelectItem value="firefox">Firefox</SelectItem>
-                                                    <SelectItem value="webkit">WebKit</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Default Device</label>
-                                            <Select
-                                                value={defaultDevice}
-                                                onValueChange={(value) => {
-                                                    setDefaultDevice(value);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                            >
-                                                <SelectTrigger className="w-full">
-                                                    <SelectValue placeholder="Select device" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Desktop">Desktop</SelectItem>
-                                                    <SelectItem value="Mobile (Generic)">Mobile (Generic)</SelectItem>
-                                                    <SelectItem value="iPhone 13">iPhone 13</SelectItem>
-                                                    <SelectItem value="Pixel 5">Pixel 5</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Default Timeout (ms)
-                                        </label>
-                                        <input
+                    {/* Test Execution Defaults */}
+                    {activeSection === 'execution' && (
+                        <>
+                            <SettingsCard
+                                labelledBy="settings-exec-defaults"
+                                title="Run defaults"
+                                description="Used when a run does not choose its own browser, device or timeout."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <FieldRow label="Default browser" htmlFor="set-default-browser">
+                                        <Select value={defaultBrowser} onValueChange={dirty(setDefaultBrowser)}>
+                                            <SelectTrigger id="set-default-browser" className={selectTriggerClass}>
+                                                <SelectValue placeholder="Select browser" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="chromium">Chromium</SelectItem>
+                                                <SelectItem value="firefox">Firefox</SelectItem>
+                                                <SelectItem value="webkit">WebKit</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </FieldRow>
+                                    <FieldRow label="Default device" htmlFor="set-default-device">
+                                        <Select value={defaultDevice} onValueChange={dirty(setDefaultDevice)}>
+                                            <SelectTrigger id="set-default-device" className={selectTriggerClass}>
+                                                <SelectValue placeholder="Select device" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Desktop">Desktop</SelectItem>
+                                                <SelectItem value="Mobile (Generic)">Mobile (Generic)</SelectItem>
+                                                <SelectItem value="iPhone 13">iPhone 13</SelectItem>
+                                                <SelectItem value="Pixel 5">Pixel 5</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </FieldRow>
+                                    <FieldRow label="Step timeout (ms)" htmlFor="set-default-timeout" hint="Timeout for each test step, 1 to 120 seconds.">
+                                        <Input
+                                            id="set-default-timeout"
                                             type="number"
+                                            className={inputClass}
                                             value={defaultTimeout}
-                                            onChange={(e) => {
-                                                setDefaultTimeout(Number(e.target.value));
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                            onChange={(e) => dirty(setDefaultTimeout)(Number(e.target.value))}
                                             min="1000"
                                             max="120000"
                                             step="1000"
                                         />
-                                        <p className="text-xs text-gray-500 mt-1">Timeout for individual test steps (1-120 seconds)</p>
-                                    </div>
+                                    </FieldRow>
+                                </div>
+                            </SettingsCard>
 
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <p className="font-medium text-gray-900">Auto-retry Failed Tests</p>
-                                            <p className="text-sm text-gray-500">Automatically retry tests that fail</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={autoRetry}
-                                                onChange={(e) => {
-                                                    setAutoRetry(e.target.checked);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
-
+                            <SettingsCard
+                                labelledBy="settings-exec-retries"
+                                title="Retries and parallel runs"
+                                description="Retry tests that fail, and run several tests at once."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <CheckRow
+                                        id="set-auto-retry"
+                                        label="Retry failed tests automatically"
+                                        checked={autoRetry}
+                                        onChange={dirty(setAutoRetry)}
+                                    />
                                     {autoRetry && (
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Max Retry Attempts</label>
-                                            <input
+                                        <FieldRow label="Maximum retry attempts" htmlFor="set-max-retries">
+                                            <Input
+                                                id="set-max-retries"
                                                 type="number"
+                                                className={inputClass}
                                                 value={maxRetries}
-                                                onChange={(e) => {
-                                                    setMaxRetries(Number(e.target.value));
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                                onChange={(e) => dirty(setMaxRetries)(Number(e.target.value))}
                                                 min="1"
                                                 max="5"
                                             />
-                                        </div>
+                                        </FieldRow>
                                     )}
-
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <p className="font-medium text-gray-900">Parallel Execution</p>
-                                            <p className="text-sm text-gray-500">Run multiple tests simultaneously</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={parallelExecution}
-                                                onChange={(e) => {
-                                                    setParallelExecution(e.target.checked);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
-
+                                    <CheckRow
+                                        id="set-parallel"
+                                        label="Run tests in parallel"
+                                        checked={parallelExecution}
+                                        onChange={dirty(setParallelExecution)}
+                                    />
                                     {parallelExecution && (
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-2">Max Parallel Tests</label>
-                                            <input
+                                        <FieldRow label="Maximum parallel tests" htmlFor="set-max-parallel">
+                                            <Input
+                                                id="set-max-parallel"
                                                 type="number"
+                                                className={inputClass}
                                                 value={maxParallelTests}
-                                                onChange={(e) => {
-                                                    setMaxParallelTests(Number(e.target.value));
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                                onChange={(e) => dirty(setMaxParallelTests)(Number(e.target.value))}
                                                 min="1"
                                                 max="10"
                                             />
-                                        </div>
+                                        </FieldRow>
                                     )}
+                                </div>
+                            </SettingsCard>
 
-                                    <div className="border-t pt-6">
-                                        <h3 className="text-sm font-medium text-gray-700 mb-4">Multi-Browser Testing</h3>
-
-                                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
-                                            <div>
-                                                <p className="font-medium text-gray-900">Enable Multi-Browser Execution</p>
-                                                <p className="text-sm text-gray-500">Run tests across multiple browsers simultaneously</p>
-                                            </div>
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={multiBrowserEnabled}
-                                                    onChange={(e) => {
-                                                        setMultiBrowserEnabled(e.target.checked);
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                    className="sr-only peer"
-                                                />
-                                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                            </label>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <p className="text-sm font-medium text-gray-700">Select browsers to test:</p>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedBrowsers.includes('chromium')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedBrowsers([...selectedBrowsers, 'chromium']);
-                                                        } else {
-                                                            setSelectedBrowsers(selectedBrowsers.filter(b => b !== 'chromium'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-blue-700">Ch</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Chromium</p>
-                                                        <p className="text-xs text-gray-500">Chrome, Edge, Brave</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedBrowsers.includes('firefox')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedBrowsers([...selectedBrowsers, 'firefox']);
-                                                        } else {
-                                                            setSelectedBrowsers(selectedBrowsers.filter(b => b !== 'firefox'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-orange-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-orange-700">Fx</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Firefox</p>
-                                                        <p className="text-xs text-gray-500">Mozilla Firefox</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedBrowsers.includes('webkit')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedBrowsers([...selectedBrowsers, 'webkit']);
-                                                        } else {
-                                                            setSelectedBrowsers(selectedBrowsers.filter(b => b !== 'webkit'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-purple-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-purple-700">Wk</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">WebKit</p>
-                                                        <p className="text-xs text-gray-500">Safari engine</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-                                        </div>
-
-                                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                            <p className="text-sm text-blue-800">
-                                                <strong>Note:</strong> When multi-browser testing is enabled, each test will run on all selected browsers. This multiplies the total number of test runs.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="border-t pt-6">
-                                        <h3 className="text-sm font-medium text-gray-700 mb-4">Multi-Device Testing</h3>
-
-                                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
-                                            <div>
-                                                <p className="font-medium text-gray-900">Enable Multi-Device Execution</p>
-                                                <p className="text-sm text-gray-500">Run tests across multiple devices simultaneously</p>
-                                            </div>
-                                            <label className="relative inline-flex items-center cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={multiDeviceEnabled}
-                                                    onChange={(e) => {
-                                                        setMultiDeviceEnabled(e.target.checked);
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                    className="sr-only peer"
-                                                />
-                                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                            </label>
-                                        </div>
-
-                                        <div className="space-y-3">
-                                            <p className="text-sm font-medium text-gray-700">Select devices to test:</p>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedDevices.includes('Desktop')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedDevices([...selectedDevices, 'Desktop']);
-                                                        } else {
-                                                            setSelectedDevices(selectedDevices.filter(d => d !== 'Desktop'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-gray-700">🖥️</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Desktop</p>
-                                                        <p className="text-xs text-gray-500">Standard desktop viewport</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedDevices.includes('Mobile (Generic)')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedDevices([...selectedDevices, 'Mobile (Generic)']);
-                                                        } else {
-                                                            setSelectedDevices(selectedDevices.filter(d => d !== 'Mobile (Generic)'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-green-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-green-700">📱</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Mobile (Generic)</p>
-                                                        <p className="text-xs text-gray-500">Generic mobile viewport</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedDevices.includes('iPhone 13')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedDevices([...selectedDevices, 'iPhone 13']);
-                                                        } else {
-                                                            setSelectedDevices(selectedDevices.filter(d => d !== 'iPhone 13'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-blue-700">🍎</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">iPhone 13</p>
-                                                        <p className="text-xs text-gray-500">Apple iPhone 13</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-
-                                            <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                <Checkbox
-                                                    checked={selectedDevices.includes('Pixel 5')}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setSelectedDevices([...selectedDevices, 'Pixel 5']);
-                                                        } else {
-                                                            setSelectedDevices(selectedDevices.filter(d => d !== 'Pixel 5'));
-                                                        }
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                />
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-8 h-8 rounded bg-red-100 flex items-center justify-center">
-                                                        <span className="text-xs font-bold text-red-700">🤖</span>
-                                                    </div>
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Pixel 5</p>
-                                                        <p className="text-xs text-gray-500">Google Pixel 5</p>
-                                                    </div>
-                                                </div>
-                                            </label>
-                                        </div>
-
-                                        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                            <p className="text-sm text-blue-800">
-                                                <strong>Note:</strong> When multi-device testing is enabled, each test will run on all selected devices. This multiplies the total number of test runs.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Notifications */}
-                        {activeSection === 'notifications' && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Notification Settings</CardTitle>
-                                    <CardDescription>Configure how and when you receive notifications</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <p className="font-medium text-gray-900">Email Notifications</p>
-                                            <p className="text-sm text-gray-500">Enable email notifications for test events</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={emailNotifications}
-                                                onChange={(e) => {
-                                                    setEmailNotifications(e.target.checked);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="sr-only peer"
+                            <SettingsCard
+                                labelledBy="settings-exec-browsers"
+                                title="Several browsers"
+                                description="Run each test on every browser you tick below."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <CheckRow
+                                        id="set-multi-browser"
+                                        label="Run on several browsers"
+                                        checked={multiBrowserEnabled}
+                                        onChange={dirty(setMultiBrowserEnabled)}
+                                    />
+                                    <RowGroup title="Browsers">
+                                        {BROWSER_OPTIONS.map((b) => (
+                                            <CheckRow
+                                                key={b.id}
+                                                id={`set-browser-${b.id}`}
+                                                label={b.name}
+                                                hint={b.hint}
+                                                checked={selectedBrowsers.includes(b.id)}
+                                                onChange={(on) => dirty(setSelectedBrowsers)(toggleIn(selectedBrowsers, b.id, on))}
                                             />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
+                                        ))}
+                                    </RowGroup>
+                                </div>
+                                <p className={noteClass}>
+                                    Each test runs once per selected browser, so the number of test runs multiplies.
+                                </p>
+                            </SettingsCard>
 
-                                    {emailNotifications && (
-                                        <>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-2">Notification Email</label>
-                                                <input
-                                                    type="email"
-                                                    value={notificationEmail}
-                                                    onChange={(e) => {
-                                                        setNotificationEmail(e.target.value);
-                                                        setHasUnsavedChanges(true);
-                                                    }}
-                                                    placeholder="your@email.com"
-                                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
-                                                />
-                                            </div>
+                            <SettingsCard
+                                labelledBy="settings-exec-devices"
+                                title="Several devices"
+                                description="Run each test on every device you tick below."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <CheckRow
+                                        id="set-multi-device"
+                                        label="Run on several devices"
+                                        checked={multiDeviceEnabled}
+                                        onChange={dirty(setMultiDeviceEnabled)}
+                                    />
+                                    <RowGroup title="Devices">
+                                        {DEVICE_OPTIONS.map((d) => (
+                                            <CheckRow
+                                                key={d.id}
+                                                id={`set-device-${d.id.replace(/\W+/g, '-')}`}
+                                                label={d.name}
+                                                hint={d.hint}
+                                                checked={selectedDevices.includes(d.id)}
+                                                onChange={(on) => dirty(setSelectedDevices)(toggleIn(selectedDevices, d.id, on))}
+                                            />
+                                        ))}
+                                    </RowGroup>
+                                </div>
+                                <p className={noteClass}>
+                                    Each test runs once per selected device, so the number of test runs multiplies.
+                                </p>
+                            </SettingsCard>
+                        </>
+                    )}
 
-                                            <div className="space-y-3">
-                                                <p className="text-sm font-medium text-gray-700">Notify me when:</p>
+                    {/* Notifications */}
+                    {activeSection === 'notifications' && (
+                        <SettingsCard
+                            labelledBy="settings-notifications"
+                            title="Email notifications"
+                            description="Choose whether to get email about test runs, and which events trigger one."
+                            footer={saveFooter}
+                        >
+                            <div className="flex flex-col">
+                                <CheckRow
+                                    id="set-email-notifications"
+                                    label="Send me email about test runs"
+                                    checked={emailNotifications}
+                                    onChange={dirty(setEmailNotifications)}
+                                />
+                                {emailNotifications && (
+                                    <>
+                                        <FieldRow label="Notification email" htmlFor="set-notification-email" wide>
+                                            <Input
+                                                id="set-notification-email"
+                                                type="email"
+                                                className={inputClass}
+                                                value={notificationEmail}
+                                                onChange={(e) => dirty(setNotificationEmail)(e.target.value)}
+                                                placeholder="your@email.com"
+                                            />
+                                        </FieldRow>
+                                        <RowGroup title="Email me when">
+                                            <CheckRow
+                                                id="set-notify-completion"
+                                                label="A test run completes"
+                                                hint="Any run, pass or fail."
+                                                checked={notifyOnCompletion}
+                                                onChange={dirty(setNotifyOnCompletion)}
+                                            />
+                                            <CheckRow
+                                                id="set-notify-failure"
+                                                label="A test fails"
+                                                hint="Only when tests fail."
+                                                checked={notifyOnFailure}
+                                                onChange={dirty(setNotifyOnFailure)}
+                                            />
+                                            <CheckRow
+                                                id="set-daily-summary"
+                                                label="Daily summary"
+                                                hint="One report of all test activity each day."
+                                                checked={dailySummary}
+                                                onChange={dirty(setDailySummary)}
+                                            />
+                                        </RowGroup>
+                                    </>
+                                )}
+                            </div>
+                        </SettingsCard>
+                    )}
 
-                                                <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                    <Checkbox
-                                                        checked={notifyOnCompletion}
-                                                        onCheckedChange={(checked) => {
-                                                            setNotifyOnCompletion(checked as boolean);
-                                                            setHasUnsavedChanges(true);
-                                                        }}
-                                                    />
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Test Completion</p>
-                                                        <p className="text-sm text-gray-500">Any test run completes</p>
-                                                    </div>
-                                                </label>
-
-                                                <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                    <Checkbox
-                                                        checked={notifyOnFailure}
-                                                        onCheckedChange={(checked) => {
-                                                            setNotifyOnFailure(checked as boolean);
-                                                            setHasUnsavedChanges(true);
-                                                        }}
-                                                    />
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Test Failure</p>
-                                                        <p className="text-sm text-gray-500">Only when tests fail</p>
-                                                    </div>
-                                                </label>
-
-                                                <label className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
-                                                    <Checkbox
-                                                        checked={dailySummary}
-                                                        onCheckedChange={(checked) => {
-                                                            setDailySummary(checked as boolean);
-                                                            setHasUnsavedChanges(true);
-                                                        }}
-                                                    />
-                                                    <div>
-                                                        <p className="font-medium text-gray-900">Daily Summary</p>
-                                                        <p className="text-sm text-gray-500">Daily report of all test activity</p>
-                                                    </div>
-                                                </label>
-                                            </div>
-                                        </>
-                                    )}
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Storage & Retention */}
-                        {activeSection === 'storage' && (
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Storage & Retention</CardTitle>
-                                    <CardDescription>Manage test artifacts and data retention policies</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Video Recording</label>
-                                        <Select
-                                            value={videoRecording}
-                                            onValueChange={(value) => {
-                                                setVideoRecording(value);
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                        >
-                                            <SelectTrigger className="w-full">
+                    {/* Storage & Retention */}
+                    {activeSection === 'storage' && (
+                        <>
+                            <SettingsCard
+                                labelledBy="settings-artifacts"
+                                title="Recordings and screenshots"
+                                description="What is captured while tests run, to help debug failures."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <FieldRow label="Video recording" htmlFor="set-video-recording" hint="When to record video of a test run.">
+                                        <Select value={videoRecording} onValueChange={dirty(setVideoRecording)}>
+                                            <SelectTrigger id="set-video-recording" className={selectTriggerClass}>
                                                 <SelectValue placeholder="Select recording preference" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -889,118 +623,57 @@ export default function Settings() {
                                                 <SelectItem value="never">Never Record</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                        <p className="text-xs text-gray-500 mt-1">When to record video of test execution</p>
-                                    </div>
+                                    </FieldRow>
+                                    <CheckRow
+                                        id="set-screenshot-on-error"
+                                        label="Screenshot on error"
+                                        hint="Capture a screenshot when a test fails."
+                                        checked={screenshotOnError}
+                                        onChange={dirty(setScreenshotOnError)}
+                                    />
+                                    <CheckRow
+                                        id="set-trace-files"
+                                        label="Playwright trace files"
+                                        hint="Detailed trace files for debugging."
+                                        checked={traceFiles}
+                                        onChange={dirty(setTraceFiles)}
+                                    />
+                                </div>
+                            </SettingsCard>
 
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <p className="font-medium text-gray-900">Screenshot on Error</p>
-                                            <p className="text-sm text-gray-500">Capture screenshot when test fails</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={screenshotOnError}
-                                                onChange={(e) => {
-                                                    setScreenshotOnError(e.target.checked);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
-
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <p className="font-medium text-gray-900">Playwright Trace Files</p>
-                                            <p className="text-sm text-gray-500">Enable detailed trace files for debugging</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={traceFiles}
-                                                onChange={(e) => {
-                                                    setTraceFiles(e.target.checked);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Retention Period (days)
-                                        </label>
-                                        <input
+                            <SettingsCard
+                                labelledBy="settings-retention"
+                                title="Retention"
+                                description="How long test runs and their files are kept."
+                                footer={saveFooter}
+                            >
+                                <div className="flex flex-col">
+                                    <FieldRow label="Keep runs for (days)" htmlFor="set-retention" hint="How long to keep test runs and artifacts.">
+                                        <Input
+                                            id="set-retention"
                                             type="number"
+                                            className={inputClass}
                                             value={retentionPeriod}
-                                            onChange={(e) => {
-                                                setRetentionPeriod(Number(e.target.value));
-                                                setHasUnsavedChanges(true);
-                                            }}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                            onChange={(e) => dirty(setRetentionPeriod)(Number(e.target.value))}
                                             min="1"
                                             max="365"
                                         />
-                                        <p className="text-xs text-gray-500 mt-1">How long to keep test runs and artifacts</p>
-                                    </div>
-
-                                    <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                                        <div>
-                                            <p className="font-medium text-gray-900">Auto-cleanup</p>
-                                            <p className="text-sm text-gray-500">Automatically delete old test runs</p>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="checkbox"
-                                                checked={autoCleanup}
-                                                onChange={(e) => {
-                                                    setAutoCleanup(e.target.checked);
-                                                    setHasUnsavedChanges(true);
-                                                }}
-                                                className="sr-only peer"
-                                            />
-                                            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                                        </label>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
-
-                        {/* Account Settings */}
-                        {activeSection === 'account' && <AccountSection />}
-                        {activeSection === 'security' && <MfaSection />}
-                        {activeSection === 'instance' && <InstanceSettingsSection />}
-
-                        {/* Save/Cancel Actions */}
-                        {hasUnsavedChanges && (
-                            <div className="sticky bottom-0 bg-white border-t border-gray-200 p-4 flex items-center justify-between shadow-lg rounded-lg">
-                                <p className="text-sm text-gray-600">You have unsaved changes</p>
-                                <div className="flex gap-3">
-                                    <Button variant="outline" onClick={handleCancel} disabled={saveMutation.isPending}>
-                                        <X className="h-4 w-4 mr-2" />
-                                        Cancel
-                                    </Button>
-                                    <Button onClick={handleSave} disabled={saveMutation.isPending}>
-                                        {saveMutation.isPending ? (
-                                            <>
-                                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                Saving...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Save className="h-4 w-4 mr-2" />
-                                                Save Changes
-                                            </>
-                                        )}
-                                    </Button>
+                                    </FieldRow>
+                                    <CheckRow
+                                        id="set-auto-cleanup"
+                                        label="Delete old runs automatically"
+                                        checked={autoCleanup}
+                                        onChange={dirty(setAutoCleanup)}
+                                    />
                                 </div>
-                            </div>
-                        )}
-                    </div>
+                            </SettingsCard>
+                        </>
+                    )}
+
+                    {/* Account Settings */}
+                    {activeSection === 'account' && <AccountSection />}
+                    {activeSection === 'security' && <MfaSection />}
+                    {activeSection === 'instance' && <InstanceSettingsSection />}
                 </div>
             </div>
         </div>
@@ -1015,41 +688,34 @@ function AccountSection() {
     const { user } = useAuth();
 
     return (
-        <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Account</CardTitle>
-                    <CardDescription>Your profile information</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">Full Name</p>
-                            <p className="text-sm text-gray-900 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                                {user?.full_name || '—'}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-sm font-medium text-gray-700 mb-1">Email</p>
-                            <p className="text-sm text-gray-900 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                                {user?.email || '—'}
-                            </p>
-                        </div>
+        <>
+            <SettingsCard
+                labelledBy="settings-profile"
+                title="Profile"
+                description="Profile and password changes are not yet supported here. Ask your workspace administrator if you need to update them."
+            >
+                <dl className="flex flex-col">
+                    <div className="flex min-h-11 flex-col gap-1 py-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <dt className="text-sm font-medium text-ink">Full name</dt>
+                        <dd className="text-sm text-ink-soft sm:text-right">{user?.full_name || '—'}</dd>
                     </div>
-                    <p className="text-xs text-gray-500">
-                        Profile and password changes are not yet supported from this screen. Contact your workspace administrator if you need to update them.
-                    </p>
-                </CardContent>
-            </Card>
+                    <div className="flex min-h-11 flex-col gap-1 border-t border-border py-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <dt className="text-sm font-medium text-ink">Email</dt>
+                        <dd className="break-all text-sm text-ink-soft sm:text-right">{user?.email || '—'}</dd>
+                    </div>
+                </dl>
+            </SettingsCard>
 
             <ApiKeysSection />
-        </div>
+        </>
     );
 }
 
 // ---------------------------------------------------------------------------
 // API key management
 // ---------------------------------------------------------------------------
+
+const inlineCode = 'rounded bg-secondary px-1 font-mono text-xs text-ink';
 
 function ApiKeysSection() {
     const queryClient = useQueryClient();
@@ -1117,11 +783,11 @@ function ApiKeysSection() {
         setCreatedKey(null);
     };
 
-    const statusBadge = (key: ApiKeyRead) => {
+    const statusPill = (key: ApiKeyRead) => {
         const status = keyStatus(key);
-        if (status === 'revoked') return <Badge variant="destructive">Revoked</Badge>;
-        if (status === 'expired') return <Badge variant="secondary">Expired</Badge>;
-        return <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Active</Badge>;
+        if (status === 'revoked') return <Pill tone="peach">Revoked</Pill>;
+        if (status === 'expired') return <Pill tone="neutral">Expired</Pill>;
+        return <Pill tone="mint">Active</Pill>;
     };
 
     const mcpConfigSnippet = `{
@@ -1135,36 +801,25 @@ function ApiKeysSection() {
 }`;
 
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex items-start justify-between gap-4">
-                    <div>
-                        <CardTitle className="flex items-center gap-2">
-                            <KeyRound className="h-5 w-5" />
-                            API Keys
-                        </CardTitle>
-                        <CardDescription>
-                            Workspace-scoped keys for programmatic access (CI pipelines, AI agents, the MCP server)
-                        </CardDescription>
-                    </div>
-                    <Button
-                        onClick={() => setCreateOpen(true)}
-                        disabled={selectedWorkspaceId === null}
-                    >
-                        <Plus className="h-4 w-4 mr-2" />
+        <>
+            <SettingsCard
+                labelledBy="settings-api-keys"
+                title="API keys"
+                description="Workspace keys for programmatic access — CI pipelines, AI agents and the MCP server."
+                actions={
+                    <Button onClick={() => setCreateOpen(true)} disabled={selectedWorkspaceId === null}>
+                        <Plus className="h-4 w-4" />
                         Create API key
                     </Button>
-                </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
+                }
+            >
                 {workspaces && workspaces.length > 1 && (
-                    <div className="max-w-xs">
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Workspace</label>
+                    <FieldRow label="Workspace" htmlFor="api-key-workspace">
                         <Select
                             value={selectedWorkspaceId !== null ? String(selectedWorkspaceId) : undefined}
                             onValueChange={(value) => setSelectedWorkspaceId(Number(value))}
                         >
-                            <SelectTrigger className="w-full">
+                            <SelectTrigger id="api-key-workspace" className={selectTriggerClass}>
                                 <SelectValue placeholder="Select workspace" />
                             </SelectTrigger>
                             <SelectContent>
@@ -1173,84 +828,77 @@ function ApiKeysSection() {
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
+                    </FieldRow>
                 )}
 
                 {workspaces && workspaces.length === 0 ? (
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-ink-soft">
                         You are not a member of any workspace. Join or create a workspace to manage API keys.
                     </p>
                 ) : keysLoading ? (
-                    <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                    <div className="flex items-center gap-2 py-4 text-sm text-ink-soft">
                         <Loader2 className="h-4 w-4 animate-spin" />
                         Loading API keys...
                     </div>
                 ) : keys && keys.length > 0 ? (
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Name</TableHead>
-                                <TableHead>Key</TableHead>
-                                <TableHead>Created</TableHead>
-                                <TableHead>Last used</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="w-[80px]"></TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {keys.map((key) => (
-                                <TableRow key={key.id}>
-                                    <TableCell className="font-medium">{key.name}</TableCell>
-                                    <TableCell>
-                                        <code className="text-xs bg-gray-100 px-2 py-1 rounded">{key.prefix}…</code>
-                                    </TableCell>
-                                    <TableCell className="text-sm text-gray-600">{formatDate(key.created_at)}</TableCell>
-                                    <TableCell className="text-sm text-gray-600">
-                                        {key.last_used_at ? formatDate(key.last_used_at) : 'Never'}
-                                    </TableCell>
-                                    <TableCell>{statusBadge(key)}</TableCell>
-                                    <TableCell>
-                                        {keyStatus(key) !== 'revoked' && (
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                                onClick={() => setRevokeTarget(key)}
-                                                disabled={revokeMutation.isPending}
-                                                title="Revoke key"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
-                                            </Button>
-                                        )}
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                        </TableBody>
-                    </Table>
+                    <ul className="overflow-hidden rounded-2xl border border-border">
+                        {keys.map((key, i) => (
+                            <li
+                                key={key.id}
+                                className={`flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 ${i > 0 ? 'border-t border-border' : ''}`}
+                            >
+                                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="text-sm font-semibold text-ink">{key.name}</span>
+                                        <code className={inlineCode}>{key.prefix}…</code>
+                                        {statusPill(key)}
+                                    </div>
+                                    <span className="text-xs text-ink-soft">
+                                        Created {formatDate(key.created_at)} · Last used {key.last_used_at ? formatDate(key.last_used_at) : 'Never'}
+                                    </span>
+                                </div>
+                                {keyStatus(key) !== 'revoked' && (
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="text-destructive hover:text-destructive"
+                                        onClick={() => setRevokeTarget(key)}
+                                        disabled={revokeMutation.isPending}
+                                        title="Revoke key"
+                                        aria-label={`Revoke API key ${key.name}`}
+                                    >
+                                        <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                )}
+                            </li>
+                        ))}
+                    </ul>
                 ) : (
-                    <p className="text-sm text-gray-500 py-2">
+                    <p className="py-2 text-sm text-ink-soft">
                         No API keys yet. Create one to let CI pipelines or AI agents call TraceIQ.
                     </p>
                 )}
+            </SettingsCard>
 
-                <div className="border-t pt-6">
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">Connect an IDE via MCP</h3>
-                    <p className="text-sm text-gray-500 mb-3">
-                        Point your IDE's MCP config (Claude Code <code className="text-xs bg-gray-100 px-1 rounded">.mcp.json</code>,
-                        Cursor <code className="text-xs bg-gray-100 px-1 rounded">.cursor/mcp.json</code>,
-                        VS Code <code className="text-xs bg-gray-100 px-1 rounded">.vscode/mcp.json</code>) at the
-                        TraceIQ MCP server and authenticate with an API key:
-                    </p>
-                    <pre className="text-xs bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
-                        <code>{mcpConfigSnippet}</code>
-                    </pre>
-                    <p className="text-xs text-gray-500 mt-2">
-                        Replace <code className="bg-gray-100 px-1 rounded">your-traceiq-host</code> with this server's
-                        hostname and the <code className="bg-gray-100 px-1 rounded">X-API-Key</code> value with a key
-                        created above. The MCP server listens on port 8088.
-                    </p>
-                </div>
-            </CardContent>
+            <SettingsCard
+                labelledBy="settings-mcp"
+                title="Connect an IDE through MCP"
+                description="Point your IDE's MCP config at the TraceIQ MCP server and authenticate with an API key."
+            >
+                <p className="text-sm leading-relaxed text-ink-soft">
+                    Claude Code uses <code className={inlineCode}>.mcp.json</code>,
+                    Cursor <code className={inlineCode}>.cursor/mcp.json</code>, and
+                    VS Code <code className={inlineCode}>.vscode/mcp.json</code>.
+                </p>
+                <pre className="overflow-x-auto rounded-2xl border border-border bg-background p-4 text-xs text-ink">
+                    <code>{mcpConfigSnippet}</code>
+                </pre>
+                <p className="text-xs leading-relaxed text-ink-soft">
+                    Replace <code className={inlineCode}>your-traceiq-host</code> with this server's
+                    hostname and the <code className={inlineCode}>X-API-Key</code> value with a key
+                    created above. The MCP server listens on port 8088.
+                </p>
+            </SettingsCard>
 
             {/* Create key dialog */}
             <Dialog open={createOpen} onOpenChange={(open) => { if (!open) closeCreateDialog(); }}>
@@ -1264,19 +912,19 @@ function ApiKeysSection() {
                                 </DialogDescription>
                             </DialogHeader>
                             <div className="space-y-3">
-                                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                    <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                                    <p className="text-sm text-amber-800">
+                                <div className={`flex items-start gap-2 ${warnCalloutClass}`}>
+                                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
+                                    <p>
                                         This is the only time the full key is displayed. Store it somewhere safe —
                                         if you lose it, revoke this key and create a new one.
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                    <code className="flex-1 text-sm bg-gray-100 px-3 py-2 rounded-lg break-all select-all">
+                                    <code className="flex-1 select-all break-all rounded-xl bg-secondary px-3 py-2 text-sm text-ink">
                                         {createdKey.secret}
                                     </code>
-                                    <Button variant="outline" size="sm" onClick={() => copySecret(createdKey.secret)}>
-                                        <Copy className="h-4 w-4 mr-2" />
+                                    <Button variant="outline" onClick={() => copySecret(createdKey.secret)}>
+                                        <Copy className="h-4 w-4" />
                                         Copy
                                     </Button>
                                 </div>
@@ -1294,8 +942,10 @@ function ApiKeysSection() {
                                 </DialogDescription>
                             </DialogHeader>
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Key name</label>
+                                <label htmlFor="api-key-name" className="mb-1.5 block text-sm font-medium text-ink">Key name</label>
                                 <Input
+                                    id="api-key-name"
+                                    className={inputClass}
                                     value={newKeyName}
                                     onChange={(e) => setNewKeyName(e.target.value)}
                                     placeholder="e.g. ci-pipeline"
@@ -1317,7 +967,7 @@ function ApiKeysSection() {
                                 >
                                     {createMutation.isPending ? (
                                         <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            <Loader2 className="h-4 w-4 animate-spin" />
                                             Creating...
                                         </>
                                     ) : (
@@ -1348,7 +998,7 @@ function ApiKeysSection() {
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
                         <AlertDialogAction
-                            className="bg-red-600 hover:bg-red-700"
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             onClick={() => {
                                 if (revokeTarget) revokeMutation.mutate(revokeTarget.id);
                                 setRevokeTarget(null);
@@ -1359,33 +1009,35 @@ function ApiKeysSection() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </Card>
+        </>
     );
 }
 
 
 function RecoveryCodesPanel({ codes, onDismiss }: { codes: string[]; onDismiss: () => void }) {
     return (
-        <div className="space-y-3 p-4 border border-amber-200 rounded-xl bg-amber-50">
+        <div className={`flex flex-col gap-3 ${warnCalloutClass}`} role="status">
             <div className="flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-                <p className="text-sm text-amber-800">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
+                <p>
                     <span className="font-semibold">Save these recovery codes now.</span> Each works once if you lose your
                     authenticator. They won't be shown again.
                 </p>
             </div>
             <div className="grid grid-cols-2 gap-2 font-mono text-sm">
-                {codes.map((c) => <div key={c} className="bg-white border border-amber-200 rounded-lg px-2 py-1 text-center">{c}</div>)}
+                {codes.map((c) => <div key={c} className="rounded-xl border border-border bg-white px-2 py-1 text-center">{c}</div>)}
             </div>
-            <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => { navigator.clipboard?.writeText(codes.join('\n')); toast.success('Recovery codes copied'); }}>
-                    <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy all
+            <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => { navigator.clipboard?.writeText(codes.join('\n')); toast.success('Recovery codes copied'); }}>
+                    <Copy className="h-3.5 w-3.5" /> Copy all
                 </Button>
-                <Button size="sm" onClick={onDismiss}>I've saved them</Button>
+                <Button onClick={onDismiss}>I've saved them</Button>
             </div>
         </div>
     );
 }
+
+const codeInputClass = 'h-10 w-32 rounded-full text-center tracking-widest';
 
 function MfaSection() {
     const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null);
@@ -1416,58 +1068,76 @@ function MfaSection() {
     });
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Two-Factor Authentication (TOTP)</CardTitle>
-                <CardDescription>Add a second factor using an authenticator app (Google Authenticator, Authy, 1Password).</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-                {recoveryCodes && <RecoveryCodesPanel codes={recoveryCodes} onDismiss={() => setRecoveryCodes(null)} />}
+        <>
+            {recoveryCodes && <RecoveryCodesPanel codes={recoveryCodes} onDismiss={() => setRecoveryCodes(null)} />}
 
-                <div className="space-y-3">
-                    <h3 className="text-sm font-semibold text-gray-800">Enable</h3>
-                    {!setup ? (
-                        <Button variant="outline" onClick={() => start.mutate()} disabled={start.isPending}>
-                            <KeyRound className="h-4 w-4 mr-2" /> Set up authenticator
-                        </Button>
-                    ) : (
-                        <div className="space-y-3 p-4 border border-gray-200 rounded-xl bg-gray-50">
-                            <p className="text-sm text-gray-600">Scan this QR code with Google Authenticator (or Authy / 1Password), then enter the current 6-digit code to confirm.</p>
-                            <div className="flex flex-col sm:flex-row gap-4 items-start">
-                                <div className="bg-white p-3 rounded-xl border border-gray-200 shrink-0">
-                                    <QRCodeSVG value={setup.otpauth_uri} size={168} level="M" includeMargin={false} />
-                                </div>
-                                <div className="space-y-2 min-w-0">
-                                    <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Can't scan? Enter this key manually</p>
-                                    <div className="font-mono text-sm bg-white border border-gray-200 rounded-lg p-2 break-all">{setup.secret}</div>
-                                </div>
+            <SettingsCard
+                labelledBy="settings-mfa-enable"
+                title="Authenticator app"
+                description="Add a second sign-in step using an authenticator app such as Google Authenticator, Authy or 1Password."
+            >
+                {!setup ? (
+                    <Button variant="outline" className="self-start" onClick={() => start.mutate()} disabled={start.isPending}>
+                        <KeyRound className="h-4 w-4" /> Set up authenticator
+                    </Button>
+                ) : (
+                    <div className="flex flex-col gap-4">
+                        <p className="text-sm text-ink-soft">Scan this QR code with your authenticator app, then enter the current 6-digit code to confirm.</p>
+                        <div className="flex flex-col items-start gap-4 sm:flex-row">
+                            <div className="shrink-0 rounded-2xl border border-border bg-white p-3">
+                                <QRCodeSVG value={setup.otpauth_uri} size={168} level="M" includeMargin={false} />
                             </div>
-                            <div className="flex gap-2 items-center pt-1">
-                                <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className="w-32 tracking-widest text-center" />
-                                <Button onClick={() => verify.mutate()} disabled={verify.isPending || code.length !== 6}>Verify &amp; enable</Button>
+                            <div className="min-w-0 space-y-2">
+                                <p className="text-sm font-medium text-ink">Can't scan? Enter this key manually</p>
+                                <div className="break-all rounded-xl border border-border bg-background p-2 font-mono text-sm text-ink">{setup.secret}</div>
                             </div>
                         </div>
-                    )}
-                </div>
-
-                <div className="space-y-3 border-t border-gray-100 pt-4">
-                    <h3 className="text-sm font-semibold text-gray-800">Recovery codes</h3>
-                    <p className="text-sm text-gray-500">Regenerate backup codes (invalidates the old set). Requires a current code.</p>
-                    <div className="flex gap-2 items-center">
-                        <Input value={regenCode} onChange={(e) => setRegenCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className="w-32 tracking-widest text-center" />
-                        <Button variant="outline" onClick={() => regen.mutate()} disabled={regen.isPending || regenCode.length !== 6}>Regenerate codes</Button>
+                        <div className="flex flex-wrap items-end gap-2 border-t border-border pt-4">
+                            <div className="flex flex-col gap-1.5">
+                                <label htmlFor="mfa-verify-code" className="text-sm font-medium text-ink">6-digit code</label>
+                                <Input id="mfa-verify-code" inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className={codeInputClass} />
+                            </div>
+                            <Button onClick={() => verify.mutate()} disabled={verify.isPending || code.length !== 6}>Verify and turn on</Button>
+                        </div>
                     </div>
-                </div>
+                )}
+            </SettingsCard>
 
-                <div className="space-y-3 border-t border-gray-100 pt-4">
-                    <h3 className="text-sm font-semibold text-gray-800">Disable</h3>
-                    <p className="text-sm text-gray-500">Enter a current code to turn MFA off.</p>
-                    <div className="flex gap-2 items-center">
-                        <Input value={disableCode} onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className="w-32 tracking-widest text-center" />
-                        <Button variant="outline" onClick={() => disable.mutate()} disabled={disable.isPending} className="text-rose-600 border-rose-200 hover:bg-rose-50">Disable MFA</Button>
+            <SettingsCard
+                labelledBy="settings-mfa-recovery"
+                title="Recovery codes"
+                description="Make a new set of backup codes. The old set stops working. You need a current code from your app."
+            >
+                <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="mfa-regen-code" className="text-sm font-medium text-ink">Current code</label>
+                        <Input id="mfa-regen-code" inputMode="numeric" autoComplete="one-time-code" value={regenCode} onChange={(e) => setRegenCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className={codeInputClass} />
                     </div>
+                    <Button variant="outline" onClick={() => regen.mutate()} disabled={regen.isPending || regenCode.length !== 6}>Regenerate codes</Button>
                 </div>
-            </CardContent>
-        </Card>
+            </SettingsCard>
+
+            <SettingsCard
+                danger
+                labelledBy="settings-mfa-disable"
+                title="Turn off two-factor sign-in"
+                description="Your account will only need a password to sign in. Enter a current code from your app to confirm."
+            >
+                <div className="flex flex-wrap items-end gap-2">
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor="mfa-disable-code" className="text-sm font-medium text-ink">Current code</label>
+                        <Input id="mfa-disable-code" inputMode="numeric" autoComplete="one-time-code" value={disableCode} onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="123456" className={codeInputClass} />
+                    </div>
+                    <Button
+                        variant="outline"
+                        onClick={() => disable.mutate()}
+                        disabled={disable.isPending}
+                        className="border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive"
+                    >
+                        Disable MFA
+                    </Button>
+                </div>
+            </SettingsCard>
+        </>
     );
 }

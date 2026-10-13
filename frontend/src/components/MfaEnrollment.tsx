@@ -3,6 +3,7 @@ import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { QRCodeSVG } from "qrcode.react";
 import { Loader2, ShieldCheck, Copy, Check } from "lucide-react";
+import { Pill } from "@/components/redesign/primitives";
 
 interface VerifyResponse {
     mfa_enabled: boolean;
@@ -82,25 +83,28 @@ export default function MfaEnrollment({ token, onSkip, onExpired, onCancel, onCo
     if (verifyResult) {
         return (
             <div className="space-y-4">
-                <div className="flex items-center gap-2 text-emerald-700">
-                    <ShieldCheck className="w-5 h-5" />
-                    <span className="text-sm font-semibold">Two-factor authentication is on</span>
+                <div className="flex items-center gap-2">
+                    <Pill tone="mint">
+                        <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                        On
+                    </Pill>
+                    <span className="text-sm font-semibold text-ink">Two-factor authentication is on</span>
                 </div>
-                <p className="text-xs text-zinc-500">
+                <p className="text-[13px] leading-relaxed text-ink-soft">
                     Save these recovery codes somewhere safe — each works once if you lose your
-                    authenticator. <span className="font-semibold">They are shown only now.</span>
+                    authenticator. <span className="font-semibold text-ink">They are shown only now.</span>
                 </p>
-                <div className="grid grid-cols-2 gap-1.5 p-3 bg-zinc-50 border border-zinc-200 rounded-lg font-mono text-xs text-zinc-700">
+                <div className="grid grid-cols-2 gap-1.5 rounded-2xl border border-border bg-background p-3 font-mono text-xs text-ink">
                     {verifyResult.recovery_codes.map((c) => <span key={c}>{c}</span>)}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     <button type="button" onClick={copyCodes}
-                        className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-zinc-600 bg-white border border-zinc-200 rounded-lg hover:bg-zinc-50 transition-colors">
-                        {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                        className="flex min-h-10 items-center gap-1.5 rounded-full border border-border bg-white px-4 text-sm font-medium text-ink transition-colors hover:bg-background">
+                        {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
                         {copied ? "Copied" : "Copy codes"}
                     </button>
                     <button type="button" onClick={() => onComplete(verifyResult)}
-                        className="flex-1 px-3 py-2 text-xs font-semibold text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 transition-colors">
+                        className="min-h-10 flex-1 rounded-full bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/85">
                         I've saved them — continue
                     </button>
                 </div>
@@ -112,54 +116,60 @@ export default function MfaEnrollment({ token, onSkip, onExpired, onCancel, onCo
     return (
         <div className="space-y-4">
             <div>
-                <h3 className="text-sm font-bold text-zinc-900">Set up two-factor authentication</h3>
-                <p className="text-xs text-zinc-500 mt-1">
+                <h3 className="text-base font-semibold text-ink">Set up two-factor authentication</h3>
+                <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
                     Scan the QR code with an authenticator app (Google Authenticator, Authy,
                     1Password…), then enter the 6-digit code it shows.
                 </p>
             </div>
             {setup ? (
-                <div className="flex items-start gap-4">
-                    <div className="p-2.5 bg-white border border-zinc-200 rounded-xl shadow-sm shrink-0">
+                <div className="flex flex-col items-start gap-4 sm:flex-row">
+                    <div className="shrink-0 rounded-2xl border border-border bg-white p-2.5">
                         <QRCodeSVG value={setup.otpauth_uri} size={132} level="M" />
                     </div>
-                    <div className="space-y-2 min-w-0">
-                        <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Manual entry key</p>
-                        <code className="block text-[11px] font-mono text-zinc-700 bg-zinc-50 border border-zinc-200 rounded-md px-2 py-1.5 break-all">
-                            {setup.secret}
-                        </code>
-                        <input
-                            value={code}
-                            onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                            placeholder="123456"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm font-mono tracking-[0.3em] placeholder:tracking-normal placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
-                        />
+                    <div className="w-full min-w-0 space-y-3">
+                        <div className="space-y-1">
+                            <p className="text-xs font-medium text-ink-soft">Can't scan? Enter this key manually</p>
+                            <code className="block break-all rounded-xl border border-border bg-background px-2.5 py-1.5 font-mono text-xs text-ink">
+                                {setup.secret}
+                            </code>
+                        </div>
+                        <div className="space-y-1">
+                            <label htmlFor="mfa-enroll-code" className="block text-sm font-medium text-ink">6-digit code</label>
+                            <input
+                                id="mfa-enroll-code"
+                                value={code}
+                                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                placeholder="123456"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                className="h-11 w-full rounded-full border border-input bg-white px-4 font-mono text-sm tracking-[0.3em] text-ink placeholder:tracking-normal placeholder:text-ink-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                            />
+                        </div>
                     </div>
                 </div>
             ) : !error ? (
-                <div className="flex items-center gap-2 text-zinc-400 text-sm py-6 justify-center">
-                    <Loader2 className="w-4 h-4 animate-spin" /> Preparing enrollment…
+                <div className="flex items-center justify-center gap-2 py-6 text-sm text-ink-soft" role="status">
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> Preparing enrollment…
                 </div>
             ) : null}
-            {error && <p className="text-xs text-rose-600">{error}</p>}
-            <div className="flex items-center gap-2">
+            {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+            <div className="flex flex-wrap items-center gap-2">
                 {onSkip && (
                     <button type="button" onClick={onSkip}
-                        className="px-3 py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-700 transition-colors">
+                        className="min-h-10 rounded-full border border-border bg-white px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-background hover:text-ink">
                         Skip for now
                     </button>
                 )}
                 {onCancel && (
                     <button type="button" onClick={onCancel}
-                        className="px-3 py-2 text-xs font-semibold text-zinc-500 hover:text-zinc-700 transition-colors">
+                        className="min-h-10 rounded-full border border-border bg-white px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-background hover:text-ink">
                         Back to sign in
                     </button>
                 )}
                 <button type="button" onClick={verify} disabled={code.length !== 6 || busy || !setup}
-                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-white bg-zinc-900 rounded-lg hover:bg-zinc-800 disabled:opacity-40 transition-colors">
-                    {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    className="flex min-h-10 flex-1 items-center justify-center gap-2 rounded-full bg-ink px-4 text-sm font-medium text-white transition-colors hover:bg-ink/85 disabled:opacity-40">
+                    {busy && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
                     Verify & enable
                 </button>
             </div>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Info, Loader2, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -8,9 +8,14 @@ import { Input } from '@/components/ui/input';
 import {
     CaptureLevel,
     DataPolicy,
+    DataPolicyView,
     getDataPolicy,
     updateDataPolicy,
 } from '@/api/dataPolicy';
+import { Pill } from '@/components/redesign/primitives';
+import {
+    CheckRow, FieldRow, checkboxClass, inputClass, textareaClass, warnCalloutClass,
+} from '@/components/redesign-local/groupD/settingsForm';
 
 /**
  * Per-project data-capture policy.
@@ -44,32 +49,59 @@ const fromLines = (v: string) =>
     v.split('\n').map((s) => s.trim()).filter(Boolean);
 
 export function DataPolicySection({ projectId }: { projectId: number }) {
-    const qc = useQueryClient();
     const query = useQuery({
         queryKey: ['data-policy', projectId],
         queryFn: () => getDataPolicy(projectId),
         enabled: !!projectId,
     });
 
-    const [draft, setDraft] = useState<Partial<DataPolicy> | null>(null);
-    const [headers, setHeaders] = useState('');
-    const [bodyFields, setBodyFields] = useState('');
-    const [selectors, setSelectors] = useState('');
+    if (query.isLoading) {
+        return (
+            <section className="rounded-3xl border border-border bg-white p-6">
+                <p className="flex items-center gap-2 text-sm text-ink-soft">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading data policy…
+                </p>
+            </section>
+        );
+    }
+    if (query.isError || !query.data) {
+        return (
+            <section className="rounded-3xl border border-border bg-white p-6">
+                <p className="text-sm text-destructive" role="alert">
+                    Could not load the data policy for this project.
+                </p>
+            </section>
+        );
+    }
+
+    // Re-key when the server's policy changes (after a save, or a project
+    // switch) so the form re-seeds without mirroring query data in an effect.
+    // Keyed on the content, not dataUpdatedAt, so a background refetch that
+    // returns the same policy does not wipe unsaved edits — same as before.
+    return (
+        <DataPolicyForm
+            key={`${projectId}-${JSON.stringify(query.data)}`}
+            projectId={projectId}
+            view={query.data}
+        />
+    );
+}
+
+const radioClass = 'mt-0.5 h-[18px] w-[18px] flex-none cursor-pointer accent-ink';
+
+function DataPolicyForm({ projectId, view }: { projectId: number; view: DataPolicyView }) {
+    const qc = useQueryClient();
 
     // Seed the form from the EFFECTIVE policy, so what you see is what runs.
-    useEffect(() => {
-        if (!query.data) return;
-        const e = query.data.effective;
-        setDraft({
-            capture_level: query.data.requested_capture_level,
-            store_bodies: e.store_bodies,
-            redact_patterns: e.redact_patterns,
-            retention_days: e.retention_days,
-        });
-        setHeaders(toLines(e.redact_headers));
-        setBodyFields(toLines(e.redact_body_fields));
-        setSelectors(toLines(e.mask_selectors));
-    }, [query.data]);
+    const [draft, setDraft] = useState<Partial<DataPolicy>>(() => ({
+        capture_level: view.requested_capture_level,
+        store_bodies: view.effective.store_bodies,
+        redact_patterns: view.effective.redact_patterns,
+        retention_days: view.effective.retention_days,
+    }));
+    const [headers, setHeaders] = useState(() => toLines(view.effective.redact_headers));
+    const [bodyFields, setBodyFields] = useState(() => toLines(view.effective.redact_body_fields));
+    const [selectors, setSelectors] = useState(() => toLines(view.effective.mask_selectors));
 
     const save = useMutation({
         mutationFn: () =>
@@ -79,10 +111,10 @@ export function DataPolicySection({ projectId }: { projectId: number }) {
                 redact_body_fields: fromLines(bodyFields),
                 mask_selectors: fromLines(selectors),
             }),
-        onSuccess: (view) => {
+        onSuccess: (saved) => {
             toast.success(
-                view.clamped
-                    ? `Saved — capped at "${view.effective.capture_level}" by the instance ceiling`
+                saved.clamped
+                    ? `Saved — capped at "${saved.effective.capture_level}" by the instance ceiling`
                     : 'Data policy saved',
             );
             qc.invalidateQueries({ queryKey: ['data-policy', projectId] });
@@ -91,47 +123,37 @@ export function DataPolicySection({ projectId }: { projectId: number }) {
             toast.error(e?.response?.data?.detail ?? 'Could not save the data policy'),
     });
 
-    if (query.isLoading) {
-        return (
-            <div className="flex items-center gap-2 text-sm text-slate-500 p-5">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading data policy…
-            </div>
-        );
-    }
-    if (query.isError || !query.data || !draft) {
-        return (
-            <div className="text-sm text-red-600 p-5">
-                Could not load the data policy for this project.
-            </div>
-        );
-    }
-
-    const view = query.data;
     const patterns = draft.redact_patterns ?? view.default_patterns;
     const usingDefaultPatterns = draft.redact_patterns === null;
 
     const togglePattern = (name: string) => {
         const current = new Set(patterns);
-        current.has(name) ? current.delete(name) : current.add(name);
+        if (current.has(name)) current.delete(name);
+        else current.add(name);
         setDraft({ ...draft, redact_patterns: Array.from(current) });
     };
 
+    const fieldId = (name: string) => `dp-${projectId}-${name}`;
+
     return (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-5">
+        <section
+            aria-labelledby={fieldId('title')}
+            className="flex flex-col gap-5 rounded-3xl border border-border bg-white p-6"
+        >
             <div>
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-slate-500" />
-                    Data capture &amp; redaction
-                </h3>
-                <p className="text-sm text-slate-500 mt-1">
+                <h2 id={fieldId('title')} className="flex items-center gap-2 text-base font-semibold text-ink">
+                    <ShieldCheck className="h-4 w-4 text-ink-soft" aria-hidden="true" />
+                    Data capture and redaction
+                </h2>
+                <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
                     What this project's runs are allowed to record, and what gets scrubbed
                     out of it before anything is stored.
                 </p>
             </div>
 
             {view.clamped && (
-                <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                <div className={`flex items-start gap-2 ${warnCalloutClass}`} role="status">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
                     <span>
                         This project requests <strong>{view.requested_capture_level}</strong>,
                         but the instance ceiling is{' '}
@@ -144,132 +166,130 @@ export function DataPolicySection({ projectId }: { projectId: number }) {
             )}
 
             {/* Capture level */}
-            <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Capture level</label>
-                <div className="space-y-1">
-                    {view.available_capture_levels.map((level) => {
-                        const blocked =
-                            view.available_capture_levels.indexOf(level) >
-                            view.available_capture_levels.indexOf(view.instance_max_capture_level);
-                        return (
-                            <label
-                                key={level}
-                                className={`flex items-start gap-2 text-sm rounded-md px-2 py-1.5 cursor-pointer ${
-                                    draft.capture_level === level ? 'bg-slate-50' : ''
-                                }`}
-                            >
-                                <input
-                                    type="radio"
-                                    name="capture_level"
-                                    className="mt-1"
-                                    checked={draft.capture_level === level}
-                                    onChange={() => setDraft({ ...draft, capture_level: level })}
-                                />
-                                <span>
-                                    <span className="font-medium text-slate-800">{level}</span>
-                                    {blocked && (
-                                        <span className="ml-2 text-xs text-amber-700">
-                                            above the instance ceiling
-                                        </span>
-                                    )}
-                                    <span className="block text-slate-500">{LEVEL_BLURB[level]}</span>
+            <fieldset className="flex flex-col gap-1">
+                <legend className="mb-1 text-sm font-semibold text-ink">Capture level</legend>
+                {view.available_capture_levels.map((level) => {
+                    const blocked =
+                        view.available_capture_levels.indexOf(level) >
+                        view.available_capture_levels.indexOf(view.instance_max_capture_level);
+                    const checked = draft.capture_level === level;
+                    return (
+                        <label
+                            key={level}
+                            className={`flex min-h-11 cursor-pointer items-start gap-3 rounded-2xl border px-3 py-2.5 text-sm ${
+                                checked ? 'border-border bg-background' : 'border-transparent hover:bg-background/60'
+                            }`}
+                        >
+                            <input
+                                type="radio"
+                                name={fieldId('capture_level')}
+                                className={radioClass}
+                                checked={checked}
+                                onChange={() => setDraft({ ...draft, capture_level: level })}
+                            />
+                            <span className="min-w-0">
+                                <span className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-ink">{level}</span>
+                                    {blocked && <Pill tone="butter">Above the instance ceiling</Pill>}
                                 </span>
-                            </label>
-                        );
-                    })}
-                </div>
-            </div>
+                                <span className="block text-ink-soft">{LEVEL_BLURB[level]}</span>
+                            </span>
+                        </label>
+                    );
+                })}
+            </fieldset>
 
             {/* What the effective level actually permits */}
-            <div className="border border-slate-200 rounded-md p-3">
-                <div className="text-xs font-medium text-slate-600 mb-2">
-                    Recorded right now (effective level: {view.effective.capture_level})
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 text-sm">
+            <div className="flex flex-col gap-2 rounded-2xl border border-border p-4">
+                <h3 className="text-sm font-semibold text-ink">
+                    Recorded right now <span className="font-normal text-ink-soft">(effective level: {view.effective.capture_level})</span>
+                </h3>
+                <ul className="flex flex-wrap gap-2" aria-label="What is recorded">
                     {SHOWN_KINDS.map(({ key, label }) => (
-                        <div key={key} className="flex items-center gap-1.5">
-                            <span
-                                className={`h-1.5 w-1.5 rounded-full ${
-                                    view.permits[key] ? 'bg-emerald-500' : 'bg-slate-300'
-                                }`}
-                            />
-                            <span className={view.permits[key] ? 'text-slate-700' : 'text-slate-400'}>
+                        <li key={key}>
+                            <Pill tone={view.permits[key] ? 'mint' : 'neutral'}>
                                 {label}
-                            </span>
-                        </div>
+                                <span className="sr-only">{view.permits[key] ? ': recorded' : ': not recorded'}</span>
+                                {!view.permits[key] && <span aria-hidden="true">· off</span>}
+                            </Pill>
+                        </li>
                     ))}
-                </div>
-                <p className="text-xs text-slate-500 mt-2 flex items-start gap-1.5">
-                    <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                    Video, traces and HAR need <strong>full</strong>: a trace is a complete
-                    DOM recording and a video captures whatever was on screen, so neither
-                    can be meaningfully redacted.
+                </ul>
+                <p className="flex items-start gap-1.5 text-xs leading-relaxed text-ink-soft">
+                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>
+                        Video, traces and HAR need <strong>full</strong>: a trace is a complete
+                        DOM recording and a video captures whatever was on screen, so neither
+                        can be meaningfully redacted.
+                    </span>
                 </p>
             </div>
 
             {/* Value patterns */}
-            <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">
-                    Redact these value patterns
-                </label>
-                <div className="flex flex-wrap gap-3">
+            <fieldset className="flex flex-col gap-2">
+                <legend className="mb-1 text-sm font-semibold text-ink">Redact these value patterns</legend>
+                <div className="flex flex-wrap gap-x-5 gap-y-1">
                     {view.available_patterns.map((name) => (
-                        <label key={name} className="flex items-center gap-1.5 text-sm">
+                        <label key={name} className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink">
                             <input
                                 type="checkbox"
+                                className={checkboxClass}
                                 checked={patterns.includes(name)}
                                 onChange={() => togglePattern(name)}
                             />
-                            <span className="text-slate-700">{name}</span>
+                            <span>{name}</span>
                         </label>
                     ))}
                 </div>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs leading-relaxed text-ink-soft">
                     {usingDefaultPatterns
                         ? `Using the built-in set (${view.default_patterns.join(', ')}).`
                         : 'Card numbers and Aadhaar are checksum-validated, so an order id that happens to be 16 digits is left alone.'}
                     {' '}Email and phone are off by default — blanket-redacting them breaks
                     assertions that check for them.
                 </p>
-            </div>
+            </fieldset>
 
             {/* Field-name denylists + masks */}
-            <div className="grid sm:grid-cols-3 gap-4">
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-700">Extra headers</label>
+            <div className="grid gap-4 border-t border-border pt-4 sm:grid-cols-3">
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor={fieldId('headers')} className="text-sm font-semibold text-ink">Extra headers</label>
                     <textarea
-                        className="w-full h-24 text-sm border border-slate-200 rounded-md p-2 font-mono"
+                        id={fieldId('headers')}
+                        className={`h-24 ${textareaClass}`}
                         placeholder={'x-tenant-token\nx-internal-auth'}
                         value={headers}
                         onChange={(e) => setHeaders(e.target.value)}
                     />
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs leading-relaxed text-ink-soft">
                         One per line. Authorization, Cookie and the usual suspects are always
                         redacted.
                     </p>
                 </div>
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-700">Extra body fields</label>
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor={fieldId('body')} className="text-sm font-semibold text-ink">Extra body fields</label>
                     <textarea
-                        className="w-full h-24 text-sm border border-slate-200 rounded-md p-2 font-mono"
+                        id={fieldId('body')}
+                        className={`h-24 ${textareaClass}`}
                         placeholder={'policy_no\nnominee_dob'}
                         value={bodyFields}
                         onChange={(e) => setBodyFields(e.target.value)}
                     />
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs leading-relaxed text-ink-soft">
                         Matched regardless of case or separators, so <code>policy_no</code>{' '}
                         also covers <code>policyNo</code>.
                     </p>
                 </div>
-                <div className="space-y-1">
-                    <label className="text-sm font-medium text-slate-700">Mask selectors</label>
+                <div className="flex flex-col gap-1.5">
+                    <label htmlFor={fieldId('selectors')} className="text-sm font-semibold text-ink">Mask selectors</label>
                     <textarea
-                        className="w-full h-24 text-sm border border-slate-200 rounded-md p-2 font-mono"
+                        id={fieldId('selectors')}
+                        className={`h-24 ${textareaClass}`}
                         placeholder={'#ssn\n[data-pii]'}
                         value={selectors}
                         onChange={(e) => setSelectors(e.target.value)}
                     />
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs leading-relaxed text-ink-soft">
                         CSS selectors painted over at capture time, so the pixels are never
                         written to disk.
                     </p>
@@ -277,50 +297,41 @@ export function DataPolicySection({ projectId }: { projectId: number }) {
             </div>
 
             {/* Bodies + retention */}
-            <div className="grid sm:grid-cols-2 gap-4">
-                <label className="flex items-start gap-2 text-sm">
-                    <input
-                        type="checkbox"
-                        className="mt-1"
-                        checked={draft.store_bodies !== false}
-                        onChange={(e) => setDraft({ ...draft, store_bodies: e.target.checked })}
-                    />
-                    <span>
-                        <span className="font-medium text-slate-700">
-                            Store request &amp; response bodies
-                        </span>
-                        <span className="block text-xs text-slate-500">
-                            Off drops bodies entirely. Headers and status codes are kept either
-                            way, so failures stay triageable.
-                        </span>
-                    </span>
-                </label>
-                <label className="text-sm space-y-1">
-                    <span className="font-medium text-slate-700 block">Retention (days)</span>
+            <div className="flex flex-col border-t border-border pt-3">
+                <CheckRow
+                    id={fieldId('store_bodies')}
+                    label="Store request and response bodies"
+                    hint="Off drops bodies entirely. Headers and status codes are kept either way, so failures stay triageable."
+                    checked={draft.store_bodies !== false}
+                    onChange={(v) => setDraft({ ...draft, store_bodies: v })}
+                />
+                <FieldRow
+                    label="Retention (days)"
+                    htmlFor={fieldId('retention')}
+                    hint="0 falls back to the instance setting. Whichever window is shorter wins."
+                >
                     <Input
+                        id={fieldId('retention')}
                         type="number"
                         min={0}
-                        className="w-28 h-8"
+                        className={`${inputClass} w-28`}
                         value={draft.retention_days ?? 0}
                         onChange={(e) =>
                             setDraft({ ...draft, retention_days: parseInt(e.target.value) || 0 })
                         }
                     />
-                    <span className="block text-xs text-slate-500">
-                        0 falls back to the instance setting. Whichever window is shorter wins.
-                    </span>
-                </label>
+                </FieldRow>
             </div>
 
-            <div className="flex items-center gap-3 pt-1">
+            <div className="flex flex-wrap items-center gap-3 border-t border-border pt-4">
                 <Button onClick={() => save.mutate()} disabled={save.isPending}>
-                    {save.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                    {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
                     Save data policy
                 </Button>
-                <span className="text-xs text-slate-500">
+                <span className="text-xs text-ink-soft">
                     Takes effect on the next run dispatched for this project.
                 </span>
             </div>
-        </div>
+        </section>
     );
 }

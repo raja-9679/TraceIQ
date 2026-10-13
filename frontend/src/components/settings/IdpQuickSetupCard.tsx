@@ -10,17 +10,16 @@
 // preset does not cover, so nothing becomes unreachable.
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, ArrowLeft, Loader2, Save, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import {
     DerivedConfig, errorDetail, IdpPreset, IdpProtocol, idpCatalogApi, isSecretKey,
 } from '@/api/idpCatalog';
+import { Pill } from '@/components/redesign/primitives';
+import { FieldRow, SettingsCard, inputClass, warnCalloutClass } from '@/components/redesign-local/groupD/settingsForm';
 
 const PROTOCOL_LABELS: Record<IdpProtocol, string> = {
     oidc: 'OpenID Connect',
@@ -73,148 +72,134 @@ export default function IdpQuickSetupCard() {
     if (error || (!isLoading && !presets?.length)) return null;
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                    <Wand2 className="h-4 w-4" /> Set up a provider
-                </CardTitle>
-                <CardDescription>
-                    Pick your identity provider and answer a couple of questions — the
-                    issuer URLs, metadata paths, claim names and redirect URLs are filled
-                    in for you. Users keep the normal TraceIQ login unless you disable
-                    password login, and instance admins always keep it as break-glass.
-                </CardDescription>
-            </CardHeader>
+        <SettingsCard
+            labelledBy="idp-quick-setup-title"
+            icon={<Wand2 className="h-4 w-4" aria-hidden="true" />}
+            title="Set up a provider"
+            description="Pick your identity provider and answer a couple of questions — the issuer URLs, metadata paths, claim names and redirect URLs are filled in for you. Users keep the normal TraceIQ login unless you disable password login, and instance admins always keep it as break-glass."
+            footer={selected ? (
+                <>
+                    <Button
+                        disabled={!derived || save.isPending}
+                        onClick={() => save.mutate()}
+                    >
+                        {save.isPending
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Save className="h-4 w-4" />}
+                        Save
+                    </Button>
+                    <Button
+                        variant="outline"
+                        disabled={preview.isPending}
+                        onClick={() => preview.mutate()}
+                    >
+                        {preview.isPending
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Wand2 className="h-4 w-4" />}
+                        Preview settings
+                    </Button>
+                    <span className="basis-full text-xs leading-relaxed text-ink-soft">
+                        Preview first, then save. Saving validates the values — for SAML it fetches the IdP metadata,
+                        so a wrong URL is reported here rather than at someone's first login.
+                    </span>
+                </>
+            ) : undefined}
+        >
+            {isLoading && (
+                <p className="flex items-center gap-2 text-sm text-ink-soft">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading providers…
+                </p>
+            )}
 
-            <CardContent className="space-y-4">
-                {isLoading && (
-                    <div className="flex items-center gap-2 text-sm text-gray-500">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Loading providers…
-                    </div>
-                )}
-
-                {!isLoading && !selected && PROTOCOL_ORDER.map((protocol) => {
-                    const group = (presets || []).filter((p) => p.protocol === protocol);
-                    if (!group.length) return null;
-                    return (
-                        <div key={protocol}>
-                            <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-2">
-                                {PROTOCOL_LABELS[protocol]}
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                                {group.map((preset) => (
-                                    <Button
-                                        key={preset.id}
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => { setSelected(preset); setAnswers({}); setDerived(null); }}
-                                    >
-                                        {preset.label}
-                                    </Button>
-                                ))}
-                            </div>
-                        </div>
-                    );
-                })}
-
-                {selected && (
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-2">
-                            <Button variant="ghost" size="sm" onClick={reset}>
-                                <ArrowLeft className="h-4 w-4 mr-1" /> All providers
-                            </Button>
-                            <span className="text-sm font-medium text-gray-700">{selected.label}</span>
-                            <Badge variant="secondary" className="text-xs">
-                                {PROTOCOL_LABELS[selected.protocol]}
-                            </Badge>
-                        </div>
-
-                        {selected.warnings.map((warning) => (
-                            <div
-                                key={warning}
-                                className="flex items-start gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2"
-                            >
-                                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                                <span>{warning}</span>
-                            </div>
-                        ))}
-
-                        <div className="space-y-3">
-                            {selected.fields.map((field) => (
-                                <div key={field.name} className="grid grid-cols-12 gap-3 items-center">
-                                    <div className="col-span-5">
-                                        <Label className="text-sm font-medium text-gray-700">
-                                            {field.label}
-                                            {!field.required && (
-                                                <span className="text-gray-400 font-normal"> (optional)</span>
-                                            )}
-                                        </Label>
-                                        {field.help && (
-                                            <p className="text-xs text-gray-500 mt-0.5">{field.help}</p>
-                                        )}
-                                    </div>
-                                    <div className="col-span-7">
-                                        <Input
-                                            type={field.secret ? 'password' : 'text'}
-                                            autoComplete={field.secret ? 'new-password' : 'off'}
-                                            placeholder={field.placeholder}
-                                            value={answers[field.name] ?? ''}
-                                            onChange={(e) => {
-                                                setDerived(null);
-                                                setAnswers((a) => ({ ...a, [field.name]: e.target.value }));
-                                            }}
-                                        />
-                                    </div>
-                                </div>
+            {!isLoading && !selected && PROTOCOL_ORDER.map((protocol) => {
+                const group = (presets || []).filter((p) => p.protocol === protocol);
+                if (!group.length) return null;
+                return (
+                    <div key={protocol} className="flex flex-col gap-2">
+                        <h3 className="text-sm font-semibold text-ink">{PROTOCOL_LABELS[protocol]}</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {group.map((preset) => (
+                                <Button
+                                    key={preset.id}
+                                    variant="outline"
+                                    onClick={() => { setSelected(preset); setAnswers({}); setDerived(null); }}
+                                >
+                                    {preset.label}
+                                </Button>
                             ))}
                         </div>
+                    </div>
+                );
+            })}
 
-                        {derived && (
-                            <div className="border rounded-md divide-y">
-                                <div className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 bg-gray-50">
-                                    These settings will be saved
-                                </div>
+            {selected && (
+                <div className="flex flex-col gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="ghost" onClick={reset}>
+                            <ArrowLeft className="h-4 w-4" /> All providers
+                        </Button>
+                        <span className="text-sm font-semibold text-ink">{selected.label}</span>
+                        <Pill tone="lavender">{PROTOCOL_LABELS[selected.protocol]}</Pill>
+                    </div>
+
+                    {selected.warnings.map((warning) => (
+                        <div key={warning} className={`flex items-start gap-2 ${warnCalloutClass}`}>
+                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
+                            <span>{warning}</span>
+                        </div>
+                    ))}
+
+                    <div className="flex flex-col divide-y divide-border">
+                        {selected.fields.map((field) => (
+                            <FieldRow
+                                key={field.name}
+                                htmlFor={`idp-field-${field.name}`}
+                                label={
+                                    <>
+                                        {field.label}
+                                        {!field.required && (
+                                            <span className="font-normal text-ink-soft"> (optional)</span>
+                                        )}
+                                    </>
+                                }
+                                hint={field.help}
+                                wide
+                            >
+                                <Input
+                                    id={`idp-field-${field.name}`}
+                                    type={field.secret ? 'password' : 'text'}
+                                    autoComplete={field.secret ? 'new-password' : 'off'}
+                                    className={inputClass}
+                                    placeholder={field.placeholder}
+                                    value={answers[field.name] ?? ''}
+                                    onChange={(e) => {
+                                        setDerived(null);
+                                        setAnswers((a) => ({ ...a, [field.name]: e.target.value }));
+                                    }}
+                                />
+                            </FieldRow>
+                        ))}
+                    </div>
+
+                    {derived && (
+                        <div className="overflow-hidden rounded-2xl border border-border">
+                            <h3 className="bg-background px-4 py-2 text-sm font-semibold text-ink">
+                                These settings will be saved
+                            </h3>
+                            <dl className="divide-y divide-border">
                                 {Object.entries(derived.values).map(([key, value]) => (
-                                    <div key={key} className="px-3 py-2 grid grid-cols-12 gap-2 text-xs">
-                                        <code className="col-span-5 text-gray-700">{key}</code>
-                                        <span className="col-span-7 text-gray-600 break-all">
+                                    <div key={key} className="grid grid-cols-1 gap-1 px-4 py-2 text-xs sm:grid-cols-12 sm:gap-2">
+                                        <dt className="sm:col-span-5"><code className="text-ink">{key}</code></dt>
+                                        <dd className="break-all text-ink-soft sm:col-span-7">
                                             {isSecretKey(key) ? '••••••••' : value}
-                                        </span>
+                                        </dd>
                                     </div>
                                 ))}
-                            </div>
-                        )}
-
-                        <div className="flex items-center gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={preview.isPending}
-                                onClick={() => preview.mutate()}
-                            >
-                                {preview.isPending
-                                    ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                    : <Wand2 className="h-4 w-4 mr-1" />}
-                                Preview settings
-                            </Button>
-                            <Button
-                                size="sm"
-                                disabled={!derived || save.isPending}
-                                onClick={() => save.mutate()}
-                            >
-                                {save.isPending
-                                    ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                    : <Save className="h-4 w-4 mr-1" />}
-                                Save
-                            </Button>
-                            <span className="text-xs text-gray-500">
-                                Saving validates the values — for SAML it fetches the IdP metadata,
-                                so a wrong URL is reported here rather than at someone's first login.
-                            </span>
+                            </dl>
                         </div>
-                    </div>
-                )}
-            </CardContent>
-        </Card>
+                    )}
+                </div>
+            )}
+        </SettingsCard>
     );
 }
