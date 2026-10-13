@@ -460,7 +460,7 @@ export default function TestSuites() {
                                     <span className="w-40 text-xs text-ink-soft">
                                         {plural(suite.total_test_cases || 0, 'test')} · {plural(suite.total_sub_modules || 0, 'module')}
                                     </span>
-                                    <span className="hidden w-28 whitespace-nowrap text-xs text-ink-soft lg:inline">{formatDate(suite.created_at)}</span>
+                                    <span className="hidden w-28 flex-none whitespace-nowrap text-xs text-ink-soft lg:inline" title={formatDate(suite.created_at)}>{new Date(suite.created_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                                     <div className="ml-auto flex gap-1.5">
                                         {runButton(suite)}
                                         {exportButton(suite)}
