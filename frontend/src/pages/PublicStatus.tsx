@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { RefreshCw, CheckCircle2, AlertTriangle, XCircle, HelpCircle } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { API_BASE_URL } from '@/lib/api';
+import { Pill } from '@/components/redesign/primitives';
+import type { Tone } from '@/components/redesign/kinds';
+import { LogoMark } from '@/components/redesign-local/groupF/AuthLayout';
 
 // Public, unauthenticated status page — rendered outside the app shell.
 // Data comes from GET /api/status/{slug}; auto-refreshes every 60s.
@@ -21,14 +24,48 @@ interface StatusData {
 
 const API_BASE = API_BASE_URL;
 
-const OVERALL: Record<string, { label: string; cls: string; icon: any }> = {
-    operational: { label: 'All systems operational', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200', icon: CheckCircle2 },
-    degraded: { label: 'Partial outage', cls: 'bg-amber-50 text-amber-700 border-amber-200', icon: AlertTriangle },
-    down: { label: 'Major outage', cls: 'bg-rose-50 text-rose-700 border-rose-200', icon: XCircle },
-    unknown: { label: 'Status unknown', cls: 'bg-slate-50 text-slate-600 border-slate-200', icon: HelpCircle },
+const OVERALL: Record<string, { label: string; tone: Tone }> = {
+    operational: { label: 'All systems operational', tone: 'mint' },
+    degraded: { label: 'Partial outage', tone: 'butter' },
+    down: { label: 'Major outage', tone: 'peach' },
+    unknown: { label: 'Status unknown', tone: 'neutral' },
+};
+
+const STATE: Record<StatusMonitor['state'], { label: string; tone: Tone }> = {
+    up: { label: 'Up', tone: 'mint' },
+    down: { label: 'Down', tone: 'peach' },
+    unknown: { label: 'No data', tone: 'neutral' },
 };
 
 const fmtUptime = (v: number | null) => v == null ? '—' : `${v.toFixed(2)}%`;
+
+// The public endpoint returns uptime percentages, not per-check history, so
+// the strip shows the up/down split of the window rather than individual checks.
+function UptimeStrip({ label, value }: { label: string; value: number | null }) {
+    const up = value == null ? null : Math.max(0, Math.min(100, value));
+    return (
+        <div className="flex flex-col gap-1.5">
+            <div className="flex justify-between text-xs text-ink-soft">
+                <span>{label}</span>
+                <span className="tabular-nums">{fmtUptime(value)}</span>
+            </div>
+            <div
+                role="img"
+                aria-label={up == null ? `${label}: no data` : `${label}: ${fmtUptime(value)} up`}
+                className="flex h-2.5 gap-[3px] overflow-hidden rounded-full"
+            >
+                {up == null ? (
+                    <span className="flex-1 rounded-full bg-secondary" />
+                ) : (
+                    <>
+                        {up > 0 && <span className="rounded-full bg-[#8FD3B6]" style={{ flexGrow: up }} />}
+                        {up < 100 && <span className="min-w-[4px] rounded-full bg-[#E0603A]" style={{ flexGrow: 100 - up }} />}
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
 
 export default function PublicStatus() {
     const { slug } = useParams();
@@ -50,56 +87,61 @@ export default function PublicStatus() {
     }, [slug]);
 
     if (loading) {
-        return <div className="min-h-screen bg-slate-50 flex items-center justify-center"><RefreshCw className="animate-spin text-slate-300 w-8 h-8" /></div>;
+        return (
+            <div className="flex min-h-screen items-center justify-center bg-background" aria-busy="true">
+                <RefreshCw className="h-7 w-7 animate-spin text-ink-muted" aria-label="Loading status" />
+            </div>
+        );
     }
     if (error || !data) {
         return (
-            <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-                <div className="text-center">
-                    <HelpCircle className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                    <p className="text-slate-600 font-semibold">Status page not found</p>
-                    <p className="text-slate-400 text-sm mt-1">The link may have been rotated or disabled.</p>
+            <div className="flex min-h-screen items-center justify-center bg-background px-4">
+                <div className="flex max-w-sm flex-col items-center gap-2 rounded-3xl border border-border bg-white px-6 py-12 text-center">
+                    <p className="text-lg font-semibold text-ink">Status page not found</p>
+                    <p className="text-sm text-ink-soft">The link may have been rotated or disabled.</p>
                 </div>
             </div>
         );
     }
 
     const overall = OVERALL[data.overall] || OVERALL.unknown;
-    const OverallIcon = overall.icon;
 
     return (
-        <div className="min-h-screen bg-slate-50 py-14 px-4">
-            <div className="max-w-2xl mx-auto">
-                <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 mb-6">{data.title}</h1>
-                <div className={`flex items-center gap-3 border rounded-2xl px-5 py-4 mb-8 ${overall.cls}`}>
-                    <OverallIcon className="w-6 h-6 shrink-0" />
-                    <span className="font-bold text-lg">{overall.label}</span>
-                </div>
+        <div className="min-h-screen bg-background px-4 py-10 sm:py-14">
+            <div className="mx-auto flex max-w-2xl flex-col gap-6">
+                <header className="flex flex-col gap-3">
+                    <h1 className="text-[28px] font-bold leading-tight tracking-[-0.03em] text-ink">{data.title}</h1>
+                    <Pill tone={overall.tone} className="self-start px-3 py-1 text-sm">{overall.label}</Pill>
+                </header>
 
-                <div className="bg-white border border-slate-200 rounded-2xl shadow-sm divide-y divide-slate-100">
+                <div className="flex flex-col gap-3">
                     {data.monitors.length === 0 && (
-                        <p className="p-6 text-sm text-slate-400">No monitors are published on this page yet.</p>
+                        <div className="rounded-2xl border border-border bg-white px-5 py-6 text-sm text-ink-soft">
+                            No monitors are published on this page yet.
+                        </div>
                     )}
                     {data.monitors.map((m) => (
-                        <div key={m.name} className="flex items-center justify-between px-5 py-4">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${m.state === 'up' ? 'bg-emerald-500' : m.state === 'down' ? 'bg-rose-500' : 'bg-slate-300'}`} />
-                                <span className="font-semibold text-slate-800 truncate">{m.name}</span>
+                        <section key={m.name} aria-label={m.name} className="flex flex-col gap-4 rounded-2xl border border-border bg-white px-5 py-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="flex min-w-0 flex-col gap-1">
+                                    <h2 className="truncate text-[15px] font-semibold text-ink">{m.name}</h2>
+                                    <span className="text-[13px] text-ink-soft">Uptime, last 24 hours</span>
+                                    <span className="text-[26px] font-bold leading-none tracking-tight text-ink tabular-nums">{fmtUptime(m.uptime_24h)}</span>
+                                </div>
+                                <Pill tone={STATE[m.state]?.tone ?? 'neutral'} className="shrink-0">{STATE[m.state]?.label ?? m.state}</Pill>
                             </div>
-                            <div className="flex items-center gap-6 text-sm tabular-nums text-slate-500 shrink-0">
-                                <span title="Uptime, last 24h">{fmtUptime(m.uptime_24h)} <span className="text-slate-300 text-xs">24h</span></span>
-                                <span title="Uptime, last 7 days" className="hidden sm:inline">{fmtUptime(m.uptime_7d)} <span className="text-slate-300 text-xs">7d</span></span>
-                                <span className={`font-bold uppercase text-[10px] tracking-wider px-2.5 py-1 rounded-full border ${m.state === 'up' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : m.state === 'down' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                                    {m.state}
-                                </span>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <UptimeStrip label="Last 24 hours" value={m.uptime_24h} />
+                                <UptimeStrip label="Last 7 days" value={m.uptime_7d} />
                             </div>
-                        </div>
+                        </section>
                     ))}
                 </div>
 
-                <p className="text-center text-xs text-slate-400 mt-8">
-                    Updated every 60 seconds · Powered by TraceIQ synthetic monitoring
-                </p>
+                <footer className="flex flex-col items-center gap-3 pt-2 text-center text-xs text-ink-soft">
+                    <span>Updated every 60 seconds · Powered by TraceIQ synthetic monitoring</span>
+                    <LogoMark />
+                </footer>
             </div>
         </div>
     );
