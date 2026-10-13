@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import { CaseSplit } from '@/components/redesign/CaseSplit';
 import { useState, useEffect, useMemo } from 'react';
 import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getAuditLog, getAppBuilds } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -904,56 +905,16 @@ export default function SuiteDetails() {
                                                 ))}
                                             </motion.div>
                                         ) : (
-                                            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                                <Table>
-                                                    <TableHeader className="bg-slate-50/50">
-                                                        <TableRow className="border-slate-100 hover:bg-transparent">
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10 w-[300px]">Test Case</TableHead>
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10 w-[120px]">Steps</TableHead>
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10 text-right">Actions</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {filteredTestCases.map((tc: any) => (
-                                                            <TableRow key={tc.id} className="border-slate-100 hover:bg-slate-50 group transition-colors">
-                                                                <TableCell className="py-3">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <FileText className="h-4 w-4 text-emerald-500" />
-                                                                        <span className="font-bold text-slate-700 group-hover:text-emerald-700 text-sm">{tc.name}</span>
-                                                                        {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="py-3">
-                                                                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">{tc.steps?.length || 0}</span>
-                                                                </TableCell>
-                                                                <TableCell className="py-3 text-right">
-                                                                    <div className="flex justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg" onClick={() => handleRunTestCase(tc.id)} title="Run">
-                                                                            <Play className="h-3.5 w-3.5" fill="currentColor" />
-                                                                        </Button>
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} title="Schedule">
-                                                                            <CalendarClock className="h-3.5 w-3.5" />
-                                                                        </Button>
-                                                                        {can("test:create", { projectId, workspaceId }) && (
-                                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)} title="Edit">
-                                                                                <Edit className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                        )}
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={() => handleExportCase(tc.id, tc.name)} title="Export">
-                                                                            <Download className="h-3.5 w-3.5" />
-                                                                        </Button>
-                                                                        {can("test:create", { projectId, workspaceId }) && (
-                                                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg" onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} title="Delete">
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                        )}
-                                                                    </div>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
+                                            <CaseSplit
+                                                cases={filteredTestCases}
+                                                badge={(tc) => flakeByCaseId.has(tc.id) ? <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} /> : null}
+                                                canEdit={can("test:create", { projectId, workspaceId })}
+                                                onRun={(tc) => handleRunTestCase(tc.id)}
+                                                onSchedule={(tc) => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }}
+                                                onEdit={(tc) => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)}
+                                                onExport={(tc) => handleExportCase(tc.id, tc.name)}
+                                                onDelete={(tc) => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }}
+                                            />
                                         )}
                                     </div>
                                 )}
