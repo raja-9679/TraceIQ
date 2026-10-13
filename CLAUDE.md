@@ -621,7 +621,10 @@ commit. Suite/case deletes still 409 on a referencing schedule.
 **Project boundary:** the cascade walks FKs by id, and access is checked for
 the deleted entity's project only, so a `DELETE` edge that reaches a row with a
 *different* non-null `project_id` raises `CrossProjectReference` (409 via an
-app exception handler) instead of deleting another project's data. Retention
+app exception handler) instead of deleting another project's data. Roots with
+no project get an EMPTY allowed set (only project-less rows), never "no
+check". The 409 body is generic on purpose — the other project's ids stay in
+the server log, since the caller may have no access to them. Retention
 retries a refused batch run by run and skips the offender.
 
 Still open:

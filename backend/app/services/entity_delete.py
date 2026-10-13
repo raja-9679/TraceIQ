@@ -149,6 +149,10 @@ class CrossProjectReference(RuntimeError):
     reference A's suite/case/run (a child suite re-parented across projects, a
     run or proposal naming another project's case). Access was checked for A
     only, so the delete is refused instead; the API turns this into a 409.
+
+    The message names the other project(s) and is for SERVER logs only — the
+    caller may have no access to those projects, so the API response must not
+    repeat it (see the handler in app/main.py).
     """
 
     def __init__(self, table: str, column: str, project_ids: Set[int]):
@@ -270,34 +274,36 @@ def _cascade(root: str, root_ids: Iterable[int]) -> Generator:
     nullify: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)  # parent -> (child, col)
 
     # The projects this delete was authorised for: the roots' own. A DELETE
-    # edge must not reach a row that belongs to any other project. Rows with
-    # no project_id (legacy, or child tables bound only through their parent)
-    # are judged by the parent they hang off. If the roots themselves carry no
-    # project there is nothing to bound by, and the caller's access check is
-    # all there is.
-    allowed: Optional[Set[int]] = None
+    # edge must not reach a row that belongs to any other project. Child rows
+    # with no project_id (legacy, or tables bound only through their parent)
+    # are judged by the parent they hang off. Roots WITHOUT a project get the
+    # strictest bound, not none: an empty allowed set, so they may only reach
+    # project-less rows — otherwise a legacy suite/case/run would be a way to
+    # cascade into any project, or any tenant's.
+    allowed: Set[int] = set()
     if root == "project":
         allowed = set(report.root_ids)
-    elif "project_id" in md.tables[root].c:
+    else:
         rtable = md.tables[root]
-        found_projects: Set[int] = set()
         for chunk in _chunks(report.root_ids):
             result = yield (sa.select(rtable.c.project_id).distinct()
                             .where(_pk(rtable).in_(chunk)))
-            found_projects.update(p for p in result.scalars().all() if p is not None)
-        allowed = found_projects or None
+            allowed.update(p for p in result.scalars().all() if p is not None)
 
     def _foreign_rows(child: str, col: str, parent_ids: Set[int]):
         """Yield-driven check: project ids of `child` rows outside `allowed`."""
         table = md.tables[child]
-        if allowed is None or col == "project_id" or "project_id" not in table.c:
+        if col == "project_id" or "project_id" not in table.c:
             return set()
         foreign: Set[int] = set()
         for chunk in _chunks(parent_ids):
-            result = yield (sa.select(table.c.project_id).distinct()
+            outside = (table.c.project_id.notin_(sorted(allowed)) if allowed
+                       else sa.true())
+            result = yield (sa.select(table.c.project_id.label("foreign_project_id"))
+                            .distinct()
                             .where(table.c[col].in_(chunk),
                                    table.c.project_id.isnot(None),
-                                   table.c.project_id.notin_(sorted(allowed))))
+                                   outside))
             foreign.update(p for p in result.scalars().all() if p is not None)
         return foreign
 

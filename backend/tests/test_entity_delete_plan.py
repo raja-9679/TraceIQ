@@ -145,12 +145,13 @@ def _drive(root, ids, children=None, root_projects=(), foreign=None):
             verb = type(stmt).__name__.lower()       # select / update / delete
             table = stmt.table.name if hasattr(stmt, "table") else \
                 stmt.get_final_froms()[0].name
-            if verb == "select" and stmt.selected_columns[0].name == "project_id":
+            column = stmt.selected_columns[0].name if verb == "select" else None
+            if column in ("project_id", "foreign_project_id"):
                 log.append(("boundary", table))
-                # The roots' own lookup vs. a foreign-row check: only the
-                # latter filters project_id NOT IN the allowed set (they can
-                # hit the same table, e.g. testsuite.parent_id).
-                is_check = "NOT IN" in str(stmt)
+                # The roots' own lookup vs. a foreign-row check (they can hit
+                # the same table, e.g. testsuite.parent_id); the check labels
+                # its column.
+                is_check = column == "foreign_project_id"
                 rows = foreign.get(table, ()) if is_check else root_projects
                 result = _Result(rows)
                 continue
@@ -240,9 +241,16 @@ def test_project_deletes_do_not_bound_their_own_project_edges():
     assert "testsuite" not in boundary_tables and "testcase" not in boundary_tables
 
 
-def test_roots_without_a_project_skip_the_boundary():
+def test_roots_without_a_project_may_not_reach_any_project():
+    # A legacy suite with no project must not become a way into project 99.
+    with pytest.raises(CrossProjectReference):
+        _drive("testsuite", [1], children={"testcase": [5]},
+               root_projects=[], foreign={"testcase": [99]})
+
+
+def test_roots_without_a_project_still_delete_projectless_children():
     log, _ = _drive("testsuite", [1], children={"testcase": [5]},
-                    root_projects=[], foreign={"testcase": [99]})
+                    root_projects=[], foreign={})
     assert ("delete", "testcase") in log
 
 
@@ -254,4 +262,6 @@ def test_the_api_answers_a_cross_project_refusal_with_409():
     assert handler is not None, "CrossProjectReference would surface as a 500"
     resp = asyncio.run(handler(None, CrossProjectReference("testcase", "test_suite_id", {99})))
     assert resp.status_code == 409
-    assert b"testcase.test_suite_id" in resp.body
+    # The other project's id and table belong in the server log, not in a
+    # response to a caller who may have no access to that project.
+    assert b"99" not in resp.body and b"testcase" not in resp.body

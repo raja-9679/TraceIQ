@@ -96,8 +96,16 @@ from app.services.entity_delete import CrossProjectReference  # noqa: E402
 
 @app.exception_handler(CrossProjectReference)
 async def _cross_project_delete_handler(request: Request, exc: CrossProjectReference):
+    # The exception names the other project(s) and table; the caller may have
+    # no access to them, so that stays in the server log. The response says
+    # only what the caller can act on.
+    import logging
     from fastapi.responses import JSONResponse
-    return JSONResponse(status_code=409, content={"detail": str(exc)})
+    logging.getLogger(__name__).warning("delete refused: %s", exc)
+    return JSONResponse(status_code=409, content={
+        "detail": "This can't be deleted: data outside this project still refers "
+                  "to it. Ask an admin of the other project to remove those "
+                  "references first."})
 
 app.add_middleware(
     CORSMiddleware,

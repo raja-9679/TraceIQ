@@ -515,3 +515,18 @@ async def test_run_delete_refuses_to_take_another_projects_finding(session, scen
     assert await session.get(TestRun, d.run_id) is not None
     assert await _scalar(session, "SELECT count(*) FROM securityfinding WHERE project_id = :p",
                          p=s.project_id) == 1
+
+
+async def test_a_projectless_root_cannot_cascade_into_a_project(session, scene):
+    # A legacy suite with no project must not be a way into any project's data.
+    from app.services.entity_delete import CrossProjectReference, cascade_delete
+
+    d = scene.doomed
+    await session.exec(text("UPDATE testsuite SET project_id = NULL WHERE id = :s"),
+                       params={"s": d.child_suite_id})
+    await session.commit()
+
+    with pytest.raises(CrossProjectReference):
+        await cascade_delete(session, "testsuite", [d.child_suite_id])
+    await _resync(session)
+    assert await session.get(TestCase, d.case_id) is not None
