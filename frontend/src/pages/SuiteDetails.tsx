@@ -444,94 +444,97 @@ export default function SuiteDetails() {
             <input ref={importSuiteRef} type="file" accept=".json" onChange={handleImportSuite} className="hidden" aria-hidden="true" tabIndex={-1} />
             <input ref={importCaseRef} type="file" accept=".json" onChange={handleImportCase} className="hidden" aria-hidden="true" tabIndex={-1} />
 
-            <PageHeader
-                crumbs={<>
-                    <Link to="/suites" className="hover:text-ink">Tests</Link>
-                    <span>/</span>
-                    <span>{activeProject?.name}</span>
-                    {suite.parent_id && (<>
+            <div className="rounded-3xl border border-border bg-white">
+                <div className="px-5 pb-4 pt-5 sm:px-6">
+                <PageHeader
+                    crumbs={<>
+                        <Link to="/suites" className="hover:text-ink">Tests</Link>
                         <span>/</span>
-                        <Link to={`/suites/${suite.parent_id}`} className="max-w-[180px] truncate hover:text-ink">{suite.parent?.name || 'Parent module'}</Link>
-                    </>)}
-                </>}
-                title={<span className="inline-flex items-center gap-2">
-                    {suite.name}
-                    {canManage && (
-                        <button type="button" onClick={openRenameDialog} aria-label="Rename this suite" title="Rename"
-                            className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-white hover:text-ink">
-                            <Edit className="h-4 w-4" />
-                        </button>
-                    )}
-                </span>}
-                badge={<ExecModeBadge mode={suite.execution_mode} />}
-                subtitle={suite.description || `${suite.total_test_cases || 0} tests · ${suite.total_sub_modules || 0} sub-modules`}
-                actions={
-                    <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
-                        {canExecute && (environments?.length ?? 0) > 0 && (
-                            <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
-                                <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="Environment for runs from this page" title="Environment for runs from this page">
-                                    <Globe className="h-4 w-4 shrink-0" /><SelectValue placeholder="Environment" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="default">Default environment</SelectItem>
-                                    {(environments || []).map((env) => (
-                                        <SelectItem key={env.id} value={env.id.toString()}>
-                                            {env.name}{env.is_default ? ' (default)' : ''}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
+                        <span>{activeProject?.name}</span>
+                        {suite.parent_id && (<>
+                            <span>/</span>
+                            <Link to={`/suites/${suite.parent_id}`} className="max-w-[180px] truncate hover:text-ink">{suite.parent?.name || 'Parent module'}</Link>
+                        </>)}
+                    </>}
+                    title={<span className="inline-flex items-center gap-2">
+                        {suite.name}
+                        {canManage && (
+                            <button type="button" onClick={openRenameDialog} aria-label="Rename this suite" title="Rename"
+                                className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink">
+                                <Edit className="h-4 w-4" />
+                            </button>
                         )}
-                        {canExecute && (appBuilds?.length ?? 0) > 0 && (
-                            <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
-                                <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
-                                    <Smartphone className="h-4 w-4 shrink-0" /><SelectValue placeholder="App build" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">No app build (web)</SelectItem>
-                                    {(appBuilds || []).map((b) => (
-                                        <SelectItem key={b.id} value={b.id.toString()}>
-                                            {b.app_name}{b.version_name ? ` ${b.version_name}` : ''} ({b.platform})
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
-                        {canExecute && (
-                            <Button onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending}>
-                                {runMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : <><Play className="h-4 w-4" fill="currentColor" /> Run suite</>}
-                            </Button>
-                        )}
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" aria-label="More suite actions"><MoreHorizontal className="h-4 w-4" /> More</Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-56">
-                                {canExecute && (
-                                    <DropdownMenuItem onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}><CalendarClock className="mr-2 h-4 w-4" /> Schedule this suite</DropdownMenuItem>
-                                )}
-                                <DropdownMenuItem onClick={handleExportSuite}><Download className="mr-2 h-4 w-4" /> Export suite (JSON)</DropdownMenuItem>
-                                {canManage && (
-                                    <DropdownMenuItem onClick={() => importSuiteRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import into this suite</DropdownMenuItem>
-                                )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </div>
-                }
-            />
+                    </span>}
+                    badge={<ExecModeBadge mode={suite.execution_mode} />}
+                    subtitle={suite.description || `${suite.total_test_cases || 0} tests · ${suite.total_sub_modules || 0} sub-modules`}
+                    actions={
+                        <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                            {canExecute && (environments?.length ?? 0) > 0 && (
+                                <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
+                                    <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="Environment for runs from this page" title="Environment for runs from this page">
+                                        <Globe className="h-4 w-4 shrink-0" /><SelectValue placeholder="Environment" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="default">Default environment</SelectItem>
+                                        {(environments || []).map((env) => (
+                                            <SelectItem key={env.id} value={env.id.toString()}>
+                                                {env.name}{env.is_default ? ' (default)' : ''}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {canExecute && (appBuilds?.length ?? 0) > 0 && (
+                                <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
+                                    <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
+                                        <Smartphone className="h-4 w-4 shrink-0" /><SelectValue placeholder="App build" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">No app build (web)</SelectItem>
+                                        {(appBuilds || []).map((b) => (
+                                            <SelectItem key={b.id} value={b.id.toString()}>
+                                                {b.app_name}{b.version_name ? ` ${b.version_name}` : ''} ({b.platform})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                            {canExecute && (
+                                <Button onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending}>
+                                    {runMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : <><Play className="h-4 w-4" fill="currentColor" /> Run suite</>}
+                                </Button>
+                            )}
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" aria-label="More suite actions"><MoreHorizontal className="h-4 w-4" /> More</Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-56">
+                                    {canExecute && (
+                                        <DropdownMenuItem onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}><CalendarClock className="mr-2 h-4 w-4" /> Schedule this suite</DropdownMenuItem>
+                                    )}
+                                    <DropdownMenuItem onClick={handleExportSuite}><Download className="mr-2 h-4 w-4" /> Export suite (JSON)</DropdownMenuItem>
+                                    {canManage && (
+                                        <DropdownMenuItem onClick={() => importSuiteRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import into this suite</DropdownMenuItem>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    }
+                />
+                </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-                <div role="tablist" aria-label="Suite sections" className="flex gap-1 rounded-full bg-[#EFEDE7] p-1">
+                <div className="flex flex-wrap items-center gap-2 border-t border-[#F0EEE8] px-3 py-2 sm:px-4">
+                <div role="tablist" aria-label="Suite sections" className="-mb-2 flex gap-1 self-stretch">
                     {tabs.map((t) => (
                         <button key={t.id} type="button" role="tab" aria-selected={activeTab === t.id} onClick={() => setActiveTab(t.id)}
-                            className={`flex min-h-9 items-center gap-1.5 rounded-full text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink/20 px-4 ${activeTab === t.id ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium'}`}>
+                            className={`flex min-h-12 items-center gap-1.5 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ink/20 ${activeTab === t.id ? 'font-semibold text-ink shadow-[inset_0_-2px_0_#1C1B22]' : 'font-medium text-ink-soft hover:text-ink'}`}>
                             {t.label}{t.count !== undefined && <span className="font-mono text-xs text-ink-soft">{t.count}</span>}
                         </button>
                     ))}
                 </div>
                 {activeTab === 'tests' && (
                     <div className="ml-auto flex flex-wrap items-center gap-2">
-                        <label className="flex h-10 w-full items-center gap-2 rounded-full border border-border bg-white px-3.5 sm:w-56">
+                        <label className="flex h-10 w-full items-center gap-2 rounded-full border border-input bg-white px-3.5 sm:w-56">
                             <Search className="h-4 w-4 flex-none text-ink-soft" />
                             <span className="sr-only">Search this suite</span>
                             <input type="search" placeholder={showCases ? 'Search tests' : 'Search sub-modules'} value={searchTerm}
@@ -564,6 +567,7 @@ export default function SuiteDetails() {
                         )}
                     </div>
                 )}
+                </div>
             </div>
 
                     <AnimatePresence mode="wait">
