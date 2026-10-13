@@ -1,42 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-    Radio, RefreshCw, AlertCircle, Layers, ArrowUpCircle, ArrowDownCircle, HelpCircle, Info,
-} from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import { formatDistanceToNowStrict } from 'date-fns';
+import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getProjects } from '@/lib/api';
-import { monitorsApi, MonitorStatus } from '@/api/monitors';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { monitorsApi, type MonitorStatus } from '@/api/monitors';
+import {
+    DetailCard, EmptyState, EvidenceList, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import type { Kind, Tone } from '@/components/redesign/kinds';
+import { cn } from '@/lib/utils';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
+const ago = (iso: string | null) => (iso ? formatDistanceToNowStrict(new Date(iso), { addSuffix: true }) : 'never');
 
-function StateBadge({ state }: { state: string }) {
-    if (state === 'up') return <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border-emerald-200"><ArrowUpCircle className="w-3 h-3 mr-1" /> up</Badge>;
-    if (state === 'down') return <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-rose-50 text-rose-700 border-rose-200"><ArrowDownCircle className="w-3 h-3 mr-1" /> down</Badge>;
-    return <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-slate-50 text-slate-500 border-slate-200"><HelpCircle className="w-3 h-3 mr-1" /> unknown</Badge>;
-}
+const stateLook: Record<MonitorStatus['state'], { kind: Kind; tone: Tone; label: string }> = {
+    down: { kind: 'monitor', tone: 'peach', label: 'Down' },
+    up: { kind: 'pass', tone: 'mint', label: 'Up' },
+    unknown: { kind: 'skip', tone: 'neutral', label: 'No checks yet' },
+};
 
-function Uptime({ value }: { value: number | null }) {
-    if (value === null || value === undefined) return <span className="text-slate-300 text-sm">—</span>;
-    const tone = value >= 99 ? 'text-emerald-600' : value >= 95 ? 'text-amber-600' : 'text-rose-600';
-    return <span className={`text-sm font-bold tabular-nums ${tone}`}>{value}%</span>;
-}
-
-function Sparkline({ checks }: { checks: MonitorStatus['recent_checks'] }) {
-    // Most-recent-first from the API; show oldest→newest left→right.
-    const items = [...checks].reverse().slice(-20);
-    if (!items.length) return <span className="text-slate-300 text-xs">no checks</span>;
-    return (
-        <div className="flex items-center gap-0.5">
-            {items.map((c) => (
-                <span key={c.id} title={`${c.checked_at}: ${c.status}`}
-                    className={`inline-block w-1.5 h-4 rounded-sm ${c.is_up ? 'bg-emerald-400' : 'bg-rose-400'}`} />
-            ))}
-        </div>
-    );
-}
+const fmtUptime = (v: number | null) => (v === null || v === undefined ? '—' : `${v}%`);
 
 function StatusPageCard({ projectId }: { projectId: number }) {
     const qc = useQueryClient();
@@ -45,7 +32,7 @@ function StatusPageCard({ projectId }: { projectId: number }) {
         queryFn: () => monitorsApi.getStatusPage(projectId),
     });
     const save = useMutation({
-        mutationFn: (body: Record<string, any>) => monitorsApi.upsertStatusPage(projectId, body),
+        mutationFn: (body: Record<string, unknown>) => monitorsApi.upsertStatusPage(projectId, body),
         onSuccess: () => { toast.success('Status page updated'); qc.invalidateQueries({ queryKey: ['status-page', projectId] }); },
         onError: (e) => toast.error(errDetail(e)),
     });
@@ -54,54 +41,79 @@ function StatusPageCard({ projectId }: { projectId: number }) {
     const publicUrl = p ? `${window.location.origin}/status/${p.slug}` : null;
 
     return (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm mb-4">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <div className="min-w-0">
-                    <h3 className="font-bold text-slate-800">Public status page</h3>
-                    {p && p.enabled && publicUrl ? (
-                        <a href={publicUrl} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 hover:underline break-all">{publicUrl}</a>
-                    ) : (
-                        <p className="text-xs text-slate-400">Share an unauthenticated uptime page built from this project's monitors (names + uptime only).</p>
-                    )}
-                </div>
-                <div className="flex gap-2 shrink-0">
-                    {!p ? (
-                        <Button size="sm" className="h-8 rounded-lg" onClick={() => save.mutate({ enabled: true })} disabled={save.isPending}>Create page</Button>
-                    ) : (
-                        <>
-                            {p.enabled && publicUrl && (
-                                <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => { navigator.clipboard.writeText(publicUrl); toast.success('Link copied'); }}>Copy link</Button>
-                            )}
-                            <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => save.mutate({ enabled: !p.enabled })} disabled={save.isPending}>
-                                {p.enabled ? 'Disable' : 'Enable'}
-                            </Button>
-                            <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={() => save.mutate({ regenerate_slug: true })} disabled={save.isPending}>Rotate link</Button>
-                        </>
-                    )}
-                </div>
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-white p-4">
+            <div className="flex items-baseline justify-between gap-2">
+                <h2 className="text-sm font-semibold text-ink">Public status page</h2>
+                {p && <Pill tone={p.enabled ? 'mint' : 'neutral'}>{p.enabled ? 'Live' : 'Off'}</Pill>}
+            </div>
+            {p && p.enabled && publicUrl ? (
+                <a href={publicUrl} target="_blank" rel="noreferrer" className="break-all font-mono text-xs text-ink-soft hover:text-ink">{publicUrl}</a>
+            ) : (
+                <p className="text-[13px] leading-relaxed text-ink-soft">An unauthenticated page built from this project's monitors. It shows names and uptime only.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+                {!p ? (
+                    <Button size="sm" onClick={() => save.mutate({ enabled: true })} disabled={save.isPending}>Create page</Button>
+                ) : (
+                    <>
+                        {p.enabled && publicUrl && (
+                            <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(publicUrl); toast.success('Link copied'); }}>Copy link</Button>
+                        )}
+                        <Button size="sm" variant="outline" onClick={() => save.mutate({ enabled: !p.enabled })} disabled={save.isPending}>
+                            {p.enabled ? 'Turn off' : 'Turn on'}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => save.mutate({ regenerate_slug: true })} disabled={save.isPending}>Rotate link</Button>
+                    </>
+                )}
             </div>
         </div>
     );
 }
 
-export default function Monitors() {
-    const [projectId, setProjectId] = useState<number | null>(() => {
-        const s = localStorage.getItem('activeProjectId');
-        return s ? parseInt(s) : null;
-    });
-    useEffect(() => {
-        const h = () => { const s = localStorage.getItem('activeProjectId'); setProjectId(s ? parseInt(s) : null); };
-        window.addEventListener('projectChanged', h);
-        return () => window.removeEventListener('projectChanged', h);
-    }, []);
+function CheckBars({ checks, large = false }: { checks: MonitorStatus['recent_checks']; large?: boolean }) {
+    // Most-recent-first from the API; draw oldest -> newest, left -> right.
+    const items = [...checks].reverse().slice(-30);
+    const down = items.filter((c) => !c.is_up).length;
+    if (!items.length) return <span className="text-xs text-ink-muted">No checks recorded yet</span>;
+    return (
+        <div
+            role="img"
+            aria-label={`${items.length - down} of the last ${items.length} checks were up`}
+            className={cn('flex gap-[3px]', large ? 'h-11' : 'h-4')}
+        >
+            {items.map((c) => (
+                <span
+                    key={c.id}
+                    title={`${new Date(c.checked_at).toLocaleString()}: ${c.status}`}
+                    className={cn('flex-1 rounded-[4px]', c.is_up ? 'bg-[#8FD3B6]' : 'bg-[#E0603A]')}
+                />
+            ))}
+        </div>
+    );
+}
 
-    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
-    const selectProject = (idStr: string) => {
-        const id = parseInt(idStr);
-        setProjectId(id);
-        localStorage.setItem('activeProjectId', id.toString());
-        window.dispatchEvent(new Event('projectChanged'));
-    };
+function Stat({ label, value, tone }: { label: string; value: string; tone?: string }) {
+    return (
+        <div className="flex flex-col gap-1 rounded-2xl bg-background p-4">
+            <span className="text-xs text-ink-soft">{label}</span>
+            <span className={cn('text-2xl font-bold tracking-tight text-ink tabular-nums', tone)}>{value}</span>
+        </div>
+    );
+}
+
+function meaning(m: MonitorStatus) {
+    if (!m.is_active) return 'Paused. It records no checks and sends no alerts until the schedule is turned back on.';
+    if (m.state === 'down') {
+        return `${m.consecutive_failures} failed check${m.consecutive_failures === 1 ? '' : 's'} in a row. Test runs failing in the same window are likely the environment, not the code.`;
+    }
+    if (m.state === 'unknown') return 'No checks have been recorded yet. The first one runs on the schedule’s next tick.';
+    if (m.uptime_7d !== null && m.uptime_7d < 99) return `Up now, but only ${m.uptime_7d}% of the last 7 days. Worth a look before it turns into a release blocker.`;
+    return 'Healthy. Each check is a real test run on a timer, so it catches broken pages, not just a down server.';
+}
+
+export default function Monitors() {
+    const projectId = useActiveProjectId();
+    const [selectedId, setSelectedId] = useState<number | null>(null);
 
     const { data: monitors, isLoading, error, refetch, isFetching } = useQuery({
         queryKey: ['monitors', projectId],
@@ -110,108 +122,119 @@ export default function Monitors() {
         refetchInterval: 30000,
     });
 
+    const list = monitors ?? [];
+    const groups = [
+        { name: 'Needs attention', items: list.filter((m) => m.is_active && m.state === 'down') },
+        { name: 'Healthy', items: list.filter((m) => m.is_active && m.state === 'up') },
+        { name: 'No checks yet', items: list.filter((m) => m.is_active && m.state === 'unknown') },
+        { name: 'Paused', items: list.filter((m) => !m.is_active) },
+    ].filter((g) => g.items.length > 0);
+
+    const selected = list.find((m) => m.schedule_id === selectedId) ?? groups[0]?.items[0] ?? null;
+    const downCount = list.filter((m) => m.is_active && m.state === 'down').length;
+
     return (
-        <div className="max-w-[1200px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Monitoring</span>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Synthetic Monitors</h1>
-                        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Scheduled suites run against production as health checks. Consecutive failures trigger
-                            alerts; every check feeds uptime. Flag a schedule as a monitor to see it here.
-                        </p>
-                    </div>
-                    <div className="sm:ml-auto shrink-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</p>
-                        <Select value={projectId?.toString() ?? ''} onValueChange={selectProject}>
-                            <SelectTrigger className="w-[240px] h-10 rounded-xl bg-white border-slate-200">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <Layers className="w-4 h-4 text-indigo-500 shrink-0" />
-                                    <SelectValue placeholder="Select a project" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {(projects || []).map((p) => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </div>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Watch"
+                subtitle={
+                    !projectId ? 'Pick a project in the sidebar.'
+                        : monitors ? `${list.length} monitor${list.length === 1 ? '' : 's'} · ${downCount} down · refreshes every 30 seconds`
+                            : 'Production health checks on a timer.'
+                }
+                actions={
+                    <>
+                        <Button variant="outline" onClick={() => refetch()} aria-label="Refresh now">
+                            <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
+                            Refresh
+                        </Button>
+                        <Button asChild><Link to="/schedules">New monitor</Link></Button>
+                    </>
+                }
+            />
 
             {!projectId ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-bold text-slate-800 mb-1">No Project Selected</h3>
-                    <p className="text-slate-500 text-sm">Select a project above to see its monitors.</p>
-                </div>
+                <EmptyState title="Pick a project">Choose a project in the sidebar to see its monitors.</EmptyState>
             ) : isLoading ? (
-                <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>
-            ) : error ? (
-                <div className="p-10 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-                    <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" />
-                    <p className="text-rose-700 font-semibold">Failed to load monitors</p>
-                    <p className="text-rose-600/80 text-sm">{errDetail(error)}</p>
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
                 </div>
-            ) : !monitors || monitors.length === 0 ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-                    <Radio className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-                    <h3 className="text-lg font-bold text-slate-800 mb-1">No monitors yet</h3>
-                    <p className="text-slate-500 text-sm max-w-md mx-auto">
-                        Enable <span className="font-semibold">monitor mode</span> on a schedule (Schedules page) to turn its
-                        recurring run into a production health check with uptime tracking and failure-streak alerts.
-                    </p>
+            ) : error ? (
+                <EmptyState title="Couldn't load monitors">{errDetail(error)}</EmptyState>
+            ) : list.length === 0 ? (
+                <div className="flex flex-col gap-4">
+                    <EmptyState title="No monitors yet">
+                        Turn on monitor mode for a schedule to make its recurring run a production health check, with uptime and failure-streak alerts.
+                    </EmptyState>
+                    <div className="max-w-[440px]"><StatusPageCard projectId={projectId} /></div>
                 </div>
             ) : (
-                <>
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-start gap-2 text-xs text-slate-500 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2 flex-1 mr-3">
-                            <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-px" />
-                            <p>Auto-refreshes every 30s. Uptime is computed from recorded checks over the window.</p>
-                        </div>
-                        <button onClick={() => refetch()} className="text-slate-400 hover:text-slate-700">
-                            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-                        </button>
-                    </div>
-                    <StatusPageCard projectId={projectId} />
-                    <div className="grid md:grid-cols-2 gap-4">
-                        {monitors.map((m) => (
-                            <div key={m.schedule_id} className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm">
-                                <div className="flex items-start justify-between mb-3">
-                                    <div>
-                                        <div className="font-bold text-slate-800">{m.name}</div>
-                                        <div className="text-xs text-slate-400 mt-0.5">
-                                            schedule #{m.schedule_id}{!m.is_active && ' · paused'}
-                                        </div>
-                                    </div>
-                                    <StateBadge state={m.state} />
-                                </div>
-                                <div className="grid grid-cols-3 gap-3 mb-3">
-                                    <div>
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">24h uptime</div>
-                                        <Uptime value={m.uptime_24h} />
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">7d uptime</div>
-                                        <Uptime value={m.uptime_7d} />
-                                    </div>
-                                    <div>
-                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Fail streak</div>
-                                        <span className={`text-sm font-bold tabular-nums ${m.consecutive_failures ? 'text-rose-600' : 'text-slate-400'}`}>
-                                            {m.consecutive_failures}
-                                        </span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <Sparkline checks={m.recent_checks} />
-                                    <span className="text-[10px] text-slate-400">{m.total_checks} checks</span>
-                                </div>
+                <SplitView
+                    list={
+                        <>
+                            {groups.map((g) => (
+                                <ListGroup key={g.name} title={g.name} count={g.items.length}>
+                                    {g.items.map((m) => (
+                                        <ListRow
+                                            key={m.schedule_id}
+                                            selected={selected?.schedule_id === m.schedule_id}
+                                            onSelect={() => setSelectedId(m.schedule_id)}
+                                            leading={<KindChip kind={stateLook[m.state].kind} size="sm" />}
+                                            title={m.name}
+                                            meta={`${m.total_checks} checks · last ${ago(m.last_checked_at)}`}
+                                            trailing={<span className="font-mono text-xs text-ink-soft">{fmtUptime(m.uptime_24h)}</span>}
+                                        />
+                                    ))}
+                                </ListGroup>
+                            ))}
+                            <StatusPageCard projectId={projectId} />
+                        </>
+                    }
+                    detail={selected && (
+                        <DetailCard label="Selected monitor">
+                            <div className="flex flex-col gap-2">
+                                <Pill tone={selected.is_active ? stateLook[selected.state].tone : 'neutral'} className="self-start">
+                                    {selected.is_active ? stateLook[selected.state].label : 'Paused'}
+                                    {selected.state === 'down' && selected.consecutive_failures > 0 && ` · ${selected.consecutive_failures} in a row`}
+                                </Pill>
+                                <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.name}</h2>
+                                <span className="text-sm text-ink-soft">Schedule #{selected.schedule_id} · last checked {ago(selected.last_checked_at)}</span>
                             </div>
-                        ))}
-                    </div>
-                </>
+
+                            <div className="flex flex-col gap-2">
+                                <span className="flex justify-between text-xs font-semibold uppercase tracking-[0.04em] text-ink-soft">
+                                    <span>Recent checks</span>
+                                    <span className="font-medium normal-case tracking-normal">oldest to newest</span>
+                                </span>
+                                <CheckBars checks={selected.recent_checks} large />
+                            </div>
+
+                            <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
+                                <Stat label="24-hour uptime" value={fmtUptime(selected.uptime_24h)} />
+                                <Stat label="7-day uptime" value={fmtUptime(selected.uptime_7d)} />
+                                <Stat label="Failures in a row" value={String(selected.consecutive_failures)} tone={selected.consecutive_failures ? 'text-pastel-ink-peach' : undefined} />
+                                <Stat label="Checks recorded" value={String(selected.total_checks)} />
+                            </div>
+
+                            <Panel title="What this means" callout>{meaning(selected)}</Panel>
+
+                            <EvidenceList
+                                items={selected.recent_checks.slice(0, 5).map((c) => ({
+                                    tag: c.is_up ? 'up' : 'down',
+                                    text: `${c.status} · ${ago(c.checked_at)}`,
+                                    to: c.run_id ? `/runs/${c.run_id}` : undefined,
+                                }))}
+                            />
+
+                            <div className="flex flex-wrap gap-2.5">
+                                {selected.recent_checks[0]?.run_id && (
+                                    <Button asChild size="lg"><Link to={`/runs/${selected.recent_checks[0].run_id}`}>Open latest check</Link></Button>
+                                )}
+                                <Button asChild size="lg" variant="outline"><Link to="/schedules">Edit schedule</Link></Button>
+                            </div>
+                        </DetailCard>
+                    )}
+                />
             )}
         </div>
     );

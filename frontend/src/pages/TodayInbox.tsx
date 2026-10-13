@@ -159,7 +159,7 @@ export default function TodayInbox() {
             title: `${m.name} is down`,
             when: ago(m.last_checked_at),
             happened: <>{m.consecutive_failures} failed check{m.consecutive_failures === 1 ? '' : 's'} in a row.</>,
-            read: m.uptime_24h != null ? <>Up {pct(m.uptime_24h)} of the last 24 hours. Runs failing in this window may be the environment, not the code.</> : undefined,
+            read: m.uptime_24h != null ? <>Up {m.uptime_24h}% of the last 24 hours. Runs failing in this window may be the environment, not the code.</> : undefined,
             evidence: m.recent_checks.slice(0, 3).map((ch) => ({
                 tag: ch.is_up ? 'up' : 'down',
                 text: `${ch.status} · ${ago(ch.checked_at)}`,
