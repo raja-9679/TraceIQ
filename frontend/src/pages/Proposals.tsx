@@ -12,7 +12,7 @@ import {
 import { api, getProjects } from '@/lib/api';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import {
-    DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+    DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, PanelTabs, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import type { Tone } from '@/components/redesign/kinds';
 import { cn } from '@/lib/utils';
@@ -709,46 +709,33 @@ export default function Proposals() {
             <PageHeader
                 title="Proposals"
                 subtitle="Changes AI agents want to make to your tests. Nothing touches a suite until someone here accepts it."
+                toolbar={<>
+                    <PanelTabs
+                        label="Proposal type"
+                        value={tab}
+                        onChange={(id) => { setTab(id); setStatus('pending'); }}
+                        tabs={tabs}
+                    />
+                    <div className="ml-auto flex flex-wrap gap-1 rounded-full bg-[#EFEDE7] p-1" aria-label="Filter by status" role="group">
+                        {statuses.map((s) => (
+                            <button
+                                key={s}
+                                type="button"
+                                aria-pressed={status === s}
+                                onClick={() => setStatus(s)}
+                                className={cn(
+                                    'min-h-9 rounded-full px-3.5 text-[13px] text-ink outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ink/20',
+                                    status === s ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium text-ink-soft hover:text-ink'
+                                )}
+                            >
+                                {STATUS_FILTER_LABEL[s] ?? s.replace('_', ' ')}
+                            </button>
+                        ))}
+                    </div>
+                </>}
             />
 
             {projectId && <AutoApplyPolicyCard projectId={projectId} />}
-
-            <div className="flex flex-wrap items-center gap-3">
-                <div role="tablist" aria-label="Proposal type" className="flex rounded-full border border-border bg-white p-1">
-                    {tabs.map((t) => (
-                        <button
-                            key={t.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={tab === t.id}
-                            onClick={() => { setTab(t.id); setStatus('pending'); }}
-                            className={cn(
-                                'min-h-10 rounded-full px-4 text-sm font-semibold transition-colors',
-                                tab === t.id ? 'bg-ink text-white' : 'text-ink hover:bg-secondary'
-                            )}
-                        >
-                            {t.label}
-                        </button>
-                    ))}
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 sm:ml-auto" aria-label="Filter by status" role="group">
-                    {statuses.map((s) => (
-                        <button
-                            key={s}
-                            type="button"
-                            aria-pressed={status === s}
-                            onClick={() => setStatus(s)}
-                            className={cn(
-                                'min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors',
-                                status === s ? 'border-transparent bg-pastel-lavender text-pastel-ink-lavender' : 'border-border bg-white text-ink hover:bg-secondary'
-                            )}
-                        >
-                            {STATUS_FILTER_LABEL[s] ?? s.replace('_', ' ')}
-                        </button>
-                    ))}
-                </div>
-            </div>
 
             {tab === 'heals' ? (
                 <HealProposalsTab status={status} />

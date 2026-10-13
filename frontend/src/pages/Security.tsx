@@ -10,7 +10,7 @@ import { getProjects } from '@/lib/api';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { securityApi, type SecuritySettings, type SecurityScan, type SecurityFinding } from '@/api/security';
 import {
-    DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+    DetailCard, EmptyState, Eyebrow, ListCard, ListGroup, ListRow, PageHeader, Panel, PanelTabs, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import type { Tone } from '@/components/redesign/kinds';
 import { cn } from '@/lib/utils';
@@ -417,24 +417,19 @@ export default function Security() {
                             <SplitView
                                 list={
                                     <>
-                                        <div role="tablist" aria-label="Finding status" className="grid grid-cols-2 gap-1 rounded-[20px] bg-[#EFEDE7] p-1">
-                                            {STATUSES.map((s) => {
-                                                const n = findings.filter((f) => statusOf(f) === s).length;
-                                                return (
-                                                    <button key={s} type="button" role="tab" aria-selected={tab === s}
-                                                        onClick={() => { setTab(s); setFindingId(null); }}
-                                                        className={cn('flex min-h-9 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-2 text-[13px] text-ink',
-                                                            tab === s ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium')}>
-                                                        {STATUS_LABEL[s]}<span className="font-mono text-xs text-ink-soft">{n}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                        <div className="flex flex-col gap-0.5">
+                                        <ListCard>
+                                            <div className="border-b border-[#F0EEE8] px-2 py-2">
+                                                <PanelTabs
+                                                    label="Finding status"
+                                                    value={tab}
+                                                    onChange={(id) => { setTab(id); setFindingId(null); }}
+                                                    tabs={STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st], count: findings.filter((f) => statusOf(f) === st).length }))}
+                                                />
+                                            </div>
                                             {detail.isLoading && !findings.length ? (
                                                 <div className="flex justify-center p-6"><RefreshCw className="h-4 w-4 animate-spin text-ink-soft" /></div>
                                             ) : inTab.length === 0 ? (
-                                                <p className="px-2 py-6 text-center text-sm text-ink-soft">Nothing {STATUS_LABEL[tab].toLowerCase()} in this scan.</p>
+                                                <p className="px-4 py-6 text-center text-sm text-ink-soft">Nothing {STATUS_LABEL[tab].toLowerCase()} in this scan.</p>
                                             ) : inTab.map((f) => (
                                                 <ListRow
                                                     key={f.id}
@@ -445,7 +440,7 @@ export default function Security() {
                                                     meta={[newIds.has(f.id) ? 'New' : null, f.target_url].filter(Boolean).join(' · ')}
                                                 />
                                             ))}
-                                        </div>
+                                        </ListCard>
                                         <ListGroup title="Scans" count={scanList.length}>
                                             {scanList.slice(0, 8).map((s) => {
                                                 const c = s.counts || {};

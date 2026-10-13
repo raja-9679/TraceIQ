@@ -46,9 +46,9 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-    DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+    DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, PanelTabs, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
-import { Avatar, Facts, Field, ListSkeleton, SectionTabs } from '@/components/redesign-local/groupE/bits';
+import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { cn } from '@/lib/utils';
 
 interface ProjectTeam {
@@ -402,12 +402,6 @@ export default function WorkspacePage() {
 
     const membersSection = (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-ink-soft">People with access to the whole workspace, and invitations not yet accepted.</p>
-                <Button onClick={() => { setShowInviteWorkspaceMember(true); setWorkspaceInviteEmail(''); setWorkspaceInviteRole('member'); }}>
-                    <UserPlus className="h-4 w-4" /> Invite people
-                </Button>
-            </div>
             {workspaceMembersDetailedLoading ? (
                 <ListSkeleton />
             ) : members.length === 0 && invites.length === 0 ? (
@@ -512,10 +506,6 @@ export default function WorkspacePage() {
 
     const teamsSection = (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-ink-soft">Teams group people and grant them access to projects together.</p>
-                <Button onClick={openCreateTeam}><Plus className="h-4 w-4" /> New team</Button>
-            </div>
             {teamsLoading ? (
                 <ListSkeleton />
             ) : !teams || teams.length === 0 ? (
@@ -589,10 +579,6 @@ export default function WorkspacePage() {
 
     const projectsSection = (
         <div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-ink-soft">Projects hold your suites. Grant access to teams or to individual people.</p>
-                <Button onClick={() => { setShowCreateProject(true); setNewName(''); setNewDesc(''); }}><Plus className="h-4 w-4" /> New project</Button>
-            </div>
             {projectsLoading ? (
                 <ListSkeleton />
             ) : !projects || projects.length === 0 ? (
@@ -761,7 +747,10 @@ export default function WorkspacePage() {
                 title={selectedWorkspace ? selectedWorkspace.name : 'Workspace'}
                 subtitle={
                     selectedWorkspace
-                        ? `${members.length} member${members.length === 1 ? '' : 's'} · ${teams?.length ?? 0} team${teams?.length === 1 ? '' : 's'} · ${projects?.length ?? 0} project${projects?.length === 1 ? '' : 's'}`
+                        ? <>
+                            {`${members.length} member${members.length === 1 ? '' : 's'} · ${teams?.length ?? 0} team${teams?.length === 1 ? '' : 's'} · ${projects?.length ?? 0} project${projects?.length === 1 ? '' : 's'}`}
+                            {section !== 'danger' && <span className="block pt-0.5">{section === 'members' ? 'People with access to the whole workspace, and invitations not yet accepted.' : section === 'teams' ? 'Teams group people and grant them access to projects together.' : 'Projects hold your suites. Grant access to teams or to individual people.'}</span>}
+                        </>
                         : 'Manage your workspaces, teams and projects.'
                 }
                 actions={
@@ -786,11 +775,8 @@ export default function WorkspacePage() {
                         </Button>
                     </>
                 }
-            />
-
-            {selectedWorkspace ? (
-                <>
-                    <SectionTabs<Section>
+                toolbar={selectedWorkspace ? (<>
+                    <PanelTabs<Section>
                         label="Workspace sections"
                         value={section}
                         onChange={setSection}
@@ -801,6 +787,18 @@ export default function WorkspacePage() {
                             { id: 'danger', label: 'Danger zone' },
                         ]}
                     />
+                    <div className="ml-auto flex items-center gap-3">
+                        {section === 'members' && <><Button onClick={() => { setShowInviteWorkspaceMember(true); setWorkspaceInviteEmail(''); setWorkspaceInviteRole('member'); }}>
+                    <UserPlus className="h-4 w-4" /> Invite people
+                </Button></>}
+                        {section === 'teams' && <><Button onClick={openCreateTeam}><Plus className="h-4 w-4" /> New team</Button></>}
+                        {section === 'projects' && <><Button onClick={() => { setShowCreateProject(true); setNewName(''); setNewDesc(''); }}><Plus className="h-4 w-4" /> New project</Button></>}
+                    </div>
+                </>) : undefined}
+            />
+
+            {selectedWorkspace ? (
+                <>
                     <div role="tabpanel" aria-label={section}>
                         {section === 'members' && membersSection}
                         {section === 'teams' && teamsSection}

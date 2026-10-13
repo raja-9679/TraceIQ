@@ -337,6 +337,22 @@ export default function TestSuites() {
                         </Button>
                     </>
                 ) : undefined}
+                toolbar={activeProjectId ? (<>
+                        <div className="relative w-full sm:w-64">
+                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
+                            <Input
+                                aria-label="Search suites"
+                                placeholder="Search suites"
+                                className="h-10 rounded-full bg-white pl-10"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
+                        </div>
+                        <div role="group" aria-label="Layout" className="flex rounded-full bg-[#EFEDE7] p-1">
+                            {modeButton('card', LayoutGrid, 'Cards')}
+                            {modeButton('list', List, 'List')}
+                        </div>
+                </>) : undefined}
             />
 
             {!activeProjectId ? (
@@ -390,23 +406,6 @@ export default function TestSuites() {
                 </div>
             ) : (
                 <>
-                    <div className="flex flex-wrap items-center gap-3">
-                        <div className="relative w-full sm:w-72">
-                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
-                            <Input
-                                aria-label="Search suites"
-                                placeholder="Search suites"
-                                className="h-11 rounded-full bg-white pl-10"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                        <div role="group" aria-label="Layout" className="flex rounded-full bg-[#EFEDE7] p-1">
-                            {modeButton('card', LayoutGrid, 'Cards')}
-                            {modeButton('list', List, 'List')}
-                        </div>
-                    </div>
-
                     {filteredSuites.length === 0 ? (
                         <EmptyState title="No matches">
                             No suites match “{searchTerm}”.

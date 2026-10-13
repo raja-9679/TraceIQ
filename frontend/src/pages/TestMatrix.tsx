@@ -139,27 +139,8 @@ export default function TestMatrix() {
                         </DropdownMenu>
                     </>
                 }
-            />
-
-            {isLoading && runs.length === 0 ? (
-                <>
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        {[0, 1, 2].map((i) => <div key={i} className="h-[92px] animate-pulse rounded-2xl bg-white/70" />)}
-                    </div>
-                    <SkeletonRows count={6} />
-                </>
-            ) : (
-                <>
-                    {/* ── Summary tiles ── */}
-                    <div className="grid gap-3 sm:grid-cols-3">
-                        <Tile label="Total runs" value={total} />
-                        <Tile label="Pass rate on this page" value={`${passRate}%`} hint={`${passedCount} of ${validRuns.length} finished runs`} />
-                        <Tile label="Average duration" value={avgDuration ? `${(avgDuration / 1000).toFixed(1)}s` : '—'} />
-                    </div>
-
-                    {/* ── Filters ── */}
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                        <label className="relative block w-full max-w-sm">
+                toolbar={<>
+                        <label className="relative block w-full sm:w-64">
                             <span className="sr-only">Search runs</span>
                             <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
                             <input
@@ -167,10 +148,10 @@ export default function TestMatrix() {
                                 placeholder="Search suite or test case"
                                 value={searchTerm}
                                 onChange={(e) => { setSearchTerm(e.target.value); resetPage(); }}
-                                className="h-11 w-full rounded-full border border-border bg-white pl-10 pr-4 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring/30"
+                                className="h-10 w-full rounded-full border border-input bg-white pl-10 pr-4 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring/30"
                             />
                         </label>
-                        <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
                             <Segmented
                                 label="Filter by status"
                                 value={statusFilter}
@@ -199,18 +180,37 @@ export default function TestMatrix() {
                                 </Button>
                             )}
                         </div>
+                </>}
+            />
+
+            {isLoading && runs.length === 0 ? (
+                <>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        {[0, 1, 2].map((i) => <div key={i} className="h-[92px] animate-pulse rounded-2xl bg-white/70" />)}
+                    </div>
+                    <SkeletonRows count={6} />
+                </>
+            ) : (
+                <>
+                    {/* ── Summary tiles ── */}
+                    <div className="grid gap-3 sm:grid-cols-3">
+                        <Tile label="Total runs" value={total} />
+                        <Tile label="Pass rate on this page" value={`${passRate}%`} hint={`${passedCount} of ${validRuns.length} finished runs`} />
+                        <Tile label="Average duration" value={avgDuration ? `${(avgDuration / 1000).toFixed(1)}s` : '—'} />
                     </div>
 
                     {/* ── Runs list ── */}
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-3">
                         {runs.length > 0 && (
-                            <label className="flex min-h-10 cursor-pointer items-center gap-3 self-start px-4 text-[13px] text-ink-soft">
-                                <Checkbox checked={allOnPageSelected} onCheckedChange={toggleSelectAll} aria-label="Select all runs on this page" />
-                                Select all on this page
-                            </label>
-                        )}
-
-                        <ul className="flex flex-col gap-2">
+                        <div className="overflow-hidden rounded-3xl border border-border bg-white">
+                            <div className="flex items-center justify-between gap-3 border-b border-[#F0EEE8] px-3 py-2 sm:px-4">
+                                <label className="flex min-h-10 cursor-pointer items-center gap-3 text-[13px] text-ink">
+                                    <span className="flex h-10 w-10 items-center justify-center"><Checkbox checked={allOnPageSelected} onCheckedChange={toggleSelectAll} aria-label="Select all runs on this page" /></span>
+                                    Select all on this page
+                                </label>
+                                <span className="font-mono text-xs text-ink-soft">{runs.length} of {total}</span>
+                            </div>
+                        <ul className="flex flex-col divide-y divide-[#F0EEE8]">
                             {runs.map((run) => {
                                 const look = statusLook(run.status);
                                 const selected = selectedRuns.includes(run.id);
@@ -220,8 +220,8 @@ export default function TestMatrix() {
                                         key={run.id}
                                         onClick={() => navigate(`/runs/${run.id}`)}
                                         className={cn(
-                                            'group flex min-h-[68px] cursor-pointer items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 transition-shadow hover:shadow-[0_4px_16px_rgba(28,27,34,0.07)] sm:gap-4 sm:px-4',
-                                            selected ? 'border-ink/30' : 'border-border'
+                                            'group flex min-h-[68px] cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors sm:gap-4 sm:px-4',
+                                            selected ? 'bg-accent shadow-[inset_3px_0_0_#1C1B22]' : 'hover:bg-background'
                                         )}
                                     >
                                         <span
@@ -280,6 +280,8 @@ export default function TestMatrix() {
                                 );
                             })}
                         </ul>
+                        </div>
+                        )}
 
                         {/* Empty state */}
                         {(!runs || runs.length === 0) && !isLoading && (

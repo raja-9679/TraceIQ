@@ -11,7 +11,7 @@ import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { triageApi, FailureCluster } from '@/api/triage';
 import { ticketsApi } from '@/api/tickets';
 import {
-    DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+    DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView, PanelTabs,
 } from '@/components/redesign/primitives';
 import type { Tone } from '@/components/redesign/kinds';
 import { cn } from '@/lib/utils';
@@ -185,27 +185,15 @@ export default function Triage() {
                         <RefreshCw className={cn('h-4 w-4', clusters.isFetching && 'animate-spin')} /> Refresh
                     </Button>
                 ) : undefined}
+                toolbar={projectId ? (
+                    <PanelTabs
+                        label="Filter by status"
+                        value={statusFilter}
+                        onChange={setStatusFilter}
+                        tabs={FILTERS.map((f) => ({ id: f, label: f === 'all' ? 'All' : STATUS[f as FailureCluster['status']].label }))}
+                    />
+                ) : undefined}
             />
-
-            {projectId && (
-                <div role="tablist" aria-label="Filter by status" className="flex flex-wrap gap-1.5">
-                    {FILTERS.map((f) => (
-                        <button
-                            key={f}
-                            type="button"
-                            role="tab"
-                            aria-selected={statusFilter === f}
-                            onClick={() => setStatusFilter(f)}
-                            className={cn(
-                                'min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors',
-                                statusFilter === f ? 'border-ink bg-ink text-white' : 'border-border bg-white text-ink hover:bg-secondary'
-                            )}
-                        >
-                            {f === 'all' ? 'All' : STATUS[f as FailureCluster['status']].label}
-                        </button>
-                    ))}
-                </div>
-            )}
 
             {!projectId ? (
                 <EmptyState title="Pick a project">Choose a project in the sidebar to see its failure clusters.</EmptyState>

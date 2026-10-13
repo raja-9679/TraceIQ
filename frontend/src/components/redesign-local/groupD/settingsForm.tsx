@@ -151,7 +151,7 @@ export function SectionNav<T extends string>({
                     {sections.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
             </div>
-            <nav aria-label={label} className="hidden lg:block">
+            <nav aria-label={label} className="hidden rounded-3xl border border-border bg-white p-2 lg:block">
                 <ul className="flex flex-col gap-0.5">
                     {sections.map((s) => {
                         const isActive = s.id === active;

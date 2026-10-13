@@ -407,8 +407,8 @@ export default function UsersPage() {
                 <SplitView
                     list={
                         <>
-                            <div className="relative">
-                                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
+                            <div className="relative rounded-3xl border border-border bg-white p-2">
+                                <Search className="pointer-events-none absolute left-6 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
                                 <Input
                                     type="search"
                                     placeholder={isAll ? 'Search by name, email or workspace' : 'Search by name or email'}

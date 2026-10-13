@@ -8,7 +8,7 @@ import { TraceTimeline } from "@/components/TraceTimeline";
 import CreateTicketDialog from "@/components/CreateTicketDialog";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { KindChip, ListRow, PageHeader, Pill, SplitView } from "@/components/redesign/primitives";
+import { KindChip, ListCard, ListRow, PageHeader, Pill, SplitView } from "@/components/redesign/primitives";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
@@ -166,7 +166,7 @@ export default function TestRunDetails() {
     const passRate = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
 
     return (
-        <div className="flex flex-col gap-5 pb-12">
+        <Tabs.Root defaultValue="overview" className="flex flex-col gap-5 pb-12">
             <PageHeader
                 crumbs={<>
                     <Link to="/runs" className="hover:text-ink">Runs</Link>
@@ -203,6 +203,28 @@ export default function TestRunDetails() {
                         </Button>
                     )}
                 </>}
+                toolbar={
+                            <Tabs.List aria-label="Run sections" className="-my-2 flex shrink-0 gap-1 self-stretch">
+                                <Tabs.Trigger
+                                    value="overview"
+                                    className="flex min-h-12 items-center gap-2 px-3 text-sm font-medium text-ink-soft outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/20 data-[state=active]:font-semibold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_#1C1B22]"
+                                >
+                                    <LayoutGrid size={16} /> Overview
+                                </Tabs.Trigger>
+                                <Tabs.Trigger
+                                    value="media"
+                                    className="flex min-h-12 items-center gap-2 px-3 text-sm font-medium text-ink-soft outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/20 data-[state=active]:font-semibold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_#1C1B22]"
+                                >
+                                    <PlayCircle size={16} /> Traces
+                                </Tabs.Trigger>
+                                <Tabs.Trigger
+                                    value="network"
+                                    className="flex min-h-12 items-center gap-2 px-3 text-sm font-medium text-ink-soft outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/20 data-[state=active]:font-semibold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_#1C1B22]"
+                                >
+                                    <Server size={16} /> Network
+                                </Tabs.Trigger>
+                            </Tabs.List>
+                }
             />
 
             <div className="flex flex-col gap-6">
@@ -228,27 +250,7 @@ export default function TestRunDetails() {
                 </div>
 
                 {/* Main Content Tabs */}
-                <Tabs.Root defaultValue="overview" className="flex flex-col">
-                    <Tabs.List className="mb-5 flex shrink-0 self-start gap-1 rounded-full bg-[#EFEDE7] p-1">
-                        <Tabs.Trigger
-                            value="overview"
-                            className="flex min-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium text-ink outline-none transition-colors data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_4px_rgba(28,27,34,0.1)]"
-                        >
-                            <LayoutGrid size={16} /> Overview
-                        </Tabs.Trigger>
-                        <Tabs.Trigger
-                            value="media"
-                            className="flex min-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium text-ink outline-none transition-colors data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_4px_rgba(28,27,34,0.1)]"
-                        >
-                            <PlayCircle size={16} /> Traces
-                        </Tabs.Trigger>
-                        <Tabs.Trigger
-                            value="network"
-                            className="flex min-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium text-ink outline-none transition-colors data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_4px_rgba(28,27,34,0.1)]"
-                        >
-                            <Server size={16} /> Network
-                        </Tabs.Trigger>
-                    </Tabs.List>
+                <div className="flex flex-col">
 
                     <Tabs.Content value="overview" className="focus:outline-none space-y-6">
                         {run.error_message && (
@@ -519,7 +521,7 @@ export default function TestRunDetails() {
                             </div>
                         )}
                     </Tabs.Content>
-                </Tabs.Root>
+                </div>
             </div>
 
             {/* Force Complete Dialog */}
@@ -623,7 +625,7 @@ export default function TestRunDetails() {
                     </motion.div>
                 )}
             </AnimatePresence>
-        </div>
+        </Tabs.Root>
     );
 }
 
@@ -835,15 +837,15 @@ function ResultsSplit({ results, networkEvents, search, onSearch }: {
     const selected = shown.find((r) => r.id === selectedId) ?? shown[0] ?? null;
     return (
         <SplitView
-            list={<>
-                <label className="flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-4">
-                    <span className="sr-only">Search tests in this run</span>
-                    <input type="search" placeholder="Search tests in this run" value={search} onChange={(e) => onSearch(e.target.value)}
-                        className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
-                </label>
-                <div className="flex flex-col gap-0.5">
+            list={
+                <ListCard title="Tests in this run" count={results.length}>
+                    <label className="flex items-center gap-2 px-4 py-2.5">
+                        <span className="sr-only">Search tests in this run</span>
+                        <input type="search" placeholder="Search tests in this run" value={search} onChange={(e) => onSearch(e.target.value)}
+                            className="h-10 min-w-0 flex-1 rounded-full border border-input bg-white px-4 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ink/20" />
+                    </label>
                     {shown.length === 0 ? (
-                        <p className="px-2 py-6 text-center text-sm text-ink-soft">No matching tests.</p>
+                        <p className="px-4 py-6 text-center text-sm text-ink-soft">No matching tests.</p>
                     ) : shown.map((r) => (
                         <ListRow
                             key={r.id}
@@ -854,8 +856,8 @@ function ResultsSplit({ results, networkEvents, search, onSearch }: {
                             meta={`${r.status} · ${Math.round(r.duration_ms)}ms`}
                         />
                     ))}
-                </div>
-            </>}
+                </ListCard>
+            }
             detail={selected && (
                 <TestCaseResultItem
                     key={selected.id}

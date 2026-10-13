@@ -33,47 +33,82 @@ export function Pill({ tone, children, className }: { tone: Tone; children: Reac
 }
 
 export function PageHeader({
-    title, crumbs, subtitle, badge, actions,
+    title, crumbs, subtitle, badge, actions, toolbar,
 }: {
     title: ReactNode;
     crumbs?: ReactNode;
     subtitle?: ReactNode;
     badge?: ReactNode;
     actions?: ReactNode;
+    /** Tabs / filters shown as a strip along the bottom of the header panel. */
+    toolbar?: ReactNode;
 }) {
     return (
-        <div className="flex flex-wrap items-end justify-between gap-4">
-            <div className="flex min-w-0 flex-col gap-1.5">
-                {crumbs && <nav aria-label="Breadcrumb" className="flex flex-wrap gap-1.5 text-[13px] text-ink-soft">{crumbs}</nav>}
-                <div className="flex flex-wrap items-center gap-3">
-                    <h1 className="text-[28px] font-bold leading-tight tracking-[-0.03em] text-ink">{title}</h1>
-                    {badge}
+        <div className="rounded-3xl border border-border bg-white">
+            <div className="flex flex-wrap items-end justify-between gap-4 px-5 py-5 sm:px-6">
+                <div className="flex min-w-0 flex-col gap-1.5">
+                    {crumbs && <nav aria-label="Breadcrumb" className="flex flex-wrap gap-1.5 text-[13px] text-ink-soft">{crumbs}</nav>}
+                    <div className="flex flex-wrap items-center gap-3">
+                        <h1 className="text-[28px] font-bold leading-tight tracking-[-0.03em] text-ink">{title}</h1>
+                        {badge}
+                    </div>
+                    {subtitle && <p className="text-sm text-ink-soft">{subtitle}</p>}
                 </div>
-                {subtitle && <p className="text-sm text-ink-soft">{subtitle}</p>}
+                {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
             </div>
-            {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+            {toolbar && (
+                <div className="flex flex-wrap items-center gap-2 border-t border-[#F0EEE8] px-3 py-2 sm:px-4">{toolbar}</div>
+            )}
         </div>
     );
 }
 
-export function SplitView({ list, detail, stickyList = false }: { list: ReactNode; detail: ReactNode; stickyList?: boolean }) {
+/** Underlined tabs for a PageHeader toolbar strip (or any white panel). */
+export function PanelTabs<T extends string>({ tabs, value, onChange, label }: {
+    tabs: { id: T; label: ReactNode; count?: number | string }[];
+    value: T;
+    onChange: (id: T) => void;
+    label: string;
+}) {
+    return (
+        <div role="tablist" aria-label={label} className="-my-2 flex max-w-full gap-1 self-stretch overflow-x-auto">
+            {tabs.map((t) => (
+                <button key={t.id} type="button" role="tab" aria-selected={value === t.id} onClick={() => onChange(t.id)}
+                    className={cn('flex min-h-12 flex-none items-center gap-1.5 whitespace-nowrap px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ink/20',
+                        value === t.id ? 'font-semibold text-ink shadow-[inset_0_-2px_0_#1C1B22]' : 'font-medium text-ink-soft hover:text-ink')}>
+                    {t.label}{t.count !== undefined && <span className="font-mono text-xs text-ink-soft">{t.count}</span>}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+export function SplitView({ list, detail, stickyList = true }: { list: ReactNode; detail: ReactNode; stickyList?: boolean }) {
     return (
         <div className="flex flex-wrap items-start gap-5">
-            <section className={cn('flex min-w-0 max-w-[440px] flex-[1_1_360px] flex-col gap-[18px]', stickyList && 'lg:sticky lg:top-4')}>{list}</section>
+            <section className={cn('flex min-w-0 max-w-[440px] flex-[1_1_360px] flex-col gap-4 [&>*]:flex-none',
+                stickyList && 'lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:pb-1')}>{list}</section>
             <div className="min-w-0 flex-[999_1_460px]">{detail}</div>
         </div>
     );
 }
 
-export function ListGroup({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+export function ListCard({ title, count, right, children }: { title?: ReactNode; count?: number; right?: ReactNode; children: ReactNode }) {
     return (
-        <div className="flex flex-col gap-1.5">
-            <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.06em] text-ink-soft">
-                {title}{count !== undefined && ` · ${count}`}
-            </h2>
-            <div className="flex flex-col gap-0.5">{children}</div>
+        <div className="overflow-hidden rounded-3xl border border-border bg-white">
+            {(title || right) && (
+                <div className="flex items-center justify-between gap-2 border-b border-[#F0EEE8] px-4 py-3">
+                    <h2 className="text-sm font-semibold text-ink">{title}</h2>
+                    {right ?? (count !== undefined && <span className="font-mono text-xs text-ink-soft">{count}</span>)}
+                </div>
+            )}
+            <div className="flex flex-col divide-y divide-[#F0EEE8]">{children}</div>
         </div>
     );
+}
+
+export function ListGroup({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+    return <ListCard title={title} count={count}>{children}</ListCard>;
 }
 
 export function ListRow({
@@ -92,15 +127,13 @@ export function ListRow({
             onClick={onSelect}
             aria-pressed={selected}
             className={cn(
-                'flex min-h-[60px] w-full items-center gap-3 rounded-2xl border px-3 py-2.5 text-left text-ink transition-colors',
-                selected
-                    ? 'border-border bg-white shadow-[0_4px_16px_rgba(28,27,34,0.07)]'
-                    : 'border-transparent hover:bg-white/60'
+                'flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left text-ink transition-colors',
+                selected ? 'bg-accent shadow-[inset_3px_0_0_#1C1B22]' : 'hover:bg-background'
             )}
         >
             {leading}
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span className="text-sm font-semibold leading-snug">{title}</span>
+                <span className={cn('text-sm leading-snug', selected ? 'font-semibold' : 'font-medium')}>{title}</span>
                 {meta && <span className="text-xs text-ink-soft">{meta}</span>}
             </span>
             {trailing}
