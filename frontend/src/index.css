@@ -4,25 +4,28 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 0 0% 3.9%;
+    /* Redesign A tokens. Hex equivalents: background #F7F6F2, ink #1C1B22,
+       muted ink #4B4A57, border #E8E6DF, input #DCD9D0, accent lavender #F1EFFD. */
+    --background: 48 24% 96%;
+    --foreground: 248 11% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 3.9%;
+    --card-foreground: 248 11% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 3.9%;
-    --primary: 0 0% 9%;
-    --primary-foreground: 0 0% 98%;
-    --secondary: 0 0% 96.1%;
-    --secondary-foreground: 0 0% 9%;
-    --muted: 0 0% 96.1%;
-    --muted-foreground: 0 0% 45.1%;
-    --accent: 0 0% 96.1%;
-    --accent-foreground: 0 0% 9%;
-    --destructive: 0 84.2% 60.2%;
-    --border: 0 0% 89.8%;
-    --input: 0 0% 89.8%;
-    --ring: 0 0% 3.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 248 11% 12%;
+    --primary: 248 11% 12%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 43 22% 94%;
+    --secondary-foreground: 248 11% 12%;
+    --muted: 43 22% 94%;
+    --muted-foreground: 245 8% 31%;
+    --accent: 250 77% 96%;
+    --accent-foreground: 248 11% 12%;
+    --destructive: 13 90% 40%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 46 17% 89%;
+    --input: 45 14% 84%;
+    --ring: 248 11% 12%;
+    --radius: 1rem;
   }
 
   .dark {
@@ -50,6 +53,16 @@
 @layer utilities {
   .glass {
     @apply bg-opacity-20 backdrop-blur-lg border border-white/10;
+  }
+
+  /* The lavender -> pink -> peach -> butter wash used on chrome (sidebar)
+     and on small "TraceIQ thinks" callouts. Never on content cards. */
+  .bg-tiq-gradient {
+    background: linear-gradient(180deg, rgba(227, 224, 252, 0.85) 0%, rgba(246, 221, 235, 0.8) 45%, rgba(252, 227, 216, 0.8) 80%, rgba(248, 237, 203, 0.8) 100%);
+  }
+
+  .bg-tiq-callout {
+    background: linear-gradient(135deg, rgba(227, 224, 252, 0.6), rgba(252, 227, 216, 0.5));
   }
 }
 
