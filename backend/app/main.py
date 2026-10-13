@@ -89,6 +89,16 @@ async def _scim_error_handler(request: Request, exc: scim_api.ScimError):
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=exc.status, content=exc.to_dict())
 
+# A delete whose cascade would reach another project's rows is refused, not
+# executed: access was checked for the caller's project only.
+from app.services.entity_delete import CrossProjectReference  # noqa: E402
+
+
+@app.exception_handler(CrossProjectReference)
+async def _cross_project_delete_handler(request: Request, exc: CrossProjectReference):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=409, content={"detail": str(exc)})
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[str(origin)

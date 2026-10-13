@@ -20,6 +20,7 @@ import pytest
 from sqlmodel import SQLModel
 
 from app.services.entity_delete import (
+    CrossProjectReference,
     DELETE, NULLIFY, ON_DELETE, ROOTS, _cascade, delete_order, fk_edges,
     reachable_tables,
 )
@@ -127,9 +128,15 @@ class _Result:
         return self._ids
 
 
-def _drive(root, ids, children=None):
-    """Run the planner with canned SELECT answers; return statement summaries."""
+def _drive(root, ids, children=None, root_projects=(), foreign=None):
+    """Run the planner with canned SELECT answers; return statement summaries.
+
+    `children` answers id lookups per table. Project-boundary queries (which
+    select `project_id`) are answered separately: `root_projects` for the
+    roots' own projects, `foreign` per table for rows in other projects.
+    """
     children = children or {}
+    foreign = foreign or {}
     gen = _cascade(root, ids)
     log, result = [], None
     try:
@@ -138,10 +145,22 @@ def _drive(root, ids, children=None):
             verb = type(stmt).__name__.lower()       # select / update / delete
             table = stmt.table.name if hasattr(stmt, "table") else \
                 stmt.get_final_froms()[0].name
+            if verb == "select" and stmt.selected_columns[0].name == "project_id":
+                log.append(("boundary", table))
+                # The roots' own lookup vs. a foreign-row check: only the
+                # latter filters project_id NOT IN the allowed set (they can
+                # hit the same table, e.g. testsuite.parent_id).
+                is_check = "NOT IN" in str(stmt)
+                rows = foreign.get(table, ()) if is_check else root_projects
+                result = _Result(rows)
+                continue
             log.append((verb, table))
             result = _Result(children.get(table, ()) if verb == "select" else ())
     except StopIteration as stop:
         return log, stop.value
+    except CrossProjectReference as refusal:
+        refusal.log = log
+        raise
 
 
 def _index(log, verb, table):
@@ -189,3 +208,50 @@ def test_unknown_root_is_refused():
 
 def test_roots_are_all_reachable():
     assert set(ROOTS) <= reachable_tables()
+
+
+# --- project boundary -----------------------------------------------------------
+
+def test_a_reference_from_another_project_refuses_the_delete():
+    # Suite 1 lives in project 10; a case in project 99 hangs off it.
+    with pytest.raises(CrossProjectReference) as err:
+        _drive("testsuite", [1], children={"testcase": [5]},
+               root_projects=[10], foreign={"testcase": [99]})
+    assert err.value.table == "testcase" and err.value.project_ids == [99]
+
+
+def test_a_refused_delete_issues_no_writes():
+    with pytest.raises(CrossProjectReference) as err:
+        _drive("testcase", [5], root_projects=[10], foreign={"testrun": [99]})
+    verbs = {verb for verb, _ in err.value.log}
+    assert "delete" not in verbs and "update" not in verbs
+
+
+def test_same_project_references_are_deleted_normally():
+    log, report = _drive("testsuite", [1], children={"testcase": [5]},
+                         root_projects=[10], foreign={})
+    assert ("delete", "testcase") in log
+
+
+def test_project_deletes_do_not_bound_their_own_project_edges():
+    log, _ = _drive("project", [3])
+    # Edges ON project_id are the project's own rows by definition.
+    boundary_tables = {t for verb, t in log if verb == "boundary"}
+    assert "testsuite" not in boundary_tables and "testcase" not in boundary_tables
+
+
+def test_roots_without_a_project_skip_the_boundary():
+    log, _ = _drive("testsuite", [1], children={"testcase": [5]},
+                    root_projects=[], foreign={"testcase": [99]})
+    assert ("delete", "testcase") in log
+
+
+def test_the_api_answers_a_cross_project_refusal_with_409():
+    import asyncio
+    from app.main import app
+
+    handler = app.exception_handlers.get(CrossProjectReference)
+    assert handler is not None, "CrossProjectReference would surface as a 500"
+    resp = asyncio.run(handler(None, CrossProjectReference("testcase", "test_suite_id", {99})))
+    assert resp.status_code == 409
+    assert b"testcase.test_suite_id" in resp.body

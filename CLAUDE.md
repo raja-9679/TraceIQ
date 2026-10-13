@@ -618,6 +618,11 @@ because NULL means workspace-wide). `tests/test_entity_delete_plan.py` fails
 for any FK into a deletable table without a policy — a new FK into
 project/suite/case/run needs an `ON_DELETE` entry. Artifacts are deleted after
 commit. Suite/case deletes still 409 on a referencing schedule.
+**Project boundary:** the cascade walks FKs by id, and access is checked for
+the deleted entity's project only, so a `DELETE` edge that reaches a row with a
+*different* non-null `project_id` raises `CrossProjectReference` (409 via an
+app exception handler) instead of deleting another project's data. Retention
+retries a refused batch run by run and skips the offender.
 
 Still open:
 - Worker image bakes code at build time — new step types need an image rebuild.

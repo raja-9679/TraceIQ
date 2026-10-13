@@ -125,12 +125,29 @@ def purge_old_runs():
                 # transaction under a broad except, one such run stalled
                 # retention for every run behind it, every pass.
                 from app.services.entity_delete import (
-                    cascade_delete_sync, delete_objects)
-                report = cascade_delete_sync(session, "testrun", doomed)
-                session.commit()
-                purged = len(doomed)
+                    CrossProjectReference, cascade_delete_sync, delete_objects)
+                try:
+                    reports = [cascade_delete_sync(session, "testrun", doomed)]
+                    session.commit()
+                    purged = len(doomed)
+                except CrossProjectReference as e:
+                    # Some run in the batch is referenced from a project outside
+                    # it. Retry one by one so that run is skipped (and logged)
+                    # instead of stalling retention for every run behind it.
+                    session.rollback()
+                    print(f"[Retention] Batch refused ({e}); retrying runs individually")
+                    reports = []
+                    for run_id in doomed:
+                        try:
+                            reports.append(cascade_delete_sync(session, "testrun", [run_id]))
+                            session.commit()
+                            purged += 1
+                        except CrossProjectReference as one:
+                            session.rollback()
+                            print(f"[Retention] Skipped run {run_id}: {one}")
                 # Artifacts after the commit; best-effort, never fatal.
-                delete_objects(report)
+                for report in reports:
+                    delete_objects(report)
                 print(f"[Retention] Purged {purged} run(s) past their retention window")
 
     except Exception as e:

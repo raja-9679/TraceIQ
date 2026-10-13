@@ -42,7 +42,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from graphlib import TopologicalSorter
-from typing import Dict, Generator, Iterable, List, Set, Tuple
+from typing import Dict, Generator, Iterable, List, Set, Tuple, Optional
 
 import sqlalchemy as sa
 
@@ -139,6 +139,24 @@ _CHUNK = 5000
 
 class UnplannedReference(RuntimeError):
     """A foreign key into a table being deleted has no policy in ON_DELETE."""
+
+
+class CrossProjectReference(RuntimeError):
+    """A row in ANOTHER project points at something this delete would remove.
+
+    The cascade walks foreign keys by id, so without a boundary an editor's
+    delete in project A would silently remove project B's rows that happen to
+    reference A's suite/case/run (a child suite re-parented across projects, a
+    run or proposal naming another project's case). Access was checked for A
+    only, so the delete is refused instead; the API turns this into a 409.
+    """
+
+    def __init__(self, table: str, column: str, project_ids: Set[int]):
+        self.table, self.column = table, column
+        self.project_ids = sorted(project_ids)
+        super().__init__(
+            f"{table}.{column} rows in project(s) {self.project_ids} reference "
+            "what this delete would remove; remove those references first")
 
 
 # --- graph -------------------------------------------------------------------
@@ -251,6 +269,38 @@ def _cascade(root: str, root_ids: Iterable[int]) -> Generator:
     leaf_edges: Set[Tuple[str, str, str]] = set()   # DELETE child WHERE col IN parent ids
     nullify: Dict[str, Set[Tuple[str, str]]] = defaultdict(set)  # parent -> (child, col)
 
+    # The projects this delete was authorised for: the roots' own. A DELETE
+    # edge must not reach a row that belongs to any other project. Rows with
+    # no project_id (legacy, or child tables bound only through their parent)
+    # are judged by the parent they hang off. If the roots themselves carry no
+    # project there is nothing to bound by, and the caller's access check is
+    # all there is.
+    allowed: Optional[Set[int]] = None
+    if root == "project":
+        allowed = set(report.root_ids)
+    elif "project_id" in md.tables[root].c:
+        rtable = md.tables[root]
+        found_projects: Set[int] = set()
+        for chunk in _chunks(report.root_ids):
+            result = yield (sa.select(rtable.c.project_id).distinct()
+                            .where(_pk(rtable).in_(chunk)))
+            found_projects.update(p for p in result.scalars().all() if p is not None)
+        allowed = found_projects or None
+
+    def _foreign_rows(child: str, col: str, parent_ids: Set[int]):
+        """Yield-driven check: project ids of `child` rows outside `allowed`."""
+        table = md.tables[child]
+        if allowed is None or col == "project_id" or "project_id" not in table.c:
+            return set()
+        foreign: Set[int] = set()
+        for chunk in _chunks(parent_ids):
+            result = yield (sa.select(table.c.project_id).distinct()
+                            .where(table.c[col].in_(chunk),
+                                   table.c.project_id.isnot(None),
+                                   table.c.project_id.notin_(sorted(allowed))))
+            foreign.update(p for p in result.scalars().all() if p is not None)
+        return foreign
+
     ids[root] = set(report.root_ids)
     queue: List[Tuple[str, Set[int]]] = [(root, set(report.root_ids))]
     while queue:
@@ -264,6 +314,9 @@ def _cascade(root: str, root_ids: Iterable[int]) -> Generator:
             if policy == NULLIFY:
                 nullify[parent].add((child, col))
                 continue
+            foreign = yield from _foreign_rows(child, col, new_ids)
+            if foreign:
+                raise CrossProjectReference(child, col, foreign)
             if child in refs:   # referenced itself → track its ids, keep walking
                 table = md.tables[child]
                 pk = _pk(table)

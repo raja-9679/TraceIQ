@@ -452,3 +452,66 @@ async def test_case_delete_with_revision_and_requirement_succeeds(session, scene
         params={"r": d.run_id})).all()
     assert linked == [(None,)]
     await _assert_tree_intact(session, scene.sibling)
+
+
+# --- project boundary -----------------------------------------------------------
+# Access is checked for the deleted entity's project only, so the cascade must
+# never reach another project's rows. Cross-project references shouldn't exist,
+# but nothing in the schema forbids them; when one does, the delete is refused
+# (409 via the app's exception handler) and both sides survive untouched.
+
+async def test_suite_delete_refuses_to_cascade_into_another_project(session, scene):
+    from app.api.endpoints.test_suites import delete_test_suite
+    from app.services.entity_delete import CrossProjectReference
+
+    d, s = scene.doomed, scene.sibling
+    await session.exec(text("UPDATE testcase SET test_suite_id = :suite WHERE id = :case"),
+                       params={"suite": d.suite_id, "case": s.case_id})
+    await session.commit()
+
+    with pytest.raises(CrossProjectReference) as err:
+        await delete_test_suite(suite_id=d.suite_id, session=session,
+                                current_user=scene.admin)
+    assert err.value.table == "testcase"
+    assert err.value.project_ids == [s.project_id]
+    await _resync(session)
+
+    assert await session.get(TestSuite, d.suite_id) is not None
+    assert await session.get(TestCase, s.case_id) is not None
+    assert await session.get(TestCase, d.case_id) is not None
+
+
+async def test_case_delete_refuses_to_take_another_projects_run(session, scene):
+    from app.api.endpoints.test_cases import delete_test_case
+    from app.services.entity_delete import CrossProjectReference
+
+    d, s = scene.doomed, scene.sibling
+    await session.exec(text("UPDATE testrun SET test_case_id = :case WHERE id = :run"),
+                       params={"case": d.case_id, "run": s.case_run_id})
+    await session.commit()
+
+    with pytest.raises(CrossProjectReference):
+        await delete_test_case(case_id=d.case_id, session=session,
+                               current_user=scene.admin)
+    await _resync(session)
+
+    assert await session.get(TestCase, d.case_id) is not None
+    assert await session.get(TestRun, s.case_run_id) is not None
+
+
+async def test_run_delete_refuses_to_take_another_projects_finding(session, scene):
+    from app.api.endpoints.test_runs import delete_run
+    from app.services.entity_delete import CrossProjectReference
+
+    d, s = scene.doomed, scene.sibling
+    await session.exec(text("UPDATE securityfinding SET run_id = :run WHERE project_id = :p"),
+                       params={"run": d.run_id, "p": s.project_id})
+    await session.commit()
+
+    with pytest.raises(CrossProjectReference):
+        await delete_run(run_id=d.run_id, session=session, current_user=scene.admin)
+    await _resync(session)
+
+    assert await session.get(TestRun, d.run_id) is not None
+    assert await _scalar(session, "SELECT count(*) FROM securityfinding WHERE project_id = :p",
+                         p=s.project_id) == 1
