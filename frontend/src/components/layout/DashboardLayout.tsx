@@ -45,9 +45,10 @@ type Place = {
 const places: Place[] = [
     {
         name: 'Today', href: '/', icon: Inbox,
-        match: ['/', '/triage', '/proposals', '/flaky-tests', '/visual-review'],
+        match: ['/', '/overview', '/triage', '/proposals', '/flaky-tests', '/visual-review'],
         children: [
             { name: 'Inbox', href: '/' },
+            { name: 'Overview', href: '/overview' },
             { name: 'Failure triage', href: '/triage' },
             { name: 'Proposals', href: '/proposals' },
             { name: 'Flaky tests', href: '/flaky-tests' },
@@ -159,7 +160,9 @@ export default function DashboardLayout() {
 
     const handleProjectSelect = (id: number) => {
         setSelectedProjectId(id);
-        // Refresh page or trigger state update in children
+        // Persist before announcing: listeners read localStorage on the event,
+        // and the effect above only writes it after the next render.
+        localStorage.setItem('activeProjectId', id.toString());
         window.dispatchEvent(new Event('projectChanged'));
     };
 

@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
+import TodayInbox from "@/pages/TodayInbox";
 import TestMatrix from "@/pages/TestMatrix";
 import TestRunDetails from "@/pages/TestRunDetails";
 import ComparisonView from "@/pages/ComparisonView";
@@ -56,7 +57,8 @@ function App() {
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>
-                <Route index element={<Dashboard />} />
+                <Route index element={<TodayInbox />} />
+                <Route path="overview" element={<Dashboard />} />
                 <Route path="runs" element={<TestMatrix />} />
                 <Route path="runs/:runId" element={<TestRunDetails />} />
                 <Route path="runs/:runId/comparison" element={<ComparisonView />} />
