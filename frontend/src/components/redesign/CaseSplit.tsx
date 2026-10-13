@@ -1,57 +1,14 @@
 import { useState, type ReactNode } from 'react';
-import { CalendarClock, Download, Edit, Play, Trash2 } from 'lucide-react';
+import { CalendarClock, Download, Edit, FileText, Play, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DetailCard, Eyebrow, KindChip, ListRow, SplitView } from './primitives';
+import { DetailCard, Eyebrow, ListRow, SplitView } from './primitives';
+import { describeStep, type Step } from './steps';
 
 // Direction A for a suite's test cases: the list on the left, the selected
 // test's steps in plain words on the right with its actions. Pure layout —
 // the suite page keeps owning every handler (run, schedule, edit, export,
 // delete) and permission check.
 
-type Step = { type?: string; selector?: string | null; value?: string | null; intent?: string | null } | string;
-
-const isPlaceholder = (v: string) => /^\s*\{\{[^}]+\}\}\s*$/.test(v);
-
-// Typed values can be credentials pasted into a step; show them only when
-// they are a {{variable}} reference.
-const q = (v: string) => `“${v}”`;
-
-// Plain words for the common step types; anything else falls back to
-// "<type> on <selector> with <value>". The label is a short verb for the chip.
-function describeStep(step: Step): { verb: string; text: string; detail: string } {
-    if (typeof step === 'string') return { verb: 'Step', text: step, detail: '' };
-    const type = (step.type || 'step').toLowerCase();
-    const sel = step.selector || '';
-    const val = step.value ?? '';
-    const typed = /fill|type|press|secret/.test(type);
-    const v = val && (!typed || isPlaceholder(val)) ? val : val ? '(typed value)' : '';
-    const on = sel ? ` ${sel}` : '';
-    const map: Record<string, [string, string]> = {
-        goto: ['Go', `Go to ${v || 'the page'}`],
-        click: ['Click', `Click${on}`],
-        hover: ['Hover', `Hover over${on}`],
-        fill: ['Type', `Type ${v ? (v === '(typed value)' ? 'a value' : q(v)) : 'a value'} into${on}`],
-        check: ['Tick', `Tick${on}`],
-        'press-key': ['Press', `Press ${v}${sel ? ` in ${sel}` : ''}`],
-        'select-option': ['Choose', `Choose ${q(v)} in${on}`],
-        'wait-timeout': ['Wait', `Wait ${v} ms`],
-        'expect-visible': ['Check', `Check${on} is visible`],
-        'expect-hidden': ['Check', `Check${on} is hidden`],
-        'expect-text': ['Check', `Check${on} shows ${q(v)}`],
-        'expect-not-text': ['Check', `Check${on} does not show ${q(v)}`],
-        'expect-title': ['Check', `Check the page title is ${q(v)}`],
-        'expect-url': ['Check', `Check the URL contains ${q(v)}`],
-        expect: ['Check', `Check${on}${v ? ` is ${q(v)}` : ''}`],
-        assert: ['Check', `Check${on}${v ? ` is ${q(v)}` : ''}`],
-        screenshot: ['Capture', `Take a screenshot${v ? ` ${q(v)}` : ''}`],
-        'http-request': ['Request', `Send ${v || 'an HTTP request'}`],
-    };
-    const known = map[type];
-    if (step.intent) return { verb: known?.[0] ?? 'Step', text: step.intent, detail: [sel, v].filter(Boolean).join(' · ') };
-    if (known) return { verb: known[0], text: known[1], detail: '' };
-    const verb = type.replace(/[-_]/g, ' ');
-    return { verb: verb.split(' ')[0], text: [verb, sel && `on ${sel}`, v && `with ${v}`].filter(Boolean).join(' '), detail: '' };
-}
 
 export type CaseLike = { id: number; name: string; steps?: Step[] | null };
 
@@ -80,7 +37,7 @@ export function CaseSplit({
                             key={c.id}
                             selected={selected?.id === c.id}
                             onSelect={() => setSelectedId(c.id)}
-                            leading={<KindChip kind="review" size="sm" />}
+                            leading={<span className="flex h-7 w-7 flex-none items-center justify-center rounded-[9px] bg-secondary text-ink-soft" aria-hidden="true"><FileText className="h-[15px] w-[15px]" /></span>}
                             title={c.name}
                             meta={`${c.steps?.length ?? 0} step${(c.steps?.length ?? 0) === 1 ? '' : 's'}`}
                             trailing={badge?.(c)}

@@ -1,17 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { CaseSplit } from '@/components/redesign/CaseSplit';
-import { useState, useEffect, useMemo } from 'react';
+import { describeStep } from '@/components/redesign/steps';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getAuditLog, getAppBuilds } from '@/lib/api';
 import { Button } from '@/components/ui/button';
+import { PageHeader } from '@/components/redesign/primitives';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { ScheduleModal } from "@/components/ScheduleModal";
 import { GenerateCaseDialog } from "@/components/GenerateCaseDialog";
 import {
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from '@/components/ui/table';
-import {
-    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, ListTodo, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles, Smartphone
+    Play, Plus, FolderOpen, FileText, Settings as SettingsIcon, Trash2, Edit, Download, Upload, CalendarClock, ChevronRight, Loader2, ArrowLeft, Search, LayoutGrid, List, AlertCircle, Zap, LayoutTemplateIcon, Globe, FolderTree, History, Sparkles, Smartphone, MoreHorizontal
 } from 'lucide-react';
 import {
     Select,
@@ -24,16 +24,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from 'sonner';
 import { usePermission } from "@/hooks/usePermission";
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-
-const containerVariants: Variants = {
-    hidden: { opacity: 0 },
-    show: { opacity: 1, transition: { staggerChildren: 0.05 } }
-};
-
-const itemVariants: Variants = {
-    hidden: { opacity: 0, y: 15 },
-    show: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-};
 
 const tabVariants: Variants = {
     hidden: { opacity: 0, y: -5 },
@@ -54,35 +44,25 @@ function FlakinessBadge({ flake }: { flake: FlakinessEntry }) {
     const scorePct = (flake.flake_score * 100).toFixed(0);
     return (
         <span
-            title={`Flake score: ${scorePct}% over ${flake.sample_count} recent runs${flake.is_quarantined ? ' — QUARANTINED (skipped at dispatch)' : ' — not quarantined'}`}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide border shrink-0 cursor-help ${flake.is_quarantined
-                ? 'bg-rose-50 text-rose-700 border-rose-200'
-                : 'bg-amber-50 text-amber-700 border-amber-200'}`}
+            title={`Flake score: ${scorePct}% over ${flake.sample_count} recent runs${flake.is_quarantined ? ' — quarantined (skipped at dispatch)' : ' — not quarantined'}`}
+            className={`inline-flex shrink-0 cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${flake.is_quarantined
+                ? 'bg-pastel-peach text-pastel-ink-peach'
+                : 'bg-pastel-butter text-pastel-ink-butter'}`}
         >
-            <AlertCircle size={10} />
             {flake.is_quarantined ? 'Quarantined' : `Flaky ${scorePct}%`}
         </span>
     );
 }
 
+const EXEC_TONE: Record<string, string> = {
+    continuous: 'bg-pastel-lavender text-pastel-ink-lavender',
+    separate: 'bg-pastel-pink text-pastel-ink-pink',
+    parallel: 'bg-pastel-mint text-pastel-ink-mint',
+};
+
 function ExecModeBadge({ mode }: { mode: string }) {
-    const isPurple = mode === 'separate';
-    const isGreen = mode === 'parallel';
-
-    let colors = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-    let iconColor = 'text-indigo-500';
-
-    if (isPurple) {
-        colors = 'bg-purple-50 text-purple-700 border-purple-200';
-        iconColor = 'text-purple-500';
-    } else if (isGreen) {
-        colors = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        iconColor = 'text-emerald-500';
-    }
-
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border transition-colors ${colors}`}>
-            <Zap size={12} className={iconColor} />
+        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize ${EXEC_TONE[mode] ?? 'bg-secondary text-ink-soft'}`}>
             {mode}
         </span>
     );
@@ -95,6 +75,8 @@ export default function SuiteDetails() {
     const [activeTab, setActiveTab] = useState('tests');
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
+    const importSuiteRef = useRef<HTMLInputElement>(null);
+    const importCaseRef = useRef<HTMLInputElement>(null);
 
     const [activeProjectId, setActiveProjectId] = useState<number | null>(() => {
         const saved = localStorage.getItem('activeProjectId');
@@ -432,152 +414,125 @@ export default function SuiteDetails() {
         ? suite.test_cases.filter((tc: any) => tc.name.toLowerCase().includes(searchTerm.toLowerCase()))
         : [];
 
+    const tabs: { id: typeof activeTab; label: string; count?: number }[] = [
+        { id: 'tests', label: 'Tests', count: (suite.total_sub_modules || 0) > 0 ? suite.total_sub_modules : suite.total_test_cases || 0 },
+        { id: 'settings', label: 'Settings' },
+        { id: 'audit', label: 'Audit log' },
+    ];
+    const showCases = (suite.total_sub_modules || 0) === 0;
+    const canManage = can("project:manage", { projectId, workspaceId });
+    const canCreateTest = can("test:create", { projectId, workspaceId });
+    const canExecute = can("project:execute_test", { projectId, workspaceId });
+
+    // Row/card actions for a sub-module (schedule, run, delete, open).
+    const SubModuleActions = ({ sub }: { sub: { id: number; name: string } }) => (
+        <div className="flex flex-none items-center gap-1">
+            <button type="button" aria-label={`Schedule ${sub.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>
+            {canManage && (
+                <button type="button" aria-label={`Delete ${sub.name}`} title="Delete" onClick={() => { setSuiteToDelete({ id: sub.id, name: sub.name }); setShowDeleteSuiteDialog(true); }}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-pastel-ink-peach"><Trash2 className="h-4 w-4" /></button>
+            )}
+            <Button size="sm" onClick={() => runMutation.mutate(sub.id)} disabled={runMutation.isPending}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>
+            <Link to={`/suites/${sub.id}`} aria-label={`Open ${sub.name}`} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><ChevronRight className="h-4 w-4" /></Link>
+        </div>
+    );
+
+
     return (
-        <div className="max-w-[1600px] mx-auto pt-4 px-4 sm:px-8 space-y-8 pb-32 font-sans">
-            {/* ── Breadcrumb & Header ── */}
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between py-4 bg-slate-50/80 backdrop-blur-xl border-b border-slate-200/60 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] mb-8 -mx-4 sm:-mx-8 px-4 sm:px-8 sticky top-0 z-30">
-                <div className="space-y-4 max-w-3xl">
-                    <div className="flex items-center text-sm font-medium text-slate-500 mb-3">
-                        <Link to="/suites" className="hover:text-indigo-600 transition-colors flex items-center gap-1.5"><FolderOpen className="w-4 h-4" /> {activeProject?.name}</Link>
-                        {suite.parent_id && (
-                            <>
-                                <ChevronRight className="w-4 h-4 mx-1.5 text-slate-300" />
-                                <Link to={`/suites/${suite.parent_id}`} className="hover:text-indigo-600 transition-colors truncate max-w-[150px]">{suite.parent?.name || 'Parent Module'}</Link>
-                            </>
+        <div className="flex flex-col gap-5 pb-16">
+            <input ref={importSuiteRef} type="file" accept=".json" onChange={handleImportSuite} className="hidden" aria-hidden="true" tabIndex={-1} />
+            <input ref={importCaseRef} type="file" accept=".json" onChange={handleImportCase} className="hidden" aria-hidden="true" tabIndex={-1} />
+
+            <PageHeader
+                crumbs={<>
+                    <Link to="/suites" className="hover:text-ink">Tests</Link>
+                    <span>/</span>
+                    <span>{activeProject?.name}</span>
+                    {suite.parent_id && (<>
+                        <span>/</span>
+                        <Link to={`/suites/${suite.parent_id}`} className="max-w-[180px] truncate hover:text-ink">{suite.parent?.name || 'Parent module'}</Link>
+                    </>)}
+                </>}
+                title={<span className="inline-flex items-center gap-2">
+                    {suite.name}
+                    {canManage && (
+                        <button type="button" onClick={openRenameDialog} aria-label="Rename this suite" title="Rename"
+                            className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-white hover:text-ink">
+                            <Edit className="h-4 w-4" />
+                        </button>
+                    )}
+                </span>}
+                badge={<ExecModeBadge mode={suite.execution_mode} />}
+                subtitle={suite.description || `${suite.total_test_cases || 0} tests · ${suite.total_sub_modules || 0} sub-modules`}
+                actions={canExecute ? (
+                    <div className="flex flex-wrap items-center gap-1 rounded-full border border-border bg-white p-1">
+                        {(environments?.length ?? 0) > 0 && (
+                            <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
+                                <SelectTrigger className="h-9 w-[230px] justify-start gap-2 rounded-full border-0 bg-transparent shadow-none [&>span]:flex-1 [&>span]:text-left" aria-label="Environment for runs from this page" title="Environment for runs from this page">
+                                    <Globe className="h-4 w-4 shrink-0 text-ink-soft" /><SelectValue placeholder="Environment" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="default">Default environment</SelectItem>
+                                    {(environments || []).map((env) => (
+                                        <SelectItem key={env.id} value={env.id.toString()}>
+                                            {env.name}{env.is_default ? ' (default)' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                         )}
+                        {(appBuilds?.length ?? 0) > 0 && (
+                            <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
+                                <SelectTrigger className="h-9 w-[210px] justify-start gap-2 rounded-full border-0 bg-transparent shadow-none [&>span]:flex-1 [&>span]:text-left" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
+                                    <Smartphone className="h-4 w-4 shrink-0 text-ink-soft" /><SelectValue placeholder="App build" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">No app build (web)</SelectItem>
+                                    {(appBuilds || []).map((b) => (
+                                        <SelectItem key={b.id} value={b.id.toString()}>
+                                            {b.app_name}{b.version_name ? ` ${b.version_name}` : ''} ({b.platform})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        <Button onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending}>
+                            {runMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : <><Play className="h-4 w-4" fill="currentColor" /> Run suite</>}
+                        </Button>
                     </div>
+                ) : undefined}
+            />
 
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 shadow-inner">
-                            <FolderOpen className="h-7 w-7 text-indigo-600" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-3">
-                                <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">{suite.name}</h1>
-                                {can("project:manage", { projectId, workspaceId }) && (
-                                    <button onClick={openRenameDialog} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors" title="Rename module">
-                                        <Edit className="w-4 h-4" />
-                                    </button>
-                                )}
-                            </div>
-                            <p className="text-slate-500 mt-1.5 text-base max-w-2xl leading-relaxed">{suite.description}</p>
-                        </div>
-                    </div>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div role="tablist" aria-label="Suite sections" className="flex gap-1 rounded-full bg-[#EFEDE7] p-1">
+                    {tabs.map((t) => (
+                        <button key={t.id} type="button" role="tab" aria-selected={activeTab === t.id} onClick={() => setActiveTab(t.id)}
+                            className={`flex min-h-9 items-center gap-1.5 rounded-full px-4 text-[13px] text-ink ${activeTab === t.id ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium'}`}>
+                            {t.label}{t.count !== undefined && <span className="font-mono text-xs text-ink-soft">{t.count}</span>}
+                        </button>
+                    ))}
                 </div>
-
-                <div className="flex flex-wrap items-center gap-3">
-                    {can("project:manage", { projectId, workspaceId }) && (
-                        <div className="relative">
-                            <input type="file" accept=".json" onChange={handleImportSuite} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Import Module" />
-                            <Button variant="outline" className="rounded-xl border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm h-11 px-4 font-medium">
-                                <Upload className="mr-2 h-4 w-4 text-slate-400" /> Import
-                            </Button>
-                        </div>
-                    )}
-                    <Button variant="outline" onClick={handleExportSuite} className="rounded-xl border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm h-11 px-4 font-medium">
-                        <Download className="mr-2 h-4 w-4 text-slate-400" /> Export
-                    </Button>
-                    {can("project:execute_test", { projectId, workspaceId }) && (
-                        <Button
-                            onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}
-                            className="rounded-xl bg-slate-900 hover:bg-slate-800 text-white shadow-md h-11 px-5 transition-all font-semibold"
-                        >
-                            <CalendarClock className="mr-2 h-4 w-4" /> Schedule
+                <div className="flex flex-wrap gap-2">
+                    {canExecute && (
+                        <Button variant="outline" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}>
+                            <CalendarClock className="h-4 w-4" /> Schedule
                         </Button>
                     )}
-                    {can("project:execute_test", { projectId, workspaceId }) && (environments?.length ?? 0) > 0 && (
-                        <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
-                            <SelectTrigger className="w-[190px] h-11 rounded-xl bg-white border-slate-200 shadow-sm" title="Environment for runs from this page">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <Globe className="w-4 h-4 text-emerald-500 shrink-0" />
-                                    <SelectValue placeholder="Environment" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="default">Default environment</SelectItem>
-                                {(environments || []).map((env) => (
-                                    <SelectItem key={env.id} value={env.id.toString()}>
-                                        {env.name}{env.is_default ? ' (default)' : ''}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                    {can("project:execute_test", { projectId, workspaceId }) && (appBuilds?.length ?? 0) > 0 && (
-                        <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
-                            <SelectTrigger className="w-[210px] h-11 rounded-xl bg-white border-slate-200 shadow-sm" title="Pin a mobile app build to runs from this page">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <Smartphone className="w-4 h-4 text-indigo-500 shrink-0" />
-                                    <SelectValue placeholder="App build" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">No app build (web)</SelectItem>
-                                {(appBuilds || []).map((b) => (
-                                    <SelectItem key={b.id} value={b.id.toString()}>
-                                        {b.app_name}{b.version_name ? ` ${b.version_name}` : ''} ({b.platform})
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-                    {can("project:execute_test", { projectId, workspaceId }) && (
-                        <Button
-                            onClick={() => runMutation.mutate(Number(suiteId))}
-                            disabled={runMutation.isPending}
-                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 h-11 px-6 transition-all font-semibold text-base"
-                        >
-                            {runMutation.isPending ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Starting...</> : <><Play className="mr-2 h-5 w-5" fill="currentColor" /> Run Now</>}
-                        </Button>
-                    )}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="outline" aria-label="More suite actions"><MoreHorizontal className="h-4 w-4" /> More</Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem onClick={handleExportSuite}><Download className="mr-2 h-4 w-4" /> Export suite (JSON)</DropdownMenuItem>
+                            {canManage && (
+                                <DropdownMenuItem onClick={() => importSuiteRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import into this suite</DropdownMenuItem>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </div>
 
-            {/* ── Main Layout (Sidebar + Content) ── */}
-            <div className="flex flex-col xl:flex-row gap-8 items-start">
-
-                {/* ── Tabs Navigation Vertical Sidebar ── */}
-                <div className="w-full xl:w-64 shrink-0 bg-white rounded-3xl border border-slate-200 shadow-sm p-3 xl:sticky xl:top-[180px]">
-                    <div className="flex flex-row xl:flex-col gap-1.5 overflow-x-auto xl:overflow-visible pb-2 xl:pb-0 scrollbar-hide">
-                        <button
-                            onClick={() => setActiveTab('tests')}
-                            className={`flex items-center gap-3 px-4 py-3 xl:py-3.5 rounded-2xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'tests' ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'}`}
-                        >
-                            <ListTodo className={`w-5 h-5 ${activeTab === 'tests' ? 'text-indigo-600' : 'text-slate-400'}`} /> Tests & Modules
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('settings')}
-                            className={`flex items-center gap-3 px-4 py-3 xl:py-3.5 rounded-2xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'settings' ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'}`}
-                        >
-                            <SettingsIcon className={`w-5 h-5 ${activeTab === 'settings' ? 'text-indigo-600' : 'text-slate-400'}`} /> Module Settings
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('audit')}
-                            className={`flex items-center gap-3 px-4 py-3 xl:py-3.5 rounded-2xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'audit' ? 'bg-indigo-50 text-indigo-700 shadow-sm border border-indigo-100/50' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent'}`}
-                        >
-                            <History className={`w-5 h-5 ${activeTab === 'audit' ? 'text-indigo-600' : 'text-slate-400'}`} /> Audit Log
-                        </button>
-                    </div>
-
-                    {/* Quick Stats in sidebar */}
-                    <div className="hidden xl:block mt-6 px-4 py-5 border-t border-slate-100 space-y-4">
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 font-medium">Sub-modules</span>
-                            <span className="font-extrabold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-md">{suite.total_sub_modules || 0}</span>
-                        </div>
-                        <div className="flex justify-between items-center text-sm">
-                            <span className="text-slate-500 font-medium">Test Cases</span>
-                            <span className="font-extrabold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-md">{suite.total_test_cases || 0}</span>
-                        </div>
-                        <div className="pt-4 border-t border-slate-100">
-                            <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Execution Mode</div>
-                            <ExecModeBadge mode={suite.execution_mode} />
-                        </div>
-                    </div>
-                </div>
-
-                {/* ── Content Area ── */}
-                <div className="flex-1 min-w-0 w-full">
                     <AnimatePresence mode="wait">
                         {activeTab === 'tests' ? (
                             <motion.div
@@ -586,337 +541,137 @@ export default function SuiteDetails() {
                                 initial="hidden"
                                 animate="visible"
                                 exit="exit"
-                                className="space-y-8"
+                                className="flex flex-col gap-6"
                             >
-                                {/* Search and Layout Bar */}
-                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-3 rounded-2xl border border-slate-200 shadow-sm mb-6">
-                                    <div className="relative w-full sm:w-80">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                        <Input
-                                            placeholder="Search items..."
-                                            className="pl-9 bg-slate-50/50 border-slate-200 shadow-inner rounded-xl focus-visible:ring-indigo-500 h-10 w-full"
-                                            value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)}
-                                        />
+                                {/* Toolbar: search, view, add */}
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <label className="flex min-h-11 min-w-[220px] flex-1 items-center gap-2 rounded-full border border-border bg-white px-4 sm:max-w-sm">
+                                        <Search className="h-4 w-4 text-ink-soft" />
+                                        <span className="sr-only">Search this suite</span>
+                                        <input type="search" placeholder={showCases ? 'Search tests' : 'Search sub-modules'} value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
+                                    </label>
+                                    <div role="group" aria-label="View" className="flex gap-1 rounded-full bg-[#EFEDE7] p-1">
+                                        {([['list', 'List', List], ['card', 'Cards', LayoutGrid]] as const).map(([id, label, Icon]) => (
+                                            <button key={id} type="button" aria-pressed={viewMode === id} onClick={() => setViewMode(id)}
+                                                className={`flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink ${viewMode === id ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium'}`}>
+                                                <Icon className="h-3.5 w-3.5" /> {label}
+                                            </button>
+                                        ))}
                                     </div>
-                                    <div className="flex w-full sm:w-auto items-center justify-between sm:justify-end gap-4">
-                                        <div className="flex bg-slate-50 rounded-xl border border-slate-200 p-1 shrink-0 h-10">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className={`px-3 py-1 h-full rounded-lg text-xs font-bold ${viewMode === 'card' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
-                                                onClick={() => setViewMode('card')}
-                                            >
-                                                <LayoutGrid className="w-3.5 h-3.5 mr-1.5" /> Cards
-                                            </Button>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className={`px-3 py-1 h-full rounded-lg text-xs font-bold ${viewMode === 'list' ? 'bg-white text-slate-900 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
-                                                onClick={() => setViewMode('list')}
-                                            >
-                                                <List className="w-3.5 h-3.5 mr-1.5" /> List
-                                            </Button>
-                                        </div>
+                                    <div className="ml-auto flex flex-wrap gap-2">
+                                        <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}><FolderOpen className="h-4 w-4" /> Sub-module</Button>
+                                        {showCases && canCreateTest && (
+                                            <>
+                                                <Button variant="outline" onClick={() => importCaseRef.current?.click()}><Upload className="h-4 w-4" /> Import test</Button>
+                                                {aiGenerationEnabled && (
+                                                    <Button variant="outline" onClick={() => setShowGenerateDialog(true)}><Sparkles className="h-4 w-4" /> Generate</Button>
+                                                )}
+                                                <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}><Plus className="h-4 w-4" /> New test</Button>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
 
-
-                                {/* ── Sub-Modules section ── */}
+                                {/* ── Sub-modules ── */}
                                 {suite.sub_modules && suite.sub_modules.length > 0 && (
-                                    <div className="space-y-4 mb-10">
-                                        <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
-                                            <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2.5">
-                                                <div className="p-1.5 rounded-lg bg-indigo-50 text-indigo-500 border border-indigo-100">
-                                                    <FolderOpen className="h-5 w-5" />
-                                                </div>
-                                                Sub-Modules
-                                                <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-sm">{filteredSubModules.length}</span>
-                                            </h2>
-                                            <div className="flex gap-2">
-                                                <Button size="sm" onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending} className="rounded-xl border-slate-200 bg-emerald-50 text-emerald-700 shadow-sm h-9 px-3 hover:bg-emerald-600 hover:text-white font-bold transition-all">
-                                                    {runMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" fill="currentColor" />}
-                                                    Run All
-                                                </Button>
-                                                <Button variant="outline" size="sm" onClick={() => setShowSubModuleDialog(true)} className="rounded-xl border-slate-200 text-slate-700 bg-white shadow-sm h-9 px-3 hover:bg-slate-50 font-medium">
-                                                    <Plus className="mr-1.5 h-4 w-4" /> Add Sub-Module
-                                                </Button>
-                                            </div>
-                                        </div>
-
+                                    <section aria-label="Sub-modules" className="flex flex-col gap-2">
+                                        <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.06em] text-ink-soft">Sub-modules · {filteredSubModules.length}</h2>
                                         {filteredSubModules.length === 0 ? (
-                                            <div className="text-center py-8 text-slate-400 text-sm italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">No sub-modules found matching "{searchTerm}".</div>
+                                            <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-ink-soft">No sub-modules match “{searchTerm}”.</p>
                                         ) : viewMode === 'card' ? (
-                                            <motion.div
-                                                className="grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3"
-                                                variants={containerVariants}
-                                                initial="hidden"
-                                                animate="show"
-                                            >
+                                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                                                 {filteredSubModules.map((sub: any) => (
-                                                    <motion.div key={sub.id} variants={itemVariants} className="h-full">
-                                                        <div
-                                                            className="h-full group bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200/60 hover:-translate-y-1 transition-all duration-300 cursor-pointer overflow-hidden flex flex-col"
-                                                            onClick={() => navigate(`/suites/${sub.id}`)}
-                                                        >
-                                                            <div className="h-1.5 w-full bg-slate-100 group-hover:bg-indigo-50 transition-colors" />
-                                                            <div className="p-5 flex flex-col flex-1">
-                                                                <div className="flex items-start justify-between mb-3 gap-2">
-                                                                    <div className="p-2.5 bg-slate-50 rounded-xl group-hover:bg-indigo-50 transition-colors border border-slate-100 shrink-0">
-                                                                        <FolderOpen className="h-5 w-5 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                                                                    </div>
-                                                                    <div className="mt-1 flex-shrink-0"><ExecModeBadge mode={sub.execution_mode} /></div>
-                                                                </div>
-                                                                <div className="space-y-1.5 flex-1 min-w-0">
-                                                                    <h3 className="font-bold text-slate-900 text-lg pr-4 group-hover:text-indigo-600 transition-colors">{sub.name}</h3>
-                                                                    <p className="text-sm text-slate-500 line-clamp-2 leading-relaxed">{sub.description}</p>
-                                                                </div>
-                                                                <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100">
-                                                                    <div className="flex items-center gap-3 text-xs font-bold text-slate-400">
-                                                                        <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-slate-300" /> {sub.total_test_cases || 0}</span>
-                                                                        <span className="flex items-center gap-1.5"><FolderOpen className="h-3.5 w-3.5 text-slate-300" /> {sub.total_sub_modules || 0}</span>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent hover:border-indigo-200 transition-all z-10"
-                                                                            onClick={(e) => { e.stopPropagation(); setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
-                                                                            title="Schedule Module"
-                                                                        >
-                                                                            <CalendarClock className="h-3.5 w-3.5" />
-                                                                        </Button>
-                                                                        {can("project:manage", { projectId, workspaceId }) && (
-                                                                            <Button
-                                                                                variant="ghost"
-                                                                                size="icon"
-                                                                                className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-all z-10"
-                                                                                onClick={(e) => { e.stopPropagation(); setSuiteToDelete({ id: sub.id, name: sub.name }); setShowDeleteSuiteDialog(true); }}
-                                                                                title="Delete Module"
-                                                                            >
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                        )}
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="sm"
-                                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold transition-all shadow-sm z-10"
-                                                                            onClick={(e) => { e.stopPropagation(); runMutation.mutate(sub.id); }}
-                                                                        >
-                                                                            <Play className="h-3 w-3" fill="currentColor" /> Run
-                                                                        </Button>
-                                                                    </div>
-                                                                </div>
+                                                    <div key={sub.id} className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-5">
+                                                        <div className="flex items-start gap-3">
+                                                            <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-pastel-lavender text-pastel-ink-lavender"><FolderOpen className="h-4 w-4" /></span>
+                                                            <div className="min-w-0 flex-1">
+                                                                <Link to={`/suites/${sub.id}`} className="block truncate text-base font-semibold text-ink hover:underline">{sub.name}</Link>
+                                                                <p className="mt-0.5 line-clamp-2 text-sm text-ink-soft">{sub.description || `${sub.total_test_cases || 0} tests · ${sub.total_sub_modules || 0} sub-modules`}</p>
                                                             </div>
+                                                            <ExecModeBadge mode={sub.execution_mode} />
                                                         </div>
-                                                    </motion.div>
+                                                        <div className="mt-auto flex items-center gap-2 border-t border-[#F0EEE8] pt-3">
+                                                            <span className="flex-1 text-xs text-ink-soft">{sub.total_test_cases || 0} tests · {sub.total_sub_modules || 0} sub-modules</span>
+                                                            <SubModuleActions sub={sub} />
+                                                        </div>
+                                                    </div>
                                                 ))}
-                                            </motion.div>
-                                        ) : (
-                                            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-                                                <Table>
-                                                    <TableHeader className="bg-slate-50/50">
-                                                        <TableRow className="border-slate-100 hover:bg-transparent">
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10">Name</TableHead>
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10">Execution</TableHead>
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10">Tests</TableHead>
-                                                            <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-10 w-[60px]"></TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {filteredSubModules.map((sub: any) => (
-                                                            <TableRow key={sub.id} className="border-slate-100 hover:bg-indigo-50/30 cursor-pointer group transition-colors" onClick={() => navigate(`/suites/${sub.id}`)}>
-                                                                <TableCell className="py-3">
-                                                                    <div className="flex items-center gap-3">
-                                                                        <FolderOpen className="h-4 w-4 text-indigo-400 group-hover:text-indigo-600" />
-                                                                        <span className="font-bold text-slate-700 group-hover:text-indigo-700">{sub.name}</span>
-                                                                    </div>
-                                                                </TableCell>
-                                                                <TableCell className="py-3"><ExecModeBadge mode={sub.execution_mode} /></TableCell>
-                                                                <TableCell className="py-3">
-                                                                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">{sub.total_test_cases || 0}</span>
-                                                                </TableCell>
-                                                                <TableCell className="py-3 text-right">
-                                                                    <div className="flex justify-end items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
-                                                                            onClick={(e) => { e.stopPropagation(); setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
-                                                                            title="Schedule Module"
-                                                                        >
-                                                                            <CalendarClock className="h-3.5 w-3.5" />
-                                                                        </Button>
-                                                                        <Button
-                                                                            variant="ghost"
-                                                                            size="icon"
-                                                                            className="h-8 w-8 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"
-                                                                            onClick={(e) => { e.stopPropagation(); runMutation.mutate(sub.id); }}
-                                                                            title="Run Module"
-                                                                            disabled={runMutation.isPending}
-                                                                        >
-                                                                            <Play className="h-3.5 w-3.5" fill="currentColor" />
-                                                                        </Button>
-                                                                        {can("project:manage", { projectId, workspaceId }) && (
-                                                                            <Button
-                                                                                variant="ghost"
-                                                                                size="icon"
-                                                                                className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                                                                                onClick={(e) => { e.stopPropagation(); setSuiteToDelete({ id: sub.id, name: sub.name }); setShowDeleteSuiteDialog(true); }}
-                                                                                title="Delete Module"
-                                                                            >
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            </Button>
-                                                                        )}
-                                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" onClick={(e) => { e.stopPropagation(); navigate(`/suites/${sub.id}`); }} title="Open Module">
-                                                                            <ChevronRight className="h-4 w-4" />
-                                                                        </Button>
-                                                                    </div>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
-                                                    </TableBody>
-                                                </Table>
                                             </div>
+                                        ) : (
+                                            <ul className="overflow-hidden rounded-3xl border border-border bg-white">
+                                                {filteredSubModules.map((sub: any) => (
+                                                    <li key={sub.id} className="flex items-center gap-3 border-t border-[#F0EEE8] px-4 py-3 first:border-t-0">
+                                                        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-[10px] bg-pastel-lavender text-pastel-ink-lavender"><FolderOpen className="h-4 w-4" /></span>
+                                                        <Link to={`/suites/${sub.id}`} className="min-w-0 flex-1">
+                                                            <span className="block truncate text-sm font-semibold text-ink hover:underline">{sub.name}</span>
+                                                            <span className="block truncate text-xs text-ink-soft">{sub.total_test_cases || 0} tests · {sub.total_sub_modules || 0} sub-modules{sub.description ? ` · ${sub.description}` : ''}</span>
+                                                        </Link>
+                                                        <ExecModeBadge mode={sub.execution_mode} />
+                                                        <SubModuleActions sub={sub} />
+                                                    </li>
+                                                ))}
+                                            </ul>
                                         )}
-                                    </div>
+                                    </section>
                                 )}
 
-
-                                {/* ── Test Cases section ── */}
-                                {suite.total_sub_modules === 0 && (
-                                    <div className={`space-y-4 ${suite.sub_modules?.length ? 'pt-8 border-t border-slate-200/60' : ''}`}>
-                                        <div className="flex flex-wrap items-center justify-between gap-4 mb-2">
-                                            <h2 className="text-xl font-extrabold text-slate-900 flex items-center gap-2.5">
-                                                <div className="p-1.5 rounded-lg bg-emerald-50 text-emerald-500 border border-emerald-100">
-                                                    <FileText className="h-5 w-5" />
-                                                </div>
-                                                Test Cases
-                                                <span className="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-0.5 rounded-full shadow-sm">{filteredTestCases.length}</span>
-                                            </h2>
-
-                                            <div className="flex gap-2">
-                                                {can("test:create", { projectId, workspaceId }) && (
-                                                    <div className="relative">
-                                                        <input type="file" accept=".json" onChange={handleImportCase} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Import Test Case" />
-                                                        <Button variant="outline" size="sm" className="rounded-xl border-slate-200 text-slate-700 bg-white hover:bg-slate-50 shadow-sm h-9 px-3 font-medium">
-                                                            <Upload className="mr-1.5 h-4 w-4 text-slate-400" /> Import
-                                                        </Button>
-                                                    </div>
-                                                )}
-                                                <Button size="sm" onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending} className="rounded-xl border-slate-200 bg-emerald-50 text-emerald-700 shadow-sm h-9 px-3 hover:bg-emerald-600 hover:text-white font-bold transition-all">
-                                                    {runMutation.isPending ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Play className="mr-1.5 h-4 w-4" fill="currentColor" />}
-                                                    Run All
-                                                </Button>
-                                                {can("test:create", { projectId, workspaceId }) && (
-                                                    <>
-                                                        {aiGenerationEnabled && (
-                                                            <Button size="sm" onClick={() => setShowGenerateDialog(true)} className="rounded-xl border-slate-200 text-indigo-700 bg-indigo-50 shadow-sm h-9 px-3 hover:bg-indigo-100 font-medium">
-                                                                <Sparkles className="mr-1.5 h-4 w-4" /> Generate
-                                                            </Button>
-                                                        )}
-                                                        <Button size="sm" onClick={() => navigate(`/suites/${suiteId}/builder`)} className="rounded-xl border-slate-200 text-slate-700 bg-white shadow-sm h-9 px-3 hover:bg-slate-50 font-medium">
-                                                            <Plus className="mr-1.5 h-4 w-4" /> Add Case
-                                                        </Button>
-                                                    </>
-                                                )}
-                                            </div>
+                                {/* ── Test cases ── */}
+                                {showCases && (
+                                    !suite.test_cases || suite.test_cases.length === 0 ? (
+                                        <div className="flex flex-col items-center gap-3 rounded-3xl border border-border bg-white px-6 py-14 text-center">
+                                            <p className="text-lg font-semibold text-ink">No tests in this suite yet</p>
+                                            <p className="max-w-[46ch] text-sm text-ink-soft">Build one step by step, import a JSON export, or split this suite into sub-modules.</p>
+                                            {canCreateTest && (
+                                                <Button size="lg" onClick={() => navigate(`/suites/${suiteId}/builder`)}><Plus className="h-4 w-4" /> New test</Button>
+                                            )}
                                         </div>
-
-                                        {!suite.test_cases || suite.test_cases.length === 0 ? (
-                                            <div className="text-center py-20 px-4 bg-slate-50/50 rounded-3xl border border-dashed border-slate-200 flex flex-col items-center">
-                                                <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-sm border border-slate-100">
-                                                    <FileText className="h-8 w-8 text-slate-300" />
-                                                </div>
-                                                <h3 className="text-lg font-extrabold text-slate-900 mb-2">No test cases yet</h3>
-                                                <p className="text-slate-500 text-sm mb-6 max-w-sm">Get started by building your first test case or importing an existing one.</p>
-                                                <Button onClick={() => navigate(`/suites/${suiteId}/builder`)} className="rounded-xl h-11 px-6 shadow-sm bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">
-                                                    <Plus className="mr-2 h-4 w-4" /> Add Test Case
-                                                </Button>
-                                            </div>
-                                        ) : filteredTestCases.length === 0 ? (
-                                            <div className="text-center py-8 text-slate-400 text-sm italic bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">No test cases found matching "{searchTerm}".</div>
-                                        ) : viewMode === 'card' ? (
-                                            <motion.div
-                                                className="grid gap-4 sm:gap-5 md:grid-cols-2 lg:grid-cols-3"
-                                                variants={containerVariants}
-                                                initial="hidden"
-                                                animate="show"
-                                            >
-                                                {filteredTestCases.map((tc: any) => (
-                                                    <motion.div key={tc.id} variants={itemVariants} className="h-full">
-                                                        <div className="group bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-emerald-200/60 hover:-translate-y-1 transition-all duration-300 flex flex-col h-full overflow-hidden">
-                                                            <div className="h-1.5 w-full bg-slate-100 group-hover:bg-emerald-400 transition-colors" />
-                                                            <div className="p-5 flex-1 flex flex-col">
-                                                                <div className="flex items-center gap-3 mb-4">
-                                                                    <div className="p-2.5 rounded-xl bg-slate-50 text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-500 transition-colors border border-slate-100 shrink-0">
-                                                                        <FileText className="h-5 w-5" />
-                                                                    </div>
-                                                                    <h3 className="font-extrabold text-slate-900 text-base truncate group-hover:text-emerald-700 transition-colors">{tc.name}</h3>
-                                                                    {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
-                                                                </div>
-
-                                                                {/* Summary of steps */}
-                                                                {tc.steps && tc.steps.length > 0 && (
-                                                                    <div className="flex-1 space-y-2 mb-4">
-                                                                        {tc.steps.slice(0, 3).map((step: any, idx: number) => (
-                                                                            <div key={idx} className="flex gap-2 text-[11px] leading-snug">
-                                                                                <span className="font-bold text-slate-300 shrink-0 w-3">{idx + 1}.</span>
-                                                                                <span className="text-slate-500 line-clamp-1">
-                                                                                    {typeof step === 'string' ? step : (
-                                                                                        <><span className="font-bold text-emerald-600/80">{step.type}</span> {step.selector ? `on ${step.selector}` : ''}</>
-                                                                                    )}
-                                                                                </span>
-                                                                            </div>
-                                                                        ))}
-                                                                        {tc.steps.length > 3 && (
-                                                                            <div className="text-[10px] font-bold text-slate-400 pt-1 pl-5">+{tc.steps.length - 3} more steps</div>
-                                                                        )}
-                                                                    </div>
-                                                                )}
-
-                                                                {/* Card Actions overlaying bottom */}
-                                                                <div className="pt-4 mt-auto border-t border-slate-100 flex items-center justify-between">
-                                                                    <div className="flex gap-1.5">
-                                                                        <button onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:z-10 transition-colors border hover:border-indigo-200" title="Schedule">
-                                                                            <CalendarClock className="h-3.5 w-3.5" />
-                                                                        </button>
-                                                                        {can("test:create", { projectId, workspaceId }) && (
-                                                                            <button onClick={() => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)} className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:z-10 transition-colors border hover:border-indigo-200" title="Edit">
-                                                                                <Edit className="h-3.5 w-3.5" />
-                                                                            </button>
-                                                                        )}
-                                                                        <button onClick={() => handleExportCase(tc.id, tc.name)} className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 hover:z-10 transition-colors border hover:border-indigo-200" title="Export">
-                                                                            <Download className="h-3.5 w-3.5" />
-                                                                        </button>
-                                                                        {can("test:create", { projectId, workspaceId }) && (
-                                                                            <button onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 hover:z-10 transition-colors border hover:border-rose-200" title="Delete">
-                                                                                <Trash2 className="h-3.5 w-3.5" />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                    <button onClick={() => handleRunTestCase(tc.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold transition-all shadow-sm">
-                                                                        <Play className="h-3 w-3" fill="currentColor" /> Run
-                                                                    </button>
-                                                                </div>
-                                                            </div>
+                                    ) : filteredTestCases.length === 0 ? (
+                                        <p className="rounded-2xl border border-dashed border-border px-4 py-6 text-center text-sm text-ink-soft">No tests match “{searchTerm}”.</p>
+                                    ) : viewMode === 'card' ? (
+                                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                                            {filteredTestCases.map((tc: any) => (
+                                                <div key={tc.id} className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-5">
+                                                    <div className="flex items-start gap-3">
+                                                        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-secondary text-ink-soft"><FileText className="h-4 w-4" /></span>
+                                                        <div className="min-w-0 flex-1">
+                                                            <h3 className="text-base font-semibold leading-snug text-ink">{tc.name}</h3>
+                                                            <p className="mt-0.5 text-xs text-ink-soft">{tc.steps?.length || 0} steps</p>
                                                         </div>
-                                                    </motion.div>
-                                                ))}
-                                            </motion.div>
-                                        ) : (
-                                            <CaseSplit
-                                                cases={filteredTestCases}
-                                                badge={(tc) => flakeByCaseId.has(tc.id) ? <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} /> : null}
-                                                canEdit={can("test:create", { projectId, workspaceId })}
-                                                onRun={(tc) => handleRunTestCase(tc.id)}
-                                                onSchedule={(tc) => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }}
-                                                onEdit={(tc) => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)}
-                                                onExport={(tc) => handleExportCase(tc.id, tc.name)}
-                                                onDelete={(tc) => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }}
-                                            />
-                                        )}
-                                    </div>
+                                                        {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
+                                                    </div>
+                                                    {tc.steps && tc.steps.length > 0 && (
+                                                        <ol className="flex flex-col gap-1.5 text-[13px] text-ink-soft">
+                                                            {tc.steps.slice(0, 3).map((step: any, idx: number) => (
+                                                                <li key={idx} className="flex gap-2"><span className="w-4 font-mono text-xs">{idx + 1}</span>
+                                                                    <span className="line-clamp-1 text-ink">{describeStep(step).text}</span>
+                                                                </li>
+                                                            ))}
+                                                            {tc.steps.length > 3 && <li className="pl-6 text-xs">+{tc.steps.length - 3} more</li>}
+                                                        </ol>
+                                                    )}
+                                                    <div className="mt-auto flex items-center gap-1.5 border-t border-[#F0EEE8] pt-3">
+                                                        <button type="button" aria-label={`Schedule ${tc.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>
+                                                        {canCreateTest && <button type="button" aria-label={`Edit ${tc.name}`} title="Edit" onClick={() => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Edit className="h-4 w-4" /></button>}
+                                                        <button type="button" aria-label={`Export ${tc.name}`} title="Export" onClick={() => handleExportCase(tc.id, tc.name)} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Download className="h-4 w-4" /></button>
+                                                        {canCreateTest && <button type="button" aria-label={`Delete ${tc.name}`} title="Delete" onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-pastel-ink-peach"><Trash2 className="h-4 w-4" /></button>}
+                                                        <Button size="sm" className="ml-auto" onClick={() => handleRunTestCase(tc.id)}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <CaseSplit
+                                            cases={filteredTestCases}
+                                            badge={(tc) => flakeByCaseId.has(tc.id) ? <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} /> : null}
+                                            canEdit={canCreateTest}
+                                            onRun={(tc) => handleRunTestCase(tc.id)}
+                                            onSchedule={(tc) => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }}
+                                            onEdit={(tc) => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)}
+                                            onExport={(tc) => handleExportCase(tc.id, tc.name)}
+                                            onDelete={(tc) => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }}
+                                        />
+                                    )
                                 )}
                             </motion.div>
                         ) : activeTab === 'settings' ? (
@@ -1773,8 +1528,6 @@ export default function SuiteDetails() {
                             </motion.div>
                         ) : null}
                     </AnimatePresence>
-                </div>
-            </div>
 
             {/* KEEP EXISTING DIALOGS AND MODALS EXACTLY THE SAME... */}
             {/* ── Rename Dialog, SubModule Dialog, Delete Dialogs ── */}
