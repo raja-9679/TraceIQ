@@ -354,8 +354,9 @@ export default function TestBuilder() {
 
     return (
         <div className="flex flex-col gap-5 pb-28">
-            {/* Header stays in reach while scrolling a long case, as before */}
-            <div className="sticky top-0 z-40 -mt-2 bg-background/95 pb-3 pt-2 backdrop-blur">
+            {/* Header stays in reach while scrolling a long case, as before. No
+                backdrop-filter here: it would trap the fixed History modal. */}
+            <div className="sticky top-14 z-30 -mt-2 bg-background pb-3 pt-2 lg:top-0">
                 <PageHeader
                     crumbs={<>
                         <Link to="/suites" className="hover:text-ink">Tests</Link>
