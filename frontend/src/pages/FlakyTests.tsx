@@ -1,137 +1,144 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Activity, RefreshCw, AlertCircle, ShieldAlert, ShieldCheck, Layers, Info, CheckCircle2,
-} from 'lucide-react';
+import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getProjects } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { flakesApi, FlakinessEntry } from '@/api/flakes';
+import {
+    DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import { cn } from '@/lib/utils';
 
 interface ApiError extends Error {
-  response?: { data?: { detail?: string } };
+    response?: { data?: { detail?: string } };
 }
 
 const errorDetail = (err: unknown): string => {
-  const e = err as ApiError;
-  return e.response?.data?.detail || e.message || 'Unknown error';
+    const e = err as ApiError;
+    return e.response?.data?.detail || e.message || 'Unknown error';
 };
 
+const pctOf = (score: number) => Math.round(Math.max(0, Math.min(1, score)) * 100);
+const barColour = (score: number) => (score >= 0.66 ? 'bg-[#E0603A]' : score >= 0.33 ? 'bg-[#F2C94C]' : 'bg-[#8FD3B6]');
+
 // ---------------------------------------------------------------------------
-// Flake score bar — 0.0 stable (emerald) → 1.0 pure flake (rose)
+// Flake score bar — 0.0 stable → 1.0 pure flake
 // ---------------------------------------------------------------------------
 
-function FlakeScoreBar({ score }: { score: number }) {
-  const pct = Math.round(Math.max(0, Math.min(1, score)) * 100);
-  const tone = score >= 0.66 ? 'bg-rose-500' : score >= 0.33 ? 'bg-amber-500' : 'bg-emerald-500';
-  const label = score >= 0.66 ? 'text-rose-700' : score >= 0.33 ? 'text-amber-700' : 'text-emerald-700';
-  return (
-    <div className="flex items-center gap-2 min-w-[140px]">
-      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-        <div className={`h-full rounded-full ${tone} transition-all`} style={{ width: `${pct}%` }} />
-      </div>
-      <span className={`text-xs font-bold tabular-nums ${label}`}>{pct}%</span>
-    </div>
-  );
+function FlakeScoreBar({ score, large = false }: { score: number; large?: boolean }) {
+    const pct = pctOf(score);
+    return (
+        <span
+            role="img"
+            aria-label={`Flake score ${pct}%`}
+            className={cn('block w-full overflow-hidden rounded-full bg-secondary', large ? 'h-3' : 'h-1.5')}
+        >
+            <span className={cn('block h-full rounded-full transition-all', barColour(score))} style={{ width: `${pct}%` }} />
+        </span>
+    );
+}
+
+function Fact({ label, value }: { label: string; value: string | number }) {
+    return (
+        <div className="flex flex-col gap-1 rounded-2xl bg-background p-4">
+            <span className="text-xs text-ink-soft">{label}</span>
+            <span className="text-2xl font-bold tracking-tight tabular-nums text-ink">{value}</span>
+        </div>
+    );
+}
+
+function meaning(e: FlakinessEntry) {
+    if (e.is_quarantined) {
+        return 'Quarantined: it is skipped when runs are dispatched, so it no longer blocks regressions. Release it once the cause is fixed so it protects you again.';
+    }
+    if (e.flake_score >= 0.66) {
+        return 'This test passes and fails under the same conditions most of the time. Its result tells you little. Quarantine it so it stops blocking runs, then fix the timing or data it depends on.';
+    }
+    if (e.flake_score >= 0.33) {
+        return 'This test sometimes fails for no reason the code explains. Keep an eye on it; quarantine it if it starts blocking releases.';
+    }
+    return 'Mostly stable. It has wobbled a little, but not enough to stop trusting it.';
 }
 
 // ---------------------------------------------------------------------------
-// Row — quarantine/release act on all FlakeRecords for the case
+// Detail — quarantine/release act on all FlakeRecords for the case
 // ---------------------------------------------------------------------------
 
-function FlakeRow({ entry, projectId }: { entry: FlakinessEntry; projectId: number }) {
-  const queryClient = useQueryClient();
+function FlakeDetail({ entry, projectId }: { entry: FlakinessEntry; projectId: number }) {
+    const queryClient = useQueryClient();
 
-  const mutation = useMutation({
-    mutationFn: async (action: 'quarantine' | 'release') => {
-      // The flakiness summary is keyed by test case, but quarantine/release
-      // operate on individual FlakeRecord rows (a case may have a case-level
-      // row plus per-step rows). Fetch them and toggle each.
-      const records = await flakesApi.list(entry.test_case_id);
-      if (records.length === 0) {
-        throw new Error('No flake records found for this test case');
-      }
-      await Promise.all(
-        records.map((r) =>
-          action === 'quarantine' ? flakesApi.quarantine(r.id) : flakesApi.release(r.id),
-        ),
-      );
-      return action;
-    },
-    onSuccess: (action) => {
-      queryClient.invalidateQueries({ queryKey: ['flakiness', projectId] });
-      toast.success(action === 'quarantine'
-        ? `"${entry.name}" quarantined — it will be skipped at dispatch`
-        : `"${entry.name}" released back into runs`);
-    },
-    onError: (err: unknown) => toast.error(`Failed to update quarantine: ${errorDetail(err)}`),
-  });
+    const mutation = useMutation({
+        mutationFn: async (action: 'quarantine' | 'release') => {
+            // The flakiness summary is keyed by test case, but quarantine/release
+            // operate on individual FlakeRecord rows (a case may have a case-level
+            // row plus per-step rows). Fetch them and toggle each.
+            const records = await flakesApi.list(entry.test_case_id);
+            if (records.length === 0) {
+                throw new Error('No flake records found for this test case');
+            }
+            await Promise.all(
+                records.map((r) =>
+                    action === 'quarantine' ? flakesApi.quarantine(r.id) : flakesApi.release(r.id),
+                ),
+            );
+            return action;
+        },
+        onSuccess: (action) => {
+            queryClient.invalidateQueries({ queryKey: ['flakiness', projectId] });
+            toast.success(action === 'quarantine'
+                ? `"${entry.name}" quarantined — it will be skipped at dispatch`
+                : `"${entry.name}" released back into runs`);
+        },
+        onError: (err: unknown) => toast.error(`Failed to update quarantine: ${errorDetail(err)}`),
+    });
 
-  return (
-    <TableRow className="border-slate-100 hover:bg-slate-50/50 transition-colors align-top">
-      <TableCell className="py-4">
-        <div className="font-bold text-slate-800 text-sm">{entry.name}</div>
-        <div className="text-xs text-slate-400 mt-0.5">case #{entry.test_case_id}</div>
-      </TableCell>
-      <TableCell className="py-4">
-        <FlakeScoreBar score={entry.flake_score} />
-      </TableCell>
-      <TableCell className="py-4 text-sm text-slate-600 tabular-nums">{entry.sample_count}</TableCell>
-      <TableCell className="py-4">
-        {entry.recent_failures > 0 ? (
-          <span className="text-sm font-semibold text-rose-600 tabular-nums">{entry.recent_failures}</span>
-        ) : (
-          <span className="text-sm text-slate-400 tabular-nums">0</span>
-        )}
-        {entry.last_failure_message && (
-          <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2 max-w-[280px]" title={entry.last_failure_message}>
-            {entry.last_failure_message}
-          </p>
-        )}
-      </TableCell>
-      <TableCell className="py-4">
-        {entry.is_quarantined ? (
-          <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border-amber-200">
-            <ShieldAlert className="w-3 h-3 mr-1" /> quarantined
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> active
-          </Badge>
-        )}
-      </TableCell>
-      <TableCell className="py-4 text-right">
-        {entry.is_quarantined ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate('release')}
-            className="h-8 rounded-lg text-xs border-slate-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Release
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate('quarantine')}
-            className="h-8 rounded-lg text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
-          >
-            <ShieldAlert className="w-3.5 h-3.5 mr-1" /> Quarantine
-          </Button>
-        )}
-      </TableCell>
-    </TableRow>
-  );
+    return (
+        <DetailCard label="Selected flaky test">
+            <div className="flex flex-col gap-2">
+                <Pill tone={entry.is_quarantined ? 'butter' : 'mint'} className="self-start">
+                    {entry.is_quarantined ? 'Quarantined' : 'Still running'}
+                </Pill>
+                <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{entry.name}</h2>
+                <span className="text-sm text-ink-soft">Case #{entry.test_case_id}</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <Eyebrow right={<span className="font-mono text-ink">{pctOf(entry.flake_score)}%</span>}>Flake score</Eyebrow>
+                <FlakeScoreBar score={entry.flake_score} large />
+                <span className="flex justify-between text-xs text-ink-soft"><span>0% stable</span><span>100% pure flake</span></span>
+            </div>
+
+            <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
+                <Fact label="Runs sampled" value={entry.sample_count} />
+                <Fact label="Recent failures" value={entry.recent_failures} />
+            </div>
+
+            <Panel title="What this means" callout>{meaning(entry)}</Panel>
+
+            {entry.last_failure_message && (
+                <div className="flex flex-col gap-2">
+                    <Eyebrow>Last failure</Eyebrow>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-2xl border border-border bg-background p-4 font-mono text-xs leading-relaxed text-ink">{entry.last_failure_message}</pre>
+                </div>
+            )}
+
+            <div className="flex flex-col gap-2 border-t border-border pt-5">
+                <div className="flex flex-wrap gap-2.5">
+                    {entry.is_quarantined ? (
+                        <Button size="lg" disabled={mutation.isPending} onClick={() => mutation.mutate('release')}>
+                            <ShieldCheck className="h-4 w-4" /> Release back into runs
+                        </Button>
+                    ) : (
+                        <Button size="lg" disabled={mutation.isPending} onClick={() => mutation.mutate('quarantine')}>
+                            <ShieldAlert className="h-4 w-4" /> Quarantine
+                        </Button>
+                    )}
+                </div>
+                <p className="text-xs text-ink-soft">This changes every flake record for the case, including per-step ones.</p>
+            </div>
+        </DetailCard>
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -139,130 +146,71 @@ function FlakeRow({ entry, projectId }: { entry: FlakinessEntry; projectId: numb
 // ---------------------------------------------------------------------------
 
 export default function FlakyTests() {
-  const [projectId, setProjectId] = useState<number | null>(() => {
-    const saved = localStorage.getItem('activeProjectId');
-    return saved ? parseInt(saved) : null;
-  });
+    const projectId = useActiveProjectId();
+    const [selectedId, setSelectedId] = useState<number | null>(null);
 
-  useEffect(() => {
-    const handleProjectChange = () => {
-      const saved = localStorage.getItem('activeProjectId');
-      setProjectId(saved ? parseInt(saved) : null);
-    };
-    window.addEventListener('projectChanged', handleProjectChange);
-    return () => window.removeEventListener('projectChanged', handleProjectChange);
-  }, []);
+    const { data: entries, isLoading, error } = useQuery({
+        queryKey: ['flakiness', projectId],
+        queryFn: () => flakesApi.projectFlakiness(projectId!),
+        enabled: !!projectId,
+    });
 
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => getProjects(),
-  });
+    const list = [...(entries ?? [])].sort((a, b) => b.flake_score - a.flake_score);
+    const groups = [
+        { name: 'Still in runs', items: list.filter((e) => !e.is_quarantined) },
+        { name: 'Quarantined', items: list.filter((e) => e.is_quarantined) },
+    ].filter((g) => g.items.length > 0);
+    const selected = list.find((e) => e.test_case_id === selectedId) ?? groups[0]?.items[0] ?? null;
+    const quarantined = list.filter((e) => e.is_quarantined).length;
 
-  const handleProjectSelect = (idStr: string) => {
-    const id = parseInt(idStr);
-    setProjectId(id);
-    localStorage.setItem('activeProjectId', id.toString());
-    window.dispatchEvent(new Event('projectChanged'));
-  };
+    return (
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Flaky tests"
+                subtitle={
+                    !projectId ? 'Pick a project in the sidebar.'
+                        : entries ? `${list.length} test${list.length === 1 ? '' : 's'} pass and fail under the same conditions · ${quarantined} quarantined`
+                            : 'Tests that pass and fail under the same conditions. Quarantine them so they stop blocking runs.'
+                }
+            />
 
-  const { data: entries, isLoading, error } = useQuery({
-    queryKey: ['flakiness', projectId],
-    queryFn: () => flakesApi.projectFlakiness(projectId!),
-    enabled: !!projectId,
-  });
-
-  return (
-    <div className="max-w-[1200px] mx-auto pb-16">
-      <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-        <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-          <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Resilience</span>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Flaky Tests</h1>
-            <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-              Cases whose recent runs alternate pass/fail under identical conditions. Quarantine a flaky case
-              to skip it at dispatch so it stops gating regressions, then release it once it's fixed.
-            </p>
-          </div>
-          <div className="sm:ml-auto shrink-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</p>
-            <Select value={projectId?.toString() ?? ''} onValueChange={handleProjectSelect}>
-              <SelectTrigger className="w-[240px] h-10 rounded-xl bg-white border-slate-200">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Layers className="w-4 h-4 text-indigo-500 shrink-0" />
-                  <SelectValue placeholder="Select a project" />
+            {!projectId ? (
+                <EmptyState title="Pick a project">Choose a project in the sidebar to review its flaky tests.</EmptyState>
+            ) : isLoading ? (
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
                 </div>
-              </SelectTrigger>
-              <SelectContent>
-                {(projects || []).map((p) => (
-                  <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
-
-      {!projectId ? (
-        <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-          <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-800 mb-1">No Project Selected</h3>
-          <p className="text-slate-500 text-sm">Select a project above to review its flaky tests.</p>
-        </div>
-      ) : (
-        <>
-          <div className="flex items-start gap-2 text-xs text-slate-500 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2.5 mb-4">
-            <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-px" />
-            <p>
-              The flake score ranges from <span className="font-semibold">0% (stable)</span> to{' '}
-              <span className="font-semibold">100% (pure flake)</span> and is maintained by the result-aggregator
-              pipeline. Quarantining toggles every flake record for the case.
-            </p>
-          </div>
-
-          {isLoading ? (
-            <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>
-          ) : error ? (
-            <div className="p-10 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-              <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" />
-              <p className="text-rose-700 font-semibold">Failed to load flaky tests</p>
-              <p className="text-rose-600/80 text-sm">{errorDetail(error)}</p>
-            </div>
-          ) : !entries || entries.length === 0 ? (
-            <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-              <Activity className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-800 mb-1">No flaky tests detected</h3>
-              <p className="text-slate-500 text-sm max-w-md mx-auto">
-                When a case's retry stream shows alternating pass/fail under identical conditions, it appears
-                here with a flake score so you can quarantine it.
-              </p>
-            </div>
-          ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-slate-50/50">
-                    <TableRow className="border-slate-100 hover:bg-transparent">
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Test Case</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[200px]">Flake Score</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[90px]">Samples</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Recent failures</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[130px]">Status</TableHead>
-                      <TableHead className="text-right font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[150px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {entries.map((entry) => (
-                      <FlakeRow key={entry.test_case_id} entry={entry} projectId={projectId} />
+            ) : error ? (
+                <EmptyState title="Couldn't load flaky tests">{errorDetail(error)}</EmptyState>
+            ) : list.length === 0 ? (
+                <EmptyState title="No flaky tests found">
+                    When a test's retries show it passing and failing under the same conditions, it appears here with a flake score so you can quarantine it.
+                </EmptyState>
+            ) : (
+                <SplitView
+                    list={groups.map((g) => (
+                        <ListGroup key={g.name} title={g.name} count={g.items.length}>
+                            {g.items.map((e) => (
+                                <ListRow
+                                    key={e.test_case_id}
+                                    selected={selected?.test_case_id === e.test_case_id}
+                                    onSelect={() => setSelectedId(e.test_case_id)}
+                                    leading={<KindChip kind={e.is_quarantined ? 'skip' : 'flaky'} size="sm" />}
+                                    title={<span className="line-clamp-2 break-words">{e.name}</span>}
+                                    meta={
+                                        <span className="flex flex-col gap-1.5">
+                                            <span>{e.recent_failures} recent failure{e.recent_failures === 1 ? '' : 's'} · {e.sample_count} runs sampled</span>
+                                            <span className="block max-w-[160px]"><FlakeScoreBar score={e.flake_score} /></span>
+                                        </span>
+                                    }
+                                    trailing={<span className="font-mono text-[13px] tabular-nums text-ink">{pctOf(e.flake_score)}%</span>}
+                                />
+                            ))}
+                        </ListGroup>
                     ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+                    detail={selected && <FlakeDetail key={selected.test_case_id} entry={selected} projectId={projectId} />}
+                />
+            )}
+        </div>
+    );
 }
