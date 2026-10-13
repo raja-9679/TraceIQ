@@ -465,12 +465,12 @@ export default function SuiteDetails() {
                 </span>}
                 badge={<ExecModeBadge mode={suite.execution_mode} />}
                 subtitle={suite.description || `${suite.total_test_cases || 0} tests · ${suite.total_sub_modules || 0} sub-modules`}
-                actions={canExecute ? (
-                    <div className="flex flex-wrap items-center gap-1 rounded-full border border-border bg-white p-1">
-                        {(environments?.length ?? 0) > 0 && (
+                actions={
+                    <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                        {canExecute && (environments?.length ?? 0) > 0 && (
                             <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
-                                <SelectTrigger className="h-9 w-[230px] justify-start gap-2 rounded-full border-0 bg-transparent shadow-none [&>span]:flex-1 [&>span]:text-left" aria-label="Environment for runs from this page" title="Environment for runs from this page">
-                                    <Globe className="h-4 w-4 shrink-0 text-ink-soft" /><SelectValue placeholder="Environment" />
+                                <SelectTrigger className="h-9 w-auto max-w-[230px] gap-1.5 rounded-full border-0 bg-transparent px-3 text-[13px] text-ink-soft shadow-none hover:bg-white hover:text-ink focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="Environment for runs from this page" title="Environment for runs from this page">
+                                    <Globe className="h-4 w-4 shrink-0" /><SelectValue placeholder="Environment" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="default">Default environment</SelectItem>
@@ -482,10 +482,10 @@ export default function SuiteDetails() {
                                 </SelectContent>
                             </Select>
                         )}
-                        {(appBuilds?.length ?? 0) > 0 && (
+                        {canExecute && (appBuilds?.length ?? 0) > 0 && (
                             <Select value={selectedAppBuildId} onValueChange={setSelectedAppBuildId}>
-                                <SelectTrigger className="h-9 w-[210px] justify-start gap-2 rounded-full border-0 bg-transparent shadow-none [&>span]:flex-1 [&>span]:text-left" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
-                                    <Smartphone className="h-4 w-4 shrink-0 text-ink-soft" /><SelectValue placeholder="App build" />
+                                <SelectTrigger className="h-9 w-auto max-w-[230px] gap-1.5 rounded-full border-0 bg-transparent px-3 text-[13px] text-ink-soft shadow-none hover:bg-white hover:text-ink focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="App build for runs from this page" title="Pin a mobile app build to runs from this page">
+                                    <Smartphone className="h-4 w-4 shrink-0" /><SelectValue placeholder="App build" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="none">No app build (web)</SelectItem>
@@ -497,40 +497,73 @@ export default function SuiteDetails() {
                                 </SelectContent>
                             </Select>
                         )}
-                        <Button onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending}>
-                            {runMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : <><Play className="h-4 w-4" fill="currentColor" /> Run suite</>}
-                        </Button>
+                        {canExecute && (
+                            <Button onClick={() => runMutation.mutate(Number(suiteId))} disabled={runMutation.isPending}>
+                                {runMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin" /> Starting…</> : <><Play className="h-4 w-4" fill="currentColor" /> Run suite</>}
+                            </Button>
+                        )}
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="icon" aria-label="More suite actions" title="More"><MoreHorizontal className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                {canExecute && (
+                                    <DropdownMenuItem onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}><CalendarClock className="mr-2 h-4 w-4" /> Schedule this suite</DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem onClick={handleExportSuite}><Download className="mr-2 h-4 w-4" /> Export suite (JSON)</DropdownMenuItem>
+                                {canManage && (
+                                    <DropdownMenuItem onClick={() => importSuiteRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import into this suite</DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
-                ) : undefined}
+                }
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
                 <div role="tablist" aria-label="Suite sections" className="flex gap-1 rounded-full bg-[#EFEDE7] p-1">
                     {tabs.map((t) => (
                         <button key={t.id} type="button" role="tab" aria-selected={activeTab === t.id} onClick={() => setActiveTab(t.id)}
-                            className={`flex min-h-9 items-center gap-1.5 rounded-full px-4 text-[13px] text-ink ${activeTab === t.id ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium'}`}>
+                            className={`flex min-h-9 items-center gap-1.5 rounded-full text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink/20 px-4 ${activeTab === t.id ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium'}`}>
                             {t.label}{t.count !== undefined && <span className="font-mono text-xs text-ink-soft">{t.count}</span>}
                         </button>
                     ))}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    {canExecute && (
-                        <Button variant="outline" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}>
-                            <CalendarClock className="h-4 w-4" /> Schedule
-                        </Button>
-                    )}
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="outline" aria-label="More suite actions"><MoreHorizontal className="h-4 w-4" /> More</Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-52">
-                            <DropdownMenuItem onClick={handleExportSuite}><Download className="mr-2 h-4 w-4" /> Export suite (JSON)</DropdownMenuItem>
-                            {canManage && (
-                                <DropdownMenuItem onClick={() => importSuiteRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import into this suite</DropdownMenuItem>
-                            )}
-                        </DropdownMenuContent>
-                    </DropdownMenu>
-                </div>
+                {activeTab === 'tests' && (
+                    <div className="ml-auto flex flex-wrap items-center gap-2">
+                        <label className="flex h-10 w-full items-center gap-2 rounded-full border border-border bg-white px-3.5 sm:w-56">
+                            <Search className="h-4 w-4 flex-none text-ink-soft" />
+                            <span className="sr-only">Search this suite</span>
+                            <input type="search" placeholder={showCases ? 'Search tests' : 'Search sub-modules'} value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
+                        </label>
+                        <div role="group" aria-label="View" className="flex gap-0.5 rounded-full bg-[#EFEDE7] p-1">
+                            {([['list', 'List view', List], ['card', 'Card view', LayoutGrid]] as const).map(([id, label, Icon]) => (
+                                <button key={id} type="button" aria-pressed={viewMode === id} aria-label={label} title={label} onClick={() => setViewMode(id)}
+                                    className={`flex min-h-9 items-center gap-1.5 rounded-full text-[13px] text-ink outline-none focus-visible:ring-2 focus-visible:ring-ink/20 w-9 justify-center ${viewMode === id ? 'bg-white text-ink shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'text-ink-soft'}`}>
+                                    <Icon className="h-4 w-4" />
+                                </button>
+                            ))}
+                        </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="icon" aria-label="Add or import" title="Add or import"><Plus className="h-4 w-4" /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuItem onClick={() => setShowSubModuleDialog(true)}><FolderOpen className="mr-2 h-4 w-4" /> New sub-module</DropdownMenuItem>
+                                {showCases && canCreateTest && (
+                                    <DropdownMenuItem onClick={() => importCaseRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import a test (JSON)</DropdownMenuItem>
+                                )}
+                                {showCases && canCreateTest && aiGenerationEnabled && (
+                                    <DropdownMenuItem onClick={() => setShowGenerateDialog(true)}><Sparkles className="mr-2 h-4 w-4" /> Generate tests with AI</DropdownMenuItem>
+                                )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                        {showCases && canCreateTest && (
+                            <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}><Plus className="h-4 w-4" /> New test</Button>
+                        )}
+                    </div>
+                )}
             </div>
 
                     <AnimatePresence mode="wait">
@@ -543,36 +576,6 @@ export default function SuiteDetails() {
                                 exit="exit"
                                 className="flex flex-col gap-6"
                             >
-                                {/* Toolbar: search, view, add */}
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <label className="flex min-h-11 min-w-[220px] flex-1 items-center gap-2 rounded-full border border-border bg-white px-4 sm:max-w-sm">
-                                        <Search className="h-4 w-4 text-ink-soft" />
-                                        <span className="sr-only">Search this suite</span>
-                                        <input type="search" placeholder={showCases ? 'Search tests' : 'Search sub-modules'} value={searchTerm}
-                                            onChange={(e) => setSearchTerm(e.target.value)} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
-                                    </label>
-                                    <div role="group" aria-label="View" className="flex gap-1 rounded-full bg-[#EFEDE7] p-1">
-                                        {([['list', 'List', List], ['card', 'Cards', LayoutGrid]] as const).map(([id, label, Icon]) => (
-                                            <button key={id} type="button" aria-pressed={viewMode === id} onClick={() => setViewMode(id)}
-                                                className={`flex min-h-9 items-center gap-1.5 rounded-full px-3 text-[13px] text-ink ${viewMode === id ? 'bg-white font-semibold shadow-[0_1px_4px_rgba(28,27,34,0.1)]' : 'font-medium'}`}>
-                                                <Icon className="h-3.5 w-3.5" /> {label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="ml-auto flex flex-wrap gap-2">
-                                        <Button variant="outline" onClick={() => setShowSubModuleDialog(true)}><FolderOpen className="h-4 w-4" /> Sub-module</Button>
-                                        {showCases && canCreateTest && (
-                                            <>
-                                                <Button variant="outline" onClick={() => importCaseRef.current?.click()}><Upload className="h-4 w-4" /> Import test</Button>
-                                                {aiGenerationEnabled && (
-                                                    <Button variant="outline" onClick={() => setShowGenerateDialog(true)}><Sparkles className="h-4 w-4" /> Generate</Button>
-                                                )}
-                                                <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}><Plus className="h-4 w-4" /> New test</Button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-
                                 {/* ── Sub-modules ── */}
                                 {suite.sub_modules && suite.sub_modules.length > 0 && (
                                     <section aria-label="Sub-modules" className="flex flex-col gap-2">
