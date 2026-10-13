@@ -56,10 +56,10 @@ export function PageHeader({
     );
 }
 
-export function SplitView({ list, detail }: { list: ReactNode; detail: ReactNode }) {
+export function SplitView({ list, detail, stickyList = false }: { list: ReactNode; detail: ReactNode; stickyList?: boolean }) {
     return (
         <div className="flex flex-wrap items-start gap-5">
-            <section className="flex min-w-0 max-w-[440px] flex-[1_1_360px] flex-col gap-[18px]">{list}</section>
+            <section className={cn('flex min-w-0 max-w-[440px] flex-[1_1_360px] flex-col gap-[18px]', stickyList && 'lg:sticky lg:top-4')}>{list}</section>
             <div className="min-w-0 flex-[999_1_460px]">{detail}</div>
         </div>
     );

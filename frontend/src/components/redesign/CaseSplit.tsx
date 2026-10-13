@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { CalendarClock, Download, Edit, FileText, Play, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { DetailCard, Eyebrow, ListRow, SplitView } from './primitives';
+import { DetailCard, Eyebrow, SplitView } from './primitives';
 import { describeStep, type Step } from './steps';
 
 // Direction A for a suite's test cases: the list on the left, the selected
@@ -30,19 +30,38 @@ export function CaseSplit({
 
     return (
         <SplitView
+            stickyList
             list={
-                <div className="flex flex-col gap-0.5">
-                    {cases.map((c) => (
-                        <ListRow
-                            key={c.id}
-                            selected={selected?.id === c.id}
-                            onSelect={() => setSelectedId(c.id)}
-                            leading={<span className="flex h-7 w-7 flex-none items-center justify-center rounded-[9px] bg-secondary text-ink-soft" aria-hidden="true"><FileText className="h-[15px] w-[15px]" /></span>}
-                            title={c.name}
-                            meta={`${c.steps?.length ?? 0} step${(c.steps?.length ?? 0) === 1 ? '' : 's'}`}
-                            trailing={badge?.(c)}
-                        />
-                    ))}
+                <div className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-3xl border border-border bg-white">
+                    <div className="flex items-baseline justify-between border-b border-[#F0EEE8] px-4 py-3">
+                        <h2 className="text-sm font-semibold text-ink">Tests</h2>
+                        <span className="font-mono text-xs text-ink-soft">{cases.length}</span>
+                    </div>
+                    <ul className="min-h-0 overflow-y-auto">
+                        {cases.map((c) => {
+                            const on = selected?.id === c.id;
+                            const steps = c.steps?.length ?? 0;
+                            return (
+                                <li key={c.id} className="border-t border-[#F0EEE8] first:border-t-0">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedId(c.id)}
+                                        aria-pressed={on}
+                                        className={`flex w-full items-center gap-3 px-4 py-3 text-left transition-colors ${on ? 'bg-accent shadow-[inset_3px_0_0_#1C1B22]' : 'hover:bg-background'}`}
+                                    >
+                                        <span className={`flex h-8 w-8 flex-none items-center justify-center rounded-[10px] ${on ? 'bg-white text-ink' : 'bg-secondary text-ink-soft'}`} aria-hidden="true">
+                                            <FileText className="h-4 w-4" />
+                                        </span>
+                                        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                            <span className={`text-sm leading-snug text-ink ${on ? 'font-semibold' : 'font-medium'}`}>{c.name}</span>
+                                            <span className="text-xs text-ink-soft">{steps} step{steps === 1 ? '' : 's'}</span>
+                                        </span>
+                                        {badge?.(c)}
+                                    </button>
+                                </li>
+                            );
+                        })}
+                    </ul>
                 </div>
             }
             detail={selected && (
