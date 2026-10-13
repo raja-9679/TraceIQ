@@ -1,14 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-    RefreshCw, AlertCircle, Building2, Check, Zap, Info,
-} from 'lucide-react';
+import { Check, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { getWorkspaces, Workspace } from '@/lib/api';
 import { billingApi, Plan } from '@/api/billing';
+import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
+import { cn } from '@/lib/utils';
 
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 const LIMIT_LABELS: [string, string][] = [
@@ -20,15 +19,20 @@ const fmtLimit = (n: number) => n === 0 ? 'Unlimited' : n.toLocaleString();
 
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
     const pct = limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
-    const tone = pct >= 90 ? 'bg-rose-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+    const tone = pct >= 90 ? 'bg-[#E0603A]' : pct >= 70 ? 'bg-[#E8B84A]' : 'bg-[#8FD3B6]';
     return (
-        <div>
-            <div className="flex justify-between text-sm mb-1">
-                <span className="text-slate-600">{label}</span>
-                <span className="tabular-nums text-slate-500">{used.toLocaleString()} / {limit === 0 ? '∞' : limit.toLocaleString()}</span>
-            </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                <div className={`h-full rounded-full ${tone}`} style={{ width: limit === 0 ? '4%' : `${Math.max(2, pct)}%` }} />
+        <div className="flex flex-col gap-2 rounded-2xl border border-border bg-white px-5 py-4">
+            <span className="text-[13px] text-ink-soft">{label}</span>
+            <span className="text-[26px] font-bold leading-tight tracking-tight text-ink tabular-nums">
+                {used.toLocaleString()}
+                <span className="ml-1.5 text-sm font-medium text-ink-soft">/ {limit === 0 ? 'unlimited' : limit.toLocaleString()}</span>
+            </span>
+            <div
+                role="img"
+                aria-label={limit === 0 ? `${label}: ${used.toLocaleString()}, no limit` : `${label}: ${pct}% of limit used`}
+                className="h-2 overflow-hidden rounded-full bg-secondary"
+            >
+                <div className={cn('h-full rounded-full', tone)} style={{ width: limit === 0 ? '4%' : `${Math.max(2, pct)}%` }} />
             </div>
         </div>
     );
@@ -57,98 +61,96 @@ export default function Billing() {
     const st = status.data;
 
     return (
-        <div className="max-w-[1100px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Billing</span>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Plan &amp; Usage</h1>
-                        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Your workspace plan, metered usage for the month, and available tiers. Quotas are
-                            enforced on run creation.
-                        </p>
-                    </div>
-                    <div className="sm:ml-auto shrink-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Workspace</p>
-                        <Select value={wsId?.toString() ?? ''} onValueChange={(v) => setSelectedWs(parseInt(v))}>
-                            <SelectTrigger className="w-[240px] h-10 rounded-xl bg-white border-slate-200">
-                                <div className="flex items-center gap-2 min-w-0"><Building2 className="w-4 h-4 text-indigo-500 shrink-0" /><SelectValue placeholder="Workspace" /></div>
-                            </SelectTrigger>
-                            <SelectContent>{(workspaces || []).map((w) => <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>)}</SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </div>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Plan and usage"
+                subtitle="Your workspace plan, metered usage for the month, and available tiers. Quotas are enforced on run creation."
+                actions={
+                    <Select value={wsId?.toString() ?? ''} onValueChange={(v) => setSelectedWs(parseInt(v))}>
+                        <SelectTrigger aria-label="Workspace" className="h-10 w-[220px] rounded-full bg-white px-4">
+                            <SelectValue placeholder="Workspace" />
+                        </SelectTrigger>
+                        <SelectContent>{(workspaces || []).map((w) => <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>)}</SelectContent>
+                    </Select>
+                }
+            />
 
             {!wsId ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl"><AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" /><p className="text-slate-500 text-sm">No workspace available.</p></div>
+                <EmptyState title="No workspace available">Create or join a workspace to see its plan.</EmptyState>
             ) : status.isLoading ? (
-                <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-[112px] animate-pulse rounded-2xl bg-white/70" />)}
+                </div>
             ) : st && (
-                <div className="space-y-6">
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-                        <div className="flex items-center justify-between mb-5">
-                            <div>
-                                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current plan</div>
-                                <div className="text-2xl font-extrabold text-slate-900 flex items-center gap-2">
-                                    {st.plan.display_name}
-                                    <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border-emerald-200">{st.status}</Badge>
-                                </div>
+                <div className="flex flex-col gap-5">
+                    <section aria-label="Current plan" className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <h2 className="text-[15px] font-semibold text-ink">Current plan: {st.plan.display_name}</h2>
+                                <Pill tone="mint">{st.status}</Pill>
                             </div>
-                            <div className="text-right text-sm text-slate-400">
-                                <div>Period {st.period}</div>
-                                {!st.stripe_configured && <div className="text-[11px] mt-1">Manual billing (Stripe not configured)</div>}
-                            </div>
+                            <span className="text-[13px] text-ink-soft">
+                                Period {st.period}
+                                {!st.stripe_configured && ' · Manual billing (Stripe not configured)'}
+                            </span>
                         </div>
-                        <div className="grid sm:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3">
                             <UsageMeter label="Runs this month" used={st.usage.runs || 0} limit={st.limits.monthly_runs ?? 0} />
                             <UsageMeter label="AI generations today" used={st.usage.ai_generations || 0} limit={st.limits.ai_daily ?? 0} />
                             <UsageMeter label="LLM tokens this month" used={st.usage.llm_tokens || 0} limit={st.limits.monthly_llm_tokens ?? 0} />
                         </div>
-                    </div>
+                    </section>
 
-                    <div className="grid md:grid-cols-3 gap-4">
-                        {(plans.data || []).map((p: Plan) => {
-                            const current = p.id === st.plan.id;
-                            return (
-                                <div key={p.id} className={`bg-white border rounded-2xl p-5 shadow-sm ${current ? 'border-indigo-300 ring-1 ring-indigo-200' : 'border-slate-200'}`}>
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h3 className="font-bold text-slate-800 text-lg">{p.display_name}</h3>
-                                        {current && <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-indigo-50 text-indigo-700 border-indigo-200">current</Badge>}
+                    <section aria-label="Plans" className="flex flex-col gap-3">
+                        <h2 className="px-1 text-[15px] font-semibold text-ink">Plans</h2>
+                        <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
+                            {(plans.data || []).map((p: Plan) => {
+                                const current = p.id === st.plan.id;
+                                return (
+                                    <div
+                                        key={p.id}
+                                        className={cn(
+                                            'flex flex-col gap-4 rounded-2xl border bg-white px-5 py-4',
+                                            current ? 'border-ink shadow-[0_4px_16px_rgba(28,27,34,0.07)]' : 'border-border'
+                                        )}
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <h3 className="text-[15px] font-semibold text-ink">{p.display_name}</h3>
+                                            {current && <Pill tone="lavender">Current</Pill>}
+                                        </div>
+                                        <div className="text-[28px] font-bold leading-none tracking-tight text-ink">
+                                            {p.price_cents === 0 ? (p.name === 'enterprise' ? 'Custom' : 'Free') : `$${(p.price_cents / 100).toFixed(0)}`}
+                                            {p.price_cents > 0 && <span className="text-sm font-normal text-ink-soft">/mo</span>}
+                                        </div>
+                                        <ul className="flex flex-col gap-1.5">
+                                            {LIMIT_LABELS.map(([k, lbl]) => (
+                                                <li key={k} className="flex items-center gap-2 text-sm text-ink-soft">
+                                                    <Check className="h-3.5 w-3.5 shrink-0 text-pastel-ink-mint" aria-hidden="true" /> {lbl}: <span className="font-medium text-ink">{fmtLimit(p.limits[k] ?? 0)}</span>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                        <div className="mt-auto">
+                                            {current ? (
+                                                <Button variant="outline" className="w-full" disabled>Current plan</Button>
+                                            ) : st.stripe_configured && p.price_cents > 0 ? (
+                                                <Button className="w-full" onClick={() => checkout.mutate(p.name)} disabled={checkout.isPending}>
+                                                    <Zap className="h-3.5 w-3.5" /> Upgrade
+                                                </Button>
+                                            ) : (
+                                                <Button variant="outline" className="w-full" onClick={() => assign.mutate(p.name)} disabled={assign.isPending}>
+                                                    Switch to {p.display_name}
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="text-2xl font-extrabold text-slate-900 mb-3">
-                                        {p.price_cents === 0 ? (p.name === 'enterprise' ? 'Custom' : 'Free') : `$${(p.price_cents / 100).toFixed(0)}`}
-                                        {p.price_cents > 0 && <span className="text-sm font-normal text-slate-400">/mo</span>}
-                                    </div>
-                                    <ul className="space-y-1.5 mb-4">
-                                        {LIMIT_LABELS.map(([k, lbl]) => (
-                                            <li key={k} className="flex items-center gap-2 text-sm text-slate-600">
-                                                <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" /> {lbl}: <span className="font-medium">{fmtLimit(p.limits[k] ?? 0)}</span>
-                                            </li>
-                                        ))}
-                                    </ul>
-                                    {current ? (
-                                        <Button size="sm" variant="outline" className="w-full h-9 rounded-lg" disabled>Current plan</Button>
-                                    ) : st.stripe_configured && p.price_cents > 0 ? (
-                                        <Button size="sm" className="w-full h-9 rounded-lg" onClick={() => checkout.mutate(p.name)} disabled={checkout.isPending}>
-                                            <Zap className="w-3.5 h-3.5 mr-1.5" /> Upgrade
-                                        </Button>
-                                    ) : (
-                                        <Button size="sm" variant="outline" className="w-full h-9 rounded-lg" onClick={() => assign.mutate(p.name)} disabled={assign.isPending}>
-                                            Switch to {p.display_name}
-                                        </Button>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
+                                );
+                            })}
+                        </div>
+                    </section>
 
-                    <div className="flex items-start gap-2 text-xs text-slate-500 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2.5">
-                        <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-px" />
-                        <p>Plan changes take effect immediately. {st.stripe_configured ? 'Paid upgrades go through Stripe checkout.' : 'Stripe is not configured, so a workspace admin assigns plans directly.'} Run quota is enforced when a run is created (HTTP 402 when exceeded).</p>
-                    </div>
+                    <p className="px-1 text-[13px] leading-relaxed text-ink-soft">
+                        Plan changes take effect immediately. {st.stripe_configured ? 'Paid upgrades go through Stripe checkout.' : 'Stripe is not configured, so a workspace admin assigns plans directly.'} Run quota is enforced when a run is created (HTTP 402 when exceeded).
+                    </p>
                 </div>
             )}
         </div>

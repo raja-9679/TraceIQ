@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Ticket, Plus, Trash2, RefreshCw, AlertCircle, Building2, CheckCircle2, XCircle } from 'lucide-react';
+import { Ticket, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { getWorkspaces, Workspace } from '@/lib/api';
 import { ticketsApi, IssueTrackerConfig, IssueTrackerConfigCreate } from '@/api/tickets';
+import {
+    DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
 
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 
@@ -16,6 +18,18 @@ const PROVIDER_HINTS: Record<string, { user: string; secret: string; settings: s
     itop: { user: 'iTop username', secret: 'Password', settings: 'class (UserRequest), org_id' },
     github: { user: '(unused)', secret: 'Personal access token', settings: 'repo (owner/name)' },
 };
+const PROVIDER_LABELS: Record<string, string> = { jira: 'Jira', itop: 'iTop', github: 'GitHub Issues' };
+
+const fieldLabel = 'px-1 text-[13px] font-semibold text-ink';
+const fieldInput = 'mt-1.5 h-11 rounded-full bg-white px-4';
+
+function ProviderChip() {
+    return (
+        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-[9px] bg-pastel-lavender text-pastel-ink-lavender" aria-hidden="true">
+            <Ticket className="h-[15px] w-[15px]" strokeWidth={2.2} />
+        </span>
+    );
+}
 
 function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: () => void }) {
     const qc = useQueryClient();
@@ -37,13 +51,16 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
 
     const hint = PROVIDER_HINTS[f.provider];
     return (
-        <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
-            <h3 className="font-bold text-slate-800">New tracker</h3>
-            <div className="grid sm:grid-cols-2 gap-3">
+        <DetailCard label="New tracker">
+            <div className="flex flex-col gap-1.5">
+                <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">New tracker</h2>
+                <span className="text-sm text-ink-soft">Credentials are stored encrypted and used only to file tickets.</span>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Provider</label>
+                    <label htmlFor="tracker-provider" className={fieldLabel}>Provider</label>
                     <Select value={f.provider} onValueChange={(v) => setF({ ...f, provider: v })}>
-                        <SelectTrigger className="h-9 mt-1"><SelectValue /></SelectTrigger>
+                        <SelectTrigger id="tracker-provider" className="mt-1.5 h-11 rounded-full bg-white px-4"><SelectValue /></SelectTrigger>
                         <SelectContent>
                             <SelectItem value="jira">Jira</SelectItem>
                             <SelectItem value="itop">iTop</SelectItem>
@@ -52,33 +69,40 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
                     </Select>
                 </div>
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Name</label>
-                    <Input className="h-9 mt-1" placeholder="Team Jira" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
+                    <label htmlFor="tracker-name" className={fieldLabel}>Name</label>
+                    <Input id="tracker-name" className={fieldInput} placeholder="Team Jira" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
                 </div>
             </div>
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Base URL</label>
-                <Input className="h-9 mt-1" placeholder={f.provider === 'github' ? 'https://api.github.com' : 'https://your.instance'} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} />
+                <label htmlFor="tracker-url" className={fieldLabel}>Base URL</label>
+                <Input id="tracker-url" type="url" className={fieldInput} placeholder={f.provider === 'github' ? 'https://api.github.com' : 'https://your.instance'} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} />
             </div>
-            <div className="grid sm:grid-cols-2 gap-3">
+            <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{hint.user}</label>
-                    <Input className="h-9 mt-1" value={f.auth_user} onChange={(e) => setF({ ...f, auth_user: e.target.value })} disabled={f.provider === 'github'} />
+                    <label htmlFor="tracker-user" className={fieldLabel}>{hint.user}</label>
+                    <Input id="tracker-user" autoComplete="off" className={fieldInput} value={f.auth_user} onChange={(e) => setF({ ...f, auth_user: e.target.value })} disabled={f.provider === 'github'} />
                 </div>
                 <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{hint.secret}</label>
-                    <Input className="h-9 mt-1" type="password" placeholder="stored encrypted" value={f.auth_secret} onChange={(e) => setF({ ...f, auth_secret: e.target.value })} />
+                    <label htmlFor="tracker-secret" className={fieldLabel}>{hint.secret}</label>
+                    <Input id="tracker-secret" autoComplete="new-password" className={fieldInput} type="password" placeholder="stored encrypted" value={f.auth_secret} onChange={(e) => setF({ ...f, auth_secret: e.target.value })} />
                 </div>
             </div>
             <div>
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Settings JSON <span className="text-slate-300 normal-case">({hint.settings})</span></label>
-                <textarea className="w-full h-24 font-mono text-xs border border-slate-200 rounded-lg p-2 mt-1" value={settingsText} onChange={(e) => setSettingsText(e.target.value)} />
+                <label htmlFor="tracker-settings" className={fieldLabel}>
+                    Settings JSON <span className="font-normal text-ink-soft">({hint.settings})</span>
+                </label>
+                <textarea
+                    id="tracker-settings"
+                    className="mt-1.5 h-28 w-full rounded-2xl border border-border bg-white p-3 font-mono text-xs text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/25"
+                    value={settingsText}
+                    onChange={(e) => setSettingsText(e.target.value)}
+                />
             </div>
-            <div className="flex gap-2">
-                <Button size="sm" className="h-9 rounded-lg" onClick={() => create.mutate()} disabled={create.isPending || !f.name || !f.base_url || !f.auth_secret}>Add tracker</Button>
-                <Button size="sm" variant="outline" className="h-9 rounded-lg" onClick={onDone}>Cancel</Button>
+            <div className="flex flex-wrap gap-2.5">
+                <Button size="lg" onClick={() => create.mutate()} disabled={create.isPending || !f.name || !f.base_url || !f.auth_secret}>Add tracker</Button>
+                <Button size="lg" variant="outline" onClick={onDone}>Cancel</Button>
             </div>
-        </div>
+        </DetailCard>
     );
 }
 
@@ -86,6 +110,7 @@ export default function IssueTrackers() {
     const qc = useQueryClient();
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
     const [adding, setAdding] = useState(false);
+    const [selectedId, setSelectedId] = useState<number | null>(null);
 
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
     const workspaceId = selectedWs ?? workspaces?.[0]?.id ?? null;
@@ -107,71 +132,111 @@ export default function IssueTrackers() {
         onError: (e) => toast.error(errDetail(e)),
     });
 
+    const list = configs.data ?? [];
+    const selected = list.find((c) => c.id === selectedId) ?? list[0] ?? null;
+
     return (
-        <div className="max-w-[1000px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Integrations</span>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Issue Trackers</h1>
-                        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Connect Jira, iTop or GitHub so you can file a ticket from a failing run — with its
-                            trace, video and screenshots attached — in one click.
-                        </p>
-                    </div>
-                    <div className="sm:ml-auto shrink-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Workspace</p>
-                        <Select value={workspaceId?.toString() ?? ''} onValueChange={(v) => setSelectedWs(parseInt(v))}>
-                            <SelectTrigger className="w-[240px] h-10 rounded-xl bg-white border-slate-200">
-                                <div className="flex items-center gap-2 min-w-0"><Building2 className="w-4 h-4 text-indigo-500 shrink-0" /><SelectValue placeholder="Workspace" /></div>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Issue trackers"
+                subtitle="Connect Jira, iTop or GitHub so you can file a ticket from a failing run, with its trace, video and screenshots attached, in one click."
+                actions={
+                    <>
+                        <Select value={workspaceId?.toString() ?? ''} onValueChange={(v) => { setSelectedWs(parseInt(v)); setSelectedId(null); }}>
+                            <SelectTrigger aria-label="Workspace" className="h-10 w-[220px] rounded-full bg-white px-4">
+                                <SelectValue placeholder="Workspace" />
                             </SelectTrigger>
                             <SelectContent>{(workspaces || []).map((w) => <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>)}</SelectContent>
                         </Select>
-                    </div>
-                </div>
-            </div>
+                        {workspaceId && !adding && (
+                            <Button onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Add tracker</Button>
+                        )}
+                    </>
+                }
+            />
 
             {!workspaceId ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500 text-sm">No workspace available.</p>
+                <EmptyState title="No workspace available">Create or join a workspace to connect an issue tracker.</EmptyState>
+            ) : configs.isLoading ? (
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
                 </div>
+            ) : list.length === 0 && !adding ? (
+                <EmptyState title="No trackers yet">Add one to start filing tickets from runs.</EmptyState>
             ) : (
-                <div className="space-y-4">
-                    {!adding && <Button size="sm" className="h-9 rounded-lg" onClick={() => setAdding(true)}><Plus className="w-4 h-4 mr-1.5" /> Add tracker</Button>}
-                    {adding && <NewConfigForm workspaceId={workspaceId} onDone={() => setAdding(false)} />}
-
-                    {configs.isLoading ? <div className="p-8 flex justify-center"><RefreshCw className="animate-spin w-5 h-5 text-slate-400" /></div>
-                        : !configs.data || configs.data.length === 0 ? (
-                            <div className="p-12 text-center bg-white border border-slate-200 rounded-2xl">
-                                <Ticket className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-                                <p className="text-slate-500 text-sm">No trackers yet. Add one to start filing tickets from runs.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-2">
-                                {configs.data.map((c) => (
-                                    <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-semibold text-slate-800">{c.name}</span>
-                                                <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-slate-50 text-slate-600 border-slate-200">{c.provider}</Badge>
-                                                {c.enabled
-                                                    ? <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border-emerald-200"><CheckCircle2 className="w-3 h-3 mr-1" />enabled</Badge>
-                                                    : <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-slate-50 text-slate-500 border-slate-200"><XCircle className="w-3 h-3 mr-1" />disabled</Badge>}
-                                            </div>
-                                            <div className="text-xs text-slate-400 mt-0.5">{c.base_url}{c.auth_user ? ` · ${c.auth_user}` : ''}</div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs" onClick={() => toggle.mutate(c)}>{c.enabled ? 'Disable' : 'Enable'}</Button>
-                                            <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs text-rose-600 border-rose-200 hover:bg-rose-50" onClick={() => del.mutate(c.id)}><Trash2 className="w-3.5 h-3.5" /></Button>
-                                        </div>
-                                    </div>
+                <SplitView
+                    list={
+                        list.length > 0 ? (
+                            <ListGroup title="Trackers" count={list.length}>
+                                {list.map((c) => (
+                                    <ListRow
+                                        key={c.id}
+                                        selected={!adding && selected?.id === c.id}
+                                        onSelect={() => { setSelectedId(c.id); setAdding(false); }}
+                                        leading={<ProviderChip />}
+                                        title={c.name}
+                                        meta={`${PROVIDER_LABELS[c.provider] ?? c.provider} · ${c.base_url}`}
+                                        trailing={<Pill tone={c.enabled ? 'mint' : 'neutral'}>{c.enabled ? 'On' : 'Off'}</Pill>}
+                                    />
                                 ))}
-                            </div>
-                        )}
-                </div>
+                            </ListGroup>
+                        ) : (
+                            <p className="px-1 text-sm text-ink-soft">No trackers yet.</p>
+                        )
+                    }
+                    detail={
+                        adding ? (
+                            <NewConfigForm workspaceId={workspaceId} onDone={() => setAdding(false)} />
+                        ) : selected && (
+                            <DetailCard label="Selected tracker">
+                                <div className="flex flex-col gap-2">
+                                    <Pill tone={selected.enabled ? 'mint' : 'neutral'} className="self-start">
+                                        {selected.enabled ? 'Enabled' : 'Disabled'}
+                                    </Pill>
+                                    <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.name}</h2>
+                                    <span className="text-sm text-ink-soft">{PROVIDER_LABELS[selected.provider] ?? selected.provider}</span>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <Eyebrow>Connection</Eyebrow>
+                                    <dl className="overflow-hidden rounded-2xl border border-border text-sm">
+                                        <div className="flex gap-3 px-4 py-3">
+                                            <dt className="w-28 flex-none text-ink-soft">Base URL</dt>
+                                            <dd className="min-w-0 break-all font-mono text-xs leading-5 text-ink">{selected.base_url}</dd>
+                                        </div>
+                                        {selected.auth_user && (
+                                            <div className="flex gap-3 border-t border-[#F0EEE8] px-4 py-3">
+                                                <dt className="w-28 flex-none text-ink-soft">User</dt>
+                                                <dd className="min-w-0 break-all text-ink">{selected.auth_user}</dd>
+                                            </div>
+                                        )}
+                                    </dl>
+                                </div>
+
+                                <Panel title="What this does">
+                                    {selected.enabled
+                                        ? 'Offered under "Create ticket" on runs and in Triage for this workspace. The ticket carries the run’s evidence.'
+                                        : 'Turned off. It stays configured but is not offered under "Create ticket" until you enable it again.'}
+                                </Panel>
+
+                                <div className="flex flex-wrap gap-2.5">
+                                    <Button size="lg" variant={selected.enabled ? 'outline' : 'default'} onClick={() => toggle.mutate(selected)} disabled={toggle.isPending}>
+                                        {selected.enabled ? 'Disable' : 'Enable'}
+                                    </Button>
+                                    <Button
+                                        size="lg"
+                                        variant="outline"
+                                        className="text-pastel-ink-peach hover:bg-pastel-peach hover:text-pastel-ink-peach"
+                                        onClick={() => del.mutate(selected.id)}
+                                        disabled={del.isPending}
+                                    >
+                                        <Trash2 className="h-4 w-4" /> Remove
+                                    </Button>
+                                </div>
+                            </DetailCard>
+                        )
+                    }
+                />
             )}
         </div>
     );
