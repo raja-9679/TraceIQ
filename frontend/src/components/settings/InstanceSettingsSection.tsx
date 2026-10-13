@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
-import { Loader2, RotateCcw, Save, Send, Sparkles, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Loader2, RotateCcw, Send, Sparkles, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
 import IdpQuickSetupCard from '@/components/settings/IdpQuickSetupCard';
+import { Pill } from '@/components/redesign/primitives';
+import {
+    FieldRow, RowGroup, SettingsCard, checkboxClass, inputClass, warnCalloutClass,
+} from '@/components/redesign-local/groupD/settingsForm';
 
 // Mirrors backend/app/api/instance_settings.py::SettingRead
 interface InstanceSetting {
@@ -97,23 +98,25 @@ export default function InstanceSettingsSection() {
 
     if (isLoading) {
         return (
-            <Card><CardContent className="p-8 flex items-center gap-2 text-gray-500">
-                <Loader2 className="h-4 w-4 animate-spin" /> Loading instance settings…
-            </CardContent></Card>
+            <SettingsCard title="Instance configuration">
+                <p className="flex items-center gap-2 text-sm text-ink-soft">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading instance settings…
+                </p>
+            </SettingsCard>
         );
     }
 
     if (error) {
         const status = (error as any)?.response?.status;
         return (
-            <Card><CardContent className="p-8">
-                <div className="flex items-center gap-3 text-gray-600">
-                    <ShieldAlert className="h-5 w-5 text-amber-500" />
+            <SettingsCard title="Instance configuration">
+                <p className={`flex items-center gap-3 ${warnCalloutClass}`} role="status">
+                    <ShieldAlert className="h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
                     {status === 403
                         ? 'Instance settings can only be managed by a tenant admin.'
                         : 'Could not load instance settings.'}
-                </div>
-            </CardContent></Card>
+                </p>
+            </SettingsCard>
         );
     }
 
@@ -154,21 +157,28 @@ export default function InstanceSettingsSection() {
         return s.value === null || s.value === undefined ? '' : String(s.value);
     };
 
+    const fieldId = (key: string) => `inst-${key}`;
+
     const renderField = (s: InstanceSetting) => {
         if (s.type === 'bool') {
             const checked = s.key in pending ? pending[s.key] === true : s.value === true;
             return (
-                <Checkbox
+                <input
+                    id={fieldId(s.key)}
+                    type="checkbox"
+                    className={checkboxClass}
                     checked={checked}
-                    onCheckedChange={(v) => setPending((p) => ({ ...p, [s.key]: v === true }))}
+                    onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.checked }))}
                 />
             );
         }
         if (s.secret) {
             return (
                 <Input
+                    id={fieldId(s.key)}
                     type="password"
                     autoComplete="new-password"
+                    className={inputClass}
                     placeholder={s.is_set ? '•••••••• (set — type to replace)' : 'not set'}
                     value={(pending[s.key] as string) ?? ''}
                     onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
@@ -177,7 +187,9 @@ export default function InstanceSettingsSection() {
         }
         return (
             <Input
+                id={fieldId(s.key)}
                 type={s.type === 'int' ? 'number' : 'text'}
+                className={inputClass}
                 placeholder={s.type === 'list' ? 'comma-separated' : ''}
                 value={displayValue(s)}
                 onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
@@ -185,123 +197,141 @@ export default function InstanceSettingsSection() {
         );
     };
 
+    const pendingCount = Object.keys(pending).length;
+
+    // One save path for every group (unchanged): each card's button sends all
+    // pending instance edits, as the single button at the bottom used to.
+    const saveFooter = (
+        <>
+            <Button onClick={save} disabled={!hasPending || saveMutation.isPending}>
+                {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Save instance settings
+            </Button>
+            <span className="text-xs text-ink-soft" aria-live="polite">
+                {hasPending
+                    ? `${pendingCount} unsaved change${pendingCount === 1 ? '' : 's'} across instance settings.`
+                    : 'No unsaved changes.'}
+            </span>
+        </>
+    );
+
     return (
-        <div className="space-y-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Instance configuration</CardTitle>
-                    <CardDescription>
+        <>
+            <SettingsCard
+                title="Instance configuration"
+                description={
+                    <>
                         Applies to this whole TraceIQ instance. Values saved here are stored in the
-                        database (secrets encrypted) and <span className="font-medium">override the
+                        database (secrets encrypted) and <span className="font-medium text-ink">override the
                         environment</span>; use Reset to fall back to the environment value.
                         Core infrastructure (database, Redis, signing keys) stays environment-only by design.
-                    </CardDescription>
-                </CardHeader>
-            </Card>
+                    </>
+                }
+            />
 
             {GROUPS.map((group) => {
                 const items = byGroup(group.id);
                 if (items.length === 0) return null;
                 return (
-                    <div key={group.id} className="space-y-6">
+                    <div key={group.id} className="flex flex-col gap-5">
                     {group.id === 'ai' && <LLMProvidersCard />}
                     {group.id === 'sso' && <IdpQuickSetupCard />}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-lg">{group.title}</CardTitle>
-                            <CardDescription>{group.description}</CardDescription>
-                            {group.id === 'storage' && (
-                                <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mt-2">
-                                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <SettingsCard
+                        labelledBy={`inst-group-${group.id}`}
+                        title={group.title}
+                        description={group.description}
+                        footer={saveFooter}
+                    >
+                        {group.id === 'storage' && (
+                            <div className={`flex items-start gap-2 ${warnCalloutClass}`}>
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
+                                <span>
                                     Storage changes apply on the next backend restart, and execution
                                     workers read storage credentials from their own environment.
-                                </div>
-                            )}
-                        </CardHeader>
-                        <CardContent className="space-y-4">
+                                </span>
+                            </div>
+                        )}
+                        <div className="flex flex-col divide-y divide-border">
                             {items.map((s) => (
-                                <div key={s.key} className="grid grid-cols-12 gap-3 items-center">
-                                    <div className="col-span-5">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-sm font-medium text-gray-700">
-                                                {s.label || s.key}
-                                            </span>
-                                            {s.source === 'database' && (
-                                                <Badge variant="secondary" className="text-xs">DB</Badge>
-                                            )}
-                                            {s.restart_required && (
-                                                <Badge variant="outline" className="text-xs">restart</Badge>
-                                            )}
-                                        </div>
-                                        {s.description && (
-                                            <p className="text-xs text-gray-500 mt-0.5">{s.description}</p>
-                                        )}
+                                <FieldRow
+                                    key={s.key}
+                                    label={s.label || s.key}
+                                    htmlFor={fieldId(s.key)}
+                                    hint={s.description}
+                                    wide={s.type !== 'bool'}
+                                    badges={
+                                        <>
+                                            {s.source === 'database' && <Pill tone="lavender">Saved here</Pill>}
+                                            {s.restart_required && <Pill tone="butter">Needs restart</Pill>}
+                                        </>
+                                    }
+                                >
+                                    <div className={s.type === 'bool' ? 'flex min-h-10 flex-1 items-center sm:justify-end' : 'min-w-0 flex-1'}>
+                                        {renderField(s)}
                                     </div>
-                                    <div className="col-span-5">{renderField(s)}</div>
-                                    <div className="col-span-2">
-                                        {s.source === 'database' && (
-                                            <Button
-                                                variant="ghost" size="sm"
-                                                title="Reset to environment value"
-                                                onClick={() => resetMutation.mutate(s.key)}
-                                            >
-                                                <RotateCcw className="h-4 w-4 mr-1" /> Reset
-                                            </Button>
-                                        )}
-                                    </div>
-                                </div>
+                                    {s.source === 'database' && (
+                                        <Button
+                                            variant="outline"
+                                            className="flex-none"
+                                            title="Reset to environment value"
+                                            aria-label={`Reset ${s.label || s.key} to the environment value`}
+                                            onClick={() => resetMutation.mutate(s.key)}
+                                        >
+                                            <RotateCcw className="h-4 w-4" /> Reset
+                                        </Button>
+                                    )}
+                                </FieldRow>
                             ))}
+                        </div>
 
-                            {group.id === 'email' && (
-                                <div className="flex items-center gap-2 pt-2 border-t">
-                                    <Input
-                                        placeholder="you@example.com"
-                                        value={testEmailTo}
-                                        onChange={(e) => setTestEmailTo(e.target.value)}
-                                        className="max-w-xs"
-                                    />
+                        {group.id === 'email' && (
+                            <RowGroup title="Check the mail settings">
+                                <div className="flex flex-wrap items-end gap-2">
+                                    <div className="flex min-w-0 flex-col gap-1.5">
+                                        <label htmlFor="inst-test-email-to" className="text-sm font-medium text-ink">Send a test email to</label>
+                                        <Input
+                                            id="inst-test-email-to"
+                                            placeholder="you@example.com"
+                                            value={testEmailTo}
+                                            onChange={(e) => setTestEmailTo(e.target.value)}
+                                            className={`${inputClass} w-72 max-w-full`}
+                                        />
+                                    </div>
                                     <Button
-                                        variant="outline" size="sm"
+                                        variant="outline"
                                         disabled={!testEmailTo || testEmail.isPending}
                                         onClick={() => testEmail.mutate()}
                                     >
                                         {testEmail.isPending
-                                            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                            : <Send className="h-4 w-4 mr-1" />}
+                                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                                            : <Send className="h-4 w-4" />}
                                         Send test email
                                     </Button>
-                                    <span className="text-xs text-gray-500">Save first — the test uses saved values.</span>
                                 </div>
-                            )}
-                            {group.id === 'ai' && (
-                                <div className="flex items-center gap-2 pt-2 border-t">
+                                <p className="mt-2 text-xs text-ink-soft">Save first — the test uses saved values.</p>
+                            </RowGroup>
+                        )}
+                        {group.id === 'ai' && (
+                            <RowGroup title="Check the AI connection">
+                                <div className="flex flex-wrap items-center gap-3">
                                     <Button
-                                        variant="outline" size="sm"
+                                        variant="outline"
                                         disabled={testLlm.isPending}
                                         onClick={() => testLlm.mutate()}
                                     >
                                         {testLlm.isPending
-                                            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                            : <Sparkles className="h-4 w-4 mr-1" />}
+                                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                                            : <Sparkles className="h-4 w-4" />}
                                         Test LLM connection
                                     </Button>
-                                    <span className="text-xs text-gray-500">Save first — the test uses saved values.</span>
+                                    <span className="text-xs text-ink-soft">Save first — the test uses saved values.</span>
                                 </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                            </RowGroup>
+                        )}
+                    </SettingsCard>
                     </div>
                 );
             })}
-
-            <div className="flex justify-end">
-                <Button onClick={save} disabled={!hasPending || saveMutation.isPending}>
-                    {saveMutation.isPending
-                        ? <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        : <Save className="h-4 w-4 mr-2" />}
-                    Save instance settings
-                </Button>
-            </div>
-        </div>
+        </>
     );
 }
