@@ -11,6 +11,8 @@ import {
     LogOut,
     Menu,
     X,
+    PanelLeftClose,
+    PanelLeftOpen,
     ChevronsUpDown,
     ChevronDown,
     Plus,
@@ -116,6 +118,15 @@ function initials(name?: string | null, email?: string | null) {
 export default function DashboardLayout() {
     const { user, logout } = useAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
+    // Desktop only: hide the sidebar to give a page the full width (the old
+    // layout's menu toggle). Remembered per browser; storage can be blocked.
+    const [collapsed, setCollapsedState] = useState<boolean>(() => {
+        try { return localStorage.getItem('traceiq.sidebarCollapsed') === '1'; } catch { return false; }
+    });
+    const setCollapsed = (v: boolean) => {
+        setCollapsedState(v);
+        try { localStorage.setItem('traceiq.sidebarCollapsed', v ? '1' : '0'); } catch { /* per-browser nicety only */ }
+    };
     const location = useLocation();
     const inSetup = isIn(location.pathname, setupLinks.map((l) => l.href));
     const [setupToggled, setSetupOpen] = useState(false);
@@ -184,6 +195,15 @@ export default function DashboardLayout() {
                     aria-label="Close menu"
                 >
                     <X className="h-5 w-5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setCollapsed(true)}
+                    className="hidden h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-white/60 hover:text-ink lg:flex"
+                    aria-label="Hide sidebar"
+                    title="Hide sidebar"
+                >
+                    <PanelLeftClose className="h-5 w-5" />
                 </button>
             </div>
 
@@ -335,7 +355,7 @@ export default function DashboardLayout() {
             {/* Desktop sidebar */}
             <aside
                 aria-label="Workspace"
-                className="bg-tiq-gradient fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/80 lg:block"
+                className={cn("bg-tiq-gradient fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/80", !collapsed && "lg:block")}
             >
                 {sidebar}
             </aside>
@@ -356,16 +376,29 @@ export default function DashboardLayout() {
                 </>
             )}
 
-            <div className="lg:pl-64">
-                {/* Mobile top bar; on desktop the sidebar carries everything */}
-                <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur lg:hidden">
+            <div className={cn(!collapsed && "lg:pl-64")}>
+                {/* Top bar: phones always; desktop only while the sidebar is hidden.
+                    Not sticky on desktop, so page-level sticky headers keep top-0. */}
+                <header className={cn(
+                    "sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur",
+                    collapsed ? "lg:static" : "lg:hidden"
+                )}>
                     <button
                         type="button"
                         onClick={() => setMobileOpen(true)}
-                        className="flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-secondary"
+                        className="flex h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-secondary lg:hidden"
                         aria-label="Open menu"
                     >
                         <Menu className="h-5 w-5" />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setCollapsed(false)}
+                        className="hidden h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-secondary lg:flex"
+                        aria-label="Show sidebar"
+                        title="Show sidebar"
+                    >
+                        <PanelLeftOpen className="h-5 w-5" />
                     </button>
                     <span className="truncate text-sm font-semibold text-ink">{activeProject?.name || 'TraceIQ'}</span>
                 </header>
