@@ -1,21 +1,23 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Smartphone, Trash2, RefreshCw, AlertCircle, Layers, Upload, Download, Apple,
+  Smartphone, Trash2, RefreshCw, Upload, Download, Apple, Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import {
-  api, getProjects, getAppBuilds, uploadAppBuild, deleteAppBuild, AppBuild,
+  api, getAppBuilds, uploadAppBuild, deleteAppBuild, AppBuild,
 } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
+import {
+  DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,11 +50,33 @@ const ACCEPT_BY_PLATFORM: Record<string, string> = {
   ios: '.ipa',
 };
 
+const fieldLabel = 'text-[13px] font-semibold text-ink';
+
+function PlatformChip({ platform }: { platform: string }) {
+  const ios = platform === 'ios';
+  const Icon = ios ? Apple : Smartphone;
+  return (
+    <span
+      className={cn(
+        'flex h-7 w-7 flex-none items-center justify-center rounded-[9px]',
+        ios ? 'bg-pastel-lavender text-pastel-ink-lavender' : 'bg-pastel-mint text-pastel-ink-mint',
+      )}
+      aria-hidden="true"
+    >
+      <Icon className="h-[15px] w-[15px]" strokeWidth={2.2} />
+    </span>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Upload form
 // ---------------------------------------------------------------------------
 
-function UploadSection({ projectId }: { projectId: number }) {
+function UploadCard({ projectId, onUploaded, onCancel }: {
+  projectId: number;
+  onUploaded: (build: AppBuild) => void;
+  onCancel?: () => void;
+}) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
   const [platform, setPlatform] = useState<'android' | 'ios'>('android');
@@ -67,6 +91,7 @@ function UploadSection({ projectId }: { projectId: number }) {
       toast.success(`Uploaded ${build.app_name}`);
       setAppName(''); setVersionName(''); setPackageId('');
       if (fileRef.current) fileRef.current.value = '';
+      onUploaded(build);
     },
     onError: (err) => toast.error(`Upload failed: ${errorDetail(err)}`),
   });
@@ -87,17 +112,18 @@ function UploadSection({ projectId }: { projectId: number }) {
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl p-6">
-      <h2 className="text-lg font-bold text-slate-800 mb-1">Upload a build</h2>
-      <p className="text-sm text-slate-500 mb-4">
-        Mobile test runs install this binary on the device before executing steps.
-        Pin a build when triggering a run from a suite.
-      </p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
-        <div className="lg:col-span-1">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Platform</p>
+    <DetailCard label="Upload a build">
+      <div className="flex flex-col gap-1.5">
+        <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">Upload a build</h2>
+        <p className="text-sm text-ink-soft">
+          Mobile test runs install this binary on the device before running steps. Pin a build when you start a run from a suite.
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="build-platform" className={fieldLabel}>Platform</label>
           <Select value={platform} onValueChange={(v) => setPlatform(v as 'android' | 'ios')}>
-            <SelectTrigger className="h-10 rounded-xl bg-white border-slate-200">
+            <SelectTrigger id="build-platform" className="h-11 rounded-xl">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -106,31 +132,55 @@ function UploadSection({ projectId }: { projectId: number }) {
             </SelectContent>
           </Select>
         </div>
-        <div className="lg:col-span-1">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Binary</p>
-          <Input ref={fileRef} type="file" accept={ACCEPT_BY_PLATFORM[platform]} className="h-10 rounded-xl" />
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="build-file" className={fieldLabel}>Binary</label>
+          <Input id="build-file" ref={fileRef} type="file" accept={ACCEPT_BY_PLATFORM[platform]} className="h-11 rounded-xl" />
         </div>
-        <Input placeholder="App name (optional)" value={appName} onChange={(e) => setAppName(e.target.value)} className="h-10 rounded-xl" />
-        <Input placeholder="Version, e.g. 2.4.1 (optional)" value={versionName} onChange={(e) => setVersionName(e.target.value)} className="h-10 rounded-xl" />
-        <Input placeholder="Package / bundle id (optional)" value={packageId} onChange={(e) => setPackageId(e.target.value)} className="h-10 rounded-xl" />
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="build-name" className={fieldLabel}>App name <span className="font-normal text-ink-soft">(optional)</span></label>
+          <Input id="build-name" placeholder="TodoLite" value={appName} onChange={(e) => setAppName(e.target.value)} className="h-11 rounded-xl" />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="build-version" className={fieldLabel}>Version <span className="font-normal text-ink-soft">(optional)</span></label>
+          <Input id="build-version" placeholder="2.4.1" value={versionName} onChange={(e) => setVersionName(e.target.value)} className="h-11 rounded-xl" />
+        </div>
+        <div className="flex flex-col gap-1.5 sm:col-span-2">
+          <label htmlFor="build-package" className={fieldLabel}>Package or bundle id <span className="font-normal text-ink-soft">(optional)</span></label>
+          <Input id="build-package" placeholder="com.example.app" value={packageId} onChange={(e) => setPackageId(e.target.value)} className="h-11 rounded-xl font-mono" />
+        </div>
       </div>
-      <div className="mt-4">
-        <Button onClick={handleUpload} disabled={uploadMutation.isPending} className="rounded-xl">
+      <div className="flex flex-wrap gap-2.5">
+        <Button size="lg" onClick={handleUpload} disabled={uploadMutation.isPending}>
           {uploadMutation.isPending
-            ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Uploading…</>
-            : <><Upload className="w-4 h-4 mr-2" /> Upload build</>}
+            ? <><RefreshCw className="h-4 w-4 animate-spin" /> Uploading…</>
+            : <><Upload className="h-4 w-4" /> Upload build</>}
         </Button>
+        {onCancel && <Button size="lg" variant="outline" onClick={onCancel}>Cancel</Button>}
       </div>
-    </div>
+    </DetailCard>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Builds table
+// Builds list + detail
 // ---------------------------------------------------------------------------
 
-function BuildsSection({ projectId }: { projectId: number }) {
+function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-2xl bg-background p-4">
+      <span className="text-xs text-ink-soft">{label}</span>
+      <span className={cn('break-all text-[15px] font-semibold text-ink', mono && 'font-mono text-[13px]')}>{value}</span>
+    </div>
+  );
+}
+
+function BuildsView({ projectId, uploading, setUploading }: {
+  projectId: number;
+  uploading: boolean;
+  setUploading: (v: boolean) => void;
+}) {
   const queryClient = useQueryClient();
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const { data: builds, isLoading, error } = useQuery({
     queryKey: ['app-builds', projectId],
@@ -157,84 +207,98 @@ function BuildsSection({ projectId }: { projectId: number }) {
     }
   };
 
+  const onUploaded = (b: AppBuild) => { setSelectedId(b.id); setUploading(false); };
+
   if (isLoading) {
     return (
-      <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-        <RefreshCw className="w-6 h-6 text-slate-300 mx-auto animate-spin" />
+      <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+        {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
       </div>
     );
   }
   if (error) {
-    return (
-      <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-sm">
-        Failed to load builds: {errorDetail(error)}
-      </div>
-    );
+    return <EmptyState title="Couldn't load builds">{errorDetail(error)}</EmptyState>;
   }
   if (!builds || builds.length === 0) {
     return (
-      <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-        <Smartphone className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-        <h3 className="text-lg font-bold text-slate-800 mb-1">No builds yet</h3>
-        <p className="text-slate-500 text-sm">Upload an APK, AAB, or IPA above to start testing your mobile app.</p>
+      <div className="flex flex-col gap-5">
+        <EmptyState title="No builds yet">Upload an APK, AAB, or IPA to start testing your mobile app.</EmptyState>
+        <div className="max-w-[760px]"><UploadCard projectId={projectId} onUploaded={onUploaded} /></div>
       </div>
     );
   }
 
+  const groups = [
+    { name: 'Android', items: builds.filter((b) => b.platform !== 'ios') },
+    { name: 'iOS', items: builds.filter((b) => b.platform === 'ios') },
+  ].filter((g) => g.items.length > 0);
+  const selected = builds.find((b) => b.id === selectedId) ?? groups[0]?.items[0] ?? null;
+
   return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>App</TableHead>
-            <TableHead>Platform</TableHead>
-            <TableHead>Version</TableHead>
-            <TableHead>Package / bundle id</TableHead>
-            <TableHead>Size</TableHead>
-            <TableHead>Uploaded</TableHead>
-            <TableHead className="text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {builds.map((b) => (
-            <TableRow key={b.id}>
-              <TableCell>
-                <div className="font-semibold text-slate-800">{b.app_name}</div>
-                <div className="text-xs text-slate-400">{b.original_filename}</div>
-              </TableCell>
-              <TableCell>
-                <Badge variant="outline" className="gap-1">
-                  {b.platform === 'ios' ? <Apple className="w-3 h-3" /> : <Smartphone className="w-3 h-3" />}
-                  {b.platform}
-                </Badge>
-              </TableCell>
-              <TableCell>{b.version_name || '—'}{b.build_number ? ` (${b.build_number})` : ''}</TableCell>
-              <TableCell className="font-mono text-xs">{b.package_id || '—'}</TableCell>
-              <TableCell>{formatSize(b.file_size)}</TableCell>
-              <TableCell>{formatDate(b.created_at)}</TableCell>
-              <TableCell className="text-right">
-                <Button variant="ghost" size="sm" onClick={() => handleDownload(b)} title="Download binary">
-                  <Download className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-rose-500 hover:text-rose-700"
-                  title="Delete build"
-                  onClick={() => {
-                    if (window.confirm(`Delete build "${b.app_name}"? Runs pinned to it will no longer dispatch a binary.`)) {
-                      deleteMutation.mutate(b.id);
-                    }
-                  }}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </TableCell>
-            </TableRow>
+    <SplitView
+      list={groups.map((g) => (
+        <ListGroup key={g.name} title={g.name} count={g.items.length}>
+          {g.items.map((b) => (
+            <ListRow
+              key={b.id}
+              selected={!uploading && selected?.id === b.id}
+              onSelect={() => { setSelectedId(b.id); setUploading(false); }}
+              leading={<PlatformChip platform={b.platform} />}
+              title={b.app_name}
+              meta={`${b.version_name || 'No version'}${b.build_number ? ` (${b.build_number})` : ''} · ${formatDate(b.created_at)}`}
+              trailing={<span className="font-mono text-xs text-ink-soft">{formatSize(b.file_size)}</span>}
+            />
           ))}
-        </TableBody>
-      </Table>
-    </div>
+        </ListGroup>
+      ))}
+      detail={uploading ? (
+        <UploadCard projectId={projectId} onUploaded={onUploaded} onCancel={() => setUploading(false)} />
+      ) : selected && (
+        <DetailCard label="Selected build">
+          <div className="flex flex-col gap-2">
+            <Pill tone={selected.platform === 'ios' ? 'lavender' : 'mint'} className="self-start">
+              {selected.platform === 'ios' ? 'iOS' : 'Android'}
+            </Pill>
+            <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.app_name}</h2>
+            <span className="break-all text-sm text-ink-soft">{selected.original_filename}</span>
+          </div>
+
+          <div className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+            <Fact label="Version" value={`${selected.version_name || '—'}${selected.build_number ? ` (${selected.build_number})` : ''}`} />
+            <Fact label="Size" value={formatSize(selected.file_size)} />
+            <Fact label="Uploaded" value={formatDate(selected.created_at)} />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Eyebrow>Package or bundle id</Eyebrow>
+            <p className="break-all rounded-2xl bg-background p-4 font-mono text-[13px] text-ink">{selected.package_id || '—'}</p>
+          </div>
+
+          <Panel title="How it's used" callout>
+            Cases with mobile steps run on the Appium executor. Pick this build when you start a run from a suite and it is installed on the device first.
+          </Panel>
+
+          <div className="flex flex-wrap gap-2.5">
+            <Button size="lg" variant="outline" onClick={() => handleDownload(selected)}>
+              <Download className="h-4 w-4" /> Download binary
+            </Button>
+            <Button
+              size="lg"
+              variant="outline"
+              className="sm:ml-auto"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (window.confirm(`Delete build "${selected.app_name}"? Runs pinned to it will no longer dispatch a binary.`)) {
+                  deleteMutation.mutate(selected.id);
+                }
+              }}
+            >
+              <Trash2 className="h-4 w-4" /> Delete build
+            </Button>
+          </div>
+        </DetailCard>
+      )}
+    />
   );
 }
 
@@ -243,76 +307,25 @@ function BuildsSection({ projectId }: { projectId: number }) {
 // ---------------------------------------------------------------------------
 
 export default function AppBuilds() {
-  const [projectId, setProjectId] = useState<number | null>(() => {
-    const saved = localStorage.getItem('activeProjectId');
-    return saved ? parseInt(saved) : null;
-  });
-
-  useEffect(() => {
-    const handleProjectChange = () => {
-      const saved = localStorage.getItem('activeProjectId');
-      setProjectId(saved ? parseInt(saved) : null);
-    };
-    window.addEventListener('projectChanged', handleProjectChange);
-    return () => window.removeEventListener('projectChanged', handleProjectChange);
-  }, []);
-
-  const { data: projects } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => getProjects(),
-  });
-
-  const handleProjectSelect = (idStr: string) => {
-    const id = parseInt(idStr);
-    setProjectId(id);
-    localStorage.setItem('activeProjectId', id.toString());
-    window.dispatchEvent(new Event('projectChanged'));
-  };
+  // The sidebar owns project selection.
+  const projectId = useActiveProjectId();
+  const [uploading, setUploading] = useState(false);
 
   return (
-    <div className="max-w-[1100px] mx-auto pb-16">
-      <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-        <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-          <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Project Configuration</span>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">App Builds</h1>
-            <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-              Upload native app binaries (APK / AAB / IPA) for mobile test runs. Cases using
-              mobile steps run on the Appium executor against the build you pin at run time.
-            </p>
-          </div>
-          <div className="sm:ml-auto shrink-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</p>
-            <Select value={projectId?.toString() ?? ''} onValueChange={handleProjectSelect}>
-              <SelectTrigger className="w-[240px] h-10 rounded-xl bg-white border-slate-200">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Layers className="w-4 h-4 text-indigo-500 shrink-0" />
-                  <SelectValue placeholder="Select a project" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {(projects || []).map((p) => (
-                  <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        crumbs={<><Link to="/suites" className="hover:text-ink">Tests</Link><span>/</span><span>App builds</span></>}
+        title="App builds"
+        subtitle="Native binaries (APK, AAB, IPA) for mobile test runs. Mobile cases run against the build you pin at run time."
+        actions={projectId ? (
+          <Button onClick={() => setUploading(true)}><Plus className="h-4 w-4" /> Upload build</Button>
+        ) : undefined}
+      />
 
       {!projectId ? (
-        <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-          <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-800 mb-1">No Project Selected</h3>
-          <p className="text-slate-500 text-sm">Select a project above to manage its app builds.</p>
-        </div>
+        <EmptyState title="Pick a project">Choose a project in the sidebar to manage its app builds.</EmptyState>
       ) : (
-        <div className="space-y-10">
-          <UploadSection projectId={projectId} />
-          <BuildsSection projectId={projectId} />
-        </div>
+        <BuildsView key={projectId} projectId={projectId} uploading={uploading} setUploading={setUploading} />
       )}
     </div>
   );

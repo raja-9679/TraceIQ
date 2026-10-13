@@ -1,12 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { FileCode2, Layers, Upload, Info, AlertCircle } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { FileCode2, Upload, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { api, getProjects, getTestSuites } from '@/lib/api';
+import { api, getTestSuites } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { EmptyState, PageHeader } from '@/components/redesign/primitives';
 
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 
@@ -19,30 +21,21 @@ test('homepage has expected title', async ({ page }) => {
 
 export default function ImportPlaywright() {
     const navigate = useNavigate();
-    const [projectId, setProjectId] = useState<number | null>(() => {
-        const s = localStorage.getItem('activeProjectId'); return s ? parseInt(s) : null;
-    });
-    useEffect(() => {
-        const h = () => { const s = localStorage.getItem('activeProjectId'); setProjectId(s ? parseInt(s) : null); };
-        window.addEventListener('projectChanged', h);
-        return () => window.removeEventListener('projectChanged', h);
-    }, []);
+    // The sidebar owns project selection.
+    const projectId = useActiveProjectId();
 
-    const [suiteId, setSuiteId] = useState<string>('');
+    const [pickedSuiteId, setSuiteId] = useState<string>('');
     const [name, setName] = useState('');
     const [script, setScript] = useState('');
 
-    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
     const { data: suites } = useQuery({
         queryKey: ['suites', projectId],
         queryFn: () => getTestSuites(projectId!),
         enabled: !!projectId,
     });
-    const selectProject = (idStr: string) => {
-        const id = parseInt(idStr); setProjectId(id); setSuiteId('');
-        localStorage.setItem('activeProjectId', id.toString());
-        window.dispatchEvent(new Event('projectChanged'));
-    };
+    // A suite picked under another project no longer applies once the sidebar
+    // switches project (the old picker reset it explicitly); derived here.
+    const suiteId = (suites || []).some((s: { id: number }) => s.id.toString() === pickedSuiteId) ? pickedSuiteId : '';
 
     const importMut = useMutation({
         mutationFn: async () => {
@@ -59,82 +52,57 @@ export default function ImportPlaywright() {
     });
 
     return (
-        <div className="max-w-[900px] mx-auto pb-16">
-            <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Import</span>
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                    <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Import Playwright Spec</h1>
-                        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Bring an existing Playwright <code className="text-sm bg-slate-100 px-1 rounded">.spec.ts</code> in as a
-                            test case. It runs verbatim via the Playwright runner (not the step interpreter).
-                        </p>
-                    </div>
-                    <div className="sm:ml-auto shrink-0">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project</p>
-                        <Select value={projectId?.toString() ?? ''} onValueChange={selectProject}>
-                            <SelectTrigger className="w-[220px] h-10 rounded-xl bg-white border-slate-200">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <Layers className="w-4 h-4 text-indigo-500 shrink-0" />
-                                    <SelectValue placeholder="Select a project" />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {(projects || []).map((p) => <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>)}
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-            </div>
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                crumbs={<><Link to="/suites" className="hover:text-ink">Tests</Link><span>/</span><span>Import</span></>}
+                title="Import a Playwright spec"
+                subtitle="Bring an existing .spec.ts in as a test case. It runs as written, through the Playwright runner."
+            />
 
-            <div className="flex items-start gap-2 text-xs text-amber-700 bg-amber-50/70 border border-amber-100 rounded-xl px-3 py-2.5 mb-5">
-                <Info className="w-4 h-4 text-amber-500 shrink-0 mt-px" />
+            <div className="flex max-w-[900px] items-start gap-3 rounded-2xl border border-white/90 bg-tiq-callout px-4 py-3 text-sm leading-relaxed text-ink">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" aria-hidden="true" />
                 <p>
-                    Raw specs are opaque to step-level AI heal and the trace timeline. Execution runs arbitrary code and
-                    is <span className="font-semibold">gated by <code>RAW_PLAYWRIGHT_ENABLED</code></span> on a sandboxed worker —
-                    importing here only stores the script.
+                    Imported specs can't use step-level AI heal or the trace timeline. Running one executes arbitrary code,
+                    so it only happens on a sandboxed worker with <code className="font-mono text-[13px]">RAW_PLAYWRIGHT_ENABLED</code> set.
+                    Importing here only stores the script.
                 </p>
             </div>
 
             {!projectId ? (
-                <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-                    <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-                    <p className="text-slate-500 text-sm">Select a project to choose a target suite.</p>
-                </div>
+                <EmptyState title="Pick a project">Choose a project in the sidebar to pick a target suite.</EmptyState>
             ) : (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-                    <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Target suite</label>
+                <div className="flex max-w-[900px] flex-col gap-5 rounded-3xl border border-border bg-white p-6 sm:p-7">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="import-suite" className="text-[13px] font-semibold text-ink">Target suite</label>
                             <Select value={suiteId} onValueChange={setSuiteId}>
-                                <SelectTrigger className="h-10 mt-1"><SelectValue placeholder="Select a suite" /></SelectTrigger>
+                                <SelectTrigger id="import-suite" className="h-11 rounded-xl"><SelectValue placeholder="Select a suite" /></SelectTrigger>
                                 <SelectContent>
-                                    {(suites || []).map((s: any) => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
+                                    {(suites || []).map((s: { id: number; name: string }) => <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Case name</label>
-                            <Input className="h-10 mt-1" placeholder="checkout-flow.spec" value={name} onChange={(e) => setName(e.target.value)} />
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="import-name" className="text-[13px] font-semibold text-ink">Case name</label>
+                            <Input id="import-name" className="h-11 rounded-xl" placeholder="checkout-flow.spec" value={name} onChange={(e) => setName(e.target.value)} />
                         </div>
                     </div>
-                    <div>
-                        <div className="flex items-center justify-between mb-1">
-                            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Playwright spec</label>
-                            <button className="text-xs text-indigo-500 hover:underline" onClick={() => setScript(SAMPLE)}>insert sample</button>
+                    <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                            <label htmlFor="import-script" className="text-[13px] font-semibold text-ink">Playwright spec</label>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setScript(SAMPLE)}>Insert sample</Button>
                         </div>
                         <textarea
-                            className="w-full h-72 font-mono text-xs border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                            id="import-script"
+                            className="h-72 w-full rounded-2xl border border-border bg-background p-4 font-mono text-xs text-ink focus:outline-none focus:ring-2 focus:ring-ring"
                             placeholder="Paste your .spec.ts here…" value={script} onChange={(e) => setScript(e.target.value)} />
                     </div>
-                    <div className="flex items-center gap-2">
-                        <FileCode2 className="w-4 h-4 text-slate-400" />
-                        <span className="text-xs text-slate-400">{script.length} chars</span>
-                        <Button className="ml-auto h-10 rounded-lg" disabled={importMut.isPending || !suiteId || !name.trim() || !script.trim()}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <FileCode2 className="h-4 w-4 text-ink-soft" aria-hidden="true" />
+                        <span className="text-xs text-ink-soft">{script.length} characters</span>
+                        <Button size="lg" className="ml-auto" disabled={importMut.isPending || !suiteId || !name.trim() || !script.trim()}
                             onClick={() => importMut.mutate()}>
-                            <Upload className="w-4 h-4 mr-1.5" /> Import case
+                            <Upload className="h-4 w-4" /> Import case
                         </Button>
                     </div>
                 </div>
