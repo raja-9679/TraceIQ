@@ -1,21 +1,18 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, triggerRun, exportTestSuite, importTestSuite, getProjects, getWorkspaces } from '@/lib/api';
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { 
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
-} from '@/components/ui/table';
 import {
-    Plus, Play, FolderOpen, FileText, Download, Upload,
-    AlertCircle, Search, ChevronRight, LayoutGrid, List,
-    Clock, Zap
+    Plus, Play, FolderOpen, Download, Upload, Search, ChevronRight, LayoutGrid, List,
 } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { usePermission } from "@/hooks/usePermission";
-import { motion, Variants } from 'framer-motion';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
+import type { Tone } from '@/components/redesign/kinds';
 import {
     Sheet,
     SheetContent,
@@ -23,64 +20,43 @@ import {
     SheetTitle,
 } from "@/components/ui/sheet";
 
-const containerVariants: Variants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1, transition: { staggerChildren: 0.05 } }
+const MODE_LOOK: Record<string, { tone: Tone; label: string }> = {
+    continuous: { tone: 'lavender', label: 'Continuous' },
+    separate: { tone: 'pink', label: 'Separate' },
+    parallel: { tone: 'mint', label: 'Parallel' },
 };
 
-const itemVariants: Variants = {
-    hidden: { opacity: 0, y: 20 },
-    visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 300, damping: 24 } }
-};
+function ExecModePill({ mode }: { mode: string }) {
+    const look = MODE_LOOK[mode] ?? { tone: 'neutral' as Tone, label: mode };
+    return <Pill tone={look.tone}>{look.label}</Pill>;
+}
 
-function ExecModeBadge({ mode }: { mode: string }) {
-    const isPurple = mode === 'separate';
-    const isGreen = mode === 'parallel';
-    
-    let colors = 'bg-indigo-50 text-indigo-700 border-indigo-200';
-    let iconColor = 'text-indigo-500';
-    
-    if (isPurple) {
-        colors = 'bg-purple-50 text-purple-700 border-purple-200';
-        iconColor = 'text-purple-500';
-    } else if (isGreen) {
-        colors = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        iconColor = 'text-emerald-500';
-    }
-
+function SuiteChip() {
     return (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold uppercase tracking-wide border transition-colors ${colors}`}>
-            <Zap size={12} className={iconColor} />
-            {mode}
+        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-pastel-lavender text-pastel-ink-lavender" aria-hidden="true">
+            <FolderOpen className="h-[17px] w-[17px]" strokeWidth={2.2} />
         </span>
     );
 }
 
+type SuiteRef = { id: number; name: string };
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
 export default function TestSuites() {
     const queryClient = useQueryClient();
     const navigate = useNavigate();
+    const importRef = useRef<HTMLInputElement>(null);
     const [newSuiteName, setNewSuiteName] = useState('');
     const [newSuiteDesc, setNewSuiteDesc] = useState('');
     const [newExecutionMode, setNewExecutionMode] = useState<'continuous' | 'separate'>('continuous');
     const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false);
-    
-    // New Feature State
+
     const [searchTerm, setSearchTerm] = useState('');
     const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
 
-    const [activeProjectId, setActiveProjectId] = useState<number | null>(() => {
-        const saved = localStorage.getItem('activeProjectId');
-        return saved ? parseInt(saved) : null;
-    });
-
-    useEffect(() => {
-        const handleProjectChange = () => {
-            const saved = localStorage.getItem('activeProjectId');
-            setActiveProjectId(saved ? parseInt(saved) : null);
-        };
-        window.addEventListener('projectChanged', handleProjectChange);
-        return () => window.removeEventListener('projectChanged', handleProjectChange);
-    }, []);
+    // The sidebar owns project selection.
+    const activeProjectId = useActiveProjectId();
 
     const { data: projects } = useQuery({
         queryKey: ['projects'],
@@ -100,7 +76,7 @@ export default function TestSuites() {
     const filteredSuites = useMemo(() => {
         if (!suites) return [];
         if (!searchTerm.trim()) return suites;
-        
+
         const lowerSearch = searchTerm.toLowerCase();
         return suites.filter((suite: any) =>
             suite.name.toLowerCase().includes(lowerSearch) ||
@@ -120,9 +96,9 @@ export default function TestSuites() {
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['projects'] });
             queryClient.invalidateQueries({ queryKey: ['suites'] });
+            // useActiveProjectId re-reads on this event.
             localStorage.setItem('activeProjectId', String(data.project_id));
             window.dispatchEvent(new Event('projectChanged'));
-            setActiveProjectId(data.project_id);
             toast.success(data.created ? 'Sample project created' : 'Sample project already exists', {
                 description: 'Open the Getting Started suite and hit Run Now to see real results.',
             });
@@ -219,145 +195,192 @@ export default function TestSuites() {
     const totalTestCases = suites?.reduce((sum: number, s: any) => sum + (s.total_test_cases || 0), 0) ?? 0;
     const totalModules = suites?.reduce((sum: number, s: any) => sum + (s.total_sub_modules || 0), 0) ?? 0;
 
-    /* ───────── Loading skeleton ───────── */
-    if (isLoading) {
-        return (
-            <div className="space-y-8 animate-pulse p-4">
-                <div className="h-40 bg-slate-100 rounded-3xl" />
-                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                    {[...Array(6)].map((_, i) => (
-                        <div key={i} className="bg-slate-50 h-56 rounded-3xl border border-slate-200" />
-                    ))}
-                </div>
-            </div>
-        );
-    }
+    const subtitle = !activeProjectId
+        ? 'Pick a project in the sidebar.'
+        : suites
+            ? `${plural(suites.length, 'suite')} · ${plural(totalTestCases, 'test')} · ${plural(totalModules, 'module')}${activeProject?.name ? ` in ${activeProject.name}` : ''}`
+            : 'Suites group your tests and their shared settings.';
+
+    const importButton = (
+        <Button variant="outline" disabled={!canUpdateProject} onClick={() => importRef.current?.click()}>
+            <Upload className="h-4 w-4" /> Import
+        </Button>
+    );
+
+    const runButton = (suite: SuiteRef) => (
+        <Button
+            size="icon"
+            onClick={() => runMutation.mutate(suite.id)}
+            disabled={runMutation.isPending || !canExecuteTest}
+            title={!canExecuteTest ? "Permission required" : "Run this suite"}
+            aria-label={`Run ${suite.name}`}
+        >
+            <Play className="h-4 w-4" fill="currentColor" />
+        </Button>
+    );
+
+    const exportButton = (suite: SuiteRef) => (
+        <Button
+            variant="outline"
+            size="icon"
+            onClick={() => handleExportSuite(suite.id, suite.name)}
+            title="Export suite"
+            aria-label={`Export ${suite.name}`}
+        >
+            <Download className="h-4 w-4" />
+        </Button>
+    );
+
+    const modeButton = (mode: 'card' | 'list', Icon: typeof List, label: string) => (
+        <button
+            type="button"
+            aria-pressed={viewMode === mode}
+            onClick={() => setViewMode(mode)}
+            className={cn(
+                'inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-sm font-medium transition-colors',
+                viewMode === mode ? 'bg-white text-ink shadow-sm' : 'text-ink-soft hover:text-ink',
+            )}
+        >
+            <Icon className="h-4 w-4" aria-hidden="true" /> {label}
+        </button>
+    );
+
+    const modeOption = (value: 'continuous' | 'separate', title: string, body: string) => (
+        <label className={cn(
+            'flex cursor-pointer items-start gap-3 rounded-2xl border bg-white p-4 transition-colors',
+            newExecutionMode === value ? 'border-ink' : 'border-border hover:border-ink-muted',
+        )}>
+            <input
+                type="radio"
+                name="execution-mode"
+                className="mt-0.5 h-[18px] w-[18px] accent-ink"
+                checked={newExecutionMode === value}
+                onChange={() => setNewExecutionMode(value)}
+            />
+            <span className="flex flex-col gap-0.5">
+                <span className="text-sm font-semibold text-ink">{title}</span>
+                <span className="text-sm text-ink-soft">{body}</span>
+            </span>
+        </label>
+    );
 
     return (
-        <div className="space-y-8 pb-12 font-sans max-w-[1600px] mx-auto pt-4 px-4 sm:px-8">
-            {/* ── Slide-over Create Sheet ── */}
+        <div className="flex flex-col gap-5">
+            <input ref={importRef} type="file" accept=".json" onChange={handleImportSuite} className="hidden" aria-hidden="true" tabIndex={-1} />
+
             <Sheet open={isCreateSheetOpen} onOpenChange={setIsCreateSheetOpen}>
-                <SheetContent className="sm:max-w-md border-l-0 shadow-2xl p-0 flex flex-col bg-slate-50/50 backdrop-blur-xl">
-                    <div className="p-6 sm:p-8 bg-white border-b border-slate-100">
-                        <SheetTitle className="text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100/50">
-                                <Plus size={20} className="text-indigo-600" />
-                            </div>
-                            Create Suite
-                        </SheetTitle>
-                        <SheetDescription className="mt-2 text-slate-500">
-                            Configure a new test suite foundation. You can add granular test cases and sub-modules later.
+                <SheetContent className="flex flex-col gap-0 border-l border-border bg-background p-0 sm:max-w-md">
+                    <div className="flex flex-col gap-1.5 border-b border-border bg-white p-6 sm:p-7">
+                        <SheetTitle className="text-[22px] font-bold tracking-[-0.02em] text-ink">New suite</SheetTitle>
+                        <SheetDescription className="text-sm text-ink-soft">
+                            Start a suite now; add tests and sub-modules to it later.
                         </SheetDescription>
                     </div>
 
-                    <div className="p-6 sm:p-8 space-y-6 flex-1 overflow-y-auto">
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Suite Name</label>
-                            <input
+                    <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-6 sm:p-7">
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="new-suite-name" className="text-[13px] font-semibold text-ink">Suite name</label>
+                            <Input
+                                id="new-suite-name"
                                 type="text"
                                 value={newSuiteName}
                                 onChange={(e) => setNewSuiteName(e.target.value)}
                                 placeholder="e.g., Core API Regression"
-                                className="w-full px-4 py-3 border border-slate-200 bg-white rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium placeholder:font-normal placeholder:text-slate-400 shadow-sm"
+                                className="h-11 rounded-xl bg-white"
                                 autoFocus
                             />
                         </div>
 
-                        <div className="space-y-3">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Execution Strategy</label>
-                            <div className="grid grid-cols-1 gap-3">
-                                <label className={`relative flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newExecutionMode === 'continuous' ? 'border-indigo-500 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                    <input type="radio" className="sr-only" checked={newExecutionMode === 'continuous'} onChange={() => setNewExecutionMode('continuous')} />
-                                    <div className={`shrink-0 w-5 h-5 rounded-full border flex items-center justify-center mt-0.5 ${newExecutionMode === 'continuous' ? 'border-indigo-500' : 'border-slate-300'}`}>
-                                        {newExecutionMode === 'continuous' && <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full" />}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className={`font-semibold text-sm ${newExecutionMode === 'continuous' ? 'text-indigo-900' : 'text-slate-900'}`}>Continuous</p>
-                                        <p className="text-sm text-slate-500 mt-1">Tests run sequentially sharing the same browser session.</p>
-                                    </div>
-                                </label>
+                        <fieldset className="flex flex-col gap-2">
+                            <legend className="mb-1.5 text-[13px] font-semibold text-ink">How tests run</legend>
+                            {modeOption('continuous', 'Continuous', 'Tests run one after another in the same browser session.')}
+                            {modeOption('separate', 'Separate', 'Each test runs on its own, from a clean state.')}
+                        </fieldset>
 
-                                <label className={`relative flex items-start gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${newExecutionMode === 'separate' ? 'border-indigo-500 bg-indigo-50/50' : 'border-slate-200 bg-white hover:border-slate-300'}`}>
-                                    <input type="radio" className="sr-only" checked={newExecutionMode === 'separate'} onChange={() => setNewExecutionMode('separate')} />
-                                    <div className={`shrink-0 w-5 h-5 rounded-full border flex items-center justify-center mt-0.5 ${newExecutionMode === 'separate' ? 'border-indigo-500' : 'border-slate-300'}`}>
-                                        {newExecutionMode === 'separate' && <div className="w-2.5 h-2.5 bg-indigo-500 rounded-full" />}
-                                    </div>
-                                    <div className="flex-1">
-                                        <p className={`font-semibold text-sm ${newExecutionMode === 'separate' ? 'text-indigo-900' : 'text-slate-900'}`}>Separate</p>
-                                        <p className="text-sm text-slate-500 mt-1">Each test runs in complete isolation (clean state).</p>
-                                    </div>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Description <span className="text-slate-400 font-normal normal-case">(Optional)</span></label>
+                        <div className="flex flex-col gap-1.5">
+                            <label htmlFor="new-suite-desc" className="text-[13px] font-semibold text-ink">
+                                Description <span className="font-normal text-ink-soft">(optional)</span>
+                            </label>
                             <textarea
+                                id="new-suite-desc"
                                 value={newSuiteDesc}
                                 onChange={(e) => setNewSuiteDesc(e.target.value)}
-                                placeholder="What is the purpose of this suite?"
+                                placeholder="What is this suite for?"
                                 rows={3}
-                                className="w-full px-4 py-3 border border-slate-200 bg-white rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400 resize-none shadow-sm"
+                                className="w-full resize-none rounded-xl border border-input bg-white px-3 py-2.5 text-sm text-ink placeholder:text-ink-muted focus:outline-none focus:ring-2 focus:ring-ring"
                             />
                         </div>
                     </div>
 
-                    <div className="p-6 bg-white border-t border-slate-100 flex gap-3">
-                        <Button variant="outline" onClick={() => setIsCreateSheetOpen(false)} className="flex-1 h-12 rounded-xl text-slate-600 font-medium border-slate-200 hover:bg-slate-50">Cancel</Button>
-                        <Button 
-                            onClick={handleCreate} 
-                            disabled={!newSuiteName.trim() || createSuite.isPending} 
-                            className="flex-1 h-12 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-md transition-all disabled:opacity-50"
+                    <div className="flex gap-2.5 border-t border-border bg-white p-6">
+                        <Button variant="outline" size="lg" className="flex-1 px-4" onClick={() => setIsCreateSheetOpen(false)}>Cancel</Button>
+                        <Button
+                            size="lg"
+                            className="flex-1 px-4"
+                            onClick={handleCreate}
+                            disabled={!newSuiteName.trim() || createSuite.isPending}
                         >
-                            {createSuite.isPending ? 'Building...' : 'Create Suite'}
+                            {createSuite.isPending ? 'Creating…' : 'Create suite'}
                         </Button>
                     </div>
                 </SheetContent>
             </Sheet>
 
-            {!activeProjectId ? (
-                <div className="p-16 text-center bg-white border border-slate-200 rounded-3xl shadow-sm max-w-2xl mx-auto mt-12">
-                    <div className="w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center mx-auto mb-6 border border-amber-100 shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)]">
-                        <AlertCircle className="w-10 h-10 text-amber-500" />
-                    </div>
-                    <h3 className="text-2xl font-extrabold text-slate-900 mb-2">Project Required</h3>
-                    <p className="text-slate-500 mb-6">Please select a project from the top navigation to view or manage test suites.</p>
-                    {seedTargetWorkspaceId && (
-                        <Button
-                            variant="outline"
-                            onClick={() => seedSampleMutation.mutate(seedTargetWorkspaceId)}
-                            disabled={seedSampleMutation.isPending}
-                            className="rounded-xl border-indigo-200 text-indigo-700 hover:bg-indigo-50 font-semibold px-6 h-11"
-                        >
-                            {seedSampleMutation.isPending ? 'Seeding…' : 'New here? Create a sample project'}
+            <PageHeader
+                title="Tests"
+                subtitle={subtitle}
+                actions={activeProjectId ? (
+                    <>
+                        {importButton}
+                        <Button onClick={() => setIsCreateSheetOpen(true)} disabled={!canUpdateProject}>
+                            <Plus className="h-4 w-4" /> New suite
                         </Button>
+                    </>
+                ) : undefined}
+            />
+
+            {!activeProjectId ? (
+                <EmptyState title="Pick a project">
+                    Choose a project in the sidebar to see and manage its test suites.
+                    {seedTargetWorkspaceId && (
+                        <span className="mt-4 flex justify-center">
+                            <Button
+                                variant="outline"
+                                onClick={() => seedSampleMutation.mutate(seedTargetWorkspaceId)}
+                                disabled={seedSampleMutation.isPending}
+                            >
+                                {seedSampleMutation.isPending ? 'Seeding…' : 'New here? Create a sample project'}
+                            </Button>
+                        </span>
                     )}
+                </EmptyState>
+            ) : isLoading ? (
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2, 3].map((i) => <div key={i} className="h-[76px] animate-pulse rounded-2xl bg-white/70" />)}
                 </div>
             ) : suites?.length === 0 ? (
-                <div className="p-16 text-center bg-white border border-slate-200 rounded-3xl shadow-sm max-w-2xl mx-auto mt-12">
-                    <div className="w-24 h-24 rounded-full bg-indigo-50/50 flex flex-col items-center justify-center mx-auto mb-6 border border-indigo-100/50 shadow-inner">
-                        <FolderOpen size={36} strokeWidth={1.5} className="text-indigo-400 mb-1" />
+                <div className="flex flex-col items-center gap-4 rounded-3xl border border-border bg-white px-6 py-12 text-center">
+                    <SuiteChip />
+                    <div className="flex flex-col gap-1.5">
+                        <p className="text-lg font-semibold text-ink">No suites yet</p>
+                        <p className="max-w-[52ch] text-sm text-ink-soft">
+                            {activeProject?.name ? <><span className="font-medium text-ink">{activeProject.name}</span> has no test suites yet. </> : null}
+                            Create your first suite to start organising your tests.
+                        </p>
                     </div>
-                    <h3 className="text-3xl font-extrabold text-slate-900 mb-3 tracking-tight">Empty Workspace</h3>
-                    <p className="text-slate-500 text-base leading-relaxed mb-8">
-                        Project <strong>{activeProject?.name}</strong> has no test suites yet. Create your first suite to begin organizing your automated tests.
-                    </p>
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                        <Button onClick={() => setIsCreateSheetOpen(true)} disabled={!canUpdateProject} size="lg" className="rounded-xl shadow-md bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 h-12">
-                            <Plus className="mr-2 h-5 w-5" /> Build Your First Suite
+                    <div className="flex flex-wrap items-center justify-center gap-2.5">
+                        <Button size="lg" onClick={() => setIsCreateSheetOpen(true)} disabled={!canUpdateProject}>
+                            <Plus className="h-4 w-4" /> Create your first suite
                         </Button>
-                        <div className="relative">
-                            <input type="file" accept=".json" onChange={handleImportSuite} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Import Suite" disabled={!canUpdateProject} />
-                            <Button variant="outline" disabled={!canUpdateProject} className="rounded-xl border-slate-200 shadow-sm hover:bg-slate-50 text-slate-600 font-medium px-8 h-12">
-                                <Upload className="mr-2 h-5 w-5 text-slate-400" /> Import JSON
-                            </Button>
-                        </div>
+                        <Button size="lg" variant="outline" disabled={!canUpdateProject} onClick={() => importRef.current?.click()}>
+                            <Upload className="h-4 w-4" /> Import JSON
+                        </Button>
                         {seedTargetWorkspaceId && (
                             <Button
+                                size="lg"
                                 variant="ghost"
                                 onClick={() => seedSampleMutation.mutate(seedTargetWorkspaceId)}
                                 disabled={seedSampleMutation.isPending}
-                                className="rounded-xl text-indigo-600 hover:bg-indigo-50 font-medium px-6 h-12"
                                 title="Seeds a Sample Project with three runnable demo tests (UI, API, accessibility)"
                             >
                                 {seedSampleMutation.isPending ? 'Seeding…' : 'Try a sample project'}
@@ -367,259 +390,87 @@ export default function TestSuites() {
                 </div>
             ) : (
                 <>
-                    {/* Header Setup (Unified search & toggle) */}
-                    <div className="sticky top-0 z-30 py-4 bg-slate-50/80 backdrop-blur-xl border-b border-slate-200/60 shadow-[0_4px_20px_-10px_rgba(0,0,0,0.05)] mb-8 -mx-4 sm:-mx-8 px-4 sm:px-8">
-                        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                            <div className="space-y-4">
-                                <div className="flex items-center text-sm text-slate-400 gap-2">
-                                    <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Project Hub</span>
-                                </div>
-                                <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-900">Test Suites</h1>
-                                <p className="text-slate-500 max-w-2xl text-base leading-relaxed">
-                                    Manage {activeProject?.name ? <span className="font-medium text-slate-700">"{activeProject.name}"</span> : "your project's"} testing suites, monitor coverage, and trigger executions.
-                                </p>
-                            </div>
-                            
-                            <div className="flex flex-col sm:flex-row items-center gap-4 flex-wrap">
-                                {/* Search */}
-                                <div className="relative w-full sm:w-64">
-                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                                    <Input 
-                                        placeholder="Search suites..." 
-                                        className="pl-9 bg-white border-slate-200 shadow-sm rounded-xl focus-visible:ring-indigo-500 h-11"
-                                        value={searchTerm}
-                                        onChange={(e) => setSearchTerm(e.target.value)}
-                                    />
-                                </div>
-
-                                {/* Layout Toggle */}
-                                <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1 shrink-0 h-11">
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className={`px-3 py-1.5 h-full rounded-lg ${viewMode === 'card' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
-                                        onClick={() => setViewMode('card')}
-                                    >
-                                        <LayoutGrid className="w-4 h-4 mr-2" /> Cards
-                                    </Button>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="sm" 
-                                        className={`px-3 py-1.5 h-full rounded-lg ${viewMode === 'list' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-50'}`}
-                                        onClick={() => setViewMode('list')}
-                                    >
-                                        <List className="w-4 h-4 mr-2" /> List
-                                    </Button>
-                                </div>
-                                
-                                {/* Actions */}
-                                <div className="flex items-center gap-2">
-                                    <div className="relative">
-                                        <input type="file" accept=".json" onChange={handleImportSuite} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" title="Import Suite" disabled={!canUpdateProject} />
-                                        <Button variant="outline" disabled={!canUpdateProject} className="rounded-xl border-slate-200 shadow-sm hover:bg-slate-50 text-slate-600 font-medium h-11 px-4">
-                                            <Upload className="h-4 w-4 sm:mr-2 text-slate-400" /> <span className="hidden sm:inline">Import</span>
-                                        </Button>
-                                    </div>
-                                    <Button onClick={() => setIsCreateSheetOpen(true)} disabled={!canUpdateProject} className="rounded-xl shadow-md h-11 px-5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition-all">
-                                        <Plus className="mr-2 h-4 w-4" strokeWidth={2.5} /> New Suite
-                                    </Button>
-                                </div>
-                            </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="relative w-full sm:w-72">
+                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
+                            <Input
+                                aria-label="Search suites"
+                                placeholder="Search suites"
+                                className="h-11 rounded-full bg-white pl-10"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
-
-                        {/* Sticky Metrics Strip below header */}
-                        <div className="flex items-center gap-6 mt-6 px-5 py-3 bg-white rounded-2xl border border-slate-200 shadow-sm lg:w-max">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Suites</span>
-                                <span className="text-lg font-black text-slate-800">{suites.length}</span>
-                            </div>
-                            <div className="w-px h-6 bg-slate-100" />
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tests</span>
-                                <span className="text-lg font-black text-slate-800 flex items-center gap-1.5"><FileText size={14} className="text-indigo-400" />{totalTestCases}</span>
-                            </div>
-                            <div className="w-px h-6 bg-slate-100" />
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Modules</span>
-                                <span className="text-lg font-black text-slate-800 flex items-center gap-1.5"><FolderOpen size={14} className="text-amber-400" />{totalModules}</span>
-                            </div>
+                        <div role="group" aria-label="Layout" className="flex rounded-full bg-[#EFEDE7] p-1">
+                            {modeButton('card', LayoutGrid, 'Cards')}
+                            {modeButton('list', List, 'List')}
                         </div>
                     </div>
 
                     {filteredSuites.length === 0 ? (
-                        <div className="p-12 text-center bg-slate-50 border border-slate-200 border-dashed rounded-3xl mt-8 max-w-2xl mx-auto">
-                           <Search className="w-8 h-8 text-slate-300 mx-auto mb-4" />
-                           <h3 className="text-lg font-semibold text-slate-700 mb-1">No matches found</h3>
-                           <p className="text-slate-500">No suites matched your search query "{searchTerm}".</p>
-                           <Button variant="ghost" onClick={() => setSearchTerm('')} className="mt-4 text-indigo-600">Clear Search</Button>
-                        </div>
+                        <EmptyState title="No matches">
+                            No suites match “{searchTerm}”.
+                            <span className="mt-3 flex justify-center">
+                                <Button variant="outline" onClick={() => setSearchTerm('')}>Clear search</Button>
+                            </span>
+                        </EmptyState>
                     ) : viewMode === 'card' ? (
-                        <motion.div
-                            className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
-                            variants={containerVariants}
-                            initial="hidden"
-                            animate="visible"
-                        >
+                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                             {filteredSuites.map((suite: any) => (
-                                <motion.div
-                                    key={suite.id}
-                                    variants={itemVariants}
-                                    className="group bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col overflow-hidden relative"
-                                >
-                                    <div className="p-6 flex flex-col flex-1 relative z-10">
-                                        {/* Header */}
-                                        <div className="flex items-start justify-between gap-4 mb-4">
-                                            <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 border border-indigo-100/50 group-hover:bg-white group-hover:shadow-sm transition-all duration-300">
-                                                <FolderOpen size={22} strokeWidth={1.5} className="text-indigo-600" />
-                                            </div>
-                                            <ExecModeBadge mode={suite.execution_mode} />
-                                        </div>
-
-                                        {/* Title & Desc */}
-                                        <h3 className="font-extrabold text-slate-900 text-lg sm:text-xl truncate leading-tight group-hover:text-indigo-600 transition-colors" title={suite.name}>
-                                            {suite.name}
-                                        </h3>
-                                        
-                                        <p className="text-sm text-slate-500 mt-2 line-clamp-2 leading-relaxed flex-1 min-h-[40px]">
-                                            {suite.description || <span className="italic opacity-60">No description provided</span>}
+                                <article key={suite.id} className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-5 transition-shadow hover:shadow-[0_12px_40px_rgba(28,27,34,0.06)]">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <SuiteChip />
+                                        <ExecModePill mode={suite.execution_mode} />
+                                    </div>
+                                    <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                        <h2 className="truncate text-lg font-bold leading-tight tracking-[-0.01em] text-ink" title={suite.name}>
+                                            <Link to={`/suites/${suite.id}`} className="hover:underline">{suite.name}</Link>
+                                        </h2>
+                                        <p className="line-clamp-2 min-h-[40px] text-sm leading-relaxed text-ink-soft">
+                                            {suite.description || 'No description'}
                                         </p>
-
-                                        {/* Progress / Size Indicator */}
-                                        <div className="mt-5 mb-4">
-                                            <div className="flex justify-between text-xs font-semibold text-slate-500 mb-2">
-                                                <span className="flex items-center gap-1.5"><FileText size={14} className="text-slate-400 text-indigo-400" /> {suite.total_test_cases || 0} Tests</span>
-                                                <span className="flex items-center gap-1.5"><FolderOpen size={14} className="text-slate-400 text-amber-500" /> {suite.total_sub_modules || 0} Modules</span>
-                                            </div>
-                                            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
-                                                <div 
-                                                    className="h-full bg-slate-300 rounded-full group-hover:bg-indigo-500 transition-colors duration-500" 
-                                                    style={{ width: `${Math.min(100, Math.max(10, ((suite.total_test_cases || 0) * 10) / (suite.total_sub_modules || 1)))}%` }} 
-                                                />
-                                            </div>
-                                        </div>
                                     </div>
-                                    {/* Footer Details */}
-                                    <div className="px-6 pb-2 pt-2 flex items-center justify-between">
-                                        <span className="flex items-center gap-1.5 text-xs font-medium text-slate-400">
-                                            <Clock size={12} /> {formatDate(suite.created_at)}
-                                        </span>
-                                        <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                            Status <span className="w-2 h-2 rounded-full bg-emerald-500 ml-1"></span>
-                                        </div>
-                                    </div>
-
-                                    {/* Permanent Actions Overlay */}
-                                    <div className="p-4 bg-slate-50/50 border-t border-slate-100 flex items-center gap-2 mt-auto">
-                                        <Link to={`/suites/${suite.id}`} className="flex-1">
-                                            <Button variant="outline" className="w-full bg-white rounded-xl border-slate-200 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 shadow-sm h-10">
-                                                Open <ChevronRight size={14} className="ml-1.5" />
-                                            </Button>
-                                        </Link>
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            onClick={() => handleExportSuite(suite.id, suite.name)}
-                                            className="bg-white rounded-xl border-slate-200 text-slate-500 hover:text-indigo-600 hover:bg-slate-50 h-10 w-10 shrink-0"
-                                            title="Export suite"
-                                        >
-                                            <Download size={16} />
+                                    <p className="text-xs text-ink-soft">
+                                        {plural(suite.total_test_cases || 0, 'test')} · {plural(suite.total_sub_modules || 0, 'module')} · created {formatDate(suite.created_at)}
+                                    </p>
+                                    <div className="flex items-center gap-2 border-t border-[#F0EEE8] pt-4">
+                                        <Button asChild variant="outline" className="flex-1">
+                                            <Link to={`/suites/${suite.id}`}>Open <ChevronRight className="h-4 w-4" /></Link>
                                         </Button>
-                                        <Button
-                                            onClick={() => runMutation.mutate(suite.id)}
-                                            disabled={runMutation.isPending || !canExecuteTest}
-                                            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white h-10 w-10 shrink-0 p-0 shadow-md"
-                                            title={!canExecuteTest ? "Permission required" : "Run this suite"}
-                                        >
-                                            <Play size={15} className="ml-0.5" fill="currentColor" />
-                                        </Button>
+                                        {exportButton(suite)}
+                                        {runButton(suite)}
                                     </div>
-                                </motion.div>
+                                </article>
                             ))}
-                        </motion.div>
-                    ) : (
-                        <div className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm">
-                            <Table>
-                                <TableHeader className="bg-slate-50/50">
-                                    <TableRow className="border-slate-100 hover:bg-transparent">
-                                        <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[300px]">Suite Name</TableHead>
-                                        <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Execution</TableHead>
-                                        <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Contents</TableHead>
-                                        <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Created</TableHead>
-                                        <TableHead className="text-right font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[180px]">Actions</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {filteredSuites.map((suite: any) => (
-                                        <TableRow key={suite.id} className="border-slate-100 hover:bg-slate-50/50 transition-colors group">
-                                            <TableCell className="py-4">
-                                                <Link to={`/suites/${suite.id}`} className="block">
-                                                    <div className="flex items-start gap-3">
-                                                        <div className="p-2 bg-indigo-50 rounded-lg shrink-0 mt-0.5 group-hover:bg-indigo-100 transition-colors">
-                                                            <FolderOpen className="h-4 w-4 text-indigo-600" />
-                                                        </div>
-                                                        <div>
-                                                            <div className="font-bold text-slate-800 text-base group-hover:text-indigo-600 transition-colors">{suite.name}</div>
-                                                            {suite.description && <div className="text-xs text-slate-500 mt-1 max-w-[280px] truncate" title={suite.description}>{suite.description}</div>}
-                                                        </div>
-                                                    </div>
-                                                </Link>
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                <ExecModeBadge mode={suite.execution_mode} />
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                <div className="flex flex-col gap-1.5">
-                                                    <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                                        <FileText className="w-3.5 h-3.5 text-indigo-400"/> {suite.total_test_cases || 0} Test Cases
-                                                    </span>
-                                                    <span className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                                        <FolderOpen className="w-3.5 h-3.5 text-amber-500"/> {suite.total_sub_modules || 0} Modules
-                                                    </span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="py-4">
-                                                <span className="text-sm font-medium text-slate-500 whitespace-nowrap">
-                                                    {formatDate(suite.created_at)}
-                                                </span>
-                                            </TableCell>
-                                            <TableCell className="text-right py-4 pr-6">
-                                                <div className="flex justify-end gap-1.5">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => runMutation.mutate(suite.id)}
-                                                        disabled={runMutation.isPending || !canExecuteTest}
-                                                        className="h-9 w-9 rounded-xl text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white"
-                                                        title="Run Suite"
-                                                    >
-                                                        <Play className="w-4 h-4" fill="currentColor" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        onClick={() => handleExportSuite(suite.id, suite.name)}
-                                                        className="h-9 w-9 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white"
-                                                        title="Export Suite"
-                                                    >
-                                                        <Download className="w-4 h-4" />
-                                                    </Button>
-                                                    <Link to={`/suites/${suite.id}`}>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-9 w-9 rounded-xl text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 border border-transparent shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white"
-                                                            title="Open Suite"
-                                                        >
-                                                            <ChevronRight className="w-4 h-4" />
-                                                        </Button>
-                                                    </Link>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
                         </div>
+                    ) : (
+                        <ul className="overflow-hidden rounded-3xl border border-border bg-white">
+                            {filteredSuites.map((suite: any) => (
+                                <li key={suite.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[#F0EEE8] px-4 py-3.5 first:border-t-0 hover:bg-background/60 sm:px-5">
+                                    <Link to={`/suites/${suite.id}`} className="flex min-w-0 flex-[1_1_260px] items-center gap-3 rounded-xl py-1">
+                                        <SuiteChip />
+                                        <span className="flex min-w-0 flex-col gap-0.5">
+                                            <span className="truncate text-[15px] font-semibold text-ink">{suite.name}</span>
+                                            <span className="truncate text-xs text-ink-soft" title={suite.description || undefined}>
+                                                {suite.description || `Created ${formatDate(suite.created_at)}`}
+                                            </span>
+                                        </span>
+                                    </Link>
+                                    <ExecModePill mode={suite.execution_mode} />
+                                    <span className="w-40 text-xs text-ink-soft">
+                                        {plural(suite.total_test_cases || 0, 'test')} · {plural(suite.total_sub_modules || 0, 'module')}
+                                    </span>
+                                    <span className="hidden w-28 whitespace-nowrap text-xs text-ink-soft lg:inline">{formatDate(suite.created_at)}</span>
+                                    <div className="ml-auto flex gap-1.5">
+                                        {runButton(suite)}
+                                        {exportButton(suite)}
+                                        <Button asChild variant="ghost" size="icon" title="Open suite">
+                                            <Link to={`/suites/${suite.id}`} aria-label={`Open ${suite.name}`}><ChevronRight className="h-4 w-4" /></Link>
+                                        </Button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
                     )}
                 </>
             )}
