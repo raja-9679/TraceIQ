@@ -2,11 +2,13 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl } from "@/lib/api";
 import { llmProvidersApi } from "@/api/llmProviders";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
+import { Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Activity, LayoutGrid, Bug, PlayCircle, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import CreateTicketDialog from "@/components/CreateTicketDialog";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { KindChip, ListRow, PageHeader, Pill, SplitView } from "@/components/redesign/primitives";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
@@ -164,137 +166,85 @@ export default function TestRunDetails() {
     const passRate = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 pb-12">
-            {/* Sticky Header */}
-            <div className="sticky top-0 z-30 -mx-6 px-6 py-4 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm transition-all">
-                <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                            <Link to="/" className="hover:text-primary flex items-center gap-1 transition-colors">
-                                <ArrowLeft size={14} /> Matrix
-                            </Link>
-                            {run.suite_name && (
-                                <>
-                                    <span className="text-gray-300">/</span>
-                                    <Link to={`/suites/${run.test_suite_id}`} className="hover:text-primary transition-colors">
-                                        {run.suite_name}
-                                    </Link>
-                                </>
-                            )}
-                            <span className="text-gray-300">/</span>
-                            <span className="font-medium text-gray-700">Run #{run.id}</span>
-                        </div>
-                        <h2 className="text-2xl md:text-3xl font-bold text-gray-900 flex items-center gap-3">
-                            {run.test_case_name || run.suite_name || `Run #${run.id}`}
-                            <span className={cn(
-                                "flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wide border shadow-sm",
-                                run.status === 'passed' ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                                    run.status === 'failed' || run.status === 'error' ? "bg-rose-50 text-rose-700 border-rose-200" :
-                                        "bg-amber-50 text-amber-700 border-amber-200 animate-pulse"
-                            )}>
-                                {run.status === 'passed' && <CheckCircle size={14} />}
-                                {(run.status === 'failed' || run.status === 'error') && <XCircle size={14} />}
-                                {run.status === 'running' && <Activity size={14} className="animate-spin" />}
-                                {run.status}
-                            </span>
-                        </h2>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        {run.baseline_run_id && (
-                            <Link
-                                to={`/runs/${run.id}/comparison`}
-                                className="px-4 py-2 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-lg hover:bg-indigo-100 transition-all text-sm font-medium flex items-center gap-2"
-                            >
-                                <GitCompareArrows size={16} /> View Comparison
-                            </Link>
-                        )}
-                        {isFinishedRun && !run.baseline_run_id && (
-                            <button
-                                onClick={() => setShowCompareDialog(true)}
-                                className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-all shadow-sm text-sm font-medium flex items-center gap-2"
-                                title="Re-run this suite against another deployment and diff the results"
-                            >
-                                <GitCompareArrows size={16} /> Compare Deployment
-                            </button>
-                        )}
-                        <CreateTicketDialog runId={run.id} />
-                        {isStuckTest && (
-                            <button
-                                onClick={() => setShowForceCompleteDialog(true)}
-                                className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-all shadow-sm hover:shadow text-sm font-medium flex items-center gap-2"
-                            >
-                                <AlertTriangle size={16} /> Force Complete
-                            </button>
-                        )}
-                    </div>
-                </div>
-            </div>
+        <div className="flex flex-col gap-5 pb-12">
+            <PageHeader
+                crumbs={<>
+                    <Link to="/runs" className="hover:text-ink">Runs</Link>
+                    {run.suite_name && (<><span>/</span><Link to={`/suites/${run.test_suite_id}`} className="hover:text-ink">{run.suite_name}</Link></>)}
+                    <span>/</span><span className="font-mono">#{run.id}</span>
+                </>}
+                title={run.test_case_name || run.suite_name || `Run #${run.id}`}
+                badge={
+                    <Pill tone={run.status === 'passed' ? 'mint' : (run.status === 'failed' || run.status === 'error') ? 'peach' : 'lavender'}>
+                        {run.status === 'running' && <Activity size={12} className="animate-spin" />}
+                        {run.status === 'passed' ? 'Passed' : run.status === 'failed' ? `Failed · ${failedCount} of ${totalCount}` : run.status === 'error' ? 'Error' : run.status === 'running' ? 'Running' : run.status}
+                    </Pill>
+                }
+                subtitle={[
+                    run.duration_ms ? `${(run.duration_ms / 1000).toFixed(1)}s` : null,
+                    run.created_at ? new Date(run.created_at).toLocaleString() : null,
+                    (run as any).git_commit ? String((run as any).git_commit).slice(0, 8) : null,
+                    (run as any).git_branch || null,
+                    (run as any).triggered_by ? `by ${(run as any).triggered_by}` : null,
+                ].filter(Boolean).join(' · ')}
+                actions={<>
+                    {run.baseline_run_id && (
+                        <Button asChild variant="outline"><Link to={`/runs/${run.id}/comparison`}><GitCompareArrows size={16} /> View comparison</Link></Button>
+                    )}
+                    {isFinishedRun && !run.baseline_run_id && (
+                        <Button variant="outline" onClick={() => setShowCompareDialog(true)} title="Re-run this suite against another deployment and diff the results">
+                            <GitCompareArrows size={16} /> Compare deployment
+                        </Button>
+                    )}
+                    <CreateTicketDialog runId={run.id} />
+                    {isStuckTest && (
+                        <Button variant="destructive" onClick={() => setShowForceCompleteDialog(true)}>
+                            <AlertTriangle size={16} /> Force complete
+                        </Button>
+                    )}
+                </>}
+            />
 
-            <div className="max-w-7xl mx-auto space-y-8">
-                {/* Metric Summary Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center gap-3 text-gray-500 mb-2">
-                            <Clock size={18} className="text-primary" />
-                            <h3 className="text-sm font-semibold uppercase tracking-wider">Duration</h3>
-                        </div>
-                        <p className="text-3xl font-bold text-gray-900">
-                            {run.duration_ms ? `${(run.duration_ms / 1000).toFixed(2)}s` : '---'}
-                        </p>
+            <div className="flex flex-col gap-6">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
+                    <div className="flex flex-col gap-1 rounded-2xl border border-border bg-white px-5 py-4">
+                        <span className="text-[13px] text-ink-soft">Duration</span>
+                        <span className="text-[26px] font-bold leading-none tracking-tight tabular-nums">{run.duration_ms ? `${(run.duration_ms / 1000).toFixed(2)}s` : '—'}</span>
                     </div>
-
-                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
-                        <div className="flex items-center gap-3 text-gray-500 mb-2">
-                            <LayoutGrid size={18} className="text-blue-500" />
-                            <h3 className="text-sm font-semibold uppercase tracking-wider">Total Tests</h3>
-                        </div>
-                        <p className="text-3xl font-bold text-gray-900">{totalCount}</p>
+                    <div className="flex flex-col gap-1 rounded-2xl border border-border bg-white px-5 py-4">
+                        <span className="text-[13px] text-ink-soft">Tests</span>
+                        <span className="text-[26px] font-bold leading-none tracking-tight tabular-nums">{totalCount}</span>
                     </div>
-
-                    <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden sm:col-span-2">
-                        <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-3 text-gray-500">
-                                <Activity size={18} className={passRate === 100 ? "text-emerald-500" : "text-rose-500"} />
-                                <h3 className="text-sm font-semibold uppercase tracking-wider">Pass Rate</h3>
-                            </div>
-                            <span className={cn(
-                                "text-sm font-bold",
-                                passRate === 100 ? "text-emerald-600" : "text-rose-600"
-                            )}>{passRate}%</span>
+                    <div className="col-span-full flex flex-col gap-2 rounded-2xl border border-border bg-white px-5 py-4 sm:col-span-2">
+                        <span className="flex justify-between text-[13px] text-ink-soft"><span>Pass rate</span><span className="font-semibold text-ink">{passRate}%</span></span>
+                        <div className="flex h-2 w-full overflow-hidden rounded-full bg-secondary" role="img" aria-label={`${passedCount} passed, ${failedCount} failed`}>
+                            {totalCount > 0 && (<>
+                                <div className="h-full bg-[#8FD3B6]" style={{ width: `${(passedCount / totalCount) * 100}%` }} />
+                                <div className="h-full bg-[#E0603A]" style={{ width: `${(failedCount / totalCount) * 100}%` }} />
+                            </>)}
                         </div>
-                        <div className="w-full bg-gray-100 rounded-full h-2 mb-2 mt-4 overflow-hidden flex">
-                            {totalCount > 0 && (
-                                <>
-                                    <div className="bg-emerald-500 h-full transition-all" style={{ width: `${(passedCount / totalCount) * 100}%` }}></div>
-                                    <div className="bg-rose-500 h-full transition-all" style={{ width: `${(failedCount / totalCount) * 100}%` }}></div>
-                                </>
-                            )}
-                        </div>
-                        <div className="flex justify-between text-xs font-medium text-gray-500">
-                            <span className="text-emerald-600">{passedCount} Passed</span>
-                            <span className="text-rose-600">{failedCount} Failed</span>
-                        </div>
+                        <span className="flex justify-between text-xs text-ink-soft"><span>{passedCount} passed</span><span>{failedCount} failed</span></span>
                     </div>
                 </div>
 
                 {/* Main Content Tabs */}
                 <Tabs.Root defaultValue="overview" className="flex flex-col">
-                    <Tabs.List className="flex shrink-0 border-b border-gray-200 mb-6 bg-transparent">
+                    <Tabs.List className="mb-5 flex shrink-0 self-start gap-1 rounded-full bg-[#EFEDE7] p-1">
                         <Tabs.Trigger
                             value="overview"
-                            className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
+                            className="flex min-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium text-ink outline-none transition-colors data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_4px_rgba(28,27,34,0.1)]"
                         >
                             <LayoutGrid size={16} /> Overview
                         </Tabs.Trigger>
                         <Tabs.Trigger
                             value="media"
-                            className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
+                            className="flex min-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium text-ink outline-none transition-colors data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_4px_rgba(28,27,34,0.1)]"
                         >
                             <PlayCircle size={16} /> Traces
                         </Tabs.Trigger>
                         <Tabs.Trigger
                             value="network"
-                            className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
+                            className="flex min-h-9 items-center gap-2 rounded-full px-4 text-[13px] font-medium text-ink outline-none transition-colors data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:shadow-[0_1px_4px_rgba(28,27,34,0.1)]"
                         >
                             <Server size={16} /> Network
                         </Tabs.Trigger>
@@ -302,21 +252,21 @@ export default function TestRunDetails() {
 
                     <Tabs.Content value="overview" className="focus:outline-none space-y-6">
                         {run.error_message && (
-                            <div className="bg-rose-50 border border-rose-200 rounded-xl p-5 shadow-sm">
-                                <h3 className="text-rose-800 font-semibold flex items-center gap-2 mb-3">
-                                    <Bug size={18} /> Error Log
+                            <div className="rounded-3xl border border-border bg-white p-6 shadow-[inset_4px_0_0_#E0603A]">
+                                <h3 className="mb-3 flex items-center gap-2 font-semibold text-ink">
+                                    <Bug size={18} /> Run error
                                 </h3>
-                                <pre className="text-sm text-rose-700 whitespace-pre-wrap font-mono bg-white/50 p-4 rounded-lg border border-rose-100/50 shadow-inner">
+                                <pre className="whitespace-pre-wrap rounded-2xl bg-background p-4 font-mono text-[13px] text-ink">
                                     {run.error_message}
                                 </pre>
                             </div>
                         )}
 
                         {(run.ai_analysis || run.status === 'failed' || run.status === 'error') && (
-                            <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border border-indigo-100 rounded-xl p-5 shadow-sm">
+                            <div className="bg-tiq-callout rounded-3xl border border-white/90 p-6">
                                 <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
                                     <h3 className="text-indigo-800 font-semibold flex items-center gap-2">
-                                        <Brain size={18} className="text-indigo-600" /> AI Root Cause Analysis
+                                        <Brain size={18} /> TraceIQ thinks <span className="text-xs font-normal text-ink-soft">AI analysis · a guess, ranked by confidence</span>
                                     </h3>
                                     {(run.status === 'failed' || run.status === 'error') && (
                                         <div className="flex items-center gap-2">
@@ -324,7 +274,7 @@ export default function TestRunDetails() {
                                                 <select
                                                     value={analysisProviderId}
                                                     onChange={(e) => setAnalysisProviderId(e.target.value)}
-                                                    className="text-xs border border-indigo-200 rounded-md px-2 py-1.5 bg-white/70 text-indigo-800"
+                                                    className="min-h-9 rounded-full border border-white bg-white/80 px-3 text-xs text-ink"
                                                     title="AI provider for this analysis"
                                                 >
                                                     <option value="">Default provider</option>
@@ -338,7 +288,7 @@ export default function TestRunDetails() {
                                             <button
                                                 onClick={() => analyzeMutation.mutate()}
                                                 disabled={analyzeMutation.isPending}
-                                                className="text-xs font-semibold text-indigo-700 bg-white/80 border border-indigo-200 rounded-md px-3 py-1.5 hover:bg-white disabled:opacity-50 transition-colors"
+                                                className="min-h-9 rounded-full bg-ink px-4 text-xs font-semibold text-white transition-colors hover:bg-ink/85 disabled:opacity-50"
                                             >
                                                 {analyzeMutation.isPending
                                                     ? 'Queuing…'
@@ -357,17 +307,17 @@ export default function TestRunDetails() {
                                     // Typed RunFailureAnalysis (schema_version >= 1) vs legacy freeform text
                                     if (typeof analysis === 'object' && analysis?.schema_version) {
                                         const categoryStyles: Record<string, string> = {
-                                            app_bug: 'bg-rose-100 text-rose-700 border-rose-200',
-                                            test_bug: 'bg-amber-100 text-amber-700 border-amber-200',
-                                            environment: 'bg-sky-100 text-sky-700 border-sky-200',
-                                            flake: 'bg-slate-100 text-slate-600 border-slate-200',
-                                            unknown: 'bg-slate-100 text-slate-500 border-slate-200',
+                                            app_bug: 'bg-pastel-peach text-pastel-ink-peach border-transparent',
+                                            test_bug: 'bg-pastel-butter text-pastel-ink-butter border-transparent',
+                                            environment: 'bg-pastel-lavender text-pastel-ink-lavender border-transparent',
+                                            flake: 'bg-pastel-butter text-pastel-ink-butter border-transparent',
+                                            unknown: 'bg-secondary text-ink-soft border-transparent',
                                         };
                                         return (
                                             <div className="space-y-3">
                                                 <p className="text-sm text-indigo-900 leading-relaxed">{analysis.summary}</p>
                                                 {(analysis.reports || []).map((r: any, i: number) => (
-                                                    <div key={i} className="bg-white/70 border border-indigo-100 rounded-lg p-3 space-y-1.5">
+                                                    <div key={i} className="space-y-1.5 rounded-2xl bg-white/80 p-4">
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${categoryStyles[r.root_cause_category] || categoryStyles.unknown}`}>
                                                                 {(r.root_cause_category || 'unknown').replace('_', ' ')}
@@ -382,7 +332,7 @@ export default function TestRunDetails() {
                                                         <p className="text-sm font-semibold text-indigo-900">{r.summary}</p>
                                                         {r.details && <p className="text-xs text-indigo-700">{r.details}</p>}
                                                         {r.suggested_fix && (
-                                                            <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1.5">
+                                                            <p className="rounded-xl bg-pastel-mint px-3 py-2 text-xs text-pastel-ink-mint">
                                                                 <span className="font-bold">Suggested fix{r.fix_target && r.fix_target !== 'none' ? ` (${r.fix_target})` : ''}:</span> {r.suggested_fix}
                                                             </p>
                                                         )}
@@ -401,45 +351,8 @@ export default function TestRunDetails() {
                         )}
 
                         {run.results && run.results.length > 0 && (
-                            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                                <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/50">
-                                    <h3 className="text-gray-800 font-bold flex items-center gap-2">
-                                        <Layers size={18} className="text-primary" />
-                                        Test Cases
-                                    </h3>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            placeholder="Search test cases..."
-                                            value={testSearchTerm}
-                                            onChange={(e) => setTestSearchTerm(e.target.value)}
-                                            className="pl-3 pr-3 py-2 text-sm border bg-white rounded-lg w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary shadow-sm transition-all"
-                                        />
-                                    </div>
-                                </div>
-                                <div className="divide-y divide-gray-100">
-                                    {run.results
-                                        .filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase()))
-                                        .map((result) => {
-                                            const testNetworkEvents = (run.network_events || []).filter(
-                                                (event: any) => event.testCaseName === result.test_name
-                                            );
-                                            return (
-                                                <TestCaseResultItem
-                                                    key={result.id}
-                                                    result={result}
-                                                    networkEvents={testNetworkEvents}
-                                                />
-                                            );
-                                        })}
-                                    {run.results.filter(result => result.test_name.toLowerCase().includes(testSearchTerm.toLowerCase())).length === 0 && (
-                                        <div className="text-center text-gray-500 py-12 italic text-sm flex flex-col items-center">
-                                            <FileText size={32} className="text-gray-300 mb-3" />
-                                            No matching test cases found
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
+                            <ResultsSplit results={run.results} networkEvents={run.network_events || []}
+                                search={testSearchTerm} onSearch={setTestSearchTerm} />
                         )}
                     </Tabs.Content>
 
@@ -561,7 +474,7 @@ export default function TestRunDetails() {
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
                                         <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Response Status</p>
-                                        <p className={`text-2xl font-mono font-bold ${run.response_status && run.response_status >= 400 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                        <p className={`text-2xl font-mono font-bold ${run.response_status && run.response_status >= 400 ? 'text-pastel-ink-peach' : 'text-emerald-600'}`}>
                                             {run.response_status || 'N/A'}
                                         </p>
                                     </div>
@@ -626,8 +539,8 @@ export default function TestRunDetails() {
                             className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-gray-100"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <div className="w-12 h-12 rounded-full bg-rose-50 flex items-center justify-center mb-4">
-                                <AlertTriangle size={24} className="text-rose-600" />
+                            <div className="w-12 h-12 rounded-full bg-pastel-peach/60 flex items-center justify-center mb-4">
+                                <AlertTriangle size={24} className="text-pastel-ink-peach" />
                             </div>
                             <h3 className="text-xl font-bold text-gray-900 mb-2">Force Complete Test Run?</h3>
                             <p className="text-gray-500 text-sm mb-6 leading-relaxed">
@@ -909,8 +822,56 @@ function unwrapJson(str: string) {
     }
 }
 
-function TestCaseResultItem({ result, networkEvents = [] }: { result: any, networkEvents?: any[] }) {
-    const [isExpanded, setIsExpanded] = useState(false);
+// Direction A: the run's tests as a list, with the selected one shown in full
+// on the right (failed tests first, so the one you came for is already open).
+function ResultsSplit({ results, networkEvents, search, onSearch }: {
+    results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void;
+}) {
+    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const rank = (r: any) => (r.status === 'failed' || r.status === 'error' ? 0 : r.status === 'passed' ? 2 : 1);
+    const shown = results
+        .filter((r) => r.test_name.toLowerCase().includes(search.toLowerCase()))
+        .sort((a, b) => rank(a) - rank(b));
+    const selected = shown.find((r) => r.id === selectedId) ?? shown[0] ?? null;
+    return (
+        <SplitView
+            list={<>
+                <label className="flex min-h-11 items-center gap-2 rounded-full border border-border bg-white px-4">
+                    <span className="sr-only">Search tests in this run</span>
+                    <input type="search" placeholder="Search tests in this run" value={search} onChange={(e) => onSearch(e.target.value)}
+                        className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
+                </label>
+                <div className="flex flex-col gap-0.5">
+                    {shown.length === 0 ? (
+                        <p className="px-2 py-6 text-center text-sm text-ink-soft">No matching tests.</p>
+                    ) : shown.map((r) => (
+                        <ListRow
+                            key={r.id}
+                            selected={selected?.id === r.id}
+                            onSelect={() => setSelectedId(r.id)}
+                            leading={<KindChip kind={r.status === 'passed' ? 'pass' : (r.status === 'failed' || r.status === 'error') ? 'failure' : 'skip'} size="sm" />}
+                            title={r.test_name}
+                            meta={`${r.status} · ${Math.round(r.duration_ms)}ms`}
+                        />
+                    ))}
+                </div>
+            </>}
+            detail={selected && (
+                <TestCaseResultItem
+                    key={selected.id}
+                    variant="detail"
+                    result={selected}
+                    networkEvents={networkEvents.filter((e: any) => e.testCaseName === selected.test_name)}
+                />
+            )}
+        />
+    );
+}
+
+function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion' }: { result: any, networkEvents?: any[], variant?: 'accordion' | 'detail' }) {
+    const [expandedState, setIsExpanded] = useState(false);
+    const isDetail = variant === 'detail';
+    const isExpanded = isDetail || expandedState;
 
     const { data: testVideoUrl } = useQuery({
         queryKey: ["video", result.video_url],
@@ -929,14 +890,16 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
     return (
         <div className={cn(
             "group transition-all duration-300 bg-white",
-            isExpanded ? "m-4 rounded-xl border border-gray-200 shadow-sm" : "border-b border-gray-100 last:border-0 hover:bg-gray-50/80"
+            isDetail ? "overflow-hidden rounded-3xl border border-border shadow-[0_12px_40px_rgba(28,27,34,0.06)]"
+                : isExpanded ? "m-4 rounded-xl border border-gray-200 shadow-sm" : "border-b border-gray-100 last:border-0 hover:bg-gray-50/80"
         )}>
             <div
                 className={cn(
-                    "flex items-center justify-between p-4 cursor-pointer select-none",
-                    isExpanded && "bg-gray-50/50 rounded-t-xl"
+                    "flex items-center justify-between p-4",
+                    isDetail ? "px-6 pt-6 pb-2" : "cursor-pointer select-none",
+                    isExpanded && !isDetail && "bg-gray-50/50 rounded-t-xl"
                 )}
-                onClick={() => setIsExpanded(!isExpanded)}
+                onClick={isDetail ? undefined : () => setIsExpanded(!isExpanded)}
             >
                 <div className="flex items-center gap-4 flex-1 min-w-0 pr-4">
                     <div className={cn(
@@ -946,8 +909,9 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                 "bg-gray-400"
                     )} />
                     <span className={cn(
-                        "font-semibold text-sm truncate",
-                        isExpanded ? "text-primary" : "text-gray-800"
+                        "font-semibold truncate",
+                        isDetail ? "text-[22px] font-bold tracking-[-0.02em] text-ink whitespace-normal" : "text-sm",
+                        !isDetail && (isExpanded ? "text-primary" : "text-gray-800")
                     )} title={result.test_name}>
                         {result.test_name}
                     </span>
@@ -959,17 +923,19 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                     <span className={cn(
                         "font-bold uppercase text-[10px] tracking-wider px-3 py-1 rounded-full border",
                         result.status === 'passed' ? "bg-emerald-50 text-emerald-700 border-emerald-100" :
-                            isError ? "bg-rose-50 text-rose-700 border-rose-100" :
+                            isError ? "bg-pastel-peach/60 text-pastel-ink-peach border-transparent" :
                                 "bg-gray-50 text-gray-700 border-gray-200"
                     )}>
                         {result.status}
                     </span>
-                    <div className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300",
-                        isExpanded ? "bg-white shadow-sm rotate-180 text-primary border border-gray-200" : "text-gray-400 group-hover:text-gray-600"
-                    )}>
-                        <ChevronDown size={18} />
-                    </div>
+                    {!isDetail && (
+                        <div className={cn(
+                            "w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300",
+                            isExpanded ? "bg-white shadow-sm rotate-180 text-primary border border-gray-200" : "text-gray-400 group-hover:text-gray-600"
+                        )}>
+                            <ChevronDown size={18} />
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -984,11 +950,11 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                     >
                         <div className="p-5 space-y-6">
                             {result.error_message && (
-                                <div className="bg-rose-50 border border-rose-100 rounded-xl p-4">
-                                    <p className="text-[10px] font-bold text-rose-800 mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                                <div className="bg-pastel-peach/60 border border-transparent rounded-xl p-4">
+                                    <p className="text-[10px] font-bold text-pastel-ink-peach mb-2 uppercase tracking-wider flex items-center gap-1.5">
                                         <Bug size={14} /> Error Details
                                     </p>
-                                    <pre className="text-xs text-rose-700 whitespace-pre-wrap font-mono leading-relaxed custom-scrollbar max-h-48 overflow-y-auto">
+                                    <pre className="text-xs text-pastel-ink-peach whitespace-pre-wrap font-mono leading-relaxed custom-scrollbar max-h-48 overflow-y-auto">
                                         {result.error_message}
                                     </pre>
                                 </div>
@@ -1023,7 +989,7 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                                 {lp.thresholds.map((t: any) => (
                                                     <span key={t.name} className={cn(
                                                         "px-2.5 py-1 rounded-full border text-[11px] font-semibold tabular-nums",
-                                                        t.passed ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                                                        t.passed ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-pastel-peach/60 text-pastel-ink-peach border-transparent"
                                                     )}>
                                                         {t.name}: {t.actual == null ? 'n/a' : Math.round((t.actual + Number.EPSILON) * 1000) / 1000} / limit {t.limit}
                                                     </span>
@@ -1093,7 +1059,7 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                         {result.response_status && (
                                             <div>
                                                 <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Status</p>
-                                                <p className={cn("text-justify font-mono font-bold text-lg", result.response_status >= 400 ? 'text-rose-600' : 'text-emerald-600')}>
+                                                <p className={cn("text-justify font-mono font-bold text-lg", result.response_status >= 400 ? 'text-pastel-ink-peach' : 'text-emerald-600')}>
                                                     {result.response_status}
                                                 </p>
                                             </div>
@@ -1121,13 +1087,13 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                                 return (
                                                     <div className="space-y-4">
                                                         {/* AMP Summary Card */}
-                                                        <div className={`flex items-center gap-4 p-4 rounded-xl border ${isPass ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                                                        <div className={`flex items-center gap-4 p-4 rounded-xl border ${isPass ? 'bg-emerald-50 border-emerald-200' : 'bg-pastel-peach/60 border-transparent'}`}>
                                                             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${isPass ? 'bg-emerald-100' : 'bg-rose-100'}`}>
-                                                                <Zap size={24} className={isPass ? 'text-emerald-600' : 'text-rose-600'} />
+                                                                <Zap size={24} className={isPass ? 'text-emerald-600' : 'text-pastel-ink-peach'} />
                                                             </div>
                                                             <div className="flex-1">
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`text-lg font-bold ${isPass ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                                                    <span className={`text-lg font-bold ${isPass ? 'text-emerald-700' : 'text-pastel-ink-peach'}`}>
                                                                         AMP {ampData.amp_status}
                                                                     </span>
                                                                     {isPass ? <CheckCircle size={18} className="text-emerald-500" /> : <XCircle size={18} className="text-rose-500" />}
@@ -1137,7 +1103,7 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                                             <div className="flex gap-4 shrink-0">
                                                                 {ampData.error_count > 0 && (
                                                                     <div className="text-center">
-                                                                        <p className="text-2xl font-bold text-rose-600">{ampData.error_count}</p>
+                                                                        <p className="text-2xl font-bold text-pastel-ink-peach">{ampData.error_count}</p>
                                                                         <p className="text-[10px] font-bold text-rose-400 uppercase">Errors</p>
                                                                     </div>
                                                                 )}
@@ -1162,8 +1128,8 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                                                 <span className="text-[10px] font-bold text-rose-500 uppercase tracking-wider">Errors ({ampData.errors.length})</span>
                                                                 <div className="space-y-1.5 max-h-80 overflow-y-auto custom-scrollbar pr-1">
                                                                     {ampData.errors.map((issue: any, i: number) => (
-                                                                        <div key={`err-${i}`} className="flex items-start gap-3 p-3 bg-rose-50/50 border border-rose-100 rounded-lg text-sm">
-                                                                            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-rose-100 text-rose-700 rounded">ERR</span>
+                                                                        <div key={`err-${i}`} className="flex items-start gap-3 p-3 bg-pastel-peach/60/50 border border-transparent rounded-lg text-sm">
+                                                                            <span className="shrink-0 mt-0.5 px-1.5 py-0.5 text-[9px] font-bold uppercase bg-rose-100 text-pastel-ink-peach rounded">ERR</span>
                                                                             <div className="flex-1 min-w-0">
                                                                                 <p className="text-gray-800 text-xs leading-relaxed">{issue.message}</p>
                                                                                 <div className="flex items-center gap-3 mt-1.5">
