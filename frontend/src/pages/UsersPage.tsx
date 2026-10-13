@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     getWorkspaces,
@@ -13,26 +13,12 @@ import {
     inviteUserToProject,
     Workspace,
     DetailedMember,
+    Project,
     Role
 } from '@/lib/api';
 import { usePermission } from '@/hooks/usePermission';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import {
-    Table,
-    TableBody,
-    TableCell,
-    TableHead,
-    TableHeader,
-    TableRow,
-} from "@/components/ui/table";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
     Dialog,
     DialogContent,
@@ -59,21 +45,18 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Badge } from "@/components/ui/badge";
-import {
-    User,
-    UserPlus,
-    Building,
-    MoreVertical,
-    Trash2,
-    Mail,
-    Shield,
-    Clock,
-    Search,
-    Loader2
-} from 'lucide-react';
+import { Trash2, Search, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import {
+    DetailCard, EmptyState, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/groupE/bits';
+
+// The tenant-wide ("all") listing adds the workspace name to each row.
+const workspaceOf = (m: DetailedMember): string | undefined => (m as DetailedMember & { workspace?: string }).workspace;
+const isAdminRole = (role?: string) => role === 'Workspace Admin' || role === 'admin';
+const inputCls = 'h-10 rounded-full px-4';
 
 export default function UsersPage() {
     const queryClient = useQueryClient();
@@ -83,7 +66,8 @@ export default function UsersPage() {
     const isTenantAdmin = can('tenant:manage_settings');
 
     // selectedWorkspaceId can be number or 'all'
-    const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | 'all' | null>(null);
+    const [pickedWorkspaceId, setSelectedWorkspaceId] = useState<number | 'all' | null>(null);
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showInviteDialog, setShowInviteDialog] = useState(false);
     const [inviteEmail, setInviteEmail] = useState('');
@@ -101,16 +85,10 @@ export default function UsersPage() {
         queryFn: getWorkspaces,
     });
 
-    useEffect(() => {
-        if (workspaces && workspaces.length > 0 && !selectedWorkspaceId) {
-            // If Tenant Admin, default to "all" if preferred, or just logic
-            if (isTenantAdmin) {
-                setSelectedWorkspaceId('all');
-            } else {
-                setSelectedWorkspaceId(workspaces[0].id);
-            }
-        }
-    }, [workspaces, selectedWorkspaceId, isTenantAdmin]);
+    // Until the user picks a scope: Tenant Admins default to "all", everyone
+    // else to their first workspace. Derived rather than set in an effect.
+    const selectedWorkspaceId: number | 'all' | null = pickedWorkspaceId
+        ?? (workspaces && workspaces.length > 0 ? (isTenantAdmin ? 'all' : workspaces[0].id) : null);
 
     // Fetch Roles
     const { data: roles } = useQuery<Role[]>({
@@ -145,7 +123,7 @@ export default function UsersPage() {
     // If inviteTargetWorkspaceId is set, fetch projects for that workspace.
     const targetWorkspaceForProjects = inviteTargetWorkspaceId === 'current' ? (selectedWorkspaceId !== 'all' ? selectedWorkspaceId : null) : (inviteTargetWorkspaceId === 'new' ? null : parseInt(inviteTargetWorkspaceId));
 
-    const { data: projects } = useQuery<any[]>({
+    const { data: projects } = useQuery<Project[]>({
         queryKey: ['workspaceProjects', targetWorkspaceForProjects],
         queryFn: () => getProjects(targetWorkspaceForProjects as number),
         enabled: !!targetWorkspaceForProjects && inviteScope === 'project'
@@ -233,7 +211,7 @@ export default function UsersPage() {
     const filteredMembers = members?.filter(m =>
         m.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         m.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        ((m as any).workspace || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (workspaceOf(m) || '').toLowerCase().includes(searchTerm.toLowerCase())
     ) || [];
 
     // Filter invitations
@@ -247,329 +225,306 @@ export default function UsersPage() {
 
     if (!selectedWorkspaceId && workspaces?.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center h-[50vh]">
-                <h2 className="text-xl font-semibold mb-2">No Workspaces Found</h2>
-                <p className="text-muted-foreground">You need to belong to a workspace to view users.</p>
+            <div className="flex flex-col gap-5">
+                <PageHeader title="Users" />
+                <EmptyState title="No workspaces found">You need to belong to a workspace to view users.</EmptyState>
             </div>
         );
     }
 
+    const isAll = selectedWorkspaceId === 'all';
+    const memberKey = (m: DetailedMember) => `m:${m.id}:${workspaceOf(m) ?? ''}`;
+    const inviteKey = (i: DetailedMember) => `i:${i.id}`;
+    const selectedMember = filteredMembers.find((m) => memberKey(m) === selectedKey) ?? null;
+    const selectedInvite = filteredInvitations.find((i) => inviteKey(i) === selectedKey) ?? null;
+    const nothingPicked = !selectedMember && !selectedInvite;
+    const member = selectedMember ?? (nothingPicked ? (filteredMembers[0] ?? null) : null);
+    const invite = member ? null : (selectedInvite ?? (nothingPicked ? (filteredInvitations[0] ?? null) : null));
+    const scopeName = isAll ? 'all workspaces' : workspaces?.find((w) => w.id === selectedWorkspaceId)?.name;
 
     return (
-        <div className="space-y-6 max-w-7xl mx-auto">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Users</h1>
-                    <div className="flex items-center gap-2 mt-2">
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Users"
+                subtitle={
+                    members
+                        ? `${filteredMembers.length} member${filteredMembers.length === 1 ? '' : 's'}${!isAll ? ` · ${filteredInvitations.length} pending invite${filteredInvitations.length === 1 ? '' : 's'}` : ''}${scopeName ? ` in ${scopeName}` : ''}`
+                        : 'People with access to your workspaces.'
+                }
+                actions={
+                    <>
                         <Select
                             value={selectedWorkspaceId?.toString() || ""}
-                            onValueChange={(val) => setSelectedWorkspaceId(val === 'all' ? 'all' : parseInt(val))}
+                            onValueChange={(val) => { setSelectedWorkspaceId(val === 'all' ? 'all' : parseInt(val)); setSelectedKey(null); }}
                         >
-                            <SelectTrigger className="w-[250px]">
-                                <SelectValue placeholder="Select Scope" />
+                            <SelectTrigger className="h-10 w-[230px] rounded-full px-4" aria-label="Workspace scope">
+                                <SelectValue placeholder="Select scope" />
                             </SelectTrigger>
                             <SelectContent>
                                 {isTenantAdmin && (
-                                    <SelectItem value="all" className="font-semibold">All Workspaces</SelectItem>
+                                    <SelectItem value="all" className="font-semibold">All workspaces</SelectItem>
                                 )}
                                 {workspaces?.map(ws => (
                                     <SelectItem key={ws.id} value={ws.id.toString()}>{ws.name}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {canManageUsers && (
-                        <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
-                            <DialogTrigger asChild>
-                                <Button className="gap-2">
-                                    <UserPlus className="h-4 w-4" />
-                                    Invite User
-                                </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                                <DialogHeader>
-                                    <DialogTitle>Invite User</DialogTitle>
-                                    <DialogDescription>
-                                        Send an invitation to join a workspace.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <form onSubmit={handleInvite} className="space-y-4 pt-4">
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">Email Address</label>
-                                        <div className="relative">
-                                            <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        {canManageUsers && (
+                            <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+                                <DialogTrigger asChild>
+                                    <Button>
+                                        <UserPlus className="h-4 w-4" />
+                                        Invite people
+                                    </Button>
+                                </DialogTrigger>
+                                <DialogContent>
+                                    <DialogHeader>
+                                        <DialogTitle>Invite people</DialogTitle>
+                                        <DialogDescription>
+                                            Send an invitation to join a workspace or a single project.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <form onSubmit={handleInvite} className="flex flex-col gap-4 pt-2">
+                                        <Field id="invite-email" label="Email address">
                                             <Input
+                                                id="invite-email"
                                                 type="email"
                                                 placeholder="colleague@company.com"
-                                                className="pl-9"
+                                                className={inputCls}
                                                 value={inviteEmail}
                                                 onChange={(e) => setInviteEmail(e.target.value)}
                                                 required
                                             />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">Invite To</label>
-                                        <Select value={inviteScope} onValueChange={(val: any) => setInviteScope(val)}>
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="workspace">Workspace</SelectItem>
-                                                <SelectItem value="project">Project</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                        </Field>
+                                        <Field id="invite-scope" label="Invite to">
+                                            <Select value={inviteScope} onValueChange={(val) => setInviteScope(val as 'workspace' | 'project')}>
+                                                <SelectTrigger id="invite-scope" className={inputCls}><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="workspace">Workspace</SelectItem>
+                                                    <SelectItem value="project">Project</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </Field>
 
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">Workspace</label>
-                                        <Select
-                                            value={inviteTargetWorkspaceId}
-                                            onValueChange={(val) => setInviteTargetWorkspaceId(val)}
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {selectedWorkspaceId !== 'all' && selectedWorkspaceId && (
-                                                    <SelectItem value="current">Current: {workspaces?.find(o => o.id === selectedWorkspaceId)?.name}</SelectItem>
-                                                )}
-                                                {workspaces?.filter(o => o.id !== selectedWorkspaceId).map(ws => (
-                                                    <SelectItem key={ws.id} value={ws.id.toString()}>
-                                                        {ws.name}
-                                                    </SelectItem>
-                                                ))}
-                                                {inviteScope !== 'project' && (
-                                                    <SelectItem value="new" className="text-primary font-medium">
-                                                        + Create New Workspace
-                                                    </SelectItem>
-                                                )}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+                                        <Field id="invite-workspace" label="Workspace">
+                                            <Select
+                                                value={inviteTargetWorkspaceId}
+                                                onValueChange={(val) => setInviteTargetWorkspaceId(val)}
+                                            >
+                                                <SelectTrigger id="invite-workspace" className={inputCls}>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {selectedWorkspaceId !== 'all' && selectedWorkspaceId && (
+                                                        <SelectItem value="current">Current: {workspaces?.find(o => o.id === selectedWorkspaceId)?.name}</SelectItem>
+                                                    )}
+                                                    {workspaces?.filter(o => o.id !== selectedWorkspaceId).map(ws => (
+                                                        <SelectItem key={ws.id} value={ws.id.toString()}>
+                                                            {ws.name}
+                                                        </SelectItem>
+                                                    ))}
+                                                    {inviteScope !== 'project' && (
+                                                        <SelectItem value="new" className="font-medium">
+                                                            Create a new workspace
+                                                        </SelectItem>
+                                                    )}
+                                                </SelectContent>
+                                            </Select>
+                                        </Field>
 
-                                    {inviteTargetWorkspaceId === 'new' && (
-                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
-                                            <label className="text-sm font-medium">New Workspace Name</label>
-                                            <div className="relative">
-                                                <Building className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                                        {inviteTargetWorkspaceId === 'new' && (
+                                            <Field id="invite-new-ws" label="New workspace name">
                                                 <Input
+                                                    id="invite-new-ws"
                                                     placeholder="My New Startup"
-                                                    className="pl-9"
+                                                    className={inputCls}
                                                     value={newWorkspaceName}
                                                     onChange={(e) => setNewWorkspaceName(e.target.value)}
                                                     required
                                                 />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {inviteScope === 'project' && (
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">Project</label>
-                                            <Select value={inviteProjectId} onValueChange={setInviteProjectId}>
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Select Project" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {projects?.map((p: any) => (
-                                                        <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
-                                                    ))}
-                                                    {projects?.length === 0 && <div className="p-2 text-sm text-muted-foreground">No projects found</div>}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    )}
-
-                                    <div className="space-y-2">
-                                        <label className="text-sm font-medium">Role</label>
-                                        {inviteScope === 'project' ? (
-                                            <Select value={inviteProjectRole} onValueChange={setInviteProjectRole}>
-                                                <SelectTrigger><SelectValue /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="admin">Project Admin</SelectItem>
-                                                    <SelectItem value="editor">Editor</SelectItem>
-                                                    <SelectItem value="viewer">Viewer</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        ) : (
-                                            <Select value={inviteRole} onValueChange={setInviteRole}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {workspaceRoles.map(role => (
-                                                        <SelectItem key={role.id} value={role.name === "Workspace Admin" ? "admin" : "member"}>
-                                                            <div className="flex items-center gap-2">
-                                                                {role.name === "Workspace Admin" ? <Shield className="h-4 w-4" /> : <User className="h-4 w-4" />}
-                                                                <span>{role.name.replace("Workspace ", "")}</span>
-                                                            </div>
-                                                        </SelectItem>
-                                                    ))}
-                                                    {workspaceRoles.length === 0 && (
-                                                        <SelectItem value="member">Member</SelectItem>
-                                                    )}
-                                                </SelectContent>
-                                            </Select>
+                                            </Field>
                                         )}
-                                    </div>
-                                    <DialogFooter>
-                                        <Button type="button" variant="outline" onClick={() => setShowInviteDialog(false)}>Cancel</Button>
-                                        <Button type="submit">
-                                            {/*inviteMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />*/}
-                                            Send Invitation
-                                        </Button>
-                                    </DialogFooter>
-                                </form>
-                            </DialogContent>
-                        </Dialog>
-                    )}
-                </div>
-            </div>
 
-            <Card>
-                <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <CardTitle>Organization Members</CardTitle>
-                        <div className="relative w-full sm:w-64">
-                            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                type="search"
-                                placeholder="Search users..."
-                                className="pl-9"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                </CardHeader>
-                <CardContent>
-                    {membersLoading && invitationsLoading ? (
-                        <div className="flex justify-center p-8">
-                            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                        </div>
-                    ) : (
-                        <div className="rounded-md border">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead>User</TableHead>
-                                        <TableHead>Role</TableHead>
-                                        {selectedWorkspaceId === 'all' && <TableHead>Workspace</TableHead>}
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>Last Active</TableHead>
-                                        <TableHead className="w-[50px]"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {/* Pending Invitations */}
-                                    {filteredInvitations.map((invite) => (
-                                        <TableRow key={`invite-${invite.id}`} className="bg-muted/30">
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-muted-foreground">{invite.email}</span>
-                                                    <span className="text-xs text-muted-foreground">Invitation Sent</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className="capitalize bg-background">
-                                                    {invite.role}
-                                                </Badge>
-                                            </TableCell>
-                                            {selectedWorkspaceId === 'all' && <TableCell>-</TableCell>}
-                                            <TableCell>
-                                                <Badge variant="secondary" className="gap-1">
-                                                    <Clock className="h-3 w-3" />
-                                                    Pending
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground text-sm">
-                                                -
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button variant="ghost" size="icon" disabled title="Revoke not implemented">
-                                                    <MoreVertical className="h-4 w-4 opacity-50" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                        {inviteScope === 'project' && (
+                                            <Field id="invite-project" label="Project">
+                                                <Select value={inviteProjectId} onValueChange={setInviteProjectId}>
+                                                    <SelectTrigger id="invite-project" className={inputCls}>
+                                                        <SelectValue placeholder="Select a project" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {projects?.map((p) => (
+                                                            <SelectItem key={p.id} value={p.id.toString()}>{p.name}</SelectItem>
+                                                        ))}
+                                                        {projects?.length === 0 && <div className="p-2 text-sm text-ink-soft">No projects found</div>}
+                                                    </SelectContent>
+                                                </Select>
+                                            </Field>
+                                        )}
 
-                                    {/* Active Members */}
-                                    {filteredMembers.map((member) => (
-                                        <TableRow key={member.id}>
-                                            <TableCell>
-                                                <div className="flex items-center gap-3">
-                                                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-medium">
-                                                        {(member.full_name?.[0] || member.email[0]).toUpperCase()}
-                                                    </div>
-                                                    <div className="flex flex-col">
-                                                        <span className="font-medium">{member.full_name || 'Unknown Name'}</span>
-                                                        <span className="text-xs text-muted-foreground">{member.email}</span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Badge variant={member.role === 'Workspace Admin' || member.role === 'admin' ? 'default' : 'outline'} className="capitalize">
-                                                    {member.role?.replace('Workspace ', '')}
-                                                </Badge>
-                                            </TableCell>
-                                            {selectedWorkspaceId === 'all' && (
-                                                <TableCell className="text-muted-foreground">
-                                                    {(member as any).workspace || '-'}
-                                                </TableCell>
+                                        <Field id="invite-role" label="Role">
+                                            {inviteScope === 'project' ? (
+                                                <Select value={inviteProjectRole} onValueChange={setInviteProjectRole}>
+                                                    <SelectTrigger id="invite-role" className={inputCls}><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="admin">Project Admin</SelectItem>
+                                                        <SelectItem value="editor">Editor</SelectItem>
+                                                        <SelectItem value="viewer">Viewer</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <Select value={inviteRole} onValueChange={setInviteRole}>
+                                                    <SelectTrigger id="invite-role" className={inputCls}>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {workspaceRoles.map(role => (
+                                                            <SelectItem key={role.id} value={role.name === "Workspace Admin" ? "admin" : "member"}>
+                                                                {role.name.replace("Workspace ", "")}
+                                                            </SelectItem>
+                                                        ))}
+                                                        {workspaceRoles.length === 0 && (
+                                                            <SelectItem value="member">Member</SelectItem>
+                                                        )}
+                                                    </SelectContent>
+                                                </Select>
                                             )}
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`h-2 w-2 rounded-full ${member.is_active ? 'bg-green-500' : 'bg-gray-300'}`} />
-                                                    <span className="text-sm capitalize">{member.status}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell className="text-sm text-muted-foreground">
-                                                {member.last_login_at
-                                                    ? formatDistanceToNow(new Date(member.last_login_at), { addSuffix: true })
-                                                    : 'Never'}
-                                            </TableCell>
-                                            <TableCell>
-                                                {canManageUsers && selectedWorkspaceId !== 'all' && (
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" size="icon">
-                                                                <MoreVertical className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <DropdownMenuItem
-                                                                className="text-destructive focus:text-destructive"
-                                                                onClick={() => setDeleteTarget(member)}
-                                                            >
-                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                Remove from Workspace
-                                                            </DropdownMenuItem>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                        </Field>
+                                        <DialogFooter>
+                                            <Button type="button" variant="outline" onClick={() => setShowInviteDialog(false)}>Cancel</Button>
+                                            <Button type="submit">Send invitation</Button>
+                                        </DialogFooter>
+                                    </form>
+                                </DialogContent>
+                            </Dialog>
+                        )}
+                    </>
+                }
+            />
 
-                                    {filteredMembers.length === 0 && filteredInvitations.length === 0 && (
-                                        <TableRow>
-                                            <TableCell colSpan={selectedWorkspaceId === 'all' ? 6 : 5} className="h-24 text-center text-muted-foreground">
-                                                No users found.
-                                            </TableCell>
-                                        </TableRow>
+            {membersLoading && invitationsLoading ? (
+                <ListSkeleton rows={4} />
+            ) : (
+                <SplitView
+                    list={
+                        <>
+                            <div className="relative">
+                                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
+                                <Input
+                                    type="search"
+                                    placeholder={isAll ? 'Search by name, email or workspace' : 'Search by name or email'}
+                                    aria-label="Search users"
+                                    className="h-10 rounded-full bg-white pl-10 pr-4"
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                            </div>
+                            {filteredMembers.length === 0 && filteredInvitations.length === 0 ? (
+                                <p className="px-2 py-6 text-center text-sm text-ink-soft">No users found.</p>
+                            ) : (
+                                <>
+                                    {filteredMembers.length > 0 && (
+                                        <ListGroup title="Members" count={filteredMembers.length}>
+                                            {filteredMembers.map((m) => (
+                                                <ListRow
+                                                    key={memberKey(m)}
+                                                    selected={!!member && memberKey(member) === memberKey(m)}
+                                                    onSelect={() => setSelectedKey(memberKey(m))}
+                                                    leading={<Avatar name={m.full_name || m.email} />}
+                                                    title={m.full_name || 'Unknown name'}
+                                                    meta={isAll ? `${m.email} · ${workspaceOf(m) || '-'}` : m.email}
+                                                    trailing={
+                                                        <Pill tone={isAdminRole(m.role) ? 'lavender' : 'neutral'} className="capitalize">
+                                                            {m.role?.replace('Workspace ', '')}
+                                                        </Pill>
+                                                    }
+                                                />
+                                            ))}
+                                        </ListGroup>
                                     )}
-                                </TableBody>
-                            </Table>
-                        </div>
+                                    {filteredInvitations.length > 0 && (
+                                        <ListGroup title="Pending invites" count={filteredInvitations.length}>
+                                            {filteredInvitations.map((i) => (
+                                                <ListRow
+                                                    key={inviteKey(i)}
+                                                    selected={!!invite && inviteKey(invite) === inviteKey(i)}
+                                                    onSelect={() => setSelectedKey(inviteKey(i))}
+                                                    leading={<Avatar name={i.email} />}
+                                                    title={i.email}
+                                                    meta="Invitation sent"
+                                                    trailing={<Pill tone="butter">Pending</Pill>}
+                                                />
+                                            ))}
+                                        </ListGroup>
+                                    )}
+                                </>
+                            )}
+                        </>
+                    }
+                    detail={member ? (
+                        <DetailCard label="Selected member">
+                            <div className="flex items-start gap-4">
+                                <Avatar name={member.full_name || member.email} />
+                                <div className="flex min-w-0 flex-col gap-1">
+                                    <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{member.full_name || 'Unknown name'}</h2>
+                                    <span className="break-all text-sm text-ink-soft">{member.email}</span>
+                                </div>
+                            </div>
+                            <Facts
+                                items={[
+                                    {
+                                        label: 'Role',
+                                        value: <Pill tone={isAdminRole(member.role) ? 'lavender' : 'neutral'} className="capitalize">{member.role?.replace('Workspace ', '')}</Pill>,
+                                    },
+                                    {
+                                        label: 'Status',
+                                        value: <Pill tone={member.is_active ? 'mint' : 'neutral'} className="capitalize">{member.status}</Pill>,
+                                    },
+                                    ...(isAll ? [{ label: 'Workspace', value: workspaceOf(member) || '-' }] : []),
+                                    {
+                                        label: 'Last active',
+                                        value: member.last_login_at
+                                            ? formatDistanceToNow(new Date(member.last_login_at), { addSuffix: true })
+                                            : 'Never',
+                                    },
+                                ]}
+                            />
+                            {canManageUsers && selectedWorkspaceId !== 'all' ? (
+                                <div className="flex flex-wrap gap-2.5">
+                                    <Button size="lg" variant="outline" className="text-pastel-ink-peach" onClick={() => setDeleteTarget(member)}>
+                                        <Trash2 className="h-4 w-4" />
+                                        Remove from workspace
+                                    </Button>
+                                </div>
+                            ) : isAll ? (
+                                <Panel title="Changing access" callout>
+                                    Pick a single workspace in the scope menu to remove people from it.
+                                </Panel>
+                            ) : null}
+                        </DetailCard>
+                    ) : invite ? (
+                        <DetailCard label="Selected invitation">
+                            <div className="flex flex-col gap-2">
+                                <Pill tone="butter" className="self-start">Pending</Pill>
+                                <h2 className="break-all text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{invite.email}</h2>
+                                <span className="text-sm text-ink-soft">Invitation sent{invite.created_at ? ` ${formatDistanceToNow(new Date(invite.created_at), { addSuffix: true })}` : ''}</span>
+                            </div>
+                            <Facts items={[{ label: 'Role', value: <span className="capitalize">{invite.role}</span> }]} />
+                            <Panel title="What happens next" callout>
+                                They join with this role once they accept. Revoking an invitation isn't available here yet.
+                            </Panel>
+                        </DetailCard>
+                    ) : (
+                        <EmptyState title="No one here yet">
+                            {canManageUsers ? 'Invite people to give them access.' : 'Nobody matches this scope or search.'}
+                        </EmptyState>
                     )}
-                </CardContent>
-            </Card>
+                />
+            )}
 
             <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
-                        <AlertDialogTitle>Remove User</AlertDialogTitle>
+                        <AlertDialogTitle>Remove user</AlertDialogTitle>
                         <AlertDialogDescription>
                             Are you sure you want to remove <strong>{deleteTarget?.full_name || deleteTarget?.email}</strong> from the workspace?
                             This will also remove them from all teams within the workspace. This action cannot be undone.
@@ -581,8 +536,7 @@ export default function UsersPage() {
                             onClick={confirmRemove}
                             className="bg-destructive hover:bg-destructive/90"
                         >
-                            {/*removeMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />*/}
-                            Remove User
+                            Remove user
                         </AlertDialogAction>
                     </AlertDialogFooter>
                 </AlertDialogContent>

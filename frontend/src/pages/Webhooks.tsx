@@ -1,15 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Webhook, Plus, RefreshCw, AlertCircle, Check, Copy, Trash2, Building2,
-  ShieldAlert, Layers, Info, Power, PowerOff, Radio,
+  Webhook, Plus, RefreshCw, Check, Copy, Trash2, Power, PowerOff,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -18,6 +13,12 @@ import { getWorkspaces, getProjects, Workspace, Project } from '@/lib/api';
 import {
   webhooksApi, WorkspaceWebhook, WebhookCreateResponse, WEBHOOK_EVENTS,
 } from '@/api/webhooks';
+import {
+  DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import type { Tone } from '@/components/redesign/kinds';
+import { Facts, Field, FormCard, ListSkeleton } from '@/components/redesign-local/groupE/bits';
+import { cn } from '@/lib/utils';
 
 interface ApiError extends Error {
   response?: { data?: { detail?: string } };
@@ -38,10 +39,10 @@ const formatDate = (dateString?: string | null) => {
 const parseEvents = (filter: string | null): string[] =>
   (filter || '').split(',').map((s) => s.trim()).filter(Boolean);
 
-const deliveryTone = (status: number | null): string => {
-  if (status === null) return 'bg-slate-50 text-slate-500 border-slate-200';
-  if (status >= 200 && status < 300) return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-  return 'bg-rose-50 text-rose-700 border-rose-200';
+const deliveryTone = (status: number | null): Tone => {
+  if (status === null) return 'neutral';
+  if (status >= 200 && status < 300) return 'mint';
+  return 'peach';
 };
 
 // ---------------------------------------------------------------------------
@@ -63,42 +64,32 @@ function SecretReveal({ created, onDismiss }: { created: WebhookCreateResponse; 
   };
 
   return (
-    <div className="bg-amber-50/70 border border-amber-200 rounded-2xl px-5 py-4 mb-4">
-      <div className="flex items-start gap-3">
-        <ShieldAlert className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-amber-800">
-            Webhook "{created.name}" created — copy its signing secret now
-          </p>
-          <p className="text-xs text-amber-700/80 mt-0.5">
+    <section
+      aria-label="New webhook signing secret"
+      className="flex flex-col gap-3 rounded-3xl border border-border bg-white p-6 shadow-[inset_4px_0_0_#F2C94C]"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <Pill tone="butter" className="self-start">Shown once</Pill>
+          <h2 className="text-base font-semibold text-ink">Copy the signing secret for “{created.name}” now</h2>
+          <p className="max-w-[64ch] text-[13px] leading-relaxed text-ink-soft">
             This is the only time the secret is shown. Use it to verify the{' '}
-            <code className="font-mono bg-white/70 px-1 rounded">X-TraceIQ-Signature</code> HMAC-SHA256
+            <code className="rounded bg-background px-1 font-mono">X-TraceIQ-Signature</code> HMAC-SHA256
             header on incoming deliveries. If it's lost, delete the webhook and create a new one.
           </p>
-          <div className="flex flex-col sm:flex-row gap-2 mt-3">
-            <code className="flex-1 text-xs font-mono bg-white border border-amber-200 text-slate-700 px-3 py-2 rounded-lg break-all select-all">
-              {created.secret}
-            </code>
-            <Button
-              size="sm"
-              onClick={copySecret}
-              className="bg-amber-600 hover:bg-amber-700 text-white rounded-xl h-9 px-4 shrink-0"
-            >
-              {copied ? <Check className="w-4 h-4 mr-1.5" /> : <Copy className="w-4 h-4 mr-1.5" />}
-              {copied ? 'Copied' : 'Copy secret'}
-            </Button>
-          </div>
         </div>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={onDismiss}
-          className="rounded-xl h-8 px-3 border-amber-200 text-amber-700 hover:bg-amber-100 shrink-0"
-        >
-          Done
+        <Button variant="outline" onClick={onDismiss}>Done</Button>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <code className="flex-1 select-all break-all rounded-2xl border border-border bg-background px-4 py-2.5 font-mono text-xs text-ink">
+          {created.secret}
+        </code>
+        <Button onClick={copySecret} className="shrink-0">
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          {copied ? 'Copied' : 'Copy secret'}
         </Button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -150,31 +141,29 @@ function CreateWebhookForm({
   };
 
   return (
-    <div className="bg-white border border-indigo-200 rounded-2xl shadow-sm px-5 py-4 mb-4">
-      <p className="text-sm font-bold text-slate-800 mb-3">New webhook</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Name</p>
+    <FormCard title="New webhook" subtitle="TraceIQ POSTs a signed JSON payload to this URL on each matching run event.">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Field id="hook-name" label="Name">
           <Input
+            id="hook-name"
             placeholder="e.g. ci-slack-relay"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="h-9 rounded-lg bg-white border-slate-200"
+            className="h-10 rounded-full px-4"
           />
-        </div>
-        <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Payload URL</p>
+        </Field>
+        <Field id="hook-url" label="Payload URL">
           <Input
+            id="hook-url"
             placeholder="https://example.com/hooks/traceiq"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            className="h-9 rounded-lg font-mono text-xs bg-white border-slate-200"
+            className="h-10 rounded-full px-4 font-mono text-xs"
           />
-        </div>
-        <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Project scope</p>
+        </Field>
+        <Field id="hook-project" label="Project scope">
           <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger className="h-9 rounded-lg bg-white border-slate-200">
+            <SelectTrigger id="hook-project" className="h-10 rounded-full px-4">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -184,54 +173,43 @@ function CreateWebhookForm({
               ))}
             </SelectContent>
           </Select>
-        </div>
-        <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Events</p>
-          <div className="flex flex-wrap gap-1.5 pt-1">
+        </Field>
+        <fieldset className="flex min-w-0 flex-col gap-1.5">
+          <legend className="mb-1.5 text-[13px] font-semibold text-ink">Events</legend>
+          <div className="flex flex-wrap gap-1.5">
             {WEBHOOK_EVENTS.map((evt) => {
               const on = events.includes(evt);
               return (
                 <button
                   key={evt}
                   type="button"
+                  aria-pressed={on}
                   onClick={() => toggleEvent(evt)}
-                  className={`text-xs font-mono px-2.5 py-1 rounded-lg border transition-colors ${on
-                    ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                    : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
+                  className={cn(
+                    'min-h-10 rounded-full border px-3.5 font-mono text-xs transition-colors',
+                    on ? 'border-transparent bg-pastel-lavender font-semibold text-pastel-ink-lavender' : 'border-border bg-white text-ink-soft hover:bg-background'
+                  )}
                 >
                   {evt}
                 </button>
               );
             })}
           </div>
-          <p className="text-[11px] text-slate-400 mt-1.5">
+          <p className="text-xs text-ink-soft">
             {events.length === 0 ? 'No filter — all run events are delivered.' : `${events.length} event(s) selected.`}
           </p>
-        </div>
+        </fieldset>
       </div>
-      <div className="flex gap-2 pt-4">
-        <Button
-          size="sm"
-          disabled={createMutation.isPending}
-          onClick={handleSubmit}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-9 px-4"
-        >
-          {createMutation.isPending
-            ? <RefreshCw className="w-4 h-4 mr-1.5 animate-spin" />
-            : <Check className="w-4 h-4 mr-1.5" />}
+      <div className="flex flex-wrap gap-2">
+        <Button disabled={createMutation.isPending} onClick={handleSubmit}>
+          {createMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
           Create webhook
         </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={createMutation.isPending}
-          onClick={onCancel}
-          className="rounded-xl h-9 px-4 border-slate-200 text-slate-500"
-        >
+        <Button variant="outline" disabled={createMutation.isPending} onClick={onCancel}>
           Cancel
         </Button>
       </div>
-    </div>
+    </FormCard>
   );
 }
 
@@ -244,6 +222,7 @@ export default function Webhooks() {
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [createdWebhook, setCreatedWebhook] = useState<WebhookCreateResponse | null>(null);
+  const [selectedHookId, setSelectedHookId] = useState<number | null>(null);
 
   const { data: workspaces } = useQuery<Workspace[]>({
     queryKey: ['workspaces'],
@@ -293,69 +272,55 @@ export default function Webhooks() {
     onError: (err: unknown) => toast.error(`Failed to delete webhook: ${errorDetail(err)}`),
   });
 
+  const all: WorkspaceWebhook[] = webhooks ?? [];
+  const groups = [
+    { name: 'Failing', items: all.filter((h) => h.is_active && h.failure_count > 0) },
+    { name: 'Active', items: all.filter((h) => h.is_active && h.failure_count === 0) },
+    { name: 'Disabled', items: all.filter((h) => !h.is_active) },
+  ].filter((g) => g.items.length > 0);
+  const selected = all.find((h) => h.id === selectedHookId) ?? groups[0]?.items[0] ?? null;
+  const scopeLabel = (h: WorkspaceWebhook) =>
+    h.project_id ? (projectNames.get(h.project_id) || `Project #${h.project_id}`) : 'Entire workspace';
+
   return (
-    <div className="max-w-[1200px] mx-auto pb-16">
-      <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-        <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-          <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Workspace Integrations</span>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-          <div>
-            <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Webhooks</h1>
-            <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-              Register endpoints to receive run events. TraceIQ POSTs a signed JSON payload on each
-              matching event, with an HMAC-SHA256 signature in the{' '}
-              <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-sm">X-TraceIQ-Signature</code> header.
-            </p>
-          </div>
-          <div className="sm:ml-auto shrink-0">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Workspace</p>
-            <Select
-              value={workspaceId?.toString() ?? ''}
-              onValueChange={(v) => { setSelectedWorkspaceId(parseInt(v)); setCreatedWebhook(null); setCreating(false); }}
-            >
-              <SelectTrigger className="w-[240px] h-10 rounded-xl bg-white border-slate-200">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Building2 className="w-4 h-4 text-indigo-500 shrink-0" />
+    <div className="flex flex-col gap-5">
+      <PageHeader
+        title="Webhooks"
+        subtitle={
+          webhooks
+            ? `${all.filter((h) => h.is_active).length} active of ${all.length} · signed run events sent to your endpoints`
+            : 'Signed run events sent to your endpoints.'
+        }
+        actions={
+          <>
+            {(workspaces?.length ?? 0) > 1 && (
+              <Select
+                value={workspaceId?.toString() ?? ''}
+                onValueChange={(v) => { setSelectedWorkspaceId(parseInt(v)); setCreatedWebhook(null); setCreating(false); setSelectedHookId(null); }}
+              >
+                <SelectTrigger className="h-10 w-[220px] rounded-full px-4" aria-label="Workspace">
                   <SelectValue placeholder="Select a workspace" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                {(workspaces || []).map((w) => (
-                  <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-      </div>
+                </SelectTrigger>
+                <SelectContent>
+                  {(workspaces || []).map((w) => (
+                    <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {workspaceId && (
+              <Button onClick={() => setCreating((c) => !c)}>
+                <Plus className="h-4 w-4" /> New webhook
+              </Button>
+            )}
+          </>
+        }
+      />
 
       {!workspaceId ? (
-        <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-          <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-800 mb-1">No Workspace Selected</h3>
-          <p className="text-slate-500 text-sm">Select a workspace above to manage its webhooks.</p>
-        </div>
+        <EmptyState title="No workspace selected">Select a workspace to manage its webhooks.</EmptyState>
       ) : (
         <>
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-start gap-2 text-xs text-slate-500 bg-indigo-50/60 border border-indigo-100 rounded-xl px-3 py-2.5 flex-1">
-              <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-px" />
-              <p>
-                The signing secret is shown <span className="font-semibold">once</span> at creation. Deliveries
-                that fail are retried and the failure count is tracked below — disable a webhook to stop delivery
-                without deleting it.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              onClick={() => setCreating((c) => !c)}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl h-9 px-4 shrink-0"
-            >
-              <Plus className="w-4 h-4 mr-1.5" /> New webhook
-            </Button>
-          </div>
-
           {createdWebhook && (
             <SecretReveal created={createdWebhook} onDismiss={() => setCreatedWebhook(null)} />
           )}
@@ -367,6 +332,7 @@ export default function Webhooks() {
               onCreated={(created) => {
                 setCreating(false);
                 setCreatedWebhook(created);
+                setSelectedHookId(created.id);
                 invalidate();
               }}
               onCancel={() => setCreating(false)}
@@ -374,126 +340,125 @@ export default function Webhooks() {
           )}
 
           {isLoading ? (
-            <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>
+            <ListSkeleton />
           ) : error ? (
-            <div className="p-10 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-              <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" />
-              <p className="text-rose-700 font-semibold">Failed to load webhooks</p>
-              <p className="text-rose-600/80 text-sm">{errorDetail(error)}</p>
-            </div>
-          ) : !webhooks || webhooks.length === 0 ? (
-            <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-              <Webhook className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-800 mb-1">No webhooks yet</h3>
-              <p className="text-slate-500 text-sm max-w-md mx-auto">
-                Register a webhook so external systems — Slack relays, dashboards, or your own services — are
-                notified when runs complete, pass or fail.
-              </p>
-            </div>
+            <EmptyState title="Couldn't load webhooks">{errorDetail(error)}</EmptyState>
+          ) : all.length === 0 ? (
+            <EmptyState title="No webhooks yet">
+              Register a webhook so external systems — Slack relays, dashboards, or your own services — are
+              notified when runs complete, pass or fail.
+            </EmptyState>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-slate-50/50">
-                    <TableRow className="border-slate-100 hover:bg-transparent">
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Endpoint</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Events</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Scope</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[100px]">Status</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[200px]">Last delivery</TableHead>
-                      <TableHead className="text-right font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[150px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {webhooks.map((hook: WorkspaceWebhook) => {
-                      const events = parseEvents(hook.event_filter);
-                      return (
-                        <TableRow key={hook.id} className="border-slate-100 hover:bg-slate-50/50 transition-colors align-top">
-                          <TableCell className="py-3">
-                            <span className="font-bold text-slate-800 text-sm">{hook.name}</span>
-                            <div className="text-xs text-slate-400 mt-0.5 font-mono break-all max-w-[280px]">{hook.url}</div>
-                          </TableCell>
-                          <TableCell className="py-3">
-                            {events.length === 0 ? (
-                              <Badge variant="outline" className="rounded-lg bg-slate-50 text-slate-600 border-slate-200 text-[10px] font-semibold">
-                                <Radio className="w-3 h-3 mr-1" /> all events
-                              </Badge>
-                            ) : (
-                              <div className="flex flex-wrap gap-1 max-w-[220px]">
-                                {events.map((e) => (
-                                  <code key={e} className="text-[10px] bg-indigo-50 text-indigo-700 border border-indigo-100 px-1.5 py-0.5 rounded">{e}</code>
-                                ))}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="py-3">
-                            {hook.project_id ? (
-                              <Badge variant="outline" className="rounded-lg bg-sky-50 text-sky-700 border-sky-200 text-[10px] font-semibold">
-                                <Layers className="w-3 h-3 mr-1" />
-                                {projectNames.get(hook.project_id) || `Project #${hook.project_id}`}
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="rounded-lg bg-slate-50 text-slate-600 border-slate-200 text-[10px] font-semibold">
-                                <Building2 className="w-3 h-3 mr-1" /> Workspace
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="py-3">
-                            <Badge variant="outline" className={`rounded-md text-[10px] font-bold uppercase ${hook.is_active
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-slate-50 text-slate-500 border-slate-200'}`}>
-                              {hook.is_active ? 'active' : 'disabled'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="py-3">
-                            {hook.last_delivery_at ? (
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={`rounded-md text-[10px] font-bold ${deliveryTone(hook.last_delivery_status)}`}>
-                                  {hook.last_delivery_status ?? '—'}
-                                </Badge>
-                                <span className="text-xs text-slate-500 whitespace-nowrap">{formatDate(hook.last_delivery_at)}</span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-slate-400">never delivered</span>
-                            )}
-                            {hook.failure_count > 0 && (
-                              <div className="text-[11px] text-rose-600 mt-0.5">{hook.failure_count} consecutive failure(s)</div>
-                            )}
-                          </TableCell>
-                          <TableCell className="py-3 text-right">
-                            <div className="flex justify-end gap-1.5">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={toggleMutation.isPending}
-                                onClick={() => toggleMutation.mutate({ id: hook.id, isActive: !hook.is_active })}
-                                className="h-8 rounded-lg text-xs border-slate-200 text-slate-600"
-                                title={hook.is_active ? 'Disable delivery' : 'Enable delivery'}
-                              >
-                                {hook.is_active ? <PowerOff className="w-3.5 h-3.5" /> : <Power className="w-3.5 h-3.5" />}
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={deleteMutation.isPending}
-                                onClick={() => {
-                                  if (window.confirm(`Delete webhook "${hook.name}"? Deliveries to this endpoint will stop immediately.`)) {
-                                    deleteMutation.mutate(hook.id);
-                                  }
-                                }}
-                                className="h-8 rounded-lg text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </div>
+            <SplitView
+              list={
+                <>
+                  {groups.map((g) => (
+                    <ListGroup key={g.name} title={g.name} count={g.items.length}>
+                      {g.items.map((hook) => (
+                        <ListRow
+                          key={hook.id}
+                          selected={selected?.id === hook.id}
+                          onSelect={() => setSelectedHookId(hook.id)}
+                          leading={
+                            <span
+                              aria-hidden="true"
+                              className={cn(
+                                'flex h-8 w-8 flex-none items-center justify-center rounded-[10px]',
+                                !hook.is_active ? 'bg-secondary text-ink-muted'
+                                  : hook.failure_count > 0 ? 'bg-pastel-peach text-pastel-ink-peach'
+                                    : 'bg-pastel-mint text-pastel-ink-mint'
+                              )}
+                            >
+                              <Webhook className="h-[15px] w-[15px]" strokeWidth={2.2} />
+                            </span>
+                          }
+                          title={hook.name}
+                          meta={<span className="block max-w-[260px] truncate font-mono">{hook.url}</span>}
+                          trailing={
+                            hook.last_delivery_at
+                              ? <Pill tone={deliveryTone(hook.last_delivery_status)}>{hook.last_delivery_status ?? '—'}</Pill>
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </ListGroup>
+                  ))}
+                  <p className="px-1 text-xs leading-relaxed text-ink-soft">
+                    The signing secret is shown once at creation. Failed deliveries are retried and counted —
+                    disable a webhook to stop delivery without deleting it.
+                  </p>
+                </>
+              }
+              detail={selected && (() => {
+                const events = parseEvents(selected.event_filter);
+                return (
+                  <DetailCard label="Selected webhook">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <Pill tone={selected.is_active ? 'mint' : 'neutral'}>{selected.is_active ? 'Active' : 'Disabled'}</Pill>
+                        {selected.failure_count > 0 && (
+                          <Pill tone="peach">{selected.failure_count} consecutive failure(s)</Pill>
+                        )}
+                      </div>
+                      <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.name}</h2>
+                      <span className="break-all font-mono text-xs text-ink-soft">{selected.url}</span>
+                    </div>
+
+                    <Facts
+                      items={[
+                        { label: 'Scope', value: scopeLabel(selected) },
+                        {
+                          label: 'Last delivery',
+                          value: selected.last_delivery_at
+                            ? <span className="flex flex-wrap items-center gap-2"><Pill tone={deliveryTone(selected.last_delivery_status)}>{selected.last_delivery_status ?? '—'}</Pill>{formatDate(selected.last_delivery_at)}</span>
+                            : 'Never delivered',
+                        },
+                        { label: 'Created', value: formatDate(selected.created_at) },
+                      ]}
+                    />
+
+                    <div className="flex flex-col gap-2">
+                      <Eyebrow>Events</Eyebrow>
+                      <div className="flex flex-wrap gap-1.5">
+                        {events.length === 0
+                          ? <Pill tone="neutral">All events</Pill>
+                          : events.map((e) => <Pill key={e} tone="lavender" className="font-mono">{e}</Pill>)}
+                      </div>
+                    </div>
+
+                    <Panel title="Verifying deliveries" callout>
+                      Each POST carries an HMAC-SHA256 signature of the body in the{' '}
+                      <code className="font-mono text-sm">X-TraceIQ-Signature</code> header, computed with the signing secret shown at creation.
+                    </Panel>
+
+                    <div className="flex flex-wrap gap-2.5">
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        disabled={toggleMutation.isPending}
+                        onClick={() => toggleMutation.mutate({ id: selected.id, isActive: !selected.is_active })}
+                      >
+                        {selected.is_active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                        {selected.is_active ? 'Disable delivery' : 'Enable delivery'}
+                      </Button>
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        disabled={deleteMutation.isPending}
+                        onClick={() => {
+                          if (window.confirm(`Delete webhook "${selected.name}"? Deliveries to this endpoint will stop immediately.`)) {
+                            deleteMutation.mutate(selected.id);
+                          }
+                        }}
+                        className="text-pastel-ink-peach"
+                      >
+                        <Trash2 className="h-4 w-4" /> Delete webhook
+                      </Button>
+                    </div>
+                  </DetailCard>
+                );
+              })()}
+            />
           )}
         </>
       )}
