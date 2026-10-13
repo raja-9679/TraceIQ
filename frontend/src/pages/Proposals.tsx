@@ -1,22 +1,21 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  Bot, Check, X, ChevronDown, ChevronRight, RefreshCw, AlertCircle, Inbox,
-  PlusCircle, PenLine, Trash2, MoveRight, Wrench, GitPullRequestArrow, FileText,
-  Zap,
-} from 'lucide-react';
+import { formatDistanceToNowStrict } from 'date-fns';
+import { Bot, Check, MoveRight, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table';
 import { toast } from 'sonner';
 import {
-  caseProposalsApi, healProposalsApi, getTestCaseInfo,
-  CaseProposal, HealProposal, ProposedStep, TestCaseInfo,
+    caseProposalsApi, healProposalsApi, getTestCaseInfo,
+    CaseProposal, HealProposal, ProposedStep, TestCaseInfo,
 } from '@/api/proposals';
 import { api, getProjects } from '@/lib/api';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
+import {
+    DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+} from '@/components/redesign/primitives';
+import type { Tone } from '@/components/redesign/kinds';
+import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
 // Auto-apply policy — workspace-level threshold above which agent CREATE /
@@ -24,115 +23,121 @@ import { api, getProjects } from '@/lib/api';
 // ---------------------------------------------------------------------------
 
 function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
-  const queryClient = useQueryClient();
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState('');
+    const queryClient = useQueryClient();
+    const [editing, setEditing] = useState(false);
+    const [value, setValue] = useState('');
 
-  const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
-  const workspaceId = projects?.find((p) => p.id === projectId)?.workspace_id;
+    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
+    const workspaceId = projects?.find((p) => p.id === projectId)?.workspace_id;
 
-  const { data: policy } = useQuery({
-    queryKey: ['proposal-policy', workspaceId],
-    queryFn: async () => (await api.get(`/workspaces/${workspaceId}/proposal-policy`)).data,
-    enabled: !!workspaceId,
-  });
+    const { data: policy } = useQuery({
+        queryKey: ['proposal-policy', workspaceId],
+        queryFn: async () => (await api.get(`/workspaces/${workspaceId}/proposal-policy`)).data,
+        enabled: !!workspaceId,
+    });
 
-  const saveMutation = useMutation({
-    // Only the fields being changed are sent: omitting a field leaves it alone
-    // server-side, so editing the threshold cannot silently switch the
-    // separate-approver control off.
-    mutationFn: async (patch: { auto_apply_threshold?: number | null; require_separate_approver?: boolean }) =>
-      (await api.put(`/workspaces/${workspaceId}/proposal-policy`, patch)).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['proposal-policy', workspaceId] });
-      setEditing(false);
-      toast.success('Proposal policy updated');
-    },
-    onError: (err: any) => toast.error('Failed to update policy', {
-      description: err.response?.data?.detail,
-    }),
-  });
+    const saveMutation = useMutation({
+        // Only the fields being changed are sent: omitting a field leaves it alone
+        // server-side, so editing the threshold cannot silently switch the
+        // separate-approver control off.
+        mutationFn: async (patch: { auto_apply_threshold?: number | null; require_separate_approver?: boolean }) =>
+            (await api.put(`/workspaces/${workspaceId}/proposal-policy`, patch)).data,
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['proposal-policy', workspaceId] });
+            setEditing(false);
+            toast.success('Proposal policy updated');
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onError: (err: any) => toast.error('Failed to update policy', {
+            description: err.response?.data?.detail,
+        }),
+    });
 
-  if (!workspaceId) return null;
-  const threshold: number | null = policy?.auto_apply_threshold ?? null;
-  const autoApplyOff = policy?.auto_apply_disabled_by_instance === true;
-  const enabled = !!threshold && threshold > 0 && !autoApplyOff;
-  // The instance policy is a floor the workspace cannot lower, so the stored
-  // flag and the effective one can differ.
-  const separationStored = policy?.require_separate_approver === true;
-  const separationEnforced = policy?.separation_enforced === true;
-  const forcedByInstance = separationEnforced && !separationStored;
+    if (!workspaceId) return null;
+    const threshold: number | null = policy?.auto_apply_threshold ?? null;
+    const autoApplyOff = policy?.auto_apply_disabled_by_instance === true;
+    const enabled = !!threshold && threshold > 0 && !autoApplyOff;
+    // The instance policy is a floor the workspace cannot lower, so the stored
+    // flag and the effective one can differ.
+    const separationStored = policy?.require_separate_approver === true;
+    const separationEnforced = policy?.separation_enforced === true;
+    const forcedByInstance = separationEnforced && !separationStored;
 
-  return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border shadow-sm ${enabled ? 'bg-amber-50 border-amber-200' : 'bg-white border-slate-200'}`}>
-      <Zap size={16} className={enabled ? 'text-amber-500' : 'text-slate-300'} />
-      {editing ? (
-        <>
-          <span className="text-xs font-semibold text-slate-600">Auto-apply when confidence ≥</span>
-          <Input
-            autoFocus
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="0.95"
-            className="h-8 w-20 rounded-lg text-sm font-mono"
-          />
-          <Button size="sm" className="h-8 rounded-lg" disabled={saveMutation.isPending}
-            onClick={() => {
-              const n = parseFloat(value);
-              if (value.trim() !== '' && (isNaN(n) || n < 0 || n > 1)) {
-                toast.error('Threshold must be between 0 and 1 (empty = off)');
-                return;
-              }
-              saveMutation.mutate({ auto_apply_threshold: value.trim() === '' || n === 0 ? null : n });
-            }}>
-            Save
-          </Button>
-          <Button size="sm" variant="ghost" className="h-8 rounded-lg" onClick={() => setEditing(false)}>Cancel</Button>
-        </>
-      ) : (
-        <>
-          <div className="text-xs">
-            <span className="font-bold text-slate-700">Auto-apply: </span>
-            {enabled ? (
-              <span className="font-mono font-bold text-amber-700">confidence ≥ {threshold!.toFixed(2)}</span>
-            ) : autoApplyOff ? (
-              <span className="text-slate-500">disabled instance-wide by an administrator</span>
-            ) : (
-              <span className="text-slate-400">off — every proposal waits here</span>
-            )}
-            <span className="text-slate-400"> · creates/updates only, all changes snapshotted</span>
-          </div>
-          <button
-            onClick={() => { setValue(threshold ? String(threshold) : ''); setEditing(true); }}
-            className="text-xs font-semibold text-indigo-600 hover:underline"
-          >
-            Edit
-          </button>
-          <span className="h-4 w-px bg-slate-200" aria-hidden />
-          <div className="text-xs">
-            <span className="font-bold text-slate-700">Second approver: </span>
-            {separationEnforced ? (
-              <span className="font-semibold text-emerald-700">required</span>
-            ) : (
-              <span className="text-slate-400">not required</span>
-            )}
-            {forcedByInstance && (
-              <span className="text-slate-400"> · enforced instance-wide</span>
-            )}
-          </div>
-          {!forcedByInstance && (
-            <button
-              onClick={() => saveMutation.mutate({ require_separate_approver: !separationStored })}
-              disabled={saveMutation.isPending}
-              className="text-xs font-semibold text-indigo-600 hover:underline disabled:opacity-50"
-            >
-              {separationStored ? 'Allow self-approval' : 'Require a second person'}
-            </button>
-          )}
-        </>
-      )}
-    </div>
-  );
+    return (
+        <section aria-label="Review policy" className="flex flex-col gap-3 rounded-2xl border border-border bg-white px-5 py-4 lg:flex-row lg:items-center lg:gap-6">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+                <span className="text-sm font-semibold text-ink">Auto-apply</span>
+                {editing ? (
+                    <>
+                        <label className="flex items-center gap-2 text-[13px] text-ink-soft">
+                            when confidence is at least
+                            <Input
+                                autoFocus
+                                value={value}
+                                onChange={(e) => setValue(e.target.value)}
+                                placeholder="0.95"
+                                aria-label="Auto-apply confidence threshold, 0 to 1"
+                                className="h-10 w-24 rounded-full font-mono text-sm"
+                            />
+                        </label>
+                        <Button size="sm" className="h-10 px-4" disabled={saveMutation.isPending}
+                            onClick={() => {
+                                const n = parseFloat(value);
+                                if (value.trim() !== '' && (isNaN(n) || n < 0 || n > 1)) {
+                                    toast.error('Threshold must be between 0 and 1 (empty = off)');
+                                    return;
+                                }
+                                saveMutation.mutate({ auto_apply_threshold: value.trim() === '' || n === 0 ? null : n });
+                            }}>
+                            Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-10 px-4" onClick={() => setEditing(false)}>Cancel</Button>
+                    </>
+                ) : (
+                    <>
+                        {enabled ? (
+                            <Pill tone="butter"><span className="font-mono">confidence ≥ {threshold!.toFixed(2)}</span></Pill>
+                        ) : autoApplyOff ? (
+                            <span className="text-[13px] text-ink-soft">Turned off for the whole instance by an administrator</span>
+                        ) : (
+                            <span className="text-[13px] text-ink-soft">Off. Every proposal waits here for a person.</span>
+                        )}
+                        <span className="text-[13px] text-ink-soft">Creates and updates only; every change is snapshotted.</span>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-10 px-4"
+                            onClick={() => { setValue(threshold ? String(threshold) : ''); setEditing(true); }}
+                        >
+                            Edit
+                        </Button>
+                    </>
+                )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                <span className="text-sm font-semibold text-ink">Second approver</span>
+                {separationEnforced ? (
+                    <Pill tone="mint">Required</Pill>
+                ) : (
+                    <span className="text-[13px] text-ink-soft">Not required</span>
+                )}
+                {forcedByInstance && (
+                    <span className="text-[13px] text-ink-soft">Enforced for the whole instance</span>
+                )}
+                {!forcedByInstance && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-10 px-4"
+                        onClick={() => saveMutation.mutate({ require_separate_approver: !separationStored })}
+                        disabled={saveMutation.isPending}
+                    >
+                        {separationStored ? 'Allow self-approval' : 'Require a second person'}
+                    </Button>
+                )}
+            </div>
+        </section>
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -140,112 +145,121 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
 // ---------------------------------------------------------------------------
 
 const formatDate = (dateString?: string | null) => {
-  if (!dateString) return '—';
-  return new Date(dateString).toLocaleString(undefined, {
-    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
+    if (!dateString) return '—';
+    return new Date(dateString).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
 };
+const ago = (iso: string | null | undefined) => (iso ? formatDistanceToNowStrict(new Date(iso), { addSuffix: true }) : '—');
 
 const stepSignature = (s: ProposedStep) =>
-  [s.type, s.selector || '', s.value || '', s.intent || ''].join('');
+    [s.type, s.selector || '', s.value || '', s.intent || ''].join('');
 
 const describeStep = (s: ProposedStep) => {
-  const parts: string[] = [s.type];
-  if (s.selector) parts.push(s.selector);
-  if (s.value) parts.push(`"${s.value}"`);
-  return parts.join('  ');
+    const parts: string[] = [s.type];
+    if (s.selector) parts.push(s.selector);
+    if (s.value) parts.push(`"${s.value}"`);
+    return parts.join('  ');
 };
 
 interface DiffRow {
-  kind: 'same' | 'changed' | 'added' | 'removed';
-  current: ProposedStep | null;
-  proposed: ProposedStep | null;
+    kind: 'same' | 'changed' | 'added' | 'removed';
+    current: ProposedStep | null;
+    proposed: ProposedStep | null;
 }
 
 /** Align current vs proposed steps — by step id when available, else by index. */
 function diffSteps(current: ProposedStep[], proposed: ProposedStep[]): DiffRow[] {
-  const rows: DiffRow[] = [];
-  const proposedById = new Map<string, number>();
-  proposed.forEach((s, i) => { if (s.id) proposedById.set(s.id, i); });
-  const usedProposed = new Set<number>();
+    const rows: DiffRow[] = [];
+    const proposedById = new Map<string, number>();
+    proposed.forEach((s, i) => { if (s.id) proposedById.set(s.id, i); });
+    const usedProposed = new Set<number>();
 
-  current.forEach((cur, idx) => {
-    let matchIdx: number | undefined;
-    if (cur.id && proposedById.has(cur.id)) {
-      matchIdx = proposedById.get(cur.id);
-    } else if (!cur.id && idx < proposed.length && !usedProposed.has(idx) && !proposed[idx].id) {
-      matchIdx = idx;
-    }
-    if (matchIdx !== undefined && !usedProposed.has(matchIdx)) {
-      usedProposed.add(matchIdx);
-      const prop = proposed[matchIdx];
-      rows.push({
-        kind: stepSignature(cur) === stepSignature(prop) ? 'same' : 'changed',
-        current: cur,
-        proposed: prop,
-      });
-    } else {
-      rows.push({ kind: 'removed', current: cur, proposed: null });
-    }
-  });
-  proposed.forEach((prop, i) => {
-    if (!usedProposed.has(i)) rows.push({ kind: 'added', current: null, proposed: prop });
-  });
-  return rows;
+    current.forEach((cur, idx) => {
+        let matchIdx: number | undefined;
+        if (cur.id && proposedById.has(cur.id)) {
+            matchIdx = proposedById.get(cur.id);
+        } else if (!cur.id && idx < proposed.length && !usedProposed.has(idx) && !proposed[idx].id) {
+            matchIdx = idx;
+        }
+        if (matchIdx !== undefined && !usedProposed.has(matchIdx)) {
+            usedProposed.add(matchIdx);
+            const prop = proposed[matchIdx];
+            rows.push({
+                kind: stepSignature(cur) === stepSignature(prop) ? 'same' : 'changed',
+                current: cur,
+                proposed: prop,
+            });
+        } else {
+            rows.push({ kind: 'removed', current: cur, proposed: null });
+        }
+    });
+    proposed.forEach((prop, i) => {
+        if (!usedProposed.has(i)) rows.push({ kind: 'added', current: null, proposed: prop });
+    });
+    return rows;
 }
 
-const ACTION_STYLES: Record<string, { label: string; className: string; Icon: typeof PlusCircle }> = {
-  create: { label: 'Create', className: 'bg-emerald-50 text-emerald-700 border-emerald-200', Icon: PlusCircle },
-  update: { label: 'Update', className: 'bg-sky-50 text-sky-700 border-sky-200', Icon: PenLine },
-  delete: { label: 'Delete', className: 'bg-rose-50 text-rose-700 border-rose-200', Icon: Trash2 },
-  move: { label: 'Move', className: 'bg-amber-50 text-amber-700 border-amber-200', Icon: MoveRight },
+const ACTION_STYLES: Record<string, { label: string; tone: Tone; verb: string }> = {
+    create: { label: 'Create', tone: 'mint', verb: 'add a new test' },
+    update: { label: 'Update', tone: 'lavender', verb: 'change an existing test' },
+    delete: { label: 'Delete', tone: 'peach', verb: 'delete a test' },
+    move: { label: 'Move', tone: 'butter', verb: 'move a test to another suite' },
 };
+// Risk first: a delete is the change most worth a second look.
+const ACTION_ORDER = ['delete', 'update', 'create', 'move'];
 
-const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-amber-50 text-amber-700 border-amber-200',
-  accepted: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  rejected: 'bg-rose-50 text-rose-700 border-rose-200',
-  auto_applied: 'bg-indigo-50 text-indigo-700 border-indigo-200',
+const STATUS_STYLES: Record<string, { label: string; tone: Tone }> = {
+    pending: { label: 'Waiting for review', tone: 'butter' },
+    accepted: { label: 'Accepted', tone: 'mint' },
+    rejected: { label: 'Rejected', tone: 'neutral' },
+    auto_applied: { label: 'Auto-applied', tone: 'lavender' },
 };
+const statusStyle = (s: string) => STATUS_STYLES[s] ?? { label: s, tone: 'neutral' as Tone };
 
 function ConfidenceBadge({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const tone = value >= 0.8
-    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-    : value >= 0.5
-      ? 'bg-amber-50 text-amber-700 border-amber-200'
-      : 'bg-slate-50 text-slate-500 border-slate-200';
-  return (
-    <Badge variant="outline" className={`text-[10px] font-bold rounded-md ${tone}`}>
-      {pct}% confidence
-    </Badge>
-  );
+    const pct = Math.round(value * 100);
+    const tone: Tone = value >= 0.8 ? 'mint' : value >= 0.5 ? 'butter' : 'neutral';
+    return <Pill tone={tone}>{pct}% confidence</Pill>;
+}
+
+function CodePaths({ paths, title }: { paths: string[]; title: string }) {
+    return (
+        <div className="flex flex-col gap-2">
+            <Eyebrow>{title}</Eyebrow>
+            <div className="flex flex-wrap gap-1.5">
+                {paths.map((p) => (
+                    <code key={p} className="rounded-full bg-background px-2.5 py-1 font-mono text-xs text-ink">{p}</code>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 function StepList({ steps, title }: { steps: ProposedStep[]; title?: string }) {
-  if (!steps.length) {
-    return <p className="text-sm text-slate-400 italic">No steps</p>;
-  }
-  return (
-    <div>
-      {title && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{title}</p>}
-      <ol className="space-y-1.5">
-        {steps.map((s, i) => (
-          <li key={s.id || i} className="flex items-start gap-2 text-sm">
-            <span className="shrink-0 w-6 h-6 rounded-md bg-slate-100 text-slate-500 text-xs font-bold flex items-center justify-center mt-0.5">
-              {i + 1}
-            </span>
-            <div className="min-w-0">
-              <span className="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded mr-2">{s.type}</span>
-              {s.selector && <code className="text-xs text-slate-600 break-all">{s.selector}</code>}
-              {s.value && <span className="text-xs text-slate-500 ml-1">= "{s.value}"</span>}
-              {s.intent && <p className="text-xs text-slate-400 italic mt-0.5">{s.intent}</p>}
-            </div>
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
+    if (!steps.length) {
+        return <p className="text-sm text-ink-soft">No steps</p>;
+    }
+    return (
+        <div className="flex flex-col gap-2">
+            {title && <Eyebrow>{title}</Eyebrow>}
+            <ol className="overflow-hidden rounded-2xl border border-border">
+                {steps.map((s, i) => (
+                    <li key={s.id || i} className={cn('flex items-start gap-3 px-4 py-3 text-sm', i > 0 && 'border-t border-[#F0EEE8]')}>
+                        <span className="mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded-full bg-secondary text-xs font-semibold text-ink-soft">
+                            {i + 1}
+                        </span>
+                        <div className="min-w-0">
+                            <span className="mr-2 rounded-md bg-pastel-lavender px-1.5 py-0.5 font-mono text-xs font-semibold text-pastel-ink-lavender">{s.type}</span>
+                            {s.selector && <code className="break-all font-mono text-xs text-ink">{s.selector}</code>}
+                            {s.value && <span className="ml-1 text-xs text-ink-soft">= "{s.value}"</span>}
+                            {s.intent && <p className="mt-0.5 text-xs text-ink-soft">{s.intent}</p>}
+                        </div>
+                    </li>
+                ))}
+            </ol>
+        </div>
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -253,384 +267,413 @@ function StepList({ steps, title }: { steps: ProposedStep[]; title?: string }) {
 // ---------------------------------------------------------------------------
 
 function DiffCell({ step, kind, side }: { step: ProposedStep | null; kind: DiffRow['kind']; side: 'current' | 'proposed' }) {
-  if (!step) return <div className="px-3 py-2 text-xs text-slate-300 italic bg-slate-50/50">—</div>;
-  const highlight =
-    kind === 'same' ? 'bg-white' :
-      kind === 'changed' ? (side === 'current' ? 'bg-rose-50/60' : 'bg-emerald-50/60') :
-        kind === 'added' ? 'bg-emerald-50/60' : 'bg-rose-50/60';
-  return (
-    <div className={`px-3 py-2 text-xs font-mono break-all ${highlight}`}>
-      {describeStep(step)}
-    </div>
-  );
+    if (!step) return <div className="h-full bg-background/60 px-3 py-2 text-xs text-ink-muted">—</div>;
+    const highlight =
+        kind === 'same' ? 'bg-white' :
+            kind === 'changed' ? (side === 'current' ? 'bg-pastel-peach/70' : 'bg-pastel-mint/70') :
+                kind === 'added' ? 'bg-pastel-mint/70' : 'bg-pastel-peach/70';
+    return (
+        <div className={cn('h-full break-all px-3 py-2 font-mono text-xs text-ink', highlight)}>
+            {describeStep(step)}
+        </div>
+    );
 }
 
 function UpdateDiff({ proposal }: { proposal: CaseProposal }) {
-  const { data: currentCase, isLoading, error } = useQuery<TestCaseInfo>({
-    queryKey: ['case', proposal.target_case_id],
-    queryFn: () => getTestCaseInfo(proposal.target_case_id!),
-    enabled: !!proposal.target_case_id,
-  });
+    const { data: currentCase, isLoading, error } = useQuery<TestCaseInfo>({
+        queryKey: ['case', proposal.target_case_id],
+        queryFn: () => getTestCaseInfo(proposal.target_case_id!),
+        enabled: !!proposal.target_case_id,
+    });
 
-  if (isLoading) return <div className="flex items-center gap-2 text-sm text-slate-400 py-4"><RefreshCw className="w-4 h-4 animate-spin" /> Loading current case…</div>;
-  if (error || !currentCase) return <p className="text-sm text-rose-600 py-2">Could not load current case #{proposal.target_case_id} for diffing.</p>;
+    if (isLoading) return <div className="h-24 animate-pulse rounded-2xl bg-background" aria-busy="true" aria-label="Loading current case" />;
+    if (error || !currentCase) return <p className="text-sm text-pastel-ink-peach">Could not load current case #{proposal.target_case_id} for diffing.</p>;
 
-  const proposedSteps = proposal.payload?.steps;
-  const proposedName = proposal.payload?.name;
-  const rows = proposedSteps ? diffSteps(currentCase.steps || [], proposedSteps) : [];
+    const proposedSteps = proposal.payload?.steps;
+    const proposedName = proposal.payload?.name;
+    const rows = proposedSteps ? diffSteps(currentCase.steps || [], proposedSteps) : [];
 
-  return (
-    <div className="space-y-4">
-      {proposedName && proposedName !== currentCase.name && (
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rename</span>
-          <span className="line-through text-rose-600">{currentCase.name}</span>
-          <MoveRight className="w-3.5 h-3.5 text-slate-400" />
-          <span className="font-semibold text-emerald-700">{proposedName}</span>
+    return (
+        <div className="flex flex-col gap-4">
+            {proposedName && proposedName !== currentCase.name && (
+                <div className="flex flex-col gap-2">
+                    <Eyebrow>Rename</Eyebrow>
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <span className="text-ink-soft line-through">{currentCase.name}</span>
+                        <MoveRight className="h-3.5 w-3.5 text-ink-soft" aria-label="becomes" />
+                        <span className="font-semibold text-ink">{proposedName}</span>
+                    </div>
+                </div>
+            )}
+            {proposedSteps ? (
+                <div className="flex flex-col gap-2">
+                    <Eyebrow right={<span className="flex items-center gap-3"><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#E0603A]" />removed or before</span><span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-[#8FD3B6]" />added or after</span></span>}>
+                        Step changes
+                    </Eyebrow>
+                    <div className="overflow-hidden rounded-2xl border border-border">
+                        <div className="grid grid-cols-2 border-b border-border bg-background">
+                            <div className="px-3 py-2 text-xs font-semibold text-ink-soft">Current steps ({currentCase.steps?.length || 0})</div>
+                            <div className="border-l border-border px-3 py-2 text-xs font-semibold text-ink-soft">Proposed steps ({proposedSteps.length})</div>
+                        </div>
+                        {rows.map((row, i) => (
+                            <div key={i} className="grid grid-cols-2 border-b border-[#F0EEE8] last:border-b-0">
+                                <DiffCell step={row.current} kind={row.kind} side="current" />
+                                <div className="border-l border-[#F0EEE8]">
+                                    <DiffCell step={row.proposed} kind={row.kind} side="proposed" />
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            ) : (
+                <p className="text-sm text-ink-soft">No step changes proposed (metadata-only update).</p>
+            )}
+            {proposal.payload?.code_paths && <CodePaths paths={proposal.payload.code_paths} title="Proposed code paths" />}
         </div>
-      )}
-      {proposedSteps ? (
-        <div className="border border-slate-200 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-2 bg-slate-50 border-b border-slate-200">
-            <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Current steps ({currentCase.steps?.length || 0})</div>
-            <div className="px-3 py-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest border-l border-slate-200">Proposed steps ({proposedSteps.length})</div>
-          </div>
-          {rows.map((row, i) => (
-            <div key={i} className="grid grid-cols-2 border-b border-slate-100 last:border-b-0">
-              <DiffCell step={row.current} kind={row.kind} side="current" />
-              <div className="border-l border-slate-100">
-                <DiffCell step={row.proposed} kind={row.kind} side="proposed" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-slate-500 italic">No step changes proposed (metadata-only update).</p>
-      )}
-      {proposal.payload?.code_paths && (
-        <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Proposed code paths</p>
-          <div className="flex flex-wrap gap-1.5">
-            {proposal.payload.code_paths.map((p) => (
-              <code key={p} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{p}</code>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    );
 }
 
 function DeleteDetail({ proposal }: { proposal: CaseProposal }) {
-  const { data: targetCase, isLoading } = useQuery<TestCaseInfo>({
-    queryKey: ['case', proposal.target_case_id],
-    queryFn: () => getTestCaseInfo(proposal.target_case_id!),
-    enabled: !!proposal.target_case_id,
-    retry: false,
-  });
+    const { data: targetCase, isLoading } = useQuery<TestCaseInfo>({
+        queryKey: ['case', proposal.target_case_id],
+        queryFn: () => getTestCaseInfo(proposal.target_case_id!),
+        enabled: !!proposal.target_case_id,
+        retry: false,
+    });
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-start gap-3 p-4 bg-rose-50/60 border border-rose-100 rounded-xl">
-        <Trash2 className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-sm font-bold text-rose-800">
-            {isLoading ? 'Loading case…' : targetCase ? `"${targetCase.name}"` : `Case #${proposal.target_case_id}`} will be permanently deleted
-          </p>
-          {targetCase && (
-            <p className="text-xs text-rose-600/80 mt-1">{targetCase.steps?.length || 0} steps · suite #{targetCase.test_suite_id ?? '—'}</p>
-          )}
-          {(proposal.payload?.reason || proposal.rationale) && (
-            <p className="text-sm text-slate-600 mt-2">{proposal.payload?.reason || proposal.rationale}</p>
-          )}
+    return (
+        <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3 rounded-2xl border border-border p-4">
+                <KindChip kind="failure" size="sm" />
+                <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink">
+                        {isLoading ? 'Loading case…' : targetCase ? `"${targetCase.name}"` : `Case #${proposal.target_case_id}`} will be permanently deleted
+                    </p>
+                    {targetCase && (
+                        <p className="mt-1 text-xs text-ink-soft">{targetCase.steps?.length || 0} steps · suite #{targetCase.test_suite_id ?? '—'}</p>
+                    )}
+                    {(proposal.payload?.reason || proposal.rationale) && (
+                        <p className="mt-2 text-sm text-ink">{proposal.payload?.reason || proposal.rationale}</p>
+                    )}
+                </div>
+            </div>
+            {targetCase && targetCase.steps?.length > 0 && (
+                <StepList steps={targetCase.steps} title="Steps being removed" />
+            )}
         </div>
-      </div>
-      {targetCase && targetCase.steps?.length > 0 && (
-        <StepList steps={targetCase.steps} title="Steps being removed" />
-      )}
-    </div>
-  );
+    );
 }
+
+function ProposalBody({ proposal }: { proposal: CaseProposal }) {
+    switch (proposal.action) {
+        case 'create':
+            return (
+                <div className="flex flex-col gap-4">
+                    <StepList steps={proposal.payload?.steps || []} title={`Proposed steps for "${proposal.payload?.name || 'Unnamed case'}"`} />
+                    {proposal.payload?.code_paths && proposal.payload.code_paths.length > 0 && (
+                        <CodePaths paths={proposal.payload.code_paths} title="Code paths" />
+                    )}
+                </div>
+            );
+        case 'update':
+            return <UpdateDiff proposal={proposal} />;
+        case 'delete':
+            return <DeleteDetail proposal={proposal} />;
+        case 'move':
+            return (
+                <p className="text-sm text-ink">
+                    Move case #{proposal.target_case_id} to suite #{proposal.payload?.new_test_suite_id ?? '—'}.
+                </p>
+            );
+        default:
+            return <pre className="overflow-x-auto rounded-2xl bg-background p-4 font-mono text-xs text-ink">{JSON.stringify(proposal.payload, null, 2)}</pre>;
+    }
+}
+
+const proposalTitle = (proposal: CaseProposal) =>
+    proposal.action === 'create'
+        ? proposal.payload?.name || 'New test case'
+        : proposal.payload?.name || `Case #${proposal.target_case_id}`;
+
+// ---------------------------------------------------------------------------
+// Test-proposal detail card
+// ---------------------------------------------------------------------------
 
 function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
-  switch (proposal.action) {
-    case 'create':
-      return (
-        <div className="space-y-4">
-          <StepList steps={proposal.payload?.steps || []} title={`Proposed steps for "${proposal.payload?.name || 'Unnamed case'}"`} />
-          {proposal.payload?.code_paths && proposal.payload.code_paths.length > 0 && (
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Code paths</p>
-              <div className="flex flex-wrap gap-1.5">
-                {proposal.payload.code_paths.map((p) => (
-                  <code key={p} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded">{p}</code>
-                ))}
-              </div>
+    const queryClient = useQueryClient();
+    const [note, setNote] = useState('');
+
+    const decideMutation = useMutation({
+        mutationFn: ({ decision }: { decision: 'accept' | 'reject' }) =>
+            decision === 'accept'
+                ? caseProposalsApi.accept(proposal.id, note || undefined)
+                : caseProposalsApi.reject(proposal.id, note || undefined),
+        onSuccess: (_data, vars) => {
+            queryClient.invalidateQueries({ queryKey: ['case-proposals'] });
+            queryClient.invalidateQueries({ queryKey: ['case', proposal.target_case_id] });
+            toast.success(vars.decision === 'accept' ? 'Proposal accepted and applied' : 'Proposal rejected');
+        },
+        onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
+            toast.error(`Failed to update proposal: ${err.response?.data?.detail || err.message}`),
+    });
+
+    const actionStyle = ACTION_STYLES[proposal.action] || ACTION_STYLES.update;
+    const st = statusStyle(proposal.status);
+
+    const facts: { tag: string; text: string; to?: string }[] = [
+        { tag: 'project', text: `Project #${proposal.project_id}` },
+    ];
+    if (proposal.test_suite_id != null) facts.push({ tag: 'suite', text: `Suite #${proposal.test_suite_id}`, to: `/suites/${proposal.test_suite_id}` });
+    if (proposal.source_run_id != null) facts.push({ tag: 'run', text: `Source run #${proposal.source_run_id}`, to: `/runs/${proposal.source_run_id}` });
+    if (proposal.decided_at) facts.push({ tag: 'decided', text: formatDate(proposal.decided_at) });
+
+    return (
+        <DetailCard label="Selected test proposal">
+            <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                    <Pill tone={actionStyle.tone}>{actionStyle.label}</Pill>
+                    <Pill tone={st.tone}>{st.label}</Pill>
+                    <ConfidenceBadge value={proposal.ai_confidence} />
+                </div>
+                <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{proposalTitle(proposal)}</h2>
+                <span className="flex flex-wrap items-center gap-1.5 text-sm text-ink-soft">
+                    <Bot className="h-4 w-4" aria-hidden="true" />
+                    {proposal.agent_id || 'An agent'} wants to {actionStyle.verb} · {formatDate(proposal.created_at)}
+                </span>
             </div>
-          )}
-        </div>
-      );
-    case 'update':
-      return <UpdateDiff proposal={proposal} />;
-    case 'delete':
-      return <DeleteDetail proposal={proposal} />;
-    case 'move':
-      return (
-        <p className="text-sm text-slate-600">
-          Move case #{proposal.target_case_id} to suite #{proposal.payload?.new_test_suite_id ?? '—'}.
-        </p>
-      );
-    default:
-      return <pre className="text-xs bg-slate-50 p-3 rounded-xl overflow-x-auto">{JSON.stringify(proposal.payload, null, 2)}</pre>;
-  }
+
+            {proposal.rationale && <Panel title="Why the agent proposes this" callout>{proposal.rationale}</Panel>}
+
+            <ProposalBody proposal={proposal} />
+
+            <EvidenceList items={facts} />
+
+            {proposal.status === 'pending' && (
+                <div className="flex flex-col gap-3 border-t border-border pt-5">
+                    <label className="flex flex-col gap-1.5 text-[13px] text-ink-soft">
+                        Review note (optional)
+                        <Input
+                            placeholder="Why you accepted or rejected it"
+                            value={note}
+                            onChange={(e) => setNote(e.target.value)}
+                            className="h-11 rounded-full bg-white text-ink"
+                        />
+                    </label>
+                    <div className="flex flex-wrap gap-2.5">
+                        <Button
+                            size="lg"
+                            disabled={decideMutation.isPending}
+                            onClick={() => decideMutation.mutate({ decision: 'accept' })}
+                        >
+                            <Check className="h-4 w-4" /> Accept and apply
+                        </Button>
+                        <Button
+                            size="lg"
+                            variant="outline"
+                            disabled={decideMutation.isPending}
+                            onClick={() => decideMutation.mutate({ decision: 'reject' })}
+                        >
+                            <X className="h-4 w-4" /> Reject
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </DetailCard>
+    );
+}
+
+function CaseProposalsView({ proposals }: { proposals: CaseProposal[] }) {
+    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const groups = ACTION_ORDER
+        .map((a) => ({ action: a, items: proposals.filter((p) => p.action === a) }))
+        .concat([{ action: 'other', items: proposals.filter((p) => !ACTION_ORDER.includes(p.action)) }])
+        .filter((g) => g.items.length > 0);
+    const selected = proposals.find((p) => p.id === selectedId) ?? groups[0]?.items[0] ?? null;
+
+    return (
+        <SplitView
+            list={groups.map((g) => (
+                <ListGroup key={g.action} title={ACTION_STYLES[g.action]?.label ?? 'Other'} count={g.items.length}>
+                    {g.items.map((p) => (
+                        <ListRow
+                            key={p.id}
+                            selected={selected?.id === p.id}
+                            onSelect={() => setSelectedId(p.id)}
+                            leading={<KindChip kind={p.status === 'accepted' ? 'pass' : p.status === 'rejected' ? 'skip' : 'review'} size="sm" />}
+                            title={<span className="line-clamp-2 break-words">{proposalTitle(p)}</span>}
+                            meta={`${p.agent_id || 'agent'} · ${ago(p.created_at)}`}
+                            trailing={<span className="font-mono text-xs tabular-nums text-ink-soft" title="Agent confidence">{Math.round(p.ai_confidence * 100)}%</span>}
+                        />
+                    ))}
+                </ListGroup>
+            ))}
+            detail={selected && <ProposalDetail key={selected.id} proposal={selected} />}
+        />
+    );
 }
 
 // ---------------------------------------------------------------------------
-// Test-proposal card
+// Heal proposals
 // ---------------------------------------------------------------------------
 
-function ProposalCard({ proposal }: { proposal: CaseProposal }) {
-  const queryClient = useQueryClient();
-  const [expanded, setExpanded] = useState(false);
-  const [note, setNote] = useState('');
-
-  const decideMutation = useMutation({
-    mutationFn: ({ decision }: { decision: 'accept' | 'reject' }) =>
-      decision === 'accept'
-        ? caseProposalsApi.accept(proposal.id, note || undefined)
-        : caseProposalsApi.reject(proposal.id, note || undefined),
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['case-proposals'] });
-      queryClient.invalidateQueries({ queryKey: ['case', proposal.target_case_id] });
-      toast.success(vars.decision === 'accept' ? 'Proposal accepted and applied' : 'Proposal rejected');
-    },
-    onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
-      toast.error(`Failed to update proposal: ${err.response?.data?.detail || err.message}`),
-  });
-
-  const actionStyle = ACTION_STYLES[proposal.action] || ACTION_STYLES.update;
-  const title =
-    proposal.action === 'create'
-      ? proposal.payload?.name || 'New test case'
-      : proposal.payload?.name || `Case #${proposal.target_case_id}`;
-
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-      <button
-        className="w-full flex items-center gap-3 px-5 py-4 text-left hover:bg-slate-50/60 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        {expanded ? <ChevronDown className="w-4 h-4 text-slate-400 shrink-0" /> : <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
-        <Badge variant="outline" className={`rounded-lg font-bold text-[10px] uppercase tracking-wide shrink-0 ${actionStyle.className}`}>
-          <actionStyle.Icon className="w-3 h-3 mr-1" /> {actionStyle.label}
-        </Badge>
-        <span className="font-bold text-slate-800 truncate">{title}</span>
-        <div className="ml-auto flex items-center gap-2 shrink-0">
-          <Badge variant="outline" className="rounded-lg bg-violet-50 text-violet-700 border-violet-200 text-[10px] font-semibold max-w-[160px] truncate">
-            <Bot className="w-3 h-3 mr-1 shrink-0" /> {proposal.agent_id || 'agent'}
-          </Badge>
-          <ConfidenceBadge value={proposal.ai_confidence} />
-          <Badge variant="outline" className={`rounded-lg text-[10px] font-bold uppercase ${STATUS_STYLES[proposal.status] || ''}`}>
-            {proposal.status}
-          </Badge>
-          <span className="text-xs text-slate-400 whitespace-nowrap hidden sm:inline">{formatDate(proposal.created_at)}</span>
-        </div>
-      </button>
-
-      {expanded && (
-        <div className="border-t border-slate-100 px-5 py-4 space-y-4 bg-slate-50/30">
-          {proposal.rationale && (
-            <div className="flex items-start gap-2 text-sm text-slate-600 bg-white border border-slate-100 rounded-xl p-3">
-              <FileText className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-              <p>{proposal.rationale}</p>
+function HealDetail({ proposal: p, caseName, onDecide, busy }: {
+    proposal: HealProposal;
+    caseName: string;
+    onDecide: (decision: 'accept' | 'reject') => void;
+    busy: boolean;
+}) {
+    const st = statusStyle(p.status);
+    return (
+        <DetailCard label="Selected heal proposal">
+            <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap gap-2">
+                    <Pill tone={st.tone}>{st.label}</Pill>
+                    <ConfidenceBadge value={p.confidence} />
+                </div>
+                <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{caseName}</h2>
+                <span className="text-sm text-ink-soft">
+                    Step <span className="font-mono">{p.step_id}</span> · proposed {formatDate(p.created_at)}
+                </span>
             </div>
-          )}
-          <ProposalDetail proposal={proposal} />
-          <div className="text-xs text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
-            <span>Project #{proposal.project_id}</span>
-            {proposal.test_suite_id != null && <span>Suite #{proposal.test_suite_id}</span>}
-            {proposal.source_run_id != null && <span>Source run #{proposal.source_run_id}</span>}
-            {proposal.decided_at && <span>Decided {formatDate(proposal.decided_at)}</span>}
-          </div>
-          {proposal.status === 'pending' && (
-            <div className="flex flex-col sm:flex-row gap-2 pt-1">
-              <Input
-                placeholder="Optional review note…"
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="bg-white border-slate-200 rounded-xl flex-1"
-              />
-              <div className="flex gap-2 shrink-0">
-                <Button
-                  size="sm"
-                  disabled={decideMutation.isPending}
-                  onClick={() => decideMutation.mutate({ decision: 'accept' })}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl h-10 px-4"
-                >
-                  <Check className="w-4 h-4 mr-1.5" /> Accept
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={decideMutation.isPending}
-                  onClick={() => decideMutation.mutate({ decision: 'reject' })}
-                  className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 rounded-xl h-10 px-4"
-                >
-                  <X className="w-4 h-4 mr-1.5" /> Reject
-                </Button>
-              </div>
+
+            <div className="flex flex-col gap-2">
+                <Eyebrow>Selector change</Eyebrow>
+                <div className="overflow-hidden rounded-2xl border border-border">
+                    <div className="flex items-start gap-3 px-4 py-3">
+                        <span className="w-14 flex-none pt-0.5 text-xs font-semibold text-ink-soft">Before</span>
+                        <code className="min-w-0 flex-1 break-all rounded-lg bg-pastel-peach/70 px-2 py-1 font-mono text-xs text-ink line-through decoration-ink-muted">
+                            {p.old_selector || '(none)'}
+                        </code>
+                    </div>
+                    <div className="flex items-start gap-3 border-t border-[#F0EEE8] px-4 py-3">
+                        <span className="w-14 flex-none pt-0.5 text-xs font-semibold text-ink-soft">After</span>
+                        <code className="min-w-0 flex-1 break-all rounded-lg bg-pastel-mint/70 px-2 py-1 font-mono text-xs text-ink">
+                            {p.new_selector}
+                        </code>
+                    </div>
+                </div>
             </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+
+            {(p.intent || p.rationale) && (
+                <Panel title="Why TraceIQ suggests this" callout>
+                    {p.intent && <p className="font-semibold">{p.intent}</p>}
+                    {p.rationale && <p className={cn(p.intent && 'mt-1')}>{p.rationale}</p>}
+                </Panel>
+            )}
+
+            <EvidenceList
+                items={[
+                    { tag: 'case', text: `Case #${p.test_case_id}` },
+                    ...(p.source_run_id != null ? [{ tag: 'run', text: `Found after run #${p.source_run_id}`, to: `/runs/${p.source_run_id}` }] : []),
+                ]}
+            />
+
+            {p.status === 'pending' && (
+                <div className="flex flex-wrap gap-2.5 border-t border-border pt-5">
+                    <Button size="lg" disabled={busy} onClick={() => onDecide('accept')}>
+                        <Check className="h-4 w-4" /> Apply to the test
+                    </Button>
+                    <Button size="lg" variant="outline" disabled={busy} onClick={() => onDecide('reject')}>
+                        <X className="h-4 w-4" /> Reject
+                    </Button>
+                </div>
+            )}
+        </DetailCard>
+    );
 }
-
-// ---------------------------------------------------------------------------
-// Heal-proposal tab
-// ---------------------------------------------------------------------------
 
 function HealProposalsTab({ status }: { status: string }) {
-  const queryClient = useQueryClient();
-  const { data: proposals, isLoading, error } = useQuery({
-    queryKey: ['heal-proposals', status],
-    queryFn: () => healProposalsApi.list(status || undefined),
-  });
-
-  const caseIds = useMemo(
-    () => Array.from(new Set((proposals || []).map((p) => p.test_case_id))),
-    [proposals],
-  );
-  const caseQueries = useQueries({
-    queries: caseIds.map((id) => ({
-      queryKey: ['case', id],
-      queryFn: () => getTestCaseInfo(id),
-      staleTime: 60_000,
-      retry: false,
-    })),
-  });
-  const caseNames = useMemo(() => {
-    const map = new Map<number, string>();
-    caseQueries.forEach((q, i) => {
-      if (q.data) map.set(caseIds[i], q.data.name);
+    const queryClient = useQueryClient();
+    const [selectedId, setSelectedId] = useState<number | null>(null);
+    const { data: proposals, isLoading, error } = useQuery({
+        queryKey: ['heal-proposals', status],
+        queryFn: () => healProposalsApi.list(status || undefined),
     });
-    return map;
-  }, [caseQueries, caseIds]);
 
-  const decideMutation = useMutation({
-    mutationFn: ({ id, decision }: { id: number; decision: 'accept' | 'reject' }) =>
-      decision === 'accept' ? healProposalsApi.accept(id) : healProposalsApi.reject(id),
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: ['heal-proposals'] });
-      toast.success(vars.decision === 'accept' ? 'Selector heal applied to the test case' : 'Heal proposal rejected');
-    },
-    onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
-      toast.error(`Failed to update heal proposal: ${err.response?.data?.detail || err.message}`),
-  });
-
-  if (isLoading) return <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>;
-  if (error) {
-    return (
-      <div className="p-10 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-        <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" />
-        <p className="text-rose-700 font-semibold">Failed to load heal proposals</p>
-        <p className="text-rose-600/80 text-sm">{(error as Error).message}</p>
-      </div>
+    const caseIds = useMemo(
+        () => Array.from(new Set((proposals || []).map((p) => p.test_case_id))),
+        [proposals],
     );
-  }
-  if (!proposals || proposals.length === 0) {
-    return (
-      <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-        <Wrench className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-        <h3 className="text-lg font-bold text-slate-800 mb-1">No {status || ''} heal proposals</h3>
-        <p className="text-slate-500 text-sm max-w-md mx-auto">
-          After successful runs, TraceIQ diffs stored selectors against the captured DOM and proposes heals for drifted selectors here.
-        </p>
-      </div>
-    );
-  }
+    const caseQueries = useQueries({
+        queries: caseIds.map((id) => ({
+            queryKey: ['case', id],
+            queryFn: () => getTestCaseInfo(id),
+            staleTime: 60_000,
+            retry: false,
+        })),
+    });
+    const caseNames = useMemo(() => {
+        const map = new Map<number, string>();
+        caseQueries.forEach((q, i) => {
+            if (q.data) map.set(caseIds[i], q.data.name);
+        });
+        return map;
+    }, [caseQueries, caseIds]);
 
-  return (
-    <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader className="bg-slate-50/50">
-            <TableRow className="border-slate-100 hover:bg-transparent">
-              <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Test Case</TableHead>
-              <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Selector Change</TableHead>
-              <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Context</TableHead>
-              <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[130px]">Confidence</TableHead>
-              <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[110px]">Created</TableHead>
-              <TableHead className="text-right font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[150px]">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {proposals.map((p: HealProposal) => (
-              <TableRow key={p.id} className="border-slate-100 hover:bg-slate-50/50 transition-colors align-top">
-                <TableCell className="py-4">
-                  <div className="font-bold text-slate-800 text-sm">{caseNames.get(p.test_case_id) || `Case #${p.test_case_id}`}</div>
-                  <div className="text-xs text-slate-400 mt-0.5 font-mono">step {p.step_id}</div>
-                  {p.source_run_id != null && <div className="text-[10px] text-slate-400 mt-0.5">from run #{p.source_run_id}</div>}
-                </TableCell>
-                <TableCell className="py-4">
-                  <div className="space-y-1 max-w-[340px]">
-                    <code className="block text-xs bg-rose-50 text-rose-700 border border-rose-100 px-2 py-1 rounded-md break-all line-through decoration-rose-300">
-                      {p.old_selector || '(none)'}
-                    </code>
-                    <code className="block text-xs bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-1 rounded-md break-all">
-                      {p.new_selector}
-                    </code>
-                  </div>
-                </TableCell>
-                <TableCell className="py-4">
-                  <div className="max-w-[280px]">
-                    {p.intent && <p className="text-xs font-semibold text-slate-600">{p.intent}</p>}
-                    {p.rationale && <p className="text-xs text-slate-400 mt-1 line-clamp-3" title={p.rationale}>{p.rationale}</p>}
-                    {!p.intent && !p.rationale && <span className="text-xs text-slate-300 italic">—</span>}
-                  </div>
-                </TableCell>
-                <TableCell className="py-4">
-                  <ConfidenceBadge value={p.confidence} />
-                  <div className="mt-1.5">
-                    <Badge variant="outline" className={`rounded-md text-[10px] font-bold uppercase ${STATUS_STYLES[p.status] || ''}`}>
-                      {p.status}
-                    </Badge>
-                  </div>
-                </TableCell>
-                <TableCell className="py-4 text-xs text-slate-500 whitespace-nowrap">{formatDate(p.created_at)}</TableCell>
-                <TableCell className="py-4 text-right">
-                  {p.status === 'pending' ? (
-                    <div className="flex justify-end gap-1.5">
-                      <Button
-                        size="sm"
-                        disabled={decideMutation.isPending}
-                        onClick={() => decideMutation.mutate({ id: p.id, decision: 'accept' })}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg h-8 px-3"
-                      >
-                        <Check className="w-3.5 h-3.5 mr-1" /> Apply
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={decideMutation.isPending}
-                        onClick={() => decideMutation.mutate({ id: p.id, decision: 'reject' })}
-                        className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 rounded-lg h-8 px-3"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-slate-400">—</span>
-                  )}
-                </TableCell>
-              </TableRow>
+    const decideMutation = useMutation({
+        mutationFn: ({ id, decision }: { id: number; decision: 'accept' | 'reject' }) =>
+            decision === 'accept' ? healProposalsApi.accept(id) : healProposalsApi.reject(id),
+        onSuccess: (_data, vars) => {
+            queryClient.invalidateQueries({ queryKey: ['heal-proposals'] });
+            toast.success(vars.decision === 'accept' ? 'Selector heal applied to the test case' : 'Heal proposal rejected');
+        },
+        onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
+            toast.error(`Failed to update heal proposal: ${err.response?.data?.detail || err.message}`),
+    });
+
+    if (isLoading) {
+        return (
+            <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
+            </div>
+        );
+    }
+    if (error) {
+        return <EmptyState title="Couldn't load heal proposals">{(error as Error).message}</EmptyState>;
+    }
+    if (!proposals || proposals.length === 0) {
+        return (
+            <EmptyState title={`No ${status ? `${statusStyle(status).label.toLowerCase()} ` : ''}heal proposals`}>
+                After successful runs, TraceIQ compares stored selectors with the captured page and suggests fixes for the ones that drifted.
+            </EmptyState>
+        );
+    }
+
+    const nameOf = (p: HealProposal) => caseNames.get(p.test_case_id) || `Case #${p.test_case_id}`;
+    const groups = [
+        { name: 'High confidence', items: proposals.filter((p) => p.confidence >= 0.8) },
+        { name: 'Worth a closer look', items: proposals.filter((p) => p.confidence < 0.8) },
+    ].filter((g) => g.items.length > 0);
+    const selected = proposals.find((p) => p.id === selectedId) ?? groups[0]?.items[0] ?? null;
+
+    return (
+        <SplitView
+            list={groups.map((g) => (
+                <ListGroup key={g.name} title={g.name} count={g.items.length}>
+                    {g.items.map((p) => (
+                        <ListRow
+                            key={p.id}
+                            selected={selected?.id === p.id}
+                            onSelect={() => setSelectedId(p.id)}
+                            leading={<KindChip kind={p.status === 'pending' ? 'review' : p.status === 'rejected' ? 'skip' : 'pass'} size="sm" />}
+                            title={<span className="line-clamp-2 break-words">{nameOf(p)}</span>}
+                            meta={`Step ${p.step_id}${p.source_run_id != null ? ` · run #${p.source_run_id}` : ''} · ${ago(p.created_at)}`}
+                            trailing={<span className="font-mono text-xs tabular-nums text-ink-soft" title="Confidence">{Math.round(p.confidence * 100)}%</span>}
+                        />
+                    ))}
+                </ListGroup>
             ))}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
+            detail={selected && (
+                <HealDetail
+                    key={selected.id}
+                    proposal={selected}
+                    caseName={nameOf(selected)}
+                    busy={decideMutation.isPending}
+                    onDecide={(decision) => decideMutation.mutate({ id: selected.id, decision })}
+                />
+            )}
+        />
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -639,113 +682,91 @@ function HealProposalsTab({ status }: { status: string }) {
 
 const CASE_STATUSES = ['pending', 'accepted', 'rejected'] as const;
 const HEAL_STATUSES = ['pending', 'accepted', 'rejected', 'auto_applied'] as const;
+const STATUS_FILTER_LABEL: Record<string, string> = {
+    pending: 'Waiting', accepted: 'Accepted', rejected: 'Rejected', auto_applied: 'Auto-applied',
+};
 
 export default function Proposals() {
-  const [projectId, setProjectId] = useState<number | null>(() => {
-    const saved = localStorage.getItem('activeProjectId');
-    return saved ? parseInt(saved) : null;
-  });
-  const [tab, setTab] = useState<'cases' | 'heals'>('cases');
-  const [status, setStatus] = useState<string>('pending');
+    const projectId = useActiveProjectId();
+    const [tab, setTab] = useState<'cases' | 'heals'>('cases');
+    const [status, setStatus] = useState<string>('pending');
 
-  useEffect(() => {
-    const handleProjectChange = () => {
-      const saved = localStorage.getItem('activeProjectId');
-      setProjectId(saved ? parseInt(saved) : null);
-    };
-    window.addEventListener('projectChanged', handleProjectChange);
-    return () => window.removeEventListener('projectChanged', handleProjectChange);
-  }, []);
+    const { data: caseProposals, isLoading, error } = useQuery({
+        queryKey: ['case-proposals', projectId, status],
+        queryFn: () => caseProposalsApi.list(projectId || undefined, status || undefined),
+        enabled: tab === 'cases' && !!projectId,
+    });
 
-  const { data: caseProposals, isLoading, error } = useQuery({
-    queryKey: ['case-proposals', projectId, status],
-    queryFn: () => caseProposalsApi.list(projectId || undefined, status || undefined),
-    enabled: tab === 'cases' && !!projectId,
-  });
+    const statuses = tab === 'cases' ? CASE_STATUSES : HEAL_STATUSES;
 
-  const statuses = tab === 'cases' ? CASE_STATUSES : HEAL_STATUSES;
+    const tabs = [
+        { id: 'cases' as const, label: 'Test changes' },
+        { id: 'heals' as const, label: 'Selector fixes' },
+    ];
 
-  return (
-    <div className="max-w-[1400px] mx-auto pb-16">
-      <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-        <div className="flex items-center text-sm text-slate-400 gap-2 mb-3">
-          <span className="font-bold text-slate-700 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-sm">Agent Review Queue</span>
-        </div>
-        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Proposal Review</h1>
-        <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-          Review changes proposed by AI agents before they touch the suite — new, updated or deleted test cases, and selector heals detected after runs.
-        </p>
-        {projectId && (
-          <div className="mt-4">
-            <AutoApplyPolicyCard projectId={projectId} />
-          </div>
-        )}
-      </div>
+    return (
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Proposals"
+                subtitle="Changes AI agents want to make to your tests. Nothing touches a suite until someone here accepts it."
+            />
 
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-6">
-        <div className="flex bg-white rounded-xl border border-slate-200 shadow-sm p-1">
-          <Button
-            variant="ghost" size="sm"
-            className={`px-4 h-9 rounded-lg ${tab === 'cases' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            onClick={() => { setTab('cases'); setStatus('pending'); }}
-          >
-            <GitPullRequestArrow className="w-4 h-4 mr-2" /> Test Proposals
-          </Button>
-          <Button
-            variant="ghost" size="sm"
-            className={`px-4 h-9 rounded-lg ${tab === 'heals' ? 'bg-slate-100 text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-            onClick={() => { setTab('heals'); setStatus('pending'); }}
-          >
-            <Wrench className="w-4 h-4 mr-2" /> Heal Proposals
-          </Button>
-        </div>
+            {projectId && <AutoApplyPolicyCard projectId={projectId} />}
 
-        <div className="flex gap-1.5 sm:ml-auto">
-          {statuses.map((s) => (
-            <Button
-              key={s}
-              variant="outline"
-              size="sm"
-              onClick={() => setStatus(s)}
-              className={`h-9 rounded-xl text-xs font-bold uppercase tracking-wide ${status === s
-                ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'}`}
-            >
-              {s.replace('_', ' ')}
-            </Button>
-          ))}
-        </div>
-      </div>
+            <div className="flex flex-wrap items-center gap-3">
+                <div role="tablist" aria-label="Proposal type" className="flex rounded-full border border-border bg-white p-1">
+                    {tabs.map((t) => (
+                        <button
+                            key={t.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={tab === t.id}
+                            onClick={() => { setTab(t.id); setStatus('pending'); }}
+                            className={cn(
+                                'min-h-10 rounded-full px-4 text-sm font-semibold transition-colors',
+                                tab === t.id ? 'bg-ink text-white' : 'text-ink hover:bg-secondary'
+                            )}
+                        >
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
 
-      {tab === 'heals' ? (
-        <HealProposalsTab status={status} />
-      ) : !projectId ? (
-        <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-          <AlertCircle className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-800 mb-1">No Project Selected</h3>
-          <p className="text-slate-500 text-sm">Select a project from the top navigation to view its proposal queue.</p>
+                <div className="flex flex-wrap gap-1.5 sm:ml-auto" aria-label="Filter by status" role="group">
+                    {statuses.map((s) => (
+                        <button
+                            key={s}
+                            type="button"
+                            aria-pressed={status === s}
+                            onClick={() => setStatus(s)}
+                            className={cn(
+                                'min-h-10 rounded-full border px-4 text-sm font-semibold transition-colors',
+                                status === s ? 'border-transparent bg-pastel-lavender text-pastel-ink-lavender' : 'border-border bg-white text-ink hover:bg-secondary'
+                            )}
+                        >
+                            {STATUS_FILTER_LABEL[s] ?? s.replace('_', ' ')}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {tab === 'heals' ? (
+                <HealProposalsTab status={status} />
+            ) : !projectId ? (
+                <EmptyState title="Pick a project">Choose a project in the sidebar to see its proposal queue.</EmptyState>
+            ) : isLoading ? (
+                <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
+                    {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
+                </div>
+            ) : error ? (
+                <EmptyState title="Couldn't load proposals">{(error as Error).message}</EmptyState>
+            ) : !caseProposals || caseProposals.length === 0 ? (
+                <EmptyState title={`No ${statusStyle(status).label.toLowerCase()} test proposals`}>
+                    When AI agents propose creating, updating or deleting tests, they land here for your review.
+                </EmptyState>
+            ) : (
+                <CaseProposalsView proposals={caseProposals} />
+            )}
         </div>
-      ) : isLoading ? (
-        <div className="p-12 flex justify-center"><RefreshCw className="animate-spin text-muted-foreground w-6 h-6" /></div>
-      ) : error ? (
-        <div className="p-10 text-center bg-rose-50 border border-rose-200 rounded-2xl">
-          <AlertCircle className="w-8 h-8 text-rose-500 mx-auto mb-3" />
-          <p className="text-rose-700 font-semibold">Failed to load proposals</p>
-          <p className="text-rose-600/80 text-sm">{(error as Error).message}</p>
-        </div>
-      ) : !caseProposals || caseProposals.length === 0 ? (
-        <div className="p-14 text-center bg-white border border-slate-200 rounded-2xl">
-          <Inbox className="w-10 h-10 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-slate-800 mb-1">No {status} test proposals</h3>
-          <p className="text-slate-500 text-sm max-w-md mx-auto">
-            When AI agents propose creating, updating or deleting test cases, they land here for your review.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {caseProposals.map((p) => <ProposalCard key={p.id} proposal={p} />)}
-        </div>
-      )}
-    </div>
-  );
+    );
 }
