@@ -1,9 +1,13 @@
 name: CI
 
+# Automatic triggers are switched off (owner's request, 2026-10-14): CI runs
+# only when started by hand from the Actions tab ("Run workflow"). To turn it
+# back on, restore:
+#   pull_request:
+#   push:
+#     branches: [main]
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
