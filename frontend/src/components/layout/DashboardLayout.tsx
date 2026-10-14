@@ -1,12 +1,6 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { Outlet, Link, useLocation, matchPath } from 'react-router-dom';
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import {
-    Inbox,
-    Flag,
-    FlaskConical,
-    Play,
-    Radio,
-    ShieldCheck,
     Settings,
     LogOut,
     Menu,
@@ -16,10 +10,10 @@ import {
     ChevronsUpDown,
     ChevronDown,
     Plus,
-    type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getProjects } from '@/lib/api';
+import { usePermission } from '@/hooks/usePermission';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -30,84 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
-
-type SubLink = { name: string; href: string };
-type Place = {
-    name: string;
-    href: string;
-    icon: LucideIcon;
-    // Route patterns that count as "inside" this place, so the sidebar keeps
-    // the right place highlighted on detail pages.
-    match: string[];
-    children: SubLink[];
-};
-
-// Redesign A: the old flat menu (one item per feature) regrouped by the
-// question you came with. Every existing page keeps a home.
-const places: Place[] = [
-    {
-        name: 'Today', href: '/', icon: Inbox,
-        match: ['/', '/overview', '/triage', '/proposals', '/flaky-tests', '/visual-review'],
-        children: [
-            { name: 'Inbox', href: '/' },
-            { name: 'Overview', href: '/overview' },
-            { name: 'Failure triage', href: '/triage' },
-            { name: 'Proposals', href: '/proposals' },
-            { name: 'Flaky tests', href: '/flaky-tests' },
-            { name: 'Visual review', href: '/visual-review' },
-        ],
-    },
-    {
-        name: 'Releases', href: '/quality', icon: Flag,
-        match: ['/quality', '/traceability', '/analytics'],
-        children: [
-            { name: 'Quality gate', href: '/quality' },
-            { name: 'Traceability', href: '/traceability' },
-            { name: 'Analytics', href: '/analytics' },
-        ],
-    },
-    {
-        name: 'Tests', href: '/suites', icon: FlaskConical,
-        match: ['/suites', '/suites/*', '/import-playwright', '/environments', '/app-builds', '/schedules'],
-        children: [
-            { name: 'Suites', href: '/suites' },
-            { name: 'Schedules', href: '/schedules' },
-            { name: 'Environments', href: '/environments' },
-            { name: 'App builds', href: '/app-builds' },
-            { name: 'Import Playwright', href: '/import-playwright' },
-        ],
-    },
-    {
-        name: 'Runs', href: '/runs', icon: Play,
-        match: ['/runs', '/runs/*'],
-        children: [],
-    },
-    {
-        name: 'Watch', href: '/monitors', icon: Radio,
-        match: ['/monitors'],
-        children: [],
-    },
-    {
-        name: 'Security', href: '/security', icon: ShieldCheck,
-        match: ['/security'],
-        children: [],
-    },
-];
-
-const setupLinks: SubLink[] = [
-    { name: 'Settings', href: '/settings' },
-    { name: 'Workspace', href: '/workspace' },
-    { name: 'Users', href: '/users' },
-    { name: 'Tenant admin', href: '/admin/users' },
-    { name: 'API keys', href: '/api-keys' },
-    { name: 'Webhooks', href: '/webhooks' },
-    { name: 'Issue trackers', href: '/issue-trackers' },
-    { name: 'AI usage', href: '/ai-usage' },
-    { name: 'Billing', href: '/billing' },
-];
-
-const isIn = (pathname: string, patterns: string[]) =>
-    patterns.some((p) => matchPath({ path: p, end: true }, pathname));
+import { places, setupLinks, isIn, isGroup, type SubLink } from './nav';
 
 function initials(name?: string | null, email?: string | null) {
     const src = (name || email || '?').trim();
@@ -130,6 +47,7 @@ function RailLink({ to, label, active, children }: { to: string; label: string; 
             to={to}
             aria-label={label}
             aria-current={active ? 'page' : undefined}
+            data-active={active || undefined}
             className={cn(
                 'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
                 active ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
@@ -155,6 +73,74 @@ function RailButton({ label, onClick, children }: { label: string; onClick: () =
     );
 }
 
+const placeRow = 'flex min-h-[42px] w-full items-center gap-3 rounded-xl px-3 text-sm transition-colors';
+const placeActive = 'bg-white font-semibold text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]';
+const placeIdle = 'font-medium text-ink/80 hover:bg-white/50';
+
+// Expanded sidebar group: the row toggles its sub-links; it is highlighted
+// while the current page is inside it, open or not.
+function NavGroup({ label, icon, active, open, onToggle, links, pathname }: {
+    label: string;
+    icon: ReactNode;
+    active: boolean;
+    open: boolean;
+    onToggle: () => void;
+    links: SubLink[];
+    pathname: string;
+}) {
+    const id = `nav-group-${label.toLowerCase()}`;
+    return (
+        <div className="flex flex-col">
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={open}
+                aria-controls={id}
+                data-active={active || undefined}
+                className={cn(placeRow, active ? placeActive : placeIdle)}
+            >
+                {icon}
+                <span className="flex-1 text-left">{label}</span>
+                <ChevronDown className={cn('h-4 w-4 text-ink-soft transition-transform', open && 'rotate-180')} />
+            </button>
+            {open && (
+                <div id={id} className="ml-[22px] mt-1 mb-1 flex flex-col gap-0.5 border-l border-ink/10 pl-3">
+                    {links.map((l) => {
+                        const on = pathname === l.href;
+                        return (
+                            <Link
+                                key={l.href}
+                                to={l.href}
+                                aria-current={on ? 'page' : undefined}
+                                className={cn(
+                                    'flex min-h-9 items-center rounded-lg px-2.5 text-[13px] transition-colors',
+                                    on ? 'bg-white/70 font-semibold text-ink' : 'text-ink-soft hover:bg-white/50 hover:text-ink'
+                                )}
+                            >
+                                {l.name}
+                            </Link>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Rail flyout items. asChild makes the menu item the link itself (one element
+// carries role=menuitem and the href) instead of a div nested in an <a>.
+function RailMenuLinks({ links, pathname }: { links: SubLink[]; pathname: string }) {
+    return (
+        <>
+            {links.map((l) => (
+                <DropdownMenuItem key={l.href} asChild className={pathname === l.href ? "bg-accent" : ""}>
+                    <Link to={l.href} aria-current={pathname === l.href ? 'page' : undefined}>{l.name}</Link>
+                </DropdownMenuItem>
+            ))}
+        </>
+    );
+}
+
 export default function DashboardLayout() {
     const { user, logout } = useAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -168,9 +154,16 @@ export default function DashboardLayout() {
         try { localStorage.setItem('traceiq.sidebarCollapsed', v ? '1' : '0'); } catch { /* per-browser nicety only */ }
     };
     const location = useLocation();
+    const { can } = usePermission();
+    // Links the backend would refuse are not offered (it still enforces).
+    const visibleSetup = setupLinks.filter((l) => !l.permission || can(l.permission));
     const inSetup = isIn(location.pathname, setupLinks.map((l) => l.href));
-    const [setupToggled, setSetupOpen] = useState(false);
-    const setupOpen = setupToggled || inSetup;
+    // Expanded sidebar: a group is open when the user opened it, or — until
+    // they toggle it — when the current page is inside it.
+    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
+    const groupOpen = (name: string, active: boolean) => openGroups[name] ?? active;
+    const toggleGroup = (name: string, active: boolean) =>
+        setOpenGroups((g) => ({ ...g, [name]: !(g[name] ?? active) }));
 
     // Close the mobile drawer on navigation (adjusting state during render,
     // not in an effect, so it doesn't cost an extra paint).
@@ -236,12 +229,12 @@ export default function DashboardLayout() {
                 </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
-            <Link to="/workspace">
-                <DropdownMenuItem>
+            <DropdownMenuItem asChild>
+                <Link to="/workspace">
                     <Plus className="h-4 w-4 mr-2" />
                     Manage projects
-                </DropdownMenuItem>
-            </Link>
+                </Link>
+            </DropdownMenuItem>
         </>
     );
 
@@ -299,80 +292,46 @@ export default function DashboardLayout() {
             <nav aria-label="Main" className="flex flex-col gap-0.5">
                 {places.map((place) => {
                     const active = isIn(location.pathname, place.match);
-                    return (
-                        <div key={place.name} className="flex flex-col">
+                    if (!isGroup(place)) {
+                        return (
                             <Link
+                                key={place.name}
                                 to={place.href}
                                 aria-current={active ? 'page' : undefined}
-                                className={cn(
-                                    'flex min-h-[42px] items-center gap-3 rounded-xl px-3 text-sm transition-colors',
-                                    active
-                                        ? 'bg-white font-semibold text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]'
-                                        : 'font-medium text-ink/80 hover:bg-white/50'
-                                )}
+                                data-active={active || undefined}
+                                className={cn(placeRow, active ? placeActive : placeIdle)}
                             >
                                 <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
                                 <span className="flex-1">{place.name}</span>
                             </Link>
-                            {active && place.children.length > 1 && (
-                                <div className="ml-[22px] mt-1 mb-1 flex flex-col gap-0.5 border-l border-ink/10 pl-3">
-                                    {place.children.map((c) => {
-                                        const on = location.pathname === c.href;
-                                        return (
-                                            <Link
-                                                key={c.href}
-                                                to={c.href}
-                                                aria-current={on ? 'page' : undefined}
-                                                className={cn(
-                                                    'flex min-h-9 items-center rounded-lg px-2.5 text-[13px] transition-colors',
-                                                    on ? 'bg-white/70 font-semibold text-ink' : 'text-ink-soft hover:bg-white/50 hover:text-ink'
-                                                )}
-                                            >
-                                                {c.name}
-                                            </Link>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
+                        );
+                    }
+                    const open = groupOpen(place.name, active);
+                    return (
+                        <NavGroup
+                            key={place.name}
+                            label={place.name}
+                            icon={<place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+                            active={active}
+                            open={open}
+                            onToggle={() => toggleGroup(place.name, active)}
+                            links={place.children}
+                            pathname={location.pathname}
+                        />
                     );
                 })}
             </nav>
 
             <div className="mt-auto flex flex-col gap-0.5">
-                <button
-                    type="button"
-                    onClick={() => setSetupOpen(!setupOpen)}
-                    aria-expanded={setupOpen}
-                    className={cn(
-                        'flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition-colors',
-                        inSetup ? 'font-semibold text-ink' : 'text-ink/80 hover:bg-white/50'
-                    )}
-                >
-                    <Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />
-                    <span className="flex-1 text-left">Setup</span>
-                    <ChevronDown className={cn('h-4 w-4 transition-transform', setupOpen && 'rotate-180')} />
-                </button>
-                {setupOpen && (
-                    <div className="ml-[22px] mb-1 flex flex-col gap-0.5 border-l border-ink/10 pl-3">
-                        {setupLinks.map((l) => {
-                            const on = location.pathname === l.href;
-                            return (
-                                <Link
-                                    key={l.href}
-                                    to={l.href}
-                                    aria-current={on ? 'page' : undefined}
-                                    className={cn(
-                                        'flex min-h-9 items-center rounded-lg px-2.5 text-[13px] transition-colors',
-                                        on ? 'bg-white/70 font-semibold text-ink' : 'text-ink-soft hover:bg-white/50 hover:text-ink'
-                                    )}
-                                >
-                                    {l.name}
-                                </Link>
-                            );
-                        })}
-                    </div>
-                )}
+                <NavGroup
+                    label="Setup"
+                    icon={<Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+                    active={inSetup}
+                    open={groupOpen('Setup', inSetup)}
+                    onToggle={() => toggleGroup('Setup', inSetup)}
+                    links={visibleSetup}
+                    pathname={location.pathname}
+                />
 
                 <div className="mt-2 flex items-center gap-2.5 rounded-xl px-3 py-2.5">
                     <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-ink text-xs font-bold text-white">
@@ -430,7 +389,7 @@ export default function DashboardLayout() {
             <nav aria-label="Main" className="flex flex-col items-center gap-1">
                 {places.map((place) => {
                     const active = isIn(location.pathname, place.match);
-                    if (place.children.length <= 1) {
+                    if (!isGroup(place)) {
                         return (
                             <RailLink key={place.name} to={place.href} label={place.name} active={active}>
                                 <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
@@ -445,6 +404,7 @@ export default function DashboardLayout() {
                                 <button
                                     type="button"
                                     aria-label={place.name}
+                                    data-active={active || undefined}
                                     className={cn(
                                         'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
                                         active ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
@@ -457,13 +417,7 @@ export default function DashboardLayout() {
                             <DropdownMenuContent side="right" align="start" sideOffset={10} className="w-52">
                                 <DropdownMenuLabel>{place.name}</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                {place.children.map((c) => (
-                                    <Link key={c.href} to={c.href}>
-                                        <DropdownMenuItem className={location.pathname === c.href ? "bg-accent" : ""}>
-                                            {c.name}
-                                        </DropdownMenuItem>
-                                    </Link>
-                                ))}
+                                <RailMenuLinks links={place.children} pathname={location.pathname} />
                             </DropdownMenuContent>
                         </DropdownMenu>
                     );
@@ -476,25 +430,20 @@ export default function DashboardLayout() {
                         <button
                             type="button"
                             aria-label="Setup"
-                            title="Setup"
+                            data-active={inSetup || undefined}
                             className={cn(
-                                'flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+                                'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
                                 inSetup ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
                             )}
                         >
                             <Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                            <RailLabel>Setup</RailLabel>
                         </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="end" sideOffset={10} className="w-52">
                         <DropdownMenuLabel>Setup</DropdownMenuLabel>
                         <DropdownMenuSeparator />
-                        {setupLinks.map((l) => (
-                            <Link key={l.href} to={l.href}>
-                                <DropdownMenuItem className={location.pathname === l.href ? "bg-accent" : ""}>
-                                    {l.name}
-                                </DropdownMenuItem>
-                            </Link>
-                        ))}
+                        <RailMenuLinks links={visibleSetup} pathname={location.pathname} />
                     </DropdownMenuContent>
                 </DropdownMenu>
                 <span

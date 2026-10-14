@@ -105,6 +105,7 @@ npm run build:local  # Build with local env
 npm run build:dev    # Build for dev environment
 npm run build:prod   # Build with production mode
 npm run lint         # ESLint
+npm test             # Vitest + Testing Library (jsdom); currently the sidebar nav suite
 ```
 
 ### Execution Engine (run from `execution-engine/`)

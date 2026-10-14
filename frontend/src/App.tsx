@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import Dashboard from "@/pages/Dashboard";
 import TodayInbox from "@/pages/TodayInbox";
@@ -57,8 +57,11 @@ function App() {
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>
-                <Route index element={<TodayInbox />} />
+                {/* Home is Overview (the old Dashboard) again; Inbox is kept
+                    at /inbox but is not in the sidebar. */}
+                <Route index element={<Navigate to="/overview" replace />} />
                 <Route path="overview" element={<Dashboard />} />
+                <Route path="inbox" element={<TodayInbox />} />
                 <Route path="runs" element={<TestMatrix />} />
                 <Route path="runs/:runId" element={<TestRunDetails />} />
                 <Route path="runs/:runId/comparison" element={<ComparisonView />} />
