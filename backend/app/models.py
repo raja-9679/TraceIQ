@@ -1729,6 +1729,9 @@ class ImpactAnalysisRequest(SQLModel):
     project_id: int
     changed_files: List[str]
     include_no_code_paths: bool = False  # if True, also list cases without code_paths
+    # Restrict matching to this suite and its descendants (targeted runs):
+    # a changed file covered only by cases outside it counts as unmatched.
+    suite_id: Optional[int] = None
 
 
 class ImpactMatch(SQLModel):

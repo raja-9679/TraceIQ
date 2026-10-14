@@ -191,3 +191,41 @@ async def test_full_and_single_case_runs_are_stamped(session, scene):
     assert {r.selection_total for r in full} == {4}
     single = await _create(session, scene, case_id=scene.root_cases[0], browser=["chromium"])
     assert {r.selection_mode for r in single} == {"case"}
+
+
+from app.api import agent_ownership                 # noqa: E402
+from app.models import ImpactAnalysisRequest        # noqa: E402
+
+
+async def _map(session, case_id, paths):
+    case = await session.get(TestCase, case_id)
+    case.code_paths = paths
+    session.add(case)
+    await session.commit()
+
+
+async def _impact(session, scene, files, suite_id=None):
+    return await agent_ownership.impact_analysis(
+        ImpactAnalysisRequest(project_id=scene.project_id, changed_files=files, suite_id=suite_id),
+        principal=AuthPrincipal(user=scene.user, api_key=None), session=session)
+
+
+async def test_suite_scope_limits_matches(session, scene):
+    await _map(session, scene.root_cases[0], ["src/cart/"])
+    await _map(session, scene.sibling_case, ["src/cart/"])
+    scoped = await _impact(session, scene, ["src/cart/a.ts"], suite_id=scene.root_id)
+    assert [c.id for c in scoped.matched_cases] == [scene.root_cases[0]]
+    unscoped = await _impact(session, scene, ["src/cart/a.ts"])
+    assert {c.id for c in unscoped.matched_cases} == {scene.root_cases[0], scene.sibling_case}
+
+
+async def test_file_matched_only_outside_suite_is_unmatched(session, scene):
+    await _map(session, scene.sibling_case, ["src/search/"])
+    r = await _impact(session, scene, ["src/search/q.ts"], suite_id=scene.root_id)
+    assert r.matched_cases == []
+    assert r.unmatched_files == ["src/search/q.ts"]
+
+
+async def test_suite_scope_counts_unmapped_cases_in_scope_only(session, scene):
+    r = await _impact(session, scene, ["x.ts"], suite_id=scene.root_id)
+    assert r.cases_without_code_paths == 4
