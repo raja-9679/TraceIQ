@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
+import { cn } from '@/lib/utils';
 import {
     Select,
     SelectContent,
@@ -45,6 +46,8 @@ interface StepComponentProps {
     /** URL prefilled into the element picker (usually the case's goto step) */
     pickerUrl?: string;
 }
+
+const stepAction = 'inline-flex h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40';
 
 export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast, pickerUrl }) => {
     const [showPicker, setShowPicker] = React.useState(false);
@@ -470,9 +473,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         variant="ghost"
                                         onClick={() => setShowPicker(true)}
                                         title="Pick element from a rendered page"
-                                        className="h-12 w-12 shrink-0 rounded-xl bg-white shadow-sm text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                        className="h-12 shrink-0 gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-slate-500 shadow-sm hover:bg-indigo-50 hover:text-indigo-600"
                                     >
-                                        <Crosshair size={18} />
+                                        <Crosshair size={16} /> Pick
                                     </Button>
                                 )}
 
@@ -918,17 +921,21 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                 )}
             </div>
 
-            {/* Quick Actions overlay via group hover - Dropped below step to avoid input overlap */}
-            <div className="absolute -bottom-4 right-4 items-center flex pointer-events-none z-30 opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0">
-                <div className="bg-slate-900 border border-slate-700 shadow-xl rounded-full px-2 py-1 flex flex-row items-center gap-1 pointer-events-auto transform transition-transform">
-                    <Button variant="ghost" size="icon" title="Move Up" onClick={() => moveStep(index, 'up')} disabled={isFirst} className="h-7 w-7 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"><ArrowUp size={14} /></Button>
-                    <div className="h-4 w-px bg-slate-700 my-auto mx-0.5" />
-                    <Button variant="ghost" size="icon" title="Move Down" onClick={() => moveStep(index, 'down')} disabled={isLast} className="h-7 w-7 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"><ArrowDown size={14} /></Button>
-                    <div className="h-4 w-px bg-slate-700 my-auto mx-0.5" />
-                    <Button variant="ghost" size="icon" title="Insert Step Below" onClick={() => insertStep(index)} className="h-7 w-7 rounded-full text-slate-400 hover:text-emerald-400 hover:bg-slate-700"><CheckSquare size={14} className="rotate-180" /></Button>
-                    <div className="h-4 w-px bg-slate-700 my-auto mx-0.5" />
-                    <Button variant="ghost" size="icon" title="Delete Step" onClick={() => removeStep(step.id)} className="h-7 w-7 rounded-full text-slate-400 hover:text-rose-400 hover:bg-slate-700"><Trash2 size={13} /></Button>
-                </div>
+            {/* Step actions: always visible and labelled, in flow under the card so
+                they never cover the next step. */}
+            <div className="mt-1.5 flex justify-end gap-1 pl-10 sm:pl-16">
+                <button type="button" onClick={() => moveStep(index, 'up')} disabled={isFirst} className={stepAction}>
+                    <ArrowUp size={12} /> Up
+                </button>
+                <button type="button" onClick={() => moveStep(index, 'down')} disabled={isLast} className={stepAction}>
+                    <ArrowDown size={12} /> Down
+                </button>
+                <button type="button" onClick={() => insertStep(index)} className={stepAction}>
+                    <PlusCircle size={12} /> Add below
+                </button>
+                <button type="button" onClick={() => removeStep(step.id)} className={cn(stepAction, 'hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50')}>
+                    <Trash2 size={12} /> Delete
+                </button>
             </div>
 
             <ElementPickerDialog
