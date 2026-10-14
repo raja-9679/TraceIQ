@@ -422,7 +422,7 @@ export default function DashboardLayout() {
                         {initials(activeProject?.name)}
                     </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start" className="w-56">
+                <DropdownMenuContent side="right" align="start" sideOffset={10} className="w-56">
                     {projectMenu}
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -430,10 +430,42 @@ export default function DashboardLayout() {
             <nav aria-label="Main" className="flex flex-col items-center gap-1">
                 {places.map((place) => {
                     const active = isIn(location.pathname, place.match);
+                    if (place.children.length <= 1) {
+                        return (
+                            <RailLink key={place.name} to={place.href} label={place.name} active={active}>
+                                <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                            </RailLink>
+                        );
+                    }
+                    // Grouped places open their pages in a menu, so every page
+                    // stays one click away without expanding the sidebar.
                     return (
-                        <RailLink key={place.name} to={place.href} label={place.name} active={active}>
-                            <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
-                        </RailLink>
+                        <DropdownMenu key={place.name}>
+                            <DropdownMenuTrigger asChild>
+                                <button
+                                    type="button"
+                                    aria-label={place.name}
+                                    className={cn(
+                                        'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+                                        active ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
+                                    )}
+                                >
+                                    <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                                    <RailLabel>{place.name}</RailLabel>
+                                </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent side="right" align="start" sideOffset={10} className="w-52">
+                                <DropdownMenuLabel>{place.name}</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {place.children.map((c) => (
+                                    <Link key={c.href} to={c.href}>
+                                        <DropdownMenuItem className={location.pathname === c.href ? "bg-accent" : ""}>
+                                            {c.name}
+                                        </DropdownMenuItem>
+                                    </Link>
+                                ))}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     );
                 })}
             </nav>
@@ -453,7 +485,7 @@ export default function DashboardLayout() {
                             <Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />
                         </button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="end" className="w-52">
+                    <DropdownMenuContent side="right" align="end" sideOffset={10} className="w-52">
                         <DropdownMenuLabel>Setup</DropdownMenuLabel>
                         <DropdownMenuSeparator />
                         {setupLinks.map((l) => (
