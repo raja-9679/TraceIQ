@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ArrowRight, Code2, Globe, Database, Check, Workflow, GitBranch, Users, ShieldCheck } from "lucide-react";
+import { Loader2, ArrowRight, Code2, Globe, Database, Check } from "lucide-react";
 import MfaEnrollment from "@/components/MfaEnrollment";
 import SweepShell from "@/components/auth-sweep/SweepShell";
 
@@ -120,16 +120,9 @@ export default function Signup() {
     </div>
     return (
         <SweepShell
-            badge="Quality intelligence platform"
-            title={<>Start verifying every release in minutes.</>}
+            eyebrow="Continuous verification"
+            title={<>Start checking everything<br />in minutes.</>}
             subtitle="Record a journey once. TraceIQ re-runs it across browsers, APIs and devices on every change, and heals what drifts."
-            points={[
-                { icon: Workflow, title: "Record once, run everywhere", desc: "Capture a journey and replay it across browsers, devices and environments." },
-                { icon: GitBranch, title: "Gate every pull request", desc: "CI, GitHub Action and agent APIs block regressions before they ship." },
-                { icon: Users, title: "Built for teams", desc: "Workspaces, teams and project-level roles from day one." },
-                { icon: ShieldCheck, title: "Secure by design", desc: "Encrypted secrets, data redaction and a tamper-evident audit trail." },
-            ]}
-            trust={["Self-hosted or cloud", "SSO-ready", "Role-based access"]}
         >
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}

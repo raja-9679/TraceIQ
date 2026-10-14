@@ -1,126 +1,113 @@
 import { useRef, useState, type ReactNode } from "react";
 import { motion } from "framer-motion";
-import { Check, Info, Sparkles, X, type LucideIcon } from "lucide-react";
+import { Check, Info, LayoutGrid, Sparkles, X } from "lucide-react";
 import SweepMap from "./SweepMap";
 import { NODES } from "./sweepScript";
 import { p95, useSweep, type LogStatus } from "./useSweep";
 
 const LOG_MARK: Record<LogStatus, ReactNode> = {
-    pass: <Check className="w-3 h-3 text-emerald-600 shrink-0" />,
-    heal: <Sparkles className="w-3 h-3 text-emerald-600 shrink-0" />,
-    fail: <X className="w-3 h-3 text-red-600 shrink-0" />,
-    info: <Info className="w-3 h-3 text-amber-600 shrink-0" />,
+    pass: <Check className="w-3 h-3 text-emerald-600" />,
+    heal: <Sparkles className="w-3 h-3 text-emerald-600" />,
+    fail: <X className="w-3 h-3 text-red-600" />,
+    info: <Info className="w-3 h-3 text-amber-600" />,
 };
 
-export interface ShellPoint { icon: LucideIcon; title: string; desc: string }
+function Stat({ label, value }: { label: string; value: ReactNode }) {
+    return (
+        <div className="flex items-baseline gap-1.5">
+            <span className="font-semibold text-zinc-900 tabular-nums">{value}</span>
+            <span className="text-zinc-500">{label}</span>
+        </div>
+    );
+}
 
 /**
- * Signed-out page frame. The scripted system sweep runs as a faded,
- * full-screen backdrop; in front of it sit a product panel (headline,
- * capability points, a one-line live status tied to the sweep, trust
- * signals) and the page's form. Typing in the form dims the backdrop.
+ * Signed-out page frame: the scripted system sweep on the left, the page's
+ * form in a white column on the right. Typing in the form dims the sweep
+ * (not focus: the first field autofocuses, which would dim it on load).
  * Below `lg` only the form is shown.
  */
-export default function SweepShell({ badge, title, subtitle, points, trust, children }: {
-    badge: string;
+export default function SweepShell({ eyebrow, title, subtitle, children }: {
+    eyebrow: string;
     title: ReactNode;
     subtitle: string;
-    points: ShellPoint[];
-    trust: string[];
     children: ReactNode;
 }) {
     const sweep = useSweep();
-    const [typing, setTyping] = useState(false);
-    const formRef = useRef<HTMLDivElement>(null);
+    const [focused, setFocused] = useState(false);
+    const formRef = useRef<HTMLElement>(null);
     const done = Object.values(sweep.status).filter((s) => s === "pass" || s === "healed").length;
-    const latest = sweep.logs[0];
 
     return (
-        <div className="min-h-screen w-full flex bg-[#FAFAFA] text-zinc-900 font-inter relative overflow-hidden">
-            <div
+        <div className="min-h-screen w-full flex bg-[#FAFAFA] text-zinc-900 font-inter">
+            <section
                 aria-hidden
-                className="absolute inset-0 z-0 hidden lg:block pointer-events-none"
+                className={`hidden lg:flex flex-1 min-w-0 flex-col px-10 xl:px-14 py-10 relative transition-opacity duration-500 ${focused ? "opacity-75" : ""}`}
                 style={{
                     backgroundImage: "radial-gradient(circle, #E4E4E7 1px, transparent 1px)",
-                    backgroundSize: "28px 28px",
+                    backgroundSize: "24px 24px",
                 }}
             >
-                <div className={`absolute inset-x-[4%] inset-y-[6%] transition-opacity duration-500 ${typing ? "opacity-20" : "opacity-35"}`}>
+                <div className="max-w-2xl">
+                    <div className="flex items-center gap-2 mb-6">
+                        <span className="w-8 h-8 rounded-xl bg-zinc-900 flex items-center justify-center">
+                            <LayoutGrid className="w-4 h-4 text-white" />
+                        </span>
+                        <span className="font-bold tracking-tight">TraceIQ</span>
+                        <span className="ml-2 px-2.5 py-0.5 rounded-full bg-white border border-zinc-200 text-[11px] font-medium text-zinc-600 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            {eyebrow}
+                        </span>
+                    </div>
+                    <h1 className="text-4xl xl:text-[44px] leading-[1.1] font-bold tracking-tight">{title}</h1>
+                    <p className="mt-3 text-base text-zinc-600 max-w-xl leading-relaxed">{subtitle}</p>
+                </div>
+
+                <div className="flex-1 min-h-[360px] my-8 pl-24 pr-6">
                     <SweepMap state={sweep} />
                 </div>
-            </div>
 
-            <div className="w-full max-w-7xl mx-auto flex items-center justify-center relative z-10 px-6 lg:px-12 min-h-screen py-10">
-                <div className="grid lg:grid-cols-2 gap-12 w-full items-center">
-                    <motion.div
-                        initial={{ opacity: 0, y: 12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="hidden lg:block rounded-3xl bg-white/85 backdrop-blur-md border border-zinc-200/80 shadow-[0_8px_32px_rgba(0,0,0,0.06)] overflow-hidden"
-                    >
-                        <div className="p-8 space-y-6">
-                            <div className="space-y-4">
-                                <span className="inline-block px-3 py-1 bg-zinc-900 text-white rounded-full text-xs font-medium">{badge}</span>
-                                <h1 className="text-4xl xl:text-[44px] leading-[1.1] font-bold tracking-tight">{title}</h1>
-                                <p className="text-base text-zinc-600 leading-relaxed max-w-lg">{subtitle}</p>
-                            </div>
-
-                            <ul className="grid grid-cols-2 gap-3">
-                                {points.map((p) => (
-                                    <li key={p.title} className="p-4 rounded-xl bg-white border border-zinc-200/80">
-                                        <span className="w-8 h-8 mb-3 rounded-lg bg-zinc-50 border border-zinc-100 flex items-center justify-center">
-                                            <p.icon className="w-4 h-4 text-indigo-600" />
-                                        </span>
-                                        <h3 className="text-sm font-semibold text-zinc-900">{p.title}</h3>
-                                        <p className="mt-1 text-xs text-zinc-500 leading-relaxed">{p.desc}</p>
-                                    </li>
-                                ))}
-                            </ul>
+                <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-1 px-5 py-3 border-b border-zinc-100 text-xs">
+                        <div className="flex items-center gap-2 font-semibold text-zinc-900">
+                            <span className={`w-2 h-2 rounded-full ${sweep.probe ? "bg-indigo-500 animate-pulse" : "bg-emerald-500"}`} />
+                            Sweep #{sweep.sweep}
+                            <span className="font-normal text-zinc-500">
+                                {done}/{NODES.length} systems verified
+                            </span>
                         </div>
-
-                        <div className="px-8 py-3 bg-zinc-50/80 border-t border-zinc-100 text-xs">
-                            <div className="flex items-center gap-2">
-                                <span className={`w-2 h-2 rounded-full shrink-0 ${sweep.probe ? "bg-indigo-500 animate-pulse" : "bg-emerald-500"}`} />
-                                <span className="font-semibold text-zinc-900">Live sweep #{sweep.sweep}</span>
-                                <span className="text-zinc-500 tabular-nums">
-                                    {done}/{NODES.length} systems · {sweep.healed} healed · p95 {p95(sweep.timings)} ms
-                                </span>
-                            </div>
-                            <div className="mt-1.5 h-4 flex items-center gap-2 font-mono text-[11px] text-zinc-600">
-                                {latest && (
-                                    <span className="flex items-center gap-2 min-w-0">
-                                        {LOG_MARK[latest.status]}
-                                        <span className="truncate">{latest.text}</span>
-                                        {latest.ms !== undefined && <span className="text-zinc-400 shrink-0">{latest.ms} ms</span>}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="px-8 py-3 border-t border-zinc-100 flex flex-wrap gap-x-5 gap-y-1">
-                            {trust.map((t) => (
-                                <span key={t} className="flex items-center gap-1.5 text-[11px] font-medium text-zinc-500">
-                                    <Check className="w-3 h-3 text-emerald-600" /> {t}
-                                </span>
-                            ))}
-                        </div>
-                    </motion.div>
-
-                    <div
-                        ref={formRef}
-                        onInput={() => setTyping(true)}
-                        onBlur={(e) => {
-                            if (!formRef.current?.contains(e.relatedTarget as Node | null)) setTyping(false);
-                        }}
-                        className="flex justify-center lg:justify-end"
-                    >
-                        {children}
+                        <Stat label="checks" value={sweep.checks} />
+                        <Stat label="passed" value={sweep.passed} />
+                        <Stat label="healed" value={sweep.healed} />
+                        <Stat label="p95" value={`${p95(sweep.timings)} ms`} />
                     </div>
+                    <ul className="px-5 py-3 h-[104px] overflow-hidden font-mono text-[11px] space-y-1">
+                        {sweep.logs.slice(0, 4).map((l, i) => (
+                            <motion.li
+                                key={l.id}
+                                initial={{ opacity: 0, y: -6 }}
+                                animate={{ opacity: 1 - i * 0.2, y: 0 }}
+                                className="flex items-center gap-2 text-zinc-700"
+                            >
+                                {LOG_MARK[l.status]}
+                                <span className="truncate">{l.text}</span>
+                                {l.ms !== undefined && <span className="ml-auto pl-3 text-zinc-400 shrink-0">{l.ms} ms</span>}
+                            </motion.li>
+                        ))}
+                    </ul>
                 </div>
-            </div>
+            </section>
 
-            <div className="absolute bottom-6 left-6 hidden lg:block text-[10px] uppercase tracking-wider text-zinc-400 font-medium z-10">
-                © {new Date().getFullYear()} TraceIQ
-            </div>
+            <main
+                ref={formRef}
+                onInput={() => setFocused(true)}
+                onBlur={(e) => {
+                    if (!formRef.current?.contains(e.relatedTarget as Node | null)) setFocused(false);
+                }}
+                className="w-full lg:w-[460px] xl:w-[520px] shrink-0 flex flex-col items-center justify-center px-6 py-10 bg-white lg:border-l border-zinc-200"
+            >
+                {children}
+            </main>
         </div>
     );
 }
