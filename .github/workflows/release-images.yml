@@ -8,10 +8,13 @@ name: Publish container images
 # That produces :0.1.0, :0.1, and :latest. Pushes to main publish :edge only, so
 # `latest` never moves without a deliberate tag.
 
+# Automatic triggers are switched off (owner's request, 2026-10-14): images
+# are published only when started by hand ("Run workflow"). To turn tag and
+# main-branch publishing back on, restore under `on:`:
+#   push:
+#     tags: ["v*.*.*"]
+#     branches: [main]
 on:
-  push:
-    tags: ["v*.*.*"]
-    branches: [main]
   workflow_dispatch:
     inputs:
       tag:
