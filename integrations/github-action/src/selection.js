@@ -24,4 +24,11 @@ function decideSelection({ mode, isPullRequest, impact, impactError }) {
     return { kind: 'targeted', caseIds: runnable.map((c) => c.id), skippedQuarantined, reason: null };
 }
 
-module.exports = { decideSelection };
+/** Matched cases that ran AND were flagged for review — a quarantined case
+ * is reported as skipped, so it must never also appear as "ran". */
+function reviewNotes(decision, matchedCases) {
+    const ran = new Set(decision.caseIds);
+    return (matchedCases || []).filter((c) => c.suggested_action === 'review' && ran.has(c.id));
+}
+
+module.exports = { decideSelection, reviewNotes };

@@ -119,8 +119,8 @@ async def create_run(
 
     # ── Targeted selection (case_ids) ───────────────────────────────────
     targeted_cases: List[TestCase] = []
-    scope_cases = await test_service.subtree_cases(suite_id, session)
-    selection_total = len(scope_cases)
+    scope_ids = set(await test_service.subtree_case_ids(suite_id, session))
+    selection_total = len(scope_ids)
     requested = context.case_ids if context else None
     if requested is not None:
         if case_id is not None or tags:
@@ -132,8 +132,7 @@ async def create_run(
         if len(wanted) > MAX_TARGETED_CASES:
             raise HTTPException(status_code=400,
                                 detail=f"case_ids exceeds {MAX_TARGETED_CASES} cases")
-        by_id = {c.id: c for c in scope_cases}
-        outside = [cid for cid in wanted if cid not in by_id]
+        outside = [cid for cid in wanted if cid not in scope_ids]
         if outside:
             raise HTTPException(status_code=400,
                                 detail=f"case_ids not in suite {suite_id}: {outside}")
@@ -142,7 +141,11 @@ async def create_run(
             select(FlakeRecord.test_case_id).where(
                 FlakeRecord.test_case_id.in_(wanted),
                 FlakeRecord.is_quarantined == True))).all())  # noqa: E712
-        targeted_cases = [by_id[cid] for cid in wanted if cid not in quarantined]
+        keep = [cid for cid in wanted if cid not in quarantined]
+        if keep:
+            rows = {c.id: c for c in (await session.exec(
+                select(TestCase).where(TestCase.id.in_(keep)))).all()}
+            targeted_cases = [rows[cid] for cid in keep]
         if not targeted_cases:
             raise HTTPException(status_code=400,
                                 detail="all selected cases are quarantined")

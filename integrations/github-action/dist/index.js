@@ -30,7 +30,14 @@ function decideSelection({ mode, isPullRequest, impact, impactError }) {
     return { kind: 'targeted', caseIds: runnable.map((c) => c.id), skippedQuarantined, reason: null };
 }
 
-module.exports = { decideSelection };
+/** Matched cases that ran AND were flagged for review — a quarantined case
+ * is reported as skipped, so it must never also appear as "ran". */
+function reviewNotes(decision, matchedCases) {
+    const ran = new Set(decision.caseIds);
+    return (matchedCases || []).filter((c) => c.suggested_action === 'review' && ran.has(c.id));
+}
+
+module.exports = { decideSelection, reviewNotes };
 
 
 /***/ }),
@@ -31876,7 +31883,7 @@ var __webpack_exports__ = {};
 // their compiled bundle).
 
 const core = __nccwpck_require__(24);
-const { decideSelection } = __nccwpck_require__(3822);
+const { decideSelection, reviewNotes } = __nccwpck_require__(3822);
 const github = __nccwpck_require__(1544);
 
 const TERMINAL = new Set(['passed', 'failed', 'error']);
@@ -32038,7 +32045,7 @@ function selectionSection(selection) {
     if (d && d.kind === 'targeted') {
         lines.push(`**Targeted run: ${d.caseIds.length} of ${selection.casesTotal ?? '?'} cases** — only the cases this diff touches ran.`, '');
         for (const q of d.skippedQuarantined) lines.push(`- skipped (quarantined): ${mdCell(q.name)}`);
-        const review = (selection.matchedCases || []).filter((c) => c.suggested_action === 'review');
+        const review = reviewNotes(d, selection.matchedCases);
         for (const c of review) lines.push(`- ran, **may need editing**: ${mdCell(c.name)} — ${mdCell((c.reasons || []).join('; '))}`);
         if (d.skippedQuarantined.length || review.length) lines.push('');
     } else if (d && d.kind === 'fallback') {

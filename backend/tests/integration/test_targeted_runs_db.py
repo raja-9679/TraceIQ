@@ -229,3 +229,14 @@ async def test_file_matched_only_outside_suite_is_unmatched(session, scene):
 async def test_suite_scope_counts_unmapped_cases_in_scope_only(session, scene):
     r = await _impact(session, scene, ["x.ts"], suite_id=scene.root_id)
     assert r.cases_without_code_paths == 4
+
+
+async def test_run_creation_never_loads_full_case_rows_for_the_scope(session, scene, monkeypatch):
+    """Sizing the scope must not materialise every case's steps (hot path)."""
+    async def boom(*a, **kw):
+        raise AssertionError("subtree_cases loads full rows; use ids only")
+    monkeypatch.setattr(test_service, "subtree_cases", boom)
+    full = await _create(session, scene, browser=["chromium"])
+    assert {r.selection_total for r in full} == {4}
+    picked = await _create(session, scene, case_ids=[scene.child_cases[0]], browser=["chromium"])
+    assert [r.test_case_id for r in picked] == [scene.child_cases[0]]

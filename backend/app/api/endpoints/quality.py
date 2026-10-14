@@ -168,15 +168,20 @@ def coverage_check(finished_runs: list) -> QualityGateCheck:
     """How much of the suite the evaluated runs covered. Informational only —
     it never fails the gate (targeted runs are allowed to pass, labelled
     partial); it exists so nobody reads a 4-case pass as a full pass."""
-    modes = {getattr(r, "selection_mode", None) for r in finished_runs}
-    if "full" in modes:
+    # Runs created outside POST /runs (schedules, comparisons, older rows)
+    # carry no selection data; judge by the runs that do, and say so.
+    tracked = [r for r in finished_runs if getattr(r, "selection_mode", None)]
+    untracked = len(finished_runs) - len(tracked)
+    if any(r.selection_mode == "full" for r in tracked):
         actual = "full suite"
-    elif finished_runs and modes <= {"targeted", "case"}:
-        ran = {r.test_case_id for r in finished_runs if r.test_case_id is not None}
-        total = max((r.selection_total or 0) for r in finished_runs)
+    elif tracked:
+        ran = {r.test_case_id for r in tracked if r.test_case_id is not None}
+        total = max((r.selection_total or 0) for r in tracked)
         actual = f"targeted — {len(ran)} of {total} cases ran"
+        if untracked:
+            actual += f" (+{untracked} run(s) with no selection data)"
     else:
-        actual = "unknown (runs predate selection tracking)"
+        actual = "unknown (runs carry no selection data)"
     return QualityGateCheck(name="coverage", passed=True, actual=actual,
                             threshold="informational",
                             detail=("partial coverage — not every case ran"

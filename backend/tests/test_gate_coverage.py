@@ -32,3 +32,10 @@ def test_single_case_runs_count_as_partial():
 
 def test_no_runs_is_unknown_not_a_failure():
     assert coverage_check([]).passed is True
+
+
+def test_runs_without_selection_data_do_not_hide_a_targeted_selection():
+    # e.g. a comparison or scheduled run on the same commit carries no stamp
+    c = coverage_check([run(1, "targeted"), run(None, None, None)])
+    assert c.actual.startswith("targeted — 1 of 37 cases ran")
+    assert "no selection data" in c.actual

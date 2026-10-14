@@ -53,3 +53,12 @@ test('quarantined matches are skipped and reported; all-quarantined falls back',
     assert.equal(all.kind, 'fallback');
     assert.match(all.reason, /quarantined/);
 });
+
+test('review notes list only cases that actually ran (never a skipped quarantined one)', () => {
+    const { reviewNotes } = require('./selection');
+    const q = c(3, { suggested_action: 'review', reasons: ['case is quarantined as flaky'], flake: { is_quarantined: true } });
+    const r = c(1, { suggested_action: 'review', reasons: ['last result failed'] });
+    const d = decideSelection({ mode: 'targeted', isPullRequest: true, impactError: null,
+        impact: { matched_cases: [r, q], unmatched_files: [] } });
+    assert.deepEqual(reviewNotes(d, [r, q]).map((x) => x.id), [1]);
+});

@@ -6,7 +6,7 @@
 // their compiled bundle).
 
 const core = require('@actions/core');
-const { decideSelection } = require('./selection');
+const { decideSelection, reviewNotes } = require('./selection');
 const github = require('@actions/github');
 
 const TERMINAL = new Set(['passed', 'failed', 'error']);
@@ -168,7 +168,7 @@ function selectionSection(selection) {
     if (d && d.kind === 'targeted') {
         lines.push(`**Targeted run: ${d.caseIds.length} of ${selection.casesTotal ?? '?'} cases** — only the cases this diff touches ran.`, '');
         for (const q of d.skippedQuarantined) lines.push(`- skipped (quarantined): ${mdCell(q.name)}`);
-        const review = (selection.matchedCases || []).filter((c) => c.suggested_action === 'review');
+        const review = reviewNotes(d, selection.matchedCases);
         for (const c of review) lines.push(`- ran, **may need editing**: ${mdCell(c.name)} — ${mdCell((c.reasons || []).join('; '))}`);
         if (d.skippedQuarantined.length || review.length) lines.push('');
     } else if (d && d.kind === 'fallback') {

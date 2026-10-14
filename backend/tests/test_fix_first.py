@@ -452,7 +452,7 @@ async def test_workspace_persona_needs_workspace_editor_to_run(monkeypatch):
         return []
     # create_run now sizes the suite scope (targeted runs) before the persona
     # check; this fake session has no exec().
-    monkeypatch.setattr(test_runs.test_service, "subtree_cases", no_cases)
+    monkeypatch.setattr(test_runs.test_service, "subtree_case_ids", no_cases)
 
     session = _PersonaRunSession({
         "TestSuite": SimpleNamespace(id=1, project_id=3),

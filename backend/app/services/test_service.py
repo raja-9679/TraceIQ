@@ -247,6 +247,14 @@ class TestService:
         return ids
 
     @staticmethod
+    async def subtree_case_ids(suite_id: int, session: AsyncSession) -> List[int]:
+        """Ids of every case in the subtree — sizing a run scope without
+        loading each case's steps."""
+        ids = await TestService.subtree_suite_ids(suite_id, session)
+        res = await session.exec(select(TestCase.id).where(TestCase.test_suite_id.in_(ids)))
+        return list(res.all())
+
+    @staticmethod
     async def subtree_cases(suite_id: int, session: AsyncSession) -> List[TestCase]:
         ids = await TestService.subtree_suite_ids(suite_id, session)
         res = await session.exec(select(TestCase).where(TestCase.test_suite_id.in_(ids)))
