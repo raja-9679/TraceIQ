@@ -15,7 +15,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
     selector?: string;
     value?: string;
     params?: {
@@ -113,6 +113,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'expect-hidden': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
             case 'expect-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Search size={18} />, label: 'Expect Text' };
             case 'expect-url': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect URL' };
+            case 'expect-title': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect Title' };
             case 'expect-visual-match': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Camera size={18} />, label: 'Visual Match' };
             case 'hover': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
             case 'press-key': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
@@ -194,6 +195,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-cyan-500"/> Expect Text</div></SelectItem>
                                 <SelectItem value="expect-not-text"><div className="flex items-center gap-2"><SearchX size={14} className="text-cyan-500"/> Expect Not Text</div></SelectItem>
                                 <SelectItem value="expect-url"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect URL</div></SelectItem>
+                                <SelectItem value="expect-title"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect Title</div></SelectItem>
                                 <SelectItem value="expect-visual-match"><div className="flex items-center gap-2"><Camera size={14} className="text-cyan-500"/> Visual Match</div></SelectItem>
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
@@ -451,6 +453,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <Input
                                     placeholder={
                                         step.type === 'goto' ? "https://example.com" :
+                                            step.type === 'expect-title' ? "Text the page title should contain" :
                                             step.type === 'press-key' ? "Key (e.g., Enter)" :
                                                 step.type === 'wait-timeout' ? "Timeout in ms" :
                                                     step.type === 'screenshot' ? "Screenshot name" :
@@ -459,12 +462,12 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                                 step.type === 'download-file' ? "(optional) trigger selector" :
                                                                     "Selector (e.g., #submit-btn)"
                                     }
-                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
-                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
+                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
+                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
                                     className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
 
-                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
+                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
                                     <Button
                                         type="button"
                                         variant="ghost"
@@ -483,6 +486,22 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                         className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
                                     />
+                                )}
+
+                                {step.type === 'expect-title' && (
+                                    <Select
+                                        value={step.params?.operator || 'contains'}
+                                        onValueChange={(value) => updateParams('operator', value)}
+                                    >
+                                        <SelectTrigger aria-label="How to compare the title" className="w-40 shrink-0 h-12 rounded-xl">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="contains">Contains</SelectItem>
+                                            <SelectItem value="equals">Equals</SelectItem>
+                                            <SelectItem value="matches">Matches (regex)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 )}
 
                                 {step.type === 'goto' && (
