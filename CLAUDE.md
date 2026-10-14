@@ -721,8 +721,10 @@ Users pull prebuilt images rather than building from source. See
   `${BACKEND_URL}` at container start (default `http://backend:8000`; Dockerfile
   ENV). Split deployments set `FRONTEND_PROXY_BACKEND_URL` in the community
   `.env` or `-e BACKEND_URL=...` on `docker run`.
-- Images are published by `.github/workflows/release-images.yml`. Tag `v*.*.*`
-  for `:latest`; pushes to `main` publish `:edge` only. Docker Hub is a second
+- Images are published by `.github/workflows/release-images.yml`. **Both
+  workflows are manual-only since 2026-10-14** (`workflow_dispatch`; the old
+  push/PR/tag triggers are kept as comments). Run on a `v*.*.*` tag for
+  `:latest`, on `main` for `:edge`. Docker Hub is a second
   publish target that activates only when the `DOCKERHUB_USERNAME` +
   `DOCKERHUB_TOKEN` repo secrets exist; self-hosters switch registries via
   `TRACEIQ_REGISTRY` in `.env` (default `ghcr.io/raja-9679`).
