@@ -32,6 +32,7 @@ async def run_suite(
     environment_id: Optional[int] = None,
     local_worker_id: Optional[str] = None,
     app_build_id: Optional[int] = None,
+    case_ids: Optional[List[int]] = None,
 ) -> RunRefList:
     """Trigger a regression run for a suite (or one case via case_id; or a
     tag-selected subset via tags). ALWAYS tag the run with the git commit /
@@ -42,13 +43,18 @@ async def run_suite(
     (`npm run worker:local` in execution-engine/) so tests can hit a dev
     server on localhost before commit. app_build_id pins a mobile run to an
     uploaded APK/AAB/IPA (see list_app_builds). Fan-out: one run per
-    case × browser × device in separate/parallel suites."""
+    case × browser × device in separate/parallel suites.
+
+    case_ids runs exactly those cases (must be inside suite_id; not
+    combinable with case_id or tags) — the natural follow-up to
+    select_tests_for_diff(suite_id=…). Such runs report selection_mode
+    "targeted"; the quality gate labels them partial coverage."""
     data = await new_client().create_run(
         suite_id=suite_id, case_id=case_id, browser=browser, device=device,
         tags=tags, git_commit=git_commit, git_branch=git_branch,
         git_pr_url=git_pr_url, git_repo=git_repo,
         environment_id=environment_id, local_worker_id=local_worker_id,
-        app_build_id=app_build_id)
+        app_build_id=app_build_id, case_ids=case_ids)
     runs = data if isinstance(data, list) else [data]
     return RunRefList(runs=runs)
 
