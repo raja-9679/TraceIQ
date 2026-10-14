@@ -164,6 +164,25 @@ async def set_quality_gate_policy(
     return policy
 
 
+def coverage_check(finished_runs: list) -> QualityGateCheck:
+    """How much of the suite the evaluated runs covered. Informational only —
+    it never fails the gate (targeted runs are allowed to pass, labelled
+    partial); it exists so nobody reads a 4-case pass as a full pass."""
+    modes = {getattr(r, "selection_mode", None) for r in finished_runs}
+    if "full" in modes:
+        actual = "full suite"
+    elif finished_runs and modes <= {"targeted", "case"}:
+        ran = {r.test_case_id for r in finished_runs if r.test_case_id is not None}
+        total = max((r.selection_total or 0) for r in finished_runs)
+        actual = f"targeted — {len(ran)} of {total} cases ran"
+    else:
+        actual = "unknown (runs predate selection tracking)"
+    return QualityGateCheck(name="coverage", passed=True, actual=actual,
+                            threshold="informational",
+                            detail=("partial coverage — not every case ran"
+                                    if actual.startswith("targeted") else None))
+
+
 async def evaluate_gate_for_runs(
     session: AsyncSession, project: Project, finished_runs: list,
     git_commit: Optional[str] = None, git_branch: Optional[str] = None,
@@ -182,6 +201,7 @@ async def evaluate_gate_for_runs(
         passed=bool(finished_runs) and pr >= policy.min_pass_rate,
         actual=f"{pr}%", threshold=f">= {policy.min_pass_rate}%",
         detail=None if finished_runs else "no finished runs found"))
+    checks.append(coverage_check(finished_runs))
 
     sev = await _severity_counts(session, run_ids=run_ids)
     high = sev.get("high", 0)
