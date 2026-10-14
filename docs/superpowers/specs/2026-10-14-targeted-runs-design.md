@@ -74,8 +74,10 @@ Not foreign keys, no new table — nothing changes for `PURGE_PLAN`
   is lost.
 - Quarantined cases are filtered out before the request's runs are created
   (the worker would drop them and fail the run with "No test cases found").
-  They are reported back in the response as skipped, and counted in M but not
-  in N — never silently run or silently dropped.
+  The response shape is unchanged (still the list of created runs); callers
+  see quarantine in impact analysis (`flake.is_quarantined`), and the Action
+  lists those cases as "skipped (quarantined)". They count in M, not in N —
+  never silently run, never silently dropped.
 
 ### 3. Impact analysis accepts `suite_id`
 
