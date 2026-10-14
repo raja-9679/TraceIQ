@@ -19,8 +19,8 @@ describe('sidebar information architecture', () => {
 
     it('groups each former sidebar item under its place', () => {
         expect(names(place('Today').children)).toEqual(['Overview', 'Failure triage', 'Proposals', 'Flaky tests', 'Visual review']);
-        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Traceability', 'Analytics']);
-        expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright']);
+        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Traceability']);
+        expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright', 'Analytics']);
         expect(names(setupLinks)).toEqual([
             'Settings', 'Workspace', 'Users', 'Tenant admin', 'API keys',
             'Webhooks', 'Issue trackers', 'AI usage', 'Billing',
@@ -58,6 +58,8 @@ describe('sidebar information architecture', () => {
         expect(isIn('/schedules', place('Tests').match)).toBe(true);
         expect(isIn('/runs/7', place('Runs').match)).toBe(true);
         expect(isIn('/', place('Today').match)).toBe(true);
+        expect(isIn('/analytics', place('Tests').match)).toBe(true);
+        expect(isIn('/analytics', place('Releases').match)).toBe(false);
         expect(isIn('/runs', place('Tests').match)).toBe(false);
     });
 });
@@ -183,7 +185,7 @@ describe('collapsed rail', () => {
         await user.click(desktopNav().getByRole('button', { name: 'Tests' }));
         const menu = await screen.findByRole('menu');
         expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent))
-            .toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright']);
+            .toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright', 'Analytics']);
         await user.click(within(menu).getByRole('menuitem', { name: 'Schedules' }));
         expect(location()).toBe('/schedules');
         expect(desktopNav().getByRole('button', { name: 'Tests' }).hasAttribute('data-active')).toBe(true);

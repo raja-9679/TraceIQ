@@ -47,22 +47,23 @@ export const places: Place[] = [
     },
     {
         name: 'Releases', href: '/quality', icon: Flag,
-        match: ['/quality', '/traceability', '/analytics'],
+        match: ['/quality', '/traceability'],
         children: [
             { name: 'Quality gate', href: '/quality' },
             { name: 'Traceability', href: '/traceability' },
-            { name: 'Analytics', href: '/analytics' },
         ],
     },
     {
         name: 'Tests', href: '/suites', icon: FlaskConical,
-        match: ['/suites', '/suites/*', '/import-playwright', '/environments', '/app-builds', '/schedules'],
+        // Analytics lives here: it reports per-project test effectiveness, not a release.
+        match: ['/suites', '/suites/*', '/import-playwright', '/environments', '/app-builds', '/schedules', '/analytics'],
         children: [
             { name: 'Suites', href: '/suites' },
             { name: 'Schedules', href: '/schedules' },
             { name: 'Environments', href: '/environments' },
             { name: 'App builds', href: '/app-builds' },
             { name: 'Import Playwright', href: '/import-playwright' },
+            { name: 'Analytics', href: '/analytics' },
         ],
     },
     {
