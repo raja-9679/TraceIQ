@@ -18,6 +18,15 @@ inputs:
   case-id:
     description: 'Optional. Run only this test case.'
     required: false
+  mode:
+    description: >-
+      'suite' (default) runs the whole suite. 'targeted' runs only the cases
+      impact analysis maps to the PR's changed files, and falls back to the
+      full suite if any changed file has no mapped test, nothing matched,
+      every match is quarantined, or impact analysis fails. Needs project-id
+      and a github-token.
+    required: false
+    default: 'suite'
   project-id:
     description: >-
       Optional TraceIQ project ID. When set (and running on a pull request
@@ -66,6 +75,14 @@ inputs:
     default: 'true'
 
 outputs:
+  selection-mode:
+    description: "suite | targeted | fallback"
+  cases-run:
+    description: "Number of cases executed"
+  cases-total:
+    description: "Number of cases in the suite"
+  fallback-reason:
+    description: "Why a targeted run fell back to the full suite (empty otherwise)"
   run-id:
     description: 'TraceIQ run ID(s) that were created.'
   status:

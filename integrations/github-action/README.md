@@ -47,6 +47,7 @@ forwards them to TraceIQ so the run is searchable by git context.
 | `api-key` | yes | — | TraceIQ workspace API key (`tiq_...`). Use a repo secret. |
 | `suite-id` | yes | — | TraceIQ test suite ID to run. |
 | `case-id` | no | — | Run only this test case. |
+| `mode` | no | `suite` | `suite` runs the whole suite. `targeted` runs only the cases impact analysis maps to the PR's changed files, with a strict fallback to the full suite (see *Targeted runs*). Needs `project-id`. |
 | `project-id` | no | — | TraceIQ project ID. When set on a PR, the action runs impact analysis on the PR's changed files and the comment reports which test cases the diff touches, and why. |
 | `github-token` | no | `${{ github.token }}` | Token used to read the PR diff and post/update the summary comment. Needs `pull-requests: write`. |
 | `browser` | no | `chromium` | Comma-separated browsers. |
@@ -65,6 +66,36 @@ forwards them to TraceIQ so the run is searchable by git context.
 | `status` | `passed` or `failed` (overall gate result). |
 | `passed` | Total passed test cases across runs. |
 | `failed` | Total failed test cases across runs. |
+| `selection-mode` | `suite`, `targeted`, or `fallback` (targeted mode that ran the full suite). |
+| `cases-run` | Cases executed. |
+| `cases-total` | Cases in the suite. |
+| `fallback-reason` | Why targeted mode ran the full suite (empty otherwise). |
+
+## Targeted runs
+
+```yaml
+- uses: ./integrations/github-action
+  with:
+    base-url: https://traceiq.example.com
+    api-key: ${{ secrets.TRACEIQ_API_KEY }}
+    suite-id: 12
+    project-id: 3
+    mode: targeted
+```
+
+On a pull request the action asks impact analysis (scoped to `suite-id`)
+which cases the changed files touch, and runs only those. It runs the
+**full suite** instead when any changed file has no mapped test, nothing
+matched, every match is quarantined, impact analysis fails, the run is not
+a pull request, or the targeted run is refused. The reason is in the PR
+comment and the `fallback-reason` output.
+
+A targeted run is never reported as complete coverage: the comment heads
+with "Targeted run: N of M cases", quarantined matches are listed as
+skipped, and the quality gate's `coverage` check reads
+"targeted — N of M cases ran" (informational; it never fails the gate).
+Keep `code_paths` on your cases current — that mapping is what decides
+what runs.
 
 ## PR comment
 
