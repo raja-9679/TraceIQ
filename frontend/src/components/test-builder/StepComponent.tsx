@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
 import { cn } from '@/lib/utils';
+import { bodyToText, textToBody } from './requestBody';
 import {
     Select,
     SelectContent,
@@ -16,14 +17,15 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
     selector?: string;
     value?: string;
     params?: {
         wait_until?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
         method?: string;
         headers?: Record<string, string>;
-        body?: string;
+        /** Object (sent as JSON) or string (sent raw) — see requestBody.ts. */
+        body?: string | Record<string, unknown> | unknown[];
         assertions?: Array<{
             type: 'status' | 'json-path' | 'xpath' | 'text' | 'json-schema';
             path?: string;
@@ -53,13 +55,17 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
     const [showPicker, setShowPicker] = React.useState(false);
     const [localHeaders, setLocalHeaders] = React.useState(JSON.stringify(step.params?.headers || {}, null, 2));
     const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
-    const [localBody, setLocalBody] = React.useState(step.params?.body || '');
+    const [localBody, setLocalBody] = React.useState(() => bodyToText(step.params?.body));
+    const [bodyError, setBodyError] = React.useState<string | null>(null);
+    // The body we last stored from this editor; the sync effect skips it so a
+    // valid JSON edit is not re-pretty-printed under the cursor.
+    const lastStoredBody = React.useRef<unknown>(step.params?.body);
 
     // Sync local state when step.params changes from parent (e.g., when loading a test case)
     React.useEffect(() => {
         const newHeaders = JSON.stringify(step.params?.headers || {}, null, 2);
         const newParams = JSON.stringify(step.params?.params || {}, null, 2);
-        const newBody = step.params?.body || '';
+        const newBody = bodyToText(step.params?.body);
         
         // Only update if different to avoid cursor jumps while typing
         if (newHeaders !== localHeaders && newHeaders !== '{}') {
@@ -68,10 +74,21 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
         if (newParams !== localParams && newParams !== '{}') {
             setLocalParams(newParams);
         }
-        if (newBody !== localBody) {
+        if (step.params?.body !== lastStoredBody.current && newBody !== localBody) {
+            lastStoredBody.current = step.params?.body;
             setLocalBody(newBody);
+            setBodyError(null);
         }
     }, [step.params?.headers, step.params?.params, step.params?.body]);
+
+    const editBody = (text: string) => {
+        setLocalBody(text);
+        const { body, error } = textToBody(text, step.params?.body);
+        setBodyError(error ?? null);
+        if (error) return; // keep the stored body; never save half-typed JSON over it
+        lastStoredBody.current = body;
+        updateParams('body', body);
+    };
 
     const updateParams = (key: string, value: any) => {
         const newParams = { ...(step.params || {}), [key]: value };
@@ -116,6 +133,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'expect-hidden': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
             case 'expect-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Search size={18} />, label: 'Expect Text' };
             case 'expect-url': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect URL' };
+            case 'expect-title': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Link2 size={18} />, label: 'Expect Title' };
             case 'expect-visual-match': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Camera size={18} />, label: 'Visual Match' };
             case 'hover': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MousePointer2 size={18} />, label: 'Hover' };
             case 'press-key': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <Keyboard size={18} />, label: 'Press Key' };
@@ -139,6 +157,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'mobile-expect-visible': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Eye size={18} />, label: 'Expect Visible (Mobile)' };
             case 'mobile-expect-text': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Search size={18} />, label: 'Expect Text (Mobile)' };
             case 'mobile-screenshot': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Screenshot (Mobile)' };
+            case 'totp': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: '2FA Code' };
             case 'mobile-extract-value': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
             case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
@@ -197,6 +216,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="expect-text"><div className="flex items-center gap-2"><Search size={14} className="text-cyan-500"/> Expect Text</div></SelectItem>
                                 <SelectItem value="expect-not-text"><div className="flex items-center gap-2"><SearchX size={14} className="text-cyan-500"/> Expect Not Text</div></SelectItem>
                                 <SelectItem value="expect-url"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect URL</div></SelectItem>
+                                <SelectItem value="expect-title"><div className="flex items-center gap-2"><Link2 size={14} className="text-cyan-500"/> Expect Title</div></SelectItem>
                                 <SelectItem value="expect-visual-match"><div className="flex items-center gap-2"><Camera size={14} className="text-cyan-500"/> Visual Match</div></SelectItem>
                                 <SelectItem value="assert"><div className="flex items-center gap-2"><CheckCircle2 size={14} className="text-cyan-500"/> Custom Assert</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">API & Data</div>
@@ -208,6 +228,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="load-test"><div className="flex items-center gap-2"><Activity size={14} className="text-orange-500"/> Load Test (k6)</div></SelectItem>
                                 <SelectItem value="check-tls"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> TLS Cert Check</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
+                                <SelectItem value="totp"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> Generate 2FA Code</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
@@ -264,6 +285,30 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                 className={`w-full min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                             />
+                        ) : step.type === 'totp' ? (
+                            <div className="flex-1 w-full space-y-1.5">
+                                <div className="flex gap-2 flex-col sm:flex-row">
+                                    <Input
+                                        aria-label="Authenticator secret"
+                                        placeholder="{{secret.MFA_SEED}}"
+                                        value={step.params?.secret || ''}
+                                        onChange={(e) => updateParams('secret', e.target.value)}
+                                        className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                    />
+                                    <Input
+                                        aria-label="Save code as"
+                                        placeholder="Save as (default otp)"
+                                        value={step.params?.variableName || ''}
+                                        onChange={(e) => updateParams('variableName', e.target.value)}
+                                        className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                    />
+                                </div>
+                                {step.params?.secret && !/^\s*\{\{\s*secret\.[A-Za-z0-9_.-]+\s*\}\}\s*$/.test(step.params.secret) ? (
+                                    <p className="text-xs text-rose-600">Store the authenticator key as a project secret and enter it as {'{{secret.NAME}}'} — a key typed here is saved in plain text, and the step will refuse it.</p>
+                                ) : (
+                                    <p className="text-xs text-slate-500">Use the code in a later step as {`{{${step.params?.variableName || 'otp'}}}`}, e.g. Fill the 2FA field with it.</p>
+                                )}
+                            </div>
                         ) : step.type === 'amp-validate' ? (
                             <Input
                                 placeholder="AMP Page URL (e.g. https://example.com/amp/article)"
@@ -454,6 +499,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <Input
                                     placeholder={
                                         step.type === 'goto' ? "https://example.com" :
+                                            step.type === 'expect-title' ? "Text the page title should contain" :
                                             step.type === 'press-key' ? "Key (e.g., Enter)" :
                                                 step.type === 'wait-timeout' ? "Timeout in ms" :
                                                     step.type === 'screenshot' ? "Screenshot name" :
@@ -462,12 +508,12 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                                 step.type === 'download-file' ? "(optional) trigger selector" :
                                                                     "Selector (e.g., #submit-btn)"
                                     }
-                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
-                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
+                                    value={(step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? step.value : step.selector) || ''}
+                                    onChange={(e) => updateStep(step.id, (step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response' ? 'value' : 'selector'), e.target.value)}
                                     className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
 
-                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
+                                {!(step.type === 'goto' || step.type === 'expect-url' || step.type === 'expect-title' || step.type === 'press-key' || step.type === 'wait-timeout' || step.type === 'screenshot' || step.type === 'switch-tab' || step.type === 'wait-for-response') && (
                                     <Button
                                         type="button"
                                         variant="ghost"
@@ -486,6 +532,22 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                         className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4`}
                                     />
+                                )}
+
+                                {step.type === 'expect-title' && (
+                                    <Select
+                                        value={step.params?.operator || 'contains'}
+                                        onValueChange={(value) => updateParams('operator', value)}
+                                    >
+                                        <SelectTrigger aria-label="How to compare the title" className="w-40 shrink-0 h-12 rounded-xl">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="contains">Contains</SelectItem>
+                                            <SelectItem value="equals">Equals</SelectItem>
+                                            <SelectItem value="matches">Matches (regex)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 )}
 
                                 {step.type === 'goto' && (
@@ -752,10 +814,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             "def run(context):\n    # Access variables via context\n    # context['variables']['myVar']\n    print('Hello World')\n    return True" :
                                             "// JavaScript code to execute in browser\nreturn document.title;"}
                                         value={localBody} // Reuse body for script content
-                                        onChange={(e) => {
-                                            setLocalBody(e.target.value);
-                                            updateParams('body', e.target.value);
-                                        }}
+                                        onChange={(e) => editBody(e.target.value)}
                                     />
                                     <p className="text-[10px] text-gray-400 mt-1 italic">
                                         {step.params?.language === 'python' ? "Stdout will be captured. Return values are logged." : "Return value will be captured in logs."}
@@ -788,11 +847,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                 className="w-full h-24 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-slate-700 placeholder:text-slate-400 transition-colors shadow-inner drop-shadow-sm resize-none"
                                                 placeholder="Request Body (JSON/Text)"
                                                 value={localBody}
-                                                onChange={(e) => {
-                                                    setLocalBody(e.target.value);
-                                                    updateParams('body', e.target.value);
-                                                }}
+                                                onChange={(e) => editBody(e.target.value)}
                                             />
+                                            {bodyError && <p className="mt-1 text-xs text-rose-600">{bodyError}</p>}
                                         </div>
                                     )}
                                 </div>

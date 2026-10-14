@@ -90,9 +90,6 @@ def purge_old_runs():
     purged = 0
 
     try:
-        # Import here to avoid a hard dependency at module import time.
-        from app.core.storage import minio_client
-
         with Session(sync_engine) as session:
             # Resolve the window once per project rather than once per run: a
             # backlog is usually thousands of runs across a handful of projects.
@@ -110,31 +107,47 @@ def purge_old_runs():
             ).all()
 
             now = datetime.utcnow()
+            doomed = []
             for run in candidates:
-                if purged >= batch_size:
+                if len(doomed) >= batch_size:
                     break
                 days = windows.get(run.project_id)
                 if not days:
                     continue
                 if run.created_at is None or run.created_at >= now - timedelta(days=days):
                     continue
+                doomed.append(run.id)
 
-                # Best-effort artifact deletion; never block the DB purge on it.
+            if doomed:
+                # Same cascade as DELETE /runs. Deleting results-then-run by
+                # hand 500'd on any run with a heal proposal, security finding
+                # or monitor check, and because this whole batch is one
+                # transaction under a broad except, one such run stalled
+                # retention for every run behind it, every pass.
+                from app.services.entity_delete import (
+                    CrossProjectReference, cascade_delete_sync, delete_objects)
                 try:
-                    minio_client.delete_run_artifacts(run.id)
-                except Exception as art_err:
-                    print(f"[Retention] Artifact delete failed for run {run.id}: {art_err}")
-
-                results = session.exec(
-                    select(TestCaseResult).where(TestCaseResult.test_run_id == run.id)
-                ).all()
-                for res in results:
-                    session.delete(res)
-                session.delete(run)
-                purged += 1
-
-            if purged:
-                session.commit()
+                    reports = [cascade_delete_sync(session, "testrun", doomed)]
+                    session.commit()
+                    purged = len(doomed)
+                except CrossProjectReference as e:
+                    # Some run in the batch is referenced from a project outside
+                    # it. Retry one by one so that run is skipped (and logged)
+                    # instead of stalling retention for every run behind it.
+                    session.rollback()
+                    print(f"[Retention] Batch refused ({e}); retrying runs individually")
+                    reports = []
+                    for run_id in doomed:
+                        try:
+                            reports.append(cascade_delete_sync(session, "testrun", [run_id]))
+                            session.commit()
+                            purged += 1
+                        except CrossProjectReference as one:
+                            session.rollback()
+                            print(f"[Retention] Skipped run {run_id}: {one}")
+                # Artifacts after the commit; best-effort, never fatal.
+                for report in reports:
+                    delete_objects(report)
                 print(f"[Retention] Purged {purged} run(s) past their retention window")
 
     except Exception as e:

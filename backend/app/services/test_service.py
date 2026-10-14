@@ -219,84 +219,17 @@ class TestService:
 
     @staticmethod
     async def recursive_delete_suite(suite_id: int, session: AsyncSession):
-        # 1. Delete runs (and their results) attached to this suite directly
-        run_rows = await session.exec(
-            select(TestRun.id).where(TestRun.test_suite_id == suite_id)
-        )
-        suite_run_ids = run_rows.all()
-        if suite_run_ids:
-            await session.exec(
-                sql_delete(TestCaseResult).where(
-                    TestCaseResult.test_run_id.in_(suite_run_ids)
-                )
-            )
-            for run_id in suite_run_ids:
-                try:
-                    minio_client.delete_run_artifacts(run_id)
-                except Exception as exc:  # noqa: BLE001
-                    print(f"[DeleteSuite] MinIO cleanup for run {run_id} failed (continuing): {exc}")
-            await session.exec(
-                sql_delete(TestRun).where(TestRun.id.in_(suite_run_ids))
-            )
+        """Delete a suite, its sub-suites, their cases, runs and everything that
+        references them. Caller commits, then calls
+        `entity_delete.delete_objects(report)` for the artifacts.
 
-        # 2. Delete cases (and their associated runs/results) belonging to this suite
-        case_rows = await session.exec(
-            select(TestCase.id).where(TestCase.test_suite_id == suite_id)
-        )
-        case_ids = case_rows.all()
-        if case_ids:
-            case_run_rows = await session.exec(
-                select(TestRun.id).where(TestRun.test_case_id.in_(case_ids))
-            )
-            case_run_ids = case_run_rows.all()
-            if case_run_ids:
-                await session.exec(
-                    sql_delete(TestCaseResult).where(
-                        TestCaseResult.test_run_id.in_(case_run_ids)
-                    )
-                )
-                for run_id in case_run_ids:
-                    try:
-                        minio_client.delete_run_artifacts(run_id)
-                    except Exception as exc:  # noqa: BLE001
-                        print(f"[DeleteSuite] MinIO cleanup for run {run_id} failed (continuing): {exc}")
-                await session.exec(
-                    sql_delete(TestRun).where(TestRun.id.in_(case_run_ids))
-                )
-
-            # Phase B/C/D dependents keyed by case id (mirrors the
-            # delete_case handler fix). Same idea: bulk-delete the
-            # rows that have FKs into testcase before we can drop the
-            # cases themselves.
-            from app.models import (
-                VisualBaseline,
-                FlakeRecord,
-                SelectorHealProposal,
-                CaseProposal,
-                UserTestCaseAccess,
-            )
-            await session.exec(sql_delete(VisualBaseline).where(VisualBaseline.test_case_id.in_(case_ids)))
-            await session.exec(sql_delete(FlakeRecord).where(FlakeRecord.test_case_id.in_(case_ids)))
-            await session.exec(sql_delete(SelectorHealProposal).where(SelectorHealProposal.test_case_id.in_(case_ids)))
-            await session.exec(sql_delete(CaseProposal).where(CaseProposal.target_case_id.in_(case_ids)))
-            await session.exec(sql_delete(UserTestCaseAccess).where(UserTestCaseAccess.test_case_id.in_(case_ids)))
-
-            await session.exec(
-                sql_delete(TestCase).where(TestCase.id.in_(case_ids))
-            )
-
-        # 3. Recurse for sub-modules
-        result = await session.exec(
-            select(TestSuite).where(TestSuite.parent_id == suite_id)
-        )
-        sub_modules = result.all()
-        for sub in sub_modules:
-            await TestService.recursive_delete_suite(sub.id, session)
-
-        # 4. Delete Suite
-        suite = await session.get(TestSuite, suite_id)
-        if suite:
-            await session.delete(suite)
+        The hand-written version listed dependents as they were known at the
+        time and 500'd on every table added since (testcaserevision first — so
+        any suite whose cases had ever been edited). The cascade is now derived
+        from the FK graph; see app/services/entity_delete.py.
+        """
+        from app.services.entity_delete import cascade_delete
+        return await cascade_delete(session, "testsuite", [suite_id])
 
     @staticmethod
     async def collect_cases_recursive(suite_id: int, session: AsyncSession) -> List[TestCase]:

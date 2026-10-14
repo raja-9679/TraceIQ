@@ -7,6 +7,7 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import { resolveTemplates } from './interpolate';
 import { maskSelectorsFrom } from './redact';
+import { totp, totpClock, secondsLeft, looksLikeLiteralSeed } from './totp';
 
 // Dot-path lookup into a parsed JSON body. Supports `a.b.c`, numeric array
 // segments (`items.0.id`), and bracket indexing (`items[0].id`). Returns
@@ -41,7 +42,7 @@ export class TestExecutor {
         'fill', 'goto', 'graphql', 'handle-dialog', 'hover', 'http-request',
         'mock-response', 'oauth2-token', 'press-key', 'right-click',
         'run-script', 'screenshot', 'scroll-to', 'select-option',
-        'set-network-latency', 'switch-frame', 'switch-tab', 'uncheck',
+        'set-network-latency', 'switch-frame', 'switch-tab', 'totp', 'uncheck',
         'upload-file', 'verify-nth-child', 'wait-for-response',
         'wait-for-selector', 'wait-timeout',
     ];
@@ -1090,6 +1091,39 @@ export class TestExecutor {
                     testCaseContext.variables[variableName] = text?.trim();
                     console.log(`  [Extract] Stored '${variableName}': ${testCaseContext.variables[variableName]}`);
                 }
+                break;
+            }
+
+            case 'totp': {
+                // 2FA code from a project-secret seed, stored as a variable
+                // for later steps ({{otp}} in a fill or request).
+                const rawSecret = String(step.params?.secret ?? '');
+                if (looksLikeLiteralSeed(rawSecret)) {
+                    throw new Error("2FA step: store the authenticator secret as a project secret and reference it as {{secret.NAME}} — a key typed into the step is saved in plain text");
+                }
+                const seed = resolve(rawSecret);
+                if (!seed || /\{\{/.test(seed)) {
+                    throw new Error(`2FA step: project secret ${rawSecret.trim()} is not set`);
+                }
+                const period = Number(step.params?.period) || 30;
+                const digits = Number(step.params?.digits) || 6;
+                const variableName = String(step.params?.variableName || 'otp');
+
+                // A code with under 5 s left can expire before the page
+                // submits it; wait for the next one instead.
+                let now = totpClock.now();
+                const left = secondsLeft(now, period);
+                if (left < 5) {
+                    await totpClock.sleep(left * 1000);
+                    now = totpClock.now();
+                }
+                const code = totp(seed, { at: now, digits, period });
+                if (testCaseContext) {
+                    testCaseContext.variables = testCaseContext.variables || {};
+                    testCaseContext.variables[variableName] = code;
+                }
+                // Never log the seed or the code itself.
+                console.log(`  [2FA] Generated code -> {{${variableName}}} (valid ${secondsLeft(now, period)}s)`);
                 break;
             }
 

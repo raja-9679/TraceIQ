@@ -39,22 +39,29 @@ async def list_plans(session: AsyncSession = Depends(get_session),
     return (await session.exec(select(Plan).where(Plan.is_active == True))).all()  # noqa: E712
 
 
+# Shown when the install has no plans at all. id 0 never matches a real plan.
+_NO_PLAN = PlanRead(id=0, name="unlimited", display_name="No plan (unlimited)",
+                    price_cents=0, limits={}, is_active=True)
+
+
 @router.get("/workspaces/{workspace_id}/billing", response_model=BillingStatus)
 async def workspace_billing(workspace_id: int, session: AsyncSession = Depends(get_session),
                             current_user: User = Depends(get_current_user)):
     await _member(session, workspace_id, current_user.id)
     plan, sub = await billing_svc.resolve_plan(session, workspace_id)
-    if not plan:
-        raise HTTPException(status_code=500, detail="No plans configured")
+    # No plan rows is a valid install (self-hosted, or any database built
+    # since the 2026-09 migration squash, which dropped the legacy plan seed):
+    # nothing is capped then, so report that rather than a 500.
+    plan_read = PlanRead(**plan.model_dump()) if plan else _NO_PLAN
     period = billing_svc.current_period()
-    limits = plan.limits or {}
+    limits = (plan.limits if plan else {}) or {}
     usage = {
         "runs": await billing_svc.get_usage(session, workspace_id, "runs", period),
         "ai_generations": await billing_svc.get_usage(session, workspace_id, "ai_generations", period),
         "llm_tokens": await billing_svc.get_usage(session, workspace_id, "llm_tokens", period),
     }
     return BillingStatus(
-        workspace_id=workspace_id, plan=PlanRead(**plan.model_dump()),
+        workspace_id=workspace_id, plan=plan_read,
         status=sub.status if sub else "active", period=period,
         usage=usage, limits=limits,
         current_period_end=sub.current_period_end if sub else None,

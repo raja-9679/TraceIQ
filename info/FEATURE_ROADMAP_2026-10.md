@@ -47,18 +47,17 @@ stranded on a deployment's `celery` Redis list are **not** replayed by the fix
 (they include weeks-old notifications and CI webhooks); inspect and `DEL celery`
 deliberately.
 
-### Found while cleaning up — still open
+### Found while cleaning up — fixed 2026-10-13
 
-- **Project delete 500s** for any project that has test cases
-  (`testcase_project_id_fkey`); `workspace_service.delete_project` doesn't
-  cascade. The workspace purge (`services/purge.py`) does.
-- **Suite delete 500s** once any of its cases has been edited
-  (`testcaserevision_test_case_id_fkey`) — i.e. almost always.
-- **Run delete 500s** for any run that produced a heal proposal
-  (`selectorhealproposal_source_run_id_fkey`).
-
-All three are the same shape: per-entity deletes predate tables added later.
-`PURGE_PLAN` solved it for workspaces; per-entity deletes need the same.
+Project delete (`testcase_project_id_fkey`), suite delete
+(`testcaserevision_test_case_id_fkey`) and run delete
+(`selectorhealproposal_source_run_id_fkey`) all 500'd for the same reason:
+per-entity deletes predated tables added later. Fixed on
+`fix/per-entity-deletes`: `app/services/entity_delete.py` derives the cascade
+from the FK graph with a per-edge DELETE/NULLIFY policy, shared by the
+project/suite/case/run handlers and the retention sweep (which had the same
+bug and stalled silently). `tests/test_entity_delete_plan.py` is the guard;
+`tests/integration/test_entity_delete_db.py` proves it on Postgres.
 
 ---
 

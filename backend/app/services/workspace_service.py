@@ -520,20 +520,30 @@ class WorkspaceService:
         return result.all()
 
     @staticmethod
-    async def delete_project(project_id: int, session: AsyncSession):
-        # We need to delete test suites, modules, cases, and runs.
-        # However, for now, let's at least delete the project and its access records.
-        # In a real app, we'd use cascading deletes or a more comprehensive cleanup.
-        from app.models import TestSuite, TestRun, UserProjectAccess, TeamProjectAccess
-        
-        # Delete project access
-        await session.exec(select(UserProjectAccess).where(UserProjectAccess.project_id == project_id)) # This is just to show what we'd do
-        # SQLModel/SQLAlchemy can handle cascades if defined in models, but let's be explicit if needed.
-        
+    async def delete_project(project_id: int, session: AsyncSession,
+                             actor_id: Optional[int] = None):
+        """Delete a project and everything under it.
+
+        This used to delete only the project row, so any project with a test
+        case 500'd on `testcase_project_id_fkey`. The cascade is derived from
+        the FK graph (`app/services/entity_delete.py`), so tables added later
+        are covered or fail a test — not a customer's delete.
+        """
+        from app.services.audit import record
+        from app.services.entity_delete import cascade_delete, delete_objects
+
         project = await session.get(Project, project_id)
-        if project:
-            await session.delete(project)
-            await session.commit()
+        if not project:
+            return None
+        await record(
+            session,
+            entity_type="project", entity_id=project_id, action="delete",
+            user_id=actor_id, workspace_id=project.workspace_id,
+            changes={"name": project.name},
+        )
+        report = await cascade_delete(session, "project", [project_id])
+        await session.commit()
+        return delete_objects(report)
 
     @staticmethod
     async def delete_team(team_id: int, session: AsyncSession):

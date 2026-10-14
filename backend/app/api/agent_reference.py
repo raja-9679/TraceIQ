@@ -456,6 +456,24 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "params": {"selector": "Element", "params.source": "'text'|'value'|'attribute'", "params.variableName": "Variable name to save under"},
     },
     {
+        "type": "totp",
+        "category": "data",
+        "params": {
+            "params.secret": "Authenticator (base32) secret — MUST be {{secret.NAME}}; a raw key fails the step",
+            "params.variableName": "Variable to store the code under (default 'otp')",
+            "params.digits": "Optional, default 6",
+            "params.period": "Optional seconds per code, default 30",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "totp",
+            "params": {"secret": "{{secret.MFA_SEED}}", "variableName": "otp"},
+        },
+        "notes": "Generates the current RFC 6238 2FA code (Google/Microsoft Authenticator style) and stores it; "
+                 "a later step types it with value '{{otp}}'. Waits for the next code when under 5 s remain. "
+                 "Store the seed shown at the site's 2FA enrolment as a project secret first.",
+    },
+    {
         "type": "switch-frame",
         "category": "navigation",
         "params": {"selector": "iframe selector"},
