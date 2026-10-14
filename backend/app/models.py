@@ -531,6 +531,12 @@ class TestRunBase(SQLModel):
     # Redis-stream workers — the bridge that lets TraceIQ test `localhost`
     # before code is deployed anywhere.
     local_worker_id: Optional[str] = Field(default=None, index=True)
+    # How this run's cases were chosen (targeted runs, 2026-10):
+    # "full" = whole suite, "targeted" = POST /runs case_ids, "case" = single
+    # case_id; NULL = created before selection tracking. selection_total is
+    # how many cases the requested suite held, so the gate can say "N of M".
+    selection_mode: Optional[str] = Field(default=None)
+    selection_total: Optional[int] = Field(default=None)
     # Denormalised from the case(s) at dispatch so results, filtering, and the
     # webhook payload know which executor produced this run. See ExecutorType.
     executor: ExecutorType = Field(
