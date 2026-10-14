@@ -16,7 +16,7 @@ import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
     selector?: string;
     value?: string;
     params?: {
@@ -154,6 +154,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'mobile-expect-visible': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Eye size={18} />, label: 'Expect Visible (Mobile)' };
             case 'mobile-expect-text': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Search size={18} />, label: 'Expect Text (Mobile)' };
             case 'mobile-screenshot': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Screenshot (Mobile)' };
+            case 'totp': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: '2FA Code' };
             case 'mobile-extract-value': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
             case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
@@ -224,6 +225,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="load-test"><div className="flex items-center gap-2"><Activity size={14} className="text-orange-500"/> Load Test (k6)</div></SelectItem>
                                 <SelectItem value="check-tls"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> TLS Cert Check</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
+                                <SelectItem value="totp"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> Generate 2FA Code</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
@@ -280,6 +282,30 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                 className={`w-full min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                             />
+                        ) : step.type === 'totp' ? (
+                            <div className="flex-1 w-full space-y-1.5">
+                                <div className="flex gap-2 flex-col sm:flex-row">
+                                    <Input
+                                        aria-label="Authenticator secret"
+                                        placeholder="{{secret.MFA_SEED}}"
+                                        value={step.params?.secret || ''}
+                                        onChange={(e) => updateParams('secret', e.target.value)}
+                                        className={`flex-[2] min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                    />
+                                    <Input
+                                        aria-label="Save code as"
+                                        placeholder="Save as (default otp)"
+                                        value={step.params?.variableName || ''}
+                                        onChange={(e) => updateParams('variableName', e.target.value)}
+                                        className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
+                                    />
+                                </div>
+                                {step.params?.secret && !/^\s*\{\{\s*secret\.[A-Za-z0-9_.-]+\s*\}\}\s*$/.test(step.params.secret) ? (
+                                    <p className="text-xs text-rose-600">Store the authenticator key as a project secret and enter it as {'{{secret.NAME}}'} — a key typed here is saved in plain text, and the step will refuse it.</p>
+                                ) : (
+                                    <p className="text-xs text-slate-500">Use the code in a later step as {`{{${step.params?.variableName || 'otp'}}}`}, e.g. Fill the 2FA field with it.</p>
+                                )}
+                            </div>
                         ) : step.type === 'amp-validate' ? (
                             <Input
                                 placeholder="AMP Page URL (e.g. https://example.com/amp/article)"
