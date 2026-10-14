@@ -202,8 +202,11 @@ async def delete_project(project_id: int, session: AsyncSession = Depends(get_se
     if not allowed:
         raise HTTPException(status_code=403, detail="Permission denied to delete project")
     
-    await workspace_service.delete_project(project_id, session)
-    return {"status": "success"}
+    report = await workspace_service.delete_project(
+        project_id, session, actor_id=current_user.id)
+    if report is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return {"status": "success", "rows_deleted": report.rows}
 
 @router.delete("/projects/{project_id}/teams/{team_id}")
 async def unlink_team_from_project(project_id: int, team_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):

@@ -607,11 +607,27 @@ supervisord, Helm) plus the test's `CONSUMED` set. Personas are wired
 worker job); `POST /visual-baselines` only accepts bare keys under
 `baselines/{case_id}/` (they are presigned back and used as purge prefixes).
 
+Also FIXED 2026-10-13 (branch `fix/per-entity-deletes`): **per-entity
+deletes** (project, suite, case, run — single/bulk/all — and the retention
+sweep) 500'd on FKs added after they were written. They now share
+`app/services/entity_delete.py:cascade_delete`, which walks the FK graph and
+applies a per-edge `ON_DELETE` policy (`DELETE` or `NULLIFY`; e.g. heal/case
+proposals, issue tickets and monitor checks outlive a deleted run with the link
+cleared; project-scoped API keys/webhooks/personas are deleted, never nulled,
+because NULL means workspace-wide). `tests/test_entity_delete_plan.py` fails
+for any FK into a deletable table without a policy — a new FK into
+project/suite/case/run needs an `ON_DELETE` entry. Artifacts are deleted after
+commit. Suite/case deletes still 409 on a referencing schedule.
+**Project boundary:** the cascade walks FKs by id, and access is checked for
+the deleted entity's project only, so a `DELETE` edge that reaches a row with a
+*different* non-null `project_id` raises `CrossProjectReference` (409 via an
+app exception handler) instead of deleting another project's data. Roots with
+no project get an EMPTY allowed set (only project-less rows), never "no
+check". The 409 body is generic on purpose — the other project's ids stay in
+the server log, since the caller may have no access to them. Retention
+retries a refused batch run by run and skips the offender.
+
 Still open:
-- Per-entity deletes 500 on FKs added after they were written: project delete
-  (`testcase_project_id_fkey`), suite delete once a case has revisions
-  (`testcaserevision_…`), run delete once it produced a heal proposal
-  (`selectorhealproposal_source_run_id_fkey`). Workspace purge is fine.
 - Worker image bakes code at build time — new step types need an image rebuild.
   **This is also why the backend redacts on ingestion**: an un-upgraded worker
   ships raw headers and bodies, so `app/services/redaction.py` runs again at all

@@ -12,6 +12,7 @@ from app.core.storage import minio_client
 from app.services.test_service import test_service
 from app.services.access_service import access_service
 from app.services.audit import record as audit_record
+from app.services.entity_delete import cascade_delete, delete_objects
 from app.models import (
     User, AuditLog, AuditLogRead, Project, UserWorkspace, UserTeam, UserProjectAccess,
     TeamProjectAccess, TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode,
@@ -602,17 +603,13 @@ async def delete_run(run_id: int, session: AsyncSession = Depends(get_session), 
                  "project_id": run.project_id, "artifacts_deleted": True},
     )
 
-    # Delete artifacts from MinIO
-    minio_client.delete_run_artifacts(run_id)
-
-    # Delete associated TestCaseResults
-    result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run_id))
-    for res in result_cases.all():
-        await session.delete(res)
-
-    # Delete from DB
-    await session.delete(run)
+    # Results, findings etc. go; heal/case proposals, issue tickets and
+    # monitor checks survive with the link cleared (see entity_delete.ON_DELETE
+    # — this used to 500 on selectorhealproposal_source_run_id_fkey).
+    report = await cascade_delete(session, "testrun", [run_id])
     await session.commit()
+    # Artifacts after the commit, so a failed delete keeps its evidence.
+    delete_objects(report)
 
     return {"status": "success", "message": f"Run {run_id} deleted"}
 
@@ -643,19 +640,16 @@ async def delete_runs(
         # Membership scoping above limits the blast radius; still require the
         # editor role per project so viewers cannot bulk-delete.
         editable: dict[int, bool] = {}
-        deleted = 0
+        doomed: list[int] = []
         for run in runs:
             if run.project_id not in editable:
                 editable[run.project_id] = await access_service.has_project_access(
                     current_user.id, run.project_id, session, min_role="editor")
             if not editable[run.project_id]:
                 continue
-            minio_client.delete_run_artifacts(run.id)
-            result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-            for res in result_cases.all():
-                await session.delete(res)
-            await session.delete(run)
-            deleted += 1
+            doomed.append(run.id)
+        report = await cascade_delete(session, "testrun", doomed)
+        deleted = len(doomed)
         # One summary row, not one per run: a 500-run purge is a single
         # administrative act, and 500 near-identical rows would bury it.
         await audit_record(
@@ -665,6 +659,7 @@ async def delete_runs(
             changes={"runs_deleted": deleted, "artifacts_deleted": True},
         )
         await session.commit()
+        delete_objects(report)
         return {"status": "success", "message": f"All {deleted} runs deleted"}
 
     if run_ids:
@@ -672,19 +667,15 @@ async def delete_runs(
         result = await session.exec(select(TestRun).where(TestRun.id.in_(run_ids)))
         runs = result.all()
         denied = 0
-        deleted = 0
+        doomed: list[int] = []
         for run in runs:
             if not await access_service.has_project_access(
                     current_user.id, run.project_id, session, min_role="editor"):
                 denied += 1
                 continue
-            minio_client.delete_run_artifacts(run.id)
-            # Delete associated TestCaseResults
-            result_cases = await session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id))
-            for res in result_cases.all():
-                await session.delete(res)
-            await session.delete(run)
-            deleted += 1
+            doomed.append(run.id)
+        report = await cascade_delete(session, "testrun", doomed)
+        deleted = len(doomed)
         await audit_record(
             session,
             entity_type="test_run", entity_id=0, action="delete_bulk",
@@ -693,6 +684,7 @@ async def delete_runs(
                      "denied": denied, "artifacts_deleted": True},
         )
         await session.commit()
+        delete_objects(report)
         if denied and not deleted:
             raise HTTPException(status_code=403, detail="Access denied for all requested runs")
         return {"status": "success", "message": f"{deleted} runs deleted" + (f", {denied} denied" if denied else "")}
