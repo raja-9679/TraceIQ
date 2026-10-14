@@ -13,14 +13,6 @@ const ICONS: Record<string, LucideIcon> = {
     sso: ShieldCheck, stripe: Cloud, email: Mail,
 };
 
-const TIERS = [
-    { label: "Clients", y: 9 },
-    { label: "Edge", y: 27 },
-    { label: "Services", y: 47 },
-    { label: "Data", y: 67 },
-    { label: "Third-party", y: 87 },
-];
-
 const byId = Object.fromEntries(NODES.map((n) => [n.id, n]));
 
 const PILL: Record<NodeStatus, string> = {
@@ -77,7 +69,7 @@ function Node({ node, status, ms }: { node: SweepNode; status: NodeStatus; ms?: 
     );
 }
 
-/** The system map: tiers, connections, nodes and the travelling probe. */
+/** The system map: connections, nodes and the travelling probe. */
 export default function SweepMap({ state }: { state: SweepState }) {
     const traversed = new Set(state.traversed);
     const probe = state.probe;
@@ -87,16 +79,6 @@ export default function SweepMap({ state }: { state: SweepState }) {
 
     return (
         <div className="relative w-full h-full">
-            {TIERS.map((t) => (
-                <div
-                    key={t.label}
-                    className="absolute left-0 -translate-y-1/2 text-[10px] font-semibold uppercase tracking-widest text-zinc-400"
-                    style={{ top: `${t.y}%` }}
-                >
-                    {t.label}
-                </div>
-            ))}
-
             <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
                 {EDGES.map(([a, b]) => {
                     const k = edgeKey(a, b);

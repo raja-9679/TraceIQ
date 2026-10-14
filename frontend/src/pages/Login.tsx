@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, ArrowRight, LayoutGrid, AlertTriangle, Shield } from "lucide-react";
+import { Loader2, ArrowRight, LayoutGrid, AlertTriangle, Shield, Globe, Network, Sparkles, ShieldCheck } from "lucide-react";
 import MfaEnrollment from "@/components/MfaEnrollment";
 import SweepShell from "@/components/auth-sweep/SweepShell";
 
@@ -114,9 +114,16 @@ export default function Login() {
 
     return (
         <SweepShell
-            eyebrow="Continuous verification"
-            title={<>Every journey, every API,<br />every release — checked.</>}
-            subtitle="TraceIQ walks your UI, APIs, data stores and third-party integrations on every change, and tells you exactly what broke and why."
+            badge="Quality intelligence platform"
+            title={<>Every journey, every API, every release — verified.</>}
+            subtitle="TraceIQ continuously exercises your web and mobile journeys, APIs and integrations, and tells your team exactly what broke and why."
+            points={[
+                { icon: Globe, title: "UI & mobile journeys", desc: "Every browser and device, with visual regression on each release." },
+                { icon: Network, title: "APIs & integrations", desc: "REST, GraphQL, OAuth, TLS and third-party services, checked in-flow." },
+                { icon: Sparkles, title: "AI failure analysis", desc: "Root cause on every failure; drifting selectors heal for review." },
+                { icon: ShieldCheck, title: "Enterprise controls", desc: "SSO, SCIM, role-based access, redaction and a tamper-evident audit trail." },
+            ]}
+            trust={["SAML & OIDC single sign-on", "Self-hosted or cloud", "Audit-ready"]}
         >
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
