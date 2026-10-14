@@ -110,7 +110,9 @@ export default function DashboardLayout() {
 
     const handleProjectSelect = (id: number) => {
         setSelectedProjectId(id);
-        // Refresh page or trigger state update in children
+        // Persist before announcing: listeners read localStorage on the event,
+        // and the effect above only writes it after the next render.
+        localStorage.setItem('activeProjectId', id.toString());
         window.dispatchEvent(new Event('projectChanged'));
     };
 
