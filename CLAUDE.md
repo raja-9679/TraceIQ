@@ -379,6 +379,14 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   migration `a3b4c5d6e7f8`) — never auto-applied, human review always. Case
   proposals also honor `tags`/`priority` in payload/patch.
 - **GitHub Action** — `integrations/github-action/`. Gates PRs on TraceIQ regression results.
+- **Targeted runs (2026-10)** — `POST /api/runs` body `case_ids` runs exactly
+  those cases (each with its own suite's settings; must be inside `suite_id`;
+  ≤500; not with `case_id`/`tags`; quarantined ones dropped, all-quarantined
+  → 400). Runs carry `selection_mode` (`full|targeted|case`) and
+  `selection_total`; the gate adds an always-passing `coverage` check
+  ("targeted — N of M cases ran"). Impact analysis takes `suite_id`. The
+  GitHub Action's `mode: targeted` falls back to the full suite on any
+  unmapped file, no match, all-quarantined or an impact error.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

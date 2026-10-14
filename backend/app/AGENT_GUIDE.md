@@ -647,6 +647,7 @@ final = await mcp.wait_for_run(run_id=run.id, timeout_seconds=300)
 | Backfill `code_paths` on existing cases | `set_code_paths` (one), `bulk_set_code_paths` (many) |
 | Run a suite + watch | `run_suite` (git context! tags, environment_id), `wait_for_run`, `get_run`, `get_run_results` |
 | Test a dev server on localhost | `run_suite(local_worker_id=…)` + `npm run worker:local` on the dev machine |
+| Run only what a diff touches | `select_tests_for_diff(suite_id=…)` → `run_suite(suite_id=…, case_ids=[…])` |
 | Diagnose a failure | `get_failure_analysis`, `analyze_run` (re-run AI analysis, pick `provider_id`), `get_artifact_url`, `get_run_history`, `list_failure_clusters` / `get_failure_cluster` |
 | Judge the change / gate a merge | `get_run_report` (PR-ready markdown), `evaluate_quality_gate`, `get_quality_snapshot` |
 | Find weak or noisy tests | `get_test_effectiveness`, `list_flakes`, `list_heal_proposals` |
