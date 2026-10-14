@@ -72,6 +72,21 @@ Sessions since the last full rewrite of this file:
   presigned back, and purge used them as delete prefixes). Three per-entity
   delete 500s found and left open — see the roadmap doc §1. Uncommitted at
   time of writing unless a later commit says otherwise.
+- **2026-10-14** — merged into this branch (pushed as
+  `feature/enterprise-auth-ai-2026-10`): the three per-entity delete 500s
+  (`fix/per-entity-deletes`), `fix/project-switch-order`,
+  `fix/editor-expect-title`, plus new fixes — API-step body showed/saved
+  `[object Object]` (`params.body` may be an object; editor now converts at
+  its edges), workspace delete always 400'd (UI never sent `confirm=<name>`;
+  new dry-run-first dialog), billing 500'd on installs with no `plan` rows
+  (the squash dropped the legacy plan seed; endpoint now reports "No plan
+  (unlimited)" — re-seeding was NOT done because the old free plan caps runs
+  at 500/month, a product decision). And the roadmap's TOTP half:
+  `totp` step (`execution-engine/src/core/totp.ts`, `{{secret.X}}` seed only,
+  waits out a window with <5 s left) — **needs a worker image rebuild**. The
+  email-inbox half is parked for onboarding work. Frontend tests (Vitest)
+  exist only on `feature/redesign-a`; the frontend test files merged here run
+  there. Pushes carry `[skip ci]`; workflows only trigger on `main`/tags/PRs.
 
 | Workstream | State |
 |---|---|
