@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { Outlet, Link, useLocation, matchPath } from 'react-router-dom';
 import {
     Inbox,
@@ -115,11 +115,51 @@ function initials(name?: string | null, email?: string | null) {
     return ((parts[0]?.[0] ?? '?') + (parts[1]?.[0] ?? '')).toUpperCase();
 }
 
+// Hover/focus label for the icon rail; sits to the right of the icon.
+function RailLabel({ children }: { children: string }) {
+    return (
+        <span className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            {children}
+        </span>
+    );
+}
+
+function RailLink({ to, label, active, children }: { to: string; label: string; active: boolean; children: ReactNode }) {
+    return (
+        <Link
+            to={to}
+            aria-label={label}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
+                'group relative flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+                active ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
+            )}
+        >
+            {children}
+            <RailLabel>{label}</RailLabel>
+        </Link>
+    );
+}
+
+function RailButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={label}
+            className="group relative flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft hover:bg-white/60 hover:text-ink"
+        >
+            {children}
+            <RailLabel>{label}</RailLabel>
+        </button>
+    );
+}
+
 export default function DashboardLayout() {
     const { user, logout } = useAuth();
     const [mobileOpen, setMobileOpen] = useState(false);
-    // Desktop only: hide the sidebar to give a page the full width (the old
-    // layout's menu toggle). Remembered per browser; storage can be blocked.
+    // Desktop only: collapse the sidebar to an icon rail to give a page more
+    // width. Remembered per browser; storage can be blocked.
     const [collapsed, setCollapsedState] = useState<boolean>(() => {
         try { return localStorage.getItem('traceiq.sidebarCollapsed') === '1'; } catch { return false; }
     });
@@ -177,6 +217,34 @@ export default function DashboardLayout() {
         window.dispatchEvent(new Event('projectChanged'));
     };
 
+    const projectMenu = (
+        <>
+            <DropdownMenuLabel>Switch project</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {projects?.map((p) => (
+                <DropdownMenuItem
+                    key={p.id}
+                    onClick={() => handleProjectSelect(p.id)}
+                    className={p.id === selectedProjectId ? "bg-accent" : ""}
+                >
+                    <span className="truncate">{p.name}</span>
+                </DropdownMenuItem>
+            ))}
+            {(!projects || projects.length === 0) && (
+                <DropdownMenuItem disabled>
+                    No projects found
+                </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <Link to="/workspace">
+                <DropdownMenuItem>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Manage projects
+                </DropdownMenuItem>
+            </Link>
+        </>
+    );
+
     const sidebar = (
         <div className="flex h-full flex-col gap-6 overflow-y-auto px-4 py-5">
             <div className="flex items-center justify-between">
@@ -200,8 +268,8 @@ export default function DashboardLayout() {
                     type="button"
                     onClick={() => setCollapsed(true)}
                     className="hidden h-10 w-10 items-center justify-center rounded-full text-ink-soft hover:bg-white/60 hover:text-ink lg:flex"
-                    aria-label="Hide sidebar"
-                    title="Hide sidebar"
+                    aria-label="Collapse sidebar"
+                    title="Collapse sidebar"
                 >
                     <PanelLeftClose className="h-5 w-5" />
                 </button>
@@ -224,29 +292,7 @@ export default function DashboardLayout() {
                     </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start" className="w-56">
-                    <DropdownMenuLabel>Switch project</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {projects?.map((p) => (
-                        <DropdownMenuItem
-                            key={p.id}
-                            onClick={() => handleProjectSelect(p.id)}
-                            className={p.id === selectedProjectId ? "bg-accent" : ""}
-                        >
-                            <span className="truncate">{p.name}</span>
-                        </DropdownMenuItem>
-                    ))}
-                    {(!projects || projects.length === 0) && (
-                        <DropdownMenuItem disabled>
-                            No projects found
-                        </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <Link to="/workspace">
-                        <DropdownMenuItem>
-                            <Plus className="h-4 w-4 mr-2" />
-                            Manage projects
-                        </DropdownMenuItem>
-                    </Link>
+                    {projectMenu}
                 </DropdownMenuContent>
             </DropdownMenu>
 
@@ -350,14 +396,99 @@ export default function DashboardLayout() {
         </div>
     );
 
+    // Collapsed desktop sidebar: icons only, each with a label that slides
+    // out on hover/focus so nothing is unlabelled.
+    const rail = (
+        <div className="flex h-full flex-col items-center gap-4 py-5">
+            <Link to="/" aria-label="TraceIQ home" className="flex h-10 w-10 items-center justify-center">
+                <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-ink">
+                    <svg width="18" height="13" viewBox="0 0 28 20" fill="none" aria-hidden="true">
+                        <path d="M1 10h6l3-8 4 16 3-8h10" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                </span>
+            </Link>
+            <RailButton label="Show sidebar" onClick={() => setCollapsed(false)}>
+                <PanelLeftOpen className="h-5 w-5" />
+            </RailButton>
+
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button
+                        type="button"
+                        aria-label={`Project: ${activeProject?.name || 'Select project'}`}
+                        title={activeProject?.name || 'Select project'}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/90 bg-white/70 text-xs font-bold text-ink hover:bg-white"
+                    >
+                        {initials(activeProject?.name)}
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" className="w-56">
+                    {projectMenu}
+                </DropdownMenuContent>
+            </DropdownMenu>
+
+            <nav aria-label="Main" className="flex flex-col items-center gap-1">
+                {places.map((place) => {
+                    const active = isIn(location.pathname, place.match);
+                    return (
+                        <RailLink key={place.name} to={place.href} label={place.name} active={active}>
+                            <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                        </RailLink>
+                    );
+                })}
+            </nav>
+
+            <div className="mt-auto flex flex-col items-center gap-1">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            type="button"
+                            aria-label="Setup"
+                            title="Setup"
+                            className={cn(
+                                'flex h-10 w-10 items-center justify-center rounded-xl transition-colors',
+                                inSetup ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
+                            )}
+                        >
+                            <Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="end" className="w-52">
+                        <DropdownMenuLabel>Setup</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {setupLinks.map((l) => (
+                            <Link key={l.href} to={l.href}>
+                                <DropdownMenuItem className={location.pathname === l.href ? "bg-accent" : ""}>
+                                    {l.name}
+                                </DropdownMenuItem>
+                            </Link>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+                <span
+                    className="mt-2 flex h-8 w-8 items-center justify-center rounded-full bg-ink text-xs font-bold text-white"
+                    title={user?.email || undefined}
+                >
+                    {initials(user?.full_name, user?.email)}
+                </span>
+                <RailButton label="Log out" onClick={logout}>
+                    <LogOut className="h-4 w-4" />
+                </RailButton>
+            </div>
+        </div>
+    );
+
     return (
         <div className="min-h-screen bg-background">
             {/* Desktop sidebar */}
             <aside
                 aria-label="Workspace"
-                className={cn("bg-tiq-gradient fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/80", !collapsed && "lg:block")}
+                className={cn(
+                    "bg-tiq-gradient fixed inset-y-0 left-0 z-40 hidden border-r border-ink/[0.06] lg:block",
+                    collapsed ? "w-16" : "w-64"
+                )}
             >
-                {sidebar}
+                {collapsed ? rail : sidebar}
             </aside>
 
             {/* Mobile drawer */}
@@ -376,13 +507,9 @@ export default function DashboardLayout() {
                 </>
             )}
 
-            <div className={cn(!collapsed && "lg:pl-64")}>
-                {/* Top bar: phones always; desktop only while the sidebar is hidden.
-                    Not sticky on desktop, so page-level sticky headers keep top-0. */}
-                <header className={cn(
-                    "sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur",
-                    collapsed ? "lg:static" : "lg:hidden"
-                )}>
+            <div className={collapsed ? "lg:pl-16" : "lg:pl-64"}>
+                {/* Top bar: phones only — on desktop the sidebar or its icon rail is always there. */}
+                <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur lg:hidden">
                     <button
                         type="button"
                         onClick={() => setMobileOpen(true)}
@@ -390,15 +517,6 @@ export default function DashboardLayout() {
                         aria-label="Open menu"
                     >
                         <Menu className="h-5 w-5" />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setCollapsed(false)}
-                        className="hidden h-10 w-10 items-center justify-center rounded-full text-ink hover:bg-secondary lg:flex"
-                        aria-label="Show sidebar"
-                        title="Show sidebar"
-                    >
-                        <PanelLeftOpen className="h-5 w-5" />
                     </button>
                     <span className="truncate text-sm font-semibold text-ink">{activeProject?.name || 'TraceIQ'}</span>
                 </header>
