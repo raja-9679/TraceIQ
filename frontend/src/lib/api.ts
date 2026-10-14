@@ -467,8 +467,26 @@ export const createWorkspace = async (data: { name: string, description?: string
     return response.data;
 };
 
-export const deleteWorkspace = async (wsId: number): Promise<any> => {
-    const response = await api.delete(`/workspaces/${wsId}`);
+export interface WorkspacePurgeReport {
+    status: 'dry-run' | 'success';
+    workspace_id: number;
+    workspace_name: string;
+    rows_deleted: Record<string, number>;
+    total_rows_deleted: number;
+    objects_deleted: number;
+    object_errors: string[];
+    retained: Record<string, string>;
+}
+
+/** Irreversible purge; the backend refuses unless `confirm` is the exact workspace name. */
+export const deleteWorkspace = async (wsId: number, confirm: string): Promise<WorkspacePurgeReport> => {
+    const response = await api.delete(`/workspaces/${wsId}`, { params: { confirm } });
+    return response.data;
+};
+
+/** What deleteWorkspace would remove, without removing anything. */
+export const previewWorkspaceDeletion = async (wsId: number): Promise<WorkspacePurgeReport> => {
+    const response = await api.delete(`/workspaces/${wsId}`, { params: { dry_run: true } });
     return response.data;
 };
 

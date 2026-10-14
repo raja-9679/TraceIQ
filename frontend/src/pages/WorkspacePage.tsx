@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-    getWorkspaces, createWorkspace, deleteWorkspace,
+    getWorkspaces, createWorkspace,
     getTeams, createTeam, deleteTeam,
     getProjects, createProject, deleteProject,
     Workspace, Team, Project, User,
@@ -12,6 +12,7 @@ import {
     getWorkspaceMembersDetailed, inviteUserToWorkspace, getWorkspaceInvitations,
 } from '@/lib/api';
 import type { DetailedMember } from '@/lib/api';
+import WorkspaceDeleteDialog from '@/components/WorkspaceDeleteDialog';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -164,15 +165,14 @@ export default function WorkspacePage() {
         }
     });
 
-    const deleteWorkspaceMutation = useMutation({
-        mutationFn: deleteWorkspace,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['workspaces'] });
-            setDeleteTarget(null);
-            setSelectedWorkspaceId(null);
-            toast.success('Workspace deleted');
-        }
-    });
+    // Workspace deletion is a confirmed purge with its own dialog
+    // (WorkspaceDeleteDialog); this runs after it succeeds.
+    const onWorkspaceDeleted = () => {
+        queryClient.invalidateQueries({ queryKey: ['workspaces'] });
+        setDeleteTarget(null);
+        setSelectedWorkspaceId(null);
+        toast.success('Workspace deleted');
+    };
 
     const teamMutation = useMutation({
         mutationFn: (data: { name: string, description?: string, initial_project_id?: number, initial_access_level?: string }) => createTeam(selectedWorkspaceId!, data),
@@ -1238,7 +1238,15 @@ export default function WorkspacePage() {
             )}
 
             {/* Deletion Confirmation Dialog */}
-            <AlertDialog open={!!deleteTarget} onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}>
+            {deleteTarget?.type === 'workspace' && (
+                <WorkspaceDeleteDialog
+                    workspace={{ id: deleteTarget.id, name: deleteTarget.name }}
+                    open
+                    onOpenChange={(open) => !open && setDeleteTarget(null)}
+                    onDeleted={onWorkspaceDeleted}
+                />
+            )}
+            <AlertDialog open={!!deleteTarget && deleteTarget.type !== 'workspace'} onOpenChange={(open: boolean) => !open && setDeleteTarget(null)}>
                 <AlertDialogContent>
                     <AlertDialogHeader>
                         <AlertDialogTitle className="flex items-center gap-2 text-destructive">
@@ -1255,7 +1263,6 @@ export default function WorkspacePage() {
                         <AlertDialogAction
                             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                             onClick={() => {
-                                if (deleteTarget?.type === 'workspace') deleteWorkspaceMutation.mutate(deleteTarget.id);
                                 if (deleteTarget?.type === 'team') deleteTeamMutation.mutate(deleteTarget.id);
                                 if (deleteTarget?.type === 'project') deleteProjectMutation.mutate(deleteTarget.id);
                             }}
