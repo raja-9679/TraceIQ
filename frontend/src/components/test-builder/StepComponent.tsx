@@ -3,6 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
+import { bodyToText, textToBody } from './requestBody';
 import {
     Select,
     SelectContent,
@@ -22,7 +23,8 @@ export interface TestStep {
         wait_until?: 'load' | 'domcontentloaded' | 'networkidle' | 'commit';
         method?: string;
         headers?: Record<string, string>;
-        body?: string;
+        /** Object (sent as JSON) or string (sent raw) — see requestBody.ts. */
+        body?: string | Record<string, unknown> | unknown[];
         assertions?: Array<{
             type: 'status' | 'json-path' | 'xpath' | 'text' | 'json-schema';
             path?: string;
@@ -50,13 +52,17 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
     const [showPicker, setShowPicker] = React.useState(false);
     const [localHeaders, setLocalHeaders] = React.useState(JSON.stringify(step.params?.headers || {}, null, 2));
     const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
-    const [localBody, setLocalBody] = React.useState(step.params?.body || '');
+    const [localBody, setLocalBody] = React.useState(() => bodyToText(step.params?.body));
+    const [bodyError, setBodyError] = React.useState<string | null>(null);
+    // The body we last stored from this editor; the sync effect skips it so a
+    // valid JSON edit is not re-pretty-printed under the cursor.
+    const lastStoredBody = React.useRef<unknown>(step.params?.body);
 
     // Sync local state when step.params changes from parent (e.g., when loading a test case)
     React.useEffect(() => {
         const newHeaders = JSON.stringify(step.params?.headers || {}, null, 2);
         const newParams = JSON.stringify(step.params?.params || {}, null, 2);
-        const newBody = step.params?.body || '';
+        const newBody = bodyToText(step.params?.body);
         
         // Only update if different to avoid cursor jumps while typing
         if (newHeaders !== localHeaders && newHeaders !== '{}') {
@@ -65,10 +71,21 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
         if (newParams !== localParams && newParams !== '{}') {
             setLocalParams(newParams);
         }
-        if (newBody !== localBody) {
+        if (step.params?.body !== lastStoredBody.current && newBody !== localBody) {
+            lastStoredBody.current = step.params?.body;
             setLocalBody(newBody);
+            setBodyError(null);
         }
     }, [step.params?.headers, step.params?.params, step.params?.body]);
+
+    const editBody = (text: string) => {
+        setLocalBody(text);
+        const { body, error } = textToBody(text, step.params?.body);
+        setBodyError(error ?? null);
+        if (error) return; // keep the stored body; never save half-typed JSON over it
+        lastStoredBody.current = body;
+        updateParams('body', body);
+    };
 
     const updateParams = (key: string, value: any) => {
         const newParams = { ...(step.params || {}), [key]: value };
@@ -749,10 +766,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                             "def run(context):\n    # Access variables via context\n    # context['variables']['myVar']\n    print('Hello World')\n    return True" :
                                             "// JavaScript code to execute in browser\nreturn document.title;"}
                                         value={localBody} // Reuse body for script content
-                                        onChange={(e) => {
-                                            setLocalBody(e.target.value);
-                                            updateParams('body', e.target.value);
-                                        }}
+                                        onChange={(e) => editBody(e.target.value)}
                                     />
                                     <p className="text-[10px] text-gray-400 mt-1 italic">
                                         {step.params?.language === 'python' ? "Stdout will be captured. Return values are logged." : "Return value will be captured in logs."}
@@ -785,11 +799,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                                 className="w-full h-24 p-3 text-xs font-mono font-medium border border-slate-200 outline-none focus:border-amber-500/50 rounded-xl bg-white text-slate-700 placeholder:text-slate-400 transition-colors shadow-inner drop-shadow-sm resize-none"
                                                 placeholder="Request Body (JSON/Text)"
                                                 value={localBody}
-                                                onChange={(e) => {
-                                                    setLocalBody(e.target.value);
-                                                    updateParams('body', e.target.value);
-                                                }}
+                                                onChange={(e) => editBody(e.target.value)}
                                             />
+                                            {bodyError && <p className="mt-1 text-xs text-rose-600">{bodyError}</p>}
                                         </div>
                                     )}
                                 </div>
