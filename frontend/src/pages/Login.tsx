@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, AlertTriangle, Shield, Globe, Network, Sparkles, ShieldCheck } from "lucide-react";
+import { Loader2, ArrowRight, LayoutGrid, AlertTriangle, Shield, Globe, Network, Sparkles, ShieldCheck } from "lucide-react";
 import MfaEnrollment from "@/components/MfaEnrollment";
 import SweepShell from "@/components/auth-sweep/SweepShell";
 
@@ -114,49 +114,49 @@ export default function Login() {
 
     return (
         <SweepShell
-            title={<>Continuous verification for every journey, API and release.</>}
-            subtitle="TraceIQ exercises your web and mobile journeys, APIs and integrations on every change — and tells your team exactly what broke and why."
+            badge="Quality intelligence platform"
+            title={<>Every journey, every API, every release — verified.</>}
+            subtitle="TraceIQ continuously exercises your web and mobile journeys, APIs and integrations, and tells your team exactly what broke and why."
             points={[
                 { icon: Globe, title: "UI & mobile journeys", desc: "Every browser and device, with visual regression on each release." },
                 { icon: Network, title: "APIs & integrations", desc: "REST, GraphQL, OAuth, TLS and third-party services, checked in-flow." },
                 { icon: Sparkles, title: "AI failure analysis", desc: "Root cause on every failure; drifting selectors heal for review." },
                 { icon: ShieldCheck, title: "Enterprise controls", desc: "SSO, SCIM, role-based access, redaction and a tamper-evident audit trail." },
             ]}
-            trust={["SAML & OIDC single sign-on", "SCIM provisioning", "Tamper-evident audit trail", "Self-hosted or cloud"]}
-            topLink={<>New to TraceIQ? <Link to="/signup" className="font-medium text-sky-700 hover:text-sky-900">Create an account</Link></>}
+            trust={["SAML & OIDC single sign-on", "Self-hosted or cloud", "Audit-ready"]}
         >
             <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className="w-full"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4 }}
+                className="w-full max-w-[400px]"
             >
-                <div className="mb-8">
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
-                        {mfaToken ? "Two-step verification" : "Sign in to TraceIQ"}
-                    </h1>
-                    <p className="mt-1.5 text-sm text-zinc-500">
-                        {mfaToken ? "Enter the code from your authenticator app." : "Use your work account to continue."}
-                    </p>
+                <div className="flex flex-col items-center mb-8">
+                    <div className="w-14 h-14 bg-zinc-900 rounded-2xl flex items-center justify-center mb-6 shadow-2xl shadow-zinc-300/50 relative overflow-hidden group">
+                        <LayoutGrid className="w-7 h-7 text-white relative z-10" />
+                        <div className="absolute inset-0 bg-gradient-to-tr from-indigo-500/20 to-emerald-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    </div>
+                    <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Welcome Back</h1>
+                    <p className="text-zinc-500 mt-2 text-sm">Sign in to your dashboard.</p>
                 </div>
 
-                <div>
+                <div className="bg-white/90 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-white ring-1 ring-zinc-100">
                     {passwordLoginDisabled && !forcePasswordForm && !mfaSetupToken ? (
                         <div className="space-y-4">
-                            <p className="text-sm text-zinc-600">
+                            <p className="text-sm text-zinc-500 text-center">
                                 This instance uses single sign-on.
                             </p>
                             {ssoProviders.map((p) => (
                                 <a
                                     key={p.type}
                                     href={`${API}${p.login_path}`}
-                                    className="w-full h-10 px-4 bg-[#0B1220] hover:bg-[#16213A] text-white text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2"
+                                    className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg shadow-zinc-900/10"
                                 >
                                     <Shield className="w-4 h-4" /> {p.label}
                                 </a>
                             ))}
                             <a href="?password=1"
-                               className="block text-center text-xs text-zinc-500 hover:text-zinc-800 transition-colors">
+                               className="block text-center text-[11px] text-zinc-400 hover:text-zinc-600 transition-colors">
                                 Administrator password sign-in
                             </a>
                         </div>
@@ -182,16 +182,16 @@ export default function Login() {
                             }}
                         />
                     ) : (
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                         <AnimatePresence>
                             {error && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
                                     animate={{ opacity: 1, height: "auto" }}
                                     exit={{ opacity: 0, height: 0 }}
-                                    className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md flex items-center gap-2"
+                                    className="p-3 text-xs font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg flex items-center gap-2"
                                 >
-                                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                                    <AlertTriangle className="w-3 h-3" />
                                     {error}
                                 </motion.div>
                             )}
@@ -200,43 +200,43 @@ export default function Login() {
                         {!mfaToken && (
                             <>
                                 {ldapEnabled && (
-                                    <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 rounded-md">
+                                    <div className="grid grid-cols-2 gap-1 p-1 bg-zinc-100 rounded-lg">
                                         {(['password', 'ldap'] as const).map((mode) => (
                                             <button
                                                 key={mode} type="button"
                                                 onClick={() => setLoginMode(mode)}
-                                                className={`py-1.5 text-xs font-medium rounded transition-colors ${loginMode === mode ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
+                                                className={`py-1.5 text-[11px] font-semibold rounded-md transition-colors ${loginMode === mode ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-500 hover:text-zinc-700'}`}
                                             >
                                                 {mode === 'password' ? 'Email' : 'Corporate (LDAP)'}
                                             </button>
                                         ))}
                                     </div>
                                 )}
-                                <div className="space-y-1.5">
-                                    <label className="text-sm font-medium text-zinc-700">
-                                        {loginMode === 'ldap' ? 'Corporate username' : 'Work email'}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">
+                                        {loginMode === 'ldap' ? 'Corporate username' : 'Work Email'}
                                     </label>
                                     <input
                                         {...register("email", { required: "Required" })}
                                         type={loginMode === 'ldap' ? 'text' : 'email'}
                                         autoFocus
-                                        className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                         placeholder={loginMode === 'ldap' ? 'jsmith' : 'name@company.com'}
                                     />
                                     {errors.email && <span className="text-xs text-red-500">{errors.email.message as string}</span>}
                                 </div>
 
-                                <div className="space-y-1.5">
+                                <div className="space-y-2">
                                     <div className="flex justify-between items-center">
-                                        <label className="text-sm font-medium text-zinc-700">Password</label>
+                                        <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
                                         {loginMode !== 'ldap' && (
-                                        <Link to="/forgot-password" className="text-sm font-medium text-sky-700 hover:text-sky-900 transition-colors">Forgot password?</Link>
+                                        <Link to="/forgot-password" className="text-[10px] font-medium text-zinc-400 hover:text-zinc-900 transition-colors">Forgot?</Link>
                                         )}
                                     </div>
                                     <input
                                         {...register("password", { required: "Required" })}
                                         type="password"
-                                        className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                     />
                                     {errors.password && <span className="text-xs text-red-500">{errors.password.message as string}</span>}
                                 </div>
@@ -244,46 +244,50 @@ export default function Login() {
                         )}
 
                         {mfaToken && (
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-zinc-700">Authentication code</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Authentication code</label>
                                 <input
                                     value={mfaCode}
                                     onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                                     inputMode="numeric"
                                     autoFocus
                                     placeholder="123456"
-                                    className="w-full h-11 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-lg font-mono tracking-[0.4em] text-center focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm tracking-[0.3em] text-center focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                 />
-                                <p className="text-xs text-zinc-500">The code refreshes every 30 seconds.</p>
+                                <p className="text-[10px] text-zinc-400">Enter the 6-digit code from your authenticator app.</p>
                             </div>
                         )}
 
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full h-10 px-4 bg-[#0B1220] hover:bg-[#16213A] text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+                            className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center group shadow-lg shadow-zinc-900/10"
                         >
                             {isLoading ? <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Verifying…</span> : (
-                                <span>{mfaToken ? 'Verify' : 'Sign in'}</span>
+                                <span className="flex items-center">
+                                    {mfaToken ? 'Verify' : 'Sign In'} <ArrowRight className="w-4 h-4 ml-2 opacity-50 group-hover:translate-x-1 group-hover:opacity-100 transition-all" />
+                                </span>
                             )}
                         </button>
 
-                        {ssoEnabled && !mfaToken && ssoProviders.length > 0 && (
-                            <div className="flex items-center gap-3 text-xs text-zinc-400">
-                                <span className="h-px flex-1 bg-zinc-200" /> or <span className="h-px flex-1 bg-zinc-200" />
-                            </div>
-                        )}
                         {ssoEnabled && !mfaToken && ssoProviders.map((p) => (
                             <a
                                 key={p.type}
                                 href={`${API}${p.login_path}`}
-                                className="w-full h-10 px-4 border border-zinc-300 hover:bg-zinc-50 text-zinc-800 text-sm font-medium rounded-md transition-colors flex items-center justify-center gap-2"
+                                className="w-full py-2.5 px-4 border border-zinc-200 hover:bg-zinc-50 text-zinc-700 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2"
                             >
                                 <Shield className="w-4 h-4" /> {p.label}
                             </a>
                         ))}
                     </form>
                     )}
+                </div>
+
+                <div className="mt-8 text-center flex items-center justify-center gap-2">
+                    <span className="text-sm text-zinc-500">New here?</span>
+                    <Link to="/signup" className="text-sm font-medium text-zinc-900 hover:text-indigo-600 transition-colors">
+                        Sign UP
+                    </Link>
                 </div>
             </motion.div>
         </SweepShell>

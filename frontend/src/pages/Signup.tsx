@@ -5,7 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { API_BASE_URL } from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, Check, Workflow, GitBranch, Users, ShieldCheck } from "lucide-react";
+import { Loader2, ArrowRight, Code2, Globe, Database, Check, Workflow, GitBranch, Users, ShieldCheck } from "lucide-react";
 import MfaEnrollment from "@/components/MfaEnrollment";
 import SweepShell from "@/components/auth-sweep/SweepShell";
 
@@ -93,26 +93,26 @@ export default function Signup() {
     <div className="grid grid-cols-2 gap-3">
         {!inviteToken && (
             <>
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-zinc-700">Organization <span className="font-normal text-zinc-400">(optional)</span></label>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Org Name (Optional)</label>
                     <input
                         {...register("orgName")}
-                        className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                         placeholder="My Company"
                     />
                 </div>
-                <div className="space-y-1.5">
-                    <label className="text-sm font-medium text-zinc-700">First project <span className="font-normal text-zinc-400">(optional)</span></label>
+                <div className="space-y-2">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Name (Optional)</label>
                     <input
                         {...register("projectName")}
-                        className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                        className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                         placeholder="Alpha"
                     />
                 </div>
             </>
         )}
         {inviteToken && (
-            <div className="col-span-2 p-3 bg-sky-50 text-sky-800 text-sm rounded-md border border-sky-200 flex items-center justify-center">
+            <div className="col-span-2 p-3 bg-blue-50 text-blue-700 text-sm rounded-lg border border-blue-100 flex items-center justify-center">
                 <Check className="w-4 h-4 mr-2" />
                 Joining via Invitation
             </div>
@@ -120,6 +120,7 @@ export default function Signup() {
     </div>
     return (
         <SweepShell
+            badge="Quality intelligence platform"
             title={<>Start verifying every release in minutes.</>}
             subtitle="Record a journey once. TraceIQ re-runs it across browsers, APIs and devices on every change, and heals what drifts."
             points={[
@@ -128,21 +129,33 @@ export default function Signup() {
                 { icon: Users, title: "Built for teams", desc: "Workspaces, teams and project-level roles from day one." },
                 { icon: ShieldCheck, title: "Secure by design", desc: "Encrypted secrets, data redaction and a tamper-evident audit trail." },
             ]}
-            trust={["Self-hosted or cloud", "SAML & OIDC single sign-on", "Role-based access"]}
-            topLink={<>Already have an account? <Link to="/login" className="font-medium text-sky-700 hover:text-sky-900">Sign in</Link></>}
+            trust={["Self-hosted or cloud", "SSO-ready", "Role-based access"]}
         >
             <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3 }}
-                className="w-full"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.4 }}
+                className="w-full max-w-[400px]"
             >
-                <div className="mb-8">
-                    <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Create your account</h1>
-                    <p className="mt-1.5 text-sm text-zinc-500">Set up a workspace for your team.</p>
+                <div className="flex flex-col items-center mb-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <div className="p-2 bg-white rounded-lg shadow-sm border border-zinc-100">
+                            <Code2 className="w-5 h-5 text-indigo-500" />
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-zinc-300" />
+                        <div className="p-2 bg-white rounded-lg shadow-sm border border-zinc-100">
+                            <Database className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-zinc-300" />
+                        <div className="p-2 bg-white rounded-lg shadow-sm border border-zinc-100">
+                            <Globe className="w-5 h-5 text-blue-500" />
+                        </div>
+                    </div>
+                    <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Create Account</h1>
+                    <p className="text-zinc-500 mt-2 text-sm">Join thousands of developers.</p>
                 </div>
 
-                <div>
+                <div className="bg-white/90 backdrop-blur-2xl p-8 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] border border-white ring-1 ring-zinc-100">
                     {mfaStep ? (
                         <MfaEnrollment
                             token={mfaStep.token}
@@ -175,85 +188,85 @@ export default function Signup() {
                             }}
                         />
                     ) : (
-                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                         <AnimatePresence>
                             {error && (
                                 <motion.div
                                     initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
                                     animate={{ opacity: 1, height: "auto" }}
                                     exit={{ opacity: 0, height: 0 }}
-                                    className="p-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md"
+                                    className="p-3 text-xs font-medium text-red-600 bg-red-50 border border-red-100 rounded-lg"
                                 >
                                     {error}
                                 </motion.div>
                             )}
                         </AnimatePresence>
 
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-zinc-700">Full name</label>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Full Name</label>
                             <input
                                 {...register("fullName", { required: "Required" })}
-                                className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                 placeholder="Name"
                             />
                             {errors.fullName && <span className="text-xs text-red-500">{errors.fullName.message as string}</span>}
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-zinc-700">Organization <span className="font-normal text-zinc-400">(optional)</span></label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Org Name (Optional)</label>
                                 <input
                                     {...register("orgName")}
-                                    className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                     placeholder="My Company"
                                 />
                             </div>
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-zinc-700">First project <span className="font-normal text-zinc-400">(optional)</span></label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Name (Optional)</label>
                                 <input
                                     {...register("projectName")}
-                                    className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                     placeholder="Alpha"
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-medium text-zinc-700">Work email</label>
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Work Email</label>
                             <input
                                 {...register("email", {
                                     required: "Required",
                                     pattern: { value: /^\S+@\S+$/i, message: "Invalid email" }
                                 })}
                                 type="email"
-                                className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                 placeholder="name@company.com"
                             />
                             {errors.email && <span className="text-xs text-red-500">{errors.email.message as string}</span>}
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-zinc-700">Password</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
                                 <input
                                     {...register("password", {
                                         required: "Required",
                                         minLength: { value: 6, message: "Min 6 chars" }
                                     })}
                                     type="password"
-                                    className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                 />
                                 {errors.password && <span className="text-xs text-red-500">{errors.password.message as string}</span>}
                             </div>
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-medium text-zinc-700">Confirm password</label>
+                            <div className="space-y-2">
+                                <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Confirm</label>
                                 <input
                                     {...register("confirmPassword", {
                                         required: "Required",
                                         validate: (val: string) => val === password || "Mismatch"
                                     })}
                                     type="password"
-                                    className="w-full h-10 px-3 rounded-md bg-white border border-zinc-300 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-600 transition-colors"
+                                    className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                 />
                                 {errors.confirmPassword && <span className="text-xs text-red-500">{errors.confirmPassword.message as string}</span>}
                             </div>
@@ -262,14 +275,25 @@ export default function Signup() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className="w-full h-10 px-4 bg-[#0B1220] hover:bg-[#16213A] text-white text-sm font-medium rounded-md transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center"
+                            className="w-full py-2.5 px-4 bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center group shadow-lg shadow-zinc-900/10"
                         >
                             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                                <span>Create account</span>
+                                <span className="flex items-center">
+                                    Create Account <ArrowRight className="w-4 h-4 ml-2 opacity-50 group-hover:translate-x-1 group-hover:opacity-100 transition-all" />
+                                </span>
                             )}
                         </button>
                     </form>
                     )}
+                </div>
+
+                <div className="mt-8 text-center">
+                    <p className="text-sm text-zinc-500">
+                        Already have an account?{" "}
+                        <Link to="/login" className="text-zinc-900 font-medium hover:underline underline-offset-4 decoration-zinc-300">
+                            Sign in
+                        </Link>
+                    </p>
                 </div>
             </motion.div>
         </SweepShell>
