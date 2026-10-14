@@ -238,25 +238,25 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                         type="checkbox"
                         checked={selection.selected}
                         onChange={(e) => toggleSelection(node.id, e.target.checked)}
-                        className="h-4 w-4 accent-ink cursor-pointer"
+                        className="h-4 w-4 accent-slate-900 cursor-pointer"
                     />
 
                     <div className="flex flex-col min-w-0">
-                        <span className="text-xs font-mono text-ink font-medium truncate">
+                        <span className="text-xs font-mono text-blue-700 font-medium truncate">
                             &lt;{node.tagName}&gt;
                             {node.count && node.count > 1 && (
-                                <span className="ml-1 text-[11px] text-ink-soft font-normal">(x{node.count})</span>
+                                <span className="ml-1 text-[10px] text-slate-400 font-normal">(x{node.count})</span>
                             )}
                         </span>
                         {strictMode && node.namespaceURI && (
-                            <span className="text-[11px] text-ink-soft font-mono truncate max-w-[200px]" title={node.namespaceURI}>
+                            <span className="text-[9px] text-slate-400 font-mono truncate max-w-[200px]" title={node.namespaceURI}>
                                 {node.namespaceURI}
                             </span>
                         )}
                     </div>
 
                     {node.textContent && (
-                        <span className="text-xs text-ink-soft truncate max-w-[150px]" title={node.textContent}>
+                        <span className="text-xs text-slate-600 truncate max-w-[150px]" title={node.textContent}>
                             {node.textContent}
                         </span>
                     )}
@@ -299,54 +299,54 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
 
     return (
         <>
-            <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-                <Wand2 className="w-3.5 h-3.5" /> Generate assertions
+            <Button variant="outline" size="sm" className="text-xs h-6" onClick={() => setOpen(true)}>
+                <Wand2 className="w-3 h-3 mr-1" /> Generate Assertions
             </Button>
 
             {open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm">
-                    <div role="dialog" aria-modal="true" aria-labelledby="feed-gen-title" className="bg-white rounded-3xl border border-border shadow-[0_12px_40px_rgba(28,27,34,0.12)] w-full max-w-3xl max-h-[90vh] flex flex-col m-4">
-                        <div className="flex items-center justify-between gap-3 p-5 border-b border-border">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-3xl max-h-[90vh] flex flex-col m-4">
+                        <div className="flex items-center justify-between p-4 border-b">
                             <div className="flex flex-col">
-                                <h2 id="feed-gen-title" className="text-[22px] font-bold tracking-[-0.02em] text-ink">Generate feed assertions</h2>
-                                <p className="text-sm text-ink-soft">Pick nodes to turn into XPath assertions.</p>
+                                <h2 className="text-lg font-semibold">Generate Feed Assertions</h2>
+                                <p className="text-xs text-slate-500">Select nodes to create XPath assertions</p>
                             </div>
-                            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close" className="text-ink-soft hover:text-ink">
+                            <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
                                 <X className="w-4 h-4" />
                             </Button>
                         </div>
 
-                        <div className="flex-1 overflow-hidden flex flex-col min-h-[300px] p-5">
+                        <div className="flex-1 overflow-hidden flex flex-col min-h-[300px] p-4">
                             {step === 'input' ? (
                                 <div className="flex-1 flex flex-col gap-2">
-                                    <p className="text-sm text-ink-soft">Paste your XML or RSS feed below.</p>
+                                    <p className="text-sm text-slate-500">Paste your XML/RSS Feed content below.</p>
                                     <textarea
-                                        className="flex-1 font-mono text-xs p-4 border border-border bg-background text-ink rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                                        className="flex-1 font-mono text-xs p-4 border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-slate-400"
                                         placeholder='<?xml version="1.0" ...'
                                         value={xmlInput}
                                         onChange={(e) => setXmlInput(e.target.value)}
                                     />
-                                    {error && <p role="alert" className="text-sm text-pastel-ink-peach">{error}</p>}
+                                    {error && <p className="text-xs text-red-500">{error}</p>}
                                 </div>
                             ) : (
                                 <div className="flex-1 flex flex-col gap-4 overflow-hidden">
                                     <div className="flex-1 flex flex-col gap-2 overflow-hidden">
                                         <div className="flex items-center justify-between">
-                                            <p className="text-sm font-semibold text-ink">Nodes in the sample</p>
-                                            <label className="flex min-h-10 cursor-pointer items-center gap-2 rounded-full border border-border px-3.5 text-sm text-ink">
+                                            <p className="text-sm font-medium text-slate-700">Select nodes from sample</p>
+                                            <div className="flex items-center gap-2 bg-slate-100 px-2 py-1 rounded border">
+                                                <span className="text-[10px] font-semibold text-slate-600 uppercase tracking-wider">Strict Namespaces</span>
                                                 <input
                                                     type="checkbox"
                                                     checked={strictMode}
                                                     onChange={e => setStrictMode(e.target.checked)}
-                                                    className="h-4 w-4 accent-ink cursor-pointer"
+                                                    className="h-3 w-3 accent-slate-900 cursor-pointer"
                                                 />
-                                                Strict namespaces
-                                            </label>
+                                            </div>
                                         </div>
-                                        <div className="border border-border rounded-2xl flex-1 overflow-hidden flex flex-col">
-                                            <div className="bg-background p-2 border-b border-border text-xs font-semibold text-ink-soft px-4 flex justify-between">
-                                                <span>XML structure</span>
-                                                <span>Assertion type</span>
+                                        <div className="border rounded-md flex-1 overflow-hidden flex flex-col">
+                                            <div className="bg-slate-100 p-2 border-b text-xs font-medium text-slate-500 px-4 flex justify-between">
+                                                <span>XML Structure</span>
+                                                <span>Assertion Type</span>
                                             </div>
                                             <div className="flex-1 overflow-y-auto p-2">
                                                 {rootNode && renderNode(rootNode, 0)}
@@ -356,17 +356,16 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
 
                                     <div className="flex flex-col gap-2">
                                         <div className="flex items-center justify-between">
-                                            <p className="text-sm font-semibold text-ink">Manual assertions</p>
-                                            <Button variant="outline" size="sm" onClick={addManualAssertion}>
-                                                Add manual assertion
+                                            <p className="text-sm font-medium text-slate-700">Manual Assertions</p>
+                                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={addManualAssertion}>
+                                                + Add Manual
                                             </Button>
                                         </div>
                                         <div className="space-y-2 max-h-[150px] overflow-y-auto pr-2">
                                             {manualAssertions.map(ma => (
                                                 <div key={ma.id} className="flex gap-2 items-center">
                                                     <input
-                                                        className="flex-1 h-9 text-xs px-2.5 border border-border rounded-xl bg-white text-ink font-mono"
-                                                        aria-label="XPath"
+                                                        className="flex-1 text-xs p-1.5 border rounded"
                                                         placeholder="XPath (e.g. //item/title)"
                                                         value={ma.path}
                                                         onChange={e => updateManualAssertion(ma.id, 'path', e.target.value)}
@@ -375,7 +374,7 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                                                         value={ma.operator}
                                                         onValueChange={(v: any) => updateManualAssertion(ma.id, 'operator', v)}
                                                     >
-                                                        <SelectTrigger className="h-9 w-[110px] text-xs rounded-xl">
+                                                        <SelectTrigger className="h-8 w-[100px] text-xs">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
@@ -387,20 +386,19 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                                                         </SelectContent>
                                                     </Select>
                                                     <input
-                                                        className="flex-1 h-9 text-xs px-2.5 border border-border rounded-xl bg-white text-ink disabled:opacity-50"
-                                                        aria-label="Expected value"
-                                                        placeholder="Expected value"
+                                                        className="flex-1 text-xs p-1.5 border rounded"
+                                                        placeholder="Expected Value"
                                                         value={ma.value}
                                                         onChange={e => updateManualAssertion(ma.id, 'value', e.target.value)}
                                                         disabled={ma.operator === 'exists' || ma.operator === 'optional'}
                                                     />
-                                                    <Button variant="ghost" size="icon" aria-label="Remove manual assertion" className="h-9 w-9 text-ink-soft hover:text-ink" onClick={() => removeManualAssertion(ma.id)}>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-red-500" onClick={() => removeManualAssertion(ma.id)}>
                                                         <X className="w-4 h-4" />
                                                     </Button>
                                                 </div>
                                             ))}
                                             {manualAssertions.length === 0 && (
-                                                <p className="text-sm text-ink-soft text-center py-2">No manual assertions yet.</p>
+                                                <p className="text-xs text-slate-400 italic text-center py-2">No manual assertions added</p>
                                             )}
                                         </div>
                                     </div>
@@ -408,16 +406,16 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
                             )}
                         </div>
 
-                        <div className="p-5 border-t border-border flex justify-end gap-2">
+                        <div className="p-4 border-t flex justify-end gap-2">
                             {step === 'input' ? (
                                 <Button onClick={parseXml} disabled={!xmlInput.trim()}>
-                                    Next <ArrowRight className="w-4 h-4" />
+                                    Next <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             ) : (
                                 <>
-                                    <Button variant="outline" onClick={() => setStep('input')}>Back</Button>
+                                    <Button variant="ghost" onClick={() => setStep('input')}>Back</Button>
                                     <Button onClick={generateAssertions}>
-                                        <Check className="w-4 h-4" /> Add assertions
+                                        <Check className="w-4 h-4 mr-2" /> Add Assertions
                                     </Button>
                                 </>
                             )}

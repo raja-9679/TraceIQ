@@ -177,37 +177,37 @@ export const SchemaGeneratorModal: React.FC<SchemaGeneratorModalProps> = ({ onGe
 
     return (
         <>
-            <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-                <Wand2 className="w-3.5 h-3.5" /> Generate from sample
+            <Button variant="outline" size="sm" className="text-xs h-6" onClick={() => setOpen(true)}>
+                <Wand2 className="w-3 h-3 mr-1" /> Generate from Sample
             </Button>
 
             {open && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm">
-                    <div role="dialog" aria-modal="true" aria-labelledby="schema-gen-title" className="bg-white rounded-3xl border border-border shadow-[0_12px_40px_rgba(28,27,34,0.12)] w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
-                        <div className="flex items-center justify-between gap-3 p-5 border-b border-border">
-                            <h2 id="schema-gen-title" className="text-[22px] font-bold tracking-[-0.02em] text-ink">Generate a JSON schema</h2>
-                            <Button variant="ghost" size="icon" onClick={() => setOpen(false)} aria-label="Close" className="text-ink-soft hover:text-ink">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                    <div className="bg-white rounded-lg shadow-lg w-full max-w-2xl max-h-[80vh] flex flex-col m-4">
+                        <div className="flex items-center justify-between p-4 border-b">
+                            <h2 className="text-lg font-semibold">Generate JSON Schema</h2>
+                            <Button variant="ghost" size="icon" onClick={() => setOpen(false)}>
                                 <X className="w-4 h-4" />
                             </Button>
                         </div>
 
-                        <div className="flex-1 overflow-hidden flex flex-col min-h-[300px] p-5">
+                        <div className="flex-1 overflow-hidden flex flex-col min-h-[300px] p-4">
                             {step === 'input' ? (
                                 <div className="flex-1 flex flex-col gap-2">
-                                    <p className="text-sm text-ink-soft">Paste a sample JSON response below.</p>
+                                    <p className="text-sm text-slate-500">Paste your JSON response sample below.</p>
                                     <textarea
-                                        className="flex-1 font-mono text-xs p-4 border border-border bg-background text-ink rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                                        className="flex-1 font-mono text-xs p-4 border rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-slate-400"
                                         placeholder='{"id": 1, "name": "Example"}'
                                         value={jsonInput}
                                         onChange={e => setJsonInput(e.target.value)}
                                     />
-                                    {error && <p role="alert" className="text-sm text-pastel-ink-peach">{error}</p>}
+                                    {error && <p className="text-xs text-red-500">{error}</p>}
                                 </div>
                             ) : (
                                 <div className="flex-1 flex flex-col gap-2 overflow-hidden">
-                                    <p className="text-sm text-ink-soft">Review the detected fields. Untick a field to make it optional.</p>
-                                    <div className="border border-border rounded-2xl flex-1 overflow-hidden flex flex-col">
-                                        <div className="bg-background p-2 border-b border-border grid grid-cols-[40px_1fr_120px] gap-2 text-xs font-semibold text-ink-soft items-center">
+                                    <p className="text-sm text-slate-500">Review detected fields. Uncheck boxes to make fields optional.</p>
+                                    <div className="border rounded-md flex-1 overflow-hidden flex flex-col">
+                                        <div className="bg-slate-100 p-2 border-b grid grid-cols-[40px_1fr_120px] gap-2 text-xs font-medium text-slate-500 items-center">
                                             <span className="text-center">Req</span>
                                             <span>Field Name</span>
                                             <span>Type</span>
@@ -217,7 +217,7 @@ export const SchemaGeneratorModal: React.FC<SchemaGeneratorModalProps> = ({ onGe
                                                 {mapping.length > 0 && mapping[0].children ? (
                                                     mapping[0].children.map(child => renderFieldRow(child, 0))
                                                 ) : (
-                                                    <div className="p-4 text-center text-sm text-ink-soft">
+                                                    <div className="p-4 text-center text-sm text-slate-400">
                                                         Root is a primitive or empty.
                                                     </div>
                                                 )}
@@ -228,16 +228,16 @@ export const SchemaGeneratorModal: React.FC<SchemaGeneratorModalProps> = ({ onGe
                             )}
                         </div>
 
-                        <div className="p-5 border-t border-border flex justify-end gap-2">
+                        <div className="p-4 border-t flex justify-end gap-2">
                             {step === 'input' ? (
                                 <Button onClick={parseJson} disabled={!jsonInput.trim()}>
-                                    Next <ArrowRight className="w-4 h-4" />
+                                    Next <ArrowRight className="w-4 h-4 ml-2" />
                                 </Button>
                             ) : (
                                 <>
-                                    <Button variant="outline" onClick={() => setStep('input')}>Back</Button>
+                                    <Button variant="ghost" onClick={() => setStep('input')}>Back</Button>
                                     <Button onClick={buildSchema}>
-                                        <Check className="w-4 h-4" /> Insert schema
+                                        <Check className="w-4 h-4 mr-2" /> Insert Schema
                                     </Button>
                                 </>
                             )}

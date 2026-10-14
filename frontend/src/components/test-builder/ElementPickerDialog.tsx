@@ -113,12 +113,12 @@ export function ElementPickerDialog({ open, onOpenChange, initialUrl, onPick }: 
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-4xl rounded-3xl max-h-[90vh] flex flex-col">
+            <DialogContent className="sm:max-w-4xl rounded-2xl max-h-[90vh] flex flex-col">
                 <DialogHeader>
-                    <DialogTitle className="flex items-center gap-3 text-[22px] font-bold tracking-[-0.02em] text-ink">
-                        <span className="flex h-9 w-9 items-center justify-center rounded-[11px] bg-pastel-lavender text-pastel-ink-lavender" aria-hidden="true"><Crosshair className="h-[17px] w-[17px]" strokeWidth={2.2} /></span> Pick an element from the page
+                    <DialogTitle className="flex items-center gap-2">
+                        <Crosshair className="h-5 w-5 text-indigo-500" /> Pick Element from Page
                     </DialogTitle>
-                    <DialogDescription className="text-ink-soft">
+                    <DialogDescription>
                         Load the page, then click the element you want — its selector is filled into the step.
                     </DialogDescription>
                 </DialogHeader>
@@ -129,28 +129,27 @@ export function ElementPickerDialog({ open, onOpenChange, initialUrl, onPick }: 
                         onChange={(e) => setUrl(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && url.trim()) inspectMutation.mutate(); }}
                         placeholder="https://your-app.example.com/login"
-                        aria-label="Page URL"
-                        className="h-11 rounded-xl font-mono flex-1"
+                        className="rounded-xl font-mono flex-1"
                     />
                     <Button
                         onClick={() => inspectMutation.mutate()}
                         disabled={!url.trim() || inspectMutation.isPending}
-                        className="shrink-0"
+                        className="rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shrink-0"
                     >
                         {inspectMutation.isPending
-                            ? <><Loader2 className="h-4 w-4 animate-spin" /> Rendering…</>
-                            : 'Load page'}
+                            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Rendering…</>
+                            : 'Load Page'}
                     </Button>
                 </div>
 
                 {hovered && (
-                    <div className="text-xs font-mono bg-background border border-border text-ink rounded-xl px-3 py-2 truncate">
+                    <div className="text-xs font-mono bg-slate-900 text-emerald-300 rounded-lg px-3 py-2 truncate">
                         {hovered.selector}
-                        {hovered.text ? <span className="text-ink-soft">  — “{hovered.text}”</span> : null}
+                        {hovered.text ? <span className="text-slate-400">  — “{hovered.text}”</span> : null}
                     </div>
                 )}
 
-                <div className="overflow-auto overscroll-contain rounded-2xl border border-border bg-background min-h-[200px] max-h-[62vh]">
+                <div className="overflow-auto overscroll-contain rounded-xl border border-slate-200 bg-slate-50 min-h-[200px] max-h-[62vh]">
                     {result ? (
                         <div className="relative cursor-crosshair" style={{ lineHeight: 0 }}>
                             <img
@@ -166,10 +165,10 @@ export function ElementPickerDialog({ open, onOpenChange, initialUrl, onPick }: 
                             {hovered && <div style={highlightStyle()} />}
                         </div>
                     ) : (
-                        <div className="h-[300px] flex items-center justify-center text-ink-soft text-sm">
+                        <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">
                             {inspectMutation.isPending
                                 ? 'Rendering page in headless browser…'
-                                : 'Enter a URL and press Load page'}
+                                : 'Enter a URL and press Load Page'}
                         </div>
                     )}
                 </div>
