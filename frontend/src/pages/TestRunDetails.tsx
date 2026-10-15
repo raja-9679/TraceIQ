@@ -15,6 +15,7 @@ import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
 import { InvestigationReport } from '@/components/evidence/InvestigationReport';
 import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
+import { ReproBundleButton } from '@/components/ReproBundleButton';
 import {
     isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
 } from '@/components/evidence/evidenceHelpers';
@@ -458,6 +459,7 @@ export default function TestRunDetails() {
                                                 <TestCaseResultItem
                                                     key={result.id}
                                                     result={result}
+                                                    runId={run.id}
                                                     networkEvents={testNetworkEvents}
                                                     focus={evidenceFocus?.resultId === result.id ? evidenceFocus : null}
                                                 />
@@ -940,7 +942,7 @@ function unwrapJson(str: string) {
     }
 }
 
-function TestCaseResultItem({ result, networkEvents = [], focus = null }: { result: any, networkEvents?: any[], focus?: EvidenceFocus | null }) {
+function TestCaseResultItem({ result, runId, networkEvents = [], focus = null }: { result: any, runId: number, networkEvents?: any[], focus?: EvidenceFocus | null }) {
     const [isExpanded, setIsExpanded] = useState(false);
     const stepEvidence = stepEvidenceOf(result);
 
@@ -1034,6 +1036,9 @@ function TestCaseResultItem({ result, networkEvents = [], focus = null }: { resu
                         className="overflow-hidden border-t border-gray-100"
                     >
                         <div className="p-5 space-y-6">
+                            <div className="flex justify-end">
+                                <ReproBundleButton runId={runId} resultId={result.id} />
+                            </div>
                             {result.error_message && (
                                 <div className="bg-rose-50 border border-rose-100 rounded-xl p-4">
                                     <p className="text-[10px] font-bold text-rose-800 mb-2 uppercase tracking-wider flex items-center gap-1.5">
