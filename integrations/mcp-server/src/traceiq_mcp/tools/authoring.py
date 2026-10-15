@@ -147,8 +147,21 @@ async def propose_update_suite_settings(
         "domain_settings": {"api.example.com": {"headers": {...}}},
             # per-host overrides, e.g. a different token for the API host
         "browsers": ["chromium", "firefox"],    # default execution matrix
-        "devices":  ["iPhone 14"]
+        "devices":  ["iPhone 14"],
+        "setup_steps":    [ ...steps... ],      # run before the suite's cases
+        "teardown_steps": [ ...steps... ],      # ALWAYS run after them
+        "data_seed": "repro-1"                  # deterministic {{fake.*}}
       }
+
+    setup_steps / teardown_steps use the case step schema (usually
+    http-request). Values a setup step extracts are {{setup.NAME}} in cases;
+    child suites run the parent's setup first and its teardown last.
+    Teardown runs even when the case fails and its failures are warnings,
+    not red cases. Put `params.cleanup` (true, or {url, method?}) on a
+    creating http-request so the created record is deleted after the case.
+    See describe_step_types → templates for the exact rules and the
+    {{run.*}} / {{unique.NAME}} tokens (collision-free test data across
+    parallel workers). Hooks are replaced wholesale, not merged per step.
 
     merge=True (default): your keys are merged over the suite's existing
     settings (headers/params/domain_settings merge per key, your values win;

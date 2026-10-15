@@ -463,6 +463,10 @@ def _evidence_payload(res: Dict[str, Any], run_id: Optional[int] = None) -> Dict
     step_evidence = normalise_step_evidence(res.get('step_evidence'), run_id)
     if step_evidence:
         out['step_evidence'] = step_evidence
+    # Suite setup/teardown + cleanup outcomes -> `hooks`, `cleanup` and
+    # `hook_warnings` (teardown/cleanup failures never change the status).
+    from app.services.suite_hooks import hook_payload
+    out.update(hook_payload(res.get('hook_report')))
     return out
 
 
@@ -663,6 +667,19 @@ def _persist_heal_suggestions(result: Dict[str, Any]):
         print(f"[Aggregator] Failed to persist heal suggestions: {e}")
 
 
+def _persist_page_budgets(session, run, test_case_id, test_name, res: Dict[str, Any]):
+    """`check-page-budget` outcomes -> PageBudgetSample rows (WP10). Older
+    workers send none. Never raises: a bad sample must not leave the job's
+    result un-acked."""
+    if not res.get('page_budgets'):
+        return
+    try:
+        from app.services.page_budgets import persist_samples
+        persist_samples(session, run, test_case_id, test_name, res.get('page_budgets'))
+    except Exception as e:  # noqa: BLE001
+        print(f"[Aggregator] Failed to store page budgets for run {getattr(run, 'id', None)}: {e}")
+
+
 def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, Any], test_results: list):
     """Process a continuous job result with multiple test cases"""
     if not run_id:
@@ -755,6 +772,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     result_payload=_case_payload(test_res, run_id) or None
                 )
                 session.add(test_result)
+            _persist_page_budgets(session, run, test_res.get('test_case_id'), test_name, test_res)
 
         # Update run with network events (tagged by test name already)
         if network_events:
@@ -894,6 +912,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 result_payload=merged_payload
             )
             session.add(test_result)
+        _persist_page_budgets(session, run, test_case_id, test_name, result)
 
         # Update run with network events (accumulate from all test results)
         if network_events:

@@ -1,8 +1,9 @@
+import ServerMetricsPanel from '@/components/load/ServerMetricsPanel';
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl } from "@/lib/api";
+import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl, triggerRun } from "@/lib/api";
 import { llmProvidersApi } from "@/api/llmProviders";
-import { Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Activity, LayoutGrid, Bug, PlayCircle, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
+import { Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Activity, LayoutGrid, Bug, PlayCircle, Server, Globe, Zap, ExternalLink, GitCompareArrows, MonitorSmartphone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import CreateTicketDialog from "@/components/CreateTicketDialog";
@@ -17,6 +18,10 @@ import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
 import { InvestigationReport } from '@/components/evidence/InvestigationReport';
 import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
+import { HookOutcomes, RunDataSummary } from '@/components/suite-hooks/HookOutcomes';
+import { hookOutcomesOf, resultsWithHookWarnings } from '@/components/suite-hooks/suiteHooks';
+import { ReproBundleButton } from '@/components/ReproBundleButton';
+import SweepView from '@/components/frontend-quality/SweepView';
 import {
     isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
 } from '@/components/evidence/evidenceHelpers';
@@ -157,6 +162,19 @@ export default function TestRunDetails() {
             });
         }
     });
+    // Replay: same suite/case/browser/device, same {{fake.*}} seed.
+    const replayMutation = useMutation({
+        mutationFn: () => triggerRun(run!.test_suite_id, run!.test_case_id ?? undefined,
+            run!.browser, run!.device ?? undefined, { data_seed: run!.data_seed ?? undefined }),
+        onSuccess: (created) => {
+            const first = Array.isArray(created) ? created[0] : created;
+            if (first) navigate(`/runs/${first.id}`);
+        },
+        onError: (error: unknown) => {
+            const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+            toast.error("Failed to start the run", { description: detail || "An error occurred" });
+        }
+    });
     const isFinishedRun = run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error';
 
     // Check if test is stuck (running for more than 10 minutes)
@@ -233,11 +251,26 @@ export default function TestRunDetails() {
                                 >
                                     <Server size={16} /> Network
                                 </Tabs.Trigger>
+                                {run.sweep_group && (
+                                    <Tabs.Trigger
+                                        value="sweep"
+                                        className="flex min-h-12 items-center gap-2 px-3 text-sm font-medium text-ink-soft outline-none transition-colors hover:text-ink focus-visible:ring-2 focus-visible:ring-ink/20 data-[state=active]:font-semibold data-[state=active]:text-ink data-[state=active]:shadow-[inset_0_-2px_0_#1C1B22]"
+                                    >
+                                        <MonitorSmartphone size={16} /> Sweep
+                                    </Tabs.Trigger>
+                                )}
                             </Tabs.List>
                 }
             />
 
             <div className="flex flex-col gap-6">
+                <RunDataSummary
+                    seed={run.data_seed}
+                    warningResults={resultsWithHookWarnings(run.results)}
+                    onReplay={() => replayMutation.mutate()}
+                    replaying={replayMutation.isPending}
+                />
+
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
                     <div className="flex flex-col gap-1 rounded-2xl border border-border bg-white px-5 py-4">
                         <span className="text-[13px] text-ink-soft">Duration</span>
@@ -261,6 +294,12 @@ export default function TestRunDetails() {
 
                 {/* Main Content Tabs */}
                 <div className="flex flex-col">
+
+                    {run.sweep_group && (
+                        <Tabs.Content value="sweep" className="focus:outline-none space-y-6">
+                            <SweepView runId={run.id} />
+                        </Tabs.Content>
+                    )}
 
                     <Tabs.Content value="overview" className="focus:outline-none space-y-6">
                         {run.error_message && (
@@ -383,7 +422,7 @@ export default function TestRunDetails() {
                         )}
 
                         {run.results && run.results.length > 0 && (
-                            <ResultsSplit results={run.results} networkEvents={run.network_events || []}
+                            <ResultsSplit runId={run.id} results={run.results} networkEvents={run.network_events || []}
                                 search={testSearchTerm} onSearch={setTestSearchTerm} focus={evidenceFocus} />
                         )}
                     </Tabs.Content>
@@ -856,8 +895,8 @@ function unwrapJson(str: string) {
 
 // Direction A: the run's tests as a list, with the selected one shown in full
 // on the right (failed tests first, so the one you came for is already open).
-function ResultsSplit({ results, networkEvents, search, onSearch, focus = null }: {
-    results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void; focus?: EvidenceFocus | null;
+function ResultsSplit({ runId, results, networkEvents, search, onSearch, focus = null }: {
+    runId: number; results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void; focus?: EvidenceFocus | null;
 }) {
     const [selectedId, setSelectedId] = useState<number | null>(null);
     // An evidence reference was clicked in the analysis panel: select the
@@ -901,6 +940,7 @@ function ResultsSplit({ results, networkEvents, search, onSearch, focus = null }
                     key={selected.id}
                     variant="detail"
                     result={selected}
+                    runId={runId}
                     networkEvents={networkEvents.filter((e: any) => e.testCaseName === selected.test_name)}
                     focus={focus?.resultId === selected.id ? focus : null}
                 />
@@ -909,7 +949,7 @@ function ResultsSplit({ results, networkEvents, search, onSearch, focus = null }
     );
 }
 
-function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion', focus = null }: { result: any, networkEvents?: any[], variant?: 'accordion' | 'detail', focus?: EvidenceFocus | null }) {
+function TestCaseResultItem({ result, runId, networkEvents = [], variant = 'accordion', focus = null }: { result: any, runId: number, networkEvents?: any[], variant?: 'accordion' | 'detail', focus?: EvidenceFocus | null }) {
     const [expandedState, setIsExpanded] = useState(false);
     const isDetail = variant === 'detail';
     const isExpanded = isDetail || expandedState;
@@ -1009,6 +1049,9 @@ function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion',
                         className="overflow-hidden border-t border-gray-100"
                     >
                         <div className="p-5 space-y-6">
+                            <div className="flex justify-end">
+                                <ReproBundleButton runId={runId} resultId={result.id} />
+                            </div>
                             {result.error_message && (
                                 <div className="bg-pastel-peach/60 border border-transparent rounded-xl p-4">
                                     <p className="text-[10px] font-bold text-pastel-ink-peach mb-2 uppercase tracking-wider flex items-center gap-1.5">
@@ -1021,6 +1064,11 @@ function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion',
                             )}
 
                             <RetryAttempts attempts={attemptsOf(result as any)} />
+
+                            {(() => {
+                                const hookOutcomes = hookOutcomesOf(result.result_payload);
+                                return hookOutcomes ? <HookOutcomes outcomes={hookOutcomes} /> : null;
+                            })()}
 
                             <StepEvidenceTimeline
                                 resultId={result.id}
@@ -1065,6 +1113,7 @@ function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion',
                                                 ))}
                                             </div>
                                         )}
+                                        <ServerMetricsPanel runId={result.test_run_id} resultId={result.id} />
                                     </div>
                                 );
                             })()}

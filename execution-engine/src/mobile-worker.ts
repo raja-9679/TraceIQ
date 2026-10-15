@@ -45,10 +45,13 @@ process.env.REDIS_JOBS_STREAM = process.env.REDIS_JOBS_STREAM || 'jobs:mobile:pe
 process.env.REDIS_CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'mobile-workers';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const { JobQueue } = require('./core/job-queue') as typeof import('./core/job-queue');
+const { JobQueue, workerRegion } = require('./core/job-queue') as typeof import('./core/job-queue');
+import { Heartbeat } from './core/heartbeat';
+import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
 import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
+import { RunScope } from './core/run-scope';
 import { ArtifactStore, CaptureLevel, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
 import { jobDataPolicy, policyFromDataPolicy } from './core/redact';
 import { AIEngine } from './ai';
@@ -99,8 +102,30 @@ class MobileWorker {
     private aiEngine = new AIEngine();
     private running = true;
 
+    private heartbeat: Heartbeat | null = null;
+
     async start(): Promise<void> {
         await this.queue.initialize();
+        // Runtime config + fleet heartbeat (WP8), same as the web worker.
+        await startWorkerConfigPolling();
+        this.heartbeat = new Heartbeat(this.queue.duplicateRedis() as any, {
+            workerId: this.queue.workerId,
+            kind: 'mobile',
+            region: workerRegion(),
+            streams: this.queue.streams,
+            stepTypes: SUPPORTED_MOBILE_STEP_TYPES,
+            capabilities: {
+                mobile: {
+                    provider: this.provider.name,
+                    device: process.env.MOBILE_DEVICE_NAME || null,
+                },
+            },
+            startedAt: new Date().toISOString(),
+            jobsProcessed: 0,
+            jobsFailed: 0,
+            currentJob: null,
+        });
+        this.heartbeat.start();
         try {
             await this.driver.status();
             console.log(`[MobileWorker] WebDriver hub reachable: ${this.provider.name} (${this.provider.webdriverUrl})`);
@@ -117,8 +142,14 @@ class MobileWorker {
                     await sleep(POLL_IDLE_MS);
                     continue;
                 }
-                const result = await this.runJob(claimed.job);
-                await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy(jobDataPolicy(claimed.job)));
+                this.heartbeat?.jobStarted(claimed.job);
+                let result: any = null;
+                try {
+                    result = await this.runJob(claimed.job);
+                    await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy(jobDataPolicy(claimed.job)));
+                } finally {
+                    this.heartbeat?.jobFinished(!result || result.status !== 'passed');
+                }
             } catch (err: any) {
                 console.error('[MobileWorker] Loop error:', err.message);
                 await sleep(POLL_IDLE_MS);
@@ -128,6 +159,8 @@ class MobileWorker {
 
     stop(): void {
         this.running = false;
+        stopWorkerConfigPolling();
+        void this.heartbeat?.stop();
     }
 
     private async runJob(job: TestJob): Promise<JobResult> {
@@ -280,6 +313,9 @@ class MobileWorker {
             secrets: job.settings?.secrets,
             dataRow: testCase.data_row,
             variables,
+            // {{run.*}} / {{unique.*}} / seeded {{fake.*}}. Suite hooks are
+            // not run by the mobile worker.
+            scope: RunScope.forCase(job, testCase),
         };
         const meta: StepExecMeta = {
             testCaseId: testCase.id,

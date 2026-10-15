@@ -15,6 +15,7 @@ import {
 import type { Tone } from '@/components/redesign/kinds';
 import { Facts, Field, FormCard, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { cn } from '@/lib/utils';
+import { parseCidrList } from '@/lib/fleet';
 
 interface ApiError extends Error {
   response?: { data?: { detail?: string } };
@@ -114,6 +115,7 @@ function CreateKeyForm({
   const [projectId, setProjectId] = useState<string>(NO_SCOPE);
   const [roleId, setRoleId] = useState<string>(NO_ROLE);
   const [expiresInDays, setExpiresInDays] = useState('');
+  const [cidrs, setCidrs] = useState('');
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -124,6 +126,7 @@ function CreateKeyForm({
         project_id: projectId === NO_SCOPE ? null : parseInt(projectId),
         role_id: roleId === NO_ROLE ? null : parseInt(roleId),
         expires_in_days: days && days > 0 ? days : null,
+        allowed_cidrs: parseCidrList(cidrs),
       });
     },
     onSuccess: (created) => onCreated(created),
@@ -191,6 +194,21 @@ function CreateKeyForm({
           />
         </Field>
       </div>
+      <Field
+        id="api-key-cidrs"
+        label="Allowed source IPs (optional)"
+        hint={<>Comma-separated CIDRs; blank allows any address. Requests from other addresses are refused (403) and
+          audited. Behind a proxy, an instance admin must set the trusted proxies in Instance settings → Network access
+          control.</>}
+      >
+        <Input
+          id="api-key-cidrs"
+          placeholder="e.g. 203.0.113.0/24, 198.51.100.7"
+          value={cidrs}
+          onChange={(e) => setCidrs(e.target.value)}
+          className="h-10 rounded-full px-4"
+        />
+      </Field>
       <div className="flex flex-wrap gap-2">
         <Button disabled={createMutation.isPending} onClick={handleSubmit}>
           {createMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -246,6 +264,25 @@ export default function ApiKeys() {
     (projects || []).forEach((p) => map.set(p.id, p.name));
     return map;
   }, [projects]);
+
+  const cidrMutation = useMutation({
+    mutationFn: ({ keyId, cidrs }: { keyId: number; cidrs: string[] | null }) =>
+      apiKeysApi.setAllowedCidrs(workspaceId!, keyId, cidrs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys', workspaceId] });
+      toast.success('Source-IP allowlist updated');
+    },
+    onError: (err: unknown) => toast.error(`Failed to update allowlist: ${errorDetail(err)}`),
+  });
+
+  const editCidrs = (key: ApiKey) => {
+    const next = window.prompt(
+      `Allowed source IPs for "${key.name}" (CIDR, comma-separated). Leave empty to allow any address.`,
+      (key.allowed_cidrs || []).join(', '),
+    );
+    if (next === null) return;
+    cidrMutation.mutate({ keyId: key.id, cidrs: parseCidrList(next) });
+  };
 
   const revokeMutation = useMutation({
     mutationFn: (keyId: number) => apiKeysApi.revoke(workspaceId!, keyId),
@@ -386,6 +423,18 @@ export default function ApiKeys() {
                       items={[
                         { label: 'Key', value: <code className="font-mono text-xs">{selected.prefix}…</code> },
                         { label: 'Scope', value: scopeLabel(selected) },
+                        {
+                          label: 'Source IPs',
+                          value: selected.allowed_cidrs && selected.allowed_cidrs.length
+                            ? (
+                              <span className="flex flex-wrap gap-1">
+                                {selected.allowed_cidrs.map((c) => (
+                                  <code key={c} className="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-xs">{c}</code>
+                                ))}
+                              </span>
+                            )
+                            : 'Any address',
+                        },
                         { label: 'Last used', value: selected.last_used_at ? formatDate(selected.last_used_at) : 'Never' },
                         {
                           label: status === 'revoked' ? 'Revoked' : 'Expires',
@@ -406,6 +455,14 @@ export default function ApiKeys() {
 
                     {status === 'active' && (
                       <div className="flex flex-wrap gap-2.5">
+                        <Button
+                          variant="outline"
+                          size="lg"
+                          disabled={cidrMutation.isPending}
+                          onClick={() => editCidrs(selected)}
+                        >
+                          Edit source IPs
+                        </Button>
                         <Button
                           variant="outline"
                           size="lg"

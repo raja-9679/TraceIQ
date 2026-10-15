@@ -22,11 +22,15 @@ import {
     maskSelectorsFrom,
     policyFromDataPolicy,
     redactBody,
+    redactCrawlReport,
     redactHar,
     redactHeaders,
+    redactHookReport,
+    queryNamesOnly,
     redactJobResult,
     redactMessageText,
     redactNetworkEvents,
+    redactPageBudgets,
     redactText,
     verhoeffValid,
 } from './redact';
@@ -630,4 +634,70 @@ test('a truncated body excerpt degrades to a text sweep, not a throw', async () 
     const { redactAccessObservation } = await import('./redact');
     const obs = redactAccessObservation({ body_excerpt: `{"note": "${VALID_PAN}", "x": [1, 2` });
     assert.equal(obs.body_excerpt.includes(VALID_PAN), false);
+});
+
+// ---- hook_report (suite setup/teardown + cleanup). Twin corpus:
+// tests/test_redaction.py::test_hook_report_*
+
+const HOOK_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
+
+test('hook report: cleanup URL keeps query names only and phase errors are scrubbed', () => {
+    const out = redactJobResult({
+        hook_report: {
+            setup: [{ suite_id: 1, phase: 'setup', status: 'failed', error: `401 for token ${HOOK_JWT}`,
+                      steps: [{ index: 0, type: 'http-request', status: 'failed', error: `bad ${HOOK_JWT}` }] }],
+            teardown: [],
+            cleanup: [{ method: 'DELETE', url: 'https://api.test/items/9?token=s3cret&x=1', status: 'failed',
+                        error: `card 4111 1111 1111 1111 rejected`, origin: 'case' }],
+        },
+    });
+    const r = out.hook_report;
+    assert.ok(!r.setup[0].error.includes(HOOK_JWT));
+    assert.ok(!r.setup[0].steps[0].error.includes(HOOK_JWT));
+    assert.equal(r.cleanup[0].url, 'https://api.test/items/9?token=…&x=…');
+    assert.ok(!r.cleanup[0].error.includes('4111 1111 1111 1111'));
+    assert.equal(r.cleanup[0].status, 'failed');
+    assert.equal(r.setup[0].suite_id, 1);
+});
+
+test('hook report: continuous results are scrubbed too and odd shapes pass through', () => {
+    const out = redactJobResult({ test_results: [{ hook_report: { cleanup: [{ url: '/x?a=1#frag' }] } }] });
+    assert.equal(out.test_results[0].hook_report.cleanup[0].url, '/x?a=…');
+    assert.deepEqual(redactHookReport(['x']), ['x']);
+    assert.equal(queryNamesOnly('{{api}}/items/{{id}}'), '{{api}}/items/{{id}}');
+});
+
+// --- WP10: page budgets + crawl reports (twins in tests/test_redaction.py) ---
+
+test('page budget outcomes: URL, failure and SEO values are scrubbed, numbers kept', () => {
+    const [out] = redactPageBudgets([{
+        step_id: 'b1', url: `https://shop.example.com/reset/${JWT}`, passed: false,
+        failure: `Page budget exceeded on https://shop.example.com/reset/${JWT}: lcp_ms 3000 > 2500`,
+        metrics: { lcp_ms: 3000 }, checks: [{ metric: 'lcp_ms', value: 3000, budget: 2500, passed: false }],
+        seo: [{ check: 'canonical', passed: true, value: `https://shop.example.com/reset/${JWT}`, detail: 'ok' }],
+    }]);
+    assert.ok(!JSON.stringify(out).includes(JWT));
+    assert.equal(out.metrics.lcp_ms, 3000);
+    assert.equal(out.checks[0].budget, 2500);
+    // Also reached through a job result.
+    const res = redactJobResult({ page_budgets: [{ url: `https://x.test/?t=${JWT}` }] });
+    assert.ok(!JSON.stringify(res).includes(JWT));
+});
+
+test('crawl report: every URL incl. redirect hops is scrubbed; counts and statuses kept', () => {
+    const out = redactCrawlReport({
+        status: 'ok', links_checked: 3,
+        pages: [{ url: `https://s.example/p?card=${VALID_PAN}`, status: 200 }],
+        issues: [{
+            page_url: 'https://s.example/', target_url: `https://s.example/reset/${JWT}`, category: 'broken',
+            status_code: 404, detail: `see ${JWT}`,
+            redirect_chain: [{ url: `https://s.example/r?token=${JWT}`, status: 302 }],
+        }],
+    });
+    const flat = JSON.stringify(out);
+    assert.ok(!flat.includes(JWT));
+    assert.ok(!flat.includes(VALID_PAN));
+    assert.equal(out.issues[0].status_code, 404);
+    assert.equal(out.issues[0].redirect_chain[0].status, 302);
+    assert.equal(out.links_checked, 3);
 });

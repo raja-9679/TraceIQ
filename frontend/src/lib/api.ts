@@ -97,6 +97,10 @@ api.interceptors.response.use(
 
 export interface TestRun {
     id: number;
+    // Frontend matrix variant (viewport/locale/scheme) and the sweep it belongs to (WP10).
+    emulation?: { label?: string; viewport?: { name: string; width: number; height: number };
+        locale?: { locale: string }; color_scheme?: string; reduced_motion?: boolean } | null;
+    sweep_group?: string | null;
     created_at: string;
     status: "pending" | "running" | "passed" | "failed" | "error";
     total_tests: number;
@@ -123,6 +127,9 @@ export interface TestRun {
     target_url?: string | null;
     // HAR network archive (opt-in via suite settings har_capture).
     har_url?: string | null;
+    test_case_id?: number | null;
+    // Effective {{fake.*}} seed; re-run with it to replay the same data.
+    data_seed?: string | null;
     results?: {
         id: number;
         test_name: string;
@@ -139,6 +146,7 @@ export interface TestRun {
         request_body?: string;
         request_url?: string;
         request_method?: string;
+        result_payload?: Record<string, unknown> | null;
     }[];
     user?: {
         id: number;
@@ -184,6 +192,13 @@ export interface RunContext {
     git_commit?: string;
     git_branch?: string;
     local_worker_id?: string;
+    /** Seed for {{fake.*}} (same seed + case + row → same values). */
+    data_seed?: string;
+    // Frontend matrix (WP10): fan the run out over these.
+    viewports?: string[];
+    locales?: string[];
+    color_schemes?: string[];
+    reduced_motion?: boolean;
 }
 
 // browser/device are optional: when omitted the backend resolves the

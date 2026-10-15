@@ -71,6 +71,7 @@ def _error(exc: ScimError) -> JSONResponse:
 async def scim_principal(
     request: Request,
     authorization: Optional[str] = Header(default=None),
+    session: AsyncSession = Depends(get_session),
 ) -> str:
     """Bearer-token guard.
 
@@ -85,9 +86,39 @@ async def scim_principal(
     presented = ""
     if authorization and authorization.lower().startswith("bearer "):
         presented = authorization[7:].strip()
-    if not presented or not pysecrets.compare_digest(presented, token):
+    valid = bool(presented) and pysecrets.compare_digest(presented, token)
+    # Source allowlist (WP8). Checked for every request, but only a VALID token
+    # presented from outside the range is audited: that is a leaked
+    # provisioning credential in use, whereas an invalid token from an
+    # internet scanner is noise that would flood an append-only log.
+    from app.core.client_ip import allowed, as_list, client_ip
+    cidrs = as_list(effective("SCIM_ALLOWED_CIDRS"))
+    if cidrs:
+        ip = client_ip(request)
+        if not allowed(ip, cidrs):
+            if valid:
+                await _audit_source_refusal(session, ip)
+            raise ScimError(403, "SCIM is not permitted from this network address")
+    if not valid:
         raise ScimError(401, "Invalid SCIM credentials")
     return ACTOR_LABEL
+
+
+async def _audit_source_refusal(session: AsyncSession, ip: str) -> None:
+    try:
+        from app.services.audit import record
+        try:
+            workspace_id = resolve_policy().workspace_id
+        except FederationConfigError:
+            workspace_id = None
+        await record(
+            session, entity_type="scim", entity_id=0, action="ip_refused",
+            workspace_id=workspace_id, changes={"client_ip": ip},
+            actor_type="scim", actor_label=ACTOR_LABEL,
+        )
+        await session.commit()
+    except Exception:  # noqa: BLE001 — never turn a 403 into a 500
+        await session.rollback()
 
 
 async def _target_workspace(session: AsyncSession) -> Workspace:

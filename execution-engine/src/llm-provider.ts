@@ -31,17 +31,16 @@ export interface LLMProvider {
 // must never slow down or fail a test run.
 // ---------------------------------------------------------------------------
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
-const WORKER_TOKEN = process.env.WORKER_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || '';
+import { backendFetch } from './core/backend-http';
 
 function reportUsage(event: {
     provider: string; model: string; feature?: string; runId?: number;
     inputTokens: number; outputTokens: number; latencyMs: number;
     success: boolean; error?: string;
 }): void {
-    fetch(`${BACKEND_URL}/api/internal/llm-usage`, {
+    backendFetch('/api/internal/llm-usage', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Worker-Secret': WORKER_TOKEN },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             events: [{
                 provider: event.provider,
@@ -164,44 +163,45 @@ class NullProvider implements LLMProvider {
     }
 }
 
-export function pickProvider(): LLMProvider {
-    const explicit = (process.env.LLM_PROVIDER || '').toLowerCase().trim();
-    const model = process.env.LLM_MODEL;
+export function pickProvider(env: NodeJS.ProcessEnv = process.env): LLMProvider {
+    const explicit = (env.LLM_PROVIDER || '').toLowerCase().trim();
+    const model = env.LLM_MODEL;
+    if (explicit === 'null' || explicit === 'none') return new NullProvider();
     try {
-        if (explicit === 'anthropic' || (!explicit && process.env.ANTHROPIC_API_KEY)) {
-            const key = process.env.ANTHROPIC_API_KEY;
+        if (explicit === 'anthropic' || (!explicit && env.ANTHROPIC_API_KEY)) {
+            const key = env.ANTHROPIC_API_KEY;
             if (!key) {
                 console.warn('[LLM] LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY missing; using null provider');
                 return new NullProvider();
             }
             return new AnthropicProvider(key, model || 'claude-opus-4-8');
         }
-        if (explicit === 'gemini' || (!explicit && (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY))) {
-            const key = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+        if (explicit === 'gemini' || (!explicit && (env.GEMINI_API_KEY || env.GOOGLE_API_KEY))) {
+            const key = env.GEMINI_API_KEY || env.GOOGLE_API_KEY;
             if (!key) {
                 console.warn('[LLM] LLM_PROVIDER=gemini but GEMINI_API_KEY missing; using null provider');
                 return new NullProvider();
             }
             return new OpenAICompatibleProvider('gemini', key, model || 'gemini-2.0-flash', GEMINI_OPENAI_BASE_URL);
         }
-        if (explicit === 'openai' || (!explicit && process.env.OPENAI_API_KEY)) {
-            const key = process.env.OPENAI_API_KEY;
+        if (explicit === 'openai' || (!explicit && env.OPENAI_API_KEY)) {
+            const key = env.OPENAI_API_KEY;
             if (!key) return new NullProvider();
             return new OpenAICompatibleProvider('openai', key, model || 'gpt-4o');
         }
-        if (explicit === 'ollama' || (!explicit && process.env.OLLAMA_BASE_URL)) {
+        if (explicit === 'ollama' || (!explicit && env.OLLAMA_BASE_URL)) {
             // Local + free, no API key. From inside Docker use
             // OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
-            const baseURL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1';
+            const baseURL = env.OLLAMA_BASE_URL || 'http://localhost:11434/v1';
             return new OpenAICompatibleProvider('ollama', 'ollama', model || 'llama3.1', baseURL);
         }
         if (explicit === 'openai-compatible' || explicit === 'custom') {
-            const baseURL = process.env.LLM_BASE_URL;
+            const baseURL = env.LLM_BASE_URL;
             if (!baseURL || !model) {
                 console.warn('[LLM] LLM_PROVIDER=openai-compatible needs LLM_BASE_URL and LLM_MODEL; using null provider');
                 return new NullProvider();
             }
-            return new OpenAICompatibleProvider('openai-compatible', process.env.LLM_API_KEY || 'not-needed', model, baseURL);
+            return new OpenAICompatibleProvider('openai-compatible', env.LLM_API_KEY || 'not-needed', model, baseURL);
         }
     } catch (err) {
         console.error('[LLM] Provider init failed; using null provider:', err);
@@ -209,5 +209,54 @@ export function pickProvider(): LLMProvider {
     return new NullProvider();
 }
 
-// Resolve once at module load.
-export const provider: LLMProvider = pickProvider();
+// Worker-side LLM config delivered by GET /api/internal/worker-config (WP8).
+export interface WorkerLlmConfig {
+    provider: string;
+    model?: string | null;
+    api_key?: string | null;
+    base_url?: string | null;
+}
+
+/** The env-shaped view of a delivered config, fed to pickProvider so the
+ * delivered and env paths share one implementation. */
+export function envFromLlmConfig(cfg: WorkerLlmConfig): NodeJS.ProcessEnv {
+    const name = (cfg.provider || '').toLowerCase().trim();
+    const env: NodeJS.ProcessEnv = { LLM_PROVIDER: name };
+    if (cfg.model) env.LLM_MODEL = cfg.model;
+    const key = cfg.api_key || undefined;
+    if (name === 'anthropic') env.ANTHROPIC_API_KEY = key;
+    else if (name === 'openai') env.OPENAI_API_KEY = key;
+    else if (name === 'gemini') env.GEMINI_API_KEY = key;
+    else if (name === 'openai-compatible' || name === 'custom') {
+        env.LLM_API_KEY = key;
+        if (cfg.base_url) env.LLM_BASE_URL = cfg.base_url;
+    } else if (name === 'ollama' && cfg.base_url) env.OLLAMA_BASE_URL = cfg.base_url;
+    return env;
+}
+
+let current: LLMProvider = pickProvider();
+let currentSignature = '';
+
+/**
+ * Swap the active provider. `null` restores the worker's own env config. A
+ * no-op when nothing changed, so the 60s config poll does not rebuild SDK
+ * clients every minute. The signature is a hash — the key itself is never
+ * kept outside the client or logged.
+ */
+export function reconfigureProvider(cfg: WorkerLlmConfig | null): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const crypto = require('crypto');
+    const signature = cfg ? crypto.createHash('sha256').update(JSON.stringify(cfg)).digest('hex') : '';
+    if (signature === currentSignature) return false;
+    current = cfg ? pickProvider(envFromLlmConfig(cfg)) : pickProvider();
+    currentSignature = signature;
+    console.log(`[LLM] provider is now '${current.name}' (${cfg ? 'from backend worker-config' : 'from worker env'})`);
+    return true;
+}
+
+// Callers hold this object; it always delegates to the current provider, so
+// a config change applies without restarting the worker.
+export const provider: LLMProvider = {
+    get name() { return current.name; },
+    complete: (prompt: string, opts?: LLMCallOpts) => current.complete(prompt, opts),
+};

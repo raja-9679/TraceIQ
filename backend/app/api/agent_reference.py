@@ -361,6 +361,62 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "example": {"id": "<uuid>", "type": "check-accessibility", "params": {"impact": "serious"}},
         "notes": "Runs axe-core against the current page; returns a violations summary.",
     },
+    # ------------------------------------------------------------------
+    # Frontend quality (WP10). Layout checks run in the page; budgets store a
+    # PageBudgetSample per run so each page has a trend.
+    # ------------------------------------------------------------------
+    {
+        "type": "expect-no-horizontal-overflow",
+        "category": "assertion",
+        "params": {
+            "selector": "Optional scope: only elements inside this container are checked",
+            "params.tolerance_px": "Pixels of overflow tolerated (default 1)",
+            "params.ignore": "List of CSS selectors whose elements (and descendants) are ignored, e.g. carousels",
+            "params.max_offenders": "How many offending elements to report (default 10, max 50)",
+        },
+        "example": {"id": "<uuid>", "type": "expect-no-horizontal-overflow",
+                    "params": {"tolerance_px": 2, "ignore": [".carousel-track"]}},
+        "notes": "Fails when the document scrolls horizontally or a visible element spills past the "
+                 "left/right viewport edge (elements clipped by an overflow:hidden/auto ancestor are "
+                 "not counted). Pair with a viewport sweep (POST /api/runs body `viewports`).",
+    },
+    {
+        "type": "expect-rtl-layout",
+        "category": "assertion",
+        "params": {
+            "params.expect_dir": "'rtl' (default) or 'ltr' — the direction the document must have",
+            "selector": "Optional element whose computed direction must also match",
+            "params.tolerance_px": "Horizontal-overflow tolerance (default 1)",
+            "params.ignore": "Selectors to ignore in the overflow part",
+        },
+        "example": {"id": "<uuid>", "type": "expect-rtl-layout", "params": {"expect_dir": "rtl"}},
+        "notes": "Checks <html dir> / computed direction, then the same no-overflow check — RTL "
+                 "regressions usually show up as content pushed off the LEFT edge. Use with a locale "
+                 "matrix run (body `locales: [\"ar-EG\"]`).",
+    },
+    {
+        "type": "check-page-budget",
+        "category": "assertion",
+        "params": {
+            "params.budgets": "Max values: {lcp_ms, cls, inp_ms, fcp_ms, ttfb_ms, load_ms, page_weight_kb, "
+                              "request_count, image_weight_kb, largest_image_kb, script_weight_kb, "
+                              "third_party_requests}",
+            "params.seo": "'warn' (default: report, never fail) | 'fail' (an SEO error fails the step) | 'off'",
+            "params.title_length": "[min, max] title length (default [10, 60])",
+            "params.description_length": "[min, max] meta description length (default [50, 160])",
+            "params.settle_ms": "Wait before measuring so LCP/CLS settle (default 1000, max 10000)",
+            "params.fail": "false = record only, never fail",
+        },
+        "example": {"id": "<uuid>", "type": "check-page-budget",
+                    "params": {"budgets": {"lcp_ms": 2500, "cls": 0.1, "page_weight_kb": 1500,
+                                           "request_count": 80}, "seo": "warn"}},
+        "notes": "Measures the CURRENT page with Playwright (no Lighthouse dependency): LCP, CLS, FCP, "
+                 "TTFB, an INP approximation (longest event-timing entry — needs a preceding "
+                 "interaction step, else null), page/image/script weight, request count, and SEO "
+                 "checks (title/description length, canonical, robots noindex, one h1, img alt "
+                 "coverage, lang, hreflang validity, JSON-LD parse errors, viewport meta). Each "
+                 "outcome is stored for the per-page trend (GET /api/projects/{id}/page-budgets).",
+    },
     {
         "type": "http-request",
         "category": "api",
@@ -372,8 +428,18 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.params": "Query-param object",
             "params.assertions": "Array of {type, ...} — see assertion shapes below",
             "params.extract": "Array of {path, variable, required?} — store JSON response values as runtime vars",
+            "params.cleanup": ("true (DELETE the response's Location) or {method?, url, headers?, body?, "
+                               "expect_status?} — registers a cleanup that runs after the case even if it "
+                               "fails; see `templates` → cleanup"),
+            "params.expect_schema": (
+                "Optional response contract check: {schema: <JSON Schema object>} or "
+                "{openapi: {operationId} | {method, path}, status?: '200'} referencing the project's "
+                "stored OpenAPI spec (PUT /api/projects/{id}/openapi-spec, or imported via "
+                "/cases/from-openapi). Strict JSON Schema; every violation is reported by path"),
         },
         "notes": (
+            "params.expect_schema validates the JSON body strictly (unlike the lenient "
+            "json-schema assertion); an openapi reference that cannot be resolved fails the step. "
             "Assertion shapes inside params.assertions: "
             "{type:'status', value:200}; "
             "{type:'json-path', path:'postgres.articles', operator:'equals'|'contains', value:...}; "
@@ -469,6 +535,11 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.ramp_up_s": "Optional ramp-up seconds to reach vus",
             "params.think_time_s": "Sleep between iterations (default 1)",
             "params.thresholds": "{p95_ms?, p99_ms?, error_rate? (0-1), min_rps?} — any breach fails the case",
+            "params.prometheus_queries": "Optional [{name, template}] (max 10): names of operator-approved "
+                                         "PromQL templates (PROMETHEUS_QUERY_TEMPLATES) evaluated over the "
+                                         "test window and shown next to the k6 metrics. Free-form "
+                                         "[{name, query}] PromQL only runs where the instance enables "
+                                         "PROMETHEUS_ALLOW_ADHOC_QUERIES",
         },
         "example": {
             "id": "<uuid>",
@@ -503,7 +574,8 @@ _STEP_TYPES: List[Dict[str, Any]] = [
     {
         "type": "extract-value",
         "category": "data",
-        "params": {"selector": "Element", "params.source": "'text'|'value'|'attribute'", "params.variableName": "Variable name to save under"},
+        "params": {"selector": "Element", "params.source": "'text'|'value'|'attribute'", "params.variableName": "Variable name to save under",
+                   "params.cleanup": "true (the extracted value is a URL to DELETE) or {method?, url, ...} — see templates → cleanup"},
     },
     {
         "type": "totp",
@@ -710,6 +782,61 @@ _STEP_TYPES: List[Dict[str, Any]] = [
 ]
 
 
+# Template tokens resolved in any step value/selector/header/param/body, and
+# the suite-hook / cleanup lifecycle. Served with /step-types so an agent
+# reads one reference.
+_TEMPLATES: Dict[str, Any] = {
+    "tokens": [
+        {"token": "{{env.KEY}}", "notes": "ProjectEnvironment variable (run's environment)."},
+        {"token": "{{secret.KEY}}", "notes": "Decrypted project secret; never type credentials into steps."},
+        {"token": "{{data.KEY}}", "notes": "Current dataset row of a data-driven case."},
+        {"token": "{{name}}", "notes": "Runtime variable from extract-value / params.extract / totp earlier in the case."},
+        {"token": "{{fake.KIND}}", "notes": ("uuid|email|name|first_name|last_name|username|phone|number|date|word. "
+                                             "Random, unless a data seed is set: suite setting `data_seed` or POST /runs "
+                                             "body `data_seed`. Same seed + case + data row => same values (each "
+                                             "occurrence still differs within a case). The effective seed is recorded "
+                                             "on the run (`data_seed`) — re-run with it to replay a failure's data.")},
+        {"token": "{{run.id}}", "notes": "The TestRun id."},
+        {"token": "{{run.short}}", "notes": "8-char lowercase token unique to the run (HMAC-derived; not the id)."},
+        {"token": "{{run.worker}}", "notes": "Id of the worker executing this case."},
+        {"token": "{{run.case}}", "notes": "The TestCase id."},
+        {"token": "{{run.row}}", "notes": "1-based dataset row (matches the '[row N]' result name); 0 if not data-driven."},
+        {"token": "{{run.started_at}}", "notes": "When the run was dispatched (ISO-8601 UTC)."},
+        {"token": "{{run.attempt}}", "notes": "1 for the first try, 2+ for auto-retries."},
+        {"token": "{{unique.NAME}}", "notes": ("12 lowercase alphanumerics, starting with a letter, unique per run + "
+                                               "case + data row + attempt and stable within the attempt — use for "
+                                               "emails/usernames that must not collide across parallel workers, e.g. "
+                                               "'{{unique.user}}@example.com'. Never seeded.")},
+        {"token": "{{setup.NAME}}", "notes": "Value extracted by a suite setup step (any suite in the case's chain)."},
+        {"token": "{{inbox.address[.label]}}", "notes": "Per-run test inbox address (see wait-for-email)."},
+        {"token": "{{webhook.url[.label]}}", "notes": "Per-run webhook capture URL (see wait-for-webhook)."},
+    ],
+    "suite_hooks": (
+        "Suite settings `setup_steps` / `teardown_steps` (same step schema as cases; usually http-request). "
+        "Each case runs its suite chain's setup outermost-first and teardown innermost-first; the chain stops "
+        "at a suite with inherit_settings=false (its own hooks still apply). Per job: SEPARATE / PARALLEL / "
+        "single-case dispatch = around every case; a multi-case CONTINUOUS sub-suite job runs each suite's "
+        "setup once before its first case and teardown once after its last. A setup's extracted values are "
+        "{{setup.NAME}} in cases and bare {{NAME}} inside that same setup. A failed setup marks the case "
+        "'error' without running it. Teardown ALWAYS runs (after failures, errors and case timeouts — the "
+        "worker reserves HOOK_TEARDOWN_BUDGET_MS of the job's time for it) and its failures are warnings "
+        "(result_payload.hook_warnings), never a red case. Change them on existing suites with "
+        "propose_update_suite_settings — never auto-applied. Server and local web workers only (not mobile)."
+    ),
+    "cleanup": (
+        "params.cleanup on an http-request / extract-value step registers a cleanup once the step created "
+        "something (a request that returned 2xx and then failed an assertion still counts). true = DELETE the "
+        "response Location header (http-request) or the extracted URL (extract-value); an object "
+        "{method='DELETE', url, headers?, body?, expect_status?} is resolved right after the step, so "
+        "variables it extracted are available (url '/items/{{item_id}}'; relative URLs resolve against the "
+        "request URL or the environment base_url; headers default to the suite headers + the step's own). "
+        "Case cleanups run LIFO right after the case, setup cleanups after that suite's teardown. Success = "
+        "expect_status, else 2xx/404/410. Outcomes land in result_payload.cleanup with the URL template "
+        "(captured values unresolved) and query values dropped."
+    ),
+}
+
+
 @router.get("/step-types")
 async def list_step_types() -> Dict[str, Any]:
     """Catalogue of every step type the runner supports plus its params shape.
@@ -720,6 +847,7 @@ async def list_step_types() -> Dict[str, Any]:
     return {
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
+        "templates": _TEMPLATES,
         "last_updated": "2026-10-15",
     }
 

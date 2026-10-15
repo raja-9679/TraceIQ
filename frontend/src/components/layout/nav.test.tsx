@@ -20,27 +20,28 @@ describe('sidebar information architecture', () => {
     it('groups each former sidebar item under its place', () => {
         expect(names(place('Today').children)).toEqual(['Overview', 'Failure triage', 'Proposals', 'Flaky tests', 'Visual review']);
         expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Requirements', 'Traceability', 'Incidents']);
-        expect(names(place('Security').children)).toEqual(['Scans & findings', 'Access matrix', 'Access reviews']);
-        expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright', 'Analytics']);
+        expect(names(place('Security').children)).toEqual(['Scans & findings', 'Access matrix', 'Access reviews', 'Estate', 'Script inventory']);
+        expect(names(place('Watch').children)).toEqual(['Monitors', 'On-call']);
+        expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Analytics']);
         expect(names(setupLinks)).toEqual([
-            'Settings', 'Workspace', 'Users', 'Tenant admin', 'API keys',
+            'Settings', 'Workspace', 'Users', 'Tenant admin', 'Worker fleet', 'API keys',
             'Webhooks', 'Issue trackers', 'AI usage', 'Billing',
         ]);
     });
 
-    it('keeps Runs and Watch as direct destinations', () => {
-        for (const n of ['Runs', 'Watch']) expect(isGroup(place(n))).toBe(false);
-        for (const n of ['Today', 'Releases', 'Tests', 'Security']) expect(isGroup(place(n))).toBe(true);
+    it('keeps Runs as a direct destination', () => {
+        expect(isGroup(place('Runs'))).toBe(false);
+        for (const n of ['Today', 'Releases', 'Tests', 'Watch', 'Security']) expect(isGroup(place(n))).toBe(true);
         expect([place('Runs').href, place('Watch').href, place('Security').href]).toEqual(['/runs', '/monitors', '/security']);
     });
 
-    it('offers all 30 destinations exactly once', () => {
+    it('offers all 35 destinations exactly once', () => {
         const hrefs = [
             ...places.filter((p) => !isGroup(p)).map((p) => p.href),
             ...places.flatMap((p) => p.children.map((c) => c.href)),
             ...setupLinks.map((l) => l.href),
         ];
-        expect(hrefs).toHaveLength(30);
+        expect(hrefs).toHaveLength(35);
         expect(new Set(hrefs).size).toBe(hrefs.length);
     });
 
@@ -64,6 +65,10 @@ describe('sidebar information architecture', () => {
         expect(isIn('/runs', place('Tests').match)).toBe(false);
         expect(isIn('/access-matrix', place('Security').match)).toBe(true);
         expect(isIn('/incidents', place('Releases').match)).toBe(true);
+        expect(isIn('/on-call', place('Watch').match)).toBe(true);
+        expect(isIn('/estate', place('Security').match)).toBe(true);
+        expect(isIn('/script-inventory', place('Security').match)).toBe(true);
+        expect(isIn('/frontend-quality', place('Tests').match)).toBe(true);
     });
 });
 
@@ -145,20 +150,28 @@ describe('expanded sidebar', () => {
         expect(nav.getByRole('button', { name: 'Tests' }).hasAttribute('data-active')).toBe(true);
     });
 
-    it('navigates directly from Runs and Watch', async () => {
+    it('navigates directly from Runs', async () => {
         const user = userEvent.setup();
         renderAt('/overview');
-        await user.click(desktopNav().getByRole('link', { name: 'Watch' }));
-        expect(location()).toBe('/monitors');
-        expect(desktopNav().getByRole('link', { name: 'Watch' }).hasAttribute('data-active')).toBe(true);
+        await user.click(desktopNav().getByRole('link', { name: 'Runs' }));
+        expect(location()).toBe('/runs');
+        expect(desktopNav().getByRole('link', { name: 'Runs' }).hasAttribute('data-active')).toBe(true);
     });
 
-    it('hides Tenant admin without tenant:manage_settings', async () => {
+    it('opens Watch on the On-call page', () => {
+        renderAt('/on-call');
+        const watch = desktopNav().getByRole('button', { name: 'Watch' });
+        expect(watch.getAttribute('aria-expanded')).toBe('true');
+        expect(desktopNav().getByRole('link', { name: 'On-call' }).getAttribute('aria-current')).toBe('page');
+    });
+
+    it('hides Tenant admin and Worker fleet without tenant:manage_settings', async () => {
         const user = userEvent.setup();
         renderAt('/runs');
         await user.click(desktopNav().getByRole('button', { name: 'Setup' }));
         expect(desktopNav().getByRole('link', { name: 'Billing' })).toBeTruthy();
         expect(desktopNav().queryByRole('link', { name: 'Tenant admin' })).toBeNull();
+        expect(desktopNav().queryByRole('link', { name: 'Worker fleet' })).toBeNull();
     });
 
     it('shows Tenant admin with tenant:manage_settings', async () => {
@@ -167,6 +180,7 @@ describe('expanded sidebar', () => {
         renderAt('/runs');
         await user.click(desktopNav().getByRole('button', { name: 'Setup' }));
         expect(await desktopNav().findByRole('link', { name: 'Tenant admin' })).toBeTruthy();
+        expect(desktopNav().getByRole('link', { name: 'Worker fleet' }).getAttribute('href')).toBe('/admin/workers');
     });
 });
 
@@ -176,8 +190,8 @@ describe('collapsed rail', () => {
     it('shows icons only, each with an accessible name', () => {
         renderAt('/runs', { collapsed: true });
         const nav = desktopNav();
-        for (const n of ['Today', 'Releases', 'Tests', 'Security', 'Setup']) expect(nav.getByRole('button', { name: n })).toBeTruthy();
-        for (const n of ['Runs', 'Watch']) expect(nav.getByRole('link', { name: n })).toBeTruthy();
+        for (const n of ['Today', 'Releases', 'Tests', 'Watch', 'Security', 'Setup']) expect(nav.getByRole('button', { name: n })).toBeTruthy();
+        expect(nav.getByRole('link', { name: 'Runs' })).toBeTruthy();
         expect(nav.getByRole('link', { name: 'Runs' }).hasAttribute('data-active')).toBe(true);
         expect(nav.queryByRole('link', { name: 'Schedules' })).toBeNull();
     });
@@ -188,7 +202,7 @@ describe('collapsed rail', () => {
         await user.click(desktopNav().getByRole('button', { name: 'Tests' }));
         const menu = await screen.findByRole('menu');
         expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent))
-            .toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright', 'Analytics']);
+            .toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Analytics']);
         await user.click(within(menu).getByRole('menuitem', { name: 'Schedules' }));
         expect(location()).toBe('/schedules');
         expect(desktopNav().getByRole('button', { name: 'Tests' }).hasAttribute('data-active')).toBe(true);

@@ -41,7 +41,16 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'siem', title: 'SIEM streaming', description: 'Stream every audit event (with its hash-chain fields, so your SIEM can verify the chain) and every security alert to syslog, Splunk HEC, Elastic or a signed webhook. Delivery is asynchronous with retry; a SIEM outage never blocks a request.' },
     { id: 'security_alerts', title: 'Security alerts', description: 'Rules over the audit stream — failed-login bursts, admin grants, API key changes, MFA or SSO-only being weakened, SCIM token changes and SCIM deactivations. Alerts go to the channels below and to the SIEM.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
+    { id: 'worker', title: 'Execution workers', description: 'Runtime config every execution worker fetches from /api/internal/worker-config at start and every 60s (blank = the worker keeps its own environment value), plus the instance-wide egress allowlist. Redis, the worker secret, MinIO credentials and WORKER_REGION stay environment-only on the worker.' },
+    { id: 'network', title: 'Network access control', description: 'Trusted reverse proxies (whose X-Forwarded-For is believed), the SCIM source allowlist, and optional mTLS for worker → backend calls. A wrong CIDR here can lock out your IdP — values are validated on save.' },
+    { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results.' },
 ];
+
+// Subject DNs, region grants ("eu=12,15") and PromQL templates contain
+// commas, so these lists are edited one entry per line.
+const LINE_LIST_KEYS = new Set([
+    'WORKER_MTLS_ALLOWED_SUBJECTS', 'WORKER_REGIONS', 'PROMETHEUS_QUERY_TEMPLATES',
+]);
 
 const fetchInstanceSettings = async (): Promise<InstanceSetting[]> => {
     const response = await api.get('/admin/instance-settings');
@@ -159,7 +168,9 @@ export default function InstanceSettingsSection() {
                 values[key] = n;
             }
             else if (def.type === 'list')
-                values[key] = String(raw).split(',').map((h) => h.trim()).filter(Boolean);
+                values[key] = String(raw)
+                    .split(LINE_LIST_KEYS.has(key) ? '\n' : ',')
+                    .map((h) => h.trim()).filter(Boolean);
             else values[key] = raw;
         }
         if (Object.keys(values).length === 0) { setPending({}); return; }
@@ -168,7 +179,7 @@ export default function InstanceSettingsSection() {
 
     const displayValue = (s: InstanceSetting): string => {
         if (s.key in pending) return String(pending[s.key]);
-        if (s.type === 'list') return ((s.value as string[]) || []).join(', ');
+        if (s.type === 'list') return ((s.value as string[]) || []).join(LINE_LIST_KEYS.has(s.key) ? '\n' : ', ');
         return s.value === null || s.value === undefined ? '' : String(s.value);
     };
 
@@ -196,6 +207,17 @@ export default function InstanceSettingsSection() {
                     className={inputClass}
                     placeholder={s.is_set ? '•••••••• (set — type to replace)' : 'not set'}
                     value={(pending[s.key] as string) ?? ''}
+                    onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
+                />
+            );
+        }
+        if (LINE_LIST_KEYS.has(s.key)) {
+            return (
+                <textarea
+                    aria-label={s.label || s.key}
+                    className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="one entry per line"
+                    value={displayValue(s)}
                     onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
                 />
             );

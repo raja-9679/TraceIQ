@@ -14,6 +14,8 @@ export interface ApiKey {
     last_used_at: string | null;
     expires_at: string | null;
     revoked_at: string | null;
+    // Source-IP allowlist (WP8); null/empty = any address.
+    allowed_cidrs?: string[] | null;
 }
 
 // Plaintext secret is returned exactly once, at creation time.
@@ -27,6 +29,7 @@ export interface ApiKeyCreatePayload {
     project_id?: number | null;
     role_id?: number | null;
     expires_in_days?: number | null;
+    allowed_cidrs?: string[] | null;
 }
 
 export const apiKeysApi = {
@@ -37,6 +40,12 @@ export const apiKeysApi = {
 
     create: async (workspaceId: number, body: ApiKeyCreatePayload): Promise<ApiKeyCreateResponse> => {
         const response = await api.post(`/workspaces/${workspaceId}/api-keys`, body);
+        return response.data;
+    },
+
+    setAllowedCidrs: async (workspaceId: number, keyId: number, allowedCidrs: string[] | null): Promise<ApiKey> => {
+        const response = await api.put(`/workspaces/${workspaceId}/api-keys/${keyId}/allowed-cidrs`,
+            { allowed_cidrs: allowedCidrs });
         return response.data;
     },
 

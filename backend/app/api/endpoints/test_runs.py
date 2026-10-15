@@ -58,6 +58,22 @@ class RunCreateContext(BaseModel):
     # inherited settings). Must all lie in suite_id's subtree. Not combinable
     # with case_id or tags. See docs/superpowers/specs/2026-10-14-targeted-runs-design.md.
     case_ids: Optional[List[int]] = None
+    # Seed for {{fake.*}}: same seed + case + data row -> same generated
+    # values. Overrides the suite chain's `data_seed`; recorded on the run.
+    data_seed: Optional[Union[str, int]] = None
+    # Region label (WP8): run on workers started with WORKER_REGION=<region>
+    # (their own `jobs:pending:<region>` stream). Omit for the global pool.
+    region: Optional[str] = None
+    # Frontend matrix (WP10, app/services/frontend_matrix.py): fan the
+    # selection out over viewports x locales x colour schemes, like the
+    # browser x device matrix. Each axis falls back to the suite chain's
+    # setting of the same name.
+    viewports: Optional[List[Union[str, Dict[str, Any]]]] = None
+    locales: Optional[List[Union[str, Dict[str, Any]]]] = None
+    color_schemes: Optional[List[str]] = None
+    reduced_motion: Optional[bool] = None
+    # Screenshot after every step (default: on when >1 variant).
+    sweep_step_screenshots: Optional[bool] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -74,8 +90,22 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         triggered_by = RunTrigger.HUMAN
 
     agent_id = ctx.agent_id or principal.agent_id
+    from app.services.suite_hooks import SuiteHookError, normalize_seed
+    try:
+        data_seed = normalize_seed(ctx.data_seed)
+    except SuiteHookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     api_key_id = principal.api_key.id if principal.api_key else None
+    from app.services.worker_fleet import InvalidRegion, normalize_region
+    try:
+        region = normalize_region(ctx.region)
+    except InvalidRegion as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if region and ctx.local_worker_id:
+        raise HTTPException(status_code=400,
+                            detail="region and local_worker_id cannot be combined")
     return {
+        "region": region,
         "git_commit": ctx.git_commit,
         "git_branch": ctx.git_branch,
         "git_pr_url": ctx.git_pr_url,
@@ -84,6 +114,7 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         "agent_id": agent_id,
         "api_key_id": api_key_id,
         "local_worker_id": (ctx.local_worker_id or None) and str(ctx.local_worker_id)[:64],
+        "data_seed": data_seed,
     }
 
 
@@ -121,6 +152,15 @@ async def create_run(
             raise HTTPException(
                 status_code=402,
                 detail=f"Monthly run quota reached ({used}/{limit}). Upgrade the workspace plan to run more.")
+
+    # Region pinning (WP8): the region's workers may belong to another
+    # customer's network, so the label must be one this workspace was granted.
+    if run_defaults.get("region"):
+        from app.services.worker_fleet import RegionNotPermitted, check_region_access
+        try:
+            check_region_access(run_defaults["region"], _ws_id)
+        except RegionNotPermitted as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
 
     # ── Targeted selection (case_ids) ───────────────────────────────────
     targeted_cases: List[TestCase] = []
@@ -234,6 +274,10 @@ async def create_run(
             return user_settings.selected_devices
         return None
 
+    from app.services import frontend_matrix
+    import uuid as _uuid_mod
+    sweep_group = _uuid_mod.uuid4().hex
+
     def _resolve_matrix(case: Optional[TestCase], eff: Dict[str, Any]):
         case_matrix = (getattr(case, "run_matrix", None) or {}) if case else {}
         browsers = (browser
@@ -244,7 +288,22 @@ async def create_run(
                    or case_matrix.get("devices")
                    or eff.get("devices")
                    or _user_default_devices())
-        return browsers, (devices if devices else [None])
+        devices = devices if devices else [None]
+        try:
+            variants = frontend_matrix.build_variants(
+                frontend_matrix.resolve_options(context, eff))
+            frontend_matrix.check_fanout(len(browsers), len(devices), len(variants),
+                                         len(identity_columns))
+        except frontend_matrix.MatrixError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        # Flattened so every creation site below keeps its two loops:
+        # each "device" slot is now a (device, emulation variant) pair.
+        return browsers, [(d, v) for d in devices for v in variants]
+
+    def _emu(slot) -> Dict[str, Any]:
+        target_device, variant = slot
+        return {"device": target_device, "emulation": variant,
+                "sweep_group": sweep_group if variant else None}
 
     created_runs = []
 
@@ -284,7 +343,7 @@ async def create_run(
                                 domain_settings=current_effective_settings.get(
                                     "domain_settings", {}),
                                 browser=target_browser,
-                                device=target_device,
+                                **_emu(target_device),
                                 user_id=current_user.id,
                                 selection_mode="full",
                                 selection_total=selection_total,
@@ -320,7 +379,7 @@ async def create_run(
                             domain_settings=current_effective_settings.get(
                                 "domain_settings", {}),
                             browser=target_browser,
-                            device=target_device,
+                            **_emu(target_device),
                             user_id=current_user.id,
                             selection_mode="full",
                             selection_total=selection_total,
@@ -367,7 +426,7 @@ async def create_run(
                                 allowed_domains=case_settings.get("allowed_domains", []),
                                 domain_settings=case_settings.get("domain_settings", {}),
                                 browser=target_browser,
-                                device=target_device,
+                                **_emu(target_device),
                                 user_id=current_user.id,
                                 selection_mode="targeted",
                                 selection_total=selection_total,
@@ -398,7 +457,7 @@ async def create_run(
                             domain_settings=effective_settings.get(
                                 "domain_settings", {}),
                             browser=target_browser,
-                            device=target_device,
+                            **_emu(target_device),
                             user_id=current_user.id,
                             selection_mode="case",
                             selection_total=selection_total,
@@ -786,19 +845,28 @@ async def delete_runs(
 async def get_artifact_url(
     object_name: str,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    principal: AuthPrincipal = Depends(get_current_principal),
 ):
     # Artifact keys are laid out as runs/{run_id}/... — scope access to the
     # run's project so a signed URL can't be minted for another tenant's
     # traces/videos (which contain response bodies and headers).
     import re
     m = re.match(r"^runs/(\d+)/", object_name)
-    if not m:
+    # `..` / backslashes: the access check reads the run id from the prefix,
+    # so a key that an object store or proxy might normalise into another
+    # run's prefix (runs/5/../6/trace.zip) must never be signed.
+    if not m or ".." in object_name or "\\" in object_name:
         raise HTTPException(status_code=400, detail="Unrecognized artifact path")
     run = await session.get(TestRun, int(m.group(1)))
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not await access_service.has_project_access(current_user.id, run.project_id, session):
+    # A project-scoped API key is held to its own project, whatever the
+    # key's creator could reach (same rule as every WP11 endpoint).
+    if principal.api_key is not None:
+        from app.api.jobs import api_key_allows_project
+        if not api_key_allows_project(principal.api_key, run.project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+    if not await access_service.has_project_access(principal.user.id, run.project_id, session):
         raise HTTPException(status_code=403, detail="Access denied")
     url = minio_client.get_presigned_url(object_name)
     return {"url": url}
@@ -951,6 +1019,14 @@ async def finalize_test_run(
         evaluate_monitor_for_run.delay(run_id)
     except Exception as e:
         print(f"[Finalize] Failed to queue monitor evaluation for run {run_id}: {e}")
+
+    # On-call paging for unattended runs (PagerDuty / Opsgenie channels with
+    # on_run_failure). No-op unless the project has such a channel.
+    try:
+        from app.tasks.paging_tasks import page_for_run
+        page_for_run.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue paging for run {run_id}: {e}")
 
     # Passive security scan: analyse already-captured responses for missing
     # security headers, insecure cookies, etc. Best-effort; read-only.

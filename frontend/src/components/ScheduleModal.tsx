@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { parseRegions } from '@/lib/fleet';
 
 interface ScheduleModalProps {
   isOpen: boolean;
@@ -43,6 +44,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
   const [isCustom, setIsCustom] = useState(false);
   const [browser, setBrowser] = useState('chromium');
   const [device, setDevice] = useState('Desktop');
+  const [regions, setRegions] = useState('');
 
   useEffect(() => {
     if (scheduleToEdit && isOpen) {
@@ -61,6 +63,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       
       setBrowser(scheduleToEdit.browser);
       setDevice(scheduleToEdit.device || 'Desktop');
+      setRegions((scheduleToEdit.regions || []).join(', '));
     } else if (isOpen) {
       setName(`Schedule for ${targetName}`);
       setDescription('');
@@ -69,6 +72,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       setCustomCron('');
       setBrowser('chromium');
       setDevice('Desktop');
+      setRegions('');
     }
   }, [scheduleToEdit, isOpen, targetName]);
 
@@ -125,6 +129,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       browser,
       device: device === 'Desktop' ? null : device,
       cron_expression: finalCron,
+      regions: parseRegions(regions),
     };
 
     if (scheduleToEdit) {
@@ -236,6 +241,19 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="schedule-regions">Regions (Optional)</Label>
+            <Input
+              id="schedule-regions"
+              value={regions}
+              onChange={e => setRegions(e.target.value)}
+              placeholder="e.g. eu-west, us-east"
+            />
+            <p className="text-xs text-muted-foreground">
+              One run per region per cycle; needs workers started with WORKER_REGION. Leave blank for the shared worker pool.
+            </p>
           </div>
         </div>
         

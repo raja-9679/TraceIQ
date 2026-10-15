@@ -174,6 +174,44 @@ async def prometheus_metrics(
         f"traceiq_dead_letter_depth {snapshot['streams'].get('jobs:dead-letter', 0)}",
     ]
 
+    # Worker fleet (WP8): live workers by kind/region, undelivered backlog per
+    # stream (what KEDA scales on), and workers older than the step catalog.
+    try:
+        from app.services.worker_fleet import fleet_snapshot
+        r = await _redis()
+        try:
+            fleet = await fleet_snapshot(r)
+        finally:
+            await r.close()
+    except Exception:
+        fleet = None
+    if fleet is not None:
+        alive: Dict[tuple, int] = {}
+        for w in fleet["workers"]:
+            if w["alive"]:
+                key = (w["kind"], w["region"] or "")
+                alive[key] = alive.get(key, 0) + 1
+        lines += [
+            "# HELP traceiq_workers_alive Workers with a live heartbeat",
+            "# TYPE traceiq_workers_alive gauge",
+        ]
+        for (kind, region), n in sorted(alive.items()):
+            lines.append(f'traceiq_workers_alive{{kind="{kind}",region="{region}"}} {n}')
+        if not alive:
+            lines.append('traceiq_workers_alive{kind="web",region=""} 0')
+        lines += [
+            "# HELP traceiq_queue_lag Jobs not yet delivered to any worker, per stream",
+            "# TYPE traceiq_queue_lag gauge",
+        ]
+        for s in fleet["streams"]:
+            if s["lag"] is not None:
+                lines.append(f'traceiq_queue_lag{{stream="{s["stream"]}"}} {s["lag"]}')
+        lines += [
+            "# HELP traceiq_workers_version_skew Live workers missing step types the backend catalog has",
+            "# TYPE traceiq_workers_version_skew gauge",
+            f"traceiq_workers_version_skew {fleet['summary']['skewed']}",
+        ]
+
     return Response("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 

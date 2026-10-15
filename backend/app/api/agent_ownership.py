@@ -614,6 +614,15 @@ async def create_proposal(
         suite = await session.get(TestSuite, body.test_suite_id)
         if not suite or suite.project_id != body.project_id:
             raise HTTPException(status_code=404, detail="Target suite not found in this project")
+        # Setup/teardown steps and data_seed are suite settings too; reject a
+        # malformed one now rather than at accept time.
+        if isinstance((body.payload or {}).get("settings"), dict):
+            from app.services.suite_hooks import SuiteHookError, validate_suite_settings
+            try:
+                body.payload = {**body.payload,
+                                "settings": validate_suite_settings(body.payload["settings"])}
+            except SuiteHookError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
 
     proposal = CaseProposal(
         project_id=body.project_id,
@@ -918,6 +927,22 @@ def _validated_executor(payload: dict) -> str:
     return ExecutorType.UI_PLAYWRIGHT.value
 
 
+def _proposed_suite_settings(existing: dict, payload: dict) -> dict:
+    """Suite settings after accepting an UPDATE_SUITE_SETTINGS proposal.
+
+    merge=True shallow-merges per settings key (proposed wins) — the same
+    semantics the suite chain uses for parent→child overrides. _merge_settings
+    only returns the keys it knows, so keys it doesn't (setup_steps,
+    teardown_steps, …) are carried over explicitly; they used to be silently
+    dropped on accept. Raises SuiteHookError on malformed hook settings."""
+    from app.services.suite_hooks import validate_suite_settings
+    from app.services.test_service import _merge_settings
+    proposed = payload["settings"]
+    if payload.get("merge", True):
+        return validate_suite_settings({**existing, **proposed, **_merge_settings(existing, proposed)})
+    return validate_suite_settings(proposed)
+
+
 async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSession) -> None:
     """Apply an accepted proposal: create/update/delete/move the test case,
     or update the target suite's settings blob."""
@@ -966,13 +991,13 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         if not suite or suite.project_id != proposal.project_id:
             raise HTTPException(status_code=404, detail="Target suite not found in this project")
         if isinstance(payload.get("settings"), dict):
-            if payload.get("merge", True):
-                # Shallow-merge per settings key (proposed wins) — same
-                # semantics the suite chain uses for parent→child overrides.
-                from app.services.test_service import _merge_settings
-                suite.settings = _merge_settings(suite.settings or {}, payload["settings"])
-            else:
-                suite.settings = payload["settings"]
+            from app.services.suite_hooks import SuiteHookError
+            try:
+                new_settings = _proposed_suite_settings(suite.settings or {}, payload)
+            except SuiteHookError as exc:
+                # Bulk-propose stores payloads unvalidated; refuse on accept.
+                raise HTTPException(status_code=400, detail=str(exc))
+            suite.settings = new_settings
             flag_modified(suite, "settings")
         if payload.get("inherit_settings") is not None:
             suite.inherit_settings = bool(payload["inherit_settings"])
@@ -990,6 +1015,17 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
     case = await session.get(TestCase, proposal.target_case_id)
     if not case or case.project_id != proposal.project_id:
         raise HTTPException(status_code=404, detail="Target case not found in this project")
+    # Git-sync proposals (WP11) record the content hash they were based on; if
+    # the case changed while the proposal waited, applying it would silently
+    # discard that edit.
+    if payload.get("sync_base_hash") and proposal.action in (
+            CaseProposalAction.UPDATE, CaseProposalAction.DELETE):
+        from app.services.case_sync import case_doc
+        if case_doc(case)["hash"] != payload["sync_base_hash"]:
+            raise HTTPException(
+                status_code=409,
+                detail="The case changed after this git-sync proposal was filed; "
+                       "pull, merge and push again, or reject this proposal.")
 
     if proposal.action == CaseProposalAction.UPDATE:
         if "name" in payload:

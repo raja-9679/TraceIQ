@@ -610,6 +610,265 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   build tokens by concatenation (push protection); `test_leak_detection.py` is
   in `.gitleaks.toml`. UI: Security page register + SLA card + SARIF buttons;
   Settings → Instance (Admin) SIEM/alerts cards; `/access-reviews` page.
+- **Run-scoped data + suite hooks + cleanup (WP5, 2026-10)** — migration
+  `c5a2b3c4d5e5` (`testrun.data_seed`). Tokens (`core/run-scope.ts`, resolved in
+  `interpolate.ts` via `templateContextFrom`, which the step switch now uses):
+  `{{run.id|short|worker|case|row|started_at|attempt}}` (`row` 1-based, 0 = no
+  dataset; `short` = HMAC of the run id, `suite_hooks.run_short_token`) and
+  `{{unique.NAME}}` (sha256 of run+short+case+row+**attempt**+name: stable in an
+  attempt, a retry gets new values so it can't collide with what attempt 1
+  created; never seeded). `{{fake.*}}` is seeded (mulberry32 keyed by
+  seed+case+row, NOT run — a replay must reproduce) when `data_seed` is set: POST
+  /runs body wins over the suite chain's `data_seed` (an inherited execution
+  flag). `run_test_suite` writes the effective seed onto the run and ships
+  `settings.run` = run context. Hooks: suite settings `setup_steps` /
+  `teardown_steps`, validated on save/proposal (`suite_hooks.validate_suite_settings`),
+  NOT merged into effective settings — each case gets `test_case.suite_hooks`, its
+  own chain (outermost first, cut after the first `inherit_settings=false` suite;
+  `hook_chain_sync`, cached in `session.info`). Worker `core/suite-hooks.ts`
+  `HookRunner` keeps a frame STACK: before each case pop frames it doesn't share
+  (teardown) and push new ones (setup) — so single-case jobs wrap every case and a
+  continuous sub-suite job sets each suite up once. Setup failure → case `error`,
+  not run; teardown ALWAYS runs (also for the frame whose setup failed), is best
+  effort, and only produces `result_payload.hook_warnings`. Case steps are raced
+  against `MAX_JOB_DURATION_MS - HOOK_TEARDOWN_BUDGET_MS` when hooks exist —
+  the job-level timeout otherwise abandons the job with no teardown. Cleanup:
+  `params.cleanup` (true = DELETE Location / extracted URL, or `{method,url,...}`
+  resolved right after the step) registers once something was created (a 2xx
+  that then failed an assertion counts); case cleanups LIFO after the case,
+  setup ones after their frame's teardown; 2xx/404/410 = ok. Reports
+  (`hook_report` → `result_payload.hooks|cleanup`) show the URL TEMPLATE and drop
+  query values — twin `redactHookReport`/`redact_hook_report`. **Fixed on the
+  way:** accepting an UPDATE_SUITE_SETTINGS proposal ran `_merge_settings`,
+  which drops every key it doesn't know (`_proposed_suite_settings` now keeps
+  them). Local worker supports hooks; mobile worker gets run tokens only. UI:
+  suite settings "Setup & teardown" card (reuses `StepComponent`), step editor
+  "Clean up afterwards", run page seed + "Re-run with this seed" + per-result
+  outcomes. MCP: `run_suite(data_seed=)`, `describe_step_types` → `templates`.
+  Worker + backend + frontend rebuild needed.
+- **Developer workflow (WP11, 2026-10)** — `app/api/developer.py`, migration
+  `cba2b3c4d5ec` (`projectapispec`, one OpenAPI doc per project).
+  `GET /api/runs/{run}/results/{result}/bundle` (viewer; project-scoped keys
+  honoured; audited) zips case/settings/data row/run meta/step evidence/this
+  run's artifacts + a standalone `repro.spec.ts` (`app/services/repro_bundle.py`).
+  It **never reads ProjectSecret**: `{{secret.X}}` stays a template; literal
+  credentials (sensitive header/param/body names, password-field fills,
+  redaction-pattern hits) become `{{secret.REPRO_*}}`; the spec reads
+  `TRACEIQ_SECRET_<KEY>` from env. Untranslatable steps are `//` TODOs with the
+  step JSON; regex operators are never compiled into the spec. Artifact keys are
+  only fetched under `runs/{run_id}/`. `GET /api/runs/{id}/failures` gives the
+  failing step + truncated error + a presigned screenshot (`ttl_seconds`,
+  default 1h, same-run keys only) — the GitHub Action renders it as a "Failing
+  cases" section in its sticky comment (dist rebuilt with ncc).
+  Git sync: `GET/POST /api/suites/{id}/sync` — export docs carry a content hash
+  (`app/services/case_sync.py`, mirrored in the CLI's `sync.py`: keep the two
+  identical) over name/steps/tags/priority/code_paths; import turns edits into
+  CaseProposals (create/update/move/delete; same `maybe_auto_apply` policy as
+  agents, deletions only ever proposed), reports a server-side change since pull
+  as a conflict, dedupes identical pending proposals, `dry_run` writes nothing.
+  UPDATE/DELETE payloads carry `sync_base_hash`, re-checked in `_apply_proposal`
+  (409 if the case changed while the proposal waited).
+  `expect_schema` on `http-request` (`{schema}` or `{openapi:{operationId|method+path},
+  status?}`): openapi refs are resolved to an inline schema in
+  `app/worker.py:_case_payload` from `ProjectApiSpec` (`app/services/api_specs.py`;
+  unresolvable → `{error}` which FAILS the step); the worker validates strictly
+  with ajv in `execution-engine/src/core/schema-check.ts` (needs a worker
+  rebuild). Specs are stored by `PUT /api/projects/{id}/openapi-spec` and by
+  `/cases/from-openapi` (`store_spec`, default true). `GET /api/version`
+  (authenticated; `api_version` major is what the CLI checks).
+  CLI: `integrations/cli/` (`traceiq-cli`, stdlib-only Python — zipfile/urllib,
+  pipx-installable): `login` (0600 config), `run --wait` (exit from the gate),
+  `status`, `replay`, `pull`/`push`, `version`; exit codes in `main.py`.
+  **Security review (2026-10-15):** `repro.spec.ts` takes case data only via
+  `_js` (json.dumps, `<>&` escaped) and comments only via `_comment` (printable
+  ASCII, `*/` broken) — tests assert the code is identical once string literals
+  are blanked. CLI paths go through `sync.safe_path` (component rules + resolved
+  commonpath) and ids must be ints; a tampered `.traceiq-sync.json` cannot
+  delete or push files outside the root, symlinked case files are skipped.
+  `from-openapi` audits spec storage (`openapi_spec_set`, `via`) and case
+  creation; failure links ≤ 1 h; sync docs ≤ 1 MB / 1000 steps, request ≤ 25 MB;
+  `GET /api/artifacts/{key}` honours project-scoped API keys and refuses `..`.
+- **Estate + script inventory (WP9, 2026-10) — PASSIVE ONLY** — migration
+  `c9a2b3c4d5ea`. Active probing (port exposure, WAF detection strings, origin
+  bypass, TLS protocol/cipher enumeration) was designed and deliberately NOT
+  built: it is parked for an owner decision in `SCOPE_NOTES.md` ("Estate:
+  active probing"). Do not add it back in any form — no connect probes, no
+  attack strings, no `verify=False`/`ignoreHTTPSErrors` anywhere in this path.
+  **Estates** (`Estate`/`EstateDomain`/`EstateScan`/`EstateDomainResult`,
+  project-owned): `app/services/estate_checks.py` is pure logic over an
+  injected `Net` (DnsClient, fetch, cert, ct); `estate_net.py` is the real one —
+  dnspython (new dep, imported lazily; a stale image reports "rebuild" instead
+  of crashing), crt.sh + page GETs through net_guard with verification ON and
+  no redirects followed, certificate read from an ordinary verified handshake
+  (a failing cert is the `cert_untrusted` finding, never a reason to retry
+  unverified). Score = 100 − `RUBRIC` deductions, stored itemised so the
+  drill-down shows the arithmetic. Every host must be on the project's
+  security allowlist (security enabled) at import AND at scan time
+  (`access_matrix.host_allowed` / `security_allowlist_for`); CT-discovered
+  names are added only if allowlisted (cap 200/apex, 500/estate). A check
+  family only "ran" with real answers — DNS errors or unreachable HTTPS never
+  resolve that family's findings. Findings: one row per fingerprint refreshed
+  in place (`estate_findings.apply_findings`, WP7 vocabulary via
+  `carry_forward`; a clean rescan → `verified_fixed`). Cert alerts once per
+  threshold crossed (30/14/7, reset on renewal) via project Slack/Teams (net_
+  guarded) + estate emails. **Monitored pages** (PCI DSS 4.0 6.4.3/11.6.1):
+  `job_type=page_check` side job (`execution-engine/src/page-check.ts`, result
+  key pinned to `page_check:result:{page_id}`, allowlist re-checked in the
+  worker): a normal page load records document.scripts + network-only scripts
+  (self-removing injectors), SHA-384 of each body as received, inline scripts
+  as hashes only, security headers (never cookies), text/elements only when
+  content tracking is on — redacted in the worker AND at ingestion.
+  `collect_page_check` polls (15 min deadline → error). A changed script loses
+  its approval; approval needs a ≥10-char justification and is audited
+  (`page_script`/`approve`). Keyword/element checks are plain substrings (no
+  regex on outsider content). Beat `dispatch-due-{estate-scans,page-checks}`
+  every 5 min honour each row's cron (estate daily, page weekly; at most
+  hourly). API `app/api/estates.py`; UI `/estate`, `/script-inventory`.
+  Needs backend + worker image rebuilds.
+- **Fleet & infrastructure (WP8, 2026-10)** — migration `c8a2b3c4d5e8`;
+  operator guide in `docs/OPERATIONS.md`, CI snippets in `docs/CI_RECIPES.md`.
+  **Heartbeats**: web/mobile workers write `workers:hb:<consumer name>` (EX 45,
+  every 15s, `execution-engine/src/core/heartbeat.ts`) + ZSET `workers:index`
+  straight to Redis; local workers `POST /api/jobs/heartbeat` (API key,
+  namespaced `local:<ws>:<id>`). `GET /api/admin/workers` (instance admin,
+  `app/services/worker_fleet.py`) joins them with stream length/lag/XPENDING
+  per consumer, DLQ depth, and **version skew** (catalog step types a live
+  worker's `SUPPORTED_STEP_TYPES` lacks; `load-test` is executor-only; a worker
+  reporting no list is "unknown", not skewed). Gauges `traceiq_workers_alive`,
+  `traceiq_queue_lag`, `traceiq_workers_version_skew`. **Worker config**:
+  instance-settings group `worker`, served by `GET /api/internal/worker-config`
+  and polled every 60s by `core/worker-config.ts`, which writes into
+  `process.env` for the four managed vars; `null` restores the worker's
+  *original* env, backend unreachable keeps last-known-good. LLM:
+  `WORKER_LLM_PROVIDER` blank = worker env, `inherit` = the backend's default
+  provider (registry default first); `llm-provider.ts`'s exported `provider` is
+  now a delegating object (`reconfigureProvider`). **Regions**: `TestRun.region`
+  (body `region`, validated `[a-z0-9-]`, not combinable with
+  `local_worker_id`; **a region is a grant**: instance setting `WORKER_REGIONS`,
+  one per line, `eu` = every workspace, `acme=12,15` = only those — undeclared
+  regions 403, checked at run/schedule create AND again at dispatch before any
+  secret is resolved, because region workers may sit in one customer's network) → `jobs:pending:<region>` / `jobs:mobile:pending:<region>`;
+  jobs carry `region` so DLQ replay returns them there (replay also now sends
+  mobile jobs back to the mobile stream — it used to send everything to
+  `jobs:pending`). Workers with `WORKER_REGION` read their regional stream
+  first, then the global one, **one stream per XREADGROUP** (a multi-stream
+  read with COUNT 1 returns one entry *per stream* and strands the second in
+  the PEL); `WORKER_REGION_EXCLUSIVE=true` drops the global stream (the DEFAULT for the
+  compose `execution-worker-region` service and Helm `regionWorkers` — a
+  dedicated pool that drained the global stream would run every tenant's jobs). No region
+  = the old behaviour exactly. Schedules take `regions` (one run per
+  region × device); monitors keep per-region state in
+  `TestSchedule.region_states` with the pure `monitor_tasks.transition()`
+  shared by both paths; aggregate = down if any monitored region is down.
+  **Paging** (`app/services/paging.py`, `app/api/paging.py`): project
+  `PagingChannel` (PagerDuty Events v2 / Opsgenie, key Fernet-encrypted,
+  write-only) + `MaintenanceWindow` (one-off UTC or weekly in its own tz,
+  overnight wraps to the start day) + `PagingEvent` log (soft refs). Monitors
+  page on their DOWN/RECOVERY transition (resolve regardless of
+  `alert_on_recovery`); `on_run_failure` pages only SCHEDULE/CI/WEBHOOK runs,
+  never human/agent/local runs (`paging_tasks.page_for_run`, queued at
+  finalize). A window suppresses but records; a resolve is only sent for a key
+  whose last *sent* action was a trigger. Vendor HTTP is mocked at
+  `paging._post` — not yet tried against a real PagerDuty/Opsgenie account.
+  **IP allowlists**: `ApiKey.allowed_cidrs` (checked in
+  `_principal_from_api_key` *before* `last_used_at`; refusal → 403 + audit
+  `ip_refused`), `SCIM_ALLOWED_CIDRS` (only a *valid* token from outside is
+  audited — scanner noise would flood the append-only log). Client IP is
+  `app/core/client_ip.py`: XFF believed only from `TRUSTED_PROXY_CIDRS`
+  (default none), walked right-to-left; an unparseable hop fails every match.
+  **mTLS** (`app/core/worker_auth.py`): `REQUIRE_WORKER_MTLS` makes a pure-ASGI
+  middleware demand `X-Client-Verify: SUCCESS` (+ optional subject list) on
+  `/api/internal/*`, believed only from a trusted proxy; the worker secret is
+  still required. Engine side `core/backend-http.ts` (`WORKER_TLS_*`) is now
+  the only path to internal endpoints (test-hooks, baselines, llm-usage).
+  **Egress**: `Project.network_policy` + `EGRESS_ALLOWLIST_ENFORCED` /
+  `EGRESS_ALLOWED_HOSTS`, resolved at dispatch (`app/services/network_policy.py`;
+  base_url host implicit; `allow_private` capped by
+  `ALLOW_PRIVATE_NETWORK_TARGETS`; a corrupt policy fails closed) →
+  `settings.egress_policy`; `core/egress-guard.ts` registers its route *after*
+  the header-injection route, `fallback()` when allowed, abort + a
+  `blocked: true` network event otherwise; metadata ranges never allowed;
+  WebSockets/service workers are not intercepted. **Load tests**: `load-test`
+  `params.prometheus_queries` evaluated on read by
+  `GET /api/runs/{id}/results/{rid}/server-metrics` against `PROMETHEUS_URL`
+  (net_guard with its own host as the private exemption). Prometheus has no
+  tenancy, so steps may only name operator templates
+  (`PROMETHEUS_QUERY_TEMPLATES`, `name=PromQL` per line, `$project_id`/
+  `$workspace_id`/`$run_id` substituted as integers); free-form PromQL needs
+  `PROMETHEUS_ALLOW_ADHOC_QUERIES`. Paging `_post` pins the vendor hosts, runs
+  net_guard (`validate_outbound_url_sync`) and does not follow redirects.
+  Egress guard canonicalises hosts with the WHATWG parser and classifies IPv6
+  by its 128 bits (v4-mapped/compatible, NAT64, 6to4 → the embedded IPv4;
+  `[::ffff:169.254.169.254]` serialises as `::ffff:a9fe:a9fe`), and a DNS
+  failure now fails closed; net_guard unwraps the same embedded forms. **Deploy**: optional
+  `execution-worker-region` (compose profile `region`, all five files),
+  Helm `regionWorkers: []` + values-gated KEDA ScaledObjects on stream lag
+  (HPA suppressed when on); `scripts/restore_drill.sh` restores a pg_dump (+
+  MinIO snapshot) into a throwaway DB and verifies migrations, row counts and
+  the audit chain (DB URL passed to `docker run` via env, never argv; report
+  lines redacted; `umask 077`).
+
+- **Frontend quality (WP10, 2026-10)** — migration `caa2b3c4d5eb`
+  (`testrun.emulation`/`sweep_group`, `sitecrawl`, `sitecrawlrun`,
+  `sitecrawlissue`, `pagebudgetsample`). UI: `/frontend-quality` (crawler,
+  page budgets, selector health, Storybook), run page "Sweep" tab, suite
+  settings card + "Screen sizes & locales" run picker.
+  **Matrix** (`app/services/frontend_matrix.py`): `POST /api/runs` body (or the
+  inherited suite settings of the same names) `viewports` (presets
+  mobile/tablet/desktop/wide or `{name,width,height}`), `locales` (tag or
+  `{locale, query, cookie, url_template}`), `color_schemes`, `reduced_motion`
+  fan out as a cartesian product INSIDE `_resolve_matrix` (each device slot
+  became a `(device, variant)` pair, so the four creation sites kept their
+  loops); `MAX_FANOUT_RUNS`=120 per case counts browsers×devices×variants×
+  identities. Scheduled suite runs fan out too; monitors never do (one check
+  per tick). `url_template` must start `{origin}`/`{url}` and the worker drops
+  a rewrite that changes origin. Each variant's visual baseline lives under
+  device `vp:<…>` and `/internal/visual-baselines/resolve` never falls back
+  across `vp:` keys (a 375px shot vs the desktop baseline fails for the wrong
+  reason). A multi-variant sweep screenshots after every step
+  (`sweep-<case>-s<i>.png` attached to step evidence); `GET /runs/{id}/sweep`
+  filters the group to the run's own project.
+  **Crawler** (`app/services/site_crawl.py`, `app/tasks/frontend_quality_tasks.py`,
+  worker `core/frontend-quality/crawler.ts`): `job_type=site_crawl` side job,
+  report parked at `site_crawl:result:{run}` (worker derives the key from the
+  run id), `collect_site_crawl` polls with a countdown, 45-min deadline.
+  Start/extra hosts must be the project's OWN hosts (environment base URLs ∪
+  suite allowed_domains ∪ security allowlist) — re-checked at dispatch; other
+  hosts are only status-checked (body never read), never crawled.
+  robots.txt matched by a hand-written matcher (no RegExp on site content),
+  Crawl-delay is a floor on per-host spacing. Beat `process-due-site-crawls`
+  (60s) skips a crawl whose previous run is still going.
+  **Budgets**: step `check-page-budget` (no Lighthouse dep — ESM-only, own
+  Chrome launcher; measured with Playwright: vitals, INP≈longest event-timing
+  entry, Resource-Timing weights, SEO facts) pushes outcomes onto the case
+  context; the worker ships them as `page_budgets`, the aggregator stores
+  PageBudgetSample rows replace-per-(run,test) so redelivery doesn't double
+  the trend. Unmeasured metrics never fail a budget; SEO is report-only
+  unless `seo: fail`. Steps `expect-no-horizontal-overflow` /
+  `expect-rtl-layout` (clipped-by-overflow-ancestor elements don't count; RTL
+  set only through CSS fails — assistive tech follows `dir`).
+  **Selector health** (`GET /projects/{id}/selector-health`) aggregates heal
+  proposals + failed/healed step evidence; suggestions parse the
+  `data-traceiq-target` DOM excerpt (test id > role+name > unique id) —
+  display only. **Storybook**: `POST /projects/{id}/storybook/{stories,cases}`
+  reads index.json/stories.json through net_guard from a project host; the
+  visual step id is `story-<story id>`, so the component baseline is keyed by
+  story; regenerating updates the case in place. Redaction twins gained
+  `redactPageBudgets`/`redactCrawlReport`. Worker image rebuild needed.
+  **Security review (2026-10-15):** crawl targets come from page content, so
+  every link check, redirect hop and page subresource passes
+  `egress-guard.ts:targetVerdict` (literal IPs in every encoding, names
+  resolved, `*.localhost`); link-local/metadata never, private only on the
+  crawl's own hosts or with ALLOW_PRIVATE_NETWORK_TARGETS (`config.allow_private`,
+  set by `build_job`). Refused targets are `not_checked` issues. Playwright
+  routes only the FIRST request of a redirect chain, so the loader fetches with
+  `maxRedirects: 0`: subresource chains are walked hop by hop, a page redirect is
+  reported (`redirectTo`) and the target queued as its own page. Production link
+  checks use `guardedFetch` (connect-time lookup check = no DNS rebinding).
+  Ceilings regardless of the job: 1000 pages, depth 10, 15 min (+ a hard race
+  in worker.ts), 20k checks, robots 512 KB, 300 sweep screenshots/job; server
+  side: 20 crawls/project, at most hourly, limits re-clamped in `snapshot()`,
+  sweep view 200 runs, Storybook index streamed with `safe_get(max_bytes=)`.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

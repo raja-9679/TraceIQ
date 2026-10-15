@@ -104,6 +104,11 @@ comment and keeps updating it on re-runs (idempotent via a hidden HTML
 marker). The comment contains:
 
 - **Overall verdict** — pass/fail with passed/failed counts and the commit.
+- **Failing cases** — for each failing case, the step that failed (type and
+  selector), the error (truncated), a screenshot link and a link to the run.
+  Screenshot links are presigned by `GET /api/runs/{id}/failures`: they
+  expire after an hour and the server only signs keys under that run's own
+  artifact prefix. Use `traceiq replay <run>` to reproduce one locally.
 - **Test selection** — when `project-id` is set, the result of TraceIQ's
   impact analysis on the PR diff: which test cases match the changed files
   and via which code paths; otherwise, the suite that ran.

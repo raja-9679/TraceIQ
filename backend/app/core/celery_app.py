@@ -75,6 +75,9 @@ celery_app = Celery(
         "app.tasks.report_tasks",       # Scheduled quality reports
         "app.tasks.access_matrix_tasks",  # Access-control matrix cells (WP4)
         "app.tasks.security_ops_tasks",  # SIEM outbox drain + security alerts (WP7)
+        "app.tasks.estate_tasks",       # Estate scans + monitored pages (WP9)
+        "app.tasks.paging_tasks",       # PagerDuty / Opsgenie run-failure paging
+        "app.tasks.frontend_quality_tasks",  # Site crawler dispatch/collect + schedules (WP10)
     ]
 )
 
@@ -100,6 +103,7 @@ celery_app.conf.task_routes = {
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
     "app.tasks.monitor_tasks.evaluate_monitor_for_run": "main-queue",
+    "app.tasks.paging_tasks.page_for_run": "main-queue",
     "app.tasks.security_tasks.scan_run_passive": "main-queue",
     "app.tasks.security_tasks.scan_run_leaks": "main-queue",
     "app.tasks.security_tasks.reopen_expired_risk_acceptances": "main-queue",
@@ -109,7 +113,15 @@ celery_app.conf.task_routes = {
     "app.tasks.ticket_tasks.create_issue_ticket": "main-queue",
     "app.tasks.triage_tasks.cluster_run_failures": "main-queue",
     "app.tasks.report_tasks.send_scheduled_reports": "main-queue",
-    "app.tasks.report_tasks.send_report_now": "main-queue"
+    "app.tasks.report_tasks.send_report_now": "main-queue",
+    "app.tasks.estate_tasks.run_estate_scan": "main-queue",
+    "app.tasks.estate_tasks.dispatch_due_estate_scans": "main-queue",
+    "app.tasks.estate_tasks.check_monitored_page": "main-queue",
+    "app.tasks.estate_tasks.collect_page_check": "main-queue",
+    "app.tasks.estate_tasks.dispatch_due_page_checks": "main-queue",
+    "app.tasks.frontend_quality_tasks.process_due_crawls": "main-queue",
+    "app.tasks.frontend_quality_tasks.dispatch_site_crawl": "main-queue",
+    "app.tasks.frontend_quality_tasks.collect_site_crawl": "main-queue",
 }
 
 # Configure Celery Beat schedule for periodic tasks
@@ -179,9 +191,25 @@ celery_app.conf.beat_schedule = {
         'task': 'app.tasks.security_ops_tasks.drain_security_events',
         'schedule': 10.0,
     },
+    'process-due-site-crawls': {
+        # Scheduled broken-link crawls (WP10). Cheap when none are scheduled.
+        'task': 'app.tasks.frontend_quality_tasks.process_due_crawls',
+        'schedule': 60.0,
+    },
     'reopen-expired-risk-acceptances': {
         'task': 'app.tasks.security_tasks.reopen_expired_risk_acceptances',
         'schedule': 3600.0,
+    },
+    # WP9. Each estate / monitored page carries its own cron (estates default
+    # daily, pages weekly — PCI DSS 11.6.1's minimum); these ticks only pick
+    # up the ones that are due.
+    'dispatch-due-estate-scans': {
+        'task': 'app.tasks.estate_tasks.dispatch_due_estate_scans',
+        'schedule': 300.0,
+    },
+    'dispatch-due-page-checks': {
+        'task': 'app.tasks.estate_tasks.dispatch_due_page_checks',
+        'schedule': 300.0,
     },
 }
 

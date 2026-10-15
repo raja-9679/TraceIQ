@@ -53,6 +53,12 @@ ENV WORKER_IDLE_TIMEOUT=60000
 ENV MAX_JOBS_BEFORE_RESTART=50
 ENV DEFAULT_TIMEOUT=30000
 
+# Build provenance for the fleet page (WP8): the worker heartbeat reports this
+# next to package.json's version, so "which build is that worker" has an answer.
+#   docker build --build-arg GIT_SHA=$(git rev-parse HEAD) -f Dockerfile.worker .
+ARG GIT_SHA=""
+ENV TRACEIQ_GIT_SHA=$GIT_SHA
+
 # Run as an unprivileged user, same uid as backend/Dockerfile and the AIO image
 # (which already runs this same worker code as uid 10001). The worker can
 # execute user-supplied Playwright specs when RAW_PLAYWRIGHT_ENABLED is set, so

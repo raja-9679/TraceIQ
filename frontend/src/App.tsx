@@ -14,12 +14,15 @@ import VisualReview from "@/pages/VisualReview";
 import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
 import FlakyTests from "@/pages/FlakyTests";
+import FrontendQuality from "@/pages/FrontendQuality";
 import QualityDashboard from "@/pages/QualityDashboard";
 import ReleaseReadiness from "@/pages/ReleaseReadiness";
 import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
 import AccessReviews from "@/pages/AccessReviews";
 import AccessMatrix from "@/pages/AccessMatrix";
+import Estate from "@/pages/Estate";
+import ScriptInventory from "@/pages/ScriptInventory";
 import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
@@ -42,6 +45,8 @@ import Settings from "@/pages/Settings";
 import WorkspacePage from "@/pages/WorkspacePage";
 import UsersPage from "@/pages/UsersPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
+import WorkerFleet from "@/pages/WorkerFleet";
+import OnCall from "@/pages/OnCall";
 import PrivateRoute from "@/components/PrivateRoute";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -78,6 +83,8 @@ function App() {
                 <Route path="security" element={<Security />} />
                 <Route path="access-reviews" element={<AccessReviews />} />
                 <Route path="access-matrix" element={<AccessMatrix />} />
+                <Route path="estate" element={<Estate />} />
+                <Route path="script-inventory" element={<ScriptInventory />} />
                 <Route path="triage" element={<Triage />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="billing" element={<Billing />} />
@@ -92,6 +99,7 @@ function App() {
                 <Route path="app-builds" element={<AppBuilds />} />
                 <Route path="visual-review" element={<VisualReview />} />
                 <Route path="flaky-tests" element={<FlakyTests />} />
+                <Route path="frontend-quality" element={<FrontendQuality />} />
                 <Route path="api-keys" element={<ApiKeys />} />
                 <Route path="webhooks" element={<Webhooks />} />
                 <Route path="issue-trackers" element={<IssueTrackers />} />
@@ -100,6 +108,8 @@ function App() {
                 <Route path="workspace" element={<WorkspacePage />} />
                 <Route path="users" element={<UsersPage />} />
                 <Route path="admin/users" element={<AdminUsersPage />} />
+                <Route path="admin/workers" element={<WorkerFleet />} />
+                <Route path="on-call" element={<OnCall />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>

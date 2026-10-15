@@ -65,6 +65,24 @@ For a full feature-coverage scorecard against a modern-platform checklist (and t
 
 ## Still deferred to future sessions
 
+### Estate: active probing (parked 2026-10-15, needs the owner's decision)
+WP9 built the passive estate checks only. These were designed but deliberately
+not built, because they actively probe hosts and should be a conscious product
+and legal decision rather than an automated build step:
+- **Port exposure** — TCP connects to a curated list (22, 3306, 5432, 6379,
+  9200, 27017, …) on estate hosts.
+- **WAF validation** — sending well-known detection strings (SQLi/XSS/path
+  traversal/JNDI as plain text) to see whether a WAF blocks them.
+- **Origin bypass** — requesting the site from its origin IP with the Host
+  header to see whether the CDN/WAF can be skipped.
+- **TLS protocol/cipher enumeration** — handshakes per protocol version and
+  with weak cipher suites (verification off) to produce an SSL-Labs-style grade.
+If wanted: gate them behind the existing scope attestation, the project's
+security allowlist, strict rate limits, and an explicit per-estate opt-in; the
+scoring rubric and finding plumbing in `app/services/estate_checks.py` /
+`estate_findings.py` already have the shape to take them.
+
+
 These items either require significant frontend work, external products, or design decisions that need stakeholder input.
 
 ### Identity (workstream F)

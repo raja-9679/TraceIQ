@@ -106,3 +106,30 @@ async def test_unresolvable_host_is_refused_not_crashed(policy):
         await validate_outbound_url(
             "http://this-host-should-not-resolve.invalid/"
         )
+
+
+async def test_safe_get_max_bytes_stops_reading_an_oversized_body(monkeypatch):
+    """max_bytes streams the body and refuses past the cap (declared or not)."""
+    import httpx
+    from app.core import net_guard
+
+    async def ok(url, allow_private=None):
+        return url
+    monkeypatch.setattr(net_guard, "validate_outbound_url", ok)
+    big = b"x" * 5000
+
+    def handler(request):
+        if request.url.path == "/declared":
+            return httpx.Response(200, content=big)
+        return httpx.Response(200, stream=httpx.ByteStream(big))  # no length known up front
+
+    real = httpx.AsyncClient
+
+    def client(**kw):
+        return real(transport=httpx.MockTransport(handler), **kw)
+    monkeypatch.setattr(net_guard.httpx, "AsyncClient", client)
+    for path in ("/declared", "/streamed"):
+        with pytest.raises(net_guard.ResponseTooLarge):
+            await net_guard.safe_get(f"https://example.com{path}", max_bytes=1000)
+    resp = await net_guard.safe_get("https://example.com/declared", max_bytes=10_000)
+    assert resp.status_code == 200 and resp.content == big

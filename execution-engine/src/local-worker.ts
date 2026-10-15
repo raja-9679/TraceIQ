@@ -21,6 +21,10 @@
 import { chromium, firefox, webkit, Browser, Page, FrameLocator } from 'playwright';
 import { TestExecutor } from './core/test-executor';
 import { collectWebVitals } from './web-vitals';
+import { RunScope } from './core/run-scope';
+import { HookReport, HookRunner, caseUsesHooks, isEmptyReport, playwrightRequester } from './core/suite-hooks';
+import { workerVersion } from './core/heartbeat';
+import * as os from 'os';
 
 const BASE_URL = (process.env.TRACEIQ_URL || process.env.BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
 const API_KEY = process.env.TRACEIQ_API_KEY || '';
@@ -93,6 +97,8 @@ async function executeJob(job: any): Promise<any> {
     let responseData: any = undefined;
     let lastStepResult: any = null;
     let webVitals: any = null;
+    let hookRunner: HookRunner | null = null;
+    let hookReport: HookReport | undefined;
 
     try {
         browser = await browserFor(job.browser || 'chromium').launch({ headless: process.env.TRACEIQ_HEADED !== 'true' });
@@ -106,7 +112,25 @@ async function executeJob(job: any): Promise<any> {
             id: tc.id, name: tc.name,
             browser: job.browser || 'chromium', device: job.device || null,
             variables: {}, data: tc.data_row || {},
+            scope: RunScope.forCase(job, tc, WORKER_ID),
+            setup: {} as Record<string, any>,
         };
+
+        // Suite setup/teardown hooks, same semantics as the server worker.
+        if (caseUsesHooks(tc)) {
+            hookRunner = new HookRunner({
+                runStep: async (hookStep, ctx) => {
+                    if (page.isClosed()) page = await context.newPage();
+                    return TestExecutor.executeStep(page, page, hookStep, job.settings || {}, ctx);
+                },
+                request: playwrightRequester(() => context.request),
+                settings: job.settings || {},
+                caseContext: () => contextData,
+            });
+            const entered = await hookRunner.enter(tc.suite_hooks);
+            contextData.setup = hookRunner.exports();
+            if (!entered.ok) throw new Error(entered.error);
+        }
 
         let currentContext: Page | FrameLocator = page;
         for (const step of tc.steps) {
@@ -116,8 +140,10 @@ async function executeJob(job: any): Promise<any> {
                     : sel ? currentContext.frameLocator(sel) : currentContext;
                 continue;
             }
-            const stepResponse = await TestExecutor.executeStep(
+            const runCaseStep = () => TestExecutor.executeStep(
                 page, currentContext, step, job.settings || {}, contextData);
+            const stepResponse = hookRunner
+                ? await hookRunner.track(step, contextData, runCaseStep) : await runCaseStep();
             if (stepResponse?.__switchToPage) {
                 page = stepResponse.__switchToPage;
                 currentContext = page;
@@ -142,6 +168,16 @@ async function executeJob(job: any): Promise<any> {
             };
         }
     } finally {
+        // Teardown always runs, before the browser goes away.
+        if (hookRunner) {
+            try {
+                await hookRunner.finishCase();
+                await hookRunner.exitAll();
+            } catch (hookErr: any) {
+                console.warn(`[LocalWorker] suite teardown error: ${hookErr.message}`);
+            }
+            hookReport = hookRunner.drain();
+        }
         try { await browser?.close(); } catch { /* ignore */ }
     }
 
@@ -152,11 +188,46 @@ async function executeJob(job: any): Promise<any> {
         error: errorMessage,
         response_data: responseData,
         ...(webVitals ? { web_vitals: webVitals } : {}),
+        ...(hookReport && !isEmptyReport(hookReport) ? { hook_report: hookReport } : {}),
     };
+}
+
+// Fleet heartbeat (WP8). Local workers cannot reach Redis, so they report
+// through the API with their key; the backend namespaces them by workspace.
+const fleet = {
+    startedAt: new Date().toISOString(),
+    processed: 0,
+    failed: 0,
+    current: null as null | { job_id: string; run_id: number; started_at: string },
+};
+
+async function sendHeartbeat(): Promise<void> {
+    try {
+        const res = await api('/jobs/heartbeat', {
+            method: 'POST',
+            body: JSON.stringify({
+                worker_id: WORKER_ID,
+                hostname: os.hostname(),
+                ...workerVersion(),
+                step_types: [...TestExecutor.SUPPORTED_STEP_TYPES],
+                capabilities: { browsers: ['chromium', 'firefox', 'webkit'], local: true },
+                current_job: fleet.current,
+                jobs_processed: fleet.processed,
+                jobs_failed: fleet.failed,
+                started_at: fleet.startedAt,
+            }),
+        });
+        // 404/405 = an older backend without the endpoint; stay quiet.
+        if (!res.ok && res.status !== 404 && res.status !== 405) {
+            console.warn(`[LocalWorker] heartbeat returned ${res.status}`);
+        }
+    } catch { /* the poll loop reports connectivity problems */ }
 }
 
 async function main() {
     console.log(`[LocalWorker] "${WORKER_ID}" polling ${BASE_URL} every ${POLL_INTERVAL_MS}ms`);
+    void sendHeartbeat();
+    setInterval(() => { void sendHeartbeat(); }, 15_000).unref();
     console.log('[LocalWorker] Trigger runs with body {"local_worker_id": "' + WORKER_ID + '"} on POST /api/runs');
     let failures = 0;
     for (;;) {
@@ -165,7 +236,11 @@ async function main() {
             failures = 0;
             if (!job) { await sleep(POLL_INTERVAL_MS); continue; }
             console.log(`[LocalWorker] job ${job.job_id} (run ${job.run_id}): ${job.test_case?.name || job.unit_name}`);
+            fleet.current = { job_id: job.job_id, run_id: job.run_id, started_at: new Date().toISOString() };
             const result = await executeJob(job);
+            fleet.current = null;
+            fleet.processed += 1;
+            if (result.status !== 'passed') fleet.failed += 1;
             await submitResult(result);
             console.log(`[LocalWorker] job ${job.job_id} → ${result.status}${result.error ? `: ${result.error.slice(0, 120)}` : ''}`);
         } catch (err: any) {

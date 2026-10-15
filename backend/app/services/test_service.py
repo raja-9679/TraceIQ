@@ -49,6 +49,12 @@ def _normalize_domain(d) -> Optional[Dict]:
 INHERITED_EXECUTION_FLAGS = (
     "har_capture", "auto_retry", "max_retries", "retry_backoff_ms",
     "fail_on_console_errors", "console_error_ignore_patterns",
+    # {{fake.*}} seed (WP5). Suite setup/teardown steps are deliberately NOT
+    # here: they are not overridden child-over-parent but chained per case
+    # (app/services/suite_hooks.py:hook_chain_sync).
+    "data_seed",
+    # Frontend matrix axes (WP10): a child's list replaces the parent's.
+    "viewports", "locales", "color_schemes", "reduced_motion", "sweep_step_screenshots",
 )
 
 

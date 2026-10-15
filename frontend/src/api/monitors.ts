@@ -8,6 +8,14 @@ export interface MonitorCheck {
     status: string;
     is_up: boolean;
     checked_at: string;
+    region?: string | null;
+}
+
+export interface MonitorRegionStatus {
+    region: string;
+    state: 'up' | 'down' | 'unknown';
+    consecutive_failures: number;
+    last_checked_at: string | null;
 }
 
 export interface MonitorStatus {
@@ -21,6 +29,8 @@ export interface MonitorStatus {
     uptime_7d: number | null;
     last_checked_at: string | null;
     recent_checks: MonitorCheck[];
+    // Multi-region monitors (WP8); empty for unlabelled monitors.
+    regions?: MonitorRegionStatus[];
 }
 
 export const monitorsApi = {

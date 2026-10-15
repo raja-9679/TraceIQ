@@ -171,6 +171,12 @@ class Project(SQLModel, table=True):
     # instance-wide MAX_CAPTURE_LEVEL ceiling. Shape mirrors DataPolicy.
     data_policy: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
+    # Worker egress allowlist (WP8). None → not enforced unless the instance
+    # forces it (EGRESS_ALLOWLIST_ENFORCED). Shape mirrors
+    # app.services.network_policy.NetworkPolicy; resolved at dispatch and
+    # carried in the job as settings.egress_policy.
+    network_policy: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
 
     # Relationships
     workspace: Workspace = Relationship(back_populates="projects")
@@ -541,6 +547,10 @@ class TestRunBase(SQLModel):
     # Redis-stream workers — the bridge that lets TraceIQ test `localhost`
     # before code is deployed anywhere.
     local_worker_id: Optional[str] = Field(default=None, index=True)
+    # Region label (WP8). When set, jobs go to `jobs:pending:<region>` and only
+    # workers started with WORKER_REGION=<region> claim them. NULL = the global
+    # stream, i.e. exactly the pre-region behaviour.
+    region: Optional[str] = Field(default=None, index=True)
     # How this run's cases were chosen (targeted runs, 2026-10):
     # "full" = whole suite, "targeted" = POST /runs case_ids, "case" = single
     # case_id; NULL = created before selection tracking. selection_total is
@@ -633,6 +643,17 @@ class TestRunBase(SQLModel):
     # Run with NO identity at all: neither the project's stored session nor
     # the suite's credential headers. The "anonymous" column of a matrix.
     anonymous: Optional[bool] = Field(default=None)
+    # Effective {{fake.*}} seed (POST /runs body `data_seed`, else the suite
+    # chain's `data_seed` setting), recorded at dispatch so a failing run can
+    # be replayed with the same generated data. NULL = unseeded (random).
+    data_seed: Optional[str] = Field(default=None, max_length=64)
+    # Frontend matrix (WP10): the viewport / locale / colour scheme / reduced
+    # motion this run emulates ({viewport:{name,width,height}, locale,
+    # color_scheme, reduced_motion, label}); runs fanned out from one request
+    # over several of them share `sweep_group` so the run page can show them
+    # side by side.
+    emulation: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    sweep_group: Optional[str] = Field(default=None, index=True)
 
 
 class UserRead(SQLModel):
@@ -841,6 +862,9 @@ class TestScheduleBase(SQLModel):
     # the attacking scan keeps its manual double-opt-in. The same
     # security_settings gates (enabled + host allowlist) apply at dispatch.
     security_scan_target: Optional[str] = Field(default=None)
+    # Multi-region monitors (WP8): one run per listed region per cycle, each
+    # evaluated and alerted on separately. None/empty = one unlabelled run.
+    regions: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
 
 
 class TestSchedule(TestScheduleBase, table=True):
@@ -852,6 +876,10 @@ class TestSchedule(TestScheduleBase, table=True):
     monitor_state: Optional[str] = Field(default=None)   # "up" | "down" | None(unknown)
     last_alert_state: Optional[str] = Field(default=None)  # last state an alert was sent for
     last_checked_at: Optional[datetime] = Field(default=None)
+    # Per-region monitor state for multi-region monitors:
+    # {region: {"state", "last_alert_state", "last_checked_at"}}. The scalar
+    # columns above then hold the aggregate (down if any region is down).
+    region_states: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
     project: Optional["Project"] = Relationship()
     test_suite: Optional["TestSuite"] = Relationship()
@@ -868,6 +896,7 @@ class TestScheduleRead(TestScheduleBase):
     id: int
     monitor_state: Optional[str] = None
     last_checked_at: Optional[datetime] = None
+    region_states: Optional[Dict[str, Any]] = None
 
 
 class TestScheduleUpdate(SQLModel):
@@ -882,6 +911,7 @@ class TestScheduleUpdate(SQLModel):
     alert_on_recovery: Optional[bool] = None
     alert_emails: Optional[List[str]] = None
     security_scan_target: Optional[str] = None
+    regions: Optional[List[str]] = None
 
 
 class MonitorCheck(SQLModel, table=True):
@@ -898,6 +928,8 @@ class MonitorCheck(SQLModel, table=True):
     status: TestStatus = Field(sa_column=Column(String, nullable=False))
     is_up: bool  # True iff the run passed (status == PASSED)
     checked_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # Which region the check ran from (multi-region monitors); NULL = unlabelled.
+    region: Optional[str] = Field(default=None)
 
 
 class MonitorCheckRead(SQLModel):
@@ -906,6 +938,14 @@ class MonitorCheckRead(SQLModel):
     status: TestStatus
     is_up: bool
     checked_at: datetime
+    region: Optional[str] = None
+
+
+class MonitorRegionStatus(SQLModel):
+    region: str
+    state: str  # "up" | "down" | "unknown"
+    consecutive_failures: int = 0
+    last_checked_at: Optional[datetime] = None
 
 
 class MonitorStatusRead(SQLModel):
@@ -920,6 +960,7 @@ class MonitorStatusRead(SQLModel):
     uptime_7d: Optional[float] = None
     last_checked_at: Optional[datetime] = None
     recent_checks: List[MonitorCheckRead] = []
+    regions: List[MonitorRegionStatus] = []
 
 
 class SecurityFinding(SQLModel, table=True):
@@ -1598,6 +1639,9 @@ class ApiKey(SQLModel, table=True):
     last_used_at: Optional[datetime] = Field(default=None)
     expires_at: Optional[datetime] = Field(default=None)
     revoked_at: Optional[datetime] = Field(default=None)
+    # Source-IP allowlist (WP8): CIDR strings. None/empty = any address. The
+    # client address is resolved by app.core.client_ip (trusted proxies only).
+    allowed_cidrs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
 
 
 class ApiKeyCreate(SQLModel):
@@ -1606,6 +1650,7 @@ class ApiKeyCreate(SQLModel):
     project_id: Optional[int] = None
     role_id: Optional[int] = None
     expires_in_days: Optional[int] = None
+    allowed_cidrs: Optional[List[str]] = None
 
 
 class ApiKeyRead(SQLModel):
@@ -1618,6 +1663,7 @@ class ApiKeyRead(SQLModel):
     last_used_at: Optional[datetime]
     expires_at: Optional[datetime]
     revoked_at: Optional[datetime]
+    allowed_cidrs: Optional[List[str]] = None
 
 
 class ApiKeyCreateResponse(ApiKeyRead):
@@ -1906,6 +1952,9 @@ class CaseFromOpenAPIRequest(SQLModel):
     test_suite_id: int
     base_url: Optional[str] = None
     operations: Optional[List[str]] = None  # specific operationIds to cover
+    # Also keep the document as the project's OpenAPI spec, so http-request
+    # steps can reference its operations in `expect_schema` (WP11).
+    store_spec: bool = True
 
 
 class ComparisonRunRequest(SQLModel):
@@ -2674,6 +2723,333 @@ class IncidentWebhook(SQLModel, table=True):
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     rotated_at: Optional[datetime] = None
+
+
+class ProjectApiSpec(SQLModel, table=True):
+    """The project's OpenAPI document (WP11), one per project.
+
+    Stored so `http-request` steps can say `expect_schema: {openapi:
+    {operationId}}` instead of pasting a schema into every step. Resolved to
+    an inline JSON Schema at dispatch (app.services.api_specs), so workers
+    never need the database. Set by PUT /projects/{id}/openapi-spec or as a
+    side effect of POST /cases/from-openapi."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True, unique=True)
+    spec: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    source_url: Optional[str] = None
+    title: Optional[str] = None
+    spec_version: Optional[str] = None
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# WP9 — Estate & perimeter scanning
+# =============================================================================
+
+
+class Estate(SQLModel, table=True):
+    """A named set of domains a project watches (WP9).
+
+    Owned by a project rather than hanging off the workspace directly: the
+    project's security settings are the authority for what may be scanned
+    (enabled + allowed_domains), and findings need a project_id so the existing
+    triage endpoints and access checks apply to them unchanged. The workspace
+    view is a join through project.
+
+    Passive checks only (DNS, certificate transparency, ordinary verified
+    HTTPS requests). Active probing is parked — SCOPE_NOTES.md "Estate: active
+    probing" — so there are deliberately no opt-in columns for it here.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    # Extra DKIM selectors to try on top of the common ones.
+    dkim_selectors: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    discover_subdomains: bool = Field(default=True)
+    cron_expression: str = Field(default="0 3 * * *")
+    schedule_enabled: bool = Field(default=True)
+    next_scan_at: Optional[datetime] = Field(default=None, index=True)
+    last_scan_at: Optional[datetime] = None
+    # Days-before-expiry at which certificate alerts fire.
+    cert_alert_days: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    alert_emails: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EstateDomain(SQLModel, table=True):
+    """One host in an estate: user-entered or discovered from CT logs.
+    Caches the latest result; history lives in EstateDomainResult."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    estate_id: int = Field(foreign_key="estate.id", index=True)
+    hostname: str = Field(index=True)
+    source: str = Field(default="user")       # user | ct
+    # None = decide by DNS (an SOA answer at the name means zone apex). Email
+    # checks (SPF/DMARC/DKIM/MX) only make sense at an apex.
+    is_apex: Optional[bool] = None
+    score: Optional[int] = None
+    cert_expires_at: Optional[datetime] = None
+    # Smallest cert_alert_days threshold already alerted for the current
+    # certificate; reset when the expiry moves (renewal).
+    cert_alert_sent_days: Optional[int] = None
+    last_scanned_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EstateScan(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    estate_id: int = Field(foreign_key="estate.id", index=True)
+    status: str = Field(default="pending")    # pending | running | completed | error
+    trigger: str = Field(default="manual")    # manual | schedule
+    summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    error: Optional[str] = None
+    requested_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class EstateDomainResult(SQLModel, table=True):
+    """Per-domain outcome of one scan — every check with its explanation and
+    the score deductions. The rows over time are the score trend."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    scan_id: int = Field(foreign_key="estatescan.id", index=True)
+    domain_id: int = Field(foreign_key="estatedomain.id", index=True)
+    score: int
+    checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    deductions: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class MonitoredPage(SQLModel, table=True):
+    """A payment/critical page watched for script changes (PCI DSS 4.0 6.4.3 /
+    11.6.1) and/or defacement. One headless load serves both."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    url: str
+    track_scripts: bool = Field(default=True)
+    track_content: bool = Field(default=False)
+    # 11.6.1 wants change detection at least weekly — weekly is the default.
+    cron_expression: str = Field(default="0 6 * * 1")
+    schedule_enabled: bool = Field(default=True)
+    next_check_at: Optional[datetime] = Field(default=None, index=True)
+    last_checked_at: Optional[datetime] = None
+    last_status: Optional[str] = None         # ok | changed | alert | error
+    last_error: Optional[str] = None
+    # Security headers as last observed (lower-cased name -> value).
+    headers_baseline: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Defacement: normalised visible text of the accepted baseline.
+    content_baseline: Optional[str] = None
+    content_baseline_at: Optional[datetime] = None
+    similarity_threshold: float = Field(default=0.5)
+    last_similarity: Optional[float] = None
+    forbidden_keywords: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    # [{"selector": str, "must_contain": str|None, "must_not_contain": [str]}]
+    element_checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    alert_emails: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PageScript(SQLModel, table=True):
+    """One script seen on a monitored page. The approval (authorized +
+    justification) is what PCI DSS 6.4.3 asks for; a content change revokes it."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    page_id: int = Field(foreign_key="monitoredpage.id", index=True)
+    # Identity across loads: external = scheme+host+path (query stripped so a
+    # cache-buster is a change, not a new script); inline = its SHA-384.
+    script_key: str
+    kind: str = Field(default="external")     # external | inline
+    src: Optional[str] = None
+    sha384: Optional[str] = None
+    integrity: Optional[str] = None           # the SRI attribute, if any
+    third_party: bool = Field(default=False)
+    present: bool = Field(default=True)
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    removed_at: Optional[datetime] = None
+    authorized: bool = Field(default=False)
+    justification: Optional[str] = None
+    authorized_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    authorized_at: Optional[datetime] = None
+
+
+class PageChangeEvent(SQLModel, table=True):
+    """Change history for a monitored page: script added/changed/removed,
+    header changes, defacement signals."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    page_id: int = Field(foreign_key="monitoredpage.id", index=True)
+    kind: str
+    summary: str
+    detail: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# WP8 — paging channels (PagerDuty / Opsgenie) and maintenance windows
+# ---------------------------------------------------------------------------
+
+class PagingChannel(SQLModel, table=True):
+    """A project's on-call paging integration.
+
+    `secret_encrypted` is the PagerDuty Events v2 routing key or the Opsgenie
+    API key (app.core.secrets); it is write-only through the API. Pages are
+    de-duplicated by key (PagerDuty `dedup_key`, Opsgenie `alias`), so a
+    monitor that stays down pages once and a recovery resolves that page."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    kind: str                       # "pagerduty" | "opsgenie"
+    secret_encrypted: str
+    # Opsgenie only: "us" (api.opsgenie.com) or "eu" (api.eu.opsgenie.com).
+    api_region: Optional[str] = Field(default=None)
+    # PagerDuty severity (critical|error|warning|info); mapped to an Opsgenie
+    # priority (P1..P4).
+    severity: str = Field(default="error")
+    on_monitor: bool = Field(default=True)
+    on_run_failure: bool = Field(default=False)
+    enabled: bool = Field(default=True)
+    last_sent_at: Optional[datetime] = Field(default=None)
+    last_error: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MaintenanceWindow(SQLModel, table=True):
+    """A period during which a project's paging is suppressed (still recorded).
+
+    Either one-off (`starts_at`/`ends_at`, UTC) or weekly recurring
+    (`weekdays` 0=Mon..6=Sun + `start_time`/`end_time` "HH:MM" in `timezone`;
+    an end before the start wraps past midnight)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    starts_at: Optional[datetime] = Field(default=None)
+    ends_at: Optional[datetime] = Field(default=None)
+    weekdays: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    start_time: Optional[str] = Field(default=None)
+    end_time: Optional[str] = Field(default=None)
+    timezone: str = Field(default="UTC")
+    enabled: bool = Field(default=True)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PagingEvent(SQLModel, table=True):
+    """Log of every page decision — sent, suppressed by a maintenance window,
+    or failed. Also the state that decides whether a recovery needs a resolve
+    (only a key whose last *sent* action was a trigger is open). channel_id,
+    run_id and schedule_id are soft references: the log outlives them."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    channel_id: Optional[int] = Field(default=None, index=True)
+    source: str                     # "monitor" | "run"
+    action: str                     # "trigger" | "resolve"
+    dedup_key: str = Field(index=True)
+    outcome: str                    # "sent" | "suppressed" | "failed"
+    detail: Optional[str] = Field(default=None)
+    run_id: Optional[int] = Field(default=None)
+    schedule_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# Frontend quality (WP10): broken-link crawler, page budgets.
+# ---------------------------------------------------------------------------
+
+class SiteCrawl(SQLModel, table=True):
+    """A saved broken-link / asset crawl of one start URL.
+
+    The crawl stays on the start URL's origin unless `extra_hosts` names more
+    hosts, and every extra host must be one the project already knows (an
+    environment base URL, a suite allowed domain or the security allowlist) —
+    see app/services/site_crawl.py. Links to other hosts are *checked* (one
+    request each, status only) when `check_external` is on, never crawled.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    start_url: str
+    max_depth: int = Field(default=3)
+    max_pages: int = Field(default=100)
+    extra_hosts: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    respect_robots: bool = Field(default=True)
+    rate_limit_ms: int = Field(default=250)
+    slow_threshold_ms: int = Field(default=3000)
+    check_external: bool = Field(default=True)
+    # Optional schedule; `next_run_at` is maintained by the beat sweep.
+    cron_expression: Optional[str] = Field(default=None)
+    is_active: bool = Field(default=True)
+    next_run_at: Optional[datetime] = Field(default=None, index=True)
+    last_run_at: Optional[datetime] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SiteCrawlRun(SQLModel, table=True):
+    """One execution of a SiteCrawl. `config` is the snapshot the worker got,
+    so editing the crawl later does not rewrite what this run checked."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    crawl_id: int = Field(foreign_key="sitecrawl.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    status: str = Field(default="pending")  # pending|running|completed|error
+    trigger: str = Field(default="manual")  # manual|schedule
+    config: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    requested_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+    pages_crawled: int = Field(default=0)
+    links_checked: int = Field(default=0)
+    issue_counts: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Per-page summary: [{url, depth, status, load_ms, links, issues}].
+    pages: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    robots: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    truncated: bool = Field(default=False)
+    error: Optional[str] = Field(default=None)
+
+
+class SiteCrawlIssue(SQLModel, table=True):
+    """One problem found by a crawl: a broken/slow/looping link or asset, or
+    an insecure subresource on an https page."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    crawl_run_id: int = Field(foreign_key="sitecrawlrun.id", index=True)
+    page_url: str
+    target_url: str
+    # a | img | script | link | css | page
+    element: str
+    # broken | network | slow | redirect_loop | mixed_content | redirect_chain
+    # | not_checked (a private/metadata target the worker refused to request)
+    category: str = Field(index=True)
+    status_code: Optional[int] = Field(default=None)
+    duration_ms: Optional[int] = Field(default=None)
+    redirect_chain: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    detail: Optional[str] = Field(default=None)
+
+
+class PageBudgetSample(SQLModel, table=True):
+    """One `check-page-budget` step outcome: measured metrics and SEO checks
+    against the step's thresholds. Rows of the same `page_key` over runs are
+    the per-page trend."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    test_name: Optional[str] = Field(default=None)
+    step_id: Optional[str] = Field(default=None)
+    page_url: str
+    # origin + path (no query): what a trend groups on.
+    page_key: str = Field(index=True)
+    # Emulation label of a sweep/locale/theme run ("mobile · dark"), else None.
+    variant: Optional[str] = Field(default=None)
+    metrics: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    seo: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    passed: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

@@ -25,6 +25,9 @@ import { toast } from 'sonner';
 import { usePermission } from "@/hooks/usePermission";
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicyCard';
+import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
+import { FrontendMatrixSettings, RunMatrixPicker } from '@/components/frontend-quality/MatrixFields';
+import { EMPTY_MATRIX, MatrixChoice, matrixRunContext } from '@/components/frontend-quality/matrixHelpers';
 
 const tabVariants: Variants = {
     hidden: { opacity: 0, y: -5 },
@@ -204,10 +207,14 @@ export default function SuiteDetails() {
     });
     const [selectedEnvId, setSelectedEnvId] = useState<string>('default');
 
-    const runContext = (selectedAppBuildId !== 'none' || selectedEnvId !== 'default')
+    // Frontend matrix for runs started here (WP10); empty = the suite's settings.
+    const [runMatrix, setRunMatrix] = useState<MatrixChoice>(EMPTY_MATRIX);
+    const matrixContext = matrixRunContext(runMatrix);
+    const runContext = (selectedAppBuildId !== 'none' || selectedEnvId !== 'default' || Object.keys(matrixContext).length)
         ? {
             ...(selectedAppBuildId !== 'none' ? { app_build_id: Number(selectedAppBuildId) } : {}),
             ...(selectedEnvId !== 'default' ? { environment_id: Number(selectedEnvId) } : {}),
+            ...matrixContext,
         }
         : undefined;
 
@@ -476,6 +483,7 @@ export default function SuiteDetails() {
                     subtitle={suite.description || `${suite.total_test_cases || 0} tests · ${suite.total_sub_modules || 0} sub-modules`}
                     actions={
                         <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                            {canExecute && <RunMatrixPicker value={runMatrix} onChange={setRunMatrix} />}
                             {canExecute && (environments?.length ?? 0) > 0 && (
                                 <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
                                     <SelectTrigger className="h-10 w-auto max-w-[240px] gap-2 rounded-full border border-input bg-white px-3.5 text-sm text-ink shadow-none hover:bg-background focus:ring-0 focus-visible:ring-2 focus-visible:ring-ink/20 [&>span]:truncate" aria-label="Environment for runs from this page" title="Environment for runs from this page">
@@ -819,6 +827,15 @@ export default function SuiteDetails() {
                                     onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
                                 />
 
+                                {/* ── Setup & teardown hooks + data seed ── */}
+                                <SuiteHooksCard
+                                    key={`hooks-${suite.id}`}
+                                    settings={suite.settings}
+                                    effectiveSeed={suite.effective_settings?.data_seed}
+                                    inherit={suite.inherit_settings}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
+
                                 {/* ── Execution Matrix (Browsers & Devices) ── */}
                                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden hover:border-slate-300 transition-colors">
                                     <div className="p-6 lg:p-8 space-y-5">
@@ -893,6 +910,13 @@ export default function SuiteDetails() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* ── Frontend matrix (viewports / locales / themes), WP10 ── */}
+                                <FrontendMatrixSettings
+                                    settings={suite.settings}
+                                    effective={suite.effective_settings}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
 
                                 {/* ── Headers & Params Configuration ── */}
                                 <div className="grid lg:grid-cols-2 gap-6">

@@ -25,6 +25,25 @@ const stateLook: Record<MonitorStatus['state'], { kind: Kind; tone: Tone; label:
 
 const fmtUptime = (v: number | null) => (v === null || v === undefined ? '—' : `${v}%`);
 
+// Multi-region monitors (WP8): one pill per region; empty for unlabelled monitors.
+function RegionPills({ regions }: { regions: NonNullable<MonitorStatus['regions']> }) {
+    if (!regions.length) return null;
+    return (
+        <div className="flex flex-wrap gap-1.5" aria-label="Per-region status">
+            {regions.map((r) => (
+                <Pill
+                    key={r.region}
+                    tone={stateLook[r.state]?.tone ?? 'neutral'}
+                >
+                    <span title={`${r.region}: ${r.state}${r.consecutive_failures ? `, ${r.consecutive_failures} failing check(s)` : ''}${r.last_checked_at ? ` · last ${r.last_checked_at}` : ''}`}>
+                        {r.region} · {r.state}{r.consecutive_failures ? ` (${r.consecutive_failures} in a row)` : ''}
+                    </span>
+                </Pill>
+            ))}
+        </div>
+    );
+}
+
 function StatusPageCard({ projectId }: { projectId: number }) {
     const qc = useQueryClient();
     const page = useQuery({
@@ -84,7 +103,7 @@ function CheckBars({ checks, large = false }: { checks: MonitorStatus['recent_ch
             {items.map((c) => (
                 <span
                     key={c.id}
-                    title={`${new Date(c.checked_at).toLocaleString()}: ${c.status}`}
+                    title={`${new Date(c.checked_at).toLocaleString()}${c.region ? ` [${c.region}]` : ''}: ${c.status}`}
                     className={cn('flex-1 rounded-[4px]', c.is_up ? 'bg-[#8FD3B6]' : 'bg-[#E0603A]')}
                 />
             ))}
@@ -199,6 +218,7 @@ export default function Monitors() {
                                 </Pill>
                                 <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.name}</h2>
                                 <span className="text-sm text-ink-soft">Schedule #{selected.schedule_id} · last checked {ago(selected.last_checked_at)}</span>
+                                <RegionPills regions={selected.regions || []} />
                             </div>
 
                             <div className="flex flex-col gap-2">
@@ -221,7 +241,7 @@ export default function Monitors() {
                             <EvidenceList
                                 items={selected.recent_checks.slice(0, 5).map((c) => ({
                                     tag: c.is_up ? 'up' : 'down',
-                                    text: `${c.status} · ${ago(c.checked_at)}`,
+                                    text: `${c.status}${c.region ? ` · ${c.region}` : ''} · ${ago(c.checked_at)}`,
                                     to: c.run_id ? `/runs/${c.run_id}` : undefined,
                                 }))}
                             />

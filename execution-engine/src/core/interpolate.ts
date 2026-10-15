@@ -1,21 +1,33 @@
 /**
  * Template interpolation shared by every executor (web test-executor,
  * mobile worker): {{env.KEY}}, {{secret.KEY}}, {{data.KEY}}, {{fake.KIND}},
- * and bare {{name}} runtime variables. Unknown tokens are left in place so
- * mistakes are visible rather than silently blank.
+ * {{run.KEY}}, {{unique.NAME}}, {{setup.NAME}} and bare {{name}} runtime
+ * variables. Unknown tokens are left in place so mistakes are visible rather
+ * than silently blank.
  */
+import type { RunScope } from './run-scope';
 
 // Lightweight test-data generator for {{fake.KIND}} interpolation. Kept
 // dependency-free on purpose; covers the common kinds. Unknown kinds return
 // the token unchanged so mistakes are visible rather than silently blank.
-export function generateFake(kind: string): string {
-    const rnd = (n: number) => Math.floor(Math.random() * n);
+//
+// `random` is the seeded stream when the run has a data seed; every draw
+// (including the email suffix and the date) then comes from it, so the same
+// seed + case + row reproduces the same values. Without one, behaviour is the
+// historical Math.random/Date.now mix.
+const SEEDED_DATE_ANCHOR = Date.UTC(2026, 0, 1);
+
+export function generateFake(kind: string, random?: () => number): string {
+    const draw = random || Math.random;
+    const rnd = (n: number) => Math.floor(draw() * n);
     const pick = <T>(a: T[]): T => a[rnd(a.length)];
     const firsts = ['alex', 'sam', 'jordan', 'taylor', 'riley', 'morgan', 'casey', 'jamie'];
     const lasts = ['smith', 'jones', 'patel', 'kim', 'garcia', 'khan', 'lee', 'nair'];
     const first = pick(firsts);
     const last = pick(lasts);
-    const suffix = Date.now().toString(36) + rnd(1e6).toString(36);
+    const suffix = random
+        ? rnd(36 ** 6).toString(36).padStart(6, '0') + rnd(1e6).toString(36)
+        : Date.now().toString(36) + rnd(1e6).toString(36);
     switch (kind.toLowerCase()) {
         case 'uuid':
             return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
@@ -42,7 +54,7 @@ export function generateFake(kind: string): string {
             return String(rnd(1000000));
         case 'date':
             // Deterministic offset from a fixed epoch to avoid new Date() dependence.
-            return new Date(Date.now() - rnd(1e10)).toISOString().slice(0, 10);
+            return new Date((random ? SEEDED_DATE_ANCHOR : Date.now()) - rnd(1e10)).toISOString().slice(0, 10);
         case 'word':
             return pick(['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur']);
         default:
@@ -62,6 +74,27 @@ export interface TemplateContext {
     /** {{inbox.address[.label]}} / {{webhook.url[.label]}} — per-run values
      *  the backend derived at dispatch (job `test_case.test_hooks`). */
     hooks?: { inbox?: Record<string, string>; webhook?: Record<string, string> } | null;
+    /** {{run.KEY}} / {{unique.NAME}} and the seeded {{fake.*}} stream. */
+    scope?: RunScope | null;
+    /** {{setup.NAME}} — values exported by the suite setup hooks. */
+    setup?: Record<string, any> | null;
+}
+
+/**
+ * The template context for a step, from the job settings and the case's
+ * runtime context object (`testCaseContext` in the executors). One builder
+ * so the step switch, suite hooks and cleanup URLs resolve identically.
+ */
+export function templateContextFrom(globalSettings: any, testCaseContext: any): TemplateContext {
+    return {
+        envVars: globalSettings?.environment?.variables,
+        secrets: globalSettings?.secrets,
+        dataRow: testCaseContext?.data,
+        variables: testCaseContext?.variables,
+        hooks: testCaseContext?.hooks,
+        scope: testCaseContext?.scope,
+        setup: testCaseContext?.setup,
+    };
 }
 
 /**
@@ -100,9 +133,22 @@ export function resolveTemplates(val: any, ctx: TemplateContext): any {
             out = out.replace(/\{\{\s*data\.([\w-]+)\s*\}\}/g, (_: string, key: string) =>
                 dataRow[key] !== undefined ? String(dataRow[key]) : `{{data.${key}}}`);
         }
+        if (ctx.scope && out.includes('{{')) {
+            const scope = ctx.scope;
+            out = out.replace(/\{\{\s*run\.(\w+)\s*\}\}/g, (tok: string, key: string) =>
+                scope.vars[key] ?? tok);
+            out = out.replace(/\{\{\s*unique\.([\w-]+)\s*\}\}/g, (_: string, name: string) =>
+                scope.unique(name));
+        }
+        if (ctx.setup && out.includes('{{')) {
+            const setup = ctx.setup;
+            out = out.replace(/\{\{\s*setup\.([\w-]+)\s*\}\}/g, (tok: string, key: string) =>
+                setup[key] !== undefined ? String(setup[key]) : tok);
+        }
         if (out.includes('{{fake.')) {
+            const random = ctx.scope?.fakeRng;
             out = out.replace(/\{\{\s*fake\.(\w+)\s*\}\}/g, (_: string, kind: string) =>
-                generateFake(kind));
+                generateFake(kind, random));
         }
         if (ctx.variables) {
             const variables = ctx.variables;

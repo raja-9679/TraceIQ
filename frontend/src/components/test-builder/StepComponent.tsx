@@ -1,3 +1,4 @@
+import { formatPromQueries, parsePromQueries } from '@/lib/fleet';
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,8 @@ import { ElementPickerDialog } from './ElementPickerDialog';
 import { cn } from '@/lib/utils';
 import { bodyToText, textToBody } from './requestBody';
 import { EmailWaitFields, WebhookWaitFields } from './HookStepFields';
+import { CleanupField } from './CleanupField';
+import { ExpectSchemaFields } from './ExpectSchemaFields';
 import {
     Select,
     SelectContent,
@@ -16,11 +19,13 @@ import {
 import { SchemaGeneratorModal } from './SchemaGeneratorModal';
 import { SecurityStepFields } from './SecurityStepFields';
 import { SECURITY_STEP_LABELS, isSecurityStep } from './securitySteps';
+import { FRONTEND_QUALITY_LABELS, isFrontendQualityStep } from './frontendQualitySteps';
+import { FrontendQualityStepFields } from './FrontendQualityStepFields';
 import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match' | 'expect-header' | 'expect-cookie-flags' | 'expect-blocked-after' | 'expect-session-dead';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match' | 'expect-header' | 'expect-cookie-flags' | 'expect-blocked-after' | 'expect-session-dead' | 'expect-no-horizontal-overflow' | 'expect-rtl-layout' | 'check-page-budget';
     selector?: string;
     value?: string;
     params?: {
@@ -167,6 +172,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
             case 'expect-header': case 'expect-cookie-flags': case 'expect-blocked-after': case 'expect-session-dead':
                 return { border: 'border-red-200', bg: 'bg-red-50 text-red-600', hue: 'red', icon: <KeyRound size={18} />, label: SECURITY_STEP_LABELS[type] };
+            case 'expect-no-horizontal-overflow': case 'expect-rtl-layout': case 'check-page-budget':
+                return { border: 'border-teal-200', bg: 'bg-teal-50 text-teal-600', hue: 'teal', icon: <Eye size={18} />, label: FRONTEND_QUALITY_LABELS[type] };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
             default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
         }
@@ -241,6 +248,10 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="expect-cookie-flags"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Cookie Flags</div></SelectItem>
                                 <SelectItem value="expect-blocked-after"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Rate Limit</div></SelectItem>
                                 <SelectItem value="expect-session-dead"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Session Dead</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Frontend quality</div>
+                                <SelectItem value="expect-no-horizontal-overflow"><div className="flex items-center gap-2"><Eye size={14} className="text-teal-500"/> No Horizontal Overflow</div></SelectItem>
+                                <SelectItem value="expect-rtl-layout"><div className="flex items-center gap-2"><Eye size={14} className="text-teal-500"/> Expect RTL Layout</div></SelectItem>
+                                <SelectItem value="check-page-budget"><div className="flex items-center gap-2"><Activity size={14} className="text-teal-500"/> Page Budget (Vitals + SEO)</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
@@ -292,6 +303,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
                             </>
+                        ) : isFrontendQualityStep(step.type) ? (
+                            <FrontendQualityStepFields type={step.type} params={step.params || {}} selector={step.selector}
+                                onParam={updateParams} onSelector={(v) => updateStep(step.id, 'selector', v)} />
                         ) : isSecurityStep(step.type) ? (
                             <SecurityStepFields type={step.type} params={step.params || {}} value={step.value}
                                 onParam={updateParams} onValue={(v) => updateStep(step.id, 'value', v)} />
@@ -703,6 +717,20 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             </div>
                         </div>
                         <p className="text-[10px] text-gray-400 mt-2 italic">A k6 load test against the URL above. The case runs on the load executor (no browser). Only target apps you own — breached thresholds fail the case.</p>
+                        <div className="mt-4">
+                            <label htmlFor={`prom-${step.id}`} className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Server metrics (Prometheus, optional)</label>
+                            <textarea
+                                id={`prom-${step.id}`}
+                                className="w-full h-20 p-3 text-xs font-mono border border-slate-200 rounded-xl bg-white"
+                                placeholder={'CPU | cpu\np99 latency | p99'}
+                                defaultValue={formatPromQueries(step.params?.prometheus_queries)}
+                                onBlur={(e) => {
+                                    const qs = parsePromQueries(e.target.value);
+                                    updateParams('prometheus_queries', qs.length ? qs : undefined);
+                                }}
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1 italic">One "label | template" per line (max 10), naming a query template your admin approved (Settings → Instance → Observability). Free-form PromQL runs only if the instance allows it.</p>
+                        </div>
                     </div>
                 )}
 
@@ -731,6 +759,15 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             <p className="text-[10px] text-gray-400 mt-1 italic">Assertions/extract are editable via the case JSON or an AI agent (data-path assertions on the response).</p>
                         </div>
                     </div>
+                )}
+
+                {/* Cleanup lifecycle: delete what this step created after the test */}
+                {(step.type === 'http-request' || step.type === 'extract-value') && (
+                    <CleanupField
+                        stepType={step.type}
+                        spec={step.params?.cleanup}
+                        onChange={(next) => updateParams('cleanup', next)}
+                    />
                 )}
 
                 {/* Extended Configuration for OAuth2 token */}
@@ -874,6 +911,11 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         </div>
                                     )}
                                 </div>
+                            )}
+
+                            {step.type === 'http-request' && (
+                                <ExpectSchemaFields value={step.params?.expect_schema}
+                                    onChange={(value) => updateParams('expect_schema', value)} />
                             )}
                         </div>
 

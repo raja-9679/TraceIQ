@@ -95,6 +95,26 @@ async def list_dead_letter(
     }
 
 
+def replay_stream(payload: str) -> str:
+    """The stream a dead-lettered job came from. Mobile jobs share the
+    dead-letter stream with web jobs, and before WP8 every replay went to
+    `jobs:pending`, where no web worker can run a mobile_appium case; a
+    region-pinned job (WP8) must go back to its region."""
+    from app.services.worker_fleet import InvalidRegion, normalize_region, stream_for
+    try:
+        job = json.loads(payload)
+    except (TypeError, ValueError):
+        return JOBS_STREAM
+    cases = [job.get("test_case") or {}] + list(job.get("test_cases") or [])
+    mobile = any((c or {}).get("executor") == "mobile_appium" for c in cases)
+    base = "jobs:mobile:pending" if mobile else JOBS_STREAM
+    try:
+        region = normalize_region(job.get("region"))
+    except InvalidRegion:
+        region = None
+    return stream_for(base, region)
+
+
 @router.post("/admin/dead-letter/replay")
 async def replay_dead_letter(
     entry_ids: Optional[List[str]] = Body(default=None, embed=True),
@@ -135,7 +155,7 @@ async def replay_dead_letter(
                                 "reason": "no stored payload to replay"})
                 continue
             pipe = client.pipeline()
-            pipe.xadd(JOBS_STREAM, {"payload": payload})
+            pipe.xadd(replay_stream(payload), {"payload": payload})
             if job_id:
                 pipe.hdel(RETRY_HASH, job_id)
             pipe.xdel(DLQ_STREAM, entry_id)

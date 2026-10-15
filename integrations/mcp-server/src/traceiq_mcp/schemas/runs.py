@@ -18,6 +18,7 @@ class RunRef(TQModel):
     environment_id: Optional[int] = None
     local_worker_id: Optional[str] = None
     app_build_id: Optional[int] = None
+    data_seed: Optional[str] = None
 
 
 class RunRefList(TQModel):
@@ -62,6 +63,8 @@ class RunDetail(TQModel):
     local_worker_id: Optional[str] = None
     environment_id: Optional[int] = None
     app_build_id: Optional[int] = None
+    # Effective {{fake.*}} seed; pass to run_suite(data_seed=…) to replay.
+    data_seed: Optional[str] = None
     trace_url: Optional[str] = None
     video_url: Optional[str] = None
     har_url: Optional[str] = None

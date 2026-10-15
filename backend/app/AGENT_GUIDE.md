@@ -263,6 +263,50 @@ as `Case name [row 1]`, `[row 2]`, …). Steps reference row values as
 rows is usually cheaper and more maintainable than generating N nearly
 identical cases.
 
+### Run-scoped data, suite setup/teardown, cleanup
+
+Parallel workers share the app under test, so test data must not collide:
+
+- `{{unique.NAME}}` — 12 lowercase alphanumerics, unique per run + case +
+  data row + attempt, stable within the case. Use it for anything the app
+  enforces uniqueness on: `"{{unique.user}}@example.com"`.
+- `{{run.id}}`, `{{run.short}}` (8-char run token), `{{run.case}}`,
+  `{{run.row}}` (1-based, 0 = not data-driven), `{{run.worker}}`,
+  `{{run.started_at}}`, `{{run.attempt}}`.
+- `{{fake.*}}` is random unless a seed is set — suite setting `data_seed`
+  or `run_suite(data_seed=…)`. Same seed + case + row ⇒ same values. Every
+  run records its effective `data_seed`; re-run a failure with it to replay
+  the exact data.
+
+Shared fixtures belong in the SUITE, not copied into every case. Suite
+settings `setup_steps` / `teardown_steps` take ordinary steps (usually
+`http-request`) and are set with `propose_update_suite_settings` (always
+human-reviewed):
+
+```jsonc
+"settings": {
+  "setup_steps": [{"type": "http-request", "value": "{{env.API}}/projects",
+    "params": {"method": "POST", "body": {"name": "qa-{{run.short}}"},
+               "extract": [{"path": "id", "variable": "project_id"}],
+               "cleanup": {"url": "/projects/{{project_id}}"}}}],
+  "teardown_steps": []
+}
+```
+
+Cases then use `{{setup.project_id}}`. Child suites run the parent's
+setup first and its teardown last (`inherit_settings=false` cuts the
+chain above that suite). SEPARATE/PARALLEL: hooks wrap every case; a
+CONTINUOUS sub-suite job runs each suite's setup once and teardown once.
+A failed setup marks the case `error` without running it. Teardown always
+runs — after failures and timeouts too — and its failures show as
+warnings (`result_payload.hook_warnings`), never as a red case.
+
+`params.cleanup` on a creating `http-request` (or `extract-value`)
+deletes what it created after the case, even if the case failed: `true`
+DELETEs the response's `Location`, or give `{url, method?, headers?,
+expect_status?}`. Outcomes are in `result_payload.cleanup`. Full rules:
+`describe_step_types` → `templates`.
+
 ### Pitfall 1 — `feed-check` is a fetch+assert, NOT a pure assertion
 
 ❌ This pattern **does not work**:

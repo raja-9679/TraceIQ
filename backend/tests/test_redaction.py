@@ -23,6 +23,7 @@ from app.services.redaction import (
     redact_headers,
     redact_message_text,
     redact_audit_changes,
+    redact_hook_report,
     redact_steps,
     redact_text,
     redact_worker_result,
@@ -559,3 +560,76 @@ def test_access_observation_truncated_excerpt_degrades_to_text_sweep():
     from app.services.redaction import redact_access_observation
     obs = redact_access_observation({"body_excerpt": f'{{"note": "{VALID_PAN}", "x": [1, 2'})
     assert VALID_PAN not in obs["body_excerpt"]
+
+
+# --------------------------------------------------------------------------
+# hook_report (suite setup/teardown + cleanup). Twin corpus:
+# execution-engine/src/core/redact.test.ts "hook report: ..."
+# --------------------------------------------------------------------------
+
+def test_hook_report_cleanup_url_keeps_query_names_and_errors_are_scrubbed():
+    out = redact_worker_result({
+        "hook_report": {
+            "setup": [{"suite_id": 1, "phase": "setup", "status": "failed",
+                       "error": f"401 for token {JWT}",
+                       "steps": [{"index": 0, "type": "http-request", "status": "failed",
+                                  "error": f"bad {JWT}"}]}],
+            "teardown": [],
+            "cleanup": [{"method": "DELETE", "url": "https://api.test/items/9?token=s3cret&x=1",
+                         "status": "failed", "error": "card 4111 1111 1111 1111 rejected",
+                         "origin": "case"}],
+        },
+    })
+    r = out["hook_report"]
+    assert JWT not in r["setup"][0]["error"]
+    assert JWT not in r["setup"][0]["steps"][0]["error"]
+    assert r["cleanup"][0]["url"] == "https://api.test/items/9?token=\u2026&x=\u2026"
+    assert "4111 1111 1111 1111" not in r["cleanup"][0]["error"]
+    assert r["cleanup"][0]["status"] == "failed"
+    assert r["setup"][0]["suite_id"] == 1
+
+
+def test_hook_report_continuous_results_and_odd_shapes():
+    out = redact_worker_result({"test_results": [{"hook_report": {"cleanup": [{"url": "/x?a=1#frag"}]}}]})
+    assert out["test_results"][0]["hook_report"]["cleanup"][0]["url"] == "/x?a=\u2026"
+    assert redact_hook_report(["x"]) == ["x"]
+    out = redact_hook_report({"cleanup": [{"url": "{{api}}/items/{{id}}"}]})
+    assert out["cleanup"][0]["url"] == "{{api}}/items/{{id}}"
+
+
+# --- WP10: page budgets + crawl reports (twins in redact.test.ts) ---
+
+def test_page_budget_outcomes_are_scrubbed_numbers_kept():
+    from app.services.redaction import redact_page_budgets
+    [out] = redact_page_budgets([{
+        "step_id": "b1", "url": f"https://shop.example.com/reset/{JWT}", "passed": False,
+        "failure": f"Page budget exceeded on https://shop.example.com/reset/{JWT}: lcp_ms 3000 > 2500",
+        "metrics": {"lcp_ms": 3000},
+        "checks": [{"metric": "lcp_ms", "value": 3000, "budget": 2500, "passed": False}],
+        "seo": [{"check": "canonical", "passed": True,
+                 "value": f"https://shop.example.com/reset/{JWT}", "detail": "ok"}],
+    }])
+    assert JWT not in json.dumps(out)
+    assert out["metrics"]["lcp_ms"] == 3000
+    assert out["checks"][0]["budget"] == 2500
+    res = redact_worker_result({"page_budgets": [{"url": f"https://x.test/?t={JWT}"}]})
+    assert JWT not in json.dumps(res)
+
+
+def test_crawl_report_urls_and_redirect_hops_are_scrubbed():
+    from app.services.redaction import redact_crawl_report
+    out = redact_crawl_report({
+        "status": "ok", "links_checked": 3,
+        "pages": [{"url": f"https://s.example/p?card={VALID_PAN}", "status": 200}],
+        "issues": [{
+            "page_url": "https://s.example/", "target_url": f"https://s.example/reset/{JWT}",
+            "category": "broken", "status_code": 404, "detail": f"see {JWT}",
+            "redirect_chain": [{"url": f"https://s.example/r?token={JWT}", "status": 302}],
+        }],
+    })
+    flat = json.dumps(out)
+    assert JWT not in flat
+    assert VALID_PAN not in flat
+    assert out["issues"][0]["status_code"] == 404
+    assert out["issues"][0]["redirect_chain"][0]["status"] == 302
+    assert out["links_checked"] == 3
