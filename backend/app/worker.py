@@ -277,6 +277,10 @@ def _case_payload(case, row_index=None, data_row=None) -> dict:
         'is_auth_setup': getattr(case, 'is_auth_setup', False),
         'use_auth_session': getattr(case, 'use_auth_session', True),
     }
+    # Per-case override of the suite's fail_on_console_errors (None = inherit).
+    fail_on_console = getattr(case, 'fail_on_console_errors', None)
+    if isinstance(fail_on_console, bool):
+        payload['fail_on_console_errors'] = fail_on_console
     if data_row is not None:
         payload['data_row'] = data_row
         payload['row_index'] = row_index
@@ -326,6 +330,13 @@ def _settings_payload(settings: dict) -> dict:
     # nothing, because a HAR cannot be fully redacted.
     if settings.get('har_capture'):
         payload['har_capture'] = True
+    # Fail a test on uncaught page errors / console.error (inherited suite
+    # setting, default off; a case's own flag rides on its case payload).
+    if settings.get('fail_on_console_errors') is True:
+        payload['fail_on_console_errors'] = True
+    patterns = console_ignore_patterns(settings.get('console_error_ignore_patterns'))
+    if patterns:
+        payload['console_error_ignore_patterns'] = patterns
     # What this run may capture and what to scrub from it. Always present:
     # a job with no data_policy would fall back to the worker's own defaults,
     # and a run's policy should be decided here, not there.
@@ -334,6 +345,23 @@ def _settings_payload(settings: dict) -> dict:
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     return payload
+
+
+MAX_CONSOLE_IGNORE_PATTERNS = 50
+
+
+def console_ignore_patterns(raw) -> list:
+    """Suite settings are a free-form blob, so the ignore list is cleaned at
+    dispatch: strings only, trimmed, capped in count and length."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for p in raw:
+        if isinstance(p, str) and p.strip():
+            out.append(p.strip()[:200])
+        if len(out) >= MAX_CONSOLE_IGNORE_PATTERNS:
+            break
+    return out
 
 
 def wants_step_dom(data_policy) -> bool:

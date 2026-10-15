@@ -388,6 +388,9 @@ class TestCaseBase(SQLModel):
     # from the stored session (e.g. tests of the login flow itself).
     is_auth_setup: bool = Field(default=False)
     use_auth_session: bool = Field(default=True)
+    # Fail this case on uncaught page errors / console.error. None = inherit
+    # the suite chain's `fail_on_console_errors` setting (default off).
+    fail_on_console_errors: Optional[bool] = Field(default=None)
 
     # Data-driven tests: a list of row objects. At dispatch the case expands
     # into one execution per row; steps reference values as {{data.KEY}}.
@@ -425,6 +428,7 @@ class TestCaseUpdate(SQLModel):
     project_id: Optional[int] = None
     is_auth_setup: Optional[bool] = None
     use_auth_session: Optional[bool] = None
+    fail_on_console_errors: Optional[bool] = None
     dataset: Optional[List[dict]] = None
     tags: Optional[List[str]] = None
     priority: Optional[str] = None

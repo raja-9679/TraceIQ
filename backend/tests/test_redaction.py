@@ -367,6 +367,41 @@ def test_worker_result_redacts_each_retry_attempt_error():
     assert out["attempts"][1]["status"] == "passed"
 
 
+def test_worker_result_redacts_per_step_evidence():
+    out = redact_worker_result({
+        **_worker_payload(),
+        "step_evidence": [{
+            "id": "s0", "index": 0, "type": "fill", "status": "failed", "duration_ms": 12,
+            "error": f"card {VALID_PAN} rejected",
+            "selector": f"#card-{VALID_PAN}",
+            "console": [{"id": "s0.c0", "type": "error", "text": f"token {JWT}"}],
+            "requests": [{"id": "s0.r0", "method": "GET", "url": f"https://x.test/reset/{JWT}", "status": 500}],
+            "dom": f'<div data-pan="{VALID_PAN}">aadhaar {VALID_AADHAAR}</div>',
+            "screenshot": "runs/7/screenshots/j-1-failure.png",
+        }],
+    })
+    e = out["step_evidence"][0]
+    flat = json.dumps(e)
+    assert VALID_PAN not in flat
+    assert JWT not in flat
+    assert VALID_AADHAAR not in flat
+    # Ids, status, status codes and artifact keys are routing data — untouched.
+    assert e["id"] == "s0"
+    assert e["requests"][0]["id"] == "s0.r0"
+    assert e["requests"][0]["status"] == 500
+    assert e["screenshot"] == "runs/7/screenshots/j-1-failure.png"
+
+
+def test_per_step_evidence_is_redacted_inside_continuous_test_results_too():
+    out = redact_worker_result({
+        "job_id": "j-3", "run_id": 9, "status": "failed",
+        "test_results": [{"test_case_id": 1, "status": "failed",
+                          "step_evidence": [{"id": "s0", "console": [
+                              {"id": "s0.c0", "type": "error", "text": f"pan {VALID_PAN}"}]}]}],
+    })
+    assert VALID_PAN not in json.dumps(out["test_results"][0]["step_evidence"])
+
+
 def test_worker_result_preserves_routing_and_status():
     # These drive aggregation and finalization; losing one loses a result.
     out = redact_worker_result(_worker_payload())

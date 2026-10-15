@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import {
     REDACTED,
     RedactionPolicy,
+    jobDataPolicy,
     luhnValid,
     maskSelectorsFrom,
     policyFromDataPolicy,
@@ -374,6 +375,46 @@ test('job result redacts each retry attempt error', () => {
     });
     assert.ok(!out.attempts[0].error.includes(VALID_PAN));
     assert.equal(out.attempts[1].status, 'passed');
+});
+
+test('job result redacts per-step evidence text, console, requests and DOM', () => {
+    const out = redactJobResult({
+        ...sampleResult(),
+        step_evidence: [{
+            id: 's0', index: 0, type: 'fill', status: 'failed', duration_ms: 12,
+            error: `card ${VALID_PAN} rejected`,
+            selector: `#card-${VALID_PAN}`,
+            console: [{ id: 's0.c0', type: 'error', text: `token ${JWT}` }],
+            requests: [{ id: 's0.r0', method: 'GET', url: `https://x.test/reset/${JWT}`, status: 500 }],
+            dom: `<div data-pan="${VALID_PAN}">aadhaar ${VALID_AADHAAR}</div>`,
+            screenshot: 'runs/7/screenshots/j-1-failure.png',
+        }],
+    });
+    const e = out.step_evidence[0];
+    const flat = JSON.stringify(e);
+    assert.ok(!flat.includes(VALID_PAN));
+    assert.ok(!flat.includes(JWT));
+    assert.ok(!flat.includes(VALID_AADHAAR));
+    // Ids, status, status codes and artifact keys are routing data — untouched.
+    assert.equal(e.id, 's0');
+    assert.equal(e.requests[0].id, 's0.r0');
+    assert.equal(e.requests[0].status, 500);
+    assert.equal(e.screenshot, 'runs/7/screenshots/j-1-failure.png');
+});
+
+test('per-step evidence is redacted inside continuous test_results too', () => {
+    const out = redactJobResult({
+        job_id: 'j-3', run_id: 9, status: 'failed',
+        test_results: [{ test_case_id: 1, status: 'failed',
+            step_evidence: [{ id: 's0', console: [{ id: 's0.c0', type: 'error', text: `pan ${VALID_PAN}` }] }] }],
+    });
+    assert.ok(!JSON.stringify(out.test_results[0].step_evidence).includes(VALID_PAN));
+});
+
+test('jobDataPolicy reads the dispatcher\'s settings.data_policy as well as a top-level one', () => {
+    assert.equal(jobDataPolicy({ settings: { data_policy: { capture_level: 'full' } } }).capture_level, 'full');
+    assert.equal(jobDataPolicy({ data_policy: { capture_level: 'none' }, settings: { data_policy: { capture_level: 'full' } } }).capture_level, 'none');
+    assert.equal(jobDataPolicy({}), undefined);
 });
 
 test('job result preserves routing and status fields exactly', () => {

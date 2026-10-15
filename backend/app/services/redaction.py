@@ -444,6 +444,39 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
             k: redact_text(v, policy) if isinstance(v, str) else v
             for k, v in out["step_dom"].items()
         }
+    if isinstance(out.get("step_evidence"), list):
+        out["step_evidence"] = redact_step_evidence(out["step_evidence"], policy)
+    return out
+
+
+def redact_step_evidence(entries: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Per-step evidence: error, selector, DOM excerpt, console text and
+    request URLs. Ids, statuses, status codes and artifact keys are routing
+    data and stay as they are. Twin of `redactStepEvidence` in redact.ts."""
+    if not isinstance(entries, list):
+        return entries
+    out = []
+    for e in entries:
+        if not isinstance(e, dict):
+            out.append(e)
+            continue
+        item = dict(e)
+        for field in ("error", "selector", "dom"):
+            if isinstance(item.get(field), str):
+                item[field] = redact_text(item[field], policy)
+        if isinstance(item.get("console"), list):
+            item["console"] = [
+                {**c, "text": redact_text(c["text"], policy)}
+                if isinstance(c, dict) and isinstance(c.get("text"), str) else c
+                for c in item["console"]
+            ]
+        if isinstance(item.get("requests"), list):
+            item["requests"] = [
+                {**r, "url": redact_text(r["url"], policy)}
+                if isinstance(r, dict) and isinstance(r.get("url"), str) else r
+                for r in item["requests"]
+            ]
+        out.append(item)
     return out
 
 

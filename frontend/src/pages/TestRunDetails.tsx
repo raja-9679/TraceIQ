@@ -13,6 +13,11 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
+import { InvestigationReport } from '@/components/evidence/InvestigationReport';
+import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
+import {
+    isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
+} from '@/components/evidence/evidenceHelpers';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -109,6 +114,9 @@ export default function TestRunDetails() {
 
     // On-demand AI failure analysis with a user-chosen provider ('' = default)
     const [analysisProviderId, setAnalysisProviderId] = useState<string>('');
+    // Set by an evidence reference in the analysis panel: the result to
+    // expand and the step to scroll to / highlight.
+    const [evidenceFocus, setEvidenceFocus] = useState<EvidenceFocus | null>(null);
     const { data: aiProviders } = useQuery({
         queryKey: ['llm-providers-active'],
         queryFn: llmProvidersApi.listActive,
@@ -381,12 +389,32 @@ export default function TestRunDetails() {
                                                                 <span className="text-[11px] font-mono text-indigo-300">{r.analyzed_by}</span>
                                                             )}
                                                         </div>
+                                                        {r.test_name && (
+                                                            <p className="text-[11px] font-mono text-indigo-400 truncate" title={r.test_name}>{r.test_name}</p>
+                                                        )}
                                                         <p className="text-sm font-semibold text-indigo-900">{r.summary}</p>
                                                         {r.details && <p className="text-xs text-indigo-700">{r.details}</p>}
                                                         {r.suggested_fix && (
                                                             <p className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-md px-2 py-1.5">
                                                                 <span className="font-bold">Suggested fix{r.fix_target && r.fix_target !== 'none' ? ` (${r.fix_target})` : ''}:</span> {r.suggested_fix}
                                                             </p>
+                                                        )}
+                                                        {isInvestigation(r) && (
+                                                            <div className="pt-2 mt-1 border-t border-indigo-100">
+                                                                <InvestigationReport
+                                                                    report={r}
+                                                                    onSelectEvidence={(ref) => {
+                                                                        if (typeof r.result_id !== 'number') return;
+                                                                        setTestSearchTerm('');
+                                                                        setEvidenceFocus({
+                                                                            resultId: r.result_id,
+                                                                            stepIndex: stepIndexOfRef(ref),
+                                                                            ref,
+                                                                            nonce: Date.now(),
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            </div>
                                                         )}
                                                     </div>
                                                 ))}
@@ -431,6 +459,7 @@ export default function TestRunDetails() {
                                                     key={result.id}
                                                     result={result}
                                                     networkEvents={testNetworkEvents}
+                                                    focus={evidenceFocus?.resultId === result.id ? evidenceFocus : null}
                                                 />
                                             );
                                         })}
@@ -911,8 +940,28 @@ function unwrapJson(str: string) {
     }
 }
 
-function TestCaseResultItem({ result, networkEvents = [] }: { result: any, networkEvents?: any[] }) {
+function TestCaseResultItem({ result, networkEvents = [], focus = null }: { result: any, networkEvents?: any[], focus?: EvidenceFocus | null }) {
     const [isExpanded, setIsExpanded] = useState(false);
+    const stepEvidence = stepEvidenceOf(result);
+
+    // An evidence reference was clicked in the analysis panel: open this
+    // result (adjusted during render, React's pattern for state derived from
+    // a prop change) and bring the cited step — or, for non-step refs, the
+    // result — into view once the expand animation has laid it out.
+    const [seenFocus, setSeenFocus] = useState<number | null>(null);
+    if (focus && focus.nonce !== seenFocus) {
+        setSeenFocus(focus.nonce);
+        setIsExpanded(true);
+    }
+    useEffect(() => {
+        if (!focus) return;
+        const target = focus.stepIndex !== null
+            ? stepAnchorId(result.id, focus.stepIndex) : `result-${result.id}`;
+        const timer = window.setTimeout(() => {
+            document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+        return () => window.clearTimeout(timer);
+    }, [focus, result.id]);
 
     const { data: testVideoUrl } = useQuery({
         queryKey: ["video", result.video_url],
@@ -929,8 +978,8 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
     const isError = result.status === 'failed' || result.status === 'error';
 
     return (
-        <div className={cn(
-            "group transition-all duration-300 bg-white",
+        <div id={`result-${result.id}`} className={cn(
+            "group transition-all duration-300 bg-white scroll-mt-24",
             isExpanded ? "m-4 rounded-xl border border-gray-200 shadow-sm" : "border-b border-gray-100 last:border-0 hover:bg-gray-50/80"
         )}>
             <div
@@ -997,6 +1046,13 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                             )}
 
                             <RetryAttempts attempts={attemptsOf(result as any)} />
+
+                            <StepEvidenceTimeline
+                                resultId={result.id}
+                                steps={stepEvidence}
+                                highlightedStep={focus?.stepIndex ?? null}
+                                highlightedRef={focus?.ref ?? null}
+                            />
 
                             {(result as any).result_kind === 'load' && (result as any).result_payload && (() => {
                                 const lp = (result as any).result_payload;

@@ -4,6 +4,12 @@
 pass classifies the error first, and when an LLM provider is configured the
 report is deepened with a structured JSON call (invalid LLM output falls back
 to the heuristic result rather than failing).
+
+v2 (investigation): the report also carries `observed` facts and ranked
+`hypotheses`, each citing evidence ids from `failure_investigation`. The LLM
+sees the same ids and may only cite ones that exist — anything else is
+dropped (and counted in `dropped_citations`), and an LLM hypothesis left
+citing nothing is discarded as ungrounded.
 """
 from __future__ import annotations
 
@@ -12,11 +18,21 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.ai.providers import get_provider
-from app.schemas.failure_report import FailureEvidence, FailureReport, RunFailureAnalysis
+from app.schemas.failure_report import (
+    ChangeRange,
+    FailureEvidence,
+    FailureHistory,
+    FailureReport,
+    Hypothesis,
+    RunFailureAnalysis,
+)
+from app.services import failure_investigation as inv
 from app.services.llm_usage import llm_call_context
 
 # (pattern, category, fix_target, summary) — first match wins.
 _HEURISTICS = [
+    (r"JavaScript error on page \(fail_on_console_errors\)", "app_bug", "app",
+     "The page raised a JavaScript error and this case is set to fail on console errors."),
     (r"Timeout .*exceeded|timeout of \d+ms|Timed out", "test_bug", "test",
      "A wait timed out — the selector may be wrong, the timeout too tight, or the page genuinely slow."),
     (r"waiting for locator|not found|no element matches|failed to find element",
@@ -93,12 +109,19 @@ _LLM_SYSTEM = (
     '  "details": "2-4 sentences of reasoning grounded in the evidence",\n'
     '  "suggested_fix": "concrete next action, or null",\n'
     '  "fix_target": "app" | "test" | "infra" | "none",\n'
-    '  "confidence": 0.0-1.0\n'
+    '  "confidence": 0.0-1.0,\n'
+    '  "hypotheses": [{"category": <as root_cause_category>, "fix_target": <as above>, '
+    '"summary": "...", "confidence": 0.0-1.0, "evidence_refs": ["<evidence id>", ...]}]\n'
     "}\n"
     "app_bug = the application misbehaves; test_bug = the test encodes a wrong "
     "or stale expectation/selector; environment = deployment/network/infra; "
-    "flake = transient, retry should pass."
+    "flake = transient, retry should pass.\n"
+    "Rank up to 3 hypotheses, most likely first. Each MUST cite evidence ids "
+    "copied exactly from the Evidence list; never invent ids. A hypothesis "
+    "you cannot support with listed evidence should be left out."
 )
+_ROOT_CAUSES = {"app_bug", "test_bug", "environment", "flake", "unknown"}
+_FIX_TARGETS = {"app", "test", "infra", "none"}
 
 
 def analyze_case_failure(
@@ -111,8 +134,22 @@ def analyze_case_failure(
     network_failures: Optional[List[dict]] = None,
     console_errors: Optional[List[dict]] = None,
     provider_id: Optional[int] = None,
+    step_evidence: Optional[List[dict]] = None,
+    history: Optional[FailureHistory] = None,
+    changed_since_last_pass: Optional[ChangeRange] = None,
+    result_id: Optional[int] = None,
 ) -> FailureReport:
     failing_idx, failing_step = _find_failing_step(steps, error_message)
+    index = inv.build_evidence_index(
+        step_evidence=step_evidence, error_message=error_message,
+        console_errors=console_errors, network_failures=network_failures,
+        failing_step_guess=failing_idx)
+    # Per-step evidence knows exactly which step failed; the selector match
+    # in the error message is only a guess.
+    if index.has_steps and index.failing is not None:
+        failing_idx = index.failing["index"]
+        failing_step = steps[failing_idx] if 0 <= failing_idx < len(steps or []) else failing_step
+    inv.add_history_items(index, history)
     evidence = FailureEvidence(
         error_message=(error_message or "")[:_MAX_ERROR_CHARS],
         failing_step_index=failing_idx,
@@ -124,6 +161,14 @@ def analyze_case_failure(
         console_errors=(console_errors or [])[:10],
     )
     base = heuristic_report(error_message, evidence)
+    observed = inv.observe(index, history, changed_since_last_pass)
+    hypotheses = inv.heuristic_hypotheses(
+        index, error_message,
+        Hypothesis(category=base.root_cause_category, fix_target=base.fix_target,
+                   summary=base.summary, confidence=base.confidence, source="heuristic"),
+        history, changed_since_last_pass)
+    base = _with_investigation(base, hypotheses, observed, index, history,
+                               changed_since_last_pass, result_id, test_name)
 
     provider = get_provider(provider_id)
     if provider.name == "null":
@@ -138,31 +183,98 @@ def analyze_case_failure(
         f"Request URL: {request_url}\n"
         f"Failed network requests: {json.dumps(evidence.network_failures)}\n"
         f"Browser console errors: {json.dumps(evidence.console_errors)[:_MAX_CONSOLE_CHARS]}\n\n"
+        f"Evidence (cite these ids):\n{inv.evidence_for_prompt(index)}\n\n"
+        f"Observed facts:\n" + "\n".join(f"- {o.text} {o.evidence_refs}" for o in observed) + "\n\n"
         f"Heuristic first guess: {base.root_cause_category} — {base.summary}\n"
         "Classify the failure."
     )
     with llm_call_context(feature="failure_analysis"):
-        raw = provider.complete(prompt, system=_LLM_SYSTEM, max_tokens=700)
+        raw = provider.complete(prompt, system=_LLM_SYSTEM, max_tokens=1000)
     if not raw:
         return base
 
     try:
         cleaned = re.sub(r"^```(json)?|```$", "", raw.strip(), flags=re.MULTILINE).strip()
         data = json.loads(cleaned)
+        source = f"llm:{provider.name}"
+        llm_hyps, dropped = _llm_hypotheses(data.get("hypotheses"), index.valid_refs(), source)
+        ranked = inv.rank(llm_hyps + [h for h in hypotheses])
         report = FailureReport(
-            root_cause_category=data.get("root_cause_category", base.root_cause_category),
+            root_cause_category=_choice(data.get("root_cause_category"), _ROOT_CAUSES, base.root_cause_category),
             summary=str(data.get("summary") or base.summary),
             details=str(data.get("details") or base.details),
             suggested_fix=data.get("suggested_fix"),
-            fix_target=data.get("fix_target", base.fix_target),
+            fix_target=_choice(data.get("fix_target"), _FIX_TARGETS, base.fix_target),
             confidence=max(0.0, min(1.0, float(data.get("confidence", 0.6)))),
             evidence=evidence,
-            analyzed_by=f"llm:{provider.name}",
+            analyzed_by=source,
         )
+        report = _with_investigation(report, ranked, observed, index, history,
+                                     changed_since_last_pass, result_id, test_name,
+                                     mirror_top=False)
+        report.dropped_citations = dropped
         return report
     except Exception as exc:  # noqa: BLE001 — malformed LLM output falls back
         print(f"[FailureAnalysis] LLM output invalid, using heuristic: {exc}")
         return base
+
+
+def _choice(value: Any, allowed: set, default: Any) -> Any:
+    return value if value in allowed else default
+
+
+def _llm_hypotheses(raw: Any, valid: set, source: str) -> tuple[List[Hypothesis], int]:
+    """LLM hypotheses with only real citations. Returns (kept, citations dropped)."""
+    if not isinstance(raw, list):
+        return [], 0
+    kept: List[Hypothesis] = []
+    dropped = 0
+    for item in raw[:5]:
+        if not isinstance(item, dict):
+            continue
+        refs, bad = inv.validate_citations(item.get("evidence_refs"), valid)
+        dropped += bad
+        if not refs:
+            continue  # ungrounded: nothing it cites exists
+        try:
+            conf = max(0.0, min(1.0, float(item.get("confidence", 0.5))))
+        except (TypeError, ValueError):
+            conf = 0.5
+        kept.append(Hypothesis(
+            category=_choice(item.get("category"), _ROOT_CAUSES, "unknown"),
+            fix_target=_choice(item.get("fix_target"), _FIX_TARGETS, "none"),
+            summary=str(item.get("summary") or "")[:500],
+            confidence=conf, evidence_refs=refs, source=source))
+    return kept, dropped
+
+
+def _with_investigation(
+    report: FailureReport,
+    hypotheses: List[Hypothesis],
+    observed: list,
+    index: "inv.EvidenceIndex",
+    history: Optional[FailureHistory],
+    change: Optional[ChangeRange],
+    result_id: Optional[int],
+    test_name: str,
+    mirror_top: bool = True,
+) -> FailureReport:
+    """Attach the v2 fields. With `mirror_top`, the v1 headline fields follow
+    the top-ranked hypothesis, so a v1 reader sees the best explanation."""
+    update: Dict[str, Any] = {
+        "observed": observed,
+        "hypotheses": hypotheses,
+        "evidence_items": inv.cited_items(index, observed, hypotheses),
+        "history": history,
+        "changed_since_last_pass": change,
+        "result_id": result_id,
+        "test_name": test_name,
+    }
+    if mirror_top and hypotheses:
+        top = hypotheses[0]
+        update.update(root_cause_category=top.category, fix_target=top.fix_target,
+                      summary=top.summary, confidence=top.confidence)
+    return report.model_copy(update=update)
 
 
 def build_run_rollup(reports: List[FailureReport], failed_total: int) -> RunFailureAnalysis:

@@ -83,6 +83,16 @@ function patternNames(policy?: RedactionPolicy): readonly string[] {
     return policy?.patterns === undefined ? DEFAULT_PATTERNS : policy.patterns;
 }
 
+/**
+ * The `data_policy` a job carries. The dispatcher has always put it under
+ * `settings` (`_settings_payload`), while the workers read it from the job's
+ * top level — so every web and mobile job silently ran at the default
+ * capture level with only the built-in redaction rules. Accept both.
+ */
+export function jobDataPolicy(job: any): any {
+    return job?.data_policy ?? job?.settings?.data_policy;
+}
+
 /** Build a policy from the `data_policy` blob the backend attaches to a job. */
 export function policyFromDataPolicy(dataPolicy: any): RedactionPolicy {
     if (!dataPolicy || typeof dataPolicy !== 'object') return {};
@@ -320,7 +330,33 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
             a && typeof a === 'object' && typeof a.error === 'string'
                 ? { ...a, error: redactText(a.error, policy) } : a);
     }
+    if (Array.isArray(out.step_evidence)) out.step_evidence = redactStepEvidence(out.step_evidence, policy);
     return out;
+}
+
+/**
+ * Backstop over per-step evidence. Each field is scrubbed where it is
+ * captured (`core/evidence.ts`); this pass is what guarantees it even if a
+ * future capture point forgets. Twin: `_redact_step_evidence` in redaction.py.
+ */
+export function redactStepEvidence(entries: any, policy?: RedactionPolicy): any {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((e: any) => {
+        if (!e || typeof e !== 'object') return e;
+        const out = { ...e };
+        for (const f of ['error', 'selector', 'dom']) {
+            if (typeof out[f] === 'string') out[f] = redactText(out[f], policy);
+        }
+        if (Array.isArray(out.console)) {
+            out.console = out.console.map((c: any) =>
+                c && typeof c === 'object' && typeof c.text === 'string' ? { ...c, text: redactText(c.text, policy) } : c);
+        }
+        if (Array.isArray(out.requests)) {
+            out.requests = out.requests.map((r: any) =>
+                r && typeof r === 'object' && typeof r.url === 'string' ? { ...r, url: redactText(r.url, policy) } : r);
+        }
+        return out;
+    });
 }
 
 /**

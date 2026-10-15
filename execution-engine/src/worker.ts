@@ -32,7 +32,12 @@ import {
 import {
     RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents,
 } from './core/redact';
-import { AttemptSummary, caseStepDom, consoleErrorsFor, summariseAttempt } from './core/evidence';
+import {
+    AttemptSummary, StepEvidenceRecorder, blockingConsoleErrors, captureDomExcerpt, caseStepDom,
+    consoleErrorsFor, consoleFailureMessage, consoleFailurePolicy, levelAtLeast, resolveScreenshotKeys,
+    summariseAttempt,
+} from './core/evidence';
+import { jobDataPolicy, maskSelectorsFrom } from './core/redact';
 
 // Per-step DOM excerpt for proactive selector heal (backend reads 8000 chars).
 const MAX_STEP_DOM_CHARS = 8000;
@@ -56,6 +61,22 @@ async function captureStepDom(page: Page): Promise<string | null> {
     } catch {
         return null;
     }
+}
+
+/**
+ * Uncaught exceptions in the page land in the same console accumulator as
+ * `pageerror` entries: per-step evidence and fail_on_console_errors read them
+ * from there, and the console-log artifact then shows them in order.
+ */
+function recordPageErrors(page: Page, consoleLogs: any[], testName: () => string | null): void {
+    page.on('pageerror', err => {
+        if (consoleLogs.length < MAX_CONSOLE_LOG_ENTRIES) {
+            consoleLogs.push({
+                ts: new Date().toISOString(), type: 'pageerror',
+                text: `${err.name || 'Error'}: ${err.message}`, test: testName(),
+            });
+        }
+    });
 }
 
 // Errors that look like a selector no longer matching the page — the only
@@ -186,11 +207,11 @@ class ExecutionWorker {
      * rather than nothing.
      */
     private captureLevelFor(job: TestJob): CaptureLevel {
-        return normalizeCaptureLevel((job as any)?.data_policy?.capture_level);
+        return normalizeCaptureLevel(jobDataPolicy(job)?.capture_level);
     }
 
     private redactionPolicyFor(job: TestJob): RedactionPolicy {
-        return policyFromDataPolicy((job as any)?.data_policy);
+        return policyFromDataPolicy(jobDataPolicy(job));
     }
 
     /**
@@ -527,8 +548,16 @@ class ExecutionWorker {
 
         const networkEvents: any[] = [];
         const consoleLogs: any[] = [];
+        const failedRequests: any[] = [];
         const stepDom: Record<string, string> = {};
         const screenshots: string[] = [];
+        const policy = this.redactionPolicyFor(job);
+        const captureLevel = this.captureLevelFor(job);
+        const recorder = new StepEvidenceRecorder(
+            { consoleLogs, networkEvents, failedRequests }, testCase.name, captureLevel, policy);
+        const consolePolicy = consoleFailurePolicy(job.settings, testCase);
+        let failedStepIndex = -1;
+        let currentContext: Page | FrameLocator | null = null;
 
         let status: 'passed' | 'failed' | 'error' = 'passed';
         let errorMessage: string | undefined;
@@ -611,7 +640,8 @@ class ExecutionWorker {
                 requestStartTimes,
                 networkEvents,
                 contextData,
-                this.redactionPolicyFor(job)
+                policy,
+                failedRequests
             );
             await NetworkInterceptor.setupRouteInterception(
                 context,
@@ -630,6 +660,7 @@ class ExecutionWorker {
                     consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: testCase.name });
                 }
             });
+            recordPageErrors(page, consoleLogs, () => testCase.name);
 
             // Initialize page
             try {
@@ -643,21 +674,24 @@ class ExecutionWorker {
             }
 
             // Execute test steps
-            let currentContext: Page | FrameLocator = page;
+            currentContext = page;
 
-            for (const step of testCase.steps) {
+            for (let stepIndex = 0; stepIndex < testCase.steps.length; stepIndex++) {
+                const step = testCase.steps[stepIndex];
                 currentStep = step;
+                const consoleMark = consoleLogs.length;
+                recorder.begin(step, stepIndex);
                 try {
                     if (step.type === 'switch-frame') {
                         currentContext = await this.handleFrameSwitch(
                             page,
-                            currentContext,
+                            currentContext!,
                             step
                         );
                     } else {
                         const stepResponse = await TestExecutor.executeStep(
                             page,
-                            currentContext,
+                            currentContext!,
                             step,
                             job.settings,
                             contextData
@@ -680,13 +714,29 @@ class ExecutionWorker {
                     // Runtime self-heal: try to recover this step with an
                     // LLM-healed selector before failing the whole test.
                     const recovered = await this.tryRuntimeHeal(
-                        page, currentContext, step, testCaseId, job.run_id,
+                        page, currentContext!, step, testCaseId, job.run_id,
                         stepErr.message, healSuggestions, job.settings, contextData);
                     if (recovered) {
                         healedStepCount++;
+                        recorder.end('healed');
                         continue;
                     }
+                    recorder.end('failed', stepErr.message);
+                    failedStepIndex = stepIndex;
                     throw stepErr;
+                }
+                // Checked outside the step's try on purpose: a console error
+                // must not be mistaken for a selector failure and "healed".
+                const blocking = blockingConsoleErrors(consoleLogs, consoleMark, testCase.name, consolePolicy);
+                if (blocking.length) {
+                    const msg = consoleFailureMessage(blocking, policy);
+                    recorder.end('failed', msg);
+                    failedStepIndex = stepIndex;
+                    throw new Error(msg);
+                }
+                recorder.end('passed');
+                if (step.type === 'screenshot' && step.value) {
+                    recorder.attachToLast({ screenshot_file: `${step.value}.png` });
                 }
             }
 
@@ -747,9 +797,14 @@ class ExecutionWorker {
                     const screenshotPath = path.join(artifactsDir, 'failure.png');
                     await page.screenshot(TestExecutor.screenshotOptions(
                         page, job.settings, { path: screenshotPath, fullPage: true }));
+                    if (failedStepIndex >= 0) recorder.attachToLast({ screenshot_file: 'failure.png' });
                 } catch (screenshotErr) {
                     console.warn('[Worker] Failed to capture failure screenshot');
                 }
+            }
+            if (failedStepIndex >= 0) {
+                await this.attachFailureDom(recorder, captureLevel, page, currentContext, currentStep, job);
+                recorder.skipRemaining(testCase.steps, failedStepIndex + 1);
             }
         } finally {
             // Web vitals for the page's final document — pass or fail, the
@@ -804,10 +859,13 @@ class ExecutionWorker {
             tracePath,
             consoleLogs,
             networkEvents,
-            this.captureLevelFor(job),
-            this.redactionPolicyFor(job)
+            captureLevel,
+            policy
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
+        const stepEvidence = recorder.list();
+        resolveScreenshotKeys(stepEvidence, artifacts.screenshots,
+            f => artifactKeys.screenshot(job.run_id, job.job_id, f));
 
         return {
             job_id: job.job_id,
@@ -821,8 +879,9 @@ class ExecutionWorker {
             response_data: responseData,
             network_events: networkEvents,
             ...(webVitals ? { web_vitals: webVitals } : {}),
-            console_errors: consoleErrorsFor(consoleLogs, testCase.name, this.redactionPolicyFor(job)),
+            console_errors: consoleErrorsFor(consoleLogs, testCase.name, policy),
             ...(Object.keys(stepDom).length ? { step_dom: stepDom } : {}),
+            ...(stepEvidence.length ? { step_evidence: stepEvidence } : {}),
             ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
             completed_at: new Date().toISOString()
@@ -845,8 +904,11 @@ class ExecutionWorker {
 
         const networkEvents: any[] = [];
         const consoleLogs: any[] = [];
+        const failedRequests: any[] = [];
         const stepDom: Record<string, string> = {};
         const testResults: TestCaseResult[] = [];
+        const policy = this.redactionPolicyFor(job);
+        const captureLevel = this.captureLevelFor(job);
         let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
         let overallError: string | undefined;
         let videoPath: string | null = null;
@@ -921,7 +983,8 @@ class ExecutionWorker {
                 sharedRequestStartTimes,
                 networkEvents,
                 sharedContextData,
-                this.redactionPolicyFor(job)
+                policy,
+                failedRequests
             );
             await NetworkInterceptor.setupRouteInterception(
                 sharedContext,
@@ -940,6 +1003,7 @@ class ExecutionWorker {
                     consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: sharedContextData.name });
                 }
             });
+            recordPageErrors(page, consoleLogs, () => sharedContextData.name);
 
             // Execute each test case sequentially
             for (const testCase of job.test_cases!) {
@@ -950,6 +1014,11 @@ class ExecutionWorker {
                 let lastStepResult: any = null;
                 let currentStep: any = null;
                 sharedContextData.data = (testCase as any).data_row || {};
+                const recorder = new StepEvidenceRecorder(
+                    { consoleLogs, networkEvents, failedRequests }, testCase.name, captureLevel, policy);
+                const consolePolicy = consoleFailurePolicy(job.settings, testCase);
+                let failedStepIndex = -1;
+                let currentContext: Page | FrameLocator = page;
 
                 // Snapshot network events length before this test so we can
                 // slice out only the events generated by this test case.
@@ -973,6 +1042,7 @@ class ExecutionWorker {
                                 consoleLogs.push({ ts: new Date().toISOString(), type: msg.type(), text: msg.text(), test: sharedContextData.name });
                             }
                         });
+                        recordPageErrors(page, consoleLogs, () => sharedContextData.name);
                     } catch (pageErr: any) {
                         console.error(`[Worker] Failed to create new page: ${pageErr.message}`);
                         // Record error and continue to next test
@@ -1000,10 +1070,13 @@ class ExecutionWorker {
                     }
 
                     // Execute test steps
-                    let currentContext: Page | FrameLocator = page;
+                    currentContext = page;
 
-                    for (const step of testCase.steps) {
+                    for (let stepIndex = 0; stepIndex < testCase.steps.length; stepIndex++) {
+                        const step = testCase.steps[stepIndex];
                         currentStep = step;
+                        const consoleMark = consoleLogs.length;
+                        recorder.begin(step, stepIndex);
                         try {
                             if (step.type === 'switch-frame') {
                                 currentContext = await this.handleFrameSwitch(
@@ -1034,7 +1107,20 @@ class ExecutionWorker {
                             if (stepErr.stepResult) {
                                 lastStepResult = stepErr.stepResult;
                             }
+                            recorder.end('failed', stepErr.message);
+                            failedStepIndex = stepIndex;
                             throw stepErr;
+                        }
+                        const blocking = blockingConsoleErrors(consoleLogs, consoleMark, testCase.name, consolePolicy);
+                        if (blocking.length) {
+                            const msg = consoleFailureMessage(blocking, policy);
+                            recorder.end('failed', msg);
+                            failedStepIndex = stepIndex;
+                            throw new Error(msg);
+                        }
+                        recorder.end('passed');
+                        if (step.type === 'screenshot' && step.value) {
+                            recorder.attachToLast({ screenshot_file: `${step.value}.png` });
                         }
                     }
 
@@ -1092,9 +1178,14 @@ class ExecutionWorker {
                             const screenshotPath = path.join(artifactsDir, `failure-${testCase.id}.png`);
                             await page.screenshot(TestExecutor.screenshotOptions(
                         page, job.settings, { path: screenshotPath, fullPage: true }));
+                            if (failedStepIndex >= 0) recorder.attachToLast({ screenshot_file: `failure-${testCase.id}.png` });
                         } catch (screenshotErr) {
                             console.warn('[Worker] Failed to capture failure screenshot');
                         }
+                    }
+                    if (failedStepIndex >= 0) {
+                        await this.attachFailureDom(recorder, captureLevel, page, currentContext, currentStep, job);
+                        recorder.skipRemaining(testCase.steps, failedStepIndex + 1);
                     }
                 }
 
@@ -1113,8 +1204,9 @@ class ExecutionWorker {
                     error: caseError,
                     response_data: responseData,
                     network_events: networkEvents.slice(netStartIdx),
-                    console_errors: consoleErrorsFor(consoleLogs, testCase.name, this.redactionPolicyFor(job)),
+                    console_errors: consoleErrorsFor(consoleLogs, testCase.name, policy),
                     ...(caseStepDom(stepDom, testCase.id)),
+                    ...(recorder.list().length ? { step_evidence: recorder.list() } : {}),
                     ...(caseVitals ? { web_vitals: caseVitals } : {})
                 });
 
@@ -1171,10 +1263,14 @@ class ExecutionWorker {
             tracePath,
             consoleLogs,
             networkEvents,
-            this.captureLevelFor(job),
-            this.redactionPolicyFor(job)
+            captureLevel,
+            policy
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
+        for (const r of testResults) {
+            resolveScreenshotKeys(r.step_evidence, artifacts.screenshots,
+                f => artifactKeys.screenshot(job.run_id, job.job_id, f));
+        }
 
         // Determine first failure for backward compatibility
         const firstFailure = testResults.find(r => r.status !== 'passed');
@@ -1196,6 +1292,21 @@ class ExecutionWorker {
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
             completed_at: new Date().toISOString()
         };
+    }
+
+    /**
+     * DOM excerpt for the failing step (capture level `standard` and above).
+     * Best-effort: a closed page or a hung evaluate yields no excerpt, never
+     * a different test outcome.
+     */
+    private async attachFailureDom(
+        recorder: StepEvidenceRecorder, level: CaptureLevel, page: Page | null,
+        context: Page | FrameLocator | null, step: any, job: TestJob,
+    ): Promise<void> {
+        if (!levelAtLeast(level, 'standard') || !page || page.isClosed()) return;
+        const excerpt = await captureDomExcerpt(
+            page, context || page, step?.selector, maskSelectorsFrom(jobDataPolicy(job)));
+        if (excerpt) recorder.attachToLast({ dom: excerpt.dom, dom_scope: excerpt.scope });
     }
 
     /**

@@ -16,7 +16,7 @@ from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
-from app.models import Project, TestCase, TestCaseResult, TestRun, TestStatus
+from app.models import FailureCluster, Project, TestCase, TestCaseResult, TestRun, TestStatus
 from app.services.llm_usage import llm_call_context
 
 _sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
@@ -71,6 +71,14 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
                 if case:
                     steps = [s if isinstance(s, dict) else s.dict() for s in (case.steps or [])]
 
+                history = change = None
+                if case is not None:
+                    try:
+                        history, change = case_history(session, run, result, case.id)
+                    except Exception as exc:  # noqa: BLE001 — history is context, not a gate
+                        print(f"[FailureAnalysis] history lookup failed for result {result.id}: {exc}")
+
+                payload = result.result_payload or {}
                 report = analyze_case_failure(
                     test_name=result.test_name,
                     error_message=result.error_message or "",
@@ -79,8 +87,12 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
                     request_url=result.request_url,
                     network_failures=network_failures_for(
                         run.network_events, result.test_name),
-                    console_errors=(result.result_payload or {}).get("console_errors"),
+                    console_errors=payload.get("console_errors"),
                     provider_id=provider_id,
+                    step_evidence=payload.get("step_evidence"),
+                    history=history,
+                    changed_since_last_pass=change,
+                    result_id=result.id,
                 )
                 result.ai_analysis = report.model_dump_json()
                 session.add(result)
@@ -113,3 +125,62 @@ def network_failures_for(events, test_name: str) -> list:
             out.append({"method": e.get("method"), "url": e.get("url"),
                         "status": status, "resourceType": e.get("resourceType")})
     return out[:10]
+
+
+HISTORY_LIMIT = 20
+
+
+def case_history(session: Session, run: TestRun, result: TestCaseResult, case_id: int):
+    """(FailureHistory, ChangeRange | None) for one failing result.
+
+    Prior results of the SAME case (and the same data-driven row, via the
+    result name) in the SAME project, from runs older than this one, newest
+    first. The project filter is belt-and-braces: `case_id` already pins the
+    project, but history must never be able to cross a tenant boundary.
+    Signatures are recomputed from each prior error rather than read from
+    `cluster_id`, because clustering runs concurrently with this task and the
+    current result may not be clustered yet.
+    """
+    from app.schemas.failure_report import ClusterRef, HistoryEntry
+    from app.services.failure_investigation import summarise_history
+    from app.services.failure_signature import compute_signature
+
+    rows = session.exec(
+        select(TestCaseResult, TestRun)
+        .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+        .where(
+            TestCaseResult.test_case_id == case_id,
+            TestCaseResult.test_name == result.test_name,
+            TestCaseResult.test_run_id < run.id,
+            TestRun.project_id == run.project_id,
+            TestCaseResult.status.in_([TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]),  # type: ignore[attr-defined]
+        )
+        .order_by(TestCaseResult.test_run_id.desc(), TestCaseResult.id.desc())  # type: ignore[attr-defined]
+        .limit(HISTORY_LIMIT)
+    ).all()
+
+    signature = compute_signature(result.error_message, result.test_name)[0]
+    entries = []
+    for prior, prior_run in rows:
+        status = prior.status.value if hasattr(prior.status, "value") else str(prior.status)
+        failed = status in ("failed", "error")
+        entries.append(HistoryEntry(
+            run_id=prior_run.id,
+            result_id=prior.id,
+            status=status,
+            git_commit=prior_run.git_commit,
+            git_branch=prior_run.git_branch,
+            created_at=prior_run.created_at.isoformat() if prior_run.created_at else None,
+            error_excerpt=((prior.error_message or "")[:200] or None) if failed else None,
+            same_signature=failed and compute_signature(prior.error_message, prior.test_name)[0] == signature,
+        ))
+
+    cluster = None
+    if run.project_id:
+        c = session.exec(select(FailureCluster).where(
+            FailureCluster.project_id == run.project_id,
+            FailureCluster.signature == signature)).first()
+        if c:
+            cluster = ClusterRef(id=c.id, title=c.title[:200], status=c.status,
+                                 occurrence_count=c.occurrence_count)
+    return summarise_history(entries, run.git_commit, run.id, run.git_repo, cluster)
