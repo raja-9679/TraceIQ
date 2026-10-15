@@ -190,6 +190,50 @@ export function redactText(text: any, policy?: RedactionPolicy): any {
 }
 
 // --------------------------------------------------------------------------
+// Inbound messages (test inbox emails, captured webhooks)
+// --------------------------------------------------------------------------
+
+const URL_RE = /https?:\/\/[^\s<>"')\]]+/g;
+// An opaque credential in a path: long, URL-safe, with a letter AND a digit,
+// so /blog/announcing-the-new-dashboard survives.
+const PATH_TOKEN_RE = /^(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{20,}$/;
+// A one-time code: 6-8 digits standing alone (a sentence-ending period is
+// fine; a decimal point on either side is not).
+const CODE_RE = /(?<!\w)(?<!\d\.)\d{6,8}(?!\w)(?!\.\d)/g;
+
+function redactUrl(url: string): string {
+    let cut = url.indexOf('?');
+    if (cut < 0) cut = url.indexOf('#');
+    const base = cut < 0 ? url : url.slice(0, cut);
+    const sep = cut < 0 ? '' : url[cut];
+    const [scheme, remainder] = [base.slice(0, base.indexOf('://')), base.slice(base.indexOf('://') + 3)];
+    const slashAt = remainder.indexOf('/');
+    let out = `${scheme}://${remainder}`;
+    if (slashAt >= 0) {
+        const host = remainder.slice(0, slashAt);
+        const path = remainder.slice(slashAt + 1).split('/')
+            .map(seg => (PATH_TOKEN_RE.test(seg) ? token('link') : seg)).join('/');
+        out = `${scheme}://${host}/${path}`;
+    }
+    return out + (sep ? sep + token('link') : '');
+}
+
+/**
+ * Free-text redaction for messages the APP UNDER TEST sends — a reset email,
+ * a captured webhook body shown as text. Those carry live credentials by
+ * design (the reset link IS the password), so beyond `redactText` this drops
+ * link query strings/fragments, masks opaque path segments and masks
+ * standalone 6-8 digit codes. Previews and logs only: a step extracts its
+ * value before redaction. Twin of redaction.py:redact_message_text.
+ */
+export function redactMessageText(text: any, policy?: RedactionPolicy): any {
+    if (typeof text !== 'string' || !text) return text;
+    let out = redactText(text, policy) as string;
+    out = out.replace(URL_RE, redactUrl);
+    return out.replace(CODE_RE, token('code'));
+}
+
+// --------------------------------------------------------------------------
 // Headers
 // --------------------------------------------------------------------------
 

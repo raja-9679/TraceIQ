@@ -93,6 +93,7 @@ celery_app.conf.task_routes = {
     "app.tasks.cleanup_tasks.purge_derived_records": "main-queue",
     "app.tasks.heartbeat_tasks.beat_heartbeat": "main-queue",
     "app.tasks.cleanup_tasks.purge_orphaned_artifacts": "main-queue",
+    "app.tasks.cleanup_tasks.purge_webhook_captures": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
@@ -157,6 +158,10 @@ celery_app.conf.beat_schedule = {
         'task': 'app.tasks.cleanup_tasks.purge_orphaned_artifacts',
         # Daily and opt-in. Lists before it deletes — see the task docstring.
         'schedule': 86400.0,
+    },
+    'purge-webhook-captures': {
+        'task': 'app.tasks.cleanup_tasks.purge_webhook_captures',
+        'schedule': 3600.0,  # Hourly; captures live 24 h (wait-for-webhook)
     },
     'send-scheduled-reports': {
         'task': 'app.tasks.report_tasks.send_scheduled_reports',

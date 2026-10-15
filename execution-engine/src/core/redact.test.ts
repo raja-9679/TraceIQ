@@ -24,6 +24,7 @@ import {
     redactHar,
     redactHeaders,
     redactJobResult,
+    redactMessageText,
     redactNetworkEvents,
     redactText,
     verhoeffValid,
@@ -466,4 +467,44 @@ test('a policy naming extra fields still applies the built-in denylist', () => {
     assert.equal(out.password, REDACTED);
     assert.equal(out.policyno, REDACTED);
     assert.equal(out.ok, 1);
+});
+
+// --------------------------------------------------------------------------
+// Inbound messages (test inbox previews, captured webhooks)
+// Mirrors the redact_message_text block in tests/test_redaction.py.
+// --------------------------------------------------------------------------
+
+test('message: a reset link loses its query string and opaque path token', () => {
+    assert.equal(
+        redactMessageText('Reset: https://shop.example.com/reset/9f8a7b6c5d4e3f2a1b0c9d8e?token=abc&x=1 now'),
+        'Reset: https://shop.example.com/reset/[REDACTED:link]?[REDACTED:link] now',
+    );
+});
+
+test('message: fragments are dropped too (implicit-flow style links)', () => {
+    assert.equal(redactMessageText('go https://x.io/cb#access=abc'), 'go https://x.io/cb#[REDACTED:link]');
+});
+
+test('message: readable paths survive', () => {
+    const text = 'See https://shop.example.com/blog/announcing-the-new-dashboard today';
+    assert.equal(redactMessageText(text), text);
+});
+
+test('message: a standalone 6-8 digit code is masked, even before a full stop', () => {
+    assert.equal(redactMessageText('Your code is 482913.'), 'Your code is [REDACTED:code].');
+    assert.equal(redactMessageText('PIN 12345678 expires'), 'PIN [REDACTED:code] expires');
+});
+
+test('message: years, decimals and alphanumeric ids are not codes', () => {
+    const text = 'In 2026 the total was 1234567.89 for order A1234567';
+    assert.equal(redactMessageText(text), text);
+});
+
+test('message: the regular value patterns still apply', () => {
+    assert.equal(redactMessageText(`card ${VALID_PAN} jwt ${JWT}`), 'card [REDACTED:pan] jwt [REDACTED:jwt]');
+});
+
+test('message: non-strings pass through', () => {
+    assert.equal(redactMessageText(''), '');
+    assert.equal(redactMessageText(null), null);
 });

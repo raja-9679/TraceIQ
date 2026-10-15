@@ -65,6 +65,7 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM securityfinding WHERE scan_id IN ({_SCANS}) "
               f"OR project_id IN ({_PROJECTS}) OR run_id IN ({_RUNS})"),
     PurgeStep("monitorcheck", f"DELETE FROM monitorcheck WHERE run_id IN ({_RUNS})"),
+    PurgeStep("webhookcapture", f"DELETE FROM webhookcapture WHERE run_id IN ({_RUNS})"),
     PurgeStep("issueticket",
               f"DELETE FROM issueticket WHERE workspace_id = :workspace_id "
               f"OR run_id IN ({_RUNS})"),

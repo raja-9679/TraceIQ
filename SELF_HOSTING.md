@@ -272,6 +272,46 @@ Requirements and caveats:
 - Upload app binaries at **Project → App builds** (or
   `POST /api/projects/{id}/app-builds`) and pin a run with `app_build_id`.
 
+### Optional: test inbox (email) and webhook capture
+
+Tests that need to receive an email — signup verification, password reset,
+magic links, OTP by email — use `{{inbox.address}}` (each run gets its own
+address) and a **Wait For Email** step that extracts the link or code. Tests
+for webhook-emitting flows register `{{webhook.url}}` with the app and use a
+**Wait For Webhook** step.
+
+**Inbox, self-hosted:** the `inbox` profile adds [Mailpit](https://mailpit.axllent.org),
+an SMTP catcher that accepts mail for any address and delivers nothing.
+
+```bash
+docker compose -f docker-compose.community.yml --env-file .env --profile inbox up -d mailpit
+```
+
+1. Point the **app under test's SMTP** at this host, port 1025 (no TLS, no
+   auth), or `mailpit:1025` if the app runs on the compose network.
+2. **Settings → Instance (Admin) → Test inbox & webhook capture:** provider
+   `mailpit`, Mailpit API URL `http://mailpit:8025`, and a domain for the
+   generated addresses (e.g. `inbox.traceiq.test` — never a real one). Save,
+   then **Test inbox connection**.
+3. The Mailpit UI is on `http://localhost:8025` (bound to localhost; it shows
+   every captured email). `MAILPIT_SMTP_PORT` / `MAILPIT_UI_PORT` change the
+   host ports. Mailpit keeps at most 5000 messages for one day.
+
+**Inbox, real mailbox:** for apps that can only send to real domains, choose
+provider `imap` with a mailbox that supports plus-addressing (Gmail, Microsoft
+365, Fastmail). Runs get `qa+<token>@company.com`. IMAPS (TLS) only; use an
+app password. The credentials are stored encrypted and only the backend reads
+the mailbox — execution workers never hold them, and a run can only read mail
+sent to its own addresses.
+
+**Webhook capture** needs no extra service, but the app under test must be
+able to **reach TraceIQ**: `{{webhook.url}}` is
+`<Public URL for webhook capture>/api/hooks/capture/<token>`, falling back to
+`FRONTEND_BASE_URL`. Set the public URL in the same settings group if the app
+reaches TraceIQ under a different name than your browser does. Captured
+requests are redacted before storage, capped at 256 kB and 50 per URL, and
+deleted after 24 hours.
+
 ---
 
 ## Operating it

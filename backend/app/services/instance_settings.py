@@ -44,7 +44,8 @@ class SettingDef:
     description: str = ""
 
 
-# Groups: email | notifications | ai | storage | sso | saml | ldap | federation | policies
+# Groups: email | notifications | ai | storage | sso | saml | ldap | federation |
+#         test_inbox | policies
 REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     # --- Email (SMTP) ---
     SettingDef("SMTP_HOST", "email", label="SMTP host"),
@@ -229,6 +230,42 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("LDAP_TLS_INSECURE", "ldap", type="bool", label="Disable TLS validation (unsafe)",
                description="accept any TLS certificate from the directory — leaves the "
                            "connection open to on-path password capture; leave OFF"),
+    # --- Test inbox + webhook capture (wait-for-email / wait-for-webhook steps) ---
+    SettingDef("TEST_INBOX_PROVIDER", "test_inbox", label="Inbox provider",
+               description="mailpit = a self-hosted SMTP catcher (compose profile "
+                           "'inbox'); imap = a real mailbox using plus-addressing. "
+                           "Blank disables {{inbox.address}} and the wait-for-email step"),
+    SettingDef("TEST_INBOX_DOMAIN", "test_inbox", label="Mailpit address domain",
+               description="generated addresses are <token>@<this domain>. Mailpit "
+                           "accepts mail for any domain, so pick one that is never "
+                           "delivered for real, e.g. inbox.traceiq.test"),
+    SettingDef("TEST_INBOX_MAILPIT_URL", "test_inbox", label="Mailpit API URL",
+               description="where the BACKEND reaches Mailpit's HTTP API, e.g. "
+                           "http://mailpit:8025. The app under test sends to its "
+                           "SMTP port (1025) instead"),
+    SettingDef("TEST_INBOX_MAILPIT_USER", "test_inbox", label="Mailpit API user (optional)",
+               description="only if Mailpit runs with --ui-auth"),
+    SettingDef("TEST_INBOX_MAILPIT_PASSWORD", "test_inbox", secret=True,
+               label="Mailpit API password (optional)"),
+    SettingDef("TEST_INBOX_IMAP_HOST", "test_inbox", label="IMAP host",
+               description="TLS only (IMAPS); plain IMAP is refused because the "
+                           "mailbox password would cross the network in clear"),
+    SettingDef("TEST_INBOX_IMAP_PORT", "test_inbox", type="int", label="IMAP port",
+               description="default 993"),
+    SettingDef("TEST_INBOX_IMAP_USER", "test_inbox", label="IMAP username"),
+    SettingDef("TEST_INBOX_IMAP_PASSWORD", "test_inbox", secret=True,
+               label="IMAP password / app password"),
+    SettingDef("TEST_INBOX_IMAP_ADDRESS", "test_inbox", label="IMAP base address",
+               description="the mailbox's own address, e.g. qa@company.com — runs "
+                           "get qa+<token>@company.com, so the provider must support "
+                           "plus-addressing (Gmail, Microsoft 365, Fastmail do)"),
+    SettingDef("TEST_INBOX_IMAP_FOLDER", "test_inbox", label="IMAP folder",
+               description="default INBOX"),
+    SettingDef("TEST_HOOKS_PUBLIC_URL", "test_inbox", label="Public URL for webhook capture",
+               description="the origin the APP UNDER TEST reaches TraceIQ at, e.g. "
+                           "https://traceiq.example.com — {{webhook.url}} becomes "
+                           "<this>/api/hooks/capture/<token>. Blank falls back to "
+                           "FRONTEND_BASE_URL (nginx proxies /api)"),
     # --- Policies ---
     SettingDef("REQUIRE_SEPARATE_APPROVER", "policies", type="bool",
                label="Agent proposals need a second person",

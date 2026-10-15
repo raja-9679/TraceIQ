@@ -170,6 +170,26 @@ async def update_instance_settings(
                 detail=f"Workspace {policy.workspace_id} does not exist — federated "
                        "users would have nowhere to land")
 
+    # Test inbox: a half-configured provider would only surface as a failing
+    # wait-for-email step in somebody's run, so check it while the form is open.
+    if any(k.startswith("TEST_INBOX_") for k in body.values):
+        from app.services import step_hooks
+
+        def inbox_value(key: str):
+            if key in body.values:
+                v = body.values[key]
+                if v is None:
+                    return insvc.env_default(key)
+                if insvc.REGISTRY[key].secret and v == "":
+                    return insvc.effective(key)   # masked field left untouched
+                return v
+            return insvc.effective(key)
+
+        try:
+            step_hooks.validate_inbox_config(step_hooks.load_inbox_config(inbox_value))
+        except step_hooks.StepHooksError as exc:
+            raise HTTPException(status_code=400, detail=f"Test inbox: {exc}")
+
     for key, value in body.values.items():
         d = insvc.REGISTRY[key]
         row = (await session.exec(

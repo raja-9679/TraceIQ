@@ -460,6 +460,25 @@ services:
     networks:
       - qip_network
 
+  # Test inbox for wait-for-email steps (optional, `inbox` profile):
+  #   docker compose --profile inbox up -d mailpit
+  # Point the APP UNDER TEST's SMTP at mailpit:1025 (or host port 1025), then
+  # in Settings → Instance → Test inbox set provider=mailpit, Mailpit API URL
+  # http://mailpit:8025 and a domain such as inbox.traceiq.test. Mailpit
+  # accepts mail for any address and never delivers it anywhere.
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    profiles: ["inbox"]
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_MAX_AGE: 1d
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      # Web UI/API on localhost only — it shows every captured email.
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    networks:
+      - qip_network
+
 networks:
   qip_network:
     driver: bridge
