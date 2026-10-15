@@ -75,6 +75,7 @@ celery_app = Celery(
         "app.tasks.report_tasks",       # Scheduled quality reports
         "app.tasks.access_matrix_tasks",  # Access-control matrix cells (WP4)
         "app.tasks.security_ops_tasks",  # SIEM outbox drain + security alerts (WP7)
+        "app.tasks.frontend_quality_tasks",  # Site crawler dispatch/collect + schedules (WP10)
     ]
 )
 
@@ -109,7 +110,10 @@ celery_app.conf.task_routes = {
     "app.tasks.ticket_tasks.create_issue_ticket": "main-queue",
     "app.tasks.triage_tasks.cluster_run_failures": "main-queue",
     "app.tasks.report_tasks.send_scheduled_reports": "main-queue",
-    "app.tasks.report_tasks.send_report_now": "main-queue"
+    "app.tasks.report_tasks.send_report_now": "main-queue",
+    "app.tasks.frontend_quality_tasks.process_due_crawls": "main-queue",
+    "app.tasks.frontend_quality_tasks.dispatch_site_crawl": "main-queue",
+    "app.tasks.frontend_quality_tasks.collect_site_crawl": "main-queue",
 }
 
 # Configure Celery Beat schedule for periodic tasks
@@ -178,6 +182,11 @@ celery_app.conf.beat_schedule = {
         # nothing is written to the outbox then.
         'task': 'app.tasks.security_ops_tasks.drain_security_events',
         'schedule': 10.0,
+    },
+    'process-due-site-crawls': {
+        # Scheduled broken-link crawls (WP10). Cheap when none are scheduled.
+        'task': 'app.tasks.frontend_quality_tasks.process_due_crawls',
+        'schedule': 60.0,
     },
     'reopen-expired-risk-acceptances': {
         'task': 'app.tasks.security_tasks.reopen_expired_risk_acceptances',

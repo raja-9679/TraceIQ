@@ -398,6 +398,54 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
                 ? { ...a, error: redactText(a.error, policy) } : a);
     }
     if (Array.isArray(out.step_evidence)) out.step_evidence = redactStepEvidence(out.step_evidence, policy);
+    if (Array.isArray(out.page_budgets)) out.page_budgets = redactPageBudgets(out.page_budgets, policy);
+    return out;
+}
+
+const textField = (v: any, policy?: RedactionPolicy) => (typeof v === 'string' ? redactText(v, policy) : v);
+
+/**
+ * `check-page-budget` outcomes (WP10): the measured page URL (query strings
+ * carry session ids and signed tokens), the failure text and SEO check values
+ * (a title or canonical can echo the URL). Twin: `redact_page_budgets`.
+ */
+export function redactPageBudgets(items: any, policy?: RedactionPolicy): any {
+    if (!Array.isArray(items)) return items;
+    return items.map((b: any) => {
+        if (!b || typeof b !== 'object') return b;
+        const out = { ...b, url: textField(b.url, policy), failure: textField(b.failure, policy) };
+        if (Array.isArray(b.seo)) {
+            out.seo = b.seo.map((c: any) => c && typeof c === 'object'
+                ? { ...c, value: textField(c.value, policy), detail: textField(c.detail, policy) } : c);
+        }
+        return out;
+    });
+}
+
+/**
+ * Site-crawl report (WP10): every URL it names, redirect hops included —
+ * links on a page can embed tokens (password-reset, signed asset URLs).
+ * Status codes and counts are left alone. Twin: `redact_crawl_report`.
+ */
+export function redactCrawlReport(report: any, policy?: RedactionPolicy): any {
+    if (!report || typeof report !== 'object') return report;
+    const out = { ...report, error: textField(report.error, policy) };
+    if (Array.isArray(report.pages)) {
+        out.pages = report.pages.map((p: any) => p && typeof p === 'object'
+            ? { ...p, url: textField(p.url, policy), error: textField(p.error, policy) } : p);
+    }
+    if (Array.isArray(report.issues)) {
+        out.issues = report.issues.map((i: any) => {
+            if (!i || typeof i !== 'object') return i;
+            const item = { ...i };
+            for (const f of ['page_url', 'target_url', 'detail']) item[f] = textField(i[f], policy);
+            if (Array.isArray(i.redirect_chain)) {
+                item.redirect_chain = i.redirect_chain.map((h: any) => h && typeof h === 'object'
+                    ? { ...h, url: textField(h.url, policy) } : h);
+            }
+            return item;
+        });
+    }
     return out;
 }
 

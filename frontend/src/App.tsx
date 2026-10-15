@@ -13,6 +13,7 @@ import VisualReview from "@/pages/VisualReview";
 import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
 import FlakyTests from "@/pages/FlakyTests";
+import FrontendQuality from "@/pages/FrontendQuality";
 import QualityDashboard from "@/pages/QualityDashboard";
 import ReleaseReadiness from "@/pages/ReleaseReadiness";
 import Monitors from "@/pages/Monitors";
@@ -85,6 +86,7 @@ function App() {
                 <Route path="app-builds" element={<AppBuilds />} />
                 <Route path="visual-review" element={<VisualReview />} />
                 <Route path="flaky-tests" element={<FlakyTests />} />
+                <Route path="frontend-quality" element={<FrontendQuality />} />
                 <Route path="api-keys" element={<ApiKeys />} />
                 <Route path="webhooks" element={<Webhooks />} />
                 <Route path="issue-trackers" element={<IssueTrackers />} />

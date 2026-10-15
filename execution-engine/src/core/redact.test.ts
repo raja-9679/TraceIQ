@@ -22,11 +22,13 @@ import {
     maskSelectorsFrom,
     policyFromDataPolicy,
     redactBody,
+    redactCrawlReport,
     redactHar,
     redactHeaders,
     redactJobResult,
     redactMessageText,
     redactNetworkEvents,
+    redactPageBudgets,
     redactText,
     verhoeffValid,
 } from './redact';
@@ -630,4 +632,39 @@ test('a truncated body excerpt degrades to a text sweep, not a throw', async () 
     const { redactAccessObservation } = await import('./redact');
     const obs = redactAccessObservation({ body_excerpt: `{"note": "${VALID_PAN}", "x": [1, 2` });
     assert.equal(obs.body_excerpt.includes(VALID_PAN), false);
+});
+
+// --- WP10: page budgets + crawl reports (twins in tests/test_redaction.py) ---
+
+test('page budget outcomes: URL, failure and SEO values are scrubbed, numbers kept', () => {
+    const [out] = redactPageBudgets([{
+        step_id: 'b1', url: `https://shop.example.com/reset/${JWT}`, passed: false,
+        failure: `Page budget exceeded on https://shop.example.com/reset/${JWT}: lcp_ms 3000 > 2500`,
+        metrics: { lcp_ms: 3000 }, checks: [{ metric: 'lcp_ms', value: 3000, budget: 2500, passed: false }],
+        seo: [{ check: 'canonical', passed: true, value: `https://shop.example.com/reset/${JWT}`, detail: 'ok' }],
+    }]);
+    assert.ok(!JSON.stringify(out).includes(JWT));
+    assert.equal(out.metrics.lcp_ms, 3000);
+    assert.equal(out.checks[0].budget, 2500);
+    // Also reached through a job result.
+    const res = redactJobResult({ page_budgets: [{ url: `https://x.test/?t=${JWT}` }] });
+    assert.ok(!JSON.stringify(res).includes(JWT));
+});
+
+test('crawl report: every URL incl. redirect hops is scrubbed; counts and statuses kept', () => {
+    const out = redactCrawlReport({
+        status: 'ok', links_checked: 3,
+        pages: [{ url: `https://s.example/p?card=${VALID_PAN}`, status: 200 }],
+        issues: [{
+            page_url: 'https://s.example/', target_url: `https://s.example/reset/${JWT}`, category: 'broken',
+            status_code: 404, detail: `see ${JWT}`,
+            redirect_chain: [{ url: `https://s.example/r?token=${JWT}`, status: 302 }],
+        }],
+    });
+    const flat = JSON.stringify(out);
+    assert.ok(!flat.includes(JWT));
+    assert.ok(!flat.includes(VALID_PAN));
+    assert.equal(out.issues[0].status_code, 404);
+    assert.equal(out.issues[0].redirect_chain[0].status, 302);
+    assert.equal(out.links_checked, 3);
 });

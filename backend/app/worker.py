@@ -196,6 +196,11 @@ def run_test_suite(run_id: int, tags: list = None):
             # cannot be talked into exceeding it by a crafted job.
             data_policy = _load_data_policy(auth_project_id, session)
             effective_settings['data_policy'] = data_policy
+
+            # Frontend matrix variant (WP10): viewport / locale / colour
+            # scheme this run emulates. Already validated at run creation.
+            if getattr(run, 'emulation', None):
+                effective_settings['emulation'] = run.emulation
             print(f"[Worker] Run {run_id}: capture level "
                   f"'{data_policy['capture_level']}'")
 
@@ -364,6 +369,8 @@ def _settings_payload(settings: dict) -> dict:
     # and a run's policy should be decided here, not there.
     if settings.get('data_policy'):
         payload['data_policy'] = settings['data_policy']
+    if settings.get('emulation'):
+        payload['emulation'] = settings['emulation']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).

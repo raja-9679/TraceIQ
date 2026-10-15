@@ -81,6 +81,23 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
     target_devices = [schedule.device] if schedule.device else [None]
     target_browser = schedule.browser or "chromium"
 
+    # Frontend matrix (WP10): a scheduled suite run fans out over the suite
+    # chain's viewports / locales / colour schemes like a manual one. Not for
+    # monitors: a monitor's uptime is one check per tick, and N variant runs
+    # per tick would each count as a check.
+    import uuid as _uuid
+    from app.services import frontend_matrix
+    sweep_group = _uuid.uuid4().hex
+
+    def _slots(eff):
+        variants = [None]
+        if not schedule.is_monitor:
+            try:
+                variants = frontend_matrix.build_variants(frontend_matrix.resolve_options(None, eff or {}))
+            except frontend_matrix.MatrixError as exc:
+                print(f"[Schedule] {schedule.id}: ignoring invalid frontend matrix settings: {exc}")
+        return [(d, v) for d in target_devices for v in variants]
+
     if schedule.test_case_id:
         case = await session.get(TestCase, schedule.test_case_id)
         if not case:
@@ -90,7 +107,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
         suite_path = await test_service.get_suite_path(suite_id, session) if suite_id else "Orphaned Case"
         effective_settings = await test_service.get_effective_settings(suite_id, session) if suite_id else {}
 
-        for target_device in target_devices:
+        for target_device, variant in _slots(effective_settings):
             run = TestRun(
                 status=TestStatus.PENDING,
                 test_suite_id=suite_id,
@@ -104,6 +121,8 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 domain_settings=effective_settings.get("domain_settings", {}),
                 browser=target_browser,
                 device=target_device,
+                emulation=variant,
+                sweep_group=sweep_group if variant else None,
                 user_id=schedule.created_by_id,  # Blame the run on the schedule creator
                 triggered_by=RunTrigger.SCHEDULE,
                 agent_id=f"schedule:{schedule.id}",
@@ -131,7 +150,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 result = await session.exec(select(TestCase).where(TestCase.test_suite_id == s_id))
                 direct_cases = result.all()
                 for case in direct_cases:
-                    for target_device in target_devices:
+                    for target_device, variant in _slots(current_effective_settings):
                         run = TestRun(
                             status=TestStatus.PENDING,
                             test_suite_id=s_id,
@@ -145,6 +164,8 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                             domain_settings=current_effective_settings.get("domain_settings", {}),
                             browser=target_browser,
                             device=target_device,
+                            emulation=variant,
+                            sweep_group=sweep_group if variant else None,
                             user_id=schedule.created_by_id,
                             triggered_by=RunTrigger.SCHEDULE,
                             agent_id=f"schedule:{schedule.id}",
@@ -158,7 +179,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 for sub in sub_modules:
                     await process_suite(sub.id, current_effective_settings)
             else:
-                for target_device in target_devices:
+                for target_device, variant in _slots(current_effective_settings):
                     run = TestRun(
                         status=TestStatus.PENDING,
                         test_suite_id=s_id,
@@ -172,6 +193,8 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                         domain_settings=current_effective_settings.get("domain_settings", {}),
                         browser=target_browser,
                         device=target_device,
+                        emulation=variant,
+                        sweep_group=sweep_group if variant else None,
                         user_id=schedule.created_by_id,
                         triggered_by=RunTrigger.SCHEDULE,
                         agent_id=f"schedule:{schedule.id}",

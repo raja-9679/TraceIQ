@@ -361,6 +361,62 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "example": {"id": "<uuid>", "type": "check-accessibility", "params": {"impact": "serious"}},
         "notes": "Runs axe-core against the current page; returns a violations summary.",
     },
+    # ------------------------------------------------------------------
+    # Frontend quality (WP10). Layout checks run in the page; budgets store a
+    # PageBudgetSample per run so each page has a trend.
+    # ------------------------------------------------------------------
+    {
+        "type": "expect-no-horizontal-overflow",
+        "category": "assertion",
+        "params": {
+            "selector": "Optional scope: only elements inside this container are checked",
+            "params.tolerance_px": "Pixels of overflow tolerated (default 1)",
+            "params.ignore": "List of CSS selectors whose elements (and descendants) are ignored, e.g. carousels",
+            "params.max_offenders": "How many offending elements to report (default 10, max 50)",
+        },
+        "example": {"id": "<uuid>", "type": "expect-no-horizontal-overflow",
+                    "params": {"tolerance_px": 2, "ignore": [".carousel-track"]}},
+        "notes": "Fails when the document scrolls horizontally or a visible element spills past the "
+                 "left/right viewport edge (elements clipped by an overflow:hidden/auto ancestor are "
+                 "not counted). Pair with a viewport sweep (POST /api/runs body `viewports`).",
+    },
+    {
+        "type": "expect-rtl-layout",
+        "category": "assertion",
+        "params": {
+            "params.expect_dir": "'rtl' (default) or 'ltr' — the direction the document must have",
+            "selector": "Optional element whose computed direction must also match",
+            "params.tolerance_px": "Horizontal-overflow tolerance (default 1)",
+            "params.ignore": "Selectors to ignore in the overflow part",
+        },
+        "example": {"id": "<uuid>", "type": "expect-rtl-layout", "params": {"expect_dir": "rtl"}},
+        "notes": "Checks <html dir> / computed direction, then the same no-overflow check — RTL "
+                 "regressions usually show up as content pushed off the LEFT edge. Use with a locale "
+                 "matrix run (body `locales: [\"ar-EG\"]`).",
+    },
+    {
+        "type": "check-page-budget",
+        "category": "assertion",
+        "params": {
+            "params.budgets": "Max values: {lcp_ms, cls, inp_ms, fcp_ms, ttfb_ms, load_ms, page_weight_kb, "
+                              "request_count, image_weight_kb, largest_image_kb, script_weight_kb, "
+                              "third_party_requests}",
+            "params.seo": "'warn' (default: report, never fail) | 'fail' (an SEO error fails the step) | 'off'",
+            "params.title_length": "[min, max] title length (default [10, 60])",
+            "params.description_length": "[min, max] meta description length (default [50, 160])",
+            "params.settle_ms": "Wait before measuring so LCP/CLS settle (default 1000, max 10000)",
+            "params.fail": "false = record only, never fail",
+        },
+        "example": {"id": "<uuid>", "type": "check-page-budget",
+                    "params": {"budgets": {"lcp_ms": 2500, "cls": 0.1, "page_weight_kb": 1500,
+                                           "request_count": 80}, "seo": "warn"}},
+        "notes": "Measures the CURRENT page with Playwright (no Lighthouse dependency): LCP, CLS, FCP, "
+                 "TTFB, an INP approximation (longest event-timing entry — needs a preceding "
+                 "interaction step, else null), page/image/script weight, request count, and SEO "
+                 "checks (title/description length, canonical, robots noindex, one h1, img alt "
+                 "coverage, lang, hreflang validity, JSON-LD parse errors, viewport meta). Each "
+                 "outcome is stored for the per-page trend (GET /api/projects/{id}/page-budgets).",
+    },
     {
         "type": "http-request",
         "category": "api",

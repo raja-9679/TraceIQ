@@ -84,6 +84,10 @@ ON_DELETE: Dict[str, str] = {
     # The matrix is project configuration; its runs/cells are its history.
     "accessmatrix.project_id": DELETE,
     "accessmatrixrun.project_id": DELETE,
+    # Crawl configuration and history, and page-budget trend rows (WP10).
+    "sitecrawl.project_id": DELETE,
+    "sitecrawlrun.project_id": DELETE,
+    "pagebudgetsample.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.
@@ -125,6 +129,8 @@ ON_DELETE: Dict[str, str] = {
     # The stored login session is the project's; it stays usable after the
     # case that captured it is deleted.
     "authsession.captured_by_case_id": NULLIFY,
+    # A page's budget trend is about the page, not the case that measured it.
+    "pagebudgetsample.test_case_id": NULLIFY,
 
     # --- into testrun ----------------------------------------------------------
     "testcaseresult.test_run_id": DELETE,   # NOT NULL; the run's own output
@@ -142,12 +148,16 @@ ON_DELETE: Dict[str, str] = {
     "monitorcheck.run_id": NULLIFY,
     # A matrix cell's verdict outlives the TestRun a case row executed as.
     "accessmatrixcell.test_run_id": NULLIFY,
+    # A budget sample is that run's measurement (NOT NULL).
+    "pagebudgetsample.test_run_id": DELETE,
 
     # --- into tables only reachable through project ---------------------------
     "monitorcheck.schedule_id": DELETE,     # NOT NULL; history of that monitor
     "securityfinding.scan_id": DELETE,      # a scan's own findings
     "accessmatrixrun.matrix_id": DELETE,    # a matrix's own executions
     "accessmatrixcell.matrix_run_id": DELETE,
+    "sitecrawlrun.crawl_id": DELETE,        # a crawl's own executions
+    "sitecrawlissue.crawl_run_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }

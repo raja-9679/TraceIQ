@@ -58,6 +58,16 @@ class RunCreateContext(BaseModel):
     # inherited settings). Must all lie in suite_id's subtree. Not combinable
     # with case_id or tags. See docs/superpowers/specs/2026-10-14-targeted-runs-design.md.
     case_ids: Optional[List[int]] = None
+    # Frontend matrix (WP10, app/services/frontend_matrix.py): fan the
+    # selection out over viewports x locales x colour schemes, like the
+    # browser x device matrix. Each axis falls back to the suite chain's
+    # setting of the same name.
+    viewports: Optional[List[Union[str, Dict[str, Any]]]] = None
+    locales: Optional[List[Union[str, Dict[str, Any]]]] = None
+    color_schemes: Optional[List[str]] = None
+    reduced_motion: Optional[bool] = None
+    # Screenshot after every step (default: on when >1 variant).
+    sweep_step_screenshots: Optional[bool] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -234,6 +244,10 @@ async def create_run(
             return user_settings.selected_devices
         return None
 
+    from app.services import frontend_matrix
+    import uuid as _uuid_mod
+    sweep_group = _uuid_mod.uuid4().hex
+
     def _resolve_matrix(case: Optional[TestCase], eff: Dict[str, Any]):
         case_matrix = (getattr(case, "run_matrix", None) or {}) if case else {}
         browsers = (browser
@@ -244,7 +258,22 @@ async def create_run(
                    or case_matrix.get("devices")
                    or eff.get("devices")
                    or _user_default_devices())
-        return browsers, (devices if devices else [None])
+        devices = devices if devices else [None]
+        try:
+            variants = frontend_matrix.build_variants(
+                frontend_matrix.resolve_options(context, eff))
+            frontend_matrix.check_fanout(len(browsers), len(devices), len(variants),
+                                         len(identity_columns))
+        except frontend_matrix.MatrixError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        # Flattened so every creation site below keeps its two loops:
+        # each "device" slot is now a (device, emulation variant) pair.
+        return browsers, [(d, v) for d in devices for v in variants]
+
+    def _emu(slot) -> Dict[str, Any]:
+        target_device, variant = slot
+        return {"device": target_device, "emulation": variant,
+                "sweep_group": sweep_group if variant else None}
 
     created_runs = []
 
@@ -284,7 +313,7 @@ async def create_run(
                                 domain_settings=current_effective_settings.get(
                                     "domain_settings", {}),
                                 browser=target_browser,
-                                device=target_device,
+                                **_emu(target_device),
                                 user_id=current_user.id,
                                 selection_mode="full",
                                 selection_total=selection_total,
@@ -320,7 +349,7 @@ async def create_run(
                             domain_settings=current_effective_settings.get(
                                 "domain_settings", {}),
                             browser=target_browser,
-                            device=target_device,
+                            **_emu(target_device),
                             user_id=current_user.id,
                             selection_mode="full",
                             selection_total=selection_total,
@@ -367,7 +396,7 @@ async def create_run(
                                 allowed_domains=case_settings.get("allowed_domains", []),
                                 domain_settings=case_settings.get("domain_settings", {}),
                                 browser=target_browser,
-                                device=target_device,
+                                **_emu(target_device),
                                 user_id=current_user.id,
                                 selection_mode="targeted",
                                 selection_total=selection_total,
@@ -398,7 +427,7 @@ async def create_run(
                             domain_settings=effective_settings.get(
                                 "domain_settings", {}),
                             browser=target_browser,
-                            device=target_device,
+                            **_emu(target_device),
                             user_id=current_user.id,
                             selection_mode="case",
                             selection_total=selection_total,

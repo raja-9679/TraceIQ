@@ -559,3 +559,41 @@ def test_access_observation_truncated_excerpt_degrades_to_text_sweep():
     from app.services.redaction import redact_access_observation
     obs = redact_access_observation({"body_excerpt": f'{{"note": "{VALID_PAN}", "x": [1, 2'})
     assert VALID_PAN not in obs["body_excerpt"]
+
+
+# --- WP10: page budgets + crawl reports (twins in redact.test.ts) ---
+
+def test_page_budget_outcomes_are_scrubbed_numbers_kept():
+    from app.services.redaction import redact_page_budgets
+    [out] = redact_page_budgets([{
+        "step_id": "b1", "url": f"https://shop.example.com/reset/{JWT}", "passed": False,
+        "failure": f"Page budget exceeded on https://shop.example.com/reset/{JWT}: lcp_ms 3000 > 2500",
+        "metrics": {"lcp_ms": 3000},
+        "checks": [{"metric": "lcp_ms", "value": 3000, "budget": 2500, "passed": False}],
+        "seo": [{"check": "canonical", "passed": True,
+                 "value": f"https://shop.example.com/reset/{JWT}", "detail": "ok"}],
+    }])
+    assert JWT not in json.dumps(out)
+    assert out["metrics"]["lcp_ms"] == 3000
+    assert out["checks"][0]["budget"] == 2500
+    res = redact_worker_result({"page_budgets": [{"url": f"https://x.test/?t={JWT}"}]})
+    assert JWT not in json.dumps(res)
+
+
+def test_crawl_report_urls_and_redirect_hops_are_scrubbed():
+    from app.services.redaction import redact_crawl_report
+    out = redact_crawl_report({
+        "status": "ok", "links_checked": 3,
+        "pages": [{"url": f"https://s.example/p?card={VALID_PAN}", "status": 200}],
+        "issues": [{
+            "page_url": "https://s.example/", "target_url": f"https://s.example/reset/{JWT}",
+            "category": "broken", "status_code": 404, "detail": f"see {JWT}",
+            "redirect_chain": [{"url": f"https://s.example/r?token={JWT}", "status": 302}],
+        }],
+    })
+    flat = json.dumps(out)
+    assert JWT not in flat
+    assert VALID_PAN not in flat
+    assert out["issues"][0]["status_code"] == 404
+    assert out["issues"][0]["redirect_chain"][0]["status"] == 302
+    assert out["links_checked"] == 3
