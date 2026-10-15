@@ -290,6 +290,12 @@ def _case_payload(case, row_index=None, data_row=None, run_id=None) -> dict:
         'is_auth_setup': getattr(case, 'is_auth_setup', False),
         'use_auth_session': getattr(case, 'use_auth_session', True),
     }
+    # expect_schema {openapi: ...} → inline JSON Schema from the project's
+    # stored spec (WP11); the worker has no database to look it up in.
+    from app.services.api_specs import has_openapi_refs, load_spec_sync, resolve_step_schemas
+    if has_openapi_refs(payload['steps']):
+        payload['steps'] = resolve_step_schemas(
+            payload['steps'], getattr(case, 'project_id', None), load_spec_sync)
     # Per-case override of the suite's fail_on_console_errors (None = inherit).
     fail_on_console = getattr(case, 'fail_on_console_errors', None)
     if isinstance(fail_on_console, bool):

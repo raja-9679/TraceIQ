@@ -37,6 +37,7 @@ from app.api import scim as scim_api
 from app.api import dead_letter as dead_letter_api
 from app.api import siem as siem_api
 from app.api import access_reviews as access_reviews_api
+from app.api import developer as developer_api
 from app.core.config import settings as core_settings
 from app.core import telemetry
 import logging
@@ -170,6 +171,7 @@ app.include_router(requirements_api.router, prefix="/api", tags=["requirements"]
 app.include_router(incidents_api.router, prefix="/api", tags=["incidents"])
 app.include_router(app_builds_api.router, prefix="/api", tags=["app-builds"])
 app.include_router(case_revisions_api.router, prefix="/api", tags=["case-revisions"])
+app.include_router(developer_api.router, prefix="/api", tags=["developer"])
 # Observability paths are absolute inside the router (/metrics, /health/ready,
 # /api/admin/queue-health) — no prefix here.
 app.include_router(observability_api.router, tags=["observability"])

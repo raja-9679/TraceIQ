@@ -372,8 +372,15 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.params": "Query-param object",
             "params.assertions": "Array of {type, ...} — see assertion shapes below",
             "params.extract": "Array of {path, variable, required?} — store JSON response values as runtime vars",
+            "params.expect_schema": (
+                "Optional response contract check: {schema: <JSON Schema object>} or "
+                "{openapi: {operationId} | {method, path}, status?: '200'} referencing the project's "
+                "stored OpenAPI spec (PUT /api/projects/{id}/openapi-spec, or imported via "
+                "/cases/from-openapi). Strict JSON Schema; every violation is reported by path"),
         },
         "notes": (
+            "params.expect_schema validates the JSON body strictly (unlike the lenient "
+            "json-schema assertion); an openapi reference that cannot be resolved fails the step. "
             "Assertion shapes inside params.assertions: "
             "{type:'status', value:200}; "
             "{type:'json-path', path:'postgres.articles', operator:'equals'|'contains', value:...}; "

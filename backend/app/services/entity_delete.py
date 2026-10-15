@@ -66,6 +66,7 @@ ON_DELETE: Dict[str, str] = {
     "testschedule.project_id": DELETE,
     "caseproposal.project_id": DELETE,
     "authsession.project_id": DELETE,
+    "projectapispec.project_id": DELETE,
     "externaltestreport.project_id": DELETE,
     "failurecluster.project_id": DELETE,
     "mobileappbuild.project_id": DELETE,
