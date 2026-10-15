@@ -15,6 +15,11 @@ import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
+import { InvestigationReport } from '@/components/evidence/InvestigationReport';
+import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
+import {
+    isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
+} from '@/components/evidence/evidenceHelpers';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -111,6 +116,9 @@ export default function TestRunDetails() {
 
     // On-demand AI failure analysis with a user-chosen provider ('' = default)
     const [analysisProviderId, setAnalysisProviderId] = useState<string>('');
+    // Set by an evidence reference in the analysis panel: the result to
+    // select and the step to scroll to / highlight.
+    const [evidenceFocus, setEvidenceFocus] = useState<EvidenceFocus | null>(null);
     const { data: aiProviders } = useQuery({
         queryKey: ['llm-providers-active'],
         queryFn: llmProvidersApi.listActive,
@@ -333,12 +341,32 @@ export default function TestRunDetails() {
                                                                 <span className="text-[11px] font-mono text-indigo-300">{r.analyzed_by}</span>
                                                             )}
                                                         </div>
+                                                        {r.test_name && (
+                                                            <p className="text-[11px] font-mono text-indigo-400 truncate" title={r.test_name}>{r.test_name}</p>
+                                                        )}
                                                         <p className="text-sm font-semibold text-indigo-900">{r.summary}</p>
                                                         {r.details && <p className="text-xs text-indigo-700">{r.details}</p>}
                                                         {r.suggested_fix && (
                                                             <p className="rounded-xl bg-pastel-mint px-3 py-2 text-xs text-pastel-ink-mint">
                                                                 <span className="font-bold">Suggested fix{r.fix_target && r.fix_target !== 'none' ? ` (${r.fix_target})` : ''}:</span> {r.suggested_fix}
                                                             </p>
+                                                        )}
+                                                        {isInvestigation(r) && (
+                                                            <div className="pt-2 mt-1 border-t border-indigo-100">
+                                                                <InvestigationReport
+                                                                    report={r}
+                                                                    onSelectEvidence={(ref) => {
+                                                                        if (typeof r.result_id !== 'number') return;
+                                                                        setTestSearchTerm('');
+                                                                        setEvidenceFocus({
+                                                                            resultId: r.result_id,
+                                                                            stepIndex: stepIndexOfRef(ref),
+                                                                            ref,
+                                                                            nonce: Date.now(),
+                                                                        });
+                                                                    }}
+                                                                />
+                                                            </div>
                                                         )}
                                                     </div>
                                                 ))}
@@ -356,7 +384,7 @@ export default function TestRunDetails() {
 
                         {run.results && run.results.length > 0 && (
                             <ResultsSplit results={run.results} networkEvents={run.network_events || []}
-                                search={testSearchTerm} onSearch={setTestSearchTerm} />
+                                search={testSearchTerm} onSearch={setTestSearchTerm} focus={evidenceFocus} />
                         )}
                     </Tabs.Content>
 
@@ -828,10 +856,18 @@ function unwrapJson(str: string) {
 
 // Direction A: the run's tests as a list, with the selected one shown in full
 // on the right (failed tests first, so the one you came for is already open).
-function ResultsSplit({ results, networkEvents, search, onSearch }: {
-    results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void;
+function ResultsSplit({ results, networkEvents, search, onSearch, focus = null }: {
+    results: any[]; networkEvents: any[]; search: string; onSearch: (v: string) => void; focus?: EvidenceFocus | null;
 }) {
     const [selectedId, setSelectedId] = useState<number | null>(null);
+    // An evidence reference was clicked in the analysis panel: select the
+    // cited result (adjusted during render, React's pattern for state derived
+    // from a prop change).
+    const [seenFocus, setSeenFocus] = useState<number | null>(null);
+    if (focus && focus.nonce !== seenFocus) {
+        setSeenFocus(focus.nonce);
+        setSelectedId(focus.resultId);
+    }
     const rank = (r: any) => (r.status === 'failed' || r.status === 'error' ? 0 : r.status === 'passed' ? 2 : 1);
     const shown = results
         .filter((r) => r.test_name.toLowerCase().includes(search.toLowerCase()))
@@ -866,16 +902,36 @@ function ResultsSplit({ results, networkEvents, search, onSearch }: {
                     variant="detail"
                     result={selected}
                     networkEvents={networkEvents.filter((e: any) => e.testCaseName === selected.test_name)}
+                    focus={focus?.resultId === selected.id ? focus : null}
                 />
             )}
         />
     );
 }
 
-function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion' }: { result: any, networkEvents?: any[], variant?: 'accordion' | 'detail' }) {
+function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion', focus = null }: { result: any, networkEvents?: any[], variant?: 'accordion' | 'detail', focus?: EvidenceFocus | null }) {
     const [expandedState, setIsExpanded] = useState(false);
     const isDetail = variant === 'detail';
     const isExpanded = isDetail || expandedState;
+    const stepEvidence = stepEvidenceOf(result);
+
+    // An evidence reference was clicked in the analysis panel: open this
+    // result (adjusted during render) and bring the cited step — or, for
+    // non-step refs, the result — into view once it has been laid out.
+    const [seenFocus, setSeenFocus] = useState<number | null>(null);
+    if (focus && focus.nonce !== seenFocus) {
+        setSeenFocus(focus.nonce);
+        setIsExpanded(true);
+    }
+    useEffect(() => {
+        if (!focus) return;
+        const target = focus.stepIndex !== null
+            ? stepAnchorId(result.id, focus.stepIndex) : `result-${result.id}`;
+        const timer = window.setTimeout(() => {
+            document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+        return () => window.clearTimeout(timer);
+    }, [focus, result.id]);
 
     const { data: testVideoUrl } = useQuery({
         queryKey: ["video", result.video_url],
@@ -892,8 +948,8 @@ function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion' 
     const isError = result.status === 'failed' || result.status === 'error';
 
     return (
-        <div className={cn(
-            "group transition-all duration-300 bg-white",
+        <div id={`result-${result.id}`} className={cn(
+            "group transition-all duration-300 bg-white scroll-mt-24",
             isDetail ? "overflow-hidden rounded-3xl border border-border shadow-[0_12px_40px_rgba(28,27,34,0.06)]"
                 : isExpanded ? "m-4 rounded-xl border border-gray-200 shadow-sm" : "border-b border-gray-100 last:border-0 hover:bg-gray-50/80"
         )}>
@@ -965,6 +1021,13 @@ function TestCaseResultItem({ result, networkEvents = [], variant = 'accordion' 
                             )}
 
                             <RetryAttempts attempts={attemptsOf(result as any)} />
+
+                            <StepEvidenceTimeline
+                                resultId={result.id}
+                                steps={stepEvidence}
+                                highlightedStep={focus?.stepIndex ?? null}
+                                highlightedRef={focus?.ref ?? null}
+                            />
 
                             {(result as any).result_kind === 'load' && (result as any).result_payload && (() => {
                                 const lp = (result as any).result_payload;

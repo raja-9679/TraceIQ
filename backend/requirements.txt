@@ -44,3 +44,5 @@ opentelemetry-instrumentation-celery==0.48b0
 sentry-sdk[fastapi,celery,sqlalchemy]==2.19.0
 
 alembic==1.13.1
+# Linear-time regex for author-supplied patterns (app/services/inbox_providers.py)
+google-re2==1.1.20240702

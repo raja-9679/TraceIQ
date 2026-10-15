@@ -47,10 +47,14 @@ export const places: Place[] = [
     },
     {
         name: 'Releases', href: '/quality', icon: Flag,
-        match: ['/quality', '/traceability'],
+        // Requirements → cases → incidents is the trace chain a release is judged on.
+        match: ['/quality', '/release-readiness', '/requirements', '/traceability', '/incidents'],
         children: [
             { name: 'Quality gate', href: '/quality' },
+            { name: 'Release readiness', href: '/release-readiness' },
+            { name: 'Requirements', href: '/requirements' },
             { name: 'Traceability', href: '/traceability' },
+            { name: 'Incidents', href: '/incidents' },
         ],
     },
     {
@@ -78,8 +82,12 @@ export const places: Place[] = [
     },
     {
         name: 'Security', href: '/security', icon: ShieldCheck,
-        match: ['/security'],
-        children: [],
+        match: ['/security', '/access-matrix', '/access-reviews'],
+        children: [
+            { name: 'Scans & findings', href: '/security' },
+            { name: 'Access matrix', href: '/access-matrix' },
+            { name: 'Access reviews', href: '/access-reviews' },
+        ],
     },
 ];
 
@@ -99,5 +107,5 @@ export const setupLinks: SubLink[] = [
 export const isIn = (pathname: string, patterns: string[]) =>
     patterns.some((p) => matchPath({ path: p, end: true }, pathname));
 
-/** A group opens a submenu; anything else (Runs, Watch, Security) is a direct link. */
+/** A group opens a submenu; anything else (Runs, Watch) is a direct link. */
 export const isGroup = (place: Place) => place.children.length > 1;

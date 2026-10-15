@@ -70,7 +70,7 @@ function ClusterDetail({ cluster }: { cluster: FailureCluster }) {
     });
 
     const c = cat(cluster.category);
-    const enabledTrackers = (trackers.data || []).filter((t) => t.enabled);
+    const enabledTrackers = (trackers.data || []).filter((t) => t.enabled && t.provider !== 'linear');
 
     return (
         <DetailCard label="Selected failure cluster">

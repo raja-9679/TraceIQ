@@ -73,6 +73,8 @@ celery_app = Celery(
         "app.tasks.ticket_tasks",       # Issue-tracker ticket creation
         "app.tasks.triage_tasks",       # Failure clustering / triage
         "app.tasks.report_tasks",       # Scheduled quality reports
+        "app.tasks.access_matrix_tasks",  # Access-control matrix cells (WP4)
+        "app.tasks.security_ops_tasks",  # SIEM outbox drain + security alerts (WP7)
     ]
 )
 
@@ -93,11 +95,16 @@ celery_app.conf.task_routes = {
     "app.tasks.cleanup_tasks.purge_derived_records": "main-queue",
     "app.tasks.heartbeat_tasks.beat_heartbeat": "main-queue",
     "app.tasks.cleanup_tasks.purge_orphaned_artifacts": "main-queue",
+    "app.tasks.cleanup_tasks.purge_webhook_captures": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
     "app.tasks.monitor_tasks.evaluate_monitor_for_run": "main-queue",
     "app.tasks.security_tasks.scan_run_passive": "main-queue",
+    "app.tasks.security_tasks.scan_run_leaks": "main-queue",
+    "app.tasks.security_tasks.reopen_expired_risk_acceptances": "main-queue",
+    "app.tasks.security_ops_tasks.drain_security_events": "main-queue",
+    "app.tasks.security_ops_tasks.notify_security_alert": "main-queue",
     "app.tasks.zap_tasks.run_zap_scan": "main-queue",
     "app.tasks.ticket_tasks.create_issue_ticket": "main-queue",
     "app.tasks.triage_tasks.cluster_run_failures": "main-queue",
@@ -158,10 +165,24 @@ celery_app.conf.beat_schedule = {
         # Daily and opt-in. Lists before it deletes — see the task docstring.
         'schedule': 86400.0,
     },
+    'purge-webhook-captures': {
+        'task': 'app.tasks.cleanup_tasks.purge_webhook_captures',
+        'schedule': 3600.0,  # Hourly; captures live 24 h (wait-for-webhook)
+    },
     'send-scheduled-reports': {
         'task': 'app.tasks.report_tasks.send_scheduled_reports',
         'schedule': 300.0,  # Every 5 min; delivers report schedules that are due
-    }
+    },
+    'drain-security-events': {
+        # SIEM streaming + security alerts (WP7). Cheap no-op when both are off:
+        # nothing is written to the outbox then.
+        'task': 'app.tasks.security_ops_tasks.drain_security_events',
+        'schedule': 10.0,
+    },
+    'reopen-expired-risk-acceptances': {
+        'task': 'app.tasks.security_tasks.reopen_expired_risk_acceptances',
+        'schedule': 3600.0,
+    },
 }
 
 celery_app.conf.timezone = 'UTC'

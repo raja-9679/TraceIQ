@@ -15,14 +15,19 @@ import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
 import FlakyTests from "@/pages/FlakyTests";
 import QualityDashboard from "@/pages/QualityDashboard";
+import ReleaseReadiness from "@/pages/ReleaseReadiness";
 import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
+import AccessReviews from "@/pages/AccessReviews";
+import AccessMatrix from "@/pages/AccessMatrix";
 import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
 import LLMUsage from "@/pages/LLMUsage";
 import PublicStatus from "@/pages/PublicStatus";
 import Traceability from "@/pages/Traceability";
+import Requirements from "@/pages/Requirements";
+import Incidents from "@/pages/Incidents";
 import ImportPlaywright from "@/pages/ImportPlaywright";
 import IssueTrackers from "@/pages/IssueTrackers";
 import TestSuites from "@/pages/TestSuites";
@@ -68,13 +73,18 @@ function App() {
                 <Route path="suites" element={<TestSuites />} />
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="quality" element={<QualityDashboard />} />
+                <Route path="release-readiness" element={<ReleaseReadiness />} />
                 <Route path="monitors" element={<Monitors />} />
                 <Route path="security" element={<Security />} />
+                <Route path="access-reviews" element={<AccessReviews />} />
+                <Route path="access-matrix" element={<AccessMatrix />} />
                 <Route path="triage" element={<Triage />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="traceability" element={<Traceability />} />
+                <Route path="requirements" element={<Requirements />} />
+                <Route path="incidents" element={<Incidents />} />
                 <Route path="import-playwright" element={<ImportPlaywright />} />
                 <Route path="schedules" element={<Schedules />} />
                 <Route path="proposals" element={<Proposals />} />

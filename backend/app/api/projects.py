@@ -249,7 +249,8 @@ async def add_user_to_project(project_id: int, user_id: int, access: AccessUpdat
     if not allowed:
         raise HTTPException(status_code=403, detail="Permission denied to modify project access")
         
-    await workspace_service.add_user_project_access(user_id, project_id, access.access_level, session)
+    await workspace_service.add_user_project_access(user_id, project_id, access.access_level, session,
+                                                    actor_id=current_user.id)
     return {"status": "success"}
 
 class ProjectInvite(BaseModel):

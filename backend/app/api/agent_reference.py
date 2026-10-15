@@ -208,6 +208,56 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Prefer this over wait-timeout for XHR-driven UIs. Use trigger_selector when a click fires the request — sequential steps cannot overlap otherwise.",
     },
     {
+        "type": "wait-for-email",
+        "category": "wait",
+        "params": {
+            "params.to": "Inbox to read — {{inbox.address}} (default) or {{inbox.address.<label>}}; only this run's addresses work",
+            "params.subject": "Subject must contain this (case-insensitive, optional)",
+            "params.subjectRegex": "Subject must match this regex (optional)",
+            "params.from": "Sender must contain this (optional)",
+            "params.extract": "'link' | 'code' | 'body' | 'subject' | 'none' (default 'link')",
+            "params.pattern": "link: regex the URL must match (e.g. '/reset'); code: regex, group 1 if present (default \\b(\\d{6})\\b)",
+            "params.variableName": "Variable for the extracted value (default email_link / email_code / email_body / email_subject)",
+            "params.timeout": "Milliseconds to wait (default 60000, max 300000)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "wait-for-email",
+            "params": {"to": "{{inbox.address}}", "subject": "Reset your password",
+                       "extract": "link", "pattern": "/reset", "variableName": "reset_link"},
+        },
+        "notes": "Type {{inbox.address}} into the app's email field first — it is a per-run, per-case "
+                 "address on the instance's test inbox (Mailpit or an IMAP plus-address). Use "
+                 "{{inbox.address.<label>}} for several addresses in one case. Waits for the NEWEST "
+                 "matching email, then e.g. goto '{{reset_link}}' or fill the OTP field with "
+                 "'{{email_code}}'. Fails at once when the instance has no test inbox configured.",
+    },
+    {
+        "type": "wait-for-webhook",
+        "category": "wait",
+        "params": {
+            "params.url": "Capture URL — {{webhook.url}} (default) or {{webhook.url.<label>}}",
+            "params.method": "Only requests with this HTTP method (optional)",
+            "params.path": "Only requests whose path after the token contains this (optional)",
+            "params.where": "Object of {jsonPath: expected} the JSON body must match, e.g. {'event': 'payment.succeeded'} (optional)",
+            "params.extract": "JSON path to store, e.g. 'data.order.id' (optional; default stores the whole body)",
+            "params.equals": "Fail unless the extracted value equals this (optional)",
+            "params.variableName": "Variable for the extracted value (default 'webhook_body', or 'webhook_value' with extract)",
+            "params.timeout": "Milliseconds to wait (default 60000, max 300000)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "wait-for-webhook",
+            "params": {"url": "{{webhook.url}}", "method": "POST", "where": {"type": "order.paid"},
+                       "extract": "data.id", "variableName": "order_id"},
+        },
+        "notes": "Register {{webhook.url}} as the callback URL in the app under test (UI or http-request "
+                 "step). It resolves to <public TraceIQ URL>/api/hooks/capture/<token>, which the app must "
+                 "be able to reach. Captures are redacted before storage (credential headers and denylisted "
+                 "JSON keys such as token/password become [REDACTED]), capped at 256 kB / 50 per URL, and "
+                 "kept 24 h. The newest matching request wins.",
+    },
+    {
         "type": "expect-visible",
         "category": "assertion",
         "params": {"selector": "Element that must be visible"},
@@ -500,6 +550,74 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Validates AMP HTML compliance.",
     },
     # ------------------------------------------------------------------
+    # Security assertions (WP4). Header values in results are redacted;
+    # cookie values are never reported, only flags.
+    # ------------------------------------------------------------------
+    {
+        "type": "expect-header",
+        "category": "security",
+        "params": {
+            "params.name": "Header name (case-insensitive), e.g. Strict-Transport-Security",
+            "params.mode": "'present' (default) | 'absent' | 'equals' | 'regex' (case-insensitive)",
+            "params.value": "Expected value for equals / pattern for regex",
+            "params.url": "Optional URL to GET (shares the browser's cookies); default the current page URL",
+        },
+        "example": {"id": "<uuid>", "type": "expect-header",
+                    "params": {"name": "Content-Security-Policy", "mode": "regex", "value": "default-src"}},
+        "notes": "Re-requests the page and checks the response header — HSTS, CSP, X-Frame-Options, "
+                 "or 'absent' for X-Powered-By / Server version leaks.",
+    },
+    {
+        "type": "expect-cookie-flags",
+        "category": "security",
+        "params": {
+            "params.name": "Cookie name",
+            "params.secure": "true/false — required Secure flag (omit to not check)",
+            "params.httpOnly": "true/false — required HttpOnly flag",
+            "params.sameSite": "'Strict' | 'Lax' | 'None'",
+            "params.url": "Optional URL to GET first so its Set-Cookie lands in the jar",
+        },
+        "example": {"id": "<uuid>", "type": "expect-cookie-flags",
+                    "params": {"name": "sessionid", "secure": True, "httpOnly": True, "sameSite": "Lax"}},
+        "notes": "Fails when the cookie is missing or any matching cookie lacks a required flag.",
+    },
+    {
+        "type": "expect-blocked-after",
+        "category": "security",
+        "params": {
+            "value": "URL to repeat (or params.url); relative paths use the environment base_url",
+            "params.method": "Default POST",
+            "params.body": "Request body (e.g. a wrong-password login)",
+            "params.headers": "Extra headers",
+            "params.attempts": "N — must be blocked by this attempt (default 10, max 50)",
+            "params.statuses": "Blocking statuses (default [429, 423, 403])",
+            "params.interval_ms": "Optional delay between attempts (max 5000)",
+            "params.authorized": "MUST be true — attestation that you may hammer this target",
+        },
+        "example": {"id": "<uuid>", "type": "expect-blocked-after", "value": "/api/auth/login",
+                    "params": {"body": {"email": "probe@example.com", "password": "wrong"},
+                               "attempts": 10, "authorized": True}},
+        "notes": "Rate-limit / lockout check. Refused unless the project's security testing is enabled, "
+                 "the host is on its Security allowlist, and authorized=true.",
+    },
+    {
+        "type": "expect-session-dead",
+        "category": "security",
+        "params": {
+            "value": "URL to replay with the pre-logout session (or params.url)",
+            "params.logout_url": "Logout endpoint (sent with params.logout_method, default POST)",
+            "params.logout_selector": "…or a logout button to click instead",
+            "params.headers": "Extra replay headers, e.g. {'Authorization': 'Bearer {{token}}'}",
+            "params.statuses": "Statuses that mean 'dead' (default [401, 403, 440])",
+            "params.login_pattern": "Regex a redirect Location must match to count as dead",
+        },
+        "example": {"id": "<uuid>", "type": "expect-session-dead", "value": "/api/me",
+                    "params": {"logout_url": "/api/auth/logout"}},
+        "notes": "Snapshots the cookies, logs out, then replays the old session. Passes on a dead status "
+                 "or a redirect to login; fails if the server still accepts it (logout only cleared the "
+                 "browser cookie).",
+    },
+    # ------------------------------------------------------------------
     # Mobile (native app) steps — Phase MOB. Cases using these MUST set
     # executor='mobile_appium' and the run MUST pin an app_build_id
     # (POST /api/runs body). Executed by the mobile worker via Appium.
@@ -602,7 +720,7 @@ async def list_step_types() -> Dict[str, Any]:
     return {
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
-        "last_updated": "2026-07-25",
+        "last_updated": "2026-10-15",
     }
 
 

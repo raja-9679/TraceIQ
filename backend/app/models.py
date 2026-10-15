@@ -136,6 +136,12 @@ class Workspace(SQLModel, table=True):
     # override (either being true permits active scans).
     active_scan_enabled: bool = Field(default=False)
 
+    # Security-finding remediation SLA in days per severity, e.g.
+    # {"critical": 7, "high": 30, "medium": 90, "low": 180}. NULL → the
+    # built-in DEFAULT_FINDING_SLA in app/services/finding_lifecycle.py.
+    finding_sla_days: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -388,6 +394,9 @@ class TestCaseBase(SQLModel):
     # from the stored session (e.g. tests of the login flow itself).
     is_auth_setup: bool = Field(default=False)
     use_auth_session: bool = Field(default=True)
+    # Fail this case on uncaught page errors / console.error. None = inherit
+    # the suite chain's `fail_on_console_errors` setting (default off).
+    fail_on_console_errors: Optional[bool] = Field(default=None)
 
     # Data-driven tests: a list of row objects. At dispatch the case expands
     # into one execution per row; steps reference values as {{data.KEY}}.
@@ -425,6 +434,7 @@ class TestCaseUpdate(SQLModel):
     project_id: Optional[int] = None
     is_auth_setup: Optional[bool] = None
     use_auth_session: Optional[bool] = None
+    fail_on_console_errors: Optional[bool] = None
     dataset: Optional[List[dict]] = None
     tags: Optional[List[str]] = None
     priority: Optional[str] = None
@@ -617,6 +627,12 @@ class TestRunBase(SQLModel):
     # run installs and tests. Soft FK (like api_key_id) to stay
     # migration-friendly; irrelevant (None) for web runs.
     app_build_id: Optional[int] = Field(default=None)
+    # Identity-matrix runs (WP4): runs fanned out from one request over
+    # several personas share this id so results can be shown as a grid.
+    matrix_group: Optional[str] = Field(default=None, index=True)
+    # Run with NO identity at all: neither the project's stored session nor
+    # the suite's credential headers. The "anonymous" column of a matrix.
+    anonymous: Optional[bool] = Field(default=None)
 
 
 class UserRead(SQLModel):
@@ -931,10 +947,34 @@ class SecurityFinding(SQLModel, table=True):
     # Triage lifecycle. `fingerprint` identifies the same logical finding
     # across scans (category|title|host+path) so scan-over-scan diffs work and
     # false-positive verdicts carry forward instead of resurfacing every scan.
-    status: str = Field(default="open", index=True)  # open|acknowledged|false_positive|resolved
+    # open | in_progress | fixed_pending_verification | verified_fixed |
+    # accepted_risk | false_positive — see app/services/finding_lifecycle.py,
+    # which owns the transition rules. (Pre-WP7 rows used acknowledged/resolved;
+    # migration c7a2b3c4d5e7 renames them.)
+    status: str = Field(default="open", index=True)
+    # The finding's owner. Named assignee_id for history; the UI calls it owner.
     assignee_id: Optional[int] = Field(default=None, foreign_key="users.id")
     resolved_at: Optional[datetime] = Field(default=None)
     fingerprint: Optional[str] = Field(default=None, index=True)
+    # Workflow (WP7). due_at defaults from the workspace's severity SLA at first
+    # detection and is carried forward unchanged to later occurrences — the SLA
+    # clock starts when the problem was first seen, not when it was last seen.
+    due_at: Optional[datetime] = Field(default=None, index=True)
+    risk_justification: Optional[str] = Field(default=None)
+    risk_expires_at: Optional[datetime] = Field(default=None, index=True)
+    risk_approved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    risk_approved_at: Optional[datetime] = Field(default=None)
+    verified_at: Optional[datetime] = Field(default=None)
+    # Every scan writes its own rows; workflow state lives on the NEWEST row per
+    # (project, scan_type, fingerprint) and older rows point at their successor.
+    # Soft reference (no FK) on purpose: a self-FK would need its own delete
+    # policy and retention deletes runs — and their findings — out of order.
+    superseded_by_id: Optional[int] = Field(default=None, index=True)
+    # SecurityScan queued to retest this finding after it was marked fixed.
+    retest_scan_id: Optional[int] = Field(default=None)
+    # Where a leak-detection hit was found: {run_id, result_id, case_id, url,
+    # field}. Other scan types leave it NULL (target_url is their location).
+    location: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
 
 class SecurityScan(SQLModel, table=True):
@@ -961,6 +1001,67 @@ class SecurityScan(SQLModel, table=True):
     # and cleared once the scan finishes.
     auth_header_name: Optional[str] = Field(default=None)
     auth_header_value: Optional[str] = Field(default=None)
+
+
+class SecurityEventOutbox(SQLModel, table=True):
+    """Transactional outbox for SIEM delivery and security-alert evaluation.
+
+    A row is added in the SAME flush as the audit row it describes (see
+    app/services/siem.py:install_outbox_listener), so an event exists exactly
+    when its audit row committed — never for a rolled-back change, never lost
+    because the process died between commit and send. A beat task drains it.
+
+    No foreign keys: like auditlog, this outlives what it describes. It is
+    instance-level, not workspace data, so it is not part of a workspace purge;
+    the drain deletes rows once both jobs are done and the SIEM_OUTBOX_MAX cap
+    bounds it during a long SIEM outage.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(default="audit")  # audit | security_alert | test
+    # Points at the audit row by its chain hash (its id is unknown before the
+    # flush). Indexed on auditlog already.
+    audit_row_hash: Optional[str] = Field(default=None)
+    # Inline event for kinds that are not an audit row.
+    payload: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    needs_delivery: bool = Field(default=False)
+    needs_alert_eval: bool = Field(default=False)
+    attempts: int = Field(default=0)
+    next_attempt_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    last_error: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AccessReviewCampaign(SQLModel, table=True):
+    """A quarterly access review (WP7). workspace_id NULL = instance-wide."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
+    name: str
+    status: str = Field(default="open")  # open | signed_off
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    signed_off_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    signed_off_at: Optional[datetime] = Field(default=None)
+    sign_off_note: Optional[str] = Field(default=None)
+    revocations_applied_at: Optional[datetime] = Field(default=None)
+    revocations_applied_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
+class AccessReviewItem(SQLModel, table=True):
+    """One reviewable grant: a user's access, or an API key. `snapshot` is the
+    access as it stood when the campaign started — the review attests to what
+    the reviewer saw, even if access changes afterwards."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    campaign_id: int = Field(foreign_key="accessreviewcampaign.id", index=True)
+    subject_type: str  # user | api_key
+    subject_id: int
+    label: str
+    snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    decision: Optional[str] = Field(default=None)  # keep | revoke
+    note: Optional[str] = Field(default=None)
+    decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    decided_at: Optional[datetime] = Field(default=None)
+    applied_at: Optional[datetime] = Field(default=None)
+    apply_result: Optional[str] = Field(default=None)
 
 
 class SecuritySettings(SQLModel):
@@ -1006,6 +1107,16 @@ class SecurityFindingRead(SQLModel):
     assignee_id: Optional[int] = None
     resolved_at: Optional[datetime] = None
     fingerprint: Optional[str] = None
+    project_id: Optional[int] = None
+    due_at: Optional[datetime] = None
+    risk_justification: Optional[str] = None
+    risk_expires_at: Optional[datetime] = None
+    risk_approved_by_id: Optional[int] = None
+    risk_approved_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    superseded_by_id: Optional[int] = None
+    retest_scan_id: Optional[int] = None
+    location: Optional[dict] = None
 
 
 class SecurityScanRead(SQLModel):
@@ -1024,6 +1135,79 @@ class SecurityScanRead(SQLModel):
     # Whether header auth was configured — the value itself is never exposed.
     auth_header_name: Optional[str] = None
     findings: List[SecurityFindingRead] = []
+
+
+# =============================================================================
+# WP4 — Access-control matrix (rows = targets, columns = personas)
+# =============================================================================
+
+
+class AccessMatrix(SQLModel, table=True):
+    """Expected allow/deny per (target, identity) for one project.
+
+    `rows` is a JSON list — each row is a target (`kind` case | request | page)
+    with a stable string `key` and a `cells` map keyed by persona id (as a
+    string) or "anonymous". Kept as JSON rather than child tables because a
+    matrix is edited and executed as a whole; executions snapshot it, so a
+    later edit never rewrites what an earlier run tested. Shape and validation
+    live in `app/services/access_matrix.py`.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    description: Optional[str] = None
+    # Prefix for relative request/page paths (e.g. https://app.example.com).
+    base_url: Optional[str] = None
+    # Column order. Personas are validated against the project at save time
+    # and again at execution (they may have been deleted since).
+    persona_ids: Optional[List[int]] = Field(default=[], sa_column=Column(JSON))
+    include_anonymous: bool = Field(default=False)
+    # Statuses that count as an explicit denial. Default 401/403/404.
+    deny_statuses: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    rows: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AccessMatrixRun(SQLModel, table=True):
+    """One execution of an AccessMatrix: one cell row per non-skip cell."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    matrix_id: int = Field(foreign_key="accessmatrix.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    status: str = Field(default="pending")   # pending | running | completed | error
+    # Shared with the TestRuns created for case rows (TestRun.matrix_group).
+    matrix_group: str = Field(index=True)
+    # The matrix as executed (rows, persona names, deny statuses).
+    snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # The caller attested authorization to send mutating requests.
+    authorized: bool = Field(default=False)
+    error: Optional[str] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
+
+class AccessMatrixCell(SQLModel, table=True):
+    """Expected vs observed for one (row, persona) of a matrix run."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    matrix_run_id: int = Field(foreign_key="accessmatrixrun.id", index=True)
+    row_key: str
+    # Persona id as a string, or "anonymous".
+    persona_key: str
+    expect: str                               # allow | deny
+    expected_status: Optional[int] = None
+    # pending | pass | fail | inconclusive
+    verdict: str = Field(default="pending")
+    reason: Optional[str] = None
+    # Redacted evidence: status, final url, headers, body excerpt, element
+    # presence, screenshot key, swapped id. Never raw secrets.
+    observed: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Case rows execute as a normal TestRun; the run outlives the cell link.
+    test_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
 
 
 class SecurityScanResult(SQLModel):
@@ -1081,6 +1265,16 @@ class QualityGatePolicy(SQLModel):
     # Require the team's own CI results (ingested JUnit reports) to be green.
     # Fails closed when required but no report exists for the commit/project.
     require_external_tests_pass: bool = False
+    # Release readiness (2026-10). All off by default so a stored policy that
+    # predates them evaluates exactly as before. See
+    # app/services/release_readiness.py for how each one decides.
+    # Cases with an ACTIVE quarantine or flake_score >= 0.4. None = no limit.
+    max_flaky_cases: Optional[int] = Field(default=None, ge=0)
+    # Every priority="critical" case must have passed on the evaluated commit.
+    require_critical_passed: bool = False
+    # Newest passing result of each critical case (all cases when none is
+    # critical) must be at most this many days old. None = not enforced.
+    max_evidence_age_days: Optional[int] = Field(default=None, ge=1)
 
 
 class QualityGateCheck(SQLModel):
@@ -1089,6 +1283,10 @@ class QualityGateCheck(SQLModel):
     actual: str
     threshold: str
     detail: Optional[str] = None
+    # The check failed because evidence is absent (no run, no report, a case
+    # that never ran), not because something failed. Release readiness turns
+    # a gate that fails ONLY on missing data into "insufficient data".
+    missing_data: bool = False
 
 
 class QualityGateResult(SQLModel):
@@ -1101,6 +1299,95 @@ class QualityGateResult(SQLModel):
 
 
 DEFAULT_QUALITY_GATE = QualityGatePolicy()
+
+
+class ReadinessRun(SQLModel):
+    id: int
+    status: TestStatus
+    created_at: datetime
+    suite_name: Optional[str] = None
+    browser: Optional[str] = None
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    selection_mode: Optional[str] = None
+    total_tests: int = 0
+    passed_tests: int = 0
+    failed_tests: int = 0
+
+
+class ReadinessCriticalCase(SQLModel):
+    case_id: int
+    name: str
+    # On the evaluated commit: passed | failed | not_run. "not_run" is never
+    # read as a pass.
+    status: str
+    run_id: Optional[int] = None
+    detail: Optional[str] = None
+    # Newest result anywhere in the project (any commit), so "not_run" still
+    # says when the case last produced evidence.
+    last_status: Optional[str] = None
+    last_at: Optional[datetime] = None
+    last_commit: Optional[str] = None
+    last_passed_at: Optional[datetime] = None
+
+
+class ReadinessPerson(SQLModel):
+    id: int
+    email: str
+    full_name: Optional[str] = None
+
+
+class ReadinessQuarantine(SQLModel):
+    flake_record_id: int
+    case_id: int
+    case_name: str
+    flake_score: float
+    source: Optional[str] = None
+    reason: Optional[str] = None
+    quarantined_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    owner: Optional[ReadinessPerson] = None
+
+
+class ReadinessRequirementCase(SQLModel):
+    case_id: int
+    name: str
+    status: str  # passed | failed | not_run (on the evaluated commit)
+
+
+class ReadinessRequirement(SQLModel):
+    ref: str
+    source: str
+    title: Optional[str] = None
+    url: Optional[str] = None
+    # passing = every linked case passed; failing = any failed; partial =
+    # some passed, the rest did not run; untested = none ran.
+    status: str
+    cases: List[ReadinessRequirementCase] = []
+
+
+class ReadinessCommit(SQLModel):
+    """A recent commit with finished runs — options for the commit picker."""
+    git_commit: str
+    git_branch: Optional[str] = None
+    last_run_at: datetime
+    runs: int
+
+
+class ReleaseReadiness(SQLModel):
+    project_id: int
+    verdict: str  # ready | not_ready | insufficient_data
+    reasons: List[str] = []
+    # How the evaluated runs were chosen: commit | branch | latest_run | none
+    scope: str
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    gate: QualityGateResult
+    runs: List[ReadinessRun] = []
+    critical_cases: List[ReadinessCriticalCase] = []
+    quarantines: List[ReadinessQuarantine] = []
+    requirements: List[ReadinessRequirement] = []
+    recent_commits: List[ReadinessCommit] = []
 
 
 # =============================================================================
@@ -2174,6 +2461,33 @@ class LLMUsageEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
+class WebhookCapture(SQLModel, table=True):
+    """One request the app under test sent to a `{{webhook.url}}` capture URL.
+
+    Short-lived by design: rows are swept after 24 h by
+    `cleanup_tasks.purge_webhook_captures`, they exist only so a running
+    `wait-for-webhook` step can see them. Headers and body are redacted
+    BEFORE they are stored (project data policy) — the payload comes from an
+    arbitrary third-party app and is never trusted to be clean. `token` is the
+    full self-verifying capture token (see app/services/step_hooks.py); the
+    worker looks captures up by it.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token: str = Field(index=True)
+    run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: int
+    label: str = Field(default="default")
+    method: str
+    path: str = Field(default="")         # anything after the token
+    query: str = Field(default="")
+    headers: dict = Field(default={}, sa_column=Column(JSON))
+    content_type: str = Field(default="")
+    body: str = Field(default="")
+    body_size: int = Field(default=0)     # bytes received, before truncation
+    truncated: bool = Field(default=False)
+    received_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class PlanRead(SQLModel):
     id: int
     name: str
@@ -2255,6 +2569,111 @@ class RequirementCoverage(SQLModel):
     failing: int
     untested: int
     test_names: List[str] = []
+
+
+# =============================================================================
+# Inbound integrations (WP6): requirements imported from Jira/Linear, and
+# incidents pushed in by paging tools. See app/api/requirements.py and
+# app/api/incidents.py.
+# =============================================================================
+
+
+class Requirement(SQLModel, table=True):
+    """A ticket imported from an external tracker as a testable requirement.
+
+    Coverage is NOT stored here: it joins RequirementLink on `external_key`
+    (so a manual link with the same ref counts too) and reads the latest
+    results. `acceptance_criteria` is the parsed + ambiguity-flagged list,
+    re-derived on every sync; per-criterion proposal ids survive a sync when
+    the criterion text is unchanged."""
+    __table_args__ = (UniqueConstraint("project_id", "source", "external_key",
+                                       name="uq_requirement_project_source_key"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    # The workspace's tracker connection it came from (credentials reused for
+    # re-sync). Cleared when the connection is deleted; the row stays.
+    tracker_config_id: Optional[int] = Field(default=None, foreign_key="issuetrackerconfig.id", index=True)
+    source: str                                  # jira | linear
+    external_key: str = Field(index=True)        # PROJ-123 / ENG-42
+    external_id: Optional[str] = None
+    title: str
+    url: Optional[str] = None
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    external_status: Optional[str] = None
+    # [{index, text, kind, ambiguous, reasons, proposal_id?, proposal_status?}]
+    acceptance_criteria: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    external_updated_at: Optional[datetime] = None
+    last_synced_at: datetime = Field(default_factory=datetime.utcnow)
+    sync_error: Optional[str] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Incident(SQLModel, table=True):
+    """A production incident, created by hand or by the inbound webhook.
+
+    `fingerprint` (service + normalised title, app/services/incidents.py) links
+    recurrences: a new incident with the fingerprint of an earlier one gets
+    `previous_incident_id` and `recurrence_count = earlier + 1`.
+    `previous_incident_id`, `matched_cluster_id` and `regression_proposal_id`
+    are plain ids on purpose (like IssueTicket.cluster_id): they are pointers
+    into history, and an FK would make deleting the target a cascade problem."""
+    __table_args__ = (UniqueConstraint("project_id", "source", "external_id",
+                                       name="uq_incident_project_source_external"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    source: str = Field(default="manual")        # manual | generic | pagerduty | opsgenie
+    external_id: Optional[str] = None            # the paging tool's id (webhook idempotency)
+    title: str
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    severity: str = Field(default="unknown")     # critical | high | medium | low | unknown
+    status: str = Field(default="open", index=True)  # open | acknowledged | resolved
+    service: Optional[str] = None
+    url: Optional[str] = None                    # the incident in the paging tool
+    affected_url: Optional[str] = None           # the app URL that broke (matching + generation)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    release: Optional[str] = None
+    fingerprint: str = Field(index=True)
+    recurrence_count: int = Field(default=0)
+    previous_incident_id: Optional[int] = None
+    matched_cluster_id: Optional[int] = None
+    matched_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    match_reason: Optional[str] = None
+    regression_proposal_id: Optional[int] = None
+    # proposed | needs_authoring | no_suite | accepted
+    regression_status: Optional[str] = None
+    regression_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    # Escaped-defect tracking: the incident is a bug that reached production.
+    # Either `escaped_case_id` names the test that should have caught it, or
+    # `escaped_no_test` records that no test existed.
+    escaped_defect: bool = Field(default=False, index=True)
+    escaped_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    escaped_no_test: bool = Field(default=False)
+    escaped_note: Optional[str] = None
+    escaped_marked_at: Optional[datetime] = None
+    escaped_marked_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class IncidentWebhook(SQLModel, table=True):
+    """Per-project inbound incident webhook. The secret is the HMAC key the
+    sender signs with, so it is stored reversibly encrypted (app/core/secrets),
+    shown once at creation/rotation and never returned again."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True, unique=True)
+    secret_encrypted: str
+    # Where webhook-created regression proposals go (CREATE needs a suite).
+    default_suite_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
+    enabled: bool = Field(default=True)
+    last_received_at: Optional[datetime] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    rotated_at: Optional[datetime] = None
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

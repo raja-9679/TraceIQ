@@ -51,9 +51,14 @@ export const DEFAULT_BODY_KEYS: readonly string[] = [
     'ssn', 'socialsecuritynumber', 'aadhaar', 'aadhar', 'taxid',
 ];
 
-export type PatternName = 'pan' | 'aadhaar' | 'jwt' | 'email' | 'phone';
+export type PatternName = 'pan' | 'aadhaar' | 'jwt' | 'cloud_keys' | 'email' | 'phone';
 
-export const DEFAULT_PATTERNS: readonly PatternName[] = ['pan', 'aadhaar', 'jwt'];
+/**
+ * `cloud_keys` is a family of vendor credential formats (AWS, GitHub, Slack,
+ * Stripe, Google, Azure, PEM private keys). Each has a fixed prefix, so unlike
+ * email/phone it does not collide with ordinary test data.
+ */
+export const DEFAULT_PATTERNS: readonly PatternName[] = ['pan', 'aadhaar', 'jwt', 'cloud_keys'];
 
 export interface RedactionPolicy {
     /** Extra header names beyond DEFAULT_HEADER_NAMES. */
@@ -81,6 +86,16 @@ function bodyKeySet(policy?: RedactionPolicy): Set<string> {
 
 function patternNames(policy?: RedactionPolicy): readonly string[] {
     return policy?.patterns === undefined ? DEFAULT_PATTERNS : policy.patterns;
+}
+
+/**
+ * The `data_policy` a job carries. The dispatcher has always put it under
+ * `settings` (`_settings_payload`), while the workers read it from the job's
+ * top level — so every web and mobile job silently ran at the default
+ * capture level with only the built-in redaction rules. Accept both.
+ */
+export function jobDataPolicy(job: any): any {
+    return job?.data_policy ?? job?.settings?.data_policy;
 }
 
 /** Build a policy from the `data_policy` blob the backend attaches to a job. */
@@ -161,7 +176,24 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}/g;
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const PHONE_RE = /(?<![\d.])\+?\d[\d ()-]{8,16}\d(?![\d.])/g;
 
+/**
+ * Mirrors CLOUD_KEY_PATTERNS in backend/app/services/redaction.py. The PEM rule
+ * runs to the END line or to the end of the text, because a capture truncated
+ * mid-key still leaks a private key.
+ */
+export const CLOUD_KEY_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+    ['private_key', /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)/g],
+    ['aws_access_key', /(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])/g],
+    ['github_token', /(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})/g],
+    ['slack_token', /(?<![A-Za-z0-9])xox[abposr]-[A-Za-z0-9-]{10,}/g],
+    ['stripe_key', /(?<![A-Za-z0-9])[sr]k_live_[A-Za-z0-9]{20,}/g],
+    ['google_api_key', /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g],
+    ['azure_storage_key', /(?<=AccountKey=)[A-Za-z0-9+/]{86}==/g],
+];
+
 const PATTERN_FUNCS: Record<string, (text: string) => string> = {
+    cloud_keys: text => CLOUD_KEY_PATTERNS.reduce(
+        (out, [name, re]) => out.replace(re, token(name)), text),
     pan: text => text.replace(PAN_RE, match => {
         const digits = match.replace(/[ -]/g, '');
         return digits.length >= 13 && digits.length <= 19 && luhnValid(digits) ? token('pan') : match;
@@ -175,9 +207,10 @@ const PATTERN_FUNCS: Record<string, (text: string) => string> = {
     phone: text => text.replace(PHONE_RE, token('phone')),
 };
 
-// JWT first so a token's digit runs are already gone; Aadhaar before PAN so a
-// 12-digit id is not first swallowed by the wider PAN window.
-const PATTERN_ORDER: readonly string[] = ['jwt', 'aadhaar', 'pan', 'email', 'phone'];
+// Cloud keys first so an AWS key id's digit run is not half-eaten by the PAN
+// rule; JWT before PAN so a token's digit runs are already gone; Aadhaar before
+// PAN so a 12-digit id is not first swallowed by the wider PAN window.
+const PATTERN_ORDER: readonly string[] = ['cloud_keys', 'jwt', 'aadhaar', 'pan', 'email', 'phone'];
 
 export function redactText(text: any, policy?: RedactionPolicy): any {
     if (typeof text !== 'string' || !text) return text;
@@ -187,6 +220,50 @@ export function redactText(text: any, policy?: RedactionPolicy): any {
         if (enabled.has(name)) out = PATTERN_FUNCS[name](out);
     }
     return out;
+}
+
+// --------------------------------------------------------------------------
+// Inbound messages (test inbox emails, captured webhooks)
+// --------------------------------------------------------------------------
+
+const URL_RE = /https?:\/\/[^\s<>"')\]]+/g;
+// An opaque credential in a path: long, URL-safe, with a letter AND a digit,
+// so /blog/announcing-the-new-dashboard survives.
+const PATH_TOKEN_RE = /^(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{20,}$/;
+// A one-time code: 6-8 digits standing alone (a sentence-ending period is
+// fine; a decimal point on either side is not).
+const CODE_RE = /(?<!\w)(?<!\d\.)\d{6,8}(?!\w)(?!\.\d)/g;
+
+function redactUrl(url: string): string {
+    let cut = url.indexOf('?');
+    if (cut < 0) cut = url.indexOf('#');
+    const base = cut < 0 ? url : url.slice(0, cut);
+    const sep = cut < 0 ? '' : url[cut];
+    const [scheme, remainder] = [base.slice(0, base.indexOf('://')), base.slice(base.indexOf('://') + 3)];
+    const slashAt = remainder.indexOf('/');
+    let out = `${scheme}://${remainder}`;
+    if (slashAt >= 0) {
+        const host = remainder.slice(0, slashAt);
+        const path = remainder.slice(slashAt + 1).split('/')
+            .map(seg => (PATH_TOKEN_RE.test(seg) ? token('link') : seg)).join('/');
+        out = `${scheme}://${host}/${path}`;
+    }
+    return out + (sep ? sep + token('link') : '');
+}
+
+/**
+ * Free-text redaction for messages the APP UNDER TEST sends — a reset email,
+ * a captured webhook body shown as text. Those carry live credentials by
+ * design (the reset link IS the password), so beyond `redactText` this drops
+ * link query strings/fragments, masks opaque path segments and masks
+ * standalone 6-8 digit codes. Previews and logs only: a step extracts its
+ * value before redaction. Twin of redaction.py:redact_message_text.
+ */
+export function redactMessageText(text: any, policy?: RedactionPolicy): any {
+    if (typeof text !== 'string' || !text) return text;
+    let out = redactText(text, policy) as string;
+    out = out.replace(URL_RE, redactUrl);
+    return out.replace(CODE_RE, token('code'));
 }
 
 // --------------------------------------------------------------------------
@@ -320,7 +397,33 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
             a && typeof a === 'object' && typeof a.error === 'string'
                 ? { ...a, error: redactText(a.error, policy) } : a);
     }
+    if (Array.isArray(out.step_evidence)) out.step_evidence = redactStepEvidence(out.step_evidence, policy);
     return out;
+}
+
+/**
+ * Backstop over per-step evidence. Each field is scrubbed where it is
+ * captured (`core/evidence.ts`); this pass is what guarantees it even if a
+ * future capture point forgets. Twin: `_redact_step_evidence` in redaction.py.
+ */
+export function redactStepEvidence(entries: any, policy?: RedactionPolicy): any {
+    if (!Array.isArray(entries)) return entries;
+    return entries.map((e: any) => {
+        if (!e || typeof e !== 'object') return e;
+        const out = { ...e };
+        for (const f of ['error', 'selector', 'dom']) {
+            if (typeof out[f] === 'string') out[f] = redactText(out[f], policy);
+        }
+        if (Array.isArray(out.console)) {
+            out.console = out.console.map((c: any) =>
+                c && typeof c === 'object' && typeof c.text === 'string' ? { ...c, text: redactText(c.text, policy) } : c);
+        }
+        if (Array.isArray(out.requests)) {
+            out.requests = out.requests.map((r: any) =>
+                r && typeof r === 'object' && typeof r.url === 'string' ? { ...r, url: redactText(r.url, policy) } : r);
+        }
+        return out;
+    });
 }
 
 /**
@@ -341,6 +444,30 @@ export function redactJobResult(result: any, policy?: RedactionPolicy): any {
     const out = redactCaseResult(result, policy);
     if (Array.isArray(out.test_results)) {
         out.test_results = out.test_results.map((r: any) => redactCaseResult(r, policy));
+    }
+    return out;
+}
+
+// --------------------------------------------------------------------------
+// Access-matrix observations
+// --------------------------------------------------------------------------
+
+const OBSERVATION_TEXT_FIELDS = ['url', 'final_url', 'error', 'swapped_id', 'owner_url'];
+
+/**
+ * Scrub an access-matrix cell observation (twin of `redact_access_observation`
+ * in backend/app/services/redaction.py). It carries response headers and a body
+ * excerpt of a request made AS a persona — exactly where a session token gets
+ * echoed back.
+ */
+export function redactAccessObservation(obs: any, policy?: RedactionPolicy): any {
+    if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return obs;
+    const out = { ...obs };
+    if ('headers' in out) out.headers = redactHeaders(out.headers, policy);
+    if ('owner_headers' in out) out.owner_headers = redactHeaders(out.owner_headers, policy);
+    if ('body_excerpt' in out) out.body_excerpt = redactBody(out.body_excerpt, out.content_type, policy);
+    for (const field of OBSERVATION_TEXT_FIELDS) {
+        if (typeof out[field] === 'string') out[field] = redactText(out[field], policy);
     }
     return out;
 }

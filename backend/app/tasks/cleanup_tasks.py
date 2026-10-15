@@ -150,10 +150,55 @@ def purge_old_runs():
                     delete_objects(report)
                 print(f"[Retention] Purged {purged} run(s) past their retention window")
 
+            # Matrix executions follow the same windows. Own try: a failure
+            # here must not undo (or be undone by) the run purge above.
+            try:
+                purge_old_matrix_runs(session, windows, now, batch_size)
+            except Exception as e:
+                session.rollback()
+                print(f"[Retention] Error purging old access-matrix runs: {e}")
+
     except Exception as e:
         print(f"[Retention] Error purging old runs: {e}")
 
     return purged
+
+
+_MATRIX_RUN_TERMINAL = ("completed", "error")
+
+
+def purge_old_matrix_runs(session, windows, now, batch_size) -> int:
+    """Delete finished AccessMatrixRuns (+ cells + screenshots) past their
+    project's run-retention window. Called from `purge_old_runs` with the same
+    per-project windows, so a matrix run lives exactly as long as a TestRun.
+
+    The matrix definition is never touched — it is configuration, not history.
+    The TestRuns a case row created are ordinary runs and age out through the
+    run sweep (their cell link is NULLIFY in entity_delete). Pending/running
+    executions are never swept: the collector still owns them.
+    """
+    from sqlmodel import delete
+
+    from app.models import AccessMatrixCell, AccessMatrixRun
+    from app.services.purge import _delete_objects
+    from app.services.retention import select_expired
+
+    candidates = session.exec(
+        select(AccessMatrixRun.id, AccessMatrixRun.project_id, AccessMatrixRun.created_at)
+        .where(AccessMatrixRun.status.in_(_MATRIX_RUN_TERMINAL))
+        .order_by(AccessMatrixRun.created_at.asc())
+        .limit(batch_size * 4)
+    ).all()
+    doomed = select_expired(candidates, windows, now, batch_size)
+    if not doomed:
+        return 0
+    session.exec(delete(AccessMatrixCell).where(AccessMatrixCell.matrix_run_id.in_(doomed)))
+    session.exec(delete(AccessMatrixRun).where(AccessMatrixRun.id.in_(doomed)))
+    session.commit()
+    # Page-row screenshots, after the commit; best-effort like run artifacts.
+    _delete_objects([f"access-matrix/{rid}/" for rid in doomed])
+    print(f"[Retention] Purged {len(doomed)} access-matrix run(s) past their retention window")
+    return len(doomed)
 
 
 @celery_app.task(name="app.tasks.cleanup_tasks.purge_old_audit_logs")
@@ -339,3 +384,39 @@ def purge_orphaned_artifacts():
         report["errors"].append(str(exc))
         print(f"[Retention] Orphan sweep failed: {exc}")
     return report
+
+
+#: Captured webhook requests exist only for a running wait-for-webhook step.
+WEBHOOK_CAPTURE_TTL_HOURS = 24
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_webhook_captures")
+def purge_webhook_captures(ttl_hours: int = WEBHOOK_CAPTURE_TTL_HOURS):
+    """Delete webhook captures older than the TTL.
+
+    Not tied to RUN_RETENTION_DAYS on purpose: a capture is a third-party
+    payload held only so an in-flight step can read it, so it should not live
+    as long as the run's evidence does — even though it is redacted, "we keep
+    whatever strangers POST at us for a year" is the wrong default. Batched so
+    a backlog (beat down for a week) cannot turn into one huge transaction.
+    """
+    from sqlalchemy import text
+
+    cutoff = datetime.utcnow() - timedelta(hours=max(1, int(ttl_hours)))
+    batch = int(getattr(settings, 'RETENTION_BATCH_SIZE', 500) or 500)
+    total = 0
+    with Session(sync_engine) as session:
+        while True:
+            deleted = session.execute(text("""
+                DELETE FROM webhookcapture
+                 WHERE id IN (SELECT id FROM webhookcapture
+                               WHERE received_at < :cutoff
+                               ORDER BY id LIMIT :batch)
+            """), {"cutoff": cutoff, "batch": batch}).rowcount or 0
+            session.commit()
+            total += deleted
+            if deleted < batch:
+                break
+    if total:
+        print(f"[Cleanup] Expired {total} webhook capture(s) older than {ttl_hours} h")
+    return total

@@ -52,11 +52,11 @@ const describe = (c: QualityGateCheck) =>
 
 // --- policy + CI (unchanged behaviour, restyled) -------------------------------------
 
-function NumberRow({ label, value, onChange, step }: { label: string; value: number | string; onChange: (v: string) => void; step?: string }) {
+function NumberRow({ label, value, onChange, step, min }: { label: string; value: number | string; onChange: (v: string) => void; step?: string; min?: number }) {
     return (
         <label className="flex min-h-11 items-center justify-between gap-3 text-sm">
             <span>{label}</span>
-            <Input type="number" step={step} className="h-9 w-28 rounded-full" value={value} onChange={(e) => onChange(e.target.value)} />
+            <Input type="number" step={step} min={min} className="h-9 w-28 rounded-full" value={value} onChange={(e) => onChange(e.target.value)} />
         </label>
     );
 }
@@ -92,6 +92,15 @@ function PolicyForm({ projectId, initial }: { projectId: number; initial: Qualit
             <CheckRow label="Require monitors up" checked={policy.require_monitors_up} onChange={(v) => setPolicy({ ...policy, require_monitors_up: v })} />
             <CheckRow label="Require external CI tests green (ingested JUnit)" checked={policy.require_external_tests_pass ?? false}
                 onChange={(v) => setPolicy({ ...policy, require_external_tests_pass: v })} />
+            <div className="mt-3 border-t border-border pt-3">
+                <Eyebrow>Release readiness (blank = off)</Eyebrow>
+                <NumberRow label="Maximum flaky cases (quarantined or score ≥ 0.4)" min={0} value={policy.max_flaky_cases ?? ''}
+                    onChange={(v) => setPolicy({ ...policy, max_flaky_cases: v === '' ? null : Math.max(0, parseInt(v) || 0) })} />
+                <CheckRow label="Require every critical case passed on the commit" checked={policy.require_critical_passed ?? false}
+                    onChange={(v) => setPolicy({ ...policy, require_critical_passed: v })} />
+                <NumberRow label="Maximum evidence age, days (critical cases; all if none)" min={1} value={policy.max_evidence_age_days ?? ''}
+                    onChange={(v) => setPolicy({ ...policy, max_evidence_age_days: v === '' ? null : Math.max(1, parseInt(v) || 1) })} />
+            </div>
             <div className="mt-3 border-t border-border pt-3">
                 <Eyebrow>Performance budgets (0 = off)</Eyebrow>
                 <NumberRow label="Maximum LCP (ms)" value={policy.max_lcp_ms ?? 0} onChange={(v) => setPolicy({ ...policy, max_lcp_ms: parseInt(v) || 0 })} />

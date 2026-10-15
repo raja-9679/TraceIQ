@@ -444,7 +444,7 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
         print(f"[Aggregator] Flake scoring failed for run {run_id}: {e}")
 
 
-def _evidence_payload(res: Dict[str, Any]) -> Dict[str, Any]:
+def _evidence_payload(res: Dict[str, Any], run_id: Optional[int] = None) -> Dict[str, Any]:
     """Failure-analysis evidence a worker attached to one test's result.
 
     `console_errors` feed failure analysis; `step_dom` (step id -> compact
@@ -460,6 +460,96 @@ def _evidence_payload(res: Dict[str, Any]) -> Dict[str, Any]:
     attempts = _attempts(res.get('attempts'))
     if attempts:
         out['attempts'] = attempts
+    step_evidence = normalise_step_evidence(res.get('step_evidence'), run_id)
+    if step_evidence:
+        out['step_evidence'] = step_evidence
+    return out
+
+
+MAX_EVIDENCE_STEPS = 200
+_MAX_EVIDENCE_ITEMS = 10
+# Console + request items across one result (the worker caps at 150).
+MAX_EVIDENCE_ITEMS_PER_RESULT = 200
+_EVIDENCE_STATUSES = {'passed', 'failed', 'skipped', 'healed'}
+
+
+def _clip(value: Any, limit: int) -> Optional[str]:
+    return value[:limit] if isinstance(value, str) else None
+
+
+def normalise_step_evidence(raw: Any, run_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Per-step evidence (worker `step_evidence`), rebuilt field by field.
+
+    Like `attempts` it can come from a local worker, i.e. from any API-key
+    holder, so nothing is stored as sent: known keys only, types coerced,
+    strings and lists capped, malformed entries dropped (never raised — an
+    exception here would leave the job's result un-acked). Ids are re-derived
+    from the index, because failure investigation cites them and must be able
+    to trust that `s3.c0` means "first console item of step 3". A screenshot
+    key is kept only under THIS run's prefix: the UI presigns it, and a key
+    naming another run would be a pointer into someone else's artifacts.
+    """
+    if not isinstance(raw, list):
+        return []
+    shot_prefix = f"runs/{run_id}/screenshots/" if run_id is not None else None
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    budget = MAX_EVIDENCE_ITEMS_PER_RESULT
+    for item in raw[:MAX_EVIDENCE_STEPS]:
+        if not isinstance(item, dict):
+            continue
+        index = item.get('index')
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0 or index in seen:
+            continue
+        seen.add(index)
+        sid = f"s{index}"
+        status = item.get('status') if item.get('status') in _EVIDENCE_STATUSES else 'passed'
+        entry: Dict[str, Any] = {
+            'id': sid, 'index': index,
+            'type': _clip(item.get('type'), 60) or 'unknown',
+            'status': status,
+        }
+        for key, limit in (('step_id', 100), ('selector', 300), ('error', 2000)):
+            v = _clip(item.get(key), limit)
+            if v:
+                entry[key] = v
+        if isinstance(item.get('duration_ms'), (int, float)) and not isinstance(item.get('duration_ms'), bool):
+            entry['duration_ms'] = max(0, int(item['duration_ms']))
+        console = []
+        for c in (item.get('console') or [])[:min(_MAX_EVIDENCE_ITEMS, budget)] if isinstance(item.get('console'), list) else []:
+            if isinstance(c, dict) and isinstance(c.get('text'), str):
+                console.append({'id': f"{sid}.c{len(console)}",
+                                'type': _clip(c.get('type'), 20) or 'error',
+                                'text': c['text'][:500]})
+        if console:
+            entry['console'] = console
+        budget -= len(console)
+        requests = []
+        for r in (item.get('requests') or [])[:min(_MAX_EVIDENCE_ITEMS, budget)] if isinstance(item.get('requests'), list) else []:
+            if not isinstance(r, dict) or not isinstance(r.get('url'), str):
+                continue
+            req: Dict[str, Any] = {'id': f"{sid}.r{len(requests)}",
+                                   'method': (_clip(r.get('method'), 10) or 'GET').upper(),
+                                   'url': r['url'][:500]}
+            if isinstance(r.get('status'), int) and not isinstance(r.get('status'), bool):
+                req['status'] = r['status']
+            for key, limit in (('failure', 200), ('resource_type', 30)):
+                v = _clip(r.get(key), limit)
+                if v:
+                    req[key] = v
+            requests.append(req)
+        if requests:
+            entry['requests'] = requests
+        budget -= len(requests)
+        shot = item.get('screenshot')
+        if isinstance(shot, str) and shot_prefix and shot.startswith(shot_prefix) and '..' not in shot:
+            entry['screenshot'] = shot[:300]
+        dom = _clip(item.get('dom'), 4000)
+        if dom:
+            entry['dom'] = dom
+            entry['dom_scope'] = 'target' if item.get('dom_scope') == 'target' else 'page'
+        out.append(entry)
+    out.sort(key=lambda e: e['index'])
     return out
 
 
@@ -495,9 +585,9 @@ def _attempts(raw: Any) -> List[Dict[str, Any]]:
     return out
 
 
-def _case_payload(test_res: Dict[str, Any]) -> Dict[str, Any]:
+def _case_payload(test_res: Dict[str, Any], run_id: Optional[int] = None) -> Dict[str, Any]:
     """result_payload for one case of a continuous job."""
-    out = _evidence_payload(test_res)
+    out = _evidence_payload(test_res, run_id)
     if test_res.get('web_vitals'):
         out['web_vitals'] = test_res['web_vitals']
     return out
@@ -635,7 +725,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 existing.request_url = request_data.get('url')
                 existing.request_method = request_data.get('method')
                 existing.request_params = request_data.get('params')
-                case_payload = _case_payload(test_res)
+                case_payload = _case_payload(test_res, run_id)
                 if case_payload:
                     existing.result_payload = {**(existing.result_payload or {}),
                                                **case_payload}
@@ -662,7 +752,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     request_url=request_data.get('url'),
                     request_method=request_data.get('method'),
                     request_params=request_data.get('params'),
-                    result_payload=_case_payload(test_res) or None
+                    result_payload=_case_payload(test_res, run_id) or None
                 )
                 session.add(test_result)
 
@@ -745,7 +835,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
         typed_payload = result.get('result_payload')
         typed_kind = result.get('result_kind')
         merged_payload = None
-        evidence = _evidence_payload(result)
+        evidence = _evidence_payload(result, run_id)
         if typed_payload or web_vitals or evidence:
             merged_payload = {**(typed_payload or {}), **evidence}
             if web_vitals:

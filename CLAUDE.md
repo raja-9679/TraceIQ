@@ -362,7 +362,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   TraceIQ principal; recording it as `system` makes "who removed this person's
   access" unanswerable).
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
-  0.2.0, FastMCP, `mcp>=1.10,<2`): 51 tools, each with Pydantic input/output
+  0.2.0, FastMCP, `mcp>=1.10,<2`): 52 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio
   (`traceiq-mcp`) + streamable HTTP (`traceiq-mcp-http`, POST /mcp on 8088,
   per-request `X-API-Key`/Bearer). Add a tool = output model in
@@ -400,6 +400,216 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Identity matrix + access-control matrix (WP4, 2026-10)** — migration
+  `c4a2b3c4d5e4`. `POST /api/runs` body `persona_ids[]` (+ `include_anonymous`)
+  repeats the selection once per identity, sharing `TestRun.matrix_group`;
+  `TestRun.anonymous` strips the project session AND credential headers
+  (`access_matrix_runtime.strip_identity`). Personas validated by the shared
+  `access_matrix.validate_personas` (same rules as `persona_id`).
+  `AccessMatrix` (rows JSON: `case|request|page` targets × persona/`anonymous`
+  columns, cells `allow|deny|skip` + optional status) at
+  `/api/projects/{id}/access-matrices`, `/api/access-matrices/{id}[/run|/runs]`,
+  `/api/access-matrix-runs/{id}`. Execution: case rows → ordinary persona
+  TestRuns; request/page rows → `job_type=access_check` side jobs
+  (`execution-engine/src/access-check.ts`) that only OBSERVE; verdicts are
+  computed in `app/services/access_matrix.py` and folded in by the
+  self-rescheduling `collect_access_matrix_run` task (45 min deadline →
+  `inconclusive`). Rules: request/page rows need project security testing
+  enabled + host on `security_settings.allowed_domains`; any non-GET/HEAD/OPTIONS
+  (including the ID-swap owner request) needs `authorized: true`; the worker
+  re-checks both and only writes `access_check:result:{cell_id}`. A DENY passes
+  only on a deny-set status (401/403/404 + the cell's status) or an absent
+  element on a page that loaded — timeouts/network/5xx/3xx are `inconclusive`.
+  A granted DENY upserts a `SecurityFinding` (`scan_type=access_matrix`,
+  `access_control`, high, fingerprint matrix|row|persona; resolved when fixed,
+  reopened on regression, false_positive sticks); a failed ALLOW is only a
+  summary regression. Evidence redacted by the `redactAccessObservation` /
+  `redact_access_observation` twins; page screenshots at
+  `access-matrix/{run}/{cell}.png` (purge + project delete cover the prefix;
+  run retention sweeps finished matrix runs + cells + that prefix with the
+  same per-project windows — `cleanup_tasks.purge_old_matrix_runs`, called
+  from `purge_old_runs`; pending/running runs and the matrix definition are
+  never swept). **Tenant isolation:** create two
+  personas logged in to different tenants, add request rows with `swap`
+  (`owner_persona_id` = tenant A, owner URL lists A's resources, extractor
+  pulls an id, row URL contains `{id}`), expect allow for A and deny for B and
+  anonymous. Security steps `expect-header`, `expect-cookie-flags`,
+  `expect-blocked-after` (needs `params.authorized` + `security_allowlist`,
+  injected at dispatch only when security testing is enabled),
+  `expect-session-dead` (logs out itself so it can replay the old cookies) live
+  in `core/security-steps.ts` — worker image rebuild needed.
+  **UI (WP4b)**: `/access-matrix` (`pages/AccessMatrix.tsx` is a thin shell;
+  components + pure helpers in `components/access-matrix/`, logic in
+  `grid.ts`/`model.ts` with vitest). Selection lives in the URL
+  (`?matrix=&tab=runs&run=&cell=`) so evidence is deep-linkable. The
+  prerequisites panel *previews* the backend safety gates (`grid.ts:
+  prerequisites` mirrors `host_allowed`/`safety_problems`); the backend stays
+  the authority and its refusal `detail` is shown verbatim. SecurityFinding has
+  no matrix column, so `GET /api/access-matrices/{id}/findings` recomputes the
+  link: fingerprint(matrix,row,persona) + the latest run whose DENY cell was
+  granted.
+- **Release readiness (2026-10)** — `GET /api/projects/{id}/release-readiness
+  ?git_commit=&git_branch=` (viewer; project-scoped API keys honoured — now
+  also on `GET .../quality-gate`) returns `verdict` ready | not_ready |
+  insufficient_data + reasons, the gate, runs, critical cases, active
+  quarantines (owner/expiry), linked requirements, recent commits. Logic in
+  `app/services/release_readiness.py`. Three opt-in policy fields (no
+  migration — the policy is JSON; absent = off): `max_flaky_cases` (active
+  quarantine OR score ≥ 0.4), `require_critical_passed`, `max_evidence_age_days`.
+  Rules: priority `"critical"` matched trimmed/case-insensitive; results
+  matched by `TestCaseResult.test_case_id` only (never name) and, with a
+  commit, over EVERY finished run on it; newest result per browser/device
+  must pass (green rerun replaces red; chromium can't hide firefox).
+  `require_critical_passed` with no critical case fails closed. Evidence age
+  covers critical cases, or all cases when none is critical. Checks carry
+  `missing_data`; a gate failing ONLY on missing data reads "insufficient
+  data", never pass. No commit given → the newest finished run (on the
+  branch) picks the commit. Policy PUT is now audited. UI `/release-readiness`;
+  MCP `get_release_readiness` (52 tools); the Action's PR comment shows
+  check `detail` (dist rebuilt).
+- **Per-step evidence + failure investigation v2 (2026-10, WP3)** — workers
+  send `step_evidence` per result (`core/evidence.ts:StepEvidenceRecorder`),
+  stored in `result_payload.step_evidence` and rebuilt field by field on
+  ingestion (`result_aggregator.normalise_step_evidence`: ids re-derived from
+  position, screenshot keys kept only under `runs/{this run}/screenshots/`).
+  Ids are the citation contract: `s3`, `s3.c0` (console), `s3.r1` (failed
+  request; URL keeps query NAMES only), `s3.dom`, `s3.shot`, `error`,
+  `run:<id>`; old results get `console.<n>`/`net.<n>`. Gated by capture level:
+  `none` = step outcome only, `minimal` + console/requests/screenshot,
+  `standard`+ a ≤4 kB DOM excerpt around the FAILING step's target (input
+  values, scripts and `mask_selectors` removed in-page, text redacted). Both
+  redaction twins scrub the field. `FailureReport` is `schema_version: 2`
+  (`app/services/failure_investigation.py`): `observed` facts vs ranked
+  `hypotheses` with `evidence_refs`, `history` (same case + same row name +
+  same project, prior runs only; signatures recomputed, not read from
+  `cluster_id`, which races) and `changed_since_last_pass`. v1 fields mirror
+  the top hypothesis. LLM hypotheses citing no existing id are dropped
+  (`dropped_citations`). `fail_on_console_errors` + `console_error_ignore_patterns`
+  (suite chain; `testcase.fail_on_console_errors` overrides, migration
+  `c3a2b3c4d5e3`) fail the step on `pageerror`/`console.error`, checked
+  OUTSIDE the step's try so runtime heal never "heals" it. Suite-chain merge now
+  also carries `har_capture`/`auto_retry`/`max_retries`/`retry_backoff_ms`,
+  which it used to drop. **Also fixed:** workers read `data_policy` from the
+  job's top level but the dispatcher puts it in `settings` — every job ran at
+  the default `standard` level with built-in redaction only; `jobDataPolicy()`
+  reads both. `trace_parser.parse_actions` exists but is not wired in.
+  Worker + backend + frontend rebuild needed.
+- **Test inbox + webhook capture (2026-10)** — steps `wait-for-email` and
+  `wait-for-webhook`; templates `{{inbox.address[.label]}}` /
+  `{{webhook.url[.label]}}`. Values are **derived, never stored**:
+  `app/services/step_hooks.py` HMACs (run, case, data-row, label) under a
+  SECRET_KEY subkey; `_case_payload(..., run_id=)` scans the case and ships
+  them as `test_case.test_hooks` (worker interpolates via `interpolate.ts`).
+  Inbox providers (`app/services/inbox_providers.py`): `mailpit` (compose
+  profile `inbox`) and `imap` (IMAPS only, plus-addressing); instance settings
+  group `test_inbox`, validated on save, "Test inbox connection" button. The
+  **worker holds no mail credentials**: it POSTs (run, case, row, label) to
+  `/api/internal/test-inbox/search` (X-Worker-Secret); the backend derives the
+  address itself, requires a live run whose project owns the case, and matches
+  + extracts on the raw message — only the extracted value and a
+  `redact_message_text` preview (new twin rule: link query/fragment, opaque
+  path tokens, 6-8 digit codes) go back. Webhooks: public
+  `/api/hooks/capture/{token}[/sub]`; the token `<run>.<case>.<row+1>.<label>.<mac>`
+  is self-verifying (no registration table), the run must be live (410 after),
+  120/min, 256 kB, 50 per token, redacted BEFORE storage in `webhookcapture`
+  (migration `c2a2b3c4d5e2`, purge + ON_DELETE entries), swept hourly after
+  24 h (`purge_webhook_captures`). Public base = `TEST_HOOKS_PUBLIC_URL`, else
+  `FRONTEND_BASE_URL`. Both waits take the NEWEST match (retries reuse the
+  address). Not supported by local or mobile workers. Module names avoid
+  `test_*` on purpose (pytest collected a `test_`-named endpoint). Worker image
+  rebuild needed.
+- **Inbound integrations (WP6, 2026-10)** — migration `c6a2b3c4d5e6`: tables
+  `requirement`, `incident`, `incidentwebhook`. **Requirements**
+  (`app/api/requirements.py`): import from the workspace's existing
+  `IssueTrackerConfig` rows (Jira, plus new import-only `linear`; ticket
+  creation refuses Linear) via `app/services/tracker_import.py` — Jira v3
+  `/search/jql` with `/search` fallback (ADF flattened), Linear GraphQL with
+  the filter as a *variable*; base URLs through net_guard, redirects not
+  followed; issue keys regex-checked before going into JQL. Mock-verified only
+  (`httpx.MockTransport` via `tracker_import._TRANSPORT`). The config's
+  workspace must equal the project's (404 otherwise — the cross-tenant hole).
+  `app/services/acceptance_criteria.py` parses Gherkin / AC headings / lists /
+  checklists / `AC1:` and flags ambiguity (vague words; no observable outcome;
+  perf words forgiven with a measurable bound). `POST /requirements/{id}/generate`
+  makes one CREATE `CaseProposal` per criterion (never direct; ambiguous ones
+  reported unless `include_ambiguous`); generation is the shared
+  `case_generation.generate_steps`. Null provider / quota / daily cap → a
+  *skeleton* proposal (empty selectors, `needs_authoring`, confidence 0 so it
+  can never auto-apply). Proposal payload carries `requirement_id` /
+  `incident_id`; `_apply_proposal` → `generation_proposals.link_accepted_case`
+  creates the `RequirementLink` / sets `regression_case_id` **only if the
+  origin is in the proposal's project** (payloads are caller-writable).
+  Coverage joins `RequirementLink.ref == external_key` (manual links count):
+  `covered|failing|untested|not_covered`. Old `GET /projects/{id}/requirements`
+  is untouched; the new list is `/requirements/imported`. **Incidents**
+  (`app/api/incidents.py`): `POST /projects/{id}/incidents/webhook` (no user
+  auth) accepts `X-TraceIQ-Signature: sha256=`, `X-PagerDuty-Signature: v1=`, or
+  — Opsgenie can't sign — `X-TraceIQ-Token`; 404 when no webhook exists so it
+  can't enumerate projects. Secret: per project, Fernet-encrypted, shown once,
+  create/rotate is project-admin and human-only. Same `(source, external_id)`
+  updates the incident (PagerDuty lifecycle), otherwise a new one; recurrence =
+  same `fingerprint` (service + title with numbers/ids/times stripped) →
+  `previous_incident_id` + `recurrence_count`. Webhook regression proposals run
+  in a BackgroundTask after the response. Escaped defects: `POST
+  /incidents/{id}/escaped` names the missing case or `no_test_existed`;
+  `escaped-report` counts "test added after" only when the regression case was
+  created at/after the incident started. UI: `/requirements`, `/incidents`.
+- **Security operations (WP7, 2026-10)** — migration `c7a2b3c4d5e7`.
+  **SIEM**: instance-settings groups `siem` (`syslog` RFC 5424 tcp/tls/udp with
+  octet-counted framing, `splunk_hec`, `elastic` bulk with `_id`=row hash so
+  retries are idempotent, HMAC-signed `webhook`) and `security_alerts`.
+  The audit `before_flush` hook adds a `SecurityEventOutbox` row in the SAME
+  flush as each audit row (only when streaming or alerts are on), so an event
+  exists iff its audit row commits; beat `drain_security_events` (10s,
+  `FOR UPDATE SKIP LOCKED`) evaluates alerts and delivers in batches with
+  exponential backoff; `SIEM_OUTBOX_MAX` drops the OLDEST beyond the cap (the
+  audit table stays the record). Events carry `chain.{prev_hash,row_hash,
+  hashed_timestamp}` — the naive isoformat the hash was computed over, not the
+  `Z` timestamp. Destination goes through net_guard at save AND before each
+  delivery; no redirects. `POST /admin/siem/test`, `GET /admin/siem/status`.
+  **Alerts** (`app/services/security_alerts.py`) fire the burst rule when the
+  count reaches EXACTLY N (stateless — no "already alerted" table); channels
+  are `SECURITY_ALERT_*`, separate from run notifications. New audit rows the
+  rules depend on: every instance-setting change (`entity_type
+  instance_setting`, secrets as `changed` only), instance-admin grant/revoke,
+  `role_grant` (workspace invite-add, project access, federation group sync),
+  `mfa_enabled`/`mfa_disabled`, and `login_failed` for bad MFA codes and LDAP.
+  **Access reviews**: `app/services/access_review.py` + `app/api/access_reviews.py`
+  (workspace admin / instance admin; API keys refused for every write). Items
+  snapshot access at campaign start; revoke needs a note; sign-off needs every
+  item decided and is audited; `apply-revocations` only after sign-off and only
+  with `confirm: true` (workspace scope removes membership/teams/project grants,
+  instance scope deactivates + revokes refresh tokens; a reviewer can't revoke
+  themselves). CSV is formula-injection-safe; HTML export ships a CSP.
+  **Findings workflow** (`app/services/finding_lifecycle.py`): statuses
+  `open|in_progress|fixed_pending_verification|verified_fixed|accepted_risk|
+  false_positive` (old acknowledged/resolved migrated; still accepted on
+  input). Rows stay per scan; workflow lives on the newest row per (project,
+  scan_type, fingerprint) and older rows get `superseded_by_id` (soft, no FK).
+  `ingest()` carries owner + ORIGINAL due date + unexpired risk acceptance,
+  re-opens fixed findings that reappear; `verify_fixes()` is the only path to
+  `verified_fixed` — a LATER completed scan of the same target AND same
+  scan_type (ZAP), or a later run of the same suite that covered the origin
+  (passive) / re-ran the case (leak). Marking fixed queues a retest through the
+  same gates as a manual scan (`_scan_gate`); header-auth scans are not
+  retested (the token is gone). Accepted risk / due-date changes need project
+  admin; hourly beat re-opens lapsed acceptances. SLA per workspace
+  (`workspace.finding_sla_days`, `GET/PUT /workspaces/{id}/finding-sla`).
+  Register `GET /projects/{id}/security-findings`; SARIF 2.1.0 at
+  `…/security-findings/sarif` and `/security-scans/{id}/sarif` (waived findings
+  become `suppressions`). Passive findings now get fingerprints; re-scanning a
+  run (`_replace_run_findings`) inherits state and relinks predecessors.
+  **Leak detection** (`app/services/leak_detection.py`, task `scan_run_leaks` at
+  finalize, `LEAK_DETECTION_ENABLED`): response side only (bodies, headers,
+  network events + URLs, console errors, step DOM, execution log) — never
+  request data; `[REDACTED:<cloud kind>]` markers count, because the APP sent
+  it; email/phone only if the project's `redact_patterns` opt in; masked
+  samples only; fingerprints strip list indexes. New `cloud_keys` redaction
+  pattern (AWS/GitHub/Slack/Stripe/Google/Azure/PEM) is ON by default in both
+  twins and runs FIRST (before PAN) — needs a worker rebuild. Test corpora
+  build tokens by concatenation (push protection); `test_leak_detection.py` is
+  in `.gitleaks.toml`. UI: Security page register + SLA card + SARIF buttons;
+  Settings → Instance (Admin) SIEM/alerts cards; `/access-reviews` page.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

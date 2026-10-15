@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import asyncio
-from typing import List, Optional
+from typing import Any, List, Optional
+
+from pydantic import ValidationError
 
 from traceiq_mcp.app import mcp
 from traceiq_mcp.client import new_client
 from traceiq_mcp.schemas.common import AcceptedResult, ArtifactUrl
 from traceiq_mcp.schemas.runs import (
+    CaseFailureReport,
     CaseResult,
     FailureAnalysis,
     RunDetail,
@@ -107,12 +110,30 @@ async def get_failure_analysis(run_id: int) -> FailureAnalysis:
         r for r in (data.get("results") or [])
         if (r.get("status") or "").lower() in ("failed", "error")
     ]
+    analysis = data.get("ai_analysis") or {}
     return FailureAnalysis(
         run_id=run_id,
         status=data.get("status") or "unknown",
-        analysis=data.get("ai_analysis") or {},
+        analysis=analysis,
+        reports=typed_reports(analysis),
         failed_results=[CaseResult.model_validate(r) for r in failed],
     )
+
+
+def typed_reports(analysis: Any) -> List[CaseFailureReport]:
+    """Per-case reports from a stored rollup. A legacy freeform analysis (a
+    string, or a dict without `reports`) yields none; a malformed report is
+    skipped rather than failing the whole tool call."""
+    if not isinstance(analysis, dict):
+        return []
+    out: List[CaseFailureReport] = []
+    for r in analysis.get("reports") or []:
+        if isinstance(r, dict):
+            try:
+                out.append(CaseFailureReport.model_validate(r))
+            except ValidationError:
+                continue
+    return out
 
 
 @mcp.tool()

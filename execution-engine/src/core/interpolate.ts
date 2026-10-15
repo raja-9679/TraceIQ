@@ -59,6 +59,9 @@ export interface TemplateContext {
     dataRow?: Record<string, any> | null;
     /** {{name}} — runtime variables from extract-value / scripts. */
     variables?: Record<string, any> | null;
+    /** {{inbox.address[.label]}} / {{webhook.url[.label]}} — per-run values
+     *  the backend derived at dispatch (job `test_case.test_hooks`). */
+    hooks?: { inbox?: Record<string, string>; webhook?: Record<string, string> } | null;
 }
 
 /**
@@ -81,6 +84,16 @@ export function resolveTemplates(val: any, ctx: TemplateContext): any {
             const secrets = ctx.secrets;
             out = out.replace(/\{\{\s*secret\.([\w-]+)\s*\}\}/g, (_: string, key: string) =>
                 secrets[key] !== undefined ? String(secrets[key]) : `{{secret.${key}}}`);
+        }
+        if (ctx.hooks && out.includes('{{')) {
+            // Unknown labels stay as tokens, like everything else here, so a
+            // typo is visible in the app under test rather than a blank field.
+            const inbox = ctx.hooks.inbox || {};
+            const webhook = ctx.hooks.webhook || {};
+            out = out.replace(/\{\{\s*inbox\.address(?:\.([\w-]+))?\s*\}\}/g, (tok: string, label?: string) =>
+                inbox[label || 'default'] ?? tok);
+            out = out.replace(/\{\{\s*webhook\.url(?:\.([\w-]+))?\s*\}\}/g, (tok: string, label?: string) =>
+                webhook[label || 'default'] ?? tok);
         }
         if (ctx.dataRow) {
             const dataRow = ctx.dataRow;

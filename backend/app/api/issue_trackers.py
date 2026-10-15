@@ -22,7 +22,11 @@ from app.models import (
 
 router = APIRouter()
 
-_PROVIDERS = {"jira", "itop", "github"}
+_PROVIDERS = {"jira", "itop", "github", "linear"}
+# Linear connections exist to import requirements (app/api/requirements.py);
+# there is no outbound Linear provider, so ticket creation refuses them up front
+# instead of failing later in the Celery task.
+OUTBOUND_PROVIDERS = {"jira", "itop", "github"}
 
 
 async def _ensure_workspace_member(workspace_id: int, user_id: int, session: AsyncSession):
@@ -50,9 +54,13 @@ async def create_tracker(workspace_id: int, body: IssueTrackerConfigCreate,
         raise HTTPException(status_code=400, detail=f"provider must be one of {sorted(_PROVIDERS)}")
     if not body.auth_secret:
         raise HTTPException(status_code=400, detail="auth_secret is required")
+    base_url = body.base_url
+    if body.provider.lower() == "linear" and not (base_url or "").strip():
+        from app.services.tracker_import import LINEAR_DEFAULT_URL
+        base_url = LINEAR_DEFAULT_URL
     config = IssueTrackerConfig(
         workspace_id=workspace_id, provider=body.provider.lower(), name=body.name,
-        base_url=body.base_url, auth_user=body.auth_user,
+        base_url=base_url, auth_user=body.auth_user,
         auth_secret_encrypted=encrypt_secret(body.auth_secret),
         settings=body.settings, enabled=body.enabled, created_by_id=principal.user.id)
     session.add(config)
@@ -99,6 +107,13 @@ async def delete_tracker(workspace_id: int, config_id: int,
     config = await session.get(IssueTrackerConfig, config_id)
     if not config or config.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Tracker not found")
+    # Imported requirements outlive the connection they came from (they are
+    # the project's records); they just can't be re-synced until reattached.
+    from sqlalchemy import update as sa_update
+    from app.models import Requirement
+    await session.exec(sa_update(Requirement)
+                       .where(Requirement.tracker_config_id == config_id)
+                       .values(tracker_config_id=None))
     await session.delete(config)
     await session.commit()
     return {"status": "deleted"}
@@ -139,6 +154,8 @@ async def create_ticket(run_id: int, body: IssueTicketCreate,
     await _ensure_workspace_member(config.workspace_id, principal.user.id, session)
     if not config.enabled:
         raise HTTPException(status_code=400, detail="Tracker is disabled")
+    if config.provider not in OUTBOUND_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"{config.provider} connections are import-only")
 
     summary = body.summary or _default_summary(run)
     description = body.description or _default_description(run)

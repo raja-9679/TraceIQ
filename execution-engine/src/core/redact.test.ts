@@ -17,6 +17,7 @@ import assert from 'node:assert/strict';
 import {
     REDACTED,
     RedactionPolicy,
+    jobDataPolicy,
     luhnValid,
     maskSelectorsFrom,
     policyFromDataPolicy,
@@ -24,6 +25,7 @@ import {
     redactHar,
     redactHeaders,
     redactJobResult,
+    redactMessageText,
     redactNetworkEvents,
     redactText,
     verhoeffValid,
@@ -150,6 +152,62 @@ test('jwt is redacted wherever it appears', () => {
     const out = redactBody(JSON.stringify({ debug: `token=${JWT}` }));
     assert.ok(!out.includes(JWT));
     assert.ok(out.includes('[REDACTED:jwt]'));
+});
+
+// --------------------------------------------------------------------------
+// Cloud keys (WP7) — twin of the Python corpus. Built by concatenation so the
+// literal never appears in the repo (push protection / secret scanners).
+// --------------------------------------------------------------------------
+
+const AWS_KEY_ID = 'AKIA' + 'IOSFODNN7EXAMPLE';
+const GH_TOKEN = 'ghp' + '_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
+const SLACK_TOKEN = 'xox' + 'b-' + '123456789012-abcdefghijkl';
+const STRIPE_KEY = 'sk' + '_live_' + '4eC39HqLyjWDarjtT1zdp7dc';
+const GOOGLE_KEY = 'AIza' + 'SyA1234567890abcdefghijklmnopqrstuv';
+const AZURE_KEY = 'A'.repeat(86) + '==';
+const PEM = '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMIIEowIBAAKCAQEA7\n' + '-----END RSA ' + 'PRIVATE KEY-----';
+
+for (const [secret, name] of [
+    [AWS_KEY_ID, 'aws_access_key'],
+    [GH_TOKEN, 'github_token'],
+    [SLACK_TOKEN, 'slack_token'],
+    [STRIPE_KEY, 'stripe_key'],
+    [GOOGLE_KEY, 'google_api_key'],
+] as const) {
+    test(`cloud key ${name} is redacted by default`, () => {
+        const out = redactBody(JSON.stringify({ note: `key is ${secret} ok` }));
+        assert.ok(!out.includes(secret));
+        assert.ok(out.includes(`[REDACTED:${name}]`));
+    });
+}
+
+test('azure storage key in a connection string is redacted', () => {
+    const conn = `DefaultEndpointsProtocol=https;AccountName=x;AccountKey=${AZURE_KEY};`;
+    const out = redactText(conn);
+    assert.ok(!out.includes(AZURE_KEY));
+    assert.ok(out.includes('AccountKey=[REDACTED:azure_storage_key];'));
+});
+
+test('pem private key block is redacted whole', () => {
+    assert.equal(redactText(`cfg ${PEM} tail`), 'cfg [REDACTED:private_key] tail');
+});
+
+test('truncated pem private key is still redacted', () => {
+    assert.equal(redactText('-----BEGIN ' + 'PRIVATE KEY-----\nMIIEvQIBADANBgkq'), '[REDACTED:private_key]');
+});
+
+test('aws key digits are not eaten by the pan rule first', () => {
+    assert.equal(redactText('AKIA' + '4111111111111111'), '[REDACTED:aws_access_key]');
+});
+
+test('cloud key lookalikes are left alone', () => {
+    for (const text of ['AKIA-not-a-key', 'ghp_short', 'sk_test_4eC39HqLyjWDarjtT1zdp7dc', 'xoxb-short', 'AIzaShort']) {
+        assert.equal(redactText(text), text);
+    }
+});
+
+test('cloud keys can be switched off by policy', () => {
+    assert.equal(redactText(AWS_KEY_ID, { patterns: ['jwt'] }), AWS_KEY_ID);
 });
 
 test('email is kept by default', () => {
@@ -376,6 +434,46 @@ test('job result redacts each retry attempt error', () => {
     assert.equal(out.attempts[1].status, 'passed');
 });
 
+test('job result redacts per-step evidence text, console, requests and DOM', () => {
+    const out = redactJobResult({
+        ...sampleResult(),
+        step_evidence: [{
+            id: 's0', index: 0, type: 'fill', status: 'failed', duration_ms: 12,
+            error: `card ${VALID_PAN} rejected`,
+            selector: `#card-${VALID_PAN}`,
+            console: [{ id: 's0.c0', type: 'error', text: `token ${JWT}` }],
+            requests: [{ id: 's0.r0', method: 'GET', url: `https://x.test/reset/${JWT}`, status: 500 }],
+            dom: `<div data-pan="${VALID_PAN}">aadhaar ${VALID_AADHAAR}</div>`,
+            screenshot: 'runs/7/screenshots/j-1-failure.png',
+        }],
+    });
+    const e = out.step_evidence[0];
+    const flat = JSON.stringify(e);
+    assert.ok(!flat.includes(VALID_PAN));
+    assert.ok(!flat.includes(JWT));
+    assert.ok(!flat.includes(VALID_AADHAAR));
+    // Ids, status, status codes and artifact keys are routing data — untouched.
+    assert.equal(e.id, 's0');
+    assert.equal(e.requests[0].id, 's0.r0');
+    assert.equal(e.requests[0].status, 500);
+    assert.equal(e.screenshot, 'runs/7/screenshots/j-1-failure.png');
+});
+
+test('per-step evidence is redacted inside continuous test_results too', () => {
+    const out = redactJobResult({
+        job_id: 'j-3', run_id: 9, status: 'failed',
+        test_results: [{ test_case_id: 1, status: 'failed',
+            step_evidence: [{ id: 's0', console: [{ id: 's0.c0', type: 'error', text: `pan ${VALID_PAN}` }] }] }],
+    });
+    assert.ok(!JSON.stringify(out.test_results[0].step_evidence).includes(VALID_PAN));
+});
+
+test('jobDataPolicy reads the dispatcher\'s settings.data_policy as well as a top-level one', () => {
+    assert.equal(jobDataPolicy({ settings: { data_policy: { capture_level: 'full' } } }).capture_level, 'full');
+    assert.equal(jobDataPolicy({ data_policy: { capture_level: 'none' }, settings: { data_policy: { capture_level: 'full' } } }).capture_level, 'none');
+    assert.equal(jobDataPolicy({}), undefined);
+});
+
 test('job result preserves routing and status fields exactly', () => {
     // These drive aggregation and finalization; mangling one loses a result.
     const out = redactJobResult(sampleResult());
@@ -466,4 +564,70 @@ test('a policy naming extra fields still applies the built-in denylist', () => {
     assert.equal(out.password, REDACTED);
     assert.equal(out.policyno, REDACTED);
     assert.equal(out.ok, 1);
+});
+
+// --------------------------------------------------------------------------
+// Inbound messages (test inbox previews, captured webhooks)
+// Mirrors the redact_message_text block in tests/test_redaction.py.
+// --------------------------------------------------------------------------
+
+test('message: a reset link loses its query string and opaque path token', () => {
+    assert.equal(
+        redactMessageText('Reset: https://shop.example.com/reset/9f8a7b6c5d4e3f2a1b0c9d8e?token=abc&x=1 now'),
+        'Reset: https://shop.example.com/reset/[REDACTED:link]?[REDACTED:link] now',
+    );
+});
+
+test('message: fragments are dropped too (implicit-flow style links)', () => {
+    assert.equal(redactMessageText('go https://x.io/cb#access=abc'), 'go https://x.io/cb#[REDACTED:link]');
+});
+
+test('message: readable paths survive', () => {
+    const text = 'See https://shop.example.com/blog/announcing-the-new-dashboard today';
+    assert.equal(redactMessageText(text), text);
+});
+
+test('message: a standalone 6-8 digit code is masked, even before a full stop', () => {
+    assert.equal(redactMessageText('Your code is 482913.'), 'Your code is [REDACTED:code].');
+    assert.equal(redactMessageText('PIN 12345678 expires'), 'PIN [REDACTED:code] expires');
+});
+
+test('message: years, decimals and alphanumeric ids are not codes', () => {
+    const text = 'In 2026 the total was 1234567.89 for order A1234567';
+    assert.equal(redactMessageText(text), text);
+});
+
+test('message: the regular value patterns still apply', () => {
+    assert.equal(redactMessageText(`card ${VALID_PAN} jwt ${JWT}`), 'card [REDACTED:pan] jwt [REDACTED:jwt]');
+});
+
+test('message: non-strings pass through', () => {
+    assert.equal(redactMessageText(''), '');
+    assert.equal(redactMessageText(null), null);
+});
+
+// --- access-matrix observations (twin: test_access_observation_* in test_redaction.py)
+
+test('an access observation has its headers, body excerpt and urls scrubbed', async () => {
+    const { redactAccessObservation } = await import('./redact');
+    const obs = redactAccessObservation({
+        status: 200, element_present: null,
+        headers: { 'set-cookie': 'sid=abc', 'content-type': 'application/json' },
+        body_excerpt: JSON.stringify({ token: 'abc', id: 7 }),
+        url: `https://shop.example.com/pay?card=${VALID_PAN}`,
+        swapped_id: '101',
+    });
+    assert.equal(obs.headers['set-cookie'], REDACTED);
+    assert.equal(obs.headers['content-type'], 'application/json');
+    assert.equal(JSON.parse(obs.body_excerpt).token, REDACTED);
+    assert.equal(JSON.parse(obs.body_excerpt).id, 7);
+    assert.equal(obs.url.includes(VALID_PAN), false);
+    assert.equal(obs.status, 200);
+    assert.equal(obs.swapped_id, '101');
+});
+
+test('a truncated body excerpt degrades to a text sweep, not a throw', async () => {
+    const { redactAccessObservation } = await import('./redact');
+    const obs = redactAccessObservation({ body_excerpt: `{"note": "${VALID_PAN}", "x": [1, 2` });
+    assert.equal(obs.body_excerpt.includes(VALID_PAN), false);
 });

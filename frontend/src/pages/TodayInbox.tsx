@@ -12,7 +12,7 @@ import { triageApi, type FailureCluster } from '@/api/triage';
 import { caseProposalsApi, healProposalsApi, type CaseProposal, type HealProposal } from '@/api/proposals';
 import { flakesApi, type FlakinessEntry } from '@/api/flakes';
 import { monitorsApi, type MonitorStatus } from '@/api/monitors';
-import { securityApi, type SecurityFinding } from '@/api/security';
+import { securityApi, type SecurityFinding, type FindingStatus } from '@/api/security';
 import {
     DetailCard, EmptyState, EvidenceList, KindChip, ListGroup, ListRow, PageHeader, Panel, SplitView,
 } from '@/components/redesign/primitives';
@@ -92,7 +92,7 @@ export default function TodayInbox() {
         onError,
     });
     const findingUpdate = useMutation({
-        mutationFn: ({ id, status }: { id: number; status: string }) => securityApi.updateFinding(id, { status }),
+        mutationFn: ({ id, status }: { id: number; status: FindingStatus }) => securityApi.updateFinding(id, { status }),
         onSuccess: invalidate, onError,
     });
 
@@ -182,8 +182,9 @@ export default function TodayInbox() {
                 read: <>Severity <strong>{f.severity}</strong>{f.target_url ? <> on <span className="font-mono text-[13px]">{f.target_url}</span></> : null}.</>,
                 evidence: f.evidence ? [{ tag: 'evidence', text: <span className="whitespace-pre-wrap font-mono text-[13px]">{f.evidence}</span> }] : [],
                 primary: { label: 'Open Security', to: '/security' },
-                secondary: { label: 'Acknowledge', onClick: () => findingUpdate.mutate({ id: f.id, status: 'acknowledged' }) },
-                handled: { label: 'Resolve', onClick: () => findingUpdate.mutate({ id: f.id, status: 'resolved' }) },
+                // Finding workflow (WP7): a fix is only verified by a later scan.
+                secondary: { label: 'Start work', onClick: () => findingUpdate.mutate({ id: f.id, status: 'in_progress' }) },
+                handled: { label: 'Mark fixed', onClick: () => findingUpdate.mutate({ id: f.id, status: 'fixed_pending_verification' }) },
             }));
 
         (proposals.data ?? []).forEach((p: CaseProposal) => {

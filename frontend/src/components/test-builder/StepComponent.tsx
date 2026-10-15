@@ -1,10 +1,11 @@
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone } from "lucide-react";
+import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextCursorInput, CheckSquare, Search, MousePointer2, Keyboard, Camera, ArrowDownToLine, Clock, FileJson, Rss, ArrowRightToLine, Code2, PlayCircle, SplitSquareHorizontal, Eye, EyeOff, CheckCircle2, Zap, Square, Move, Upload, Download, MessageSquare, ExternalLink, Activity, SearchX, Crosshair, KeyRound, Braces, Smartphone, Mail, Webhook } from "lucide-react";
 import { ElementPickerDialog } from './ElementPickerDialog';
 import { cn } from '@/lib/utils';
 import { bodyToText, textToBody } from './requestBody';
+import { EmailWaitFields, WebhookWaitFields } from './HookStepFields';
 import {
     Select,
     SelectContent,
@@ -13,11 +14,13 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { SchemaGeneratorModal } from './SchemaGeneratorModal';
+import { SecurityStepFields } from './SecurityStepFields';
+import { SECURITY_STEP_LABELS, isSecurityStep } from './securitySteps';
 import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match' | 'expect-header' | 'expect-cookie-flags' | 'expect-blocked-after' | 'expect-session-dead';
     selector?: string;
     value?: string;
     params?: {
@@ -128,6 +131,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'handle-dialog': return { border: 'border-indigo-200', bg: 'bg-indigo-50 text-indigo-600', hue: 'indigo', icon: <MessageSquare size={18} />, label: 'Handle Dialog' };
             case 'switch-tab': return { border: 'border-emerald-200', bg: 'bg-emerald-50 text-emerald-600', hue: 'emerald', icon: <ExternalLink size={18} />, label: 'Switch Tab' };
             case 'wait-for-response': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Activity size={18} />, label: 'Wait For Response' };
+            case 'wait-for-email': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Mail size={18} />, label: 'Wait For Email' };
+            case 'wait-for-webhook': return { border: 'border-rose-200', bg: 'bg-rose-50 text-rose-600', hue: 'rose', icon: <Webhook size={18} />, label: 'Wait For Webhook' };
             case 'expect-not-text': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <SearchX size={18} />, label: 'Expect Not Text' };
             case 'expect-visible': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <Eye size={18} />, label: 'Expect Visible' };
             case 'expect-hidden': return { border: 'border-cyan-200', bg: 'bg-cyan-50 text-cyan-600', hue: 'cyan', icon: <EyeOff size={18} />, label: 'Expect Hidden' };
@@ -160,6 +165,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'totp': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: '2FA Code' };
             case 'mobile-extract-value': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
             case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
+            case 'expect-header': case 'expect-cookie-flags': case 'expect-blocked-after': case 'expect-session-dead':
+                return { border: 'border-red-200', bg: 'bg-red-50 text-red-600', hue: 'red', icon: <KeyRound size={18} />, label: SECURITY_STEP_LABELS[type] };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
             default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
         }
@@ -229,9 +236,16 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="check-tls"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> TLS Cert Check</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
                                 <SelectItem value="totp"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> Generate 2FA Code</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Security</div>
+                                <SelectItem value="expect-header"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Header</div></SelectItem>
+                                <SelectItem value="expect-cookie-flags"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Cookie Flags</div></SelectItem>
+                                <SelectItem value="expect-blocked-after"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Rate Limit</div></SelectItem>
+                                <SelectItem value="expect-session-dead"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Session Dead</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
+                                <SelectItem value="wait-for-email"><div className="flex items-center gap-2"><Mail size={14} className="text-rose-500"/> Wait For Email</div></SelectItem>
+                                <SelectItem value="wait-for-webhook"><div className="flex items-center gap-2"><Webhook size={14} className="text-rose-500"/> Wait For Webhook</div></SelectItem>
                                 <SelectItem value="run-script"><div className="flex items-center gap-2"><Code2 size={14} className="text-rose-500"/> Run Script</div></SelectItem>
                                 <SelectItem value="screenshot"><div className="flex items-center gap-2"><Camera size={14} className="text-rose-500"/> Take Screenshot</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Mobile App (Appium)</div>
@@ -278,6 +292,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
                             </>
+                        ) : isSecurityStep(step.type) ? (
+                            <SecurityStepFields type={step.type} params={step.params || {}} value={step.value}
+                                onParam={updateParams} onValue={(v) => updateStep(step.id, 'value', v)} />
                         ) : step.type === 'feed-check' ? (
                             <Input
                                 placeholder="Feed URL (RSS/Atom/JSON)"
@@ -285,6 +302,10 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 onChange={(e) => updateStep(step.id, 'value', e.target.value)}
                                 className={`w-full min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                             />
+                        ) : step.type === 'wait-for-email' ? (
+                            <EmailWaitFields params={step.params} onParam={updateParams} hue={meta.hue} />
+                        ) : step.type === 'wait-for-webhook' ? (
+                            <WebhookWaitFields params={step.params} onParam={updateParams} hue={meta.hue} />
                         ) : step.type === 'totp' ? (
                             <div className="flex-1 w-full space-y-1.5">
                                 <div className="flex gap-2 flex-col sm:flex-row">

@@ -13,6 +13,7 @@ paths = [
   '''backend/tests/test_connection_urls\.py''',
   '''backend/tests/test_config_validation\.py''',
   '''backend/tests/test_saml_auth\.py''',
+  '''backend/tests/test_leak_detection\.py''',
   '''execution-engine/src/core/redact\.test\.ts''',
   '''.*\.example$''',
 ]

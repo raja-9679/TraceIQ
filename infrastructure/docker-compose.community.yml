@@ -362,6 +362,29 @@ services:
       appium: {condition: service_started}
     networks: [traceiq_internal, traceiq_egress]
 
+  # Test inbox for wait-for-email steps (optional): add `--profile inbox`.
+  # The app under test sends mail to this host's port 1025 (or mailpit:1025
+  # from inside the compose network); TraceIQ reads it through the API on
+  # mailpit:8025. Configure it in Settings → Instance → Test inbox
+  # (provider=mailpit, API URL http://mailpit:8025, domain e.g.
+  # inbox.traceiq.test). See SELF_HOSTING.md → "Optional: test inbox".
+  mailpit:
+    image: axllent/mailpit:v1.31.6
+    profiles: ["inbox"]
+    <<: *hardening
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_MAX_AGE: 1d
+    ports:
+      # SMTP bound to localhost by default: anything that can reach it can put
+      # mail into test inboxes (e.g. a forged verification email). When the app
+      # under test runs on another host, set MAILPIT_SMTP_BIND to an interface
+      # only that host can reach.
+      - "${MAILPIT_SMTP_BIND:-127.0.0.1}:${MAILPIT_SMTP_PORT:-1025}:1025"
+      # Web UI/API bound to localhost: it shows every captured email.
+      - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+    networks: [traceiq_internal]
+
 networks:
   # Internal service-to-service traffic. Not marked `internal: true` because
   # workers need outbound access to reach the sites under test; see

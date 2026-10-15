@@ -160,6 +160,17 @@ def run_test_suite(run_id: int, tags: list = None):
                         **persona_headers,
                     }
                 print(f"[Worker] Run {run_id}: running as persona {run.persona_id}")
+            # The anonymous column of an identity matrix: no identity at all.
+            if getattr(run, 'anonymous', None):
+                from app.services.access_matrix_runtime import strip_identity
+                strip_identity(effective_settings)
+                print(f"[Worker] Run {run_id}: running anonymously")
+
+            # Security assertion steps that send repeated/mutating requests
+            # (expect-blocked-after) only target the project's allowlisted hosts.
+            from app.services.access_matrix_runtime import security_allowlist_for
+            effective_settings['security_allowlist'] = security_allowlist_for(
+                auth_project_id, session)
 
             # Environment ({{env.X}}, base_url) + decrypted secrets
             # ({{secret.X}}) for worker-side interpolation.
@@ -252,11 +263,13 @@ def run_test_suite(run_id: int, tags: list = None):
             session.commit()
 
 
-def _case_payload(case, row_index=None, data_row=None) -> dict:
+def _case_payload(case, row_index=None, data_row=None, run_id=None) -> dict:
     """Serializable job payload for one test case, incl. auth-session flags.
 
     For data-driven cases, `row_index`/`data_row` identify the expansion;
-    the name is suffixed so each row aggregates as its own result."""
+    the name is suffixed so each row aggregates as its own result. With a
+    `run_id`, cases that use {{inbox.address}} / {{webhook.url}} also get
+    their derived per-run values (`test_hooks`)."""
     name = case.name
     if row_index is not None:
         name = f"{case.name} [row {row_index + 1}]"
@@ -277,9 +290,22 @@ def _case_payload(case, row_index=None, data_row=None) -> dict:
         'is_auth_setup': getattr(case, 'is_auth_setup', False),
         'use_auth_session': getattr(case, 'use_auth_session', True),
     }
+    # Per-case override of the suite's fail_on_console_errors (None = inherit).
+    fail_on_console = getattr(case, 'fail_on_console_errors', None)
+    if isinstance(fail_on_console, bool):
+        payload['fail_on_console_errors'] = fail_on_console
     if data_row is not None:
         payload['data_row'] = data_row
         payload['row_index'] = row_index
+    if run_id is not None:
+        try:
+            from app.services.step_hooks import case_hooks
+            hooks = case_hooks(run_id, case.id, row_index, payload['steps'], data_row)
+        except Exception as exc:  # noqa: BLE001 — never block dispatch on this
+            print(f"[Worker] test hooks for case {case.id} unavailable: {exc}")
+            hooks = None
+        if hooks:
+            payload['test_hooks'] = hooks
     return payload
 
 
@@ -326,6 +352,13 @@ def _settings_payload(settings: dict) -> dict:
     # nothing, because a HAR cannot be fully redacted.
     if settings.get('har_capture'):
         payload['har_capture'] = True
+    # Fail a test on uncaught page errors / console.error (inherited suite
+    # setting, default off; a case's own flag rides on its case payload).
+    if settings.get('fail_on_console_errors') is True:
+        payload['fail_on_console_errors'] = True
+    patterns = console_ignore_patterns(settings.get('console_error_ignore_patterns'))
+    if patterns:
+        payload['console_error_ignore_patterns'] = patterns
     # What this run may capture and what to scrub from it. Always present:
     # a job with no data_policy would fall back to the worker's own defaults,
     # and a run's policy should be decided here, not there.
@@ -333,7 +366,27 @@ def _settings_payload(settings: dict) -> dict:
         payload['data_policy'] = settings['data_policy']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
+    # Hosts expect-blocked-after may hammer (project security allowlist).
+    if settings.get('security_allowlist'):
+        payload['security_allowlist'] = settings['security_allowlist']
     return payload
+
+
+MAX_CONSOLE_IGNORE_PATTERNS = 50
+
+
+def console_ignore_patterns(raw) -> list:
+    """Suite settings are a free-form blob, so the ignore list is cleaned at
+    dispatch: strings only, trimmed, capped in count and length."""
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for p in raw:
+        if isinstance(p, str) and p.strip():
+            out.append(p.strip()[:200])
+        if len(out) >= MAX_CONSOLE_IGNORE_PATTERNS:
+            break
+    return out
 
 
 def wants_step_dom(data_policy) -> bool:
@@ -571,7 +624,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 'unit_id': unit['id'],
                 'unit_name': unit['name'],
                 'test_cases': [
-                    _case_payload(case, idx, row) for case, idx, row in expanded
+                    _case_payload(case, idx, row, run_id=run.id) for case, idx, row in expanded
                 ],
                 'browser': run.browser,
                 'device': run.device,
@@ -589,7 +642,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                     'job_id': job_id,
                     'run_id': run.id,
                     'test_case_id': case.id,
-                    'test_case': _case_payload(case, idx, row),
+                    'test_case': _case_payload(case, idx, row, run_id=run.id),
                     'browser': run.browser,
                     'device': run.device,
                     'settings': _settings_payload(settings),
@@ -645,7 +698,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'job_id': job_id,
             'run_id': run.id,
             'test_case_id': case.id,
-            'test_case': _case_payload(case, row_idx, data_row),
+            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),
@@ -789,7 +842,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'execution_mode': 'parallel',
             'parallelism': parallelism,
             'test_case_id': case.id,
-            'test_case': _case_payload(case, row_idx, data_row),
+            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),

@@ -8,21 +8,12 @@ import { spawn } from 'child_process';
 import { resolveTemplates } from './interpolate';
 import { maskSelectorsFrom } from './redact';
 import { totp, totpClock, secondsLeft, looksLikeLiteralSeed } from './totp';
+import { waitForEmail, waitForWebhook } from './test-hooks';
+import { jsonPath } from './json-path';
 
-// Dot-path lookup into a parsed JSON body. Supports `a.b.c`, numeric array
-// segments (`items.0.id`), and bracket indexing (`items[0].id`). Returns
-// undefined when any segment is missing.
-export function jsonPath(obj: any, pathExpr: string): any {
-    if (!pathExpr) return undefined;
-    let current = obj;
-    // normalize [n] → .n so both syntaxes work
-    const parts = pathExpr.replace(/\[(\d+)\]/g, '.$1').split('.').filter(Boolean);
-    for (const part of parts) {
-        if (current === undefined || current === null) return undefined;
-        current = current[part];
-    }
-    return current;
-}
+// jsonPath lives in ./json-path (shared with the wait-for-webhook step);
+// re-exported so existing imports keep working.
+export { jsonPath };
 
 // {{fake.KIND}} generation and the full template resolver now live in
 // ./interpolate so the mobile worker shares one implementation.
@@ -43,8 +34,10 @@ export class TestExecutor {
         'mock-response', 'oauth2-token', 'press-key', 'right-click',
         'run-script', 'screenshot', 'scroll-to', 'select-option',
         'set-network-latency', 'switch-frame', 'switch-tab', 'totp', 'uncheck',
-        'upload-file', 'verify-nth-child', 'wait-for-response',
-        'wait-for-selector', 'wait-timeout',
+        'upload-file', 'verify-nth-child', 'wait-for-email', 'wait-for-response',
+        'wait-for-selector', 'wait-for-webhook', 'wait-timeout',
+        // Security assertions (./security-steps.ts).
+        'expect-header', 'expect-cookie-flags', 'expect-blocked-after', 'expect-session-dead',
     ];
 
     /**
@@ -88,6 +81,7 @@ export class TestExecutor {
             secrets: globalSettings?.secrets,
             dataRow: testCaseContext?.data,
             variables: testCaseContext?.variables,
+            hooks: testCaseContext?.hooks,
         });
 
         const getLocator = (selector: string) => {
@@ -372,6 +366,14 @@ export class TestExecutor {
                 }
 
                 return allResults[0];
+            }
+
+            case 'expect-header':
+            case 'expect-cookie-flags':
+            case 'expect-blocked-after':
+            case 'expect-session-dead': {
+                const { executeSecurityStep } = require('./security-steps');
+                return executeSecurityStep(page, context, step, globalSettings, resolve);
             }
 
             case 'oauth2-token': {
@@ -1124,6 +1126,30 @@ export class TestExecutor {
                 }
                 // Never log the seed or the code itself.
                 console.log(`  [2FA] Generated code -> {{${variableName}}} (valid ${secondsLeft(now, period)}s)`);
+                break;
+            }
+
+            case 'wait-for-email': {
+                // Mail credentials stay in the backend; it derives this
+                // case's address, reads the inbox and extracts the value.
+                const got = await waitForEmail(step.params || {}, resolve, testCaseContext?.hooks);
+                if (got.variableName && testCaseContext) {
+                    testCaseContext.variables = testCaseContext.variables || {};
+                    testCaseContext.variables[got.variableName] = got.value;
+                }
+                // The value is a live credential (reset link, OTP): log where
+                // it went, never what it is.
+                console.log(`  [Email] ${got.summary}${got.variableName ? ` -> {{${got.variableName}}}` : ''}`);
+                break;
+            }
+
+            case 'wait-for-webhook': {
+                const got = await waitForWebhook(step.params || {}, resolve, testCaseContext?.hooks);
+                if (testCaseContext) {
+                    testCaseContext.variables = testCaseContext.variables || {};
+                    testCaseContext.variables[got.variableName] = got.value;
+                }
+                console.log(`  [Webhook] ${got.capture.method} ${got.capture.path || '/'} -> {{${got.variableName}}}`);
                 break;
             }
 

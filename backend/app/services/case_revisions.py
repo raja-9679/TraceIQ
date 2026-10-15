@@ -23,6 +23,7 @@ SNAPSHOT_FIELDS = (
     "test_suite_id",
     "is_auth_setup",
     "use_auth_session",
+    "fail_on_console_errors",
     "dataset",
     "tags",
     "priority",

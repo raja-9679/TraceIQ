@@ -17,8 +17,9 @@ const PROVIDER_HINTS: Record<string, { user: string; secret: string; settings: s
     jira: { user: 'Jira email', secret: 'API token', settings: 'project_key, issue_type' },
     itop: { user: 'iTop username', secret: 'Password', settings: 'class (UserRequest), org_id' },
     github: { user: '(unused)', secret: 'Personal access token', settings: 'repo (owner/name)' },
+    linear: { user: '(unused)', secret: 'Linear API key', settings: 'none — import-only (Requirements page)' },
 };
-const PROVIDER_LABELS: Record<string, string> = { jira: 'Jira', itop: 'iTop', github: 'GitHub Issues' };
+const PROVIDER_LABELS: Record<string, string> = { jira: 'Jira', itop: 'iTop', github: 'GitHub Issues', linear: 'Linear (import only)' };
 
 const fieldLabel = 'px-1 text-[13px] font-semibold text-ink';
 const fieldInput = 'mt-1.5 h-11 rounded-full bg-white px-4';
@@ -65,6 +66,7 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
                             <SelectItem value="jira">Jira</SelectItem>
                             <SelectItem value="itop">iTop</SelectItem>
                             <SelectItem value="github">GitHub Issues</SelectItem>
+                            <SelectItem value="linear">Linear (import only)</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -75,12 +77,12 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
             </div>
             <div>
                 <label htmlFor="tracker-url" className={fieldLabel}>Base URL</label>
-                <Input id="tracker-url" type="url" className={fieldInput} placeholder={f.provider === 'github' ? 'https://api.github.com' : 'https://your.instance'} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} />
+                <Input id="tracker-url" type="url" className={fieldInput} placeholder={f.provider === 'github' ? 'https://api.github.com' : f.provider === 'linear' ? 'https://api.linear.app/graphql (default)' : 'https://your.instance'} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
                 <div>
                     <label htmlFor="tracker-user" className={fieldLabel}>{hint.user}</label>
-                    <Input id="tracker-user" autoComplete="off" className={fieldInput} value={f.auth_user} onChange={(e) => setF({ ...f, auth_user: e.target.value })} disabled={f.provider === 'github'} />
+                    <Input id="tracker-user" autoComplete="off" className={fieldInput} value={f.auth_user} onChange={(e) => setF({ ...f, auth_user: e.target.value })} disabled={f.provider === 'github' || f.provider === 'linear'} />
                 </div>
                 <div>
                     <label htmlFor="tracker-secret" className={fieldLabel}>{hint.secret}</label>
@@ -99,7 +101,7 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
                 />
             </div>
             <div className="flex flex-wrap gap-2.5">
-                <Button size="lg" onClick={() => create.mutate()} disabled={create.isPending || !f.name || !f.base_url || !f.auth_secret}>Add tracker</Button>
+                <Button size="lg" onClick={() => create.mutate()} disabled={create.isPending || !f.name || (!f.base_url && f.provider !== 'linear') || !f.auth_secret}>Add tracker</Button>
                 <Button size="lg" variant="outline" onClick={onDone}>Cancel</Button>
             </div>
         </DetailCard>

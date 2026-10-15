@@ -321,11 +321,20 @@ def install_chain_listener() -> None:
 
     @event.listens_for(SASession, "before_flush")
     def _seal_audit_rows(session, flush_context, instances):  # noqa: ANN001
-        pending = [obj for obj in session.new
-                   if isinstance(obj, AuditLog) and not obj.row_hash]
-        if not pending:
+        new_rows = [obj for obj in session.new if isinstance(obj, AuditLog)]
+        if not new_rows:
             return
+        pending = [obj for obj in new_rows if not obj.row_hash]
+        if pending:
+            _seal_pending(session, pending)
+        # SIEM / security-alert outbox (WP7): one outbox row per audit row, in
+        # this same flush, so the event exists iff the audit row commits.
+        # Rows from record() arrive pre-sealed, which is why this looks at
+        # every new row and not only `pending`.
+        from app.services.siem import enqueue_audit_rows
+        enqueue_audit_rows(session, new_rows)
 
+    def _seal_pending(session, pending):  # noqa: ANN001
         # no_autoflush: querying inside before_flush would otherwise recurse
         # into the flush we are already in.
         with session.no_autoflush:

@@ -186,6 +186,7 @@ call (with a JSON text fallback for older clients).
 |------|---------|
 | `get_quality_snapshot` | Project health: pass rate, trend, flakes, monitors, security counts |
 | `evaluate_quality_gate` | Go/no-go for a commit/branch against project policy |
+| `get_release_readiness` | Release verdict (ready / not ready / insufficient data) with critical cases, quarantines, requirements |
 | `get_run_report` | Consolidated per-run report + PR-ready markdown |
 | `get_test_effectiveness` | Per-test signal metrics (failure rate, clusters surfaced) |
 | `list_failure_clusters` / `get_failure_cluster` | Deduped root causes |

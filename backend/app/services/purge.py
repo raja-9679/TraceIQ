@@ -64,7 +64,16 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("securityfinding",
               f"DELETE FROM securityfinding WHERE scan_id IN ({_SCANS}) "
               f"OR project_id IN ({_PROJECTS}) OR run_id IN ({_RUNS})"),
+    PurgeStep("accessmatrixcell",
+              f"DELETE FROM accessmatrixcell WHERE matrix_run_id IN "
+              f"(SELECT id FROM accessmatrixrun WHERE project_id IN ({_PROJECTS})) "
+              f"OR test_run_id IN ({_RUNS})"),
+    PurgeStep("accessmatrixrun",
+              f"DELETE FROM accessmatrixrun WHERE project_id IN ({_PROJECTS}) "
+              f"OR matrix_id IN (SELECT id FROM accessmatrix WHERE project_id IN ({_PROJECTS}))"),
+    PurgeStep("accessmatrix", f"DELETE FROM accessmatrix WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("monitorcheck", f"DELETE FROM monitorcheck WHERE run_id IN ({_RUNS})"),
+    PurgeStep("webhookcapture", f"DELETE FROM webhookcapture WHERE run_id IN ({_RUNS})"),
     PurgeStep("issueticket",
               f"DELETE FROM issueticket WHERE workspace_id = :workspace_id "
               f"OR run_id IN ({_RUNS})"),
@@ -89,6 +98,15 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("authsession",
               f"DELETE FROM authsession WHERE project_id IN ({_PROJECTS}) "
               f"OR captured_by_case_id IN ({_CASES})"),
+    PurgeStep("requirement",
+              f"DELETE FROM requirement WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("incident",
+              f"DELETE FROM incident WHERE project_id IN ({_PROJECTS}) "
+              f"OR matched_case_id IN ({_CASES}) OR regression_case_id IN ({_CASES}) "
+              f"OR escaped_case_id IN ({_CASES})"),
+    PurgeStep("incidentwebhook",
+              f"DELETE FROM incidentwebhook WHERE project_id IN ({_PROJECTS}) "
+              f"OR default_suite_id IN ({_SUITES})"),
     PurgeStep("failurecluster",
               f"DELETE FROM failurecluster WHERE project_id IN ({_PROJECTS})"),
 
@@ -129,6 +147,13 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("workspacewebhook",
               f"DELETE FROM workspacewebhook WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})"),
+    # Access-review campaigns are workspace governance records. The sign-off
+    # itself is in the audit trail (exempt above), so it survives this.
+    PurgeStep("accessreviewitem",
+              "DELETE FROM accessreviewitem WHERE campaign_id IN "
+              "(SELECT id FROM accessreviewcampaign WHERE workspace_id = :workspace_id)"),
+    PurgeStep("accessreviewcampaign",
+              "DELETE FROM accessreviewcampaign WHERE workspace_id = :workspace_id"),
     PurgeStep("apikey",
               f"DELETE FROM apikey WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})",
@@ -215,6 +240,12 @@ async def collect_object_keys(session, workspace_id: int) -> List[str]:
                               params={"workspace_id": workspace_id})
     for (run_id,) in runs.all():
         prefixes.append(f"runs/{run_id}/")
+
+    # Page-row screenshots of access-matrix runs.
+    mruns = await session.exec(
+        text(f"SELECT id FROM accessmatrixrun WHERE project_id IN ({_PROJECTS})"),
+        params={"workspace_id": workspace_id})
+    prefixes.extend(f"access-matrix/{mid}/" for (mid,) in mruns.all())
 
     builds = await session.exec(
         text("SELECT file_key FROM mobileappbuild WHERE project_id IN "

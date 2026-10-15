@@ -19,7 +19,8 @@ describe('sidebar information architecture', () => {
 
     it('groups each former sidebar item under its place', () => {
         expect(names(place('Today').children)).toEqual(['Overview', 'Failure triage', 'Proposals', 'Flaky tests', 'Visual review']);
-        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Traceability']);
+        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Requirements', 'Traceability', 'Incidents']);
+        expect(names(place('Security').children)).toEqual(['Scans & findings', 'Access matrix', 'Access reviews']);
         expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Import Playwright', 'Analytics']);
         expect(names(setupLinks)).toEqual([
             'Settings', 'Workspace', 'Users', 'Tenant admin', 'API keys',
@@ -27,19 +28,19 @@ describe('sidebar information architecture', () => {
         ]);
     });
 
-    it('keeps Runs, Watch and Security as direct destinations', () => {
-        for (const n of ['Runs', 'Watch', 'Security']) expect(isGroup(place(n))).toBe(false);
-        for (const n of ['Today', 'Releases', 'Tests']) expect(isGroup(place(n))).toBe(true);
+    it('keeps Runs and Watch as direct destinations', () => {
+        for (const n of ['Runs', 'Watch']) expect(isGroup(place(n))).toBe(false);
+        for (const n of ['Today', 'Releases', 'Tests', 'Security']) expect(isGroup(place(n))).toBe(true);
         expect([place('Runs').href, place('Watch').href, place('Security').href]).toEqual(['/runs', '/monitors', '/security']);
     });
 
-    it('offers all 25 former destinations exactly once', () => {
+    it('offers all 30 destinations exactly once', () => {
         const hrefs = [
             ...places.filter((p) => !isGroup(p)).map((p) => p.href),
             ...places.flatMap((p) => p.children.map((c) => c.href)),
             ...setupLinks.map((l) => l.href),
         ];
-        expect(hrefs).toHaveLength(25);
+        expect(hrefs).toHaveLength(30);
         expect(new Set(hrefs).size).toBe(hrefs.length);
     });
 
@@ -61,6 +62,8 @@ describe('sidebar information architecture', () => {
         expect(isIn('/analytics', place('Tests').match)).toBe(true);
         expect(isIn('/analytics', place('Releases').match)).toBe(false);
         expect(isIn('/runs', place('Tests').match)).toBe(false);
+        expect(isIn('/access-matrix', place('Security').match)).toBe(true);
+        expect(isIn('/incidents', place('Releases').match)).toBe(true);
     });
 });
 
@@ -142,7 +145,7 @@ describe('expanded sidebar', () => {
         expect(nav.getByRole('button', { name: 'Tests' }).hasAttribute('data-active')).toBe(true);
     });
 
-    it('navigates directly from Runs, Watch and Security', async () => {
+    it('navigates directly from Runs and Watch', async () => {
         const user = userEvent.setup();
         renderAt('/overview');
         await user.click(desktopNav().getByRole('link', { name: 'Watch' }));
@@ -173,8 +176,8 @@ describe('collapsed rail', () => {
     it('shows icons only, each with an accessible name', () => {
         renderAt('/runs', { collapsed: true });
         const nav = desktopNav();
-        for (const n of ['Today', 'Releases', 'Tests', 'Setup']) expect(nav.getByRole('button', { name: n })).toBeTruthy();
-        for (const n of ['Runs', 'Watch', 'Security']) expect(nav.getByRole('link', { name: n })).toBeTruthy();
+        for (const n of ['Today', 'Releases', 'Tests', 'Security', 'Setup']) expect(nav.getByRole('button', { name: n })).toBeTruthy();
+        for (const n of ['Runs', 'Watch']) expect(nav.getByRole('link', { name: n })).toBeTruthy();
         expect(nav.getByRole('link', { name: 'Runs' }).hasAttribute('data-active')).toBe(true);
         expect(nav.queryByRole('link', { name: 'Schedules' })).toBeNull();
     });

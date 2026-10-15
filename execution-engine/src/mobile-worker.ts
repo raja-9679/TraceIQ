@@ -50,7 +50,7 @@ import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-qu
 import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
 import { ArtifactStore, CaptureLevel, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
-import { policyFromDataPolicy } from './core/redact';
+import { jobDataPolicy, policyFromDataPolicy } from './core/redact';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
 import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
@@ -118,7 +118,7 @@ class MobileWorker {
                     continue;
                 }
                 const result = await this.runJob(claimed.job);
-                await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy((claimed.job as any)?.data_policy));
+                await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy(jobDataPolicy(claimed.job)));
             } catch (err: any) {
                 console.error('[MobileWorker] Loop error:', err.message);
                 await sleep(POLL_IDLE_MS);
@@ -546,7 +546,7 @@ class MobileWorker {
      * when a job predates the policy or names a level this build doesn't know.
      */
     private captureLevelFor(job: TestJob): CaptureLevel {
-        return normalizeCaptureLevel((job as any)?.data_policy?.capture_level);
+        return normalizeCaptureLevel(jobDataPolicy(job)?.capture_level);
     }
 
     /**

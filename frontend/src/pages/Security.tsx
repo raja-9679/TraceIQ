@@ -1,31 +1,54 @@
 import { useState, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNowStrict } from 'date-fns';
-import { Play, X, Plus, ChevronRight, ChevronDown, Lock, RefreshCw } from 'lucide-react';
+import { Play, X, Plus, ChevronRight, ChevronDown, Lock, RefreshCw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { errDetail } from '@/lib/errors';
 import { getProjects } from '@/lib/api';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
-import { securityApi, type SecuritySettings, type SecurityScan, type SecurityFinding } from '@/api/security';
+import {
+    securityApi, type SecuritySettings, type SecurityScan, type SecurityFinding, type FindingStatus, type FindingUpdate,
+} from '@/api/security';
+import { downloadFromApi } from '@/lib/download';
+import { FindingSlaCard, FindingsRegister } from '@/components/security/FindingsRegister';
+import {
+    FINDING_STATUS_LABEL, FINDING_TRANSITIONS, fromDateInput, normalizeStatus, toDateInput,
+} from '@/components/security/findingStatus';
 import {
     DetailCard, EmptyState, Eyebrow, ListCard, ListGroup, ListRow, PageHeader, Panel, PanelTabs, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import type { Tone } from '@/components/redesign/kinds';
 import { cn } from '@/lib/utils';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 const ago = (iso: string) => formatDistanceToNowStrict(new Date(iso), { addSuffix: true });
 
-const SEV_TONE: Record<string, Tone> = { high: 'peach', medium: 'butter', low: 'neutral', info: 'neutral' };
+const SEV_TONE: Record<string, Tone> = { critical: 'pink', high: 'peach', medium: 'butter', low: 'neutral', info: 'neutral' };
 const SCAN_TONE: Record<string, Tone> = { completed: 'mint', running: 'lavender', pending: 'neutral', error: 'peach' };
 
-const STATUSES = ['open', 'acknowledged', 'false_positive', 'resolved'] as const;
-type FindingStatus = typeof STATUSES[number];
-const STATUS_LABEL: Record<FindingStatus, string> = {
-    open: 'Open', acknowledged: 'Acknowledged', false_positive: 'False positive', resolved: 'Resolved',
+// Finding workflow (open -> in progress -> fixed, awaiting retest -> verified
+// fixed, or waived as accepted risk / false positive), bucketed into tabs.
+const TABS = [
+    { id: 'open', label: 'Open', statuses: ['open', 'in_progress'] },
+    { id: 'pending', label: 'Awaiting retest', statuses: ['fixed_pending_verification'] },
+    { id: 'waived', label: 'Waived', statuses: ['accepted_risk', 'false_positive'] },
+    { id: 'fixed', label: 'Verified fixed', statuses: ['verified_fixed'] },
+] as const satisfies readonly { id: string; label: string; statuses: readonly FindingStatus[] }[];
+type TabId = typeof TABS[number]['id'];
+const tabOf = (s: FindingStatus): TabId =>
+    TABS.find((t) => (t.statuses as readonly FindingStatus[]).includes(s))?.id ?? 'open';
+
+// Labels for the transitions the workflow allows (verified_fixed is reached
+// only by a rescan, never by hand).
+const TRANSITION_LABEL: Record<FindingStatus, string> = {
+    open: 'Reopen',
+    in_progress: 'Start work',
+    fixed_pending_verification: 'Mark fixed — queue retest',
+    verified_fixed: 'Verified fixed',
+    accepted_risk: 'Accept risk',
+    false_positive: 'Not a real issue',
 };
 
 // --- settings + new scan (kept from the previous page, restyled) ---------------
@@ -271,24 +294,35 @@ function FindingBody({ text }: { text: string }) {
 
 function FindingDetail({ finding, scan, isNew, onTriage, busy }: {
     finding: SecurityFinding; scan: SecurityScan; isNew: boolean;
-    onTriage: (status: FindingStatus) => void; busy: boolean;
+    onTriage: (body: FindingUpdate) => void; busy: boolean;
 }) {
-    const status = (finding.status || 'open') as FindingStatus;
-    const next: { status: FindingStatus; label: string; primary?: boolean }[] =
-        status === 'open'
-            ? [{ status: 'acknowledged', label: 'Acknowledge', primary: true }, { status: 'false_positive', label: 'Not a real issue' }, { status: 'resolved', label: 'Mark resolved' }]
-            : [{ status: 'open', label: 'Reopen', primary: true }, ...(status !== 'resolved' ? [{ status: 'resolved' as FindingStatus, label: 'Mark resolved' }] : [])];
+    const status = normalizeStatus(finding.status);
+    const [accepting, setAccepting] = useState(false);
+    const [why, setWhy] = useState('');
+    const [until, setUntil] = useState('');
+    const next = FINDING_TRANSITIONS[status];
     return (
         <DetailCard label="Selected finding">
             <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center gap-2">
-                    <Pill tone={SEV_TONE[finding.severity]} className="capitalize">{finding.severity}</Pill>
+                    <Pill tone={SEV_TONE[finding.severity] ?? 'neutral'} className="capitalize">{finding.severity}</Pill>
                     {isNew && <Pill tone="lavender">New since the previous scan</Pill>}
-                    <span className="text-[13px] text-ink-soft">{STATUS_LABEL[status]} · {scan.scan_type} scan #{scan.id} · {ago(finding.created_at)}</span>
+                    {finding.overdue && <Pill tone="peach">Overdue</Pill>}
+                    <span className="text-[13px] text-ink-soft">{FINDING_STATUS_LABEL[status]} · {scan.scan_type} scan #{scan.id} · {ago(finding.created_at)}</span>
                 </div>
                 <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{finding.title}</h2>
                 {finding.target_url && <span className="break-all font-mono text-[13px] text-ink-soft">{finding.target_url}</span>}
+                {finding.due_at && <span className="text-[13px] text-ink-soft">Due {toDateInput(finding.due_at)}</span>}
             </div>
+
+            {status === 'accepted_risk' && finding.risk_justification && (
+                <Panel title={`Risk accepted until ${toDateInput(finding.risk_expires_at)}`}>{finding.risk_justification}</Panel>
+            )}
+            {status === 'fixed_pending_verification' && (
+                <Panel title="Awaiting retest">
+                    {finding.retest_scan_id ? `Retest scan #${finding.retest_scan_id} is queued.` : 'Verified by the next scan or run that covers it.'}
+                </Panel>
+            )}
 
             {finding.description && <Panel title="Why it matters and how to fix it" callout><FindingBody text={finding.description} /></Panel>}
 
@@ -299,13 +333,41 @@ function FindingDetail({ finding, scan, isNew, onTriage, busy }: {
                 </div>
             )}
 
-            <div className="flex flex-wrap gap-2.5">
-                {next.map((n) => (
-                    <Button key={n.status} size="lg" variant={n.primary ? 'default' : 'outline'} disabled={busy} onClick={() => onTriage(n.status)}>
-                        {n.label}
-                    </Button>
-                ))}
-            </div>
+            {finding.superseded_by_id ? (
+                <p className="text-sm text-ink-soft">This finding is tracked on a newer scan — change its status there or in the findings register.</p>
+            ) : accepting ? (
+                <div className="flex flex-col gap-3 rounded-2xl border border-border p-4 shadow-[inset_4px_0_0_#F2C94C]">
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor={`risk-why-${finding.id}`} className="text-[13px] font-semibold">Justification</label>
+                        <textarea id={`risk-why-${finding.id}`} rows={3} value={why} onChange={(e) => setWhy(e.target.value)}
+                            className="rounded-2xl border border-border bg-white p-3 text-sm" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                        <label htmlFor={`risk-until-${finding.id}`} className="text-[13px] font-semibold">Accepted until</label>
+                        <Input id={`risk-until-${finding.id}`} type="date" className="w-48" value={until} onChange={(e) => setUntil(e.target.value)} />
+                    </div>
+                    <p className="text-xs text-ink-soft">Needs a project admin, who is recorded as the approver. Re-opens automatically at expiry.</p>
+                    <div className="flex flex-wrap gap-2.5">
+                        <Button disabled={!why.trim() || !until || busy}
+                            onClick={() => {
+                                onTriage({ status: 'accepted_risk', risk_justification: why.trim(), risk_expires_at: fromDateInput(until)! });
+                                setAccepting(false);
+                            }}>
+                            Accept risk
+                        </Button>
+                        <Button variant="outline" onClick={() => setAccepting(false)}>Cancel</Button>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex flex-wrap gap-2.5">
+                    {next.map((n, i) => (
+                        <Button key={n} size="lg" variant={i === 0 ? 'default' : 'outline'} disabled={busy}
+                            onClick={() => (n === 'accepted_risk' ? setAccepting(true) : onTriage({ status: n }))}>
+                            {TRANSITION_LABEL[n]}
+                        </Button>
+                    ))}
+                </div>
+            )}
         </DetailCard>
     );
 }
@@ -326,7 +388,8 @@ export default function Security() {
     const qc = useQueryClient();
     const [panel, setPanel] = useState<'none' | 'settings' | 'scan'>('none');
     const [scanId, setScanId] = useState<number | null>(null);
-    const [tab, setTab] = useState<FindingStatus>('open');
+    const [view, setView] = useState<'scans' | 'register'>('scans');
+    const [tab, setTab] = useState<TabId>('open');
     const [findingId, setFindingId] = useState<number | null>(null);
 
     const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
@@ -353,18 +416,30 @@ export default function Security() {
         enabled: selectedScan?.status === 'completed',
     });
     const triage = useMutation({
-        mutationFn: ({ id, status }: { id: number; status: string }) => securityApi.updateFinding(id, { status }),
-        onSuccess: () => {
+        mutationFn: ({ id, body }: { id: number; body: FindingUpdate }) => securityApi.updateFinding(id, body),
+        onSuccess: (f) => {
+            if (f.retest) {
+                if (f.retest.queued) toast.success(`Marked fixed — retest scan #${f.retest.scan_id} ${f.retest.reused ? 'already running' : 'queued'}`);
+                else toast.message(`Marked fixed — ${f.retest.reason}`);
+            }
             qc.invalidateQueries({ queryKey: ['sec-scan', selectedScan?.id] });
+            qc.invalidateQueries({ queryKey: ['sec-findings', projectId] });
             qc.invalidateQueries({ queryKey: ['inbox'] });
         },
         onError: (e) => toast.error(errDetail(e)),
     });
+    const downloadScanSarif = async (scan: SecurityScan) => {
+        try {
+            await downloadFromApi(securityApi.scanSarifPath(scan.id), `traceiq-scan-${scan.id}.sarif`);
+        } catch (e) {
+            toast.error(errDetail(e));
+        }
+    };
 
     const findings = detail.data?.findings ?? selectedScan?.findings ?? [];
-    const statusOf = (f: SecurityFinding) => (f.status || 'open') as FindingStatus;
-    const sevRank: Record<string, number> = { high: 0, medium: 1, low: 2, info: 3 };
-    const inTab = findings.filter((f) => statusOf(f) === tab)
+    const statusOf = (f: SecurityFinding) => normalizeStatus(f.status);
+    const sevRank: Record<string, number> = { critical: -1, high: 0, medium: 1, low: 2, info: 3 };
+    const inTab = findings.filter((f) => tabOf(statusOf(f)) === tab)
         .sort((a, b) => (sevRank[a.severity] ?? 9) - (sevRank[b.severity] ?? 9));
     const selectedFinding = inTab.find((f) => f.id === findingId) ?? inTab[0] ?? null;
     const newIds = new Set((diff.data?.new ?? []).map((n) => n.id));
@@ -376,16 +451,33 @@ export default function Security() {
             <PageHeader
                 title="Security"
                 subtitle={
-                    selectedScan
+                    view === 'register'
+                        ? 'Every finding across DAST scans, passive analysis and leak detection, with owners, due dates and a verified-fix workflow.'
+                        : selectedScan
                         ? <>Scan #{selectedScan.id} of <span className="font-mono">{selectedScan.target_url}</span>{diff.data?.baseline_available ? `, compared with scan #${diff.data.previous_scan_id}` : ''}</>
                         : 'OWASP ZAP scans of targets you are authorized to test. Baseline is passive; active scans attack the target.'
                 }
                 actions={
                     projectId ? (
                         <>
+                            {view === 'scans' && selectedScan?.status === 'completed' && (
+                                <Button variant="outline" onClick={() => downloadScanSarif(selectedScan)}>
+                                    <Download className="h-4 w-4" /> SARIF for scan #{selectedScan.id}
+                                </Button>
+                            )}
                             <Button variant="outline" onClick={() => togglePanel('settings')} aria-expanded={panel === 'settings'}>Authorization</Button>
                             <Button onClick={() => togglePanel('scan')} aria-expanded={panel === 'scan'}>New scan</Button>
                         </>
+                    ) : undefined
+                }
+                toolbar={
+                    projectId ? (
+                        <PanelTabs
+                            label="Security view"
+                            value={view}
+                            onChange={setView}
+                            tabs={[{ id: 'scans', label: 'Scans' }, { id: 'register', label: 'Findings register' }]}
+                        />
                     ) : undefined
                 }
             />
@@ -397,7 +489,12 @@ export default function Security() {
                     {panel === 'settings' && <SettingsCard projectId={projectId} workspaceId={workspaceId} />}
                     {panel === 'scan' && <NewScanCard projectId={projectId} onQueued={() => setPanel('none')} />}
 
-                    {scans.isLoading ? (
+                    {view === 'register' ? (
+                        <>
+                            <FindingsRegister projectId={projectId} />
+                            {workspaceId && <FindingSlaCard workspaceId={workspaceId} />}
+                        </>
+                    ) : scans.isLoading ? (
                         <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
                             {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
                         </div>
@@ -411,7 +508,7 @@ export default function Security() {
                                 <Tile label="New" value={diff.data?.baseline_available ? diff.data.new.length : '—'} tone={diff.data?.new.length ? 'text-pastel-ink-peach' : undefined} />
                                 <Tile label="Fixed since the previous scan" value={diff.data?.baseline_available ? diff.data.fixed.length : '—'} tone={diff.data?.fixed.length ? 'text-pastel-ink-mint' : undefined} />
                                 <Tile label="Still open" value={findings.filter((f) => statusOf(f) === 'open').length} />
-                                <Tile label="Acknowledged" value={findings.filter((f) => statusOf(f) === 'acknowledged').length} />
+                                <Tile label="In progress" value={findings.filter((f) => statusOf(f) === 'in_progress').length} />
                             </div>
 
                             <SplitView
@@ -423,21 +520,21 @@ export default function Security() {
                                                     label="Finding status"
                                                     value={tab}
                                                     onChange={(id) => { setTab(id); setFindingId(null); }}
-                                                    tabs={STATUSES.map((st) => ({ id: st, label: STATUS_LABEL[st], count: findings.filter((f) => statusOf(f) === st).length }))}
+                                                    tabs={TABS.map((t) => ({ id: t.id, label: t.label, count: findings.filter((f) => tabOf(statusOf(f)) === t.id).length }))}
                                                 />
                                             </div>
                                             {detail.isLoading && !findings.length ? (
                                                 <div className="flex justify-center p-6"><RefreshCw className="h-4 w-4 animate-spin text-ink-soft" /></div>
                                             ) : inTab.length === 0 ? (
-                                                <p className="px-4 py-6 text-center text-sm text-ink-soft">Nothing {STATUS_LABEL[tab].toLowerCase()} in this scan.</p>
+                                                <p className="px-4 py-6 text-center text-sm text-ink-soft">Nothing {TABS.find((t) => t.id === tab)!.label.toLowerCase()} in this scan.</p>
                                             ) : inTab.map((f) => (
                                                 <ListRow
                                                     key={f.id}
                                                     selected={selectedFinding?.id === f.id}
                                                     onSelect={() => setFindingId(f.id)}
-                                                    leading={<Pill tone={SEV_TONE[f.severity]} className="min-w-[64px] justify-center capitalize">{f.severity}</Pill>}
+                                                    leading={<Pill tone={SEV_TONE[f.severity] ?? 'neutral'} className="min-w-[64px] justify-center capitalize">{f.severity}</Pill>}
                                                     title={f.title}
-                                                    meta={[newIds.has(f.id) ? 'New' : null, f.target_url].filter(Boolean).join(' · ')}
+                                                    meta={[newIds.has(f.id) ? 'New' : null, tab !== 'fixed' && statusOf(f) !== 'open' ? FINDING_STATUS_LABEL[statusOf(f)] : null, f.overdue ? 'Overdue' : null, f.target_url].filter(Boolean).join(' · ')}
                                                 />
                                             ))}
                                         </ListCard>
@@ -464,11 +561,12 @@ export default function Security() {
                                         <EmptyState title="This scan failed">{selectedScan.error}</EmptyState>
                                     ) : selectedFinding && selectedScan ? (
                                         <FindingDetail
+                                            key={selectedFinding.id}
                                             finding={selectedFinding}
                                             scan={selectedScan}
                                             isNew={newIds.has(selectedFinding.id)}
                                             busy={triage.isPending}
-                                            onTriage={(status) => triage.mutate({ id: selectedFinding.id, status })}
+                                            onTriage={(body) => triage.mutate({ id: selectedFinding.id, body })}
                                         />
                                     ) : (
                                         <EmptyState title={selectedScan?.status === 'completed' ? 'Nothing to show' : 'Scan in progress'}>

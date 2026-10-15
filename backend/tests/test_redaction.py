@@ -14,11 +14,14 @@ So the false-positive tests are as load-bearing as the true-positive ones.
 """
 import json
 
+import pytest
+
 from app.services.redaction import (
     REDACTED,
     RedactionPolicy,
     redact_body,
     redact_headers,
+    redact_message_text,
     redact_audit_changes,
     redact_steps,
     redact_text,
@@ -143,6 +146,67 @@ def test_jwt_is_redacted_wherever_it_appears():
     out = redact_body(json.dumps({"debug": f"token={JWT}"}))
     assert JWT not in out
     assert "[REDACTED:jwt]" in out
+
+
+# --- cloud keys (WP7) ---------------------------------------------------------
+# Built by concatenation so the literal never appears in the repo: GitHub push
+# protection and secret scanners would (rightly) flag a contiguous token.
+AWS_KEY_ID = "AKIA" + "IOSFODNN7EXAMPLE"
+GH_TOKEN = "ghp" + "_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
+SLACK_TOKEN = "xox" + "b-" + "123456789012-abcdefghijkl"
+STRIPE_KEY = "sk" + "_live_" + "4eC39HqLyjWDarjtT1zdp7dc"
+GOOGLE_KEY = "AIza" + "SyA1234567890abcdefghijklmnopqrstuv"
+AZURE_KEY = "A" * 86 + "=="
+PEM = ("-----BEGIN RSA " + "PRIVATE KEY-----\nMIIEowIBAAKCAQEA7\n"
+       "-----END RSA " + "PRIVATE KEY-----")
+
+
+@pytest.mark.parametrize("secret,name", [
+    (AWS_KEY_ID, "aws_access_key"),
+    (GH_TOKEN, "github_token"),
+    (SLACK_TOKEN, "slack_token"),
+    (STRIPE_KEY, "stripe_key"),
+    (GOOGLE_KEY, "google_api_key"),
+])
+def test_cloud_keys_are_redacted_by_default(secret, name):
+    out = redact_body(json.dumps({"note": f"key is {secret} ok"}))
+    assert secret not in out
+    assert f"[REDACTED:{name}]" in out
+
+
+def test_azure_storage_key_in_a_connection_string_is_redacted():
+    conn = f"DefaultEndpointsProtocol=https;AccountName=x;AccountKey={AZURE_KEY};"
+    out = redact_text(conn)
+    assert AZURE_KEY not in out
+    assert "AccountKey=[REDACTED:azure_storage_key];" in out
+
+
+def test_pem_private_key_block_is_redacted_whole():
+    out = redact_text(f"cfg {PEM} tail")
+    assert "MIIEow" not in out
+    assert out == "cfg [REDACTED:private_key] tail"
+
+
+def test_truncated_pem_private_key_is_still_redacted():
+    out = redact_text("-----BEGIN " + "PRIVATE KEY-----\nMIIEvQIBADANBgkq")
+    assert out == "[REDACTED:private_key]"
+
+
+def test_aws_key_digits_are_not_eaten_by_the_pan_rule_first():
+    # Cloud keys run before PAN: the key is redacted as one token.
+    out = redact_text("AKIA" + "4111111111111111")
+    assert out == "[REDACTED:aws_access_key]"
+
+
+def test_cloud_key_lookalikes_are_left_alone():
+    for text in ("AKIA-not-a-key", "ghp_short", "sk_test_4eC39HqLyjWDarjtT1zdp7dc",
+                 "xoxb-short", "AIzaShort"):
+        assert redact_text(text) == text
+
+
+def test_cloud_keys_can_be_switched_off_by_policy():
+    policy = RedactionPolicy(patterns=("jwt",))
+    assert redact_text(AWS_KEY_ID, policy) == AWS_KEY_ID
 
 
 def test_email_is_kept_by_default():
@@ -367,6 +431,41 @@ def test_worker_result_redacts_each_retry_attempt_error():
     assert out["attempts"][1]["status"] == "passed"
 
 
+def test_worker_result_redacts_per_step_evidence():
+    out = redact_worker_result({
+        **_worker_payload(),
+        "step_evidence": [{
+            "id": "s0", "index": 0, "type": "fill", "status": "failed", "duration_ms": 12,
+            "error": f"card {VALID_PAN} rejected",
+            "selector": f"#card-{VALID_PAN}",
+            "console": [{"id": "s0.c0", "type": "error", "text": f"token {JWT}"}],
+            "requests": [{"id": "s0.r0", "method": "GET", "url": f"https://x.test/reset/{JWT}", "status": 500}],
+            "dom": f'<div data-pan="{VALID_PAN}">aadhaar {VALID_AADHAAR}</div>',
+            "screenshot": "runs/7/screenshots/j-1-failure.png",
+        }],
+    })
+    e = out["step_evidence"][0]
+    flat = json.dumps(e)
+    assert VALID_PAN not in flat
+    assert JWT not in flat
+    assert VALID_AADHAAR not in flat
+    # Ids, status, status codes and artifact keys are routing data — untouched.
+    assert e["id"] == "s0"
+    assert e["requests"][0]["id"] == "s0.r0"
+    assert e["requests"][0]["status"] == 500
+    assert e["screenshot"] == "runs/7/screenshots/j-1-failure.png"
+
+
+def test_per_step_evidence_is_redacted_inside_continuous_test_results_too():
+    out = redact_worker_result({
+        "job_id": "j-3", "run_id": 9, "status": "failed",
+        "test_results": [{"test_case_id": 1, "status": "failed",
+                          "step_evidence": [{"id": "s0", "console": [
+                              {"id": "s0.c0", "type": "error", "text": f"pan {VALID_PAN}"}]}]}],
+    })
+    assert VALID_PAN not in json.dumps(out["test_results"][0]["step_evidence"])
+
+
 def test_worker_result_preserves_routing_and_status():
     # These drive aggregation and finalization; losing one loses a result.
     out = redact_worker_result(_worker_payload())
@@ -397,3 +496,66 @@ def test_worker_result_tolerates_junk():
 def test_worker_result_redaction_is_idempotent():
     once = redact_worker_result(_worker_payload())
     assert redact_worker_result(once) == once
+
+
+# --------------------------------------------------------------------------
+# Inbound messages (test inbox previews, captured webhooks)
+# Mirrors the redactMessageText block in execution-engine/src/core/redact.test.ts.
+# --------------------------------------------------------------------------
+
+def test_message_reset_link_loses_query_string_and_opaque_path_token():
+    assert redact_message_text(
+        "Reset: https://shop.example.com/reset/9f8a7b6c5d4e3f2a1b0c9d8e?token=abc&x=1 now"
+    ) == "Reset: https://shop.example.com/reset/[REDACTED:link]?[REDACTED:link] now"
+
+
+def test_message_fragments_are_dropped_too():
+    assert redact_message_text("go https://x.io/cb#access=abc") == "go https://x.io/cb#[REDACTED:link]"
+
+
+def test_message_readable_paths_survive():
+    text = "See https://shop.example.com/blog/announcing-the-new-dashboard today"
+    assert redact_message_text(text) == text
+
+
+def test_message_standalone_code_is_masked_even_before_a_full_stop():
+    assert redact_message_text("Your code is 482913.") == "Your code is [REDACTED:code]."
+    assert redact_message_text("PIN 12345678 expires") == "PIN [REDACTED:code] expires"
+
+
+def test_message_years_decimals_and_alphanumeric_ids_are_not_codes():
+    text = "In 2026 the total was 1234567.89 for order A1234567"
+    assert redact_message_text(text) == text
+
+
+def test_message_regular_value_patterns_still_apply():
+    assert redact_message_text(f"card {VALID_PAN} jwt {JWT}") == "card [REDACTED:pan] jwt [REDACTED:jwt]"
+
+
+def test_message_non_strings_pass_through():
+    assert redact_message_text("") == ""
+    assert redact_message_text(None) is None
+# --- access-matrix observations (twin: redact.test.ts "an access observation …")
+
+def test_access_observation_headers_body_and_urls_are_scrubbed():
+    from app.services.redaction import redact_access_observation
+    obs = redact_access_observation({
+        "status": 200, "element_present": None,
+        "headers": {"set-cookie": "sid=abc", "content-type": "application/json"},
+        "body_excerpt": json.dumps({"token": "abc", "id": 7}),
+        "url": f"https://shop.example.com/pay?card={VALID_PAN}",
+        "swapped_id": "101",
+    })
+    assert obs["headers"]["set-cookie"] == REDACTED
+    assert obs["headers"]["content-type"] == "application/json"
+    assert json.loads(obs["body_excerpt"])["token"] == REDACTED
+    assert json.loads(obs["body_excerpt"])["id"] == 7
+    assert VALID_PAN not in obs["url"]
+    assert obs["status"] == 200
+    assert obs["swapped_id"] == "101"
+
+
+def test_access_observation_truncated_excerpt_degrades_to_text_sweep():
+    from app.services.redaction import redact_access_observation
+    obs = redact_access_observation({"body_excerpt": f'{{"note": "{VALID_PAN}", "x": [1, 2'})
+    assert VALID_PAN not in obs["body_excerpt"]

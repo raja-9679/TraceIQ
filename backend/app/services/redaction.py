@@ -78,8 +78,10 @@ DEFAULT_BODY_KEYS: Tuple[str, ...] = (
 )
 
 #: Value patterns enabled unless a policy says otherwise. Each is either
-#: checksum-validated or structurally unambiguous.
-DEFAULT_PATTERNS: Tuple[str, ...] = ("pan", "aadhaar", "jwt")
+#: checksum-validated or structurally unambiguous. `cloud_keys` (WP7) is a
+#: family of vendor credential formats — each has a fixed, documented prefix, so
+#: none of them collides with ordinary test data the way email/phone would.
+DEFAULT_PATTERNS: Tuple[str, ...] = ("pan", "aadhaar", "jwt", "cloud_keys")
 
 
 def _normalize_key(key: str) -> str:
@@ -182,6 +184,29 @@ _PAN_RE = re.compile(r"(?<![\d.])(?:\d[ -]?){12,18}\d(?![\d.])")
 _AADHAAR_RE = re.compile(r"(?<![\d.])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\d.])")
 _JWT_RE = re.compile(r"eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}")
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+#: Vendor credential formats, as (token name, regex). Mirrored in redact.ts as
+#: CLOUD_KEY_PATTERNS and reused by app/services/leak_detection.py, which turns
+#: the same hits (and the markers they leave behind) into security findings.
+#: The PEM rule runs to the END line, or to the end of the text when a capture
+#: was truncated mid-key — a partial private key is still a private key.
+CLOUD_KEY_PATTERNS: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
+    ("private_key", re.compile(
+        r"-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)")),
+    ("aws_access_key", re.compile(r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])")),
+    ("github_token", re.compile(
+        r"(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})")),
+    ("slack_token", re.compile(r"(?<![A-Za-z0-9])xox[abposr]-[A-Za-z0-9-]{10,}")),
+    ("stripe_key", re.compile(r"(?<![A-Za-z0-9])[sr]k_live_[A-Za-z0-9]{20,}")),
+    ("google_api_key", re.compile(r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])")),
+    ("azure_storage_key", re.compile(r"(?<=AccountKey=)[A-Za-z0-9+/]{86}==")),
+)
+
+
+def _sub_cloud_keys(text: str) -> str:
+    for name, pattern in CLOUD_KEY_PATTERNS:
+        text = pattern.sub(_token(name), text)
+    return text
 _PHONE_RE = re.compile(r"(?<![\d.])\+?\d[\d ()-]{8,16}\d(?![\d.])")
 
 
@@ -204,6 +229,7 @@ def _sub_aadhaar(text: str) -> str:
 
 
 _PATTERN_FUNCS = {
+    "cloud_keys": _sub_cloud_keys,
     "pan": _sub_pan,
     "aadhaar": _sub_aadhaar,
     "jwt": lambda t: _JWT_RE.sub(_token("jwt"), t),
@@ -211,9 +237,11 @@ _PATTERN_FUNCS = {
     "phone": lambda t: _PHONE_RE.sub(_token("phone"), t),
 }
 
-# Order matters: JWT before PAN so a token's digit runs are already gone, and
-# Aadhaar before PAN so a 12-digit id is not first swallowed by the PAN regex.
-_PATTERN_ORDER = ("jwt", "aadhaar", "pan", "email", "phone")
+# Order matters: cloud keys first, because an AWS key id's digit run could
+# otherwise be half-eaten by the PAN rule and survive unrecognisable; JWT before
+# PAN so a token's digit runs are already gone; Aadhaar before PAN so a 12-digit
+# id is not first swallowed by the PAN regex.
+_PATTERN_ORDER = ("cloud_keys", "jwt", "aadhaar", "pan", "email", "phone")
 
 
 def redact_text(text: Optional[str], policy: RedactionPolicy = DEFAULT_POLICY) -> Optional[str]:
@@ -226,6 +254,53 @@ def redact_text(text: Optional[str], policy: RedactionPolicy = DEFAULT_POLICY) -
         if name in enabled:
             out = _PATTERN_FUNCS[name](out)
     return out
+
+
+# --------------------------------------------------------------------------
+# Inbound messages (test inbox emails, captured webhooks)
+# --------------------------------------------------------------------------
+
+# A URL in a message. Stops at whitespace, quotes, angle brackets and closing
+# parens/brackets so a link inside prose or HTML attributes ends where it should.
+_URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
+# A path segment that is an opaque credential: long, URL-safe, and containing
+# both a letter and a digit (so /blog/announcing-the-new-dashboard survives).
+_PATH_TOKEN_RE = re.compile(r"(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{20,}")
+# A one-time code: 6-8 digits standing alone (a sentence-ending period is
+# fine; a decimal point on either side is not).
+_CODE_RE = re.compile(r"(?<!\w)(?<!\d\.)\d{6,8}(?!\w)(?!\.\d)")
+
+
+def _redact_url(match: re.Match) -> str:
+    url = match.group(0)
+    base, sep, _rest = url.partition("?")
+    if not sep:
+        base, sep, _rest = url.partition("#")
+    scheme, _, remainder = base.partition("://")
+    host, slash, path = remainder.partition("/")
+    if slash:
+        path = "/".join(_token("link") if _PATH_TOKEN_RE.fullmatch(seg) else seg
+                        for seg in path.split("/"))
+    out = f"{scheme}://{host}{slash}{path}"
+    return out + (sep + _token("link") if sep else "")
+
+
+def redact_message_text(text: Optional[str], policy: RedactionPolicy = DEFAULT_POLICY) -> Optional[str]:
+    """Free-text redaction for messages the APP UNDER TEST sends us — the body
+    of a password-reset email, a captured webhook payload rendered as text.
+
+    Those are built to carry live credentials: the reset link IS the password,
+    the six digits ARE the second factor. So on top of `redact_text` this drops
+    every link's query string and fragment, masks opaque path segments
+    (/reset/9f8a…), and masks standalone 6-8 digit codes. It is only used for
+    previews and logs; the value a step extracts is taken from the raw message
+    before redaction, which is the point of the step.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    out = redact_text(text, policy)
+    out = _URL_RE.sub(_redact_url, out)
+    return _CODE_RE.sub(_token("code"), out)
 
 
 # --------------------------------------------------------------------------
@@ -444,6 +519,39 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
             k: redact_text(v, policy) if isinstance(v, str) else v
             for k, v in out["step_dom"].items()
         }
+    if isinstance(out.get("step_evidence"), list):
+        out["step_evidence"] = redact_step_evidence(out["step_evidence"], policy)
+    return out
+
+
+def redact_step_evidence(entries: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Per-step evidence: error, selector, DOM excerpt, console text and
+    request URLs. Ids, statuses, status codes and artifact keys are routing
+    data and stay as they are. Twin of `redactStepEvidence` in redact.ts."""
+    if not isinstance(entries, list):
+        return entries
+    out = []
+    for e in entries:
+        if not isinstance(e, dict):
+            out.append(e)
+            continue
+        item = dict(e)
+        for field in ("error", "selector", "dom"):
+            if isinstance(item.get(field), str):
+                item[field] = redact_text(item[field], policy)
+        if isinstance(item.get("console"), list):
+            item["console"] = [
+                {**c, "text": redact_text(c["text"], policy)}
+                if isinstance(c, dict) and isinstance(c.get("text"), str) else c
+                for c in item["console"]
+            ]
+        if isinstance(item.get("requests"), list):
+            item["requests"] = [
+                {**r, "url": redact_text(r["url"], policy)}
+                if isinstance(r, dict) and isinstance(r.get("url"), str) else r
+                for r in item["requests"]
+            ]
+        out.append(item)
     return out
 
 
@@ -472,6 +580,29 @@ def redact_worker_result(payload: Any, policy: RedactionPolicy = DEFAULT_POLICY)
     for key in ("test_results", "results"):
         if isinstance(out.get(key), list):
             out[key] = [_redact_case_result(item, policy) for item in out[key]]
+    return out
+
+
+_OBSERVATION_TEXT_FIELDS = ("url", "final_url", "error", "swapped_id", "owner_url")
+
+
+def redact_access_observation(obs: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Scrub an access-matrix cell observation (twin of `redactAccessObservation`
+    in redact.ts). It carries the response headers and a body excerpt of a
+    request made AS a persona — exactly where a session token gets echoed back.
+    """
+    if not isinstance(obs, dict):
+        return obs
+    out = dict(obs)
+    if "headers" in out:
+        out["headers"] = redact_headers(out["headers"], policy)
+    if "owner_headers" in out:
+        out["owner_headers"] = redact_headers(out["owner_headers"], policy)
+    if "body_excerpt" in out:
+        out["body_excerpt"] = redact_body(out["body_excerpt"], out.get("content_type"), policy)
+    for field in _OBSERVATION_TEXT_FIELDS:
+        if isinstance(out.get(field), str):
+            out[field] = redact_text(out[field], policy)
     return out
 
 

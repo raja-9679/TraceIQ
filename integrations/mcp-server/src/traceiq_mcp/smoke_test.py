@@ -14,6 +14,7 @@ Run:  python -m traceiq_mcp.smoke_test
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sys
 
@@ -34,7 +35,8 @@ EXPECTED_TOOLS = {
     "propose_update_suite_settings",
     "bulk_propose_cases", "list_case_proposals", "generate_case_proposal",
     # quality & results
-    "get_quality_snapshot", "evaluate_quality_gate", "get_run_report",
+    "get_quality_snapshot", "evaluate_quality_gate", "get_release_readiness",
+    "get_run_report",
     "get_test_effectiveness", "list_failure_clusters", "get_failure_cluster",
     "list_flakes", "list_heal_proposals",
     "create_comparison_run", "get_comparison",
@@ -69,6 +71,11 @@ async def _amain() -> int:
         untyped = [n for n, t in by_name.items() if not t.outputSchema]
         assert not untyped, f"tools without outputSchema: {sorted(untyped)}"
         print(f"OK: {len(by_name)} tools registered, all with outputSchema")
+
+        # Failure investigation v2 must stay visible to agents in the schema.
+        fa_schema = json.dumps(by_name["get_failure_analysis"].outputSchema)
+        for field in ("hypotheses", "evidence_refs", "observed", "changed_since_last_pass"):
+            assert field in fa_schema, f"get_failure_analysis outputSchema lacks {field}"
 
         if os.environ.get("TRACEIQ_BASE_URL") and os.environ.get("TRACEIQ_API_KEY"):
             for tool in ("list_projects", "describe_step_types"):

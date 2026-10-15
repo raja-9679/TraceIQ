@@ -7,6 +7,7 @@
 
 const core = require('@actions/core');
 const { decideSelection, reviewNotes } = require('./selection');
+const { mdCell, gateSection } = require('./markdown');
 const github = require('@actions/github');
 
 const TERMINAL = new Set(['passed', 'failed', 'error']);
@@ -149,13 +150,6 @@ function statusIcon(status) {
     return ':hourglass:';
 }
 
-function mdCell(text, maxLen = 200) {
-    if (text === null || text === undefined) return '';
-    let s = String(text).replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').trim();
-    if (s.length > maxLen) s = `${s.slice(0, maxLen - 1)}…`;
-    return s;
-}
-
 function fmtDuration(ms) {
     if (ms === null || ms === undefined) return '';
     const sec = Number(ms) / 1000;
@@ -259,26 +253,6 @@ function failureAnalysisSection(runs) {
     }
     if (blocks.length === 0) return [];
     return ['### Failure analysis', '', ...blocks];
-}
-
-function gateSection(gate, enforced) {
-    if (!gate) return [];
-    const lines = [
-        '### Quality gate',
-        '',
-        `**${gate.passed ? ':white_check_mark: PASS' : ':x: FAIL'}**` +
-        (enforced ? '' : ' _(advisory — not enforced for this project)_'),
-        '',
-        '| Check | Result | Actual | Threshold |',
-        '| --- | --- | --- | --- |',
-    ];
-    for (const c of gate.checks || []) {
-        lines.push(
-            `| ${mdCell(c.name)} | ${c.passed ? ':white_check_mark:' : ':x:'} | ` +
-            `${mdCell(c.actual)} | ${mdCell(c.threshold)} |`,
-        );
-    }
-    return [...lines, ''];
 }
 
 function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced }) {

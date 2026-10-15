@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from 'sonner';
 import { usePermission } from "@/hooks/usePermission";
 import { motion, AnimatePresence, Variants } from 'framer-motion';
+import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicyCard';
 
 const tabVariants: Variants = {
     hidden: { opacity: 0, y: -5 },
@@ -808,6 +809,15 @@ export default function SuiteDetails() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* ── Fail on JavaScript errors ── */}
+                                <ConsoleErrorPolicyCard
+                                    key={suite.id}
+                                    settings={suite.settings}
+                                    effective={suite.effective_settings}
+                                    inherit={suite.inherit_settings}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
 
                                 {/* ── Execution Matrix (Browsers & Devices) ── */}
                                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden hover:border-slate-300 transition-colors">

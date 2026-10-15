@@ -108,6 +108,9 @@ async def create_cluster_ticket(cluster_id: int, body: dict = Body(...),
         UserWorkspace.user_id == principal.user.id))).first()
     if not member:
         raise HTTPException(status_code=403, detail="Not a member of the tracker's workspace")
+    from app.api.issue_trackers import OUTBOUND_PROVIDERS
+    if config.provider not in OUTBOUND_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"{config.provider} connections are import-only")
 
     summary = body.get("summary") or f"[TraceIQ] {cluster.category}: {cluster.title[:120]}"
     description = (f"Failure cluster #{cluster.id} — {cluster.occurrence_count} occurrence(s), "

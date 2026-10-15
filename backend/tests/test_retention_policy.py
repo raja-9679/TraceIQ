@@ -76,3 +76,19 @@ def test_non_numeric_values_are_ignored():
 @pytest.mark.parametrize("days", [1, 7, 30, 365, 3650])
 def test_plausible_windows_pass_through(days):
     assert effective_retention_days(project_days=days, global_days=0) == days
+
+
+# --- select_expired (access-matrix runs reuse the run windows) ----------------
+
+def test_select_expired_honours_each_projects_window():
+    from datetime import datetime, timedelta
+
+    from app.services.retention import select_expired
+
+    now = datetime(2026, 10, 15)
+    old, fresh = now - timedelta(days=40), now - timedelta(days=2)
+    items = [(1, 10, old), (2, 10, fresh), (3, 20, old), (4, 30, old), (5, 10, None)]
+    # Project 20 keeps forever (None), 30 has no entry, 5 has an unknown age.
+    assert select_expired(items, {10: 30, 20: None}, now, limit=10) == [1]
+    assert select_expired(items, {10: 1, 20: 30, 30: 0}, now, limit=10) == [1, 2, 3]
+    assert select_expired(items, {10: 1, 20: 30}, now, limit=2) == [1, 2]

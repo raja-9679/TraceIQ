@@ -310,6 +310,14 @@ async def mfa_login(request: Request, body: MfaLoginRequest,
     if not ok:
         ok = await _consume_recovery_code(user.id, body.code, session)
     if not ok:
+        # A wrong second factor after a RIGHT password is the most telling
+        # failure there is — the password is already known to someone. It
+        # counts toward the failed-login burst rule like any other.
+        await audit_record(
+            session, entity_type="auth", entity_id=user.id, action="login_failed",
+            user_id=user.id, request=request,
+            changes={"email": user.email, "reason": "bad_mfa_code"})
+        await session.commit()
         raise HTTPException(status_code=401, detail="Invalid authentication or recovery code")
     return await _issue_tokens(user, request, session, method="mfa_totp")
 
@@ -383,6 +391,9 @@ async def mfa_verify(body: MfaCodeRequest, request: Request,
         raise HTTPException(status_code=400, detail="Invalid authentication code")
     current_user.mfa_enabled = True
     session.add(current_user)
+    await audit_record(session, entity_type="auth", entity_id=current_user.id,
+                       action="mfa_enabled", user_id=current_user.id, request=request,
+                       changes={"email": current_user.email})
     await session.commit()
     # Issue backup codes (shown once) so a lost device doesn't lock the user out.
     codes = await _generate_recovery_codes(current_user.id, session)
@@ -393,14 +404,20 @@ async def mfa_verify(body: MfaCodeRequest, request: Request,
 
 
 @router.post("/mfa/disable")
-async def mfa_disable(body: MfaCodeRequest, current_user: User = Depends(get_current_user),
+async def mfa_disable(body: MfaCodeRequest, request: Request,
+                      current_user: User = Depends(get_current_user),
                       session: AsyncSession = Depends(get_session)):
     if current_user.mfa_enabled and current_user.mfa_secret:
         if not totp.verify(decrypt_secret(current_user.mfa_secret), body.code):
             raise HTTPException(status_code=400, detail="Invalid authentication code")
+    was_enabled = current_user.mfa_enabled
     current_user.mfa_enabled = False
     current_user.mfa_secret = None
     session.add(current_user)
+    if was_enabled:
+        await audit_record(session, entity_type="auth", entity_id=current_user.id,
+                           action="mfa_disabled", user_id=current_user.id, request=request,
+                           changes={"email": current_user.email})
     await session.exec(delete(MfaRecoveryCode).where(MfaRecoveryCode.user_id == current_user.id))
     await session.commit()
     return {"mfa_enabled": False}
@@ -911,6 +928,11 @@ async def ldap_login(request: Request, body: LdapLoginRequest,
     try:
         identity = await asyncio.to_thread(authenticate, body.username, body.password)
     except LdapAuthError as exc:
+        await audit_record(
+            session, entity_type="auth", entity_id=0, action="login_failed",
+            request=request,
+            changes={"email": body.username, "reason": "ldap_bind_failed"})
+        await session.commit()
         raise HTTPException(status_code=401, detail=str(exc))
 
     user = (await session.exec(select(User).where(User.email == identity.email))).first()

@@ -78,6 +78,12 @@ ON_DELETE: Dict[str, str] = {
     "userprojectaccess.project_id": DELETE,
     "securityfinding.project_id": DELETE,
     "requirementlink.project_id": DELETE,
+    "requirement.project_id": DELETE,
+    "incident.project_id": DELETE,
+    "incidentwebhook.project_id": DELETE,
+    # The matrix is project configuration; its runs/cells are its history.
+    "accessmatrix.project_id": DELETE,
+    "accessmatrixrun.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.
@@ -95,6 +101,8 @@ ON_DELETE: Dict[str, str] = {
     # schedule is user configuration and shouldn't silently vanish); this only
     # fires for a whole-project delete, where the schedule is the project's.
     "testschedule.test_suite_id": DELETE,
+    # The webhook keeps working; its proposals fall back to the first suite.
+    "incidentwebhook.default_suite_id": NULLIFY,
 
     # --- into testcase ---------------------------------------------------------
     "testrun.test_case_id": DELETE,         # a single-case run of that case
@@ -109,6 +117,11 @@ ON_DELETE: Dict[str, str] = {
     # Results belong to their RUN; a suite run keeps its result rows when one
     # of its cases is deleted (the FK is ON DELETE SET NULL in the schema too).
     "testcaseresult.test_case_id": NULLIFY,
+    # An incident is history about production, not about the case: it
+    # outlives a deleted matched / regression / "should have caught it" case.
+    "incident.matched_case_id": NULLIFY,
+    "incident.regression_case_id": NULLIFY,
+    "incident.escaped_case_id": NULLIFY,
     # The stored login session is the project's; it stays usable after the
     # case that captured it is deleted.
     "authsession.captured_by_case_id": NULLIFY,
@@ -117,6 +130,9 @@ ON_DELETE: Dict[str, str] = {
     "testcaseresult.test_run_id": DELETE,   # NOT NULL; the run's own output
     # Findings from passive analysis of the run's own traffic are run evidence.
     "securityfinding.run_id": DELETE,
+    # Requests captured for the run's wait-for-webhook steps; meaningless
+    # without it (and swept after 24 h anyway).
+    "webhookcapture.run_id": DELETE,
     # These outlive the run: a pending proposal is still a valid suggestion,
     # an issue ticket exists in the external tracker regardless, and a monitor
     # check is a point in the schedule's uptime history.
@@ -124,10 +140,14 @@ ON_DELETE: Dict[str, str] = {
     "caseproposal.source_run_id": NULLIFY,
     "issueticket.run_id": NULLIFY,
     "monitorcheck.run_id": NULLIFY,
+    # A matrix cell's verdict outlives the TestRun a case row executed as.
+    "accessmatrixcell.test_run_id": NULLIFY,
 
     # --- into tables only reachable through project ---------------------------
     "monitorcheck.schedule_id": DELETE,     # NOT NULL; history of that monitor
     "securityfinding.scan_id": DELETE,      # a scan's own findings
+    "accessmatrixrun.matrix_id": DELETE,    # a matrix's own executions
+    "accessmatrixcell.matrix_run_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
@@ -385,6 +405,7 @@ def _object_keys(md, ids: Dict[str, Set[int]]) -> Generator:
     from app.services.purge import baseline_purge_prefix
 
     keys: List[str] = [f"runs/{rid}/" for rid in sorted(ids.get("testrun", ()))]
+    keys.extend(f"access-matrix/{rid}/" for rid in sorted(ids.get("accessmatrixrun", ())))
     case_ids = ids.get("testcase", set())
     if case_ids:
         vb = md.tables["visualbaseline"]
