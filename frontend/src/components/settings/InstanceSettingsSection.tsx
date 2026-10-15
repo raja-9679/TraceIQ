@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RotateCcw, Save, Send, Sparkles, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Loader2, RotateCcw, Save, Send, Sparkles, AlertTriangle, ShieldAlert, Inbox } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
@@ -35,6 +35,7 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'saml', title: 'Single sign-on (SAML 2.0)', description: 'Optional, for SAML-first IdPs (Entra ID enterprise apps, Okta, ADFS, PingFederate, Shibboleth). Set the assertion consumer URL to https://<your-traceiq>/api/auth/saml/acs and paste the IdP metadata URL; give the IdP our metadata from /api/auth/saml/metadata. Settings are validated (and the metadata fetched) when you save. See docs/ENTERPRISE_AUTH.md.' },
     { id: 'ldap', title: 'LDAP / Active Directory', description: 'Optional corporate login for on-prem AD. TraceIQ binds as the logging-in user — no service account, no password sync. See docs/ENTERPRISE_AUTH.md.' },
     { id: 'federation', title: 'Federated provisioning (SSO + LDAP)', description: 'Where users who sign in through your IdP land. The default gives every one of them their own tenant, which is right for a single user and wrong for an organisation — set a target workspace before rolling SSO out to a team. See docs/ENTERPRISE_AUTH.md.' },
+    { id: 'test_inbox', title: 'Test inbox & webhook capture', description: 'Lets test cases receive email ({{inbox.address}} + Wait For Email) and webhooks ({{webhook.url}} + Wait For Webhook). Mailpit: start the compose profile "inbox" and point the app under test\'s SMTP at mailpit:1025. IMAP: a real mailbox that supports plus-addressing (qa+tag@company.com). Mail credentials stay on the backend — workers never see them.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
 ];
 
@@ -84,6 +85,17 @@ export default function InstanceSettingsSection() {
         mutationFn: async () => api.post('/admin/instance-settings/test-email', { to: testEmailTo }),
         onSuccess: () => toast.success(`Test email sent to ${testEmailTo}`),
         onError: (err: any) => toast.error(err.response?.data?.detail || 'SMTP test failed'),
+    });
+
+    const testInbox = useMutation({
+        mutationFn: async () => {
+            const response = await api.post('/admin/instance-settings/test-inbox');
+            return response.data;
+        },
+        onSuccess: (data: { detail: string; example_address: string }) =>
+            toast.success(`${data.detail}. Addresses look like ${data.example_address}`),
+        onError: (err: { response?: { data?: { detail?: string } } }) =>
+            toast.error(err.response?.data?.detail || 'Inbox test failed'),
     });
 
     const testLlm = useMutation({
@@ -269,6 +281,21 @@ export default function InstanceSettingsSection() {
                                             ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                                             : <Send className="h-4 w-4 mr-1" />}
                                         Send test email
+                                    </Button>
+                                    <span className="text-xs text-gray-500">Save first — the test uses saved values.</span>
+                                </div>
+                            )}
+                            {group.id === 'test_inbox' && (
+                                <div className="flex items-center gap-2 pt-2 border-t">
+                                    <Button
+                                        variant="outline" size="sm"
+                                        disabled={testInbox.isPending}
+                                        onClick={() => testInbox.mutate()}
+                                    >
+                                        {testInbox.isPending
+                                            ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                            : <Inbox className="h-4 w-4 mr-1" />}
+                                        Test inbox connection
                                     </Button>
                                     <span className="text-xs text-gray-500">Save first — the test uses saved values.</span>
                                 </div>

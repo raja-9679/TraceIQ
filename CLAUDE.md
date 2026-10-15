@@ -445,6 +445,30 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   the default `standard` level with built-in redaction only; `jobDataPolicy()`
   reads both. `trace_parser.parse_actions` exists but is not wired in.
   Worker + backend + frontend rebuild needed.
+- **Test inbox + webhook capture (2026-10)** — steps `wait-for-email` and
+  `wait-for-webhook`; templates `{{inbox.address[.label]}}` /
+  `{{webhook.url[.label]}}`. Values are **derived, never stored**:
+  `app/services/step_hooks.py` HMACs (run, case, data-row, label) under a
+  SECRET_KEY subkey; `_case_payload(..., run_id=)` scans the case and ships
+  them as `test_case.test_hooks` (worker interpolates via `interpolate.ts`).
+  Inbox providers (`app/services/inbox_providers.py`): `mailpit` (compose
+  profile `inbox`) and `imap` (IMAPS only, plus-addressing); instance settings
+  group `test_inbox`, validated on save, "Test inbox connection" button. The
+  **worker holds no mail credentials**: it POSTs (run, case, row, label) to
+  `/api/internal/test-inbox/search` (X-Worker-Secret); the backend derives the
+  address itself, requires a live run whose project owns the case, and matches
+  + extracts on the raw message — only the extracted value and a
+  `redact_message_text` preview (new twin rule: link query/fragment, opaque
+  path tokens, 6-8 digit codes) go back. Webhooks: public
+  `/api/hooks/capture/{token}[/sub]`; the token `<run>.<case>.<row+1>.<label>.<mac>`
+  is self-verifying (no registration table), the run must be live (410 after),
+  120/min, 256 kB, 50 per token, redacted BEFORE storage in `webhookcapture`
+  (migration `c2a2b3c4d5e2`, purge + ON_DELETE entries), swept hourly after
+  24 h (`purge_webhook_captures`). Public base = `TEST_HOOKS_PUBLIC_URL`, else
+  `FRONTEND_BASE_URL`. Both waits take the NEWEST match (retries reuse the
+  address). Not supported by local or mobile workers. Module names avoid
+  `test_*` on purpose (pytest collected a `test_`-named endpoint). Worker image
+  rebuild needed.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

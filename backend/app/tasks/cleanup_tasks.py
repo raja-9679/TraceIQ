@@ -339,3 +339,39 @@ def purge_orphaned_artifacts():
         report["errors"].append(str(exc))
         print(f"[Retention] Orphan sweep failed: {exc}")
     return report
+
+
+#: Captured webhook requests exist only for a running wait-for-webhook step.
+WEBHOOK_CAPTURE_TTL_HOURS = 24
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_webhook_captures")
+def purge_webhook_captures(ttl_hours: int = WEBHOOK_CAPTURE_TTL_HOURS):
+    """Delete webhook captures older than the TTL.
+
+    Not tied to RUN_RETENTION_DAYS on purpose: a capture is a third-party
+    payload held only so an in-flight step can read it, so it should not live
+    as long as the run's evidence does — even though it is redacted, "we keep
+    whatever strangers POST at us for a year" is the wrong default. Batched so
+    a backlog (beat down for a week) cannot turn into one huge transaction.
+    """
+    from sqlalchemy import text
+
+    cutoff = datetime.utcnow() - timedelta(hours=max(1, int(ttl_hours)))
+    batch = int(getattr(settings, 'RETENTION_BATCH_SIZE', 500) or 500)
+    total = 0
+    with Session(sync_engine) as session:
+        while True:
+            deleted = session.execute(text("""
+                DELETE FROM webhookcapture
+                 WHERE id IN (SELECT id FROM webhookcapture
+                               WHERE received_at < :cutoff
+                               ORDER BY id LIMIT :batch)
+            """), {"cutoff": cutoff, "batch": batch}).rowcount or 0
+            session.commit()
+            total += deleted
+            if deleted < batch:
+                break
+    if total:
+        print(f"[Cleanup] Expired {total} webhook capture(s) older than {ttl_hours} h")
+    return total

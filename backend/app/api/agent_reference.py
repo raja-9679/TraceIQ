@@ -208,6 +208,56 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Prefer this over wait-timeout for XHR-driven UIs. Use trigger_selector when a click fires the request — sequential steps cannot overlap otherwise.",
     },
     {
+        "type": "wait-for-email",
+        "category": "wait",
+        "params": {
+            "params.to": "Inbox to read — {{inbox.address}} (default) or {{inbox.address.<label>}}; only this run's addresses work",
+            "params.subject": "Subject must contain this (case-insensitive, optional)",
+            "params.subjectRegex": "Subject must match this regex (optional)",
+            "params.from": "Sender must contain this (optional)",
+            "params.extract": "'link' | 'code' | 'body' | 'subject' | 'none' (default 'link')",
+            "params.pattern": "link: regex the URL must match (e.g. '/reset'); code: regex, group 1 if present (default \\b(\\d{6})\\b)",
+            "params.variableName": "Variable for the extracted value (default email_link / email_code / email_body / email_subject)",
+            "params.timeout": "Milliseconds to wait (default 60000, max 300000)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "wait-for-email",
+            "params": {"to": "{{inbox.address}}", "subject": "Reset your password",
+                       "extract": "link", "pattern": "/reset", "variableName": "reset_link"},
+        },
+        "notes": "Type {{inbox.address}} into the app's email field first — it is a per-run, per-case "
+                 "address on the instance's test inbox (Mailpit or an IMAP plus-address). Use "
+                 "{{inbox.address.<label>}} for several addresses in one case. Waits for the NEWEST "
+                 "matching email, then e.g. goto '{{reset_link}}' or fill the OTP field with "
+                 "'{{email_code}}'. Fails at once when the instance has no test inbox configured.",
+    },
+    {
+        "type": "wait-for-webhook",
+        "category": "wait",
+        "params": {
+            "params.url": "Capture URL — {{webhook.url}} (default) or {{webhook.url.<label>}}",
+            "params.method": "Only requests with this HTTP method (optional)",
+            "params.path": "Only requests whose path after the token contains this (optional)",
+            "params.where": "Object of {jsonPath: expected} the JSON body must match, e.g. {'event': 'payment.succeeded'} (optional)",
+            "params.extract": "JSON path to store, e.g. 'data.order.id' (optional; default stores the whole body)",
+            "params.equals": "Fail unless the extracted value equals this (optional)",
+            "params.variableName": "Variable for the extracted value (default 'webhook_body', or 'webhook_value' with extract)",
+            "params.timeout": "Milliseconds to wait (default 60000, max 300000)",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "wait-for-webhook",
+            "params": {"url": "{{webhook.url}}", "method": "POST", "where": {"type": "order.paid"},
+                       "extract": "data.id", "variableName": "order_id"},
+        },
+        "notes": "Register {{webhook.url}} as the callback URL in the app under test (UI or http-request "
+                 "step). It resolves to <public TraceIQ URL>/api/hooks/capture/<token>, which the app must "
+                 "be able to reach. Captures are redacted before storage (credential headers and denylisted "
+                 "JSON keys such as token/password become [REDACTED]), capped at 256 kB / 50 per URL, and "
+                 "kept 24 h. The newest matching request wins.",
+    },
+    {
         "type": "expect-visible",
         "category": "assertion",
         "params": {"selector": "Element that must be visible"},
@@ -602,7 +652,7 @@ async def list_step_types() -> Dict[str, Any]:
     return {
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
-        "last_updated": "2026-07-25",
+        "last_updated": "2026-10-15",
     }
 
 

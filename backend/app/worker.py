@@ -252,11 +252,13 @@ def run_test_suite(run_id: int, tags: list = None):
             session.commit()
 
 
-def _case_payload(case, row_index=None, data_row=None) -> dict:
+def _case_payload(case, row_index=None, data_row=None, run_id=None) -> dict:
     """Serializable job payload for one test case, incl. auth-session flags.
 
     For data-driven cases, `row_index`/`data_row` identify the expansion;
-    the name is suffixed so each row aggregates as its own result."""
+    the name is suffixed so each row aggregates as its own result. With a
+    `run_id`, cases that use {{inbox.address}} / {{webhook.url}} also get
+    their derived per-run values (`test_hooks`)."""
     name = case.name
     if row_index is not None:
         name = f"{case.name} [row {row_index + 1}]"
@@ -284,6 +286,15 @@ def _case_payload(case, row_index=None, data_row=None) -> dict:
     if data_row is not None:
         payload['data_row'] = data_row
         payload['row_index'] = row_index
+    if run_id is not None:
+        try:
+            from app.services.step_hooks import case_hooks
+            hooks = case_hooks(run_id, case.id, row_index, payload['steps'], data_row)
+        except Exception as exc:  # noqa: BLE001 — never block dispatch on this
+            print(f"[Worker] test hooks for case {case.id} unavailable: {exc}")
+            hooks = None
+        if hooks:
+            payload['test_hooks'] = hooks
     return payload
 
 
@@ -599,7 +610,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 'unit_id': unit['id'],
                 'unit_name': unit['name'],
                 'test_cases': [
-                    _case_payload(case, idx, row) for case, idx, row in expanded
+                    _case_payload(case, idx, row, run_id=run.id) for case, idx, row in expanded
                 ],
                 'browser': run.browser,
                 'device': run.device,
@@ -617,7 +628,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                     'job_id': job_id,
                     'run_id': run.id,
                     'test_case_id': case.id,
-                    'test_case': _case_payload(case, idx, row),
+                    'test_case': _case_payload(case, idx, row, run_id=run.id),
                     'browser': run.browser,
                     'device': run.device,
                     'settings': _settings_payload(settings),
@@ -673,7 +684,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'job_id': job_id,
             'run_id': run.id,
             'test_case_id': case.id,
-            'test_case': _case_payload(case, row_idx, data_row),
+            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),
@@ -817,7 +828,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'execution_mode': 'parallel',
             'parallelism': parallelism,
             'test_case_id': case.id,
-            'test_case': _case_payload(case, row_idx, data_row),
+            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),

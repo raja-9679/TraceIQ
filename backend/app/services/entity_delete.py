@@ -117,6 +117,9 @@ ON_DELETE: Dict[str, str] = {
     "testcaseresult.test_run_id": DELETE,   # NOT NULL; the run's own output
     # Findings from passive analysis of the run's own traffic are run evidence.
     "securityfinding.run_id": DELETE,
+    # Requests captured for the run's wait-for-webhook steps; meaningless
+    # without it (and swept after 24 h anyway).
+    "webhookcapture.run_id": DELETE,
     # These outlive the run: a pending proposal is still a valid suggestion,
     # an issue ticket exists in the external tracker regardless, and a monitor
     # check is a point in the schedule's uptime history.

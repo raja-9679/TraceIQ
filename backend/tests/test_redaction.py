@@ -19,6 +19,7 @@ from app.services.redaction import (
     RedactionPolicy,
     redact_body,
     redact_headers,
+    redact_message_text,
     redact_audit_changes,
     redact_steps,
     redact_text,
@@ -432,3 +433,42 @@ def test_worker_result_tolerates_junk():
 def test_worker_result_redaction_is_idempotent():
     once = redact_worker_result(_worker_payload())
     assert redact_worker_result(once) == once
+
+
+# --------------------------------------------------------------------------
+# Inbound messages (test inbox previews, captured webhooks)
+# Mirrors the redactMessageText block in execution-engine/src/core/redact.test.ts.
+# --------------------------------------------------------------------------
+
+def test_message_reset_link_loses_query_string_and_opaque_path_token():
+    assert redact_message_text(
+        "Reset: https://shop.example.com/reset/9f8a7b6c5d4e3f2a1b0c9d8e?token=abc&x=1 now"
+    ) == "Reset: https://shop.example.com/reset/[REDACTED:link]?[REDACTED:link] now"
+
+
+def test_message_fragments_are_dropped_too():
+    assert redact_message_text("go https://x.io/cb#access=abc") == "go https://x.io/cb#[REDACTED:link]"
+
+
+def test_message_readable_paths_survive():
+    text = "See https://shop.example.com/blog/announcing-the-new-dashboard today"
+    assert redact_message_text(text) == text
+
+
+def test_message_standalone_code_is_masked_even_before_a_full_stop():
+    assert redact_message_text("Your code is 482913.") == "Your code is [REDACTED:code]."
+    assert redact_message_text("PIN 12345678 expires") == "PIN [REDACTED:code] expires"
+
+
+def test_message_years_decimals_and_alphanumeric_ids_are_not_codes():
+    text = "In 2026 the total was 1234567.89 for order A1234567"
+    assert redact_message_text(text) == text
+
+
+def test_message_regular_value_patterns_still_apply():
+    assert redact_message_text(f"card {VALID_PAN} jwt {JWT}") == "card [REDACTED:pan] jwt [REDACTED:jwt]"
+
+
+def test_message_non_strings_pass_through():
+    assert redact_message_text("") == ""
+    assert redact_message_text(None) is None

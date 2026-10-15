@@ -229,6 +229,53 @@ def redact_text(text: Optional[str], policy: RedactionPolicy = DEFAULT_POLICY) -
 
 
 # --------------------------------------------------------------------------
+# Inbound messages (test inbox emails, captured webhooks)
+# --------------------------------------------------------------------------
+
+# A URL in a message. Stops at whitespace, quotes, angle brackets and closing
+# parens/brackets so a link inside prose or HTML attributes ends where it should.
+_URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
+# A path segment that is an opaque credential: long, URL-safe, and containing
+# both a letter and a digit (so /blog/announcing-the-new-dashboard survives).
+_PATH_TOKEN_RE = re.compile(r"(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{20,}")
+# A one-time code: 6-8 digits standing alone (a sentence-ending period is
+# fine; a decimal point on either side is not).
+_CODE_RE = re.compile(r"(?<!\w)(?<!\d\.)\d{6,8}(?!\w)(?!\.\d)")
+
+
+def _redact_url(match: re.Match) -> str:
+    url = match.group(0)
+    base, sep, _rest = url.partition("?")
+    if not sep:
+        base, sep, _rest = url.partition("#")
+    scheme, _, remainder = base.partition("://")
+    host, slash, path = remainder.partition("/")
+    if slash:
+        path = "/".join(_token("link") if _PATH_TOKEN_RE.fullmatch(seg) else seg
+                        for seg in path.split("/"))
+    out = f"{scheme}://{host}{slash}{path}"
+    return out + (sep + _token("link") if sep else "")
+
+
+def redact_message_text(text: Optional[str], policy: RedactionPolicy = DEFAULT_POLICY) -> Optional[str]:
+    """Free-text redaction for messages the APP UNDER TEST sends us — the body
+    of a password-reset email, a captured webhook payload rendered as text.
+
+    Those are built to carry live credentials: the reset link IS the password,
+    the six digits ARE the second factor. So on top of `redact_text` this drops
+    every link's query string and fragment, masks opaque path segments
+    (/reset/9f8a…), and masks standalone 6-8 digit codes. It is only used for
+    previews and logs; the value a step extracts is taken from the raw message
+    before redaction, which is the point of the step.
+    """
+    if not isinstance(text, str) or not text:
+        return text
+    out = redact_text(text, policy)
+    out = _URL_RE.sub(_redact_url, out)
+    return _CODE_RE.sub(_token("code"), out)
+
+
+# --------------------------------------------------------------------------
 # Headers
 # --------------------------------------------------------------------------
 

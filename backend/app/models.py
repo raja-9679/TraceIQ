@@ -2281,6 +2281,33 @@ class LLMUsageEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
+class WebhookCapture(SQLModel, table=True):
+    """One request the app under test sent to a `{{webhook.url}}` capture URL.
+
+    Short-lived by design: rows are swept after 24 h by
+    `cleanup_tasks.purge_webhook_captures`, they exist only so a running
+    `wait-for-webhook` step can see them. Headers and body are redacted
+    BEFORE they are stored (project data policy) — the payload comes from an
+    arbitrary third-party app and is never trusted to be clean. `token` is the
+    full self-verifying capture token (see app/services/step_hooks.py); the
+    worker looks captures up by it.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    token: str = Field(index=True)
+    run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: int
+    label: str = Field(default="default")
+    method: str
+    path: str = Field(default="")         # anything after the token
+    query: str = Field(default="")
+    headers: dict = Field(default={}, sa_column=Column(JSON))
+    content_type: str = Field(default="")
+    body: str = Field(default="")
+    body_size: int = Field(default=0)     # bytes received, before truncation
+    truncated: bool = Field(default=False)
+    received_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 class PlanRead(SQLModel):
     id: int
     name: str
