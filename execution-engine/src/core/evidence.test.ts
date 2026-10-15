@@ -207,3 +207,17 @@ test('ignore regexes cannot stall the worker, however they are written', () => {
     }
     assert.equal(matchesIgnore('ResizeObserver loop limit exceeded', ['/resizeobserver/i']), true);
 });
+
+test('a timed-out ignore regex is dropped even when its flags or slashes are normalised', () => {
+    const p = '/(a|aa)+\\/x$/mi';   // flags "mi" normalise to "im"; "/" escapes in source
+    const text = 'a'.repeat(1990) + '!';
+    matchesIgnore(text, [p]);             // first call: one timeout, pattern recorded
+    const start = Date.now();
+    for (let i = 0; i < 20; i++) matchesIgnore(text, [p]);
+    assert.ok(Date.now() - start < 200, `dropped pattern still ran: ${Date.now() - start}ms`);
+});
+
+test('ignore list is capped', () => {
+    const many = Array.from({ length: 80 }, (_, i) => `p${i}`);
+    assert.equal(consoleFailurePolicy({ fail_on_console_errors: true, console_error_ignore_patterns: many }, {}).ignore.length, 50);
+});

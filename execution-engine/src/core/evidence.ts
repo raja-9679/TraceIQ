@@ -289,7 +289,10 @@ export function consoleFailurePolicy(settings: any, testCase: any): ConsoleFailu
     const caseFlag = testCase?.fail_on_console_errors;
     const enabled = typeof caseFlag === 'boolean' ? caseFlag : settings?.fail_on_console_errors === true;
     const raw = settings?.console_error_ignore_patterns;
-    const ignore = Array.isArray(raw) ? raw.filter((p: any) => typeof p === 'string' && p.trim()).map((p: string) => p.trim()) : [];
+    // Capped so the worst case (every pattern times out once) stays bounded.
+    const ignore = Array.isArray(raw)
+        ? raw.filter((p: any) => typeof p === 'string' && p.trim()).map((p: string) => p.trim()).slice(0, MAX_IGNORE_PATTERNS)
+        : [];
     return { enabled, ignore };
 }
 
@@ -303,11 +306,18 @@ const MAX_IGNORE_TEXT_CHARS = 2000;
 const IGNORE_REGEX_TIMEOUT_MS = 50;
 const regexSandbox = vm.createContext({ re: null as RegExp | null, text: '' });
 const regexProbe = new vm.Script('re.test(text)');
+const MAX_IGNORE_PATTERNS = 50;
 const timedOutPatterns = new Set<string>();
+// Keyed on the COMPILED regex: RegExp normalises flag order and escapes `/` in
+// `source`, so a key built from the raw text would never match the one
+// recorded on timeout and the pattern would cost a full timeout every line.
+const patternKey = (re: RegExp) => `${re.flags}/${re.source}`;
 
 export function safeIgnoreRegex(source: string, flags: string): RegExp | null {
-    if (source.length > MAX_IGNORE_PATTERN_CHARS || timedOutPatterns.has(`${flags}/${source}`)) return null;
-    try { return new RegExp(source, flags); } catch { return null; }
+    if (source.length > MAX_IGNORE_PATTERN_CHARS) return null;
+    let re: RegExp;
+    try { re = new RegExp(source, flags); } catch { return null; }
+    return timedOutPatterns.has(patternKey(re)) ? null : re;
 }
 
 /** `re.test(text)` that gives up (false) instead of stalling the worker. */
@@ -317,7 +327,7 @@ export function boundedRegexTest(re: RegExp, text: string, timeoutMs = IGNORE_RE
     try {
         return regexProbe.runInContext(regexSandbox, { timeout: timeoutMs }) === true;
     } catch {
-        timedOutPatterns.add(`${re.flags}/${re.source}`);
+        timedOutPatterns.add(patternKey(re));
         return false;
     } finally {
         regexSandbox.re = null;
