@@ -142,6 +142,28 @@ function absolutise(url: string, base: string | undefined): string | null {
     }
 }
 
+function originOf(url: string | undefined | null): string | null {
+    if (!url) return null;
+    try { return new URL(url).origin; } catch { return null; }
+}
+
+/**
+ * A cleanup URL that came (wholly or partly) from the site under test — a
+ * Location header, an extracted value — must stay on the origin the creating
+ * request went to: the DELETE carries the suite's credential headers, so a
+ * response pointing elsewhere would hand those credentials (and an SSRF
+ * primitive) to whatever host the site names. An author who literally wrote a
+ * different origin into the cleanup template meant it.
+ */
+function offOriginReason(url: string, base: string | undefined, literalTemplate?: string): string | null {
+    const target = originOf(url);
+    const expected = originOf(base);
+    if (!target || !expected || target === expected) return null;
+    if (literalTemplate && originOf(literalTemplate) === target) return null;
+    return `cleanup URL is on ${target}, not ${expected} where the resource was created; `
+        + 'not sending credentials there (write the full URL in params.cleanup.url if this is intended)';
+}
+
 /**
  * The cleanup a step registers, or null when it registers none. `result` is
  * the step's return value or, for a step that threw after the request went
@@ -178,6 +200,8 @@ export function buildCleanup(
                      skip: `cleanup: true is only understood on http-request and extract-value; use an object with a url` };
         }
         const url = absolutise(raw, base);
+        const off = url ? offOriginReason(url, base) : null;
+        if (off) return { method: 'DELETE', url: '', display: safeUrl(url, policy), headers: {}, skip: off };
         const stepHeaders = step.type === 'http-request' ? resolveTemplates(step.params?.headers || {}, tctx) : {};
         return {
             method: 'DELETE', url: url || '', display: safeUrl(url || raw, policy),
@@ -204,6 +228,8 @@ export function buildCleanup(
         return { method, url: '', display, headers: {},
                  skip: 'cleanup URL is relative and there is no base URL to resolve it against' };
     }
+    const off = offOriginReason(url, base, template);
+    if (off) return { method, url: '', display, headers: {}, skip: off };
     // Reuse the creating request's headers by default — the DELETE nearly
     // always needs the same Authorization the POST had.
     const stepHeaders = step.type === 'http-request' ? resolveTemplates(step.params?.headers || {}, tctx) : {};

@@ -207,3 +207,22 @@ test('withinDeadline fails a step once the budget is gone, so teardown can still
     assert.equal(await withinDeadline(undefined, async () => 'x'), 'x');
     await assert.rejects(withinDeadline(Date.now() + 20, () => new Promise(r => setTimeout(r, 500))), /timed out/);
 });
+
+test('buildCleanup refuses to follow a site-supplied URL to another origin', () => {
+    const settings = { headers: { Authorization: 'Bearer suite-token' } };
+    const ctx = { variables: { where: 'http://169.254.169.254/latest/meta-data/' } };
+    const loc = buildCleanup({ type: 'http-request', params: { cleanup: true } },
+        { request: { url: 'https://api.shop.test/items' }, headers: { Location: 'https://evil.example/collect' } },
+        settings, ctx);
+    assert.ok(loc?.skip && /not sending credentials/.test(loc.skip));
+    assert.equal(loc?.url, '');
+    assert.deepEqual(loc?.headers, {});
+    const tmpl = buildCleanup({ type: 'http-request', params: { cleanup: { url: '{{where}}' } } },
+        { request: { url: 'https://api.shop.test/items' } }, settings, ctx);
+    assert.ok(tmpl?.skip && /not sending credentials/.test(tmpl.skip));
+    // An origin the author wrote literally is honoured.
+    const literal = buildCleanup({ type: 'http-request', params: { cleanup: { url: 'https://admin.shop.test/items/1' } } },
+        { request: { url: 'https://api.shop.test/items' } }, settings, ctx);
+    assert.equal(literal?.skip, undefined);
+    assert.equal(literal?.url, 'https://admin.shop.test/items/1');
+});
