@@ -11,6 +11,7 @@ import { totp, totpClock, secondsLeft, looksLikeLiteralSeed } from './totp';
 import { waitForEmail, waitForWebhook } from './test-hooks';
 import { jsonPath } from './json-path';
 import { checkExpectSchema, formatViolations } from './schema-check';
+import { localiseUrl } from './frontend-quality/emulation';
 
 // jsonPath lives in ./json-path (shared with the wait-for-webhook step);
 // re-exported so existing imports keep working.
@@ -39,6 +40,8 @@ export class TestExecutor {
         'wait-for-selector', 'wait-for-webhook', 'wait-timeout',
         // Security assertions (./security-steps.ts).
         'expect-header', 'expect-cookie-flags', 'expect-blocked-after', 'expect-session-dead',
+        // Frontend quality (./frontend-quality/steps.ts).
+        'expect-no-horizontal-overflow', 'expect-rtl-layout', 'check-page-budget',
     ];
 
     /**
@@ -107,6 +110,9 @@ export class TestExecutor {
                         console.warn(`  Could not append params to URL ${url}: ${e}`);
                     }
                 }
+
+                // Locale variant of a frontend-matrix run: its query/URL rules.
+                url = localiseUrl(url, globalSettings);
 
                 let attempts = 0;
                 const maxAttempts = 3;
@@ -381,6 +387,13 @@ export class TestExecutor {
             case 'expect-session-dead': {
                 const { executeSecurityStep } = require('./security-steps');
                 return executeSecurityStep(page, context, step, globalSettings, resolve);
+            }
+
+            case 'expect-no-horizontal-overflow':
+            case 'expect-rtl-layout':
+            case 'check-page-budget': {
+                const { executeFrontendQualityStep } = require('./frontend-quality/steps');
+                return executeFrontendQualityStep(page, context, step, testCaseContext);
             }
 
             case 'oauth2-token': {

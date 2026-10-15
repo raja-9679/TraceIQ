@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl, triggerRun } from "@/lib/api";
 import { llmProvidersApi } from "@/api/llmProviders";
-import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
+import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows, MonitorSmartphone } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import CreateTicketDialog from "@/components/CreateTicketDialog";
@@ -19,6 +19,7 @@ import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline
 import { HookOutcomes, RunDataSummary } from '@/components/suite-hooks/HookOutcomes';
 import { hookOutcomesOf, resultsWithHookWarnings } from '@/components/suite-hooks/suiteHooks';
 import { ReproBundleButton } from '@/components/ReproBundleButton';
+import SweepView from '@/components/frontend-quality/SweepView';
 import {
     isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
 } from '@/components/evidence/evidenceHelpers';
@@ -332,7 +333,21 @@ export default function TestRunDetails() {
                         >
                             <Server size={16} /> Network
                         </Tabs.Trigger>
+                        {run.sweep_group && (
+                            <Tabs.Trigger
+                                value="sweep"
+                                className="px-5 py-3 flex items-center gap-2 text-sm font-medium text-gray-600 border-b-2 border-transparent hover:text-gray-900 data-[state=active]:border-primary data-[state=active]:text-primary transition-all uppercase tracking-wider outline-none"
+                            >
+                                <MonitorSmartphone size={16} /> Sweep
+                            </Tabs.Trigger>
+                        )}
                     </Tabs.List>
+
+                    {run.sweep_group && (
+                        <Tabs.Content value="sweep" className="focus:outline-none space-y-6">
+                            <SweepView runId={run.id} />
+                        </Tabs.Content>
+                    )}
 
                     <Tabs.Content value="overview" className="focus:outline-none space-y-6">
                         {run.error_message && (

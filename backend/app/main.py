@@ -16,6 +16,7 @@ from app.api.endpoints import test_suites, test_cases, test_runs, websockets, sc
 from app.api import security as security_api
 from app.api import access_matrix as access_matrix_api
 from app.api import estates as estates_api
+from app.api import frontend_quality as frontend_quality_api
 from app.api import issue_trackers as issue_trackers_api
 from app.api import triage as triage_api
 from app.api import reports as reports_api
@@ -167,6 +168,7 @@ app.include_router(quality.router, prefix="/api", tags=["quality"])
 app.include_router(security_api.router, prefix="/api", tags=["security"])
 app.include_router(access_matrix_api.router, prefix="/api", tags=["access-matrix"])
 app.include_router(estates_api.router, prefix="/api", tags=["estates"])
+app.include_router(frontend_quality_api.router, prefix="/api", tags=["frontend-quality"])
 app.include_router(issue_trackers_api.router, prefix="/api", tags=["issue-trackers"])
 app.include_router(triage_api.router, prefix="/api", tags=["triage"])
 app.include_router(reports_api.router, prefix="/api", tags=["reports"])

@@ -25,6 +25,8 @@ import { usePermission } from "@/hooks/usePermission";
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicyCard';
 import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
+import { FrontendMatrixSettings, RunMatrixPicker } from '@/components/frontend-quality/MatrixFields';
+import { EMPTY_MATRIX, MatrixChoice, matrixRunContext } from '@/components/frontend-quality/matrixHelpers';
 
 const containerVariants: Variants = {
     hidden: { opacity: 0 },
@@ -222,10 +224,14 @@ export default function SuiteDetails() {
     });
     const [selectedEnvId, setSelectedEnvId] = useState<string>('default');
 
-    const runContext = (selectedAppBuildId !== 'none' || selectedEnvId !== 'default')
+    // Frontend matrix for runs started here (WP10); empty = the suite's settings.
+    const [runMatrix, setRunMatrix] = useState<MatrixChoice>(EMPTY_MATRIX);
+    const matrixContext = matrixRunContext(runMatrix);
+    const runContext = (selectedAppBuildId !== 'none' || selectedEnvId !== 'default' || Object.keys(matrixContext).length)
         ? {
             ...(selectedAppBuildId !== 'none' ? { app_build_id: Number(selectedAppBuildId) } : {}),
             ...(selectedEnvId !== 'default' ? { environment_id: Number(selectedEnvId) } : {}),
+            ...matrixContext,
         }
         : undefined;
 
@@ -491,6 +497,9 @@ export default function SuiteDetails() {
                         >
                             <CalendarClock className="mr-2 h-4 w-4" /> Schedule
                         </Button>
+                    )}
+                    {can("project:execute_test", { projectId, workspaceId }) && (
+                        <RunMatrixPicker value={runMatrix} onChange={setRunMatrix} />
                     )}
                     {can("project:execute_test", { projectId, workspaceId }) && (environments?.length ?? 0) > 0 && (
                         <Select value={selectedEnvId} onValueChange={setSelectedEnvId}>
@@ -1180,6 +1189,13 @@ export default function SuiteDetails() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* ── Frontend matrix (viewports / locales / themes), WP10 ── */}
+                                <FrontendMatrixSettings
+                                    settings={suite.settings}
+                                    effective={suite.effective_settings}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
 
                                 {/* ── Headers & Params Configuration ── */}
                                 <div className="grid lg:grid-cols-2 gap-6">

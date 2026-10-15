@@ -523,6 +523,8 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
         out["step_evidence"] = redact_step_evidence(out["step_evidence"], policy)
     if isinstance(out.get("hook_report"), dict):
         out["hook_report"] = redact_hook_report(out["hook_report"], policy)
+    if isinstance(out.get("page_budgets"), list):
+        out["page_budgets"] = redact_page_budgets(out["page_budgets"], policy)
     return out
 
 
@@ -581,6 +583,63 @@ def redact_hook_report(report: Any, policy: RedactionPolicy = DEFAULT_POLICY) ->
                 item["error"] = redact_text(item["error"], policy)
             cleaned.append(item)
         out["cleanup"] = cleaned
+    return out
+
+
+def _text_field(value: Any, policy: RedactionPolicy) -> Any:
+    return redact_text(value, policy) if isinstance(value, str) else value
+
+
+def redact_page_budgets(items: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """`check-page-budget` outcomes (WP10): page URL, failure text, SEO check
+    values/details. Twin of `redactPageBudgets` in redact.ts."""
+    if not isinstance(items, list):
+        return items
+    out = []
+    for b in items:
+        if not isinstance(b, dict):
+            out.append(b)
+            continue
+        item = {**b, "url": _text_field(b.get("url"), policy),
+                "failure": _text_field(b.get("failure"), policy)}
+        if isinstance(b.get("seo"), list):
+            item["seo"] = [
+                {**c, "value": _text_field(c.get("value"), policy),
+                 "detail": _text_field(c.get("detail"), policy)} if isinstance(c, dict) else c
+                for c in b["seo"]
+            ]
+        out.append(item)
+    return out
+
+
+def redact_crawl_report(report: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Site-crawl report (WP10): every URL, redirect hops included, plus error
+    and detail text. Twin of `redactCrawlReport` in redact.ts."""
+    if not isinstance(report, dict):
+        return report
+    out = {**report, "error": _text_field(report.get("error"), policy)}
+    if isinstance(report.get("pages"), list):
+        out["pages"] = [
+            {**p, "url": _text_field(p.get("url"), policy), "error": _text_field(p.get("error"), policy)}
+            if isinstance(p, dict) else p
+            for p in report["pages"]
+        ]
+    if isinstance(report.get("issues"), list):
+        issues = []
+        for i in report["issues"]:
+            if not isinstance(i, dict):
+                issues.append(i)
+                continue
+            item = dict(i)
+            for field in ("page_url", "target_url", "detail"):
+                item[field] = _text_field(i.get(field), policy)
+            if isinstance(i.get("redirect_chain"), list):
+                item["redirect_chain"] = [
+                    {**h, "url": _text_field(h.get("url"), policy)} if isinstance(h, dict) else h
+                    for h in i["redirect_chain"]
+                ]
+            issues.append(item)
+        out["issues"] = issues
     return out
 
 

@@ -97,6 +97,10 @@ api.interceptors.response.use(
 
 export interface TestRun {
     id: number;
+    // Frontend matrix variant (viewport/locale/scheme) and the sweep it belongs to (WP10).
+    emulation?: { label?: string; viewport?: { name: string; width: number; height: number };
+        locale?: { locale: string }; color_scheme?: string; reduced_motion?: boolean } | null;
+    sweep_group?: string | null;
     created_at: string;
     status: "pending" | "running" | "passed" | "failed" | "error";
     total_tests: number;
@@ -190,6 +194,11 @@ export interface RunContext {
     local_worker_id?: string;
     /** Seed for {{fake.*}} (same seed + case + row → same values). */
     data_seed?: string;
+    // Frontend matrix (WP10): fan the run out over these.
+    viewports?: string[];
+    locales?: string[];
+    color_schemes?: string[];
+    reduced_motion?: boolean;
 }
 
 // browser/device are optional: when omitted the backend resolves the

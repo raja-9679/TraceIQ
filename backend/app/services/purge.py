@@ -88,6 +88,17 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("pagescript", f"DELETE FROM pagescript WHERE page_id IN ({_PAGES})"),
     PurgeStep("monitoredpage", f"DELETE FROM monitoredpage WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("monitorcheck", f"DELETE FROM monitorcheck WHERE run_id IN ({_RUNS})"),
+    PurgeStep("pagebudgetsample",
+              f"DELETE FROM pagebudgetsample WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES})"),
+    PurgeStep("sitecrawlissue",
+              f"DELETE FROM sitecrawlissue WHERE crawl_run_id IN "
+              f"(SELECT id FROM sitecrawlrun WHERE project_id IN ({_PROJECTS}) "
+              f"OR crawl_id IN (SELECT id FROM sitecrawl WHERE project_id IN ({_PROJECTS})))"),
+    PurgeStep("sitecrawlrun",
+              f"DELETE FROM sitecrawlrun WHERE project_id IN ({_PROJECTS}) "
+              f"OR crawl_id IN (SELECT id FROM sitecrawl WHERE project_id IN ({_PROJECTS}))"),
+    PurgeStep("sitecrawl", f"DELETE FROM sitecrawl WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("webhookcapture", f"DELETE FROM webhookcapture WHERE run_id IN ({_RUNS})"),
     PurgeStep("issueticket",
               f"DELETE FROM issueticket WHERE workspace_id = :workspace_id "

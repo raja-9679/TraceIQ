@@ -53,6 +53,8 @@ INHERITED_EXECUTION_FLAGS = (
     # here: they are not overridden child-over-parent but chained per case
     # (app/services/suite_hooks.py:hook_chain_sync).
     "data_seed",
+    # Frontend matrix axes (WP10): a child's list replaces the parent's.
+    "viewports", "locales", "color_schemes", "reduced_motion", "sweep_step_screenshots",
 )
 
 

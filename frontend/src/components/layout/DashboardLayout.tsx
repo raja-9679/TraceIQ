@@ -39,7 +39,8 @@ import {
     Network,
     ScrollText,
     Server,
-    BellRing
+    BellRing,
+    MonitorSmartphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -78,6 +79,7 @@ const navigation = [
     { name: 'Proposals', href: '/proposals', icon: GitPullRequestArrow },
     { name: 'Visual Review', href: '/visual-review', icon: Images },
     { name: 'Flaky Tests', href: '/flaky-tests', icon: Activity },
+    { name: 'Frontend Quality', href: '/frontend-quality', icon: MonitorSmartphone },
     { name: 'Environments', href: '/environments', icon: Globe },
     { name: 'App Builds', href: '/app-builds', icon: Smartphone },
     { name: 'API Keys', href: '/api-keys', icon: KeyRound },

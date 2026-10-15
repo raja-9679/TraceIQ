@@ -188,10 +188,14 @@ async def internal_resolve_baseline(
     if not baselines:
         raise HTTPException(status_code=404, detail="No baseline for this step")
     # Prefer exact browser+device match, then browser match, then first.
-    baseline = next(
-        (b for b in baselines if b.browser == browser and b.device == device),
-        next((b for b in baselines if b.browser == browser), baselines[0]),
-    )
+    exact = next((b for b in baselines if b.browser == browser and b.device == device), None)
+    if exact is None and device and device.startswith("vp:"):
+        # A sweep variant (viewport/locale/scheme, see frontend_matrix.
+        # baseline_key) never falls back: comparing a 375px screenshot with
+        # the desktop baseline fails for the wrong reason. No baseline here =
+        # capture-only, so the first run of a variant seeds its candidate.
+        raise HTTPException(status_code=404, detail="No baseline for this step and variant")
+    baseline = exact or next((b for b in baselines if b.browser == browser), baselines[0])
     image_url = baseline.image_url
     if image_url and not image_url.startswith("http"):
         image_url = minio_client.get_internal_presigned_url(image_url)

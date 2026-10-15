@@ -30,7 +30,7 @@ import {
     ArtifactStore, CaptureLevel, PutResult, artifactKeys, normalizeCaptureLevel,
 } from './core/artifact-store';
 import {
-    RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents, redactText,
+    RedactionPolicy, policyFromDataPolicy, redactCrawlReport, redactHar, redactNetworkEvents, redactText,
 } from './core/redact';
 import { installEgressGuard } from './core/egress-guard';
 import { Heartbeat } from './core/heartbeat';
@@ -47,6 +47,9 @@ import {
     HOOK_TEARDOWN_BUDGET_MS, HookReport, HookRunner, caseUsesHooks, isEmptyReport, mergeReports,
     playwrightRequester, withinDeadline,
 } from './core/suite-hooks';
+import {
+    applyEmulationOptions, applyEmulationToContext, baselineDevice, sweepShotFile, wantsStepScreenshots,
+} from './core/frontend-quality/emulation';
 
 // Per-step DOM excerpt for proactive selector heal (backend reads 8000 chars).
 const MAX_STEP_DOM_CHARS = 8000;
@@ -344,6 +347,13 @@ class ExecutionWorker {
                     continue;
                 }
 
+                // Broken-link crawl (WP10): side job, report parked in Redis.
+                if ((job as any).job_type === 'site_crawl') {
+                    await this.handleSiteCrawlJob(streamId, job as any);
+                    this.jobsProcessed++;
+                    continue;
+                }
+
                 // Process the job with a hard wall-clock timeout.
                 const limitMs = maxJobDurationMs();
                 const timeout = new Promise<never>((_, reject) =>
@@ -478,6 +488,49 @@ class ExecutionWorker {
         }
         await this.jobQueue.completeSideJob(streamId, job.job_id, key, result, 3600);
         console.log(`[Worker] Page check ${job.page_id}: ${result.error ? 'error' : `${(result.scripts || []).length} script(s)`}`);
+    }
+
+    /** Site crawl job — see ./core/frontend-quality/crawler.ts. */
+    private async handleSiteCrawlJob(streamId: string, job: any): Promise<void> {
+        const crawler = require('./core/frontend-quality/crawler');
+        const key = crawler.safeResultKey(job);
+        if (!key) {
+            console.warn(`[Worker] Site crawl ${job.job_id}: refusing result key ${job.result_key}`);
+            await this.jobQueue.completeSideJob(streamId, job.job_id, `${crawler.RESULT_KEY_PREFIX}invalid`, {}, 1);
+            return;
+        }
+        let result: any;
+        try {
+            const browser = await this.browserManager.start('chromium');
+            try {
+                result = await crawler.executeCrawlJob(job, browser);
+            } finally {
+                await this.browserManager.stop();
+            }
+        } catch (err: any) {
+            result = { status: 'error', pages: [], issues: [], error: String(err?.message || err).slice(0, 300) };
+        }
+        result = redactCrawlReport(result, policyFromDataPolicy(job.data_policy));
+        await this.jobQueue.completeSideJob(streamId, job.job_id, key, result, 3600);
+        console.log(`[Worker] Site crawl ${job.crawl_run_id}: ${result.status}, `
+            + `${(result.pages || []).length} page(s), ${(result.issues || []).length} issue(s)`);
+    }
+
+    /**
+     * Per-step screenshot for a frontend sweep (several viewports side by
+     * side). Named per case + step so continuous jobs don't collide.
+     */
+    private async sweepScreenshot(page: Page | null, job: TestJob, artifactsDir: string, caseId: any,
+                                  stepIndex: number, recorder: StepEvidenceRecorder): Promise<void> {
+        if (!wantsStepScreenshots(job.settings) || !page || page.isClosed()) return;
+        const file = sweepShotFile(caseId, stepIndex);
+        try {
+            await page.screenshot(TestExecutor.screenshotOptions(
+                page, job.settings, { path: path.join(artifactsDir, file) }));
+            recorder.attachToLast({ screenshot_file: file });
+        } catch (e: any) {
+            console.warn(`[Worker] sweep screenshot failed: ${e?.message}`);
+        }
     }
 
     /**
@@ -685,6 +738,8 @@ class ExecutionWorker {
         let healedStepCount = 0;
         let hookRunner: HookRunner | null = null;
         let hookReport: HookReport | undefined;
+        // check-page-budget outcomes (WP10), shipped as `page_budgets`.
+        const pageBudgets: any[] = [];
 
         try {
             // Launch browser
@@ -718,6 +773,8 @@ class ExecutionWorker {
                     emulatedAs = deviceConfig.emulatedAs;
                 }
             }
+            // Frontend matrix variant (viewport / locale / scheme), WP10.
+            applyEmulationOptions(contextOptions, job.settings);
 
             // Start from the project's stored auth session (storageState) unless
             // this case is the auth-setup case itself or has opted out.
@@ -729,6 +786,7 @@ class ExecutionWorker {
             // Create isolated context
             context = await browser.newContext(contextOptions);
             await this.browserManager.injectInitScripts(context, job.browser, job.device || null, emulatedAs);
+            await applyEmulationToContext(context, job.settings);
 
             // Start tracing
             await context.tracing.start({
@@ -743,8 +801,10 @@ class ExecutionWorker {
                 id: testCaseId,
                 name: testCase.name,
                 browser: job.browser || 'chromium',
-                device: job.device || null,
+                // Visual baselines of a sweep variant live in their own slot.
+                device: baselineDevice(job.device, job.settings),
                 variables: {},
+                page_budgets: pageBudgets,
                 // Data-driven row for this expansion; steps read {{data.KEY}}
                 data: (testCase as any).data_row || {},
                 // Per-run inbox addresses / capture URLs ({{inbox.address}},
@@ -890,6 +950,8 @@ class ExecutionWorker {
                 recorder.end('passed');
                 if (step.type === 'screenshot' && step.value) {
                     recorder.attachToLast({ screenshot_file: `${step.value}.png` });
+                } else {
+                    await this.sweepScreenshot(page, job, artifactsDir, testCaseId, stepIndex, recorder);
                 }
             }
 
@@ -1052,6 +1114,7 @@ class ExecutionWorker {
             ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
             ...(hookReport && !isEmptyReport(hookReport) ? { hook_report: hookReport } : {}),
+            ...(pageBudgets.length ? { page_budgets: pageBudgets } : {}),
             completed_at: new Date().toISOString()
         };
     }
@@ -1124,6 +1187,8 @@ class ExecutionWorker {
                     emulatedAs = deviceConfig.emulatedAs;
                 }
             }
+            // Frontend matrix variant (viewport / locale / scheme), WP10.
+            applyEmulationOptions(contextOptions, job.settings);
 
             // Start from the project's stored auth session unless this job
             // includes the auth-setup case itself (it must exercise the real
@@ -1136,6 +1201,7 @@ class ExecutionWorker {
             // Create shared context for all tests
             sharedContext = await browser.newContext(contextOptions);
             await this.browserManager.injectInitScripts(sharedContext, job.browser, job.device || null, emulatedAs);
+            await applyEmulationToContext(sharedContext, job.settings);
 
             // Start tracing for entire suite
             await sharedContext.tracing.start({
@@ -1158,6 +1224,10 @@ class ExecutionWorker {
                 // and suite-setup exports ({{setup.*}}).
                 scope: undefined as RunScope | undefined,
                 setup: {} as Record<string, any>,
+                browser: job.browser || 'chromium',
+                device: baselineDevice(job.device, job.settings),
+                // check-page-budget outcomes; sliced per case below (WP10).
+                page_budgets: [] as any[],
             };
             const sourceDomain = { value: null as string | null };
 
@@ -1226,6 +1296,7 @@ class ExecutionWorker {
                 // Snapshot network events length before this test so we can
                 // slice out only the events generated by this test case.
                 const netStartIdx = networkEvents.length;
+                const budgetStartIdx = sharedContextData.page_budgets.length;
 
                 // Update context data for this test case
                 sharedContextData.id = testCase.id;
@@ -1343,6 +1414,8 @@ class ExecutionWorker {
                         recorder.end('passed');
                         if (step.type === 'screenshot' && step.value) {
                             recorder.attachToLast({ screenshot_file: `${step.value}.png` });
+                        } else {
+                            await this.sweepScreenshot(page, job, artifactsDir, testCase.id, stepIndex, recorder);
                         }
                     }
 
@@ -1442,6 +1515,8 @@ class ExecutionWorker {
                     ...(recorder.list().length ? { step_evidence: recorder.list() } : {}),
                     ...(caseVitals ? { web_vitals: caseVitals } : {}),
                     ...(caseHookReport && !isEmptyReport(caseHookReport) ? { hook_report: caseHookReport } : {}),
+                    ...(sharedContextData.page_budgets.length > budgetStartIdx
+                        ? { page_budgets: sharedContextData.page_budgets.slice(budgetStartIdx) } : {}),
                 });
 
                 console.log(`[Worker] Completed test case: ${testCase.name} (${caseStatus}, ${caseDuration}ms)`);

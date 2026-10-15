@@ -798,6 +798,54 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   the audit chain (DB URL passed to `docker run` via env, never argv; report
   lines redacted; `umask 077`).
 
+- **Frontend quality (WP10, 2026-10)** — migration `caa2b3c4d5eb`
+  (`testrun.emulation`/`sweep_group`, `sitecrawl`, `sitecrawlrun`,
+  `sitecrawlissue`, `pagebudgetsample`). UI: `/frontend-quality` (crawler,
+  page budgets, selector health, Storybook), run page "Sweep" tab, suite
+  settings card + "Screen sizes & locales" run picker.
+  **Matrix** (`app/services/frontend_matrix.py`): `POST /api/runs` body (or the
+  inherited suite settings of the same names) `viewports` (presets
+  mobile/tablet/desktop/wide or `{name,width,height}`), `locales` (tag or
+  `{locale, query, cookie, url_template}`), `color_schemes`, `reduced_motion`
+  fan out as a cartesian product INSIDE `_resolve_matrix` (each device slot
+  became a `(device, variant)` pair, so the four creation sites kept their
+  loops); `MAX_FANOUT_RUNS`=120 per case counts browsers×devices×variants×
+  identities. Scheduled suite runs fan out too; monitors never do (one check
+  per tick). `url_template` must start `{origin}`/`{url}` and the worker drops
+  a rewrite that changes origin. Each variant's visual baseline lives under
+  device `vp:<…>` and `/internal/visual-baselines/resolve` never falls back
+  across `vp:` keys (a 375px shot vs the desktop baseline fails for the wrong
+  reason). A multi-variant sweep screenshots after every step
+  (`sweep-<case>-s<i>.png` attached to step evidence); `GET /runs/{id}/sweep`
+  filters the group to the run's own project.
+  **Crawler** (`app/services/site_crawl.py`, `app/tasks/frontend_quality_tasks.py`,
+  worker `core/frontend-quality/crawler.ts`): `job_type=site_crawl` side job,
+  report parked at `site_crawl:result:{run}` (worker derives the key from the
+  run id), `collect_site_crawl` polls with a countdown, 45-min deadline.
+  Start/extra hosts must be the project's OWN hosts (environment base URLs ∪
+  suite allowed_domains ∪ security allowlist) — re-checked at dispatch; other
+  hosts are only status-checked (body never read), never crawled.
+  robots.txt matched by a hand-written matcher (no RegExp on site content),
+  Crawl-delay is a floor on per-host spacing. Beat `process-due-site-crawls`
+  (60s) skips a crawl whose previous run is still going.
+  **Budgets**: step `check-page-budget` (no Lighthouse dep — ESM-only, own
+  Chrome launcher; measured with Playwright: vitals, INP≈longest event-timing
+  entry, Resource-Timing weights, SEO facts) pushes outcomes onto the case
+  context; the worker ships them as `page_budgets`, the aggregator stores
+  PageBudgetSample rows replace-per-(run,test) so redelivery doesn't double
+  the trend. Unmeasured metrics never fail a budget; SEO is report-only
+  unless `seo: fail`. Steps `expect-no-horizontal-overflow` /
+  `expect-rtl-layout` (clipped-by-overflow-ancestor elements don't count; RTL
+  set only through CSS fails — assistive tech follows `dir`).
+  **Selector health** (`GET /projects/{id}/selector-health`) aggregates heal
+  proposals + failed/healed step evidence; suggestions parse the
+  `data-traceiq-target` DOM excerpt (test id > role+name > unique id) —
+  display only. **Storybook**: `POST /projects/{id}/storybook/{stories,cases}`
+  reads index.json/stories.json through net_guard from a project host; the
+  visual step id is `story-<story id>`, so the component baseline is keyed by
+  story; regenerating updates the case in place. Redaction twins gained
+  `redactPageBudgets`/`redactCrawlReport`. Worker image rebuild needed.
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

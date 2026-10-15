@@ -647,6 +647,13 @@ class TestRunBase(SQLModel):
     # chain's `data_seed` setting), recorded at dispatch so a failing run can
     # be replayed with the same generated data. NULL = unseeded (random).
     data_seed: Optional[str] = Field(default=None, max_length=64)
+    # Frontend matrix (WP10): the viewport / locale / colour scheme / reduced
+    # motion this run emulates ({viewport:{name,width,height}, locale,
+    # color_scheme, reduced_motion, label}); runs fanned out from one request
+    # over several of them share `sweep_group` so the run page can show them
+    # side by side.
+    emulation: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    sweep_group: Optional[str] = Field(default=None, index=True)
 
 
 class UserRead(SQLModel):
@@ -2881,24 +2888,6 @@ class PageChangeEvent(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
-# Seal every AuditLog row as it is flushed, in whichever process created it —
-# the API, a Celery worker, a script. Installed here rather than in a startup
-# hook because models.py is imported by every path that can write an audit row,
-# and a row written without a chain hash is indistinguishable from a forged one
-# during verification. Idempotent.
-from app.services.audit import (  # noqa: E402
-    install_append_only_ddl as _install_audit_ddl,
-    install_chain_listener as _install_audit_chain,
-)
-
-_install_audit_chain()
-# Emit the append-only trigger when the table is created from metadata, which
-# is how a FRESH install is built (bootstrap_db.py -> create_all -> stamp head,
-# never running the migration). Without this a new deployment would get the
-# table and no guard.
-_install_audit_ddl()
-
-
 # ---------------------------------------------------------------------------
 # WP8 — paging channels (PagerDuty / Opsgenie) and maintenance windows
 # ---------------------------------------------------------------------------
@@ -2965,3 +2954,116 @@ class PagingEvent(SQLModel, table=True):
     run_id: Optional[int] = Field(default=None)
     schedule_id: Optional[int] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# Frontend quality (WP10): broken-link crawler, page budgets.
+# ---------------------------------------------------------------------------
+
+class SiteCrawl(SQLModel, table=True):
+    """A saved broken-link / asset crawl of one start URL.
+
+    The crawl stays on the start URL's origin unless `extra_hosts` names more
+    hosts, and every extra host must be one the project already knows (an
+    environment base URL, a suite allowed domain or the security allowlist) —
+    see app/services/site_crawl.py. Links to other hosts are *checked* (one
+    request each, status only) when `check_external` is on, never crawled.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    start_url: str
+    max_depth: int = Field(default=3)
+    max_pages: int = Field(default=100)
+    extra_hosts: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    respect_robots: bool = Field(default=True)
+    rate_limit_ms: int = Field(default=250)
+    slow_threshold_ms: int = Field(default=3000)
+    check_external: bool = Field(default=True)
+    # Optional schedule; `next_run_at` is maintained by the beat sweep.
+    cron_expression: Optional[str] = Field(default=None)
+    is_active: bool = Field(default=True)
+    next_run_at: Optional[datetime] = Field(default=None, index=True)
+    last_run_at: Optional[datetime] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class SiteCrawlRun(SQLModel, table=True):
+    """One execution of a SiteCrawl. `config` is the snapshot the worker got,
+    so editing the crawl later does not rewrite what this run checked."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    crawl_id: int = Field(foreign_key="sitecrawl.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    status: str = Field(default="pending")  # pending|running|completed|error
+    trigger: str = Field(default="manual")  # manual|schedule
+    config: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    requested_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+    pages_crawled: int = Field(default=0)
+    links_checked: int = Field(default=0)
+    issue_counts: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Per-page summary: [{url, depth, status, load_ms, links, issues}].
+    pages: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    robots: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    truncated: bool = Field(default=False)
+    error: Optional[str] = Field(default=None)
+
+
+class SiteCrawlIssue(SQLModel, table=True):
+    """One problem found by a crawl: a broken/slow/looping link or asset, or
+    an insecure subresource on an https page."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    crawl_run_id: int = Field(foreign_key="sitecrawlrun.id", index=True)
+    page_url: str
+    target_url: str
+    # a | img | script | link | css | page
+    element: str
+    # broken | network | slow | redirect_loop | mixed_content | redirect_chain
+    category: str = Field(index=True)
+    status_code: Optional[int] = Field(default=None)
+    duration_ms: Optional[int] = Field(default=None)
+    redirect_chain: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    detail: Optional[str] = Field(default=None)
+
+
+class PageBudgetSample(SQLModel, table=True):
+    """One `check-page-budget` step outcome: measured metrics and SEO checks
+    against the step's thresholds. Rows of the same `page_key` over runs are
+    the per-page trend."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    test_name: Optional[str] = Field(default=None)
+    step_id: Optional[str] = Field(default=None)
+    page_url: str
+    # origin + path (no query): what a trend groups on.
+    page_key: str = Field(index=True)
+    # Emulation label of a sweep/locale/theme run ("mobile · dark"), else None.
+    variant: Optional[str] = Field(default=None)
+    metrics: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    seo: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    passed: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# Seal every AuditLog row as it is flushed, in whichever process created it —
+# the API, a Celery worker, a script. Installed here rather than in a startup
+# hook because models.py is imported by every path that can write an audit row,
+# and a row written without a chain hash is indistinguishable from a forged one
+# during verification. Idempotent.
+from app.services.audit import (  # noqa: E402
+    install_append_only_ddl as _install_audit_ddl,
+    install_chain_listener as _install_audit_chain,
+)
+
+_install_audit_chain()
+# Emit the append-only trigger when the table is created from metadata, which
+# is how a FRESH install is built (bootstrap_db.py -> create_all -> stamp head,
+# never running the migration). Without this a new deployment would get the
+# table and no guard.
+_install_audit_ddl()
