@@ -1582,6 +1582,16 @@ class FlakeRecord(SQLModel, table=True):
     last_observed_at: datetime = Field(default_factory=datetime.utcnow)
     sample_count: int = Field(default=0)
     last_failure_message: Optional[str] = None
+    # Who is responsible for fixing the flaky test (survives a release).
+    owner_user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    # Quarantine details — see app/services/flake_policy.py. Past
+    # quarantine_expires_at the case runs again even though is_quarantined
+    # stays set until someone decides.
+    quarantine_source: Optional[str] = None  # auto | manual (NULL = legacy, treated as auto)
+    quarantine_reason: Optional[str] = None
+    quarantined_at: Optional[datetime] = None
+    quarantined_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    quarantine_expires_at: Optional[datetime] = Field(default=None, index=True)
 
 
 # =============================================================================

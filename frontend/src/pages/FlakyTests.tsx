@@ -5,19 +5,12 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { flakesApi, FlakinessEntry } from '@/api/flakes';
+import { FlakeOwnerSelect, QuarantineDialog } from '@/components/flakes/FlakeControls';
+import { errorDetail, quarantineSummary } from '@/components/flakes/flakeHelpers';
 import {
     DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
-
-interface ApiError extends Error {
-    response?: { data?: { detail?: string } };
-}
-
-const errorDetail = (err: unknown): string => {
-    const e = err as ApiError;
-    return e.response?.data?.detail || e.message || 'Unknown error';
-};
 
 const pctOf = (score: number) => Math.round(Math.max(0, Math.min(1, score)) * 100);
 const barColour = (score: number) => (score >= 0.66 ? 'bg-[#E0603A]' : score >= 0.33 ? 'bg-[#F2C94C]' : 'bg-[#8FD3B6]');
@@ -49,8 +42,11 @@ function Fact({ label, value }: { label: string; value: string | number }) {
 }
 
 function meaning(e: FlakinessEntry) {
-    if (e.is_quarantined) {
-        return 'Quarantined: it is skipped when runs are dispatched, so it no longer blocks regressions. Release it once the cause is fixed so it protects you again.';
+    if (e.quarantine_state === 'expired') {
+        return 'The quarantine has ended, so this test runs again. Release it if the cause is fixed, or quarantine it again with a new reason if it still needs time.';
+    }
+    if (e.quarantine_state === 'active') {
+        return 'Quarantined: it is skipped when runs are dispatched, so it no longer blocks regressions. The quarantine ends on its own; release it sooner once the cause is fixed.';
     }
     if (e.flake_score >= 0.66) {
         return 'This test passes and fails under the same conditions most of the time. Its result tells you little. Quarantine it so it stops blocking runs, then fix the timing or data it depends on.';
@@ -62,43 +58,34 @@ function meaning(e: FlakinessEntry) {
 }
 
 // ---------------------------------------------------------------------------
-// Detail — quarantine/release act on all FlakeRecords for the case
+// Detail — owner, quarantine (reason + length) and release
 // ---------------------------------------------------------------------------
+
+const STATE_PILL = {
+    active: { tone: 'butter', label: 'Quarantined' },
+    expired: { tone: 'peach', label: 'Quarantine expired' },
+    none: { tone: 'mint', label: 'Still running' },
+} as const;
 
 function FlakeDetail({ entry, projectId }: { entry: FlakinessEntry; projectId: number }) {
     const queryClient = useQueryClient();
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const summary = quarantineSummary(entry);
+    const pill = STATE_PILL[entry.quarantine_state];
 
-    const mutation = useMutation({
-        mutationFn: async (action: 'quarantine' | 'release') => {
-            // The flakiness summary is keyed by test case, but quarantine/release
-            // operate on individual FlakeRecord rows (a case may have a case-level
-            // row plus per-step rows). Fetch them and toggle each.
-            const records = await flakesApi.list(entry.test_case_id);
-            if (records.length === 0) {
-                throw new Error('No flake records found for this test case');
-            }
-            await Promise.all(
-                records.map((r) =>
-                    action === 'quarantine' ? flakesApi.quarantine(r.id) : flakesApi.release(r.id),
-                ),
-            );
-            return action;
-        },
-        onSuccess: (action) => {
+    const release = useMutation({
+        mutationFn: () => flakesApi.release(entry.flake_id!),
+        onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['flakiness', projectId] });
-            toast.success(action === 'quarantine'
-                ? `"${entry.name}" quarantined — it will be skipped at dispatch`
-                : `"${entry.name}" released back into runs`);
+            toast.success(`"${entry.name}" released back into runs`);
         },
-        onError: (err: unknown) => toast.error(`Failed to update quarantine: ${errorDetail(err)}`),
+        onError: (err: unknown) => toast.error(`Failed to release: ${errorDetail(err)}`),
     });
 
     return (
         <DetailCard label="Selected flaky test">
             <div className="flex flex-col gap-2">
-                <Pill tone={entry.is_quarantined ? 'butter' : 'mint'} className="self-start">
-                    {entry.is_quarantined ? 'Quarantined' : 'Still running'}
-                </Pill>
+                <Pill tone={pill.tone} className="self-start">{pill.label}</Pill>
                 <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{entry.name}</h2>
                 <span className="text-sm text-ink-soft">Case #{entry.test_case_id}</span>
             </div>
@@ -114,6 +101,19 @@ function FlakeDetail({ entry, projectId }: { entry: FlakinessEntry; projectId: n
                 <Fact label="Recent failures" value={entry.recent_failures} />
             </div>
 
+            <div className="flex flex-col gap-2">
+                <Eyebrow>Owner</Eyebrow>
+                <FlakeOwnerSelect entry={entry} projectId={projectId} />
+                <span className="text-xs text-ink-soft">Who fixes it. Stays with the test after a release.</span>
+            </div>
+
+            {summary && (
+                <div className="flex flex-col gap-2">
+                    <Eyebrow>Quarantine</Eyebrow>
+                    <span className="text-sm text-ink">{summary}</span>
+                </div>
+            )}
+
             <Panel title="What this means" callout>{meaning(entry)}</Panel>
 
             {entry.last_failure_message && (
@@ -125,18 +125,26 @@ function FlakeDetail({ entry, projectId }: { entry: FlakinessEntry; projectId: n
 
             <div className="flex flex-col gap-2 border-t border-border pt-5">
                 <div className="flex flex-wrap gap-2.5">
-                    {entry.is_quarantined ? (
-                        <Button size="lg" disabled={mutation.isPending} onClick={() => mutation.mutate('release')}>
-                            <ShieldCheck className="h-4 w-4" /> Release back into runs
+                    {entry.quarantine_state !== 'active' && (
+                        <Button size="lg" disabled={!entry.flake_id} onClick={() => setDialogOpen(true)}>
+                            <ShieldAlert className="h-4 w-4" />
+                            {entry.quarantine_state === 'expired' ? 'Quarantine again' : 'Quarantine'}
                         </Button>
-                    ) : (
-                        <Button size="lg" disabled={mutation.isPending} onClick={() => mutation.mutate('quarantine')}>
-                            <ShieldAlert className="h-4 w-4" /> Quarantine
+                    )}
+                    {entry.quarantine_state !== 'none' && (
+                        <Button
+                            size="lg"
+                            variant={entry.quarantine_state === 'active' ? 'default' : 'outline'}
+                            disabled={!entry.flake_id || release.isPending}
+                            onClick={() => release.mutate()}
+                        >
+                            <ShieldCheck className="h-4 w-4" /> Release back into runs
                         </Button>
                     )}
                 </div>
-                <p className="text-xs text-ink-soft">This changes every flake record for the case, including per-step ones.</p>
+                <p className="text-xs text-ink-soft">A quarantine needs a reason and ends on its own (14 days by default, at most 90).</p>
             </div>
+            <QuarantineDialog entry={entry} projectId={projectId} open={dialogOpen} onOpenChange={setDialogOpen} />
         </DetailCard>
     );
 }
@@ -157,11 +165,12 @@ export default function FlakyTests() {
 
     const list = [...(entries ?? [])].sort((a, b) => b.flake_score - a.flake_score);
     const groups = [
-        { name: 'Still in runs', items: list.filter((e) => !e.is_quarantined) },
-        { name: 'Quarantined', items: list.filter((e) => e.is_quarantined) },
+        { name: 'Needs a decision', items: list.filter((e) => e.quarantine_state === 'expired') },
+        { name: 'Still in runs', items: list.filter((e) => e.quarantine_state === 'none') },
+        { name: 'Quarantined', items: list.filter((e) => e.quarantine_state === 'active') },
     ].filter((g) => g.items.length > 0);
     const selected = list.find((e) => e.test_case_id === selectedId) ?? groups[0]?.items[0] ?? null;
-    const quarantined = list.filter((e) => e.is_quarantined).length;
+    const quarantined = list.filter((e) => e.quarantine_state === 'active').length;
 
     return (
         <div className="flex flex-col gap-5">
@@ -195,11 +204,12 @@ export default function FlakyTests() {
                                     key={e.test_case_id}
                                     selected={selected?.test_case_id === e.test_case_id}
                                     onSelect={() => setSelectedId(e.test_case_id)}
-                                    leading={<KindChip kind={e.is_quarantined ? 'skip' : 'flaky'} size="sm" />}
+                                    leading={<KindChip kind={e.quarantine_state === 'active' ? 'skip' : e.quarantine_state === 'expired' ? 'review' : 'flaky'} size="sm" />}
                                     title={<span className="line-clamp-2 break-words">{e.name}</span>}
                                     meta={
                                         <span className="flex flex-col gap-1.5">
                                             <span>{e.recent_failures} recent failure{e.recent_failures === 1 ? '' : 's'} · {e.sample_count} runs sampled</span>
+                                            <span>{e.owner ? `Owner: ${e.owner.full_name || e.owner.email}` : 'Unowned'}</span>
                                             <span className="block max-w-[160px]"><FlakeScoreBar score={e.flake_score} /></span>
                                         </span>
                                     }

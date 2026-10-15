@@ -167,6 +167,8 @@ export interface JobResult {
     network_events: any[];
     // Number of RETRIES performed for this test (0 = passed first attempt).
     retry_count?: number;
+    // Every attempt's outcome, present only when a retry happened.
+    attempts?: { attempt: number; status: string; error?: string; duration_ms?: number }[];
     completed_at: string;
 }
 

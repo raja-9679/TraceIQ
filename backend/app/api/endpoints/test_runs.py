@@ -137,10 +137,11 @@ async def create_run(
             raise HTTPException(status_code=400,
                                 detail=f"case_ids not in suite {suite_id}: {outside}")
         from app.models import FlakeRecord
+        from app.services.flake_policy import active_quarantine_clause
         quarantined = set((await session.exec(
             select(FlakeRecord.test_case_id).where(
                 FlakeRecord.test_case_id.in_(wanted),
-                FlakeRecord.is_quarantined == True))).all())  # noqa: E712
+                active_quarantine_clause()))).all())
         keep = [cid for cid in wanted if cid not in quarantined]
         if keep:
             rows = {c.id: c for c in (await session.exec(

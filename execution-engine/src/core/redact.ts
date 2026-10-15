@@ -315,6 +315,11 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
     if (Array.isArray(out.steps)) {
         out.steps = redactJson(out.steps, bodyKeySet(policy), policy);
     }
+    if (Array.isArray(out.attempts)) {
+        out.attempts = out.attempts.map((a: any) =>
+            a && typeof a === 'object' && typeof a.error === 'string'
+                ? { ...a, error: redactText(a.error, policy) } : a);
+    }
     return out;
 }
 

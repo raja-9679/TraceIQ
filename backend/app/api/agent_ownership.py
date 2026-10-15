@@ -25,6 +25,7 @@ from sqlmodel import select, func
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
+from app.services import flake_policy
 from app.models import (
     AuditLog,
     CaseProposal,
@@ -182,7 +183,9 @@ async def _enrich_impacted_case(
     if flake_row is not None:
         flake = ImpactFlakeInfo(
             flake_score=flake_row.flake_score or 0.0,
-            is_quarantined=flake_row.is_quarantined,
+            # Active only: an expired quarantine runs again, so it must not
+            # be reported (or skipped by the GitHub Action) as quarantined.
+            is_quarantined=flake_policy.is_active(flake_row),
         )
 
     reasons: List[str] = []

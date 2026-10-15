@@ -21,7 +21,8 @@ check_stale_runs() reads this field to decide whether a run is inactive.
 """
 import json
 from datetime import datetime
-from typing import Dict, Any, Optional
+import math
+from typing import Dict, Any, List, Optional
 import redis
 from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
@@ -299,17 +300,16 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
     A perfectly stable test (all pass or all fail) scores 0.0; a test that
     flips on every run scores 1.0. The score is upserted into the case-level
     FlakeRecord (step_id=None). Auto-quarantine at score >= 0.4 with at least
-    6 samples; auto-release when the score drops below 0.15.
+    6 samples; auto-release when the score drops below 0.15 — automatic
+    quarantines only (rules in app/services/flake_policy.py).
 
     Wrapped in try/except so scoring can never break result aggregation.
     """
     FLAKE_WINDOW = 20
-    QUARANTINE_SCORE = 0.4
-    QUARANTINE_MIN_SAMPLES = 6
-    RELEASE_SCORE = 0.15
 
     try:
         from app.models import FlakeRecord
+        from app.services import flake_policy
 
         results = session.exec(
             select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)
@@ -420,17 +420,11 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                 record.last_failure_message = last_failure[:2000]
             record.last_observed_at = datetime.utcnow()
 
-            if flake_score >= QUARANTINE_SCORE and sample_count >= QUARANTINE_MIN_SAMPLES:
-                if not record.is_quarantined:
-                    print(f"[Aggregator] Auto-quarantining case {test_case.id} "
-                          f"('{res.test_name}') — flake_score={flake_score:.2f} "
-                          f"over {sample_count} samples")
-                record.is_quarantined = True
-            elif flake_score < RELEASE_SCORE and record.is_quarantined:
-                print(f"[Aggregator] Releasing case {test_case.id} "
-                      f"('{res.test_name}') from quarantine — "
-                      f"flake_score={flake_score:.2f}")
-                record.is_quarantined = False
+            transition = flake_policy.apply_score(record, flake_score, sample_count)
+            if transition:
+                print(f"[Aggregator] Case {test_case.id} ('{res.test_name}') "
+                      f"{transition} automatically — flake_score={flake_score:.2f} "
+                      f"over {sample_count} samples")
 
             session.add(record)
 
@@ -454,14 +448,50 @@ def _evidence_payload(res: Dict[str, Any]) -> Dict[str, Any]:
     """Failure-analysis evidence a worker attached to one test's result.
 
     `console_errors` feed failure analysis; `step_dom` (step id -> compact
-    DOM, sent only at capture level `full`) feeds proactive selector heal.
-    Older workers send neither, so both are optional.
+    DOM, sent only at capture level `full`) feeds proactive selector heal;
+    `attempts` shows each try of a retried test in the run UI. Older workers
+    send none of them, so all are optional.
     """
     out: Dict[str, Any] = {}
     if res.get('console_errors'):
         out['console_errors'] = res['console_errors'][:20]
     if isinstance(res.get('step_dom'), dict) and res['step_dom']:
         out['step_dom'] = res['step_dom']
+    attempts = _attempts(res.get('attempts'))
+    if attempts:
+        out['attempts'] = attempts
+    return out
+
+
+MAX_ATTEMPTS_KEPT = 10
+
+
+def _attempts(raw: Any) -> List[Dict[str, Any]]:
+    """Per-attempt outcomes of a retried test (worker sends them only when a
+    retry happened). Normalised and capped: it is shown in the run UI, not
+    trusted for anything."""
+    if not isinstance(raw, list):
+        return []
+    # A bad entry is dropped, never raised: an exception here would leave the
+    # whole job's result un-acked (local-worker results come from API-key
+    # holders, so the shape is not guaranteed).
+    out = []
+    for item in raw[:MAX_ATTEMPTS_KEPT]:
+        if not isinstance(item, dict) or not isinstance(item.get('status'), str):
+            continue
+        number = item.get('attempt')
+        entry: Dict[str, Any] = {
+            'attempt': number if isinstance(number, int) and not isinstance(number, bool) and number > 0
+            else len(out) + 1,
+            'status': item['status'][:20],
+        }
+        if isinstance(item.get('error'), str):
+            entry['error'] = item['error'][:1000]
+        duration = item.get('duration_ms')
+        if (isinstance(duration, (int, float)) and not isinstance(duration, bool)
+                and math.isfinite(duration) and duration >= 0):
+            entry['duration_ms'] = int(duration)
+        out.append(entry)
     return out
 
 

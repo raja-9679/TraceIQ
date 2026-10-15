@@ -36,20 +36,26 @@ interface FlakinessEntry {
     name: string;
     flake_score: number;
     is_quarantined: boolean;
+    // Older backends omit it; then fall back to the bare flag.
+    quarantine_state?: 'none' | 'active' | 'expired';
     sample_count: number;
     recent_failures: number;
 }
 
 function FlakinessBadge({ flake }: { flake: FlakinessEntry }) {
     const scorePct = (flake.flake_score * 100).toFixed(0);
+    const state = flake.quarantine_state ?? (flake.is_quarantined ? 'active' : 'none');
+    const status = state === 'active' ? ' — QUARANTINED (skipped at dispatch)'
+        : state === 'expired' ? ' — quarantine EXPIRED (running again; release or re-quarantine)'
+        : ' — not quarantined';
     return (
         <span
-            title={`Flake score: ${scorePct}% over ${flake.sample_count} recent runs${flake.is_quarantined ? ' — quarantined (skipped at dispatch)' : ' — not quarantined'}`}
-            className={`inline-flex shrink-0 cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${flake.is_quarantined
+            title={`Flake score: ${scorePct}% over ${flake.sample_count} recent runs${status}`}
+            className={`inline-flex shrink-0 cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${state === 'active'
                 ? 'bg-pastel-peach text-pastel-ink-peach'
                 : 'bg-pastel-butter text-pastel-ink-butter'}`}
         >
-            {flake.is_quarantined ? 'Quarantined' : `Flaky ${scorePct}%`}
+            {state === 'active' ? 'Quarantined' : state === 'expired' ? 'Quarantine expired' : `Flaky ${scorePct}%`}
         </span>
     );
 }

@@ -731,10 +731,11 @@ def _filter_quarantined(cases: list, session: Session) -> list:
     try:
         from sqlmodel import select as _select
         from app.models import FlakeRecord
+        from app.services.flake_policy import active_quarantine_clause
         case_ids = [c.id for c in cases]
         stmt = _select(FlakeRecord.test_case_id).where(
             FlakeRecord.test_case_id.in_(case_ids),
-            FlakeRecord.is_quarantined == True,  # noqa: E712
+            active_quarantine_clause(),
         )
         quarantined = {row for row in session.exec(stmt)}
         if not quarantined:
