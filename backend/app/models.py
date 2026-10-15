@@ -621,6 +621,10 @@ class TestRunBase(SQLModel):
     # run installs and tests. Soft FK (like api_key_id) to stay
     # migration-friendly; irrelevant (None) for web runs.
     app_build_id: Optional[int] = Field(default=None)
+    # Effective {{fake.*}} seed (POST /runs body `data_seed`, else the suite
+    # chain's `data_seed` setting), recorded at dispatch so a failing run can
+    # be replayed with the same generated data. NULL = unseeded (random).
+    data_seed: Optional[str] = Field(default=None, max_length=64)
 
 
 class UserRead(SQLModel):

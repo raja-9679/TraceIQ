@@ -16,6 +16,16 @@ from app.models import (
 
 router = APIRouter()
 
+
+def _validated_settings(settings):
+    """Setup/teardown steps and data_seed are checked at save time, so a
+    malformed hook surfaces on the form rather than as a failed run."""
+    from app.services.suite_hooks import SuiteHookError, validate_suite_settings
+    try:
+        return validate_suite_settings(settings)
+    except SuiteHookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 @router.post("/suites", response_model=TestSuiteReadWithChildren)
 async def create_test_suite(
     suite: TestSuite,
@@ -49,6 +59,8 @@ async def create_test_suite(
     # Check project access
     if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You do not have permission to create suites/modules in this project")
+
+    suite.settings = _validated_settings(suite.settings)
 
     # Enforce unique naming among siblings
     result = await session.exec(
@@ -273,6 +285,8 @@ async def update_test_suite(suite_id: int, suite_update: TestSuiteUpdate, sessio
 
     # Update fields
     update_data = suite_update.model_dump(exclude_unset=True)
+    if "settings" in update_data:
+        update_data["settings"] = _validated_settings(update_data["settings"])
     
     # Enforce Execution Mode Logic
     if "execution_mode" in update_data and update_data["execution_mode"] == ExecutionMode.CONTINUOUS:
@@ -411,7 +425,7 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
         name=suite_name,
         description=data.get("description"),
         execution_mode=execution_mode,
-        settings=data.get("settings", {"headers": {}, "params": {}}),
+        settings=_validated_settings(data.get("settings", {"headers": {}, "params": {}})),
         inherit_settings=data.get("inherit_settings", True),
         parent_id=parent_id,
         project_id=project_id,

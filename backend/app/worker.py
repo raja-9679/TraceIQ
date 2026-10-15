@@ -188,6 +188,21 @@ def run_test_suite(run_id: int, tags: list = None):
             print(f"[Worker] Run {run_id}: capture level "
                   f"'{data_policy['capture_level']}'")
 
+            # Run-scoped template values ({{run.*}}) and the effective
+            # {{fake.*}} seed: the run's own seed wins over the suite chain's.
+            # Recorded on the run so a failure can be replayed with the same
+            # data (POST /runs body data_seed=<this value>).
+            from datetime import datetime as _dt
+            from app.services.suite_hooks import normalize_seed, run_context
+            try:
+                seed = normalize_seed(run.data_seed) or normalize_seed(
+                    effective_settings.get('data_seed'))
+            except ValueError:
+                seed = None
+            if seed and run.data_seed != seed:
+                run.data_seed = seed
+            effective_settings['run_context'] = run_context(run, seed, _dt.utcnow())
+
             # Update total tests count
             run.total_tests = len(cases_to_run)
 
@@ -252,13 +267,14 @@ def run_test_suite(run_id: int, tags: list = None):
             session.commit()
 
 
-def _case_payload(case, row_index=None, data_row=None, run_id=None) -> dict:
+def _case_payload(case, row_index=None, data_row=None, run_id=None, session=None) -> dict:
     """Serializable job payload for one test case, incl. auth-session flags.
 
     For data-driven cases, `row_index`/`data_row` identify the expansion;
     the name is suffixed so each row aggregates as its own result. With a
     `run_id`, cases that use {{inbox.address}} / {{webhook.url}} also get
-    their derived per-run values (`test_hooks`)."""
+    their derived per-run values (`test_hooks`). With a `session`, the case's
+    suite setup/teardown chain rides along as `suite_hooks`."""
     name = case.name
     if row_index is not None:
         name = f"{case.name} [row {row_index + 1}]"
@@ -295,6 +311,13 @@ def _case_payload(case, row_index=None, data_row=None, run_id=None) -> dict:
             hooks = None
         if hooks:
             payload['test_hooks'] = hooks
+    if session is not None:
+        # Per case, not per job: a case's hooks come from ITS suite chain,
+        # which is not the run's root suite for nested or targeted runs.
+        from app.services.suite_hooks import hook_chain_sync
+        chain = hook_chain_sync(getattr(case, 'test_suite_id', None), session)
+        if chain:
+            payload['suite_hooks'] = chain
     return payload
 
 
@@ -355,6 +378,9 @@ def _settings_payload(settings: dict) -> dict:
         payload['data_policy'] = settings['data_policy']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
+    # {{run.*}} values and the effective data seed (see run_test_suite).
+    if settings.get('run_context'):
+        payload['run'] = settings['run_context']
     return payload
 
 
@@ -610,7 +636,8 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 'unit_id': unit['id'],
                 'unit_name': unit['name'],
                 'test_cases': [
-                    _case_payload(case, idx, row, run_id=run.id) for case, idx, row in expanded
+                    _case_payload(case, idx, row, run_id=run.id, session=session)
+                    for case, idx, row in expanded
                 ],
                 'browser': run.browser,
                 'device': run.device,
@@ -628,7 +655,7 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                     'job_id': job_id,
                     'run_id': run.id,
                     'test_case_id': case.id,
-                    'test_case': _case_payload(case, idx, row, run_id=run.id),
+                    'test_case': _case_payload(case, idx, row, run_id=run.id, session=session),
                     'browser': run.browser,
                     'device': run.device,
                     'settings': _settings_payload(settings),
@@ -684,7 +711,7 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'job_id': job_id,
             'run_id': run.id,
             'test_case_id': case.id,
-            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id),
+            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id, session=session),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),
@@ -828,7 +855,7 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'execution_mode': 'parallel',
             'parallelism': parallelism,
             'test_case_id': case.id,
-            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id),
+            'test_case': _case_payload(case, row_idx, data_row, run_id=run.id, session=session),
             'browser': run.browser,
             'device': run.device,
             'settings': _settings_payload(settings),

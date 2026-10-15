@@ -372,6 +372,9 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.params": "Query-param object",
             "params.assertions": "Array of {type, ...} — see assertion shapes below",
             "params.extract": "Array of {path, variable, required?} — store JSON response values as runtime vars",
+            "params.cleanup": ("true (DELETE the response's Location) or {method?, url, headers?, body?, "
+                               "expect_status?} — registers a cleanup that runs after the case even if it "
+                               "fails; see `templates` → cleanup"),
         },
         "notes": (
             "Assertion shapes inside params.assertions: "
@@ -503,7 +506,8 @@ _STEP_TYPES: List[Dict[str, Any]] = [
     {
         "type": "extract-value",
         "category": "data",
-        "params": {"selector": "Element", "params.source": "'text'|'value'|'attribute'", "params.variableName": "Variable name to save under"},
+        "params": {"selector": "Element", "params.source": "'text'|'value'|'attribute'", "params.variableName": "Variable name to save under",
+                   "params.cleanup": "true (the extracted value is a URL to DELETE) or {method?, url, ...} — see templates → cleanup"},
     },
     {
         "type": "totp",
@@ -642,6 +646,61 @@ _STEP_TYPES: List[Dict[str, Any]] = [
 ]
 
 
+# Template tokens resolved in any step value/selector/header/param/body, and
+# the suite-hook / cleanup lifecycle. Served with /step-types so an agent
+# reads one reference.
+_TEMPLATES: Dict[str, Any] = {
+    "tokens": [
+        {"token": "{{env.KEY}}", "notes": "ProjectEnvironment variable (run's environment)."},
+        {"token": "{{secret.KEY}}", "notes": "Decrypted project secret; never type credentials into steps."},
+        {"token": "{{data.KEY}}", "notes": "Current dataset row of a data-driven case."},
+        {"token": "{{name}}", "notes": "Runtime variable from extract-value / params.extract / totp earlier in the case."},
+        {"token": "{{fake.KIND}}", "notes": ("uuid|email|name|first_name|last_name|username|phone|number|date|word. "
+                                             "Random, unless a data seed is set: suite setting `data_seed` or POST /runs "
+                                             "body `data_seed`. Same seed + case + data row => same values (each "
+                                             "occurrence still differs within a case). The effective seed is recorded "
+                                             "on the run (`data_seed`) — re-run with it to replay a failure's data.")},
+        {"token": "{{run.id}}", "notes": "The TestRun id."},
+        {"token": "{{run.short}}", "notes": "8-char lowercase token unique to the run (HMAC-derived; not the id)."},
+        {"token": "{{run.worker}}", "notes": "Id of the worker executing this case."},
+        {"token": "{{run.case}}", "notes": "The TestCase id."},
+        {"token": "{{run.row}}", "notes": "1-based dataset row (matches the '[row N]' result name); 0 if not data-driven."},
+        {"token": "{{run.started_at}}", "notes": "When the run was dispatched (ISO-8601 UTC)."},
+        {"token": "{{run.attempt}}", "notes": "1 for the first try, 2+ for auto-retries."},
+        {"token": "{{unique.NAME}}", "notes": ("12 lowercase alphanumerics, starting with a letter, unique per run + "
+                                               "case + data row + attempt and stable within the attempt — use for "
+                                               "emails/usernames that must not collide across parallel workers, e.g. "
+                                               "'{{unique.user}}@example.com'. Never seeded.")},
+        {"token": "{{setup.NAME}}", "notes": "Value extracted by a suite setup step (any suite in the case's chain)."},
+        {"token": "{{inbox.address[.label]}}", "notes": "Per-run test inbox address (see wait-for-email)."},
+        {"token": "{{webhook.url[.label]}}", "notes": "Per-run webhook capture URL (see wait-for-webhook)."},
+    ],
+    "suite_hooks": (
+        "Suite settings `setup_steps` / `teardown_steps` (same step schema as cases; usually http-request). "
+        "Each case runs its suite chain's setup outermost-first and teardown innermost-first; the chain stops "
+        "at a suite with inherit_settings=false (its own hooks still apply). Per job: SEPARATE / PARALLEL / "
+        "single-case dispatch = around every case; a multi-case CONTINUOUS sub-suite job runs each suite's "
+        "setup once before its first case and teardown once after its last. A setup's extracted values are "
+        "{{setup.NAME}} in cases and bare {{NAME}} inside that same setup. A failed setup marks the case "
+        "'error' without running it. Teardown ALWAYS runs (after failures, errors and case timeouts — the "
+        "worker reserves HOOK_TEARDOWN_BUDGET_MS of the job's time for it) and its failures are warnings "
+        "(result_payload.hook_warnings), never a red case. Change them on existing suites with "
+        "propose_update_suite_settings — never auto-applied. Server and local web workers only (not mobile)."
+    ),
+    "cleanup": (
+        "params.cleanup on an http-request / extract-value step registers a cleanup once the step created "
+        "something (a request that returned 2xx and then failed an assertion still counts). true = DELETE the "
+        "response Location header (http-request) or the extracted URL (extract-value); an object "
+        "{method='DELETE', url, headers?, body?, expect_status?} is resolved right after the step, so "
+        "variables it extracted are available (url '/items/{{item_id}}'; relative URLs resolve against the "
+        "request URL or the environment base_url; headers default to the suite headers + the step's own). "
+        "Case cleanups run LIFO right after the case, setup cleanups after that suite's teardown. Success = "
+        "expect_status, else 2xx/404/410. Outcomes land in result_payload.cleanup with the URL template "
+        "(captured values unresolved) and query values dropped."
+    ),
+}
+
+
 @router.get("/step-types")
 async def list_step_types() -> Dict[str, Any]:
     """Catalogue of every step type the runner supports plus its params shape.
@@ -652,6 +711,7 @@ async def list_step_types() -> Dict[str, Any]:
     return {
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
+        "templates": _TEMPLATES,
         "last_updated": "2026-10-15",
     }
 

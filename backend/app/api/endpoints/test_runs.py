@@ -53,6 +53,9 @@ class RunCreateContext(BaseModel):
     # inherited settings). Must all lie in suite_id's subtree. Not combinable
     # with case_id or tags. See docs/superpowers/specs/2026-10-14-targeted-runs-design.md.
     case_ids: Optional[List[int]] = None
+    # Seed for {{fake.*}}: same seed + case + data row -> same generated
+    # values. Overrides the suite chain's `data_seed`; recorded on the run.
+    data_seed: Optional[Union[str, int]] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -69,6 +72,11 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         triggered_by = RunTrigger.HUMAN
 
     agent_id = ctx.agent_id or principal.agent_id
+    from app.services.suite_hooks import SuiteHookError, normalize_seed
+    try:
+        data_seed = normalize_seed(ctx.data_seed)
+    except SuiteHookError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     api_key_id = principal.api_key.id if principal.api_key else None
     return {
         "git_commit": ctx.git_commit,
@@ -79,6 +87,7 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         "agent_id": agent_id,
         "api_key_id": api_key_id,
         "local_worker_id": (ctx.local_worker_id or None) and str(ctx.local_worker_id)[:64],
+        "data_seed": data_seed,
     }
 
 

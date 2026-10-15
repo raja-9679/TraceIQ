@@ -24,6 +24,7 @@ import { toast } from 'sonner';
 import { usePermission } from "@/hooks/usePermission";
 import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicyCard';
+import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
 
 const containerVariants: Variants = {
     hidden: { opacity: 0 },
@@ -1092,6 +1093,15 @@ export default function SuiteDetails() {
                                     key={suite.id}
                                     settings={suite.settings}
                                     effective={suite.effective_settings}
+                                    inherit={suite.inherit_settings}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
+
+                                {/* ── Setup & teardown hooks + data seed ── */}
+                                <SuiteHooksCard
+                                    key={`hooks-${suite.id}`}
+                                    settings={suite.settings}
+                                    effectiveSeed={suite.effective_settings?.data_seed}
                                     inherit={suite.inherit_settings}
                                     onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
                                 />

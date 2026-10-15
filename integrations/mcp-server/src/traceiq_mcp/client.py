@@ -200,6 +200,7 @@ class TraceIQClient:
         local_worker_id: Optional[str] = None,
         app_build_id: Optional[int] = None,
         case_ids: Optional[List[int]] = None,
+        data_seed: Optional[str] = None,
     ) -> Any:
         params: Dict[str, Any] = {"suite_id": suite_id}
         if case_id is not None:
@@ -218,6 +219,7 @@ class TraceIQClient:
             "local_worker_id": local_worker_id,
             "app_build_id": app_build_id,
             "case_ids": case_ids,
+            "data_seed": data_seed,
         })
         return await self._request("POST", "/api/runs", params=params, json=body)
 

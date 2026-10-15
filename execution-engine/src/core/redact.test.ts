@@ -24,6 +24,8 @@ import {
     redactBody,
     redactHar,
     redactHeaders,
+    redactHookReport,
+    queryNamesOnly,
     redactJobResult,
     redactMessageText,
     redactNetworkEvents,
@@ -548,4 +550,35 @@ test('message: the regular value patterns still apply', () => {
 test('message: non-strings pass through', () => {
     assert.equal(redactMessageText(''), '');
     assert.equal(redactMessageText(null), null);
+});
+
+// ---- hook_report (suite setup/teardown + cleanup). Twin corpus:
+// tests/test_redaction.py::test_hook_report_*
+
+const HOOK_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
+
+test('hook report: cleanup URL keeps query names only and phase errors are scrubbed', () => {
+    const out = redactJobResult({
+        hook_report: {
+            setup: [{ suite_id: 1, phase: 'setup', status: 'failed', error: `401 for token ${HOOK_JWT}`,
+                      steps: [{ index: 0, type: 'http-request', status: 'failed', error: `bad ${HOOK_JWT}` }] }],
+            teardown: [],
+            cleanup: [{ method: 'DELETE', url: 'https://api.test/items/9?token=s3cret&x=1', status: 'failed',
+                        error: `card 4111 1111 1111 1111 rejected`, origin: 'case' }],
+        },
+    });
+    const r = out.hook_report;
+    assert.ok(!r.setup[0].error.includes(HOOK_JWT));
+    assert.ok(!r.setup[0].steps[0].error.includes(HOOK_JWT));
+    assert.equal(r.cleanup[0].url, 'https://api.test/items/9?token=…&x=…');
+    assert.ok(!r.cleanup[0].error.includes('4111 1111 1111 1111'));
+    assert.equal(r.cleanup[0].status, 'failed');
+    assert.equal(r.setup[0].suite_id, 1);
+});
+
+test('hook report: continuous results are scrubbed too and odd shapes pass through', () => {
+    const out = redactJobResult({ test_results: [{ hook_report: { cleanup: [{ url: '/x?a=1#frag' }] } }] });
+    assert.equal(out.test_results[0].hook_report.cleanup[0].url, '/x?a=…');
+    assert.deepEqual(redactHookReport(['x']), ['x']);
+    assert.equal(queryNamesOnly('{{api}}/items/{{id}}'), '{{api}}/items/{{id}}');
 });
