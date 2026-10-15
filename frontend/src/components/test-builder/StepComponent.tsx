@@ -1,3 +1,4 @@
+import { formatPromQueries, parsePromQueries } from '@/lib/fleet';
 import React from 'react';
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -702,6 +703,20 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             </div>
                         </div>
                         <p className="text-[10px] text-gray-400 mt-2 italic">A k6 load test against the URL above. The case runs on the load executor (no browser). Only target apps you own — breached thresholds fail the case.</p>
+                        <div className="mt-4">
+                            <label htmlFor={`prom-${step.id}`} className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Server metrics (Prometheus, optional)</label>
+                            <textarea
+                                id={`prom-${step.id}`}
+                                className="w-full h-20 p-3 text-xs font-mono border border-slate-200 rounded-xl bg-white"
+                                placeholder={'CPU | cpu\np99 latency | p99'}
+                                defaultValue={formatPromQueries(step.params?.prometheus_queries)}
+                                onBlur={(e) => {
+                                    const qs = parsePromQueries(e.target.value);
+                                    updateParams('prometheus_queries', qs.length ? qs : undefined);
+                                }}
+                            />
+                            <p className="text-[10px] text-gray-400 mt-1 italic">One "label | template" per line (max 10), naming a query template your admin approved (Settings → Instance → Observability). Free-form PromQL runs only if the instance allows it.</p>
+                        </div>
                     </div>
                 )}
 

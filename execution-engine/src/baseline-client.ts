@@ -1,8 +1,7 @@
 // Tiny HTTP helper used by `expect-visual-match` to fetch a pinned
 // VisualBaseline from the backend.
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
-const WORKER_TOKEN = process.env.WORKER_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || '';
+import { backendFetch } from './core/backend-http';
 
 export interface BaselineRecord {
     id: number;
@@ -31,11 +30,8 @@ export async function resolveBaseline(query: {
     params.set('step_id', query.stepId);
     if (query.browser) params.set('browser', query.browser);
     if (query.device) params.set('device', query.device);
-    const url = `${BACKEND_URL}/api/internal/visual-baselines/resolve?${params.toString()}`;
     try {
-        const res = await fetch(url, {
-            headers: { 'X-Worker-Secret': WORKER_TOKEN },
-        });
+        const res = await backendFetch(`/api/internal/visual-baselines/resolve?${params.toString()}`);
         if (res.status === 404) return null; // genuinely no baseline yet
         if (!res.ok) {
             console.warn(`[baseline-client] resolve returned ${res.status} — check WEBHOOK_SECRET on the worker`);

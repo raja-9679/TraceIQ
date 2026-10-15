@@ -39,6 +39,8 @@ from app.api import dead_letter as dead_letter_api
 from app.api import siem as siem_api
 from app.api import access_reviews as access_reviews_api
 from app.api import developer as developer_api
+from app.api import fleet as fleet_api
+from app.api import paging as paging_api
 from app.core.config import settings as core_settings
 from app.core import telemetry
 import logging
@@ -80,6 +82,10 @@ app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
 # X-Request-ID in, contextvar for the logs, X-Request-ID out. Added before the
 # tracer so the span and the log lines for one request can be joined.
 app.add_middleware(telemetry.RequestIdMiddleware)
+# Optional worker mTLS for /api/internal/* (WP8). A no-op unless
+# REQUIRE_WORKER_MTLS is set; see app/core/worker_auth.py.
+from app.core.worker_auth import WorkerMTLSMiddleware  # noqa: E402
+app.add_middleware(WorkerMTLSMiddleware)
 # OpenTelemetry: only active when OTEL_EXPORTER_OTLP_ENDPOINT is set.
 from app.core.database import engine as _db_engine  # noqa: E402
 telemetry.configure_tracing(app, service_name="traceiq-backend", sqlalchemy_engine=_db_engine)
@@ -143,6 +149,8 @@ app.include_router(scim_api.router, prefix="/api", tags=["scim"])
 app.include_router(dead_letter_api.router, prefix="/api", tags=["dead-letter"])
 app.include_router(siem_api.router, prefix="/api", tags=["siem"])
 app.include_router(access_reviews_api.router, prefix="/api", tags=["access-reviews"])
+app.include_router(fleet_api.router, prefix="/api", tags=["fleet"])
+app.include_router(paging_api.router, prefix="/api", tags=["paging"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])
 app.include_router(schedules.router, prefix="/api/schedules", tags=["schedules"])
 app.include_router(api_keys.router, prefix="/api", tags=["api-keys"])

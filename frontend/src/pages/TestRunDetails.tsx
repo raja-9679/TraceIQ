@@ -1,3 +1,4 @@
+import ServerMetricsPanel from '@/components/load/ServerMetricsPanel';
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl, triggerRun } from "@/lib/api";
@@ -1122,6 +1123,7 @@ function TestCaseResultItem({ result, runId, networkEvents = [], focus = null }:
                                                 ))}
                                             </div>
                                         )}
+                                        <ServerMetricsPanel runId={result.test_run_id} resultId={result.id} />
                                     </div>
                                 );
                             })()}

@@ -44,6 +44,10 @@ async def _process_schedules_async():
 
         await session.commit()
 
+def _targets(devices, regions):
+    return [(d, r) for d in devices for r in regions]
+
+
 async def _dispatch_schedule(schedule: TestSchedule, session):
     created_runs = []
 
@@ -79,6 +83,9 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
 
     # Target devices check
     target_devices = [schedule.device] if schedule.device else [None]
+    # Multi-region monitors (WP8): one run per region per device, each pinned
+    # to that region's job stream. No regions = one unlabelled run, as before.
+    target_regions = list(schedule.regions or []) or [None]
     target_browser = schedule.browser or "chromium"
 
     if schedule.test_case_id:
@@ -90,7 +97,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
         suite_path = await test_service.get_suite_path(suite_id, session) if suite_id else "Orphaned Case"
         effective_settings = await test_service.get_effective_settings(suite_id, session) if suite_id else {}
 
-        for target_device in target_devices:
+        for target_device, target_region in _targets(target_devices, target_regions):
             run = TestRun(
                 status=TestStatus.PENDING,
                 test_suite_id=suite_id,
@@ -104,6 +111,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 domain_settings=effective_settings.get("domain_settings", {}),
                 browser=target_browser,
                 device=target_device,
+                region=target_region,
                 user_id=schedule.created_by_id,  # Blame the run on the schedule creator
                 triggered_by=RunTrigger.SCHEDULE,
                 agent_id=f"schedule:{schedule.id}",
@@ -131,7 +139,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 result = await session.exec(select(TestCase).where(TestCase.test_suite_id == s_id))
                 direct_cases = result.all()
                 for case in direct_cases:
-                    for target_device in target_devices:
+                    for target_device, target_region in _targets(target_devices, target_regions):
                         run = TestRun(
                             status=TestStatus.PENDING,
                             test_suite_id=s_id,
@@ -145,6 +153,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                             domain_settings=current_effective_settings.get("domain_settings", {}),
                             browser=target_browser,
                             device=target_device,
+                            region=target_region,
                             user_id=schedule.created_by_id,
                             triggered_by=RunTrigger.SCHEDULE,
                             agent_id=f"schedule:{schedule.id}",
@@ -158,7 +167,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                 for sub in sub_modules:
                     await process_suite(sub.id, current_effective_settings)
             else:
-                for target_device in target_devices:
+                for target_device, target_region in _targets(target_devices, target_regions):
                     run = TestRun(
                         status=TestStatus.PENDING,
                         test_suite_id=s_id,
@@ -172,6 +181,7 @@ async def _dispatch_schedule(schedule: TestSchedule, session):
                         domain_settings=current_effective_settings.get("domain_settings", {}),
                         browser=target_browser,
                         device=target_device,
+                        region=target_region,
                         user_id=schedule.created_by_id,
                         triggered_by=RunTrigger.SCHEDULE,
                         agent_id=f"schedule:{schedule.id}",

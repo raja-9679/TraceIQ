@@ -124,6 +124,12 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("incidentwebhook",
               f"DELETE FROM incidentwebhook WHERE project_id IN ({_PROJECTS}) "
               f"OR default_suite_id IN ({_SUITES})"),
+    PurgeStep("pagingevent",
+              f"DELETE FROM pagingevent WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("pagingchannel",
+              f"DELETE FROM pagingchannel WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("maintenancewindow",
+              f"DELETE FROM maintenancewindow WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("failurecluster",
               f"DELETE FROM failurecluster WHERE project_id IN ({_PROJECTS})"),
 

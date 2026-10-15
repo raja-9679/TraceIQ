@@ -479,6 +479,11 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.ramp_up_s": "Optional ramp-up seconds to reach vus",
             "params.think_time_s": "Sleep between iterations (default 1)",
             "params.thresholds": "{p95_ms?, p99_ms?, error_rate? (0-1), min_rps?} — any breach fails the case",
+            "params.prometheus_queries": "Optional [{name, template}] (max 10): names of operator-approved "
+                                         "PromQL templates (PROMETHEUS_QUERY_TEMPLATES) evaluated over the "
+                                         "test window and shown next to the k6 metrics. Free-form "
+                                         "[{name, query}] PromQL only runs where the instance enables "
+                                         "PROMETHEUS_ALLOW_ADHOC_QUERIES",
         },
         "example": {
             "id": "<uuid>",

@@ -232,6 +232,70 @@ async def update_instance_settings(
         except step_hooks.StepHooksError as exc:
             raise HTTPException(status_code=400, detail=f"Test inbox: {exc}")
 
+    # WP8: CIDR allowlists and worker settings. A typo in an allowlist would
+    # lock out the IdP or every proxied caller, so they are parsed here; list
+    # values typed as "a, b" are normalised to a JSON list.
+    from app.core.client_ip import as_list, parse_cidrs
+    for key in ("TRUSTED_PROXY_CIDRS", "SCIM_ALLOWED_CIDRS"):
+        if body.values.get(key) is not None:
+            items = as_list(body.values[key])
+            try:
+                parse_cidrs(items)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"{key}: {exc}")
+            body.values[key] = items
+    if body.values.get("EGRESS_ALLOWED_HOSTS") is not None:
+        body.values["EGRESS_ALLOWED_HOSTS"] = [
+            h.lower() for h in as_list(body.values["EGRESS_ALLOWED_HOSTS"])]
+    subjects = body.values.get("WORKER_MTLS_ALLOWED_SUBJECTS")
+    if subjects is not None and not isinstance(subjects, list):
+        # Subject DNs contain commas, so a typed value is one DN per line.
+        body.values["WORKER_MTLS_ALLOWED_SUBJECTS"] = [
+            s.strip() for s in str(subjects).splitlines() if s.strip()]
+    # Region grants ("eu=12,15") and PromQL templates both contain commas, so
+    # a typed value is one entry per line, never comma-split.
+    for key in ("WORKER_REGIONS", "PROMETHEUS_QUERY_TEMPLATES"):
+        val = body.values.get(key)
+        if val is not None and not isinstance(val, list):
+            body.values[key] = [s.strip() for s in str(val).splitlines() if s.strip()]
+    if body.values.get("WORKER_REGIONS") is not None:
+        from app.services.worker_fleet import InvalidRegion, normalize_region
+        for entry in body.values["WORKER_REGIONS"]:
+            name, sep, rest = str(entry).partition("=")
+            try:
+                normalize_region(name)
+            except InvalidRegion as exc:
+                raise HTTPException(status_code=400, detail=f"WORKER_REGIONS: {exc}")
+            ids = [p for p in rest.replace(",", " ").replace(";", " ").split()]
+            if sep and (not ids or not all(p.isdigit() for p in ids)):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"WORKER_REGIONS: {entry!r} — use 'region' or "
+                           "'region=<workspace id>,<workspace id>'")
+    for entry in body.values.get("PROMETHEUS_QUERY_TEMPLATES") or []:
+        name, sep, query = str(entry).partition("=")
+        if not sep or not name.strip() or not query.strip():
+            raise HTTPException(status_code=400,
+                                detail=f"PROMETHEUS_QUERY_TEMPLATES: {entry!r} — use 'name=PromQL'")
+    provider = body.values.get("WORKER_LLM_PROVIDER")
+    if provider not in (None, "") and str(provider).strip().lower() not in (
+            "inherit", "anthropic", "openai", "gemini", "ollama", "openai-compatible"):
+        raise HTTPException(status_code=400,
+                            detail="WORKER_LLM_PROVIDER: use inherit, anthropic, openai, "
+                                   "gemini, ollama or openai-compatible")
+    if body.values.get("PROMETHEUS_URL"):
+        from urllib.parse import urlsplit
+        from app.core.net_guard import UnsafeUrlError, validate_outbound_url
+        prom = str(body.values["PROMETHEUS_URL"])
+        try:
+            # The admin naming the host is the private-network exemption (an
+            # in-cluster Prometheus is the normal case); metadata/link-local
+            # ranges stay refused regardless.
+            await validate_outbound_url(
+                prom, extra_allowed_hosts=[urlsplit(prom).hostname or ""])
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=400, detail=f"PROMETHEUS_URL: {exc}")
+
     for key, value in body.values.items():
         d = insvc.REGISTRY[key]
         row = (await session.exec(

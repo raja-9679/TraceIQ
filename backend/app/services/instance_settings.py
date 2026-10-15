@@ -45,7 +45,7 @@ class SettingDef:
 
 
 # Groups: email | notifications | ai | storage | sso | saml | ldap | federation |
-#         test_inbox | siem | security_alerts | policies
+#         test_inbox | siem | security_alerts | policies | worker | network | observability
 REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     # --- Email (SMTP) ---
     SettingDef("SMTP_HOST", "email", label="SMTP host"),
@@ -392,6 +392,91 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "evidence for exposed credentials (cloud keys, tokens, private "
                            "keys, high-entropy secrets) and file them as security "
                            "findings with a masked sample"),
+    # --- Execution workers (WP8): delivered to workers by
+    # GET /api/internal/worker-config every 60s. Blank = the worker's own env.
+    SettingDef("WORKER_DEFAULT_TIMEOUT_MS", "worker", type="int",
+               label="Default step timeout (ms)",
+               description="Playwright default timeout for every step that does not "
+                           "set its own. Blank/0 keeps the worker's DEFAULT_TIMEOUT env"),
+    SettingDef("WORKER_MAX_JOB_DURATION_MS", "worker", type="int",
+               label="Maximum job duration (ms)",
+               description="hard wall-clock cap per job; the job is failed when it "
+                           "is exceeded. Blank/0 keeps MAX_JOB_DURATION_MS"),
+    SettingDef("WORKER_RUNTIME_HEAL_ENABLED", "worker", type="bool",
+               label="Runtime self-heal",
+               description="retry a step with an LLM-healed selector when it uniquely "
+                           "matches. Needs a worker LLM provider"),
+    SettingDef("WORKER_HAR_CAPTURE_ENABLED", "worker", type="bool",
+               label="Capture HAR on every run",
+               description="still subject to each project's capture level — HAR "
+                           "needs 'full'"),
+    SettingDef("WORKER_LLM_PROVIDER", "worker", label="Worker LLM provider",
+               description="'inherit' = use the AI settings above for workers too; "
+                           "anthropic | openai | gemini | ollama | openai-compatible "
+                           "= worker-specific; blank = the worker's own env"),
+    SettingDef("WORKER_LLM_MODEL", "worker", label="Worker LLM model"),
+    SettingDef("WORKER_LLM_API_KEY", "worker", secret=True, label="Worker LLM API key",
+               description="sent only to authenticated workers over "
+                           "/api/internal/worker-config; never logged"),
+    SettingDef("WORKER_LLM_BASE_URL", "worker", label="Worker LLM base URL",
+               description="ollama / openai-compatible endpoint as reachable FROM "
+                           "the workers"),
+    SettingDef("WORKER_REGIONS", "worker", type="list",
+               label="Worker regions",
+               description="one per line: 'eu' = any workspace may pin runs to "
+                           "region eu; 'acme-onprem=12,15' = only workspaces 12 and "
+                           "15 may. A region not listed here is refused — workers "
+                           "in a region can sit inside one customer's network"),
+    SettingDef("EGRESS_ALLOWLIST_ENFORCED", "worker", type="bool",
+               label="Enforce egress allowlists on every project",
+               description="workers block browser requests to hosts outside the "
+                           "project's allowlist (plus the always-allowed hosts "
+                           "below) and to private addresses. Off = only projects "
+                           "that opt in are enforced"),
+    SettingDef("EGRESS_ALLOWED_HOSTS", "worker", type="list",
+               label="Egress: always-allowed hosts",
+               description="hostnames (and their subdomains) every project may "
+                           "reach, e.g. a shared SSO or CDN"),
+    SettingDef("PROMETHEUS_URL", "observability", label="Prometheus URL (load tests)",
+               description="base URL of a Prometheus the BACKEND can reach; load-test "
+                           "results evaluate their attached queries over the test "
+                           "window against it. Fetched through the outbound URL guard"),
+    SettingDef("PROMETHEUS_BEARER_TOKEN", "observability", secret=True,
+               label="Prometheus bearer token (optional)"),
+    SettingDef("PROMETHEUS_QUERY_TEMPLATES", "observability", type="list",
+               label="Approved load-test queries",
+               description="one per line, 'name=PromQL'. A load-test step names a "
+                           "template and gets it evaluated; $project_id, "
+                           "$workspace_id and $run_id are substituted, so a "
+                           "template can be label-scoped to the caller's project"),
+    SettingDef("PROMETHEUS_ALLOW_ADHOC_QUERIES", "observability", type="bool",
+               label="Allow arbitrary load-test queries",
+               description="evaluate PromQL written in the step itself. Any project "
+                           "member who can author a load test can then read ANY "
+                           "series this Prometheus holds — single-tenant instances "
+                           "or a label-enforcing proxy only"),
+    # --- Network access control (WP8) ---
+    SettingDef("TRUSTED_PROXY_CIDRS", "network", type="list",
+               label="Trusted reverse proxies",
+               description="CIDRs of proxies whose X-Forwarded-For is believed when "
+                           "resolving the client address for IP allowlists, e.g. the "
+                           "nginx container's network. Empty = trust no proxy and use "
+                           "the TCP peer address"),
+    SettingDef("SCIM_ALLOWED_CIDRS", "network", type="list",
+               label="SCIM source allowlist",
+               description="CIDRs the identity provider calls SCIM from (Okta/Entra "
+                           "publish theirs). Empty = any address. Refusals are audited"),
+    SettingDef("REQUIRE_WORKER_MTLS", "network", type="bool",
+               label="Require worker mTLS",
+               description="/api/internal/* additionally requires a verified client "
+                           "certificate, as reported by a trusted proxy in "
+                           "X-Client-Verify: SUCCESS (nginx ssl_verify_client). The "
+                           "shared worker secret is still required"),
+    SettingDef("WORKER_MTLS_ALLOWED_SUBJECTS", "network", type="list",
+               label="Allowed worker certificate subjects (optional)",
+               description="exact subject DNs from X-Client-Cert-Subject "
+                           "($ssl_client_s_dn); empty accepts any certificate the "
+                           "proxy verified against its CA"),
     SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
                label="Maximum capture level",
                description="ceiling no project may exceed: none | minimal | standard | "

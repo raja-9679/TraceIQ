@@ -74,6 +74,9 @@ export interface TestJob {
         // setting; a case's own `fail_on_console_errors` overrides it).
         fail_on_console_errors?: boolean;
         console_error_ignore_patterns?: string[];
+        // Worker egress allowlist (WP8), resolved by the backend at dispatch.
+        // Absent = not enforced.
+        egress_policy?: { enforce: boolean; allowed_hosts: string[]; allow_private: boolean };
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
         // MinIO URL + metadata the mobile worker needs to install/launch it.
         mobile_app?: {
@@ -87,6 +90,9 @@ export interface TestJob {
     };
     created_at: string;
     retry_count?: number;
+    // Region the run was pinned to (WP8); the job then arrived on
+    // `jobs:pending:<region>`. Absent for the global pool.
+    region?: string;
 }
 
 // Result for a single test case within a job
@@ -198,31 +204,82 @@ const CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'execution-workers';
 const JOB_TIMEOUT_MS = parseInt(process.env.WORKER_JOB_TIMEOUT || '300000'); // 5 minutes
 const CLAIM_IDLE_TIME_MS = parseInt(process.env.JOB_CLAIM_IDLE_TIME || '60000'); // 1 minute
 
+const REGION_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** Validated WORKER_REGION, or null. An invalid label is a startup error: a
+ * typo would otherwise make the worker silently consume a stream nothing
+ * dispatches to. */
+export function workerRegion(env: NodeJS.ProcessEnv = process.env): string | null {
+    const raw = (env.WORKER_REGION || '').trim().toLowerCase();
+    if (!raw) return null;
+    if (!REGION_RE.test(raw)) {
+        throw new Error(`WORKER_REGION=${env.WORKER_REGION} is invalid: use 1-32 lowercase letters, digits or '-'`);
+    }
+    return raw;
+}
+
+/**
+ * Streams this worker consumes, highest priority first (WP8 regions).
+ *
+ *   no WORKER_REGION                 -> [base]                (exactly as before)
+ *   WORKER_REGION=eu                 -> [base:eu, base]       (regional first, then
+ *                                                             help with the global pool)
+ *   + WORKER_REGION_EXCLUSIVE=true   -> [base:eu]             (e.g. a worker inside a
+ *                                                             customer network that must
+ *                                                             not run anyone else's jobs)
+ */
+export function streamsFor(base: string, env: NodeJS.ProcessEnv = process.env): string[] {
+    const region = workerRegion(env);
+    if (!region) return [base];
+    const regional = `${base}:${region}`;
+    return env.WORKER_REGION_EXCLUSIVE === 'true' ? [regional] : [regional, base];
+}
+
 export class JobQueue {
     private redis: Redis;
-    public readonly workerId: string;
+    private _workerId: string;
+    private _streams: string[];
+    // Which stream each in-flight entry came from, so ack / dead-letter /
+    // side-job completion act on the right stream (ids are per stream).
+    private streamOf = new Map<string, string>();
     
     constructor(redisUrl?: string) {
         this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379');
-        this.workerId = `worker-${uuidv4().slice(0, 8)}`;
+        this._workerId = `worker-${uuidv4().slice(0, 8)}`;
+        this._streams = streamsFor(JOBS_STREAM);
         
-        this.redis.on('connect', () => console.log(`[JobQueue] Connected to Redis as ${this.workerId}`));
+        this.redis.on('connect', () => console.log(`[JobQueue] Connected to Redis as ${this._workerId}`));
         this.redis.on('error', (err) => console.error('[JobQueue] Redis error:', err));
+    }
+
+    /** The Redis consumer name — also the worker id in heartbeats, so the
+     * fleet page can join XPENDING per-consumer counts onto workers. */
+    get workerId(): string { return this._workerId; }
+    get streams(): string[] { return [...this._streams]; }
+    get consumerGroup(): string { return CONSUMER_GROUP; }
+    /** A separate connection for side traffic (heartbeats): the main one sits
+     * in XREADGROUP BLOCK for up to 5s at a time. */
+    duplicateRedis(): Redis { return this.redis.duplicate(); }
+
+    private streamFor(streamId: string): string {
+        return this.streamOf.get(streamId) || JOBS_STREAM;
     }
 
     /**
      * Initialize consumer group (idempotent)
      */
     async initialize(): Promise<void> {
-        try {
-            // Create stream and consumer group if they don't exist
-            await this.redis.xgroup('CREATE', JOBS_STREAM, CONSUMER_GROUP, '0', 'MKSTREAM');
-            console.log(`[JobQueue] Created consumer group: ${CONSUMER_GROUP}`);
-        } catch (err: any) {
-            if (err.message.includes('BUSYGROUP')) {
-                console.log(`[JobQueue] Consumer group already exists: ${CONSUMER_GROUP}`);
-            } else {
-                throw err;
+        for (const stream of this._streams) {
+            try {
+                // Create stream and consumer group if they don't exist
+                await this.redis.xgroup('CREATE', stream, CONSUMER_GROUP, '0', 'MKSTREAM');
+                console.log(`[JobQueue] Created consumer group: ${CONSUMER_GROUP} on ${stream}`);
+            } catch (err: any) {
+                if (err.message.includes('BUSYGROUP')) {
+                    console.log(`[JobQueue] Consumer group already exists: ${CONSUMER_GROUP} on ${stream}`);
+                } else {
+                    throw err;
+                }
             }
         }
 
@@ -316,20 +373,25 @@ export class JobQueue {
         const abandoned = await this.claimAbandonedJob();
         if (abandoned) return abandoned;
 
-        // Read new job from stream
-        const results = await this.redis.xreadgroup(
-            'GROUP', CONSUMER_GROUP, this.workerId,
-            'COUNT', 1,
-            'BLOCK', 5000, // Block for 5 seconds
-            'STREAMS', JOBS_STREAM,
-            '>'
-        ) as any;
-
-        if (!results || results.length === 0) {
-            return null;
+        // Read the next new job. Streams are tried in priority order, one at a
+        // time: a single multi-stream XREADGROUP with COUNT 1 can return one
+        // entry PER stream, and a second claimed entry would sit unprocessed
+        // in this consumer's PEL. Only the last stream blocks, so a regional
+        // job waits at most one block interval behind an idle global stream.
+        let stream = this._streams[0];
+        let messages: any[] | null = null;
+        for (let i = 0; i < this._streams.length; i++) {
+            stream = this._streams[i];
+            const last = i === this._streams.length - 1;
+            const args: any[] = ['GROUP', CONSUMER_GROUP, this._workerId, 'COUNT', 1];
+            if (last) args.push('BLOCK', 5000); // Block for 5 seconds
+            args.push('STREAMS', stream, '>');
+            const results = await (this.redis as any).xreadgroup(...args) as any;
+            if (results && results.length > 0 && results[0][1] && results[0][1].length > 0) {
+                messages = results[0][1];
+                break;
+            }
         }
-
-        const [[, messages]] = results;
         if (!messages || messages.length === 0) {
             return null;
         }
@@ -339,9 +401,10 @@ export class JobQueue {
         
         if (!payload.payload) {
             console.error(`[JobQueue] Invalid job format at ${streamId}`);
-            await this.redis.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+            await this.redis.xack(stream, CONSUMER_GROUP, streamId);
             return null;
         }
+        this.streamOf.set(streamId, stream);
 
         const job = JSON.parse(payload.payload) as TestJob;
         console.log(`[JobQueue] Claimed job ${job.job_id} (run ${job.run_id})`);
@@ -365,11 +428,19 @@ export class JobQueue {
      * Try to claim an abandoned job from crashed worker
      */
     private async claimAbandonedJob(): Promise<{ streamId: string; job: TestJob } | null> {
+        for (const stream of this._streams) {
+            const found = await this.claimAbandonedFrom(stream);
+            if (found) return found;
+        }
+        return null;
+    }
+
+    private async claimAbandonedFrom(stream: string): Promise<{ streamId: string; job: TestJob } | null> {
         try {
             const claimed = await this.redis.xclaim(
-                JOBS_STREAM,
+                stream,
                 CONSUMER_GROUP,
-                this.workerId,
+                this._workerId,
                 CLAIM_IDLE_TIME_MS,
                 '0-0', // Claim from beginning
                 'COUNT', 1
@@ -380,6 +451,7 @@ export class JobQueue {
             }
 
             const [streamId, fields] = claimed[0];
+            this.streamOf.set(streamId, stream);
             const payload = this.parseStreamFields(fields);
             const job = JSON.parse(payload.payload) as TestJob;
 
@@ -420,7 +492,8 @@ export class JobQueue {
         const safeResult = redactJobResult(result, policy);
 
         // Acknowledge the job
-        pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+        pipeline.xack(this.streamFor(streamId), CONSUMER_GROUP, streamId);
+        this.streamOf.delete(streamId);
 
         // Clean up per-job retry counter (no longer needed once complete)
         pipeline.hdel('jobs:retries', result.job_id);
@@ -509,7 +582,8 @@ export class JobQueue {
     private async moveToDeadLetter(streamId: string, job: TestJob, error: string): Promise<void> {
         const pipeline = this.redis.pipeline();
 
-        pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+        pipeline.xack(this.streamFor(streamId), CONSUMER_GROUP, streamId);
+        this.streamOf.delete(streamId);
         pipeline.hdel('jobs:retries', job.job_id);
         pipeline.xadd(
             'jobs:dead-letter',
@@ -544,7 +618,8 @@ export class JobQueue {
      */
     async completeSideJob(streamId: string, jobId: string, resultKey: string, result: any, ttlSeconds: number): Promise<void> {
         const pipeline = this.redis.pipeline();
-        pipeline.xack(JOBS_STREAM, CONSUMER_GROUP, streamId);
+        pipeline.xack(this.streamFor(streamId), CONSUMER_GROUP, streamId);
+        this.streamOf.delete(streamId);
         pipeline.hdel('jobs:retries', jobId);
         pipeline.set(resultKey, JSON.stringify(result), 'EX', ttlSeconds);
         await pipeline.exec();
@@ -612,7 +687,7 @@ export class JobQueue {
      * Graceful shutdown
      */
     async shutdown(): Promise<void> {
-        console.log(`[JobQueue] Shutting down worker ${this.workerId}`);
+        console.log(`[JobQueue] Shutting down worker ${this._workerId}`);
         await this.redis.quit();
     }
 }

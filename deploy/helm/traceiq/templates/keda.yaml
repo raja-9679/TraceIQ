@@ -1,0 +1,59 @@
+{{- /*
+KEDA autoscaling for execution workers (WP8). Off by default: it needs the KEDA
+operator in the cluster (its CRDs), and a ScaledObject without them fails the
+install. Scales each worker Deployment on the consumer-group LAG of its Redis
+stream — jobs dispatched but not yet delivered to any worker — which is the
+backlog signal; CPU says nothing about a queue of waiting Playwright jobs.
+Region workers each scale on their own jobs:pending:<region> stream.
+*/ -}}
+{{- if and .Values.keda .Values.keda.enabled }}
+{{- $secret := include "traceiq.secretName" . }}
+{{- $fullname := include "traceiq.fullname" . }}
+{{- $address := printf "%s:%s" (include "traceiq.redisHost" .) (include "traceiq.redisPort" .) }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ $fullname }}-redis
+  labels:
+    {{- include "traceiq.labels" . | nindent 4 }}
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ $secret }}
+      key: REDIS_PASSWORD
+{{- $targets := list (dict "component" "execution-worker" "stream" "jobs:pending") }}
+{{- range .Values.regionWorkers }}
+{{- $targets = append $targets (dict "component" (printf "execution-worker-%s" .name) "stream" (printf "jobs:pending:%s" .region) "min" .minReplicas "max" .maxReplicas) }}
+{{- end }}
+{{- range $targets }}
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ $fullname }}-{{ .component }}
+  labels:
+    {{- include "traceiq.labels" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    name: {{ $fullname }}-{{ .component }}
+  minReplicaCount: {{ default $.Values.keda.minReplicas .min }}
+  maxReplicaCount: {{ default $.Values.keda.maxReplicas .max }}
+  pollingInterval: {{ $.Values.keda.pollingInterval }}
+  # Long enough for an in-flight job to finish before its pod is removed
+  # (terminationGracePeriodSeconds is 120).
+  cooldownPeriod: {{ $.Values.keda.cooldownPeriod }}
+  triggers:
+    - type: redis-streams
+      metadata:
+        address: {{ $address | quote }}
+        stream: {{ .stream | quote }}
+        consumerGroup: execution-workers
+        lagCount: {{ $.Values.keda.lagCount | quote }}
+        activationLagCount: {{ $.Values.keda.activationLagCount | quote }}
+        {{- if and (not $.Values.redis.enabled) $.Values.redis.external.tls }}
+        enableTLS: "true"
+        {{- end }}
+      authenticationRef:
+        name: {{ $fullname }}-redis
+{{- end }}
+{{- end }}

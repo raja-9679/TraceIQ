@@ -221,6 +221,32 @@ services:
       - qip_network
     shm_size: '1gb'
 
+  # Region-pinned workers (WP8) — opt-in via the "region" profile:
+  #   WORKER_REGION=eu docker compose -f docker-compose.prod.yml --profile region up -d
+  # Runs created with `"region": "eu"` (or monitors with `regions`) go to
+  # jobs:pending:eu and only workers with that WORKER_REGION claim them, and
+  # only workspaces the instance admin granted the region (WORKER_REGIONS
+  # instance setting) can pin runs there.
+  # EXCLUSIVE BY DEFAULT: a region worker takes its region's jobs only. With
+  # WORKER_REGION_EXCLUSIVE=false it also drains the global stream, i.e. runs
+  # every tenant's jobs (with their resolved secrets) — only do that for a
+  # pool that is just extra capacity inside your own network.
+  # Same networks, hardening and credentials as execution-worker: it is no
+  # more privileged, but no less either — the Redis password and WEBHOOK_SECRET
+  # it holds are instance-wide. Running it at a site you do not control (a
+  # customer's network) hands that site those credentials; keep such workers
+  # to single-tenant instances.
+  # Not a Celery worker — no new queue (tests/test_celery_routing.py).
+  execution-worker-region:
+    extends:
+      service: execution-worker
+    profiles: ["region"]
+    environment:
+      WORKER_REGION: ${WORKER_REGION:-eu}
+      WORKER_REGION_EXCLUSIVE: ${WORKER_REGION_EXCLUSIVE:-true}
+    deploy:
+      replicas: ${REGION_WORKERS:-1}
+
 volumes:
   postgres_data:
   redis_data:

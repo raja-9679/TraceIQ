@@ -145,8 +145,35 @@ async def _user_from_jwt(token: str, session: AsyncSession) -> Optional[User]:
     return user
 
 
+class SourceAddressRefused(HTTPException):
+    """A valid credential presented from an address its allowlist excludes."""
+
+    def __init__(self, detail: str):
+        super().__init__(status_code=403, detail=detail)
+
+
+async def _refuse_api_key_source(session: AsyncSession, key: ApiKey, ip: str) -> None:
+    """Audit, then refuse. The refusal is the interesting event for a security
+    review — a leaked key being tried from outside the corporate range — so it
+    is recorded even though nothing was changed. Best-effort: auditing must
+    not turn a 403 into a 500."""
+    try:
+        from app.services.audit import record
+        await record(
+            session, entity_type="api_key", entity_id=key.id, action="ip_refused",
+            user_id=key.created_by_id, workspace_id=key.workspace_id,
+            changes={"client_ip": ip, "prefix": key.prefix},
+            actor_type="api_key", actor_label=key.prefix,
+        )
+        await session.commit()
+    except Exception:  # noqa: BLE001
+        await session.rollback()
+    raise SourceAddressRefused("This API key is not permitted from this network address")
+
+
 async def _principal_from_api_key(
-    raw_key: str, session: AsyncSession, agent_id: Optional[str]
+    raw_key: str, session: AsyncSession, agent_id: Optional[str],
+    client_addr: Optional[str] = None,
 ) -> Optional[AuthPrincipal]:
     if not raw_key.startswith(API_KEY_PREFIX):
         return None
@@ -159,6 +186,12 @@ async def _principal_from_api_key(
         return None
     if key.expires_at is not None and key.expires_at < datetime.utcnow():
         return None
+    # Source-IP allowlist (WP8). Checked before last_used_at is touched, so a
+    # refused attempt does not look like use of the key.
+    if key.allowed_cidrs:
+        from app.core.client_ip import allowed
+        if client_addr is None or not allowed(client_addr, key.allowed_cidrs):
+            await _refuse_api_key_source(session, key, client_addr or "unknown")
 
     # Track usage. Best-effort; failure to update last_used_at must not block auth.
     try:
@@ -203,7 +236,9 @@ async def get_current_principal(
     )
 
     if api_key_raw:
-        principal = await _principal_from_api_key(api_key_raw, session, agent_id)
+        from app.core.client_ip import client_ip
+        principal = await _principal_from_api_key(
+            api_key_raw, session, agent_id, client_addr=client_ip(request))
         if principal:
             principal.agent_session_id = agent_session_id
             return principal

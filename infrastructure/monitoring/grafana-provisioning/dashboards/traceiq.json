@@ -64,6 +64,18 @@
       "title": "Runs by status",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "targets": [{ "expr": "traceiq_runs_total", "legendFormat": "{{status}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Live workers (heartbeat)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
+      "targets": [{ "expr": "sum by (kind, region) (traceiq_workers_alive)", "legendFormat": "{{kind}} {{region}}", "refId": "A" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Undelivered jobs (lag) by stream",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
+      "targets": [{ "expr": "traceiq_queue_lag", "legendFormat": "{{stream}}", "refId": "A" }]
     }
   ]
 }

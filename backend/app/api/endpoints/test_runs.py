@@ -61,6 +61,9 @@ class RunCreateContext(BaseModel):
     # Seed for {{fake.*}}: same seed + case + data row -> same generated
     # values. Overrides the suite chain's `data_seed`; recorded on the run.
     data_seed: Optional[Union[str, int]] = None
+    # Region label (WP8): run on workers started with WORKER_REGION=<region>
+    # (their own `jobs:pending:<region>` stream). Omit for the global pool.
+    region: Optional[str] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -83,7 +86,16 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
     except SuiteHookError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     api_key_id = principal.api_key.id if principal.api_key else None
+    from app.services.worker_fleet import InvalidRegion, normalize_region
+    try:
+        region = normalize_region(ctx.region)
+    except InvalidRegion as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if region and ctx.local_worker_id:
+        raise HTTPException(status_code=400,
+                            detail="region and local_worker_id cannot be combined")
     return {
+        "region": region,
         "git_commit": ctx.git_commit,
         "git_branch": ctx.git_branch,
         "git_pr_url": ctx.git_pr_url,
@@ -130,6 +142,15 @@ async def create_run(
             raise HTTPException(
                 status_code=402,
                 detail=f"Monthly run quota reached ({used}/{limit}). Upgrade the workspace plan to run more.")
+
+    # Region pinning (WP8): the region's workers may belong to another
+    # customer's network, so the label must be one this workspace was granted.
+    if run_defaults.get("region"):
+        from app.services.worker_fleet import RegionNotPermitted, check_region_access
+        try:
+            check_region_access(run_defaults["region"], _ws_id)
+        except RegionNotPermitted as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
 
     # ── Targeted selection (case_ids) ───────────────────────────────────
     targeted_cases: List[TestCase] = []
@@ -960,6 +981,14 @@ async def finalize_test_run(
         evaluate_monitor_for_run.delay(run_id)
     except Exception as e:
         print(f"[Finalize] Failed to queue monitor evaluation for run {run_id}: {e}")
+
+    # On-call paging for unattended runs (PagerDuty / Opsgenie channels with
+    # on_run_failure). No-op unless the project has such a channel.
+    try:
+        from app.tasks.paging_tasks import page_for_run
+        page_for_run.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue paging for run {run_id}: {e}")
 
     # Passive security scan: analyse already-captured responses for missing
     # security headers, insecure cookies, etc. Best-effort; read-only.

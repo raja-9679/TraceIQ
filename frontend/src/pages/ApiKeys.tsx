@@ -16,6 +16,7 @@ import {
 import { toast } from 'sonner';
 import { getWorkspaces, getProjects, getRoles, Workspace, Project, Role } from '@/lib/api';
 import { apiKeysApi, ApiKey, ApiKeyCreateResponse } from '@/api/apiKeys';
+import { parseCidrList } from '@/lib/fleet';
 
 interface ApiError extends Error {
   response?: { data?: { detail?: string } };
@@ -125,6 +126,7 @@ function CreateKeyForm({
   const [projectId, setProjectId] = useState<string>(NO_SCOPE);
   const [roleId, setRoleId] = useState<string>(NO_ROLE);
   const [expiresInDays, setExpiresInDays] = useState('');
+  const [cidrs, setCidrs] = useState('');
 
   const createMutation = useMutation({
     mutationFn: () => {
@@ -135,6 +137,7 @@ function CreateKeyForm({
         project_id: projectId === NO_SCOPE ? null : parseInt(projectId),
         role_id: roleId === NO_ROLE ? null : parseInt(roleId),
         expires_in_days: days && days > 0 ? days : null,
+        allowed_cidrs: parseCidrList(cidrs),
       });
     },
     onSuccess: (created) => onCreated(created),
@@ -205,6 +208,22 @@ function CreateKeyForm({
           />
         </div>
       </div>
+      <div className="mt-3">
+        <label htmlFor="api-key-cidrs" className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+          Allowed source IPs (CIDR, comma-separated — optional)
+        </label>
+        <Input
+          id="api-key-cidrs"
+          placeholder="e.g. 203.0.113.0/24, 198.51.100.7 — blank allows any address"
+          value={cidrs}
+          onChange={(e) => setCidrs(e.target.value)}
+          className="h-9 rounded-lg bg-white border-slate-200"
+        />
+        <p className="text-xs text-slate-400 mt-1">
+          Requests from other addresses are refused (403) and audited. Behind a proxy, an instance admin must
+          set the trusted proxies in Instance settings → Network access control.
+        </p>
+      </div>
       <div className="flex gap-2 pt-4">
         <Button
           size="sm"
@@ -272,6 +291,25 @@ export default function ApiKeys() {
     (projects || []).forEach((p) => map.set(p.id, p.name));
     return map;
   }, [projects]);
+
+  const cidrMutation = useMutation({
+    mutationFn: ({ keyId, cidrs }: { keyId: number; cidrs: string[] | null }) =>
+      apiKeysApi.setAllowedCidrs(workspaceId!, keyId, cidrs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['api-keys', workspaceId] });
+      toast.success('Source-IP allowlist updated');
+    },
+    onError: (err: unknown) => toast.error(`Failed to update allowlist: ${errorDetail(err)}`),
+  });
+
+  const editCidrs = (key: ApiKey) => {
+    const next = window.prompt(
+      `Allowed source IPs for "${key.name}" (CIDR, comma-separated). Leave empty to allow any address.`,
+      (key.allowed_cidrs || []).join(', '),
+    );
+    if (next === null) return;
+    cidrMutation.mutate({ keyId: key.id, cidrs: parseCidrList(next) });
+  };
 
   const revokeMutation = useMutation({
     mutationFn: (keyId: number) => apiKeysApi.revoke(workspaceId!, keyId),
@@ -389,6 +427,7 @@ export default function ApiKeys() {
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Name</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Key</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Scope</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Source IPs</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[100px]">Status</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[150px]">Last used</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[150px]">Expires</TableHead>
@@ -419,6 +458,27 @@ export default function ApiKeys() {
                               <Badge variant="outline" className="rounded-lg bg-slate-50 text-slate-600 border-slate-200 text-[10px] font-semibold">
                                 <Building2 className="w-3 h-3 mr-1" /> Workspace
                               </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="py-3">
+                            {key.allowed_cidrs && key.allowed_cidrs.length ? (
+                              <div className="flex flex-wrap gap-1">
+                                {key.allowed_cidrs.map((c) => (
+                                  <code key={c} className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">{c}</code>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-xs text-slate-400">any</span>
+                            )}
+                            {status === 'active' && (
+                              <button
+                                type="button"
+                                onClick={() => editCidrs(key)}
+                                disabled={cidrMutation.isPending}
+                                className="block text-[11px] text-indigo-600 hover:underline mt-1"
+                              >
+                                Edit source IPs
+                              </button>
                             )}
                           </TableCell>
                           <TableCell className="py-3">

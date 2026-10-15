@@ -51,6 +51,29 @@ Passwords are embedded in connection URLs verbatim — keep them to
   artifact links point there).
 - `executionWorker.autoscaling.enabled=true` scales Playwright workers on CPU;
   each pod gets a memory-backed `/dev/shm` (`executionWorker.shmSize`).
+- `keda.enabled=true` (needs the [KEDA](https://keda.sh) operator) scales
+  workers on what actually matters — the Redis stream lag of `jobs:pending`
+  (undelivered jobs, `keda.lagCount` per replica) — and suppresses the CPU HPA
+  so the two never fight. `keda.minReplicas: 0` scales an idle pool to zero.
+  Credentials come from the chart Secret via a `TriggerAuthentication`.
+- `regionWorkers` adds worker pools pinned to a region (`WORKER_REGION`):
+  runs and monitors created with that region go to `jobs:pending:<region>` and
+  only those pools claim them. Each entry renders
+  `<release>-execution-worker-<name>` and, with KEDA on, its own ScaledObject
+  on its own stream:
+
+  ```yaml
+  regionWorkers:
+    - name: eu
+      region: eu-west
+      exclusive: true      # default; false also drains the global stream (every tenant's jobs)
+      replicas: 2
+  ```
+
+  Workspaces may only pin runs to a region an instance admin granted them in
+  the `WORKER_REGIONS` instance setting (`eu` = everyone, `eu=12,15` = those
+  workspaces). `executionWorker.region` labels the main pool instead. Region workers are
+  Node workers; no Celery queue is involved.
 - `celeryBeat.redbeat=true` (default) keeps the schedule in Redis with a lock,
   so a rescheduled beat pod resumes cleanly. `/health/beat` on the backend
   reports whether beat is alive.

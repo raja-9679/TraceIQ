@@ -76,6 +76,7 @@ celery_app = Celery(
         "app.tasks.access_matrix_tasks",  # Access-control matrix cells (WP4)
         "app.tasks.security_ops_tasks",  # SIEM outbox drain + security alerts (WP7)
         "app.tasks.estate_tasks",       # Estate scans + monitored pages (WP9)
+        "app.tasks.paging_tasks",       # PagerDuty / Opsgenie run-failure paging
     ]
 )
 
@@ -101,6 +102,7 @@ celery_app.conf.task_routes = {
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
     "app.tasks.monitor_tasks.evaluate_monitor_for_run": "main-queue",
+    "app.tasks.paging_tasks.page_for_run": "main-queue",
     "app.tasks.security_tasks.scan_run_passive": "main-queue",
     "app.tasks.security_tasks.scan_run_leaks": "main-queue",
     "app.tasks.security_tasks.reopen_expired_risk_acceptances": "main-queue",

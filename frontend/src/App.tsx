@@ -43,6 +43,8 @@ import Settings from "@/pages/Settings";
 import WorkspacePage from "@/pages/WorkspacePage";
 import UsersPage from "@/pages/UsersPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
+import WorkerFleet from "@/pages/WorkerFleet";
+import OnCall from "@/pages/OnCall";
 import PrivateRoute from "@/components/PrivateRoute";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -99,6 +101,8 @@ function App() {
                 <Route path="workspace" element={<WorkspacePage />} />
                 <Route path="users" element={<UsersPage />} />
                 <Route path="admin/users" element={<AdminUsersPage />} />
+                <Route path="admin/workers" element={<WorkerFleet />} />
+                <Route path="on-call" element={<OnCall />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
             </Route>

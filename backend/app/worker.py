@@ -137,6 +137,16 @@ def run_test_suite(run_id: int, tags: list = None):
             # it for auth-setup cases and cases with use_auth_session=False.
             auth_project_id = run.project_id or (
                 cases_to_run[0].project_id if cases_to_run else None)
+            # Region grant (WP8), re-checked at dispatch and before any secret
+            # is resolved: a schedule saved while a region was granted keeps
+            # firing after the grant is withdrawn, and the region's workers
+            # may be inside another customer's network.
+            if getattr(run, 'region', None):
+                from app.models import Project
+                from app.services.worker_fleet import check_region_access
+                region_project = session.get(Project, auth_project_id) if auth_project_id else None
+                check_region_access(run.region,
+                                    region_project.workspace_id if region_project else None)
             auth_state = _load_auth_state(auth_project_id, session)
             if auth_state:
                 effective_settings['storage_state'] = auth_state
@@ -213,6 +223,15 @@ def run_test_suite(run_id: int, tags: list = None):
             if seed and run.data_seed != seed:
                 run.data_seed = seed
             effective_settings['run_context'] = run_context(run, seed, _dt.utcnow())
+
+            # Egress allowlist (WP8), resolved here for the same reason as the
+            # capture level: the instance-wide switch must not be something a
+            # crafted job can omit. None = not enforced.
+            egress = _load_egress_policy(auth_project_id, environment, session)
+            if egress:
+                effective_settings['egress_policy'] = egress
+                print(f"[Worker] Run {run_id}: egress allowlist enforced "
+                      f"({len(egress['allowed_hosts'])} host(s))")
 
             # Update total tests count
             run.total_tests = len(cases_to_run)
@@ -393,6 +412,8 @@ def _settings_payload(settings: dict) -> dict:
     # and a run's policy should be decided here, not there.
     if settings.get('data_policy'):
         payload['data_policy'] = settings['data_policy']
+    if settings.get('egress_policy'):
+        payload['egress_policy'] = settings['egress_policy']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).
@@ -448,6 +469,24 @@ def _load_data_policy(project_id, session) -> dict:
     if project is None:
         return effective_data_policy(None, ceiling=None)
     return resolve_for_project(project)
+
+
+def _load_egress_policy(project_id, environment, session) -> dict | None:
+    from app.services.network_policy import effective_for_project
+    project = None
+    if project_id:
+        from app.models import Project
+        project = session.get(Project, project_id)
+    try:
+        return effective_for_project(project, environment)
+    except Exception as exc:  # noqa: BLE001
+        # Fail closed only when the instance forces enforcement; otherwise a
+        # broken lookup must not stop every run on the instance.
+        from app.services.instance_settings import effective
+        print(f"[Worker] egress policy lookup failed: {exc}")
+        if effective("EGRESS_ALLOWLIST_ENFORCED"):
+            return {"enforce": True, "allowed_hosts": [], "allow_private": False}
+        return None
 
 
 def _load_mobile_app(run, session) -> dict | None:
@@ -585,18 +624,46 @@ def _local_queue_key(run: TestRun, session: Session) -> str | None:
     return f"jobs:local:{project.workspace_id}:{run.local_worker_id}"
 
 
-def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job: dict):
+_REGION_GROUPS_READY: set = set()
+
+
+def _ensure_region_group(stream: str, group: str) -> None:
+    """Create a regional stream's consumer group once per process. Workers
+    create it too (MKSTREAM at '0'), so either side starting first is fine."""
+    if stream in _REGION_GROUPS_READY:
+        return
+    try:
+        redis_client.xgroup_create(stream, group, id='0', mkstream=True)
+    except redis.ResponseError as e:
+        if 'BUSYGROUP' not in str(e):
+            raise
+    _REGION_GROUPS_READY.add(stream)
+
+
+def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job: dict,
+                 region: str | None = None):
     """One job → its executor's worker stream, or the run's local queue.
 
     `jobs_stream` is the caller's default; mobile_appium jobs override it so
-    they land on the mobile workers' stream (`_job_stream`)."""
+    they land on the mobile workers' stream (`_job_stream`). A run region
+    (WP8) suffixes the stream — `jobs:pending:<region>` — which only workers
+    started with that WORKER_REGION consume; no region is the global stream
+    exactly as before. The job carries `region` so a dead-letter replay can
+    put it back on the same stream."""
+    if region and not local_key:
+        job['region'] = region
     if local_key:
         pipe.rpush(local_key, json.dumps(job))
         # Local queues are polled over HTTP; expire abandoned ones after a day.
         pipe.expire(local_key, 86400)
     else:
         stream = _job_stream(job)
-        pipe.xadd(stream if stream != JOBS_STREAM else jobs_stream, {
+        stream = stream if stream != JOBS_STREAM else jobs_stream
+        if region:
+            group = 'mobile-workers' if stream == MOBILE_JOBS_STREAM else 'execution-workers'
+            stream = f"{stream}:{region}"
+            _ensure_region_group(stream, group)
+        pipe.xadd(stream, {
             'job_id': job['job_id'],
             'run_id': str(run_id),
             'payload': json.dumps(job),
@@ -684,7 +751,8 @@ def dispatch_separate_jobs(run: TestRun, execution_units: list, settings: dict, 
                 })
 
         for job in jobs:
-            _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
+            _enqueue_job(pipe, jobs_stream, local_key, run.id, job,
+                         region=getattr(run, 'region', None))
 
     # Initialize run progress tracking
     # Track by total test cases, not jobs (for accurate progress)
@@ -739,7 +807,8 @@ def dispatch_cases_to_queue(run: TestRun, cases: list, settings: dict, session: 
             'retry_count': 0
         }
 
-        _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
+        _enqueue_job(pipe, jobs_stream, local_key, run.id, job,
+                         region=getattr(run, 'region', None))
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(expanded),
@@ -882,7 +951,8 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
             'created_at': datetime.utcnow().isoformat(),
             'retry_count': 0,
         }
-        _enqueue_job(pipe, jobs_stream, local_key, run.id, job)
+        _enqueue_job(pipe, jobs_stream, local_key, run.id, job,
+                         region=getattr(run, 'region', None))
 
     pipe.hset(f'runs:{run.id}:progress', mapping={
         'total': len(expanded),
