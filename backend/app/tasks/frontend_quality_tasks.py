@@ -156,9 +156,9 @@ def start_crawl_run(session, crawl, *, trigger: str, user_id: Optional[int]):
 @celery_app.task(name="app.tasks.frontend_quality_tasks.process_due_crawls")
 def process_due_crawls() -> Dict[str, Any]:
     from croniter import croniter
-    from sqlalchemy import func
+    from sqlalchemy import func, text
     from app.models import SiteCrawlRun
-    from app.services.site_crawl import MAX_ACTIVE_RUNS_PER_PROJECT
+    from app.services.site_crawl import MAX_ACTIVE_RUNS_PER_PROJECT, RUN_START_LOCK_NAMESPACE
 
     now = datetime.utcnow()
     started = []
@@ -169,7 +169,10 @@ def process_due_crawls() -> Dict[str, Any]:
             busy = session.exec(select(SiteCrawlRun.id).where(
                 SiteCrawlRun.crawl_id == crawl.id,
                 SiteCrawlRun.status.in_(("pending", "running")))).first()
-            # Same per-project ceiling as manual runs (site_crawl.py).
+            # Same per-project ceiling as manual runs (site_crawl.py), under
+            # the same per-project lock so a manual start can't interleave.
+            session.exec(text("SELECT pg_advisory_xact_lock(CAST(:ns AS integer), CAST(:pid AS integer))").bindparams(
+                ns=RUN_START_LOCK_NAMESPACE, pid=crawl.project_id))
             active = session.exec(select(func.count()).select_from(SiteCrawlRun).where(
                 SiteCrawlRun.project_id == crawl.project_id,
                 SiteCrawlRun.status.in_(("pending", "running")))).one()
