@@ -156,10 +156,17 @@ function originOf(url: string | undefined | null): string | null {
  * different origin into the cleanup template meant it.
  */
 function offOriginReason(url: string, base: string | undefined, literalTemplate?: string): string | null {
+    // Fail closed: with no URL or no known creating origin there is nothing
+    // to compare against, so only an origin the author wrote literally passes.
     const target = originOf(url);
-    const expected = originOf(base);
-    if (!target || !expected || target === expected) return null;
+    if (!target) return 'cleanup URL is not a valid absolute URL';
     if (literalTemplate && originOf(literalTemplate) === target) return null;
+    const expected = originOf(base);
+    if (!expected) {
+        return `cleanup URL is on ${target} but the creating request's origin is unknown; `
+            + 'not sending credentials there (write the full URL in params.cleanup.url)';
+    }
+    if (target === expected) return null;
     return `cleanup URL is on ${target}, not ${expected} where the resource was created; `
         + 'not sending credentials there (write the full URL in params.cleanup.url if this is intended)';
 }

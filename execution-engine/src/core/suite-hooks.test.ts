@@ -226,3 +226,11 @@ test('buildCleanup refuses to follow a site-supplied URL to another origin', () 
     assert.equal(literal?.skip, undefined);
     assert.equal(literal?.url, 'https://admin.shop.test/items/1');
 });
+
+test('buildCleanup fails closed when the creating origin is unknown', () => {
+    const ctx = { variables: { loc: 'https://evil.example/x' } };
+    const c = buildCleanup({ type: 'extract-value', value: 'loc', params: { cleanup: true } },
+        {}, { headers: { Authorization: 'Bearer t' } }, ctx);
+    assert.ok(c?.skip && /origin is unknown/.test(c.skip));
+    assert.deepEqual(c?.headers, {});
+});
