@@ -2701,6 +2701,151 @@ class ProjectApiSpec(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+# =============================================================================
+# WP9 — Estate & perimeter scanning
+# =============================================================================
+
+
+class Estate(SQLModel, table=True):
+    """A named set of domains a project watches (WP9).
+
+    Owned by a project rather than hanging off the workspace directly: the
+    project's security settings are the authority for what may be scanned
+    (enabled + allowed_domains), and findings need a project_id so the existing
+    triage endpoints and access checks apply to them unchanged. The workspace
+    view is a join through project.
+
+    Passive checks only (DNS, certificate transparency, ordinary verified
+    HTTPS requests). Active probing is parked — SCOPE_NOTES.md "Estate: active
+    probing" — so there are deliberately no opt-in columns for it here.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    # Extra DKIM selectors to try on top of the common ones.
+    dkim_selectors: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    discover_subdomains: bool = Field(default=True)
+    cron_expression: str = Field(default="0 3 * * *")
+    schedule_enabled: bool = Field(default=True)
+    next_scan_at: Optional[datetime] = Field(default=None, index=True)
+    last_scan_at: Optional[datetime] = None
+    # Days-before-expiry at which certificate alerts fire.
+    cert_alert_days: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    alert_emails: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EstateDomain(SQLModel, table=True):
+    """One host in an estate: user-entered or discovered from CT logs.
+    Caches the latest result; history lives in EstateDomainResult."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    estate_id: int = Field(foreign_key="estate.id", index=True)
+    hostname: str = Field(index=True)
+    source: str = Field(default="user")       # user | ct
+    # None = decide by DNS (an SOA answer at the name means zone apex). Email
+    # checks (SPF/DMARC/DKIM/MX) only make sense at an apex.
+    is_apex: Optional[bool] = None
+    score: Optional[int] = None
+    cert_expires_at: Optional[datetime] = None
+    # Smallest cert_alert_days threshold already alerted for the current
+    # certificate; reset when the expiry moves (renewal).
+    cert_alert_sent_days: Optional[int] = None
+    last_scanned_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class EstateScan(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    estate_id: int = Field(foreign_key="estate.id", index=True)
+    status: str = Field(default="pending")    # pending | running | completed | error
+    trigger: str = Field(default="manual")    # manual | schedule
+    summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    error: Optional[str] = None
+    requested_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+
+
+class EstateDomainResult(SQLModel, table=True):
+    """Per-domain outcome of one scan — every check with its explanation and
+    the score deductions. The rows over time are the score trend."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    scan_id: int = Field(foreign_key="estatescan.id", index=True)
+    domain_id: int = Field(foreign_key="estatedomain.id", index=True)
+    score: int
+    checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    deductions: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class MonitoredPage(SQLModel, table=True):
+    """A payment/critical page watched for script changes (PCI DSS 4.0 6.4.3 /
+    11.6.1) and/or defacement. One headless load serves both."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    url: str
+    track_scripts: bool = Field(default=True)
+    track_content: bool = Field(default=False)
+    # 11.6.1 wants change detection at least weekly — weekly is the default.
+    cron_expression: str = Field(default="0 6 * * 1")
+    schedule_enabled: bool = Field(default=True)
+    next_check_at: Optional[datetime] = Field(default=None, index=True)
+    last_checked_at: Optional[datetime] = None
+    last_status: Optional[str] = None         # ok | changed | alert | error
+    last_error: Optional[str] = None
+    # Security headers as last observed (lower-cased name -> value).
+    headers_baseline: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Defacement: normalised visible text of the accepted baseline.
+    content_baseline: Optional[str] = None
+    content_baseline_at: Optional[datetime] = None
+    similarity_threshold: float = Field(default=0.5)
+    last_similarity: Optional[float] = None
+    forbidden_keywords: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    # [{"selector": str, "must_contain": str|None, "must_not_contain": [str]}]
+    element_checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    alert_emails: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PageScript(SQLModel, table=True):
+    """One script seen on a monitored page. The approval (authorized +
+    justification) is what PCI DSS 6.4.3 asks for; a content change revokes it."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    page_id: int = Field(foreign_key="monitoredpage.id", index=True)
+    # Identity across loads: external = scheme+host+path (query stripped so a
+    # cache-buster is a change, not a new script); inline = its SHA-384.
+    script_key: str
+    kind: str = Field(default="external")     # external | inline
+    src: Optional[str] = None
+    sha384: Optional[str] = None
+    integrity: Optional[str] = None           # the SRI attribute, if any
+    third_party: bool = Field(default=False)
+    present: bool = Field(default=True)
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    removed_at: Optional[datetime] = None
+    authorized: bool = Field(default=False)
+    justification: Optional[str] = None
+    authorized_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    authorized_at: Optional[datetime] = None
+
+
+class PageChangeEvent(SQLModel, table=True):
+    """Change history for a monitored page: script added/changed/removed,
+    header changes, defacement signals."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    page_id: int = Field(foreign_key="monitoredpage.id", index=True)
+    kind: str
+    summary: str
+    detail: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 # Seal every AuditLog row as it is flushed, in whichever process created it —
 # the API, a Celery worker, a script. Installed here rather than in a startup
 # hook because models.py is imported by every path that can write an audit row,

@@ -19,6 +19,8 @@ import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
 import AccessReviews from "@/pages/AccessReviews";
 import AccessMatrix from "@/pages/AccessMatrix";
+import Estate from "@/pages/Estate";
+import ScriptInventory from "@/pages/ScriptInventory";
 import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
@@ -73,6 +75,8 @@ function App() {
                 <Route path="security" element={<Security />} />
                 <Route path="access-reviews" element={<AccessReviews />} />
                 <Route path="access-matrix" element={<AccessMatrix />} />
+                <Route path="estate" element={<Estate />} />
+                <Route path="script-inventory" element={<ScriptInventory />} />
                 <Route path="triage" element={<Triage />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="billing" element={<Billing />} />

@@ -678,6 +678,43 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   CLI: `integrations/cli/` (`traceiq-cli`, stdlib-only Python — zipfile/urllib,
   pipx-installable): `login` (0600 config), `run --wait` (exit from the gate),
   `status`, `replay`, `pull`/`push`, `version`; exit codes in `main.py`.
+- **Estate + script inventory (WP9, 2026-10) — PASSIVE ONLY** — migration
+  `c9a2b3c4d5ea`. Active probing (port exposure, WAF detection strings, origin
+  bypass, TLS protocol/cipher enumeration) was designed and deliberately NOT
+  built: it is parked for an owner decision in `SCOPE_NOTES.md` ("Estate:
+  active probing"). Do not add it back in any form — no connect probes, no
+  attack strings, no `verify=False`/`ignoreHTTPSErrors` anywhere in this path.
+  **Estates** (`Estate`/`EstateDomain`/`EstateScan`/`EstateDomainResult`,
+  project-owned): `app/services/estate_checks.py` is pure logic over an
+  injected `Net` (DnsClient, fetch, cert, ct); `estate_net.py` is the real one —
+  dnspython (new dep, imported lazily; a stale image reports "rebuild" instead
+  of crashing), crt.sh + page GETs through net_guard with verification ON and
+  no redirects followed, certificate read from an ordinary verified handshake
+  (a failing cert is the `cert_untrusted` finding, never a reason to retry
+  unverified). Score = 100 − `RUBRIC` deductions, stored itemised so the
+  drill-down shows the arithmetic. Every host must be on the project's
+  security allowlist (security enabled) at import AND at scan time
+  (`access_matrix.host_allowed` / `security_allowlist_for`); CT-discovered
+  names are added only if allowlisted (cap 200/apex, 500/estate). A check
+  family only "ran" with real answers — DNS errors or unreachable HTTPS never
+  resolve that family's findings. Findings: one row per fingerprint refreshed
+  in place (`estate_findings.apply_findings`, WP7 vocabulary via
+  `carry_forward`; a clean rescan → `verified_fixed`). Cert alerts once per
+  threshold crossed (30/14/7, reset on renewal) via project Slack/Teams (net_
+  guarded) + estate emails. **Monitored pages** (PCI DSS 4.0 6.4.3/11.6.1):
+  `job_type=page_check` side job (`execution-engine/src/page-check.ts`, result
+  key pinned to `page_check:result:{page_id}`, allowlist re-checked in the
+  worker): a normal page load records document.scripts + network-only scripts
+  (self-removing injectors), SHA-384 of each body as received, inline scripts
+  as hashes only, security headers (never cookies), text/elements only when
+  content tracking is on — redacted in the worker AND at ingestion.
+  `collect_page_check` polls (15 min deadline → error). A changed script loses
+  its approval; approval needs a ≥10-char justification and is audited
+  (`page_script`/`approve`). Keyword/element checks are plain substrings (no
+  regex on outsider content). Beat `dispatch-due-{estate-scans,page-checks}`
+  every 5 min honour each row's cron (estate daily, page weekly; at most
+  hourly). API `app/api/estates.py`; UI `/estate`, `/script-inventory`.
+  Needs backend + worker image rebuilds.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

@@ -35,7 +35,9 @@ import {
     Sparkles,
     Smartphone,
     ClipboardCheck,
-    Siren
+    Siren,
+    Network,
+    ScrollText
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -60,6 +62,8 @@ const navigation = [
     { name: 'Security', href: '/security', icon: ShieldAlert },
     { name: 'Access Reviews', href: '/access-reviews', icon: ClipboardCheck },
     { name: 'Access Matrix', href: '/access-matrix', icon: Grid3x3 },
+    { name: 'Estate', href: '/estate', icon: Network },
+    { name: 'Script Inventory', href: '/script-inventory', icon: ScrollText },
     { name: 'Triage', href: '/triage', icon: Bug },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'AI Usage', href: '/ai-usage', icon: Sparkles },

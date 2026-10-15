@@ -301,6 +301,13 @@ class ExecutionWorker {
                     continue;
                 }
 
+                // Monitored-page check (WP9): one normal page load, observed.
+                if ((job as any).job_type === 'page_check') {
+                    await this.handlePageCheckJob(streamId, job as any);
+                    this.jobsProcessed++;
+                    continue;
+                }
+
                 // Process the job with a hard wall-clock timeout.
                 const timeout = new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${MAX_JOB_DURATION_MS}ms)`)), MAX_JOB_DURATION_MS)
@@ -412,6 +419,25 @@ class ExecutionWorker {
         }
         await this.jobQueue.completeSideJob(streamId, job.job_id, key, result, 3600);
         console.log(`[Worker] Access check cell ${job.cell_id}: ${result.error_kind || result.status}`);
+    }
+
+    /** Monitored-page check job — see ./page-check.ts. */
+    private async handlePageCheckJob(streamId: string, job: any): Promise<void> {
+        const pc = require('./page-check');
+        const key = pc.safeResultKey(job);
+        if (!key) {
+            console.warn(`[Worker] Page check ${job.job_id}: refusing result key ${job.result_key}`);
+            await this.jobQueue.completeSideJob(streamId, job.job_id, `${pc.RESULT_KEY_PREFIX}invalid`, {}, 1);
+            return;
+        }
+        let result: any;
+        try {
+            result = await pc.executePageCheckJob(job, () => this.browserManager.start('chromium'));
+        } finally {
+            await this.browserManager.stop().catch(() => undefined);
+        }
+        await this.jobQueue.completeSideJob(streamId, job.job_id, key, result, 3600);
+        console.log(`[Worker] Page check ${job.page_id}: ${result.error ? 'error' : `${(result.scripts || []).length} script(s)`}`);
     }
 
     /**

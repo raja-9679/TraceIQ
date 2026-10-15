@@ -85,6 +85,10 @@ ON_DELETE: Dict[str, str] = {
     # The matrix is project configuration; its runs/cells are its history.
     "accessmatrix.project_id": DELETE,
     "accessmatrixrun.project_id": DELETE,
+    # Estates and monitored pages (WP9) are project configuration; their scans,
+    # domains, score history, script inventory and change log go with them.
+    "estate.project_id": DELETE,
+    "monitoredpage.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.
@@ -149,6 +153,12 @@ ON_DELETE: Dict[str, str] = {
     "securityfinding.scan_id": DELETE,      # a scan's own findings
     "accessmatrixrun.matrix_id": DELETE,    # a matrix's own executions
     "accessmatrixcell.matrix_run_id": DELETE,
+    "estatedomain.estate_id": DELETE,
+    "estatescan.estate_id": DELETE,
+    "estatedomainresult.scan_id": DELETE,
+    "estatedomainresult.domain_id": DELETE,
+    "pagescript.page_id": DELETE,
+    "pagechangeevent.page_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
