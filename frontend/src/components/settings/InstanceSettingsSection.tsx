@@ -37,7 +37,13 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'federation', title: 'Federated provisioning (SSO + LDAP)', description: 'Where users who sign in through your IdP land. The default gives every one of them their own tenant, which is right for a single user and wrong for an organisation — set a target workspace before rolling SSO out to a team. See docs/ENTERPRISE_AUTH.md.' },
     { id: 'test_inbox', title: 'Test inbox & webhook capture', description: 'Lets test cases receive email ({{inbox.address}} + Wait For Email) and webhooks ({{webhook.url}} + Wait For Webhook). Mailpit: start the compose profile "inbox" and point the app under test\'s SMTP at mailpit:1025. IMAP: a real mailbox that supports plus-addressing (qa+tag@company.com). Mail credentials stay on the backend — workers never see them.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
+    { id: 'worker', title: 'Execution workers', description: 'Runtime config every execution worker fetches from /api/internal/worker-config at start and every 60s (blank = the worker keeps its own environment value), plus the instance-wide egress allowlist. Redis, the worker secret, MinIO credentials and WORKER_REGION stay environment-only on the worker.' },
+    { id: 'network', title: 'Network access control', description: 'Trusted reverse proxies (whose X-Forwarded-For is believed), the SCIM source allowlist, and optional mTLS for worker → backend calls. A wrong CIDR here can lock out your IdP — values are validated on save.' },
+    { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results.' },
 ];
+
+// Subject DNs contain commas, so this list is edited one entry per line.
+const LINE_LIST_KEYS = new Set(['WORKER_MTLS_ALLOWED_SUBJECTS']);
 
 const fetchInstanceSettings = async (): Promise<InstanceSetting[]> => {
     const response = await api.get('/admin/instance-settings');
@@ -153,7 +159,9 @@ export default function InstanceSettingsSection() {
                 values[key] = n;
             }
             else if (def.type === 'list')
-                values[key] = String(raw).split(',').map((h) => h.trim()).filter(Boolean);
+                values[key] = String(raw)
+                    .split(LINE_LIST_KEYS.has(key) ? '\n' : ',')
+                    .map((h) => h.trim()).filter(Boolean);
             else values[key] = raw;
         }
         if (Object.keys(values).length === 0) { setPending({}); return; }
@@ -162,7 +170,7 @@ export default function InstanceSettingsSection() {
 
     const displayValue = (s: InstanceSetting): string => {
         if (s.key in pending) return String(pending[s.key]);
-        if (s.type === 'list') return ((s.value as string[]) || []).join(', ');
+        if (s.type === 'list') return ((s.value as string[]) || []).join(LINE_LIST_KEYS.has(s.key) ? '\n' : ', ');
         return s.value === null || s.value === undefined ? '' : String(s.value);
     };
 
@@ -183,6 +191,17 @@ export default function InstanceSettingsSection() {
                     autoComplete="new-password"
                     placeholder={s.is_set ? '•••••••• (set — type to replace)' : 'not set'}
                     value={(pending[s.key] as string) ?? ''}
+                    onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
+                />
+            );
+        }
+        if (LINE_LIST_KEYS.has(s.key)) {
+            return (
+                <textarea
+                    aria-label={s.label || s.key}
+                    className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
+                    placeholder="one entry per line, e.g. CN=worker-1,O=Corp"
+                    value={displayValue(s)}
                     onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
                 />
             );

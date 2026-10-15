@@ -31,8 +31,27 @@ function Sparkline({ checks }: { checks: MonitorStatus['recent_checks'] }) {
     return (
         <div className="flex items-center gap-0.5">
             {items.map((c) => (
-                <span key={c.id} title={`${c.checked_at}: ${c.status}`}
+                <span key={c.id} title={`${c.checked_at}${c.region ? ` [${c.region}]` : ''}: ${c.status}`}
                     className={`inline-block w-1.5 h-4 rounded-sm ${c.is_up ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+            ))}
+        </div>
+    );
+}
+
+function RegionBadges({ regions }: { regions: NonNullable<MonitorStatus['regions']> }) {
+    if (!regions.length) return null;
+    const tone = (state: string) => state === 'up'
+        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+        : state === 'down' ? 'bg-rose-50 text-rose-700 border-rose-200'
+            : 'bg-slate-50 text-slate-500 border-slate-200';
+    return (
+        <div className="flex flex-wrap gap-1.5 mb-3" aria-label="Per-region status">
+            {regions.map((r) => (
+                <Badge key={r.region} variant="outline"
+                    title={`${r.region}: ${r.state}${r.consecutive_failures ? `, ${r.consecutive_failures} failing check(s)` : ''}${r.last_checked_at ? ` · last ${r.last_checked_at}` : ''}`}
+                    className={`rounded-md text-[10px] font-bold ${tone(r.state)}`}>
+                    {r.region} · {r.state}{r.consecutive_failures ? ` (${r.consecutive_failures})` : ''}
+                </Badge>
             ))}
         </div>
     );
@@ -171,7 +190,7 @@ export default function Monitors() {
                             <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-px" />
                             <p>Auto-refreshes every 30s. Uptime is computed from recorded checks over the window.</p>
                         </div>
-                        <button onClick={() => refetch()} className="text-slate-400 hover:text-slate-700">
+                        <button onClick={() => refetch()} aria-label="Refresh monitors" className="text-slate-400 hover:text-slate-700">
                             <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
                         </button>
                     </div>
@@ -188,6 +207,7 @@ export default function Monitors() {
                                     </div>
                                     <StateBadge state={m.state} />
                                 </div>
+                                <RegionBadges regions={m.regions || []} />
                                 <div className="grid grid-cols-3 gap-3 mb-3">
                                     <div>
                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">24h uptime</div>

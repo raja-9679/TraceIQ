@@ -15,6 +15,9 @@ export interface TestSchedule {
   last_run_at?: string;
   created_at: string;
   updated_at: string;
+  // Multi-region monitors (WP8): one run per region per cycle.
+  regions?: string[] | null;
+  region_states?: Record<string, { state?: string; last_alert_state?: string; last_checked_at?: string }> | null;
 }
 
 export const schedulesApi = {

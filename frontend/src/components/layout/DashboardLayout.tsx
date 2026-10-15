@@ -34,7 +34,9 @@ import {
     Sparkles,
     Smartphone,
     ClipboardCheck,
-    Siren
+    Siren,
+    Server,
+    BellRing
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -56,6 +58,7 @@ const navigation = [
     { name: 'Test Suites', href: '/suites', icon: FolderTree },
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
     { name: 'Monitors', href: '/monitors', icon: Radio },
+    { name: 'On-call', href: '/on-call', icon: BellRing },
     { name: 'Security', href: '/security', icon: ShieldAlert },
     { name: 'Triage', href: '/triage', icon: Bug },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
@@ -75,6 +78,7 @@ const navigation = [
     { name: 'Issue Trackers', href: '/issue-trackers', icon: Ticket },
     { name: 'Users', href: '/users', icon: User },
     { name: 'Tenant Admin', href: '/admin/users', icon: UserCog },
+    { name: 'Worker Fleet', href: '/admin/workers', icon: Server },
     { name: 'Workspace', href: '/workspace', icon: Users },
     { name: 'Billing', href: '/billing', icon: CreditCard },
     { name: 'Settings', href: '/settings', icon: Settings },
