@@ -335,8 +335,20 @@ async def cases_from_openapi(
         from app.services.api_specs import SchemaRefError, validate_spec
         try:
             validate_spec(schema)
-            await store_project_spec(session, suite.project_id, schema, principal.user.id,
-                                     source_url=body.schema_url if not body.schema_inline else None)
+            row = await store_project_spec(session, suite.project_id, schema, principal.user.id,
+                                           source_url=body.schema_url if not body.schema_inline else None)
+            # Same audit row as PUT /projects/{id}/openapi-spec: the stored
+            # spec decides what every `expect_schema: {openapi: ...}` step
+            # asserts, so replacing it here is the same change made elsewhere.
+            from app.models import Project
+            from app.services.audit import record as audit_record
+            project = await session.get(Project, suite.project_id)
+            await audit_record(session, entity_type="project", entity_id=suite.project_id,
+                               action="openapi_spec_set", user_id=principal.user.id,
+                               workspace_id=project.workspace_id if project else None,
+                               principal=principal,
+                               changes={"title": row.title, "version": row.spec_version,
+                                        "source_url": row.source_url, "via": "cases/from-openapi"})
         except (SchemaRefError, HTTPException) as exc:
             # Generation still works from a document we would not keep.
             print(f"[case-gen] OpenAPI spec not stored for project {suite.project_id}: {exc}")
@@ -373,6 +385,14 @@ async def cases_from_openapi(
             session.add(case)
             created.append({"operation_id": op_id, "name": case.name})
 
+    if created:
+        from app.models import Project as _Project
+        from app.services.audit import record as _audit
+        _project = await session.get(_Project, suite.project_id)
+        await _audit(session, entity_type="suite", entity_id=suite.id, action="cases_from_openapi",
+                     user_id=principal.user.id,
+                     workspace_id=_project.workspace_id if _project else None, principal=principal,
+                     changes={"created": len(created), "spec_stored": bool(body.store_spec)})
     await session.commit()
     return {"created": len(created), "cases": created}
 

@@ -41,8 +41,13 @@ MAX_DURATION_MS = 15 * 60 * 1000
 MAX_ISSUES_STORED = 5000
 MAX_PAGES_STORED = 1000
 MAX_EXTRA_HOSTS = 10
+# One project cannot hold more crawls than this, and a schedule fires at most
+# hourly: each run can occupy a worker for MAX_DURATION_MS, so neither may be
+# left to the request (security review: resource-cap bypass).
+MAX_CRAWLS_PER_PROJECT = 20
+MIN_SCHEDULE_GAP_SECONDS = 3600
 
-CATEGORIES = ("broken", "network", "slow", "redirect_loop", "mixed_content", "redirect_chain")
+CATEGORIES = ("broken", "network", "slow", "redirect_loop", "mixed_content", "redirect_chain", "not_checked")
 ELEMENTS = ("a", "img", "script", "link", "css", "page")
 
 
@@ -146,8 +151,23 @@ def validate_config(data: Dict[str, Any], known: Set[str]) -> Dict[str, Any]:
             from croniter import croniter
             if not croniter.is_valid(cron):
                 raise CrawlConfigError("cron_expression is not a valid cron expression")
+            from datetime import datetime
+            it = croniter(cron, datetime(2026, 1, 1))
+            first, second = it.get_next(datetime), it.get_next(datetime)
+            if (second - first).total_seconds() < MIN_SCHEDULE_GAP_SECONDS:
+                raise CrawlConfigError("scheduled crawls may run at most hourly")
         out["cron_expression"] = cron
     return out
+
+
+_DEFAULTS = {"max_depth": 3, "max_pages": 100, "rate_limit_ms": 250, "slow_threshold_ms": 3000}
+
+
+def _clamp_limit(key: str, value: Any) -> int:
+    lo, hi = LIMITS[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return _DEFAULTS[key]
+    return int(max(lo, min(hi, value)))
 
 
 def snapshot(crawl) -> Dict[str, Any]:
@@ -156,19 +176,29 @@ def snapshot(crawl) -> Dict[str, Any]:
     hosts = [start_host] + [h for h in (crawl.extra_hosts or []) if h != start_host]
     return {
         "start_url": crawl.start_url,
-        "crawl_hosts": hosts,
-        "max_depth": crawl.max_depth,
-        "max_pages": crawl.max_pages,
+        "crawl_hosts": hosts[:MAX_EXTRA_HOSTS + 1],
+        # Clamped again here, not only at validation: a row written before a
+        # limit existed (or edited in the database) must not reach a worker.
+        "max_depth": _clamp_limit("max_depth", crawl.max_depth),
+        "max_pages": _clamp_limit("max_pages", crawl.max_pages),
         "respect_robots": crawl.respect_robots,
-        "rate_limit_ms": crawl.rate_limit_ms,
-        "slow_threshold_ms": crawl.slow_threshold_ms,
+        "rate_limit_ms": _clamp_limit("rate_limit_ms", crawl.rate_limit_ms),
+        "slow_threshold_ms": _clamp_limit("slow_threshold_ms", crawl.slow_threshold_ms),
         "check_external": crawl.check_external,
         "max_duration_ms": MAX_DURATION_MS,
     }
 
 
 def build_job(run_id: int, config: Dict[str, Any],
-              data_policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+              data_policy: Optional[Dict[str, Any]] = None,
+              allow_private: Optional[bool] = None) -> Dict[str, Any]:
+    if allow_private is None:
+        from app.services.instance_settings import effective
+        allow_private = bool(effective("ALLOW_PRIVATE_NETWORK_TARGETS"))
+    # The worker checks every URL it finds in page content (and every redirect
+    # hop) before requesting it: link-local/metadata never, private/loopback
+    # only on the crawl's own hosts unless the instance allows private targets.
+    config = {**config, "allow_private": bool(allow_private)}
     return {
         # The project's redaction rules, so the worker scrubs URLs with them.
         "data_policy": data_policy or {},

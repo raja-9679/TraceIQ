@@ -166,13 +166,33 @@ def run_artifact_key(value: Any, run_id: int) -> Optional[str]:
 # --------------------------------------------------------------------------
 
 def _js(value: Any) -> str:
-    """A JS literal. JSON is valid JS; `ensure_ascii` keeps U+2028/2029 (legal
-    in JSON, line terminators in older JS) out of the source."""
-    return json.dumps(value, ensure_ascii=True)
+    """A JS literal — the ONLY way case data may enter the generated spec.
+
+    JSON is valid JS: inside a double-quoted literal, backticks, `${`, `*/`
+    and quotes are inert, and json.dumps escapes `"`, `\\` and every control
+    character. `ensure_ascii` keeps U+2028/2029 (legal in JSON, line
+    terminators in older JS) out of the source; `<`, `>` and `&` are escaped
+    as well so the literal stays inert if the file is ever embedded in HTML.
+    Non-JSON values (datetimes, ...) are stringified rather than failing the
+    bundle."""
+    out = json.dumps(value, ensure_ascii=True, default=str)
+    return out.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
-def _todo(step: dict, why: str) -> List[str]:
-    return [f"    // TODO: {why}", f"    // step JSON: {_js(step)}"]
+_COMMENT_UNSAFE_RE = re.compile(r"[^\x20-\x7e]")
+
+
+def _comment(text: str) -> str:
+    """Text safe inside a `//` line comment. Everything case-derived that
+    reaches generated source is data the case author (or an agent, or a
+    synced file) controls, so a comment must not be able to end itself: line
+    terminators (incl. U+2028/2029) and every other non-printable go, and
+    `*/` is broken up in case the line is ever moved into a block comment."""
+    return _COMMENT_UNSAFE_RE.sub("?", str(text)).replace("*/", "* /")
+
+
+def _todo(step: Any, why: str) -> List[str]:
+    return [f"    // TODO: {_comment(why)}", f"    // step JSON: {_comment(_js(step))}"]
 
 
 def _loc(sel: str) -> str:
@@ -211,9 +231,10 @@ def _http_lines(step: dict) -> List[str]:
             lines.append(
                 f"      expect(String(jsonPath(json, {_js(a.get('path') or '')}))).{matcher}(String(r({_js(a.get('value'))})));")
         else:
-            lines.append(f"      // TODO: assertion not translated: {_js(a)}")
+            lines.append(f"      // TODO: assertion not translated: {_comment(_js(a))}")
     if p.get("expect_schema"):
-        lines.append(f"      // TODO: expect_schema (response JSON Schema) not translated: {_js(p['expect_schema'])}")
+        lines.append("      // TODO: expect_schema (response JSON Schema) not translated: "
+                     f"{_comment(_js(p['expect_schema']))}")
     for ex in p.get("extract") or []:
         if isinstance(ex, dict) and ex.get("path") and ex.get("variable"):
             lines.append(f"      vars[{_js(ex['variable'])}] = jsonPath(json, {_js(ex['path'])});")
@@ -228,7 +249,7 @@ def step_lines(step: Any) -> List[str]:
     everything else becomes a commented TODO carrying the step JSON, so the
     file still compiles and the gap is visible where it occurs."""
     if not isinstance(step, dict):
-        return [f"    // TODO: malformed step {_js(step)}"]
+        return [f"    // TODO: malformed step {_comment(_js(step))}"]
     t = step.get("type")
     sel = step.get("selector") or step.get("value") or ""
     val = step.get("value")
@@ -287,7 +308,7 @@ def step_lines(step: Any) -> List[str]:
         return _http_lines(step)
     if t == "switch-frame":
         return _todo(step, "switch-frame is not translated; later steps run against the main page")
-    return _todo(step, f"step type '{t}' has no Playwright translation")
+    return _todo(step, f"step type {_js(t)} has no Playwright translation")
 
 
 SPEC_PRELUDE = r"""

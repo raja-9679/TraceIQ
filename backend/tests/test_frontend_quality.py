@@ -137,9 +137,34 @@ def test_crawl_config_validation():
     for bad in ({"start_url": "https://elsewhere.example.org/"}, {"start_url": "ftp://shop.example.com/"},
                 {"start_url": "https://u:p@shop.example.com/"}, {"extra_hosts": ["evil.example"]},
                 {"max_pages": 5000}, {"rate_limit_ms": 0}, {"max_depth": True},
-                {"cron_expression": "every day"}, {"name": ""}):
+                {"cron_expression": "every day"}, {"name": ""},
+                # More often than hourly would let one crawl pin a worker.
+                {"cron_expression": "*/5 * * * *"}, {"cron_expression": "* * * * *"},
+                {"max_depth": 11}, {"max_pages": 0}, {"slow_threshold_ms": 10 ** 9}):
         with pytest.raises(sc.CrawlConfigError):
             sc.validate_config(bad, KNOWN)
+
+
+def test_snapshot_clamps_limits_from_a_stored_row():
+    # A row that predates a limit (or was edited in the DB) never reaches a
+    # worker with limits outside the server's ceilings.
+    crawl = SimpleNamespace(start_url="https://shop.example.com/", extra_hosts=[f"h{i}.example.com" for i in range(50)],
+                            max_depth=999, max_pages=10 ** 6, respect_robots=True, rate_limit_ms=0,
+                            slow_threshold_ms="x", check_external=True)
+    snap = sc.snapshot(crawl)
+    assert snap["max_depth"] == 10 and snap["max_pages"] == 1000
+    assert snap["rate_limit_ms"] == 50 and snap["slow_threshold_ms"] == 3000
+    assert len(snap["crawl_hosts"]) == sc.MAX_EXTRA_HOSTS + 1
+    assert snap["max_duration_ms"] == sc.MAX_DURATION_MS
+
+
+def test_job_carries_the_private_target_ceiling_and_not_checked_issues_are_kept():
+    assert sc.build_job(1, {"start_url": "https://x/"}, {}, allow_private=False)["config"]["allow_private"] is False
+    assert sc.build_job(1, {"start_url": "https://x/"}, {}, allow_private=True)["config"]["allow_private"] is True
+    fields, issues = sc.normalise_result({"status": "ok", "issues": [{
+        "page_url": "https://s.example/", "target_url": "http://169.254.169.254/", "element": "a",
+        "category": "not_checked", "detail": "not checked (private address): link-local"}]})
+    assert issues[0]["category"] == "not_checked" and fields["issue_counts"]["not_checked"] == 1
 
 
 def test_snapshot_and_job():

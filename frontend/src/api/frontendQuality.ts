@@ -47,8 +47,8 @@ export interface SweepVariant {
         error_message: string | null; steps: SweepStep[] }[];
 }
 
-export type CrawlCategory = 'broken' | 'network' | 'slow' | 'redirect_loop' | 'mixed_content' | 'redirect_chain';
-export const CRAWL_CATEGORIES: CrawlCategory[] = ['broken', 'network', 'slow', 'redirect_loop', 'redirect_chain', 'mixed_content'];
+export type CrawlCategory = 'broken' | 'network' | 'slow' | 'redirect_loop' | 'mixed_content' | 'redirect_chain' | 'not_checked';
+export const CRAWL_CATEGORIES: CrawlCategory[] = ['broken', 'network', 'slow', 'redirect_loop', 'redirect_chain', 'mixed_content', 'not_checked'];
 export const CRAWL_ELEMENTS = ['a', 'img', 'script', 'link', 'css', 'page'] as const;
 
 export interface CrawlRun {

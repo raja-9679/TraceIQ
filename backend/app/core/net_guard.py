@@ -26,6 +26,10 @@ ALLOWED_SCHEMES = ("http", "https")
 MAX_REDIRECTS = 5
 
 
+class ResponseTooLarge(ValueError):
+    """safe_get(max_bytes=...) stopped reading a body over the cap."""
+
+
 class UnsafeUrlError(ValueError):
     """Raised when a user-supplied URL resolves somewhere it must not reach."""
 
@@ -200,16 +204,22 @@ async def safe_get(
     timeout: float = 10.0,
     headers: Optional[dict] = None,
     allow_private: Optional[bool] = None,
+    max_bytes: Optional[int] = None,
 ) -> httpx.Response:
     """GET `url`, validating the target before each hop of the redirect chain.
 
     Redirects are followed manually because httpx's `follow_redirects=True`
     would connect to the redirect target without re-running validation.
+    `max_bytes` streams the final body and raises ResponseTooLarge past it,
+    so an outsider-controlled server cannot make us buffer an unbounded body.
     """
     current = await validate_outbound_url(url, allow_private=allow_private)
     async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
         for _ in range(MAX_REDIRECTS + 1):
-            resp = await client.get(current, headers=headers or {})
+            if max_bytes is not None:
+                resp = await _capped_get(client, current, headers or {}, max_bytes)
+            else:
+                resp = await client.get(current, headers=headers or {})
             if resp.status_code not in (301, 302, 303, 307, 308):
                 return resp
             location = resp.headers.get("location")
@@ -219,3 +229,20 @@ async def safe_get(
                 str(httpx.URL(current).join(location)), allow_private=allow_private
             )
     raise UnsafeUrlError(f"too many redirects (>{MAX_REDIRECTS}) starting from {url}")
+
+
+async def _capped_get(client: httpx.AsyncClient, url: str, headers: dict, max_bytes: int) -> httpx.Response:
+    async with client.stream("GET", url, headers=headers) as resp:
+        declared = resp.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > max_bytes:
+            raise ResponseTooLarge(f"response is {declared} bytes (limit {max_bytes})")
+        buf = bytearray()
+        # Decoded bytes are counted, so a small gzip bomb is capped too.
+        async for chunk in resp.aiter_bytes():
+            buf += chunk
+            if len(buf) > max_bytes:
+                raise ResponseTooLarge(f"response exceeds {max_bytes} bytes")
+        out_headers = [(k, v) for k, v in resp.headers.multi_items()
+                       if k.lower() not in ("content-encoding", "content-length", "transfer-encoding")]
+        return httpx.Response(resp.status_code, headers=out_headers, content=bytes(buf),
+                              request=resp.request)

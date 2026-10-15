@@ -13,6 +13,7 @@ import { errorDetail, toggle } from './matrixHelpers';
 const CATEGORY_LABEL: Record<CrawlCategory, string> = {
     broken: 'Broken (4xx/5xx)', network: 'Network error', slow: 'Slow', redirect_loop: 'Redirect loop',
     redirect_chain: 'Long redirect chain', mixed_content: 'Mixed content',
+    not_checked: 'Not checked (private address)',
 };
 
 const BLANK: SiteCrawlInput = {

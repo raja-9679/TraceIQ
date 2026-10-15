@@ -246,6 +246,7 @@ async def download_repro_bundle(
 
 FAILED_STATUSES = ("failed", "error")
 MAX_ERROR_CHARS = 500
+MAX_FAILURE_LINK_TTL = 3600
 
 
 def failing_step(evidence: List[dict]) -> Optional[dict]:
@@ -259,7 +260,7 @@ def failing_step(evidence: List[dict]) -> Optional[dict]:
 @router.get("/runs/{run_id}/failures")
 async def run_failures(
     run_id: int,
-    ttl_seconds: int = Query(default=3600, ge=60, le=86400),
+    ttl_seconds: int = Query(default=3600, ge=60, le=3600),
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ):
@@ -269,6 +270,9 @@ async def run_failures(
     Screenshot keys are accepted only under `runs/{run_id}/` (result rows can
     come from local workers), so the link can never point at another run's
     artifacts; it expires after `ttl_seconds` (default one hour)."""
+    # These links end up in PR comments, which outlive the run and can be
+    # public: an hour at most, also when called without FastAPI's validation.
+    ttl_seconds = max(60, min(int(ttl_seconds), MAX_FAILURE_LINK_TTL))
     run = await session.get(TestRun, run_id)
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
@@ -457,6 +461,12 @@ async def import_suite_sync(suite_id: int, body: SyncRequest,
     conflict and nothing is proposed for it."""
     if len(body.cases) + len(body.deleted) > case_sync.MAX_SYNC_CASES:
         raise HTTPException(status_code=413, detail=f"At most {case_sync.MAX_SYNC_CASES} cases per sync")
+    # Every planned change is stored as a proposal payload, so the file set as
+    # a whole is bounded too, not just the count (per-case limits are in
+    # case_sync.validate_doc).
+    if len(json.dumps(body.cases, default=str)) > case_sync.MAX_SYNC_BYTES:
+        raise HTTPException(status_code=413,
+                            detail=f"Sync payload exceeds {case_sync.MAX_SYNC_BYTES // (1024 * 1024)} MB")
     suite, project, suites, cases = await _suite_tree(suite_id, principal, session, "editor")
     in_tree = {s.id for s in suites}
     by_id = {c.id: c for c in cases}

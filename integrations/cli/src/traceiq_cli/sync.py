@@ -16,12 +16,44 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 MANIFEST = ".traceiq-sync.json"
 FIELDS = ("name", "steps", "tags", "priority", "code_paths")
+
+
+class UnsafePath(ValueError):
+    """A path that would leave the sync root."""
+
+
+def safe_path(root: Path, rel: Any) -> Path:
+    """`root / rel`, refused unless it stays inside `root`.
+
+    Every relative path the CLI writes, reads or deletes comes from data it
+    does not control: the server's export (suite/case names and ids) or a
+    `.traceiq-sync.json` that arrived with a git checkout. So the component
+    rules are checked first (relative, no `..`, no backslashes or drive
+    letters, no empty or dot parts), then the resolved path — symlinks
+    followed — must still be under the resolved root."""
+    if not isinstance(rel, str) or not rel or "\x00" in rel or "\\" in rel or ":" in rel:
+        raise UnsafePath(f"refusing path {rel!r}")
+    parts = rel.split("/")
+    if rel.startswith("/") or any(p in ("", ".", "..") for p in parts):
+        raise UnsafePath(f"refusing path {rel!r}")
+    base = root.resolve()
+    target = (base / rel).resolve()
+    if os.path.commonpath([str(base), str(target)]) != str(base) or target == base:
+        raise UnsafePath(f"refusing path {rel!r}: outside {base}")
+    return target
+
+
+def _int_id(value: Any, what: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise UnsafePath(f"server sent a non-integer {what}: {value!r}")
+    return value
 
 
 def slug(text: str, fallback: str = "case") -> str:
@@ -44,8 +76,8 @@ def content_hash(doc: Dict[str, Any]) -> str:
 
 def suite_dirs(export: Dict[str, Any]) -> Dict[int, str]:
     """suite id -> directory relative to the sync root ('' for the root)."""
-    root = export["root_suite_id"]
-    suites = {s["id"]: s for s in export.get("suites") or []}
+    root = _int_id(export["root_suite_id"], "suite id")
+    suites = {_int_id(s["id"], "suite id"): s for s in export.get("suites") or []}
     names: Dict[Tuple[Optional[int], str], List[int]] = {}
     for s in suites.values():
         if s["id"] != root:
@@ -87,8 +119,10 @@ def plan_pull(export: Dict[str, Any]) -> Tuple[Dict[str, str], Dict[str, Any]]:
     files: Dict[str, str] = {}
     cases: Dict[str, Any] = {}
     for doc in export.get("cases") or []:
+        _int_id(doc.get("id"), "case id")
         d = dirs.get(doc["suite_id"], "")
         rel = f"{d}/{slug(doc['name'])}.{doc['id']}.json" if d else f"{slug(doc['name'])}.{doc['id']}.json"
+        safe_path(Path("."), rel)  # names are slugged and ids are ints; belt and braces
         files[rel] = dumps(case_file(doc))
         cases[str(doc["id"])] = {"path": rel, "hash": doc["hash"], "suite_id": doc["suite_id"]}
     manifest = {"format": export.get("format", 1), "project_id": export.get("project_id"),
@@ -111,6 +145,14 @@ def local_files(root: Path) -> Dict[str, Dict[str, Any]]:
         rel = path.relative_to(root).as_posix()
         if rel == MANIFEST or any(part.startswith(".") for part in path.relative_to(root).parts):
             continue
+        # A symlinked "case file" would send whatever it points at (any JSON
+        # on this machine) to the server in the push body.
+        try:
+            safe_path(root, rel)
+        except UnsafePath:
+            continue
+        if path.is_symlink():
+            continue
         out[rel] = json.loads(path.read_text(encoding="utf-8"))
     return out
 
@@ -119,7 +161,7 @@ def locally_modified(root: Path, manifest: Dict[str, Any]) -> List[str]:
     """Tracked files whose content no longer matches what was pulled."""
     changed = []
     for info in (manifest.get("cases") or {}).values():
-        path = root / info["path"]
+        path = safe_path(root, info.get("path"))
         if not path.exists():
             changed.append(info["path"])
             continue

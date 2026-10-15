@@ -48,7 +48,8 @@ import {
     playwrightRequester, withinDeadline,
 } from './core/suite-hooks';
 import {
-    applyEmulationOptions, applyEmulationToContext, baselineDevice, sweepShotFile, wantsStepScreenshots,
+    SweepShotBudget, applyEmulationOptions, applyEmulationToContext, baselineDevice, sweepShotFile,
+    wantsStepScreenshots,
 } from './core/frontend-quality/emulation';
 
 // Per-step DOM excerpt for proactive selector heal (backend reads 8000 chars).
@@ -115,6 +116,8 @@ class ExecutionWorker {
     private browserManager: BrowserManager;
     private isShuttingDown: boolean = false;
     private jobsProcessed: number = 0;
+    // Sweep screenshots taken by the job in progress (one job at a time).
+    private sweepShots = new SweepShotBudget();
     private idleTimer: NodeJS.Timeout | null = null;
     private aiEngine: AIEngine = new AIEngine();
     private heartbeat: Heartbeat | null = null;
@@ -502,9 +505,21 @@ class ExecutionWorker {
         let result: any;
         try {
             const browser = await this.browserManager.start('chromium');
+            // Hard worker-side ceiling on top of the crawler's own deadline
+            // (which only checks between pages): a hung page load or check
+            // must not hold this worker past it, whatever the job says.
+            const hardLimitMs = crawler.MAX_CRAWL_DURATION_MS + 60_000;
+            let timer: NodeJS.Timeout | undefined;
             try {
-                result = await crawler.executeCrawlJob(job, browser);
+                result = await Promise.race([
+                    crawler.executeCrawlJob(job, browser),
+                    new Promise<never>((_, reject) => {
+                        timer = setTimeout(() => reject(new Error(
+                            `crawl exceeded the worker limit of ${Math.round(hardLimitMs / 60_000)} minutes`)), hardLimitMs);
+                    }),
+                ]);
             } finally {
+                if (timer) clearTimeout(timer);
                 await this.browserManager.stop();
             }
         } catch (err: any) {
@@ -523,6 +538,9 @@ class ExecutionWorker {
     private async sweepScreenshot(page: Page | null, job: TestJob, artifactsDir: string, caseId: any,
                                   stepIndex: number, recorder: StepEvidenceRecorder): Promise<void> {
         if (!wantsStepScreenshots(job.settings) || !page || page.isClosed()) return;
+        // Per-job ceiling: a case with thousands of steps (or a continuous
+        // job of many cases) must not write thousands of full screenshots.
+        if (!this.sweepShots.take(job.job_id)) return;
         const file = sweepShotFile(caseId, stepIndex);
         try {
             await page.screenshot(TestExecutor.screenshotOptions(

@@ -15,7 +15,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { AddressInfo } from 'net';
 import { Browser, chromium } from 'playwright';
-import { crawlSite, playwrightLoader } from './crawler';
+import { crawlSite, crawlTargetGuard, guardedFetch, playwrightLoader } from './crawler';
 import { checkHorizontalOverflow, overflowFailure } from './layout-checks';
 import { collectPageFacts, evaluateSeo } from './page-budget';
 import { applyEmulationOptions, applyEmulationToContext } from './emulation';
@@ -27,6 +27,7 @@ let base = '';
 let altBase = '';     // same server, other host name: an "external" link
 let browser: Browser | null = null;
 let slowHits = 0;
+let secretHits = 0;
 
 const html = (body: string, head = '') =>
     `<!doctype html><html lang="en"><head><meta charset="utf-8">${head}</head><body>${body}</body></html>`;
@@ -58,6 +59,15 @@ const pages: Record<string, () => { status?: number; type?: string; body: string
     '/app.js': () => ({ type: 'text/javascript', body: 'window.x = 1;' }),
     '/style.css': () => ({ type: 'text/css', body: 'body { background: url("/img/bg-missing.png"); }' }),
     '/ext-ok': () => ({ body: html('ext') }),
+    // Security review: content pointing the crawler at internal addresses.
+    '/ssrf': () => ({ body: html(`
+        <a href="EXTERNAL/secret">loopback by name</a>
+        <a href="http://169.254.169.254/latest/meta-data/">metadata</a>
+        <a href="/to-internal">redirects inside</a>
+        <img src="EXTERNAL/secret-img.png" alt="x">`) }),
+    '/to-internal': () => ({ status: 302, headers: { location: 'EXTERNAL/secret' }, body: '' }),
+    '/secret': () => { secretHits++; return { body: html('internal only') }; },
+    '/secret-img.png': () => { secretHits++; return { type: 'image/png', body: 'png' }; },
 
     '/overflow': () => ({ body: html('<div id="wide" style="width:2000px;height:20px">wide</div>') }),
     '/no-overflow': () => ({ body: html('<div style="max-width:100%">fits</div>') }),
@@ -107,7 +117,7 @@ before(async () => {
             res.statusCode = r.status || 200;
             res.setHeader('content-type', r.type || 'text/html; charset=utf-8');
             res.setHeader('timing-allow-origin', '*');
-            for (const [k, v] of Object.entries(r.headers || {})) res.setHeader(k, v);
+            for (const [k, v] of Object.entries(r.headers || {})) res.setHeader(k, v.replace(/EXTERNAL/g, altBase));
             res.end(req.method === 'HEAD' ? undefined : r.body
                 .replace(/EXTERNAL/g, altBase).replace(/SELF/g, `http://${req.headers.host}`));
         };
@@ -137,7 +147,10 @@ const crawlConfig = (over: any = {}) => ({
 
 test('crawler: finds broken, looping, chained, slow and external links; honours robots and depth', async (t) => {
     if (!browser) return t.skip('no chromium available');
-    const report = await crawlSite(crawlConfig(), { loader: playwrightLoader(browser), fetchImpl: fetch });
+    // The "external" host is localhost (loopback): reachable only because
+    // this instance allows private targets.
+    const report = await crawlSite(crawlConfig({ allow_private: true }),
+        { loader: playwrightLoader(browser), fetchImpl: fetch });
     assert.equal(report.status, 'ok');
     const by = (cat: string) => report.issues.filter(i => i.category === cat).map(i => new URL(i.target_url).pathname);
     assert.ok(by('broken').includes('/missing'), 'broken anchor');
@@ -174,6 +187,31 @@ test('crawler: max_pages truncates, check_external=false skips other hosts, robo
     const broken = await crawlSite(crawlConfig({ start_url: `${base}/missing` }), { loader: playwrightLoader(browser), fetchImpl: fetch });
     assert.equal(broken.issues[0].element, 'page');
     assert.equal(broken.issues[0].category, 'broken');
+});
+
+test('crawler: content-driven internal targets are never requested, redirects included', async (t) => {
+    if (!browser) return t.skip('no chromium available');
+    secretHits = 0;
+    const cfg = crawlConfig({ start_url: `${base}/ssrf`, respect_robots: false, max_depth: 1 });
+    const { guard } = crawlTargetGuard(cfg);
+    const report = await crawlSite(cfg, { loader: playwrightLoader(browser, { guard }), fetchImpl: fetch });
+    assert.equal(secretHits, 0, 'neither the link checker nor the browser (img, redirect) reached localhost');
+    const notChecked = report.issues.filter(i => i.category === 'not_checked').map(i => i.target_url);
+    assert.ok(notChecked.some(u => u.endsWith('/secret')), JSON.stringify(report.issues));
+    assert.ok(notChecked.some(u => u.includes('169.254.169.254')));
+    assert.ok(notChecked.some(u => u.endsWith('/to-internal')), 'the redirect hop is refused');
+    assert.ok(report.pages.some(p => p.url.endsWith('/to-internal')), 'the crawl-host page itself was visited');
+});
+
+test('guardedFetch refuses a private address at connect time unless allowed', async () => {
+    const strict = guardedFetch({ allowPrivate: false, trustedHosts: new Set(['127.0.0.1']) });
+    // Literal crawl host: trusted. A NAME that resolves to loopback: refused by the lookup.
+    assert.equal((await strict(`${base}/ext-ok`, { method: 'HEAD' })).status, 200);
+    await assert.rejects(strict(`${altBase}/ext-ok`, { method: 'HEAD' }), /refused address/);
+    const open = guardedFetch({ allowPrivate: true, trustedHosts: new Set() });
+    assert.equal((await open(`${altBase}/ext-ok`, { method: 'HEAD' })).status, 200);
+    const big = await open(`${base}/big1.js`, { method: 'GET' });
+    assert.ok((await big.text(1000)).length <= 1000, 'bodies are read capped');
 });
 
 async function pageAt(url: string, options: any = {}) {

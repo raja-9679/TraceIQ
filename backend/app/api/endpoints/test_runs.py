@@ -845,19 +845,28 @@ async def delete_runs(
 async def get_artifact_url(
     object_name: str,
     session: AsyncSession = Depends(get_session),
-    current_user: User = Depends(get_current_user),
+    principal: AuthPrincipal = Depends(get_current_principal),
 ):
     # Artifact keys are laid out as runs/{run_id}/... — scope access to the
     # run's project so a signed URL can't be minted for another tenant's
     # traces/videos (which contain response bodies and headers).
     import re
     m = re.match(r"^runs/(\d+)/", object_name)
-    if not m:
+    # `..` / backslashes: the access check reads the run id from the prefix,
+    # so a key that an object store or proxy might normalise into another
+    # run's prefix (runs/5/../6/trace.zip) must never be signed.
+    if not m or ".." in object_name or "\\" in object_name:
         raise HTTPException(status_code=400, detail="Unrecognized artifact path")
     run = await session.get(TestRun, int(m.group(1)))
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    if not await access_service.has_project_access(current_user.id, run.project_id, session):
+    # A project-scoped API key is held to its own project, whatever the
+    # key's creator could reach (same rule as every WP11 endpoint).
+    if principal.api_key is not None:
+        from app.api.jobs import api_key_allows_project
+        if not api_key_allows_project(principal.api_key, run.project_id):
+            raise HTTPException(status_code=403, detail="Access denied")
+    if not await access_service.has_project_access(principal.user.id, run.project_id, session):
         raise HTTPException(status_code=403, detail="Access denied")
     url = minio_client.get_presigned_url(object_name)
     return {"url": url}

@@ -300,3 +300,77 @@ def test_client_hash_matches_the_server_algorithm():
     canonical = json.dumps({"name": "x", "steps": [{"b": 1, "a": "é"}], "tags": [], "priority": None,
                             "code_paths": []}, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     assert syncfs.content_hash(doc) == "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+# --- path traversal (security review) --------------------------------------
+
+@pytest.mark.parametrize("bad_id", ["../../escape", "1/../../x", "/etc/passwd", "1\\..\\x", True, 1.5])
+def test_pull_refuses_non_integer_ids_from_the_server(tmp_path, bad_id):
+    export = _export()
+    export["cases"][0]["id"] = bad_id
+    server = FakeServer({("GET", "/suites/1/sync"): export})
+    target = tmp_path / "sync"
+    code, _, err = run_cli(["pull", "1", "--dir", str(target)], server)
+    assert code == EXIT_ERROR and "non-integer" in err
+    assert not any(p.is_file() for p in tmp_path.rglob("*")), "nothing may be written"
+
+
+def test_pull_refuses_non_integer_suite_ids(tmp_path):
+    export = _export()
+    export["suites"][1]["id"] = "../../up"
+    export["cases"][1]["suite_id"] = "../../up"
+    server = FakeServer({("GET", "/suites/1/sync"): export})
+    assert run_cli(["pull", "1", "--dir", str(tmp_path / "s")], server)[0] == EXIT_ERROR
+    assert not (tmp_path / "up").exists()
+
+
+def test_suite_and_case_names_cannot_climb_out(tmp_path):
+    export = _export()
+    export["suites"][1]["name"] = "../../.."
+    export["cases"][0]["name"] = "../../../../home/x/.bashrc"
+    server = FakeServer({("GET", "/suites/1/sync"): export})
+    root = tmp_path / "s"
+    assert run_cli(["pull", "1", "--dir", str(root)], server)[0] == EXIT_OK
+    for p in tmp_path.rglob("*.json"):
+        assert root in p.parents
+
+
+def test_tampered_manifest_cannot_delete_or_read_outside_the_root(tmp_path):
+    server = FakeServer({("GET", "/suites/1/sync"): _export()})
+    root = tmp_path / "s"
+    victim = tmp_path / "victim.json"
+    victim.write_text("{}")
+    assert run_cli(["pull", "1", "--dir", str(root)], server)[0] == EXIT_OK
+    manifest = json.loads((root / syncfs.MANIFEST).read_text())
+    manifest["cases"]["999"] = {"path": "../victim.json", "hash": "x", "suite_id": 1}
+    (root / syncfs.MANIFEST).write_text(json.dumps(manifest))
+    code, _, err = run_cli(["pull", "1", "--dir", str(root), "--force"], server)
+    assert code == EXIT_ERROR and "refusing path" in err
+    assert victim.exists()
+
+
+def test_symlinked_case_file_is_not_pushed(tmp_path):
+    server = FakeServer({("GET", "/suites/1/sync"): _export(),
+                         ("POST", "/suites/1/sync"): {"unchanged": [], "conflicts": [], "errors": []}})
+    root = tmp_path / "s"
+    assert run_cli(["pull", "1", "--dir", str(root)], server)[0] == EXIT_OK
+    secret = tmp_path / "secret.json"
+    secret.write_text(json.dumps({"name": "TOPSECRET", "steps": []}))
+    (root / "leak.json").symlink_to(secret)
+    assert run_cli(["push", str(root), "--dry-run"], server)[0] == EXIT_OK
+    assert "TOPSECRET" not in json.dumps(server.calls[-1].body)
+
+
+@pytest.mark.parametrize("rel", ["../x", "a/../../x", "/abs", "a//b", "./a", "a\\b", "C:x", ""])
+def test_safe_path_rejects_escapes(tmp_path, rel):
+    with pytest.raises(syncfs.UnsafePath):
+        syncfs.safe_path(tmp_path, rel)
+
+
+def test_safe_path_follows_symlinks_out_of_the_root(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    (root / "link").symlink_to(tmp_path)
+    with pytest.raises(syncfs.UnsafePath):
+        syncfs.safe_path(root, "link/x.json")
+    assert syncfs.safe_path(root, "sub/x.json") == (root / "sub" / "x.json").resolve()

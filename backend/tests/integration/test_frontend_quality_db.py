@@ -154,6 +154,38 @@ async def test_crawl_needs_a_project_host_and_editor_access(session, scene):
                               session=session, principal=me(scene))
 
 
+async def test_crawl_count_per_project_is_capped(session, scene, monkeypatch):
+    await _with_host(session, scene)
+    monkeypatch.setattr(fq.site_crawl, "MAX_CRAWLS_PER_PROJECT", 2)
+    for _ in range(2):
+        await fq.create_crawl(scene.project_id, _crawl_body(), None, session=session, principal=me(scene))
+    with pytest.raises(HTTPException) as exc:
+        await fq.create_crawl(scene.project_id, _crawl_body(), None, session=session, principal=me(scene))
+    assert exc.value.status_code == 409
+    with pytest.raises(HTTPException) as exc:     # sub-hourly schedule refused server-side
+        await fq.update_crawl((await fq.list_crawls(scene.project_id, session=session,
+                                                    principal=me(scene)))[0]["id"],
+                              fq.SiteCrawlPatch(cron_expression="*/10 * * * *"), None,
+                              session=session, principal=me(scene))
+    assert exc.value.status_code == 400 and "hourly" in exc.value.detail
+
+
+async def test_storybook_index_is_size_capped_while_streaming(session, scene, monkeypatch):
+    from app.core.net_guard import ResponseTooLarge
+    seen = {}
+
+    async def fake_get(url, **kw):
+        seen.update(kw)
+        raise ResponseTooLarge("too big")
+    monkeypatch.setattr("app.core.net_guard.safe_get", fake_get)
+    await _with_host(session, scene, "sb.example.com")
+    with pytest.raises(HTTPException) as exc:
+        await fq.storybook_stories(scene.project_id, fq.StorybookIndexIn(url="https://sb.example.com/"),
+                                   session=session, principal=me(scene))
+    assert exc.value.status_code == 400 and "20 MB" in exc.value.detail
+    assert seen["max_bytes"] == fq.STORYBOOK_INDEX_MAX_BYTES
+
+
 class FakeRedis:
     def __init__(self, data=None):
         self.data = dict(data or {})
@@ -252,7 +284,7 @@ async def test_due_crawls_are_started_by_the_beat_sweep(session, scene, monkeypa
     started = []
     monkeypatch.setattr(tasks.dispatch_site_crawl, "delay", lambda rid: started.append(rid))
     await _with_host(session, scene)
-    crawl = await fq.create_crawl(scene.project_id, _crawl_body(cron_expression="*/5 * * * *"), None,
+    crawl = await fq.create_crawl(scene.project_id, _crawl_body(cron_expression="0 * * * *"), None,
                                   session=session, principal=me(scene))
     with sync_session() as s:
         from app.models import SiteCrawl

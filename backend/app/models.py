@@ -3022,6 +3022,7 @@ class SiteCrawlIssue(SQLModel, table=True):
     # a | img | script | link | css | page
     element: str
     # broken | network | slow | redirect_loop | mixed_content | redirect_chain
+    # | not_checked (a private/metadata target the worker refused to request)
     category: str = Field(index=True)
     status_code: Optional[int] = Field(default=None)
     duration_ms: Optional[int] = Field(default=None)

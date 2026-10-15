@@ -678,6 +678,15 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   CLI: `integrations/cli/` (`traceiq-cli`, stdlib-only Python — zipfile/urllib,
   pipx-installable): `login` (0600 config), `run --wait` (exit from the gate),
   `status`, `replay`, `pull`/`push`, `version`; exit codes in `main.py`.
+  **Security review (2026-10-15):** `repro.spec.ts` takes case data only via
+  `_js` (json.dumps, `<>&` escaped) and comments only via `_comment` (printable
+  ASCII, `*/` broken) — tests assert the code is identical once string literals
+  are blanked. CLI paths go through `sync.safe_path` (component rules + resolved
+  commonpath) and ids must be ints; a tampered `.traceiq-sync.json` cannot
+  delete or push files outside the root, symlinked case files are skipped.
+  `from-openapi` audits spec storage (`openapi_spec_set`, `via`) and case
+  creation; failure links ≤ 1 h; sync docs ≤ 1 MB / 1000 steps, request ≤ 25 MB;
+  `GET /api/artifacts/{key}` honours project-scoped API keys and refuses `..`.
 - **Estate + script inventory (WP9, 2026-10) — PASSIVE ONLY** — migration
   `c9a2b3c4d5ea`. Active probing (port exposure, WAF detection strings, origin
   bypass, TLS protocol/cipher enumeration) was designed and deliberately NOT
@@ -845,6 +854,20 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   visual step id is `story-<story id>`, so the component baseline is keyed by
   story; regenerating updates the case in place. Redaction twins gained
   `redactPageBudgets`/`redactCrawlReport`. Worker image rebuild needed.
+  **Security review (2026-10-15):** crawl targets come from page content, so
+  every link check, redirect hop and page subresource passes
+  `egress-guard.ts:targetVerdict` (literal IPs in every encoding, names
+  resolved, `*.localhost`); link-local/metadata never, private only on the
+  crawl's own hosts or with ALLOW_PRIVATE_NETWORK_TARGETS (`config.allow_private`,
+  set by `build_job`). Refused targets are `not_checked` issues. Playwright
+  routes only the FIRST request of a redirect chain, so the loader fetches with
+  `maxRedirects: 0`: subresource chains are walked hop by hop, a page redirect is
+  reported (`redirectTo`) and the target queued as its own page. Production link
+  checks use `guardedFetch` (connect-time lookup check = no DNS rebinding).
+  Ceilings regardless of the job: 1000 pages, depth 10, 15 min (+ a hard race
+  in worker.ts), 20k checks, robots 512 KB, 300 sweep screenshots/job; server
+  side: 20 crawls/project, at most hourly, limits re-clamped in `snapshot()`,
+  sweep view 200 runs, Storybook index streamed with `safe_get(max_bytes=)`.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

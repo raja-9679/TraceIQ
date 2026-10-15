@@ -175,6 +175,25 @@ export function wantsStepScreenshots(settings: any): boolean {
     return emulationOf(settings)?.step_screenshots === true;
 }
 
+// Frontend sweeps screenshot every step; a case with thousands of steps (or a
+// continuous job of many cases) must not write thousands of full screenshots.
+// The job decides WHETHER to screenshot; this ceiling is the worker's.
+export const MAX_SWEEP_SCREENSHOTS_PER_JOB = 300;
+
+export class SweepShotBudget {
+    private jobId: string | null = null;
+    private taken = 0;
+    constructor(private max = MAX_SWEEP_SCREENSHOTS_PER_JOB) { }
+
+    /** True if `jobId` may take one more sweep screenshot (counts it). */
+    take(jobId: string): boolean {
+        if (jobId !== this.jobId) { this.jobId = jobId; this.taken = 0; }
+        if (this.taken >= this.max) return false;
+        this.taken++;
+        return true;
+    }
+}
+
 /** File name of the per-step sweep screenshot (unique per case in a continuous job). */
 export function sweepShotFile(caseId: number | string | undefined, stepIndex: number): string {
     return `sweep-${caseId ?? 'case'}-s${stepIndex}.png`;

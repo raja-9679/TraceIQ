@@ -25,6 +25,13 @@ from typing import Any, Dict, List, Optional
 SYNC_FIELDS = ("name", "steps", "tags", "priority", "code_paths")
 FORMAT_VERSION = 1
 MAX_SYNC_CASES = 2000
+# Per-document and whole-request bounds: each accepted document becomes a
+# stored CaseProposal payload.
+MAX_DOC_BYTES = 1024 * 1024
+MAX_DOC_STEPS = 1000
+MAX_NAME_CHARS = 500
+MAX_LIST_ITEMS = 200
+MAX_SYNC_BYTES = 25 * 1024 * 1024
 
 
 def content_of(doc: Dict[str, Any]) -> Dict[str, Any]:
@@ -61,6 +68,15 @@ def validate_doc(doc: Any) -> Optional[str]:
         return "id must be an integer"
     if not isinstance(doc.get("name"), str) or not doc["name"].strip():
         return "name is required"
+    if len(doc["name"]) > MAX_NAME_CHARS:
+        return f"name is longer than {MAX_NAME_CHARS} characters"
+    if isinstance(doc.get("steps"), list) and len(doc["steps"]) > MAX_DOC_STEPS:
+        return f"more than {MAX_DOC_STEPS} steps"
+    for key in ("tags", "code_paths"):
+        if isinstance(doc.get(key), list) and len(doc[key]) > MAX_LIST_ITEMS:
+            return f"{key} has more than {MAX_LIST_ITEMS} entries"
+    if len(json.dumps(doc, default=str)) > MAX_DOC_BYTES:
+        return f"case document exceeds {MAX_DOC_BYTES // 1024} KB"
     if not isinstance(doc.get("steps", []), list) or not all(isinstance(s, dict) for s in doc.get("steps") or []):
         return "steps must be a list of step objects"
     for key in ("tags", "code_paths"):

@@ -342,3 +342,70 @@ async def test_openapi_spec_round_trip_and_editor_gate(session, scene):
     with pytest.raises(HTTPException) as exc:
         await developer.get_openapi_spec(scene.project_id, principal=AuthPrincipal(user=outsider), session=session)
     assert exc.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# security review fixes
+# ---------------------------------------------------------------------------
+
+async def test_from_openapi_spec_storage_is_audited(session, scene):
+    from app.api import case_generation
+    from app.models import CaseFromOpenAPIRequest
+    spec = {"openapi": "3.0.0", "info": {"title": "Audited", "version": "1"},
+            "servers": [{"url": "https://api.example"}],
+            "paths": {"/a": {"get": {"operationId": "getA", "responses": {"200": {"description": "ok"}}}}}}
+    out = await case_generation.cases_from_openapi(
+        CaseFromOpenAPIRequest(schema_inline=spec, test_suite_id=scene.root_id),
+        principal=_me(scene), session=session)
+    assert out["created"] == 1
+    rows = (await session.exec(select(AuditLog).where(AuditLog.action == "openapi_spec_set"))).all()
+    assert rows and rows[-1].entity_id == scene.project_id
+    assert rows[-1].changes.get("via") == "cases/from-openapi"
+    assert (await session.exec(select(AuditLog).where(AuditLog.action == "cases_from_openapi"))).first()
+
+
+async def test_failure_links_are_capped_at_an_hour(session, scene, monkeypatch):
+    from app.core.storage import minio_client
+    signed = []
+    monkeypatch.setattr(minio_client, "get_presigned_url",
+                        lambda key, expiration=3600: signed.append(expiration) or "https://s/x")
+    run, _ = await _failing_result(session, scene)
+    out = await developer.run_failures(run.id, ttl_seconds=86400, principal=_me(scene), session=session)
+    assert signed == [3600] and out["failures"][0]["screenshot_expires_in"] == 3600
+
+
+async def test_artifact_url_honours_project_scoped_api_keys(session, scene, monkeypatch):
+    from app.api.endpoints import test_runs
+    from app.core.storage import minio_client
+    monkeypatch.setattr(minio_client, "get_presigned_url", lambda key, expiration=3600: f"https://s/{key}")
+    run, _ = await _failing_result(session, scene)
+    ws = await _ws(session, scene)
+    own = ApiKey(name="own", workspace_id=ws, project_id=scene.project_id, prefix="tiq_o", hashed_key="h1")
+    other = ApiKey(name="other", workspace_id=ws, project_id=scene.other_project_id, prefix="tiq_p",
+                   hashed_key="h2")
+    key = f"runs/{run.id}/trace.zip"
+    out = await test_runs.get_artifact_url(key, session=session,
+                                           principal=AuthPrincipal(user=scene.user, api_key=own))
+    assert out["url"].endswith(key)
+    with pytest.raises(HTTPException) as exc:
+        await test_runs.get_artifact_url(key, session=session,
+                                         principal=AuthPrincipal(user=scene.user, api_key=other))
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        await test_runs.get_artifact_url(f"runs/{run.id}/../{run.id + 1}/trace.zip", session=session,
+                                         principal=_me(scene))
+    assert exc.value.status_code == 400
+
+
+async def test_sync_payload_and_document_size_limits(session, scene, monkeypatch):
+    from app.services import case_sync
+    big = {"name": "x", "steps": [{"type": "goto", "value": "y" * 2000}] * 600}
+    assert "steps" in (case_sync.validate_doc(dict(big, steps=big["steps"] * 2)) or "")
+    assert "KB" in (case_sync.validate_doc(big) or "")
+    assert "name" in (case_sync.validate_doc({"name": "n" * 600, "steps": []}) or "")
+    monkeypatch.setattr(case_sync, "MAX_SYNC_BYTES", 1000)
+    with pytest.raises(HTTPException) as exc:
+        await developer.import_suite_sync(scene.root_id, developer.SyncRequest(
+            cases=[{"name": "n", "steps": [{"type": "goto", "value": "z" * 2000}]}]),
+            principal=_me(scene), session=session)
+    assert exc.value.status_code == 413

@@ -280,3 +280,92 @@ export async function installEgressGuard(
     });
     return guard;
 }
+
+// --- content-driven targets (crawler) ---------------------------------------
+//
+// The link crawler (WP10) requests URLs it found in page content, which the
+// site under test controls. Without a check, `<a href="http://169.254.169.254/">`
+// turns the worker into a proxy into its own network. Same classification as
+// above; the difference is who is trusted: the crawl's own configured hosts
+// (already validated against the project's hosts by the backend) may be
+// private when the operator crawls an internal site, everything else must be
+// public unless the instance allows private targets. Link-local / metadata /
+// reserved addresses are refused for every host.
+
+export interface TargetOptions {
+    allowPrivate: boolean;
+    trustedHosts?: Set<string>;
+    resolver?: Resolver;
+}
+
+/** Verdict for one URL the crawler is about to request (any redirect hop). */
+export async function targetVerdict(rawUrl: string, opts: TargetOptions): Promise<Verdict> {
+    let url: URL;
+    try {
+        url = new URL(rawUrl);
+    } catch {
+        return { allowed: false, reason: 'unparseable URL' };
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        return { allowed: false, reason: `${url.protocol} is not fetched` };
+    }
+    const host = canonicalHost(url.hostname);
+    if (!host) return { allowed: false, reason: 'URL has no usable host' };
+    const trusted = !!opts.trustedHosts && hostAllowed(host, Array.from(opts.trustedHosts));
+    const judge = (ip: string): Verdict => {
+        const cls = classifyIp(ip);
+        if (cls === 'never') return { allowed: false, reason: `${ip} is a link-local/metadata or reserved address` };
+        if (cls === 'private' && !opts.allowPrivate && !trusted) {
+            return { allowed: false, reason: `${ip} is a private address` };
+        }
+        return { allowed: true };
+    };
+    if (net.isIP(host)) return judge(host);
+    // Chromium answers `localhost` and every `*.localhost` with loopback
+    // without asking DNS, so a resolver check alone would miss them.
+    if (host === 'localhost' || host.endsWith('.localhost')) {
+        const v = judge('127.0.0.1');
+        return v.allowed ? v : { allowed: false, reason: `${host} is a loopback name` };
+    }
+    let ips: string[];
+    try {
+        ips = await (opts.resolver || defaultResolver)(host);
+    } catch {
+        // Unresolvable: the request itself fails with a DNS error, which is a
+        // finding ("broken link"), and the guarded lookup re-checks at connect.
+        return { allowed: true };
+    }
+    for (const ip of ips) {
+        const v = judge(ip);
+        if (!v.allowed) return { allowed: false, reason: `${host} resolves to ${ip}: ${v.reason.replace(`${ip} is `, '')}` };
+    }
+    return { allowed: true };
+}
+
+/**
+ * A `lookup` for http(s).request that refuses forbidden addresses at CONNECT
+ * time, so a name that answered public to `targetVerdict` and private a
+ * moment later (DNS rebinding) is still refused. Handles both callback shapes
+ * (`all: true` is what autoSelectFamily asks for).
+ */
+export function guardedLookup(opts: TargetOptions & { host: string }) {
+    const trusted = !!opts.trustedHosts && hostAllowed(opts.host, Array.from(opts.trustedHosts));
+    return (hostname: string, options: any, callback: any) => {
+        if (typeof options === 'function') { callback = options; options = {}; }
+        dns.lookup(hostname, { ...options, all: true }, (err, addresses: any) => {
+            if (err) return callback(err);
+            const list: { address: string; family: number }[] = Array.isArray(addresses) ? addresses : [];
+            for (const a of list) {
+                const cls = classifyIp(a.address);
+                if (cls === 'never' || (cls === 'private' && !opts.allowPrivate && !trusted)) {
+                    const e: any = new Error(`${hostname} resolves to a refused address (${a.address})`);
+                    e.code = 'ERR_TARGET_REFUSED';
+                    return callback(e);
+                }
+            }
+            if (!list.length) return callback(new Error(`${hostname} resolved to no address`));
+            if (options && options.all) return callback(null, list);
+            return callback(null, list[0].address, list[0].family);
+        });
+    };
+}

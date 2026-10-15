@@ -64,6 +64,10 @@ async def known_hosts(session: AsyncSession, project: Project):
 # Matrix presets + run sweeps
 # ---------------------------------------------------------------------------
 
+MAX_SWEEP_RUNS = 200
+STORYBOOK_INDEX_MAX_BYTES = 20 * 1024 * 1024
+
+
 @router.get("/frontend-matrix/presets")
 async def matrix_presets(principal: AuthPrincipal = Depends(get_current_principal)):
     return {
@@ -86,9 +90,13 @@ async def run_sweep(run_id: int, session: AsyncSession = Depends(get_session),
     await _project_for(session, principal, run.project_id)
     if not run.sweep_group:
         return {"sweep_group": None, "variants": []}
+    # A sweep over a whole suite is cases x variants runs; the side-by-side
+    # view is bounded rather than loading every result payload of all of them.
     runs = (await session.exec(select(TestRun).where(
         TestRun.sweep_group == run.sweep_group,
-        TestRun.project_id == run.project_id).order_by(TestRun.id))).all()
+        TestRun.project_id == run.project_id).order_by(TestRun.id).limit(MAX_SWEEP_RUNS + 1))).all()
+    truncated = len(runs) > MAX_SWEEP_RUNS
+    runs = runs[:MAX_SWEEP_RUNS]
     results = (await session.exec(select(TestCaseResult).where(
         TestCaseResult.test_run_id.in_([r.id for r in runs])))).all() if runs else []
     by_run: Dict[int, list] = {}
@@ -116,7 +124,7 @@ async def run_sweep(run_id: int, session: AsyncSession = Depends(get_session),
             "emulation": emu, "rtl": frontend_matrix.is_rtl_locale((emu.get("locale") or {}).get("locale")),
             "tests": tests,
         })
-    return {"sweep_group": run.sweep_group, "variants": variants}
+    return {"sweep_group": run.sweep_group, "variants": variants, "truncated": truncated}
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +223,12 @@ async def create_crawl(project_id: int, body: SiteCrawlIn, request: Request,
         data = site_crawl.validate_config(body.model_dump(), await known_hosts(session, project))
     except site_crawl.CrawlConfigError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    existing = (await session.exec(select(func.count()).select_from(SiteCrawl).where(
+        SiteCrawl.project_id == project_id))).one()
+    if existing >= site_crawl.MAX_CRAWLS_PER_PROJECT:
+        raise HTTPException(status_code=409, detail=(
+            f"a project may hold at most {site_crawl.MAX_CRAWLS_PER_PROJECT} crawls; "
+            "delete one or widen an existing crawl instead"))
     crawl = SiteCrawl(project_id=project_id, created_by_id=principal.user.id, **data)
     crawl.next_run_at = _next_run(crawl.cron_expression) if crawl.is_active else None
     session.add(crawl)
@@ -450,7 +464,7 @@ class StorybookCasesIn(BaseModel):
 
 
 async def _load_stories(session, project, url: str):
-    from app.core.net_guard import UnsafeUrlError, safe_get
+    from app.core.net_guard import ResponseTooLarge, UnsafeUrlError, safe_get
     from urllib.parse import urlsplit
     try:
         root = storybook.base_url(url)
@@ -463,7 +477,12 @@ async def _load_stories(session, project, url: str):
     last_error = "no story index found"
     for index_url in storybook.index_urls(root):
         try:
-            resp = await safe_get(index_url, timeout=20.0)
+            # Size-capped while streaming: the index is the Storybook host's
+            # to choose, and checking len(content) afterwards would already
+            # have buffered whatever it sent.
+            resp = await safe_get(index_url, timeout=20.0, max_bytes=STORYBOOK_INDEX_MAX_BYTES)
+        except ResponseTooLarge:
+            raise HTTPException(status_code=400, detail="story index is larger than 20 MB")
         except UnsafeUrlError as exc:
             raise HTTPException(status_code=400, detail=f"Storybook URL refused: {exc}")
         except Exception as exc:  # noqa: BLE001 — network errors are the user's to fix

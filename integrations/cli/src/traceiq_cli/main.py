@@ -313,13 +313,23 @@ def cmd_pull(ctx: Ctx) -> int:
             return EXIT_FAILED
     export = ctx.client().export_suite(a.suite)
     files, manifest = syncfs.plan_pull(export)
+    # Validate every path before touching the disk: names come from the
+    # server and the old manifest may have come from a git checkout.
+    targets = {rel: syncfs.safe_path(root, rel) for rel in files}
+    stale = [syncfs.safe_path(root, info.get("path"))
+             for info in ((old or {}).get("cases") or {}).values() if info.get("path") not in files]
     root.mkdir(parents=True, exist_ok=True)
-    for info in ((old or {}).get("cases") or {}).values():
-        if info["path"] not in files and (root / info["path"]).exists():
-            (root / info["path"]).unlink()
+    for path in stale:
+        if path.is_file():
+            path.unlink()
     for rel, text in files.items():
-        path = root / rel
+        path = targets[rel]
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Re-check after creating parents: a directory that is a symlink out
+        # of the root only becomes visible once it exists.
+        path = syncfs.safe_path(root, rel)
+        if path.is_symlink():
+            raise syncfs.UnsafePath(f"refusing to write through symlink {rel!r}")
         path.write_text(text, encoding="utf-8")
     (root / syncfs.MANIFEST).write_text(syncfs.dumps(manifest), encoding="utf-8")
     ctx.say(f"pulled {len(files)} case(s) from suite {a.suite} into {root}")
