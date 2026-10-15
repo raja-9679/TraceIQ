@@ -42,6 +42,26 @@ def _normalize_domain(d) -> Optional[Dict]:
     return d
 
 
+# Scalar execution flags carried down the suite chain: a child that sets one
+# wins, otherwise the nearest ancestor's value applies. These used to be
+# dropped by the merge entirely — `har_capture` and `auto_retry` set on a suite
+# never reached a job.
+INHERITED_EXECUTION_FLAGS = (
+    "har_capture", "auto_retry", "max_retries", "retry_backoff_ms",
+    "fail_on_console_errors", "console_error_ignore_patterns",
+)
+
+
+def _execution_flags(parent: Dict[str, Any], child: Dict[str, Any]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for key in INHERITED_EXECUTION_FLAGS:
+        if child.get(key) is not None:
+            out[key] = child[key]
+        elif parent.get(key) is not None:
+            out[key] = parent[key]
+    return out
+
+
 def _merge_settings(parent: Dict[str, Any], child: Dict[str, Any]) -> Dict[str, Any]:
     """Merge child settings on top of parent settings (child wins on conflict)."""
     merged_headers = {**parent.get("headers", {}), **child.get("headers", {})}
@@ -76,6 +96,7 @@ def _merge_settings(parent: Dict[str, Any], child: Dict[str, Any]) -> Dict[str, 
         # parent's wholesale (no union) — "my module runs on exactly these".
         "browsers": child.get("browsers") or parent.get("browsers") or [],
         "devices": child.get("devices") or parent.get("devices") or [],
+        **_execution_flags(parent, child),
     }
 
 
@@ -99,6 +120,7 @@ class TestService:
             "domain_settings": current.get("domain_settings", {}),
             "browsers": current.get("browsers", []),
             "devices": current.get("devices", []),
+            **_execution_flags({}, current),
         }
 
     @staticmethod
@@ -130,6 +152,7 @@ class TestService:
             "domain_settings": current.get("domain_settings", {}),
             "browsers": current.get("browsers", []),
             "devices": current.get("devices", []),
+            **_execution_flags({}, current),
         }
 
     @staticmethod

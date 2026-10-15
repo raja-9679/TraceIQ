@@ -1,6 +1,7 @@
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { RedactionPolicy, redactJobResult } from './redact';
+import type { StepEvidence } from './evidence';
 
 // Types for job queue system
 // Single test case structure
@@ -68,6 +69,10 @@ export interface TestJob {
         // Record a compact per-step DOM for proactive selector heal. Set by
         // the dispatcher only at capture level `full` with heal enabled.
         capture_step_dom?: boolean;
+        // Fail a test on uncaught page errors / console.error (suite chain
+        // setting; a case's own `fail_on_console_errors` overrides it).
+        fail_on_console_errors?: boolean;
+        console_error_ignore_patterns?: string[];
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
         // MinIO URL + metadata the mobile worker needs to install/launch it.
         mobile_app?: {
@@ -100,6 +105,7 @@ export interface TestCaseResult {
     web_vitals?: any;  // Performance metrics for the case's final document
     console_errors?: any[];  // Redacted console errors/warnings for failure analysis
     step_dom?: Record<string, string>;  // step id -> compact DOM (capture level full only)
+    step_evidence?: StepEvidence[];  // per-step evidence for failure investigation
 }
 
 // Job result - can contain single or multiple test results
@@ -122,6 +128,7 @@ export interface JobResult {
     // these per case on test_results).
     console_errors?: any[];
     step_dom?: Record<string, string>;
+    step_evidence?: StepEvidence[];
 
     // Type-aware result payload for non-UI executors (keystone). e.g. a load
     // job reports result_kind='load' with aggregate k6 metrics + threshold

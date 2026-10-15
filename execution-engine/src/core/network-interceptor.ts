@@ -15,11 +15,30 @@ export class NetworkInterceptor {
         requestStartTimes: Map<string, number>,
         networkEvents: any[],
         testCaseContext: { id: number | null, name: string | null },
-        policy?: RedactionPolicy
+        policy?: RedactionPolicy,
+        failedRequests?: any[]
     ) {
         context.on('request', request => {
             requestStartTimes.set(request.url(), Date.now());
         });
+
+        // Requests that never got a response (DNS, refused, TLS, CORS block).
+        // Only per-step evidence reads these; `networkEvents` keeps its
+        // responses-only shape for everything that already consumes it.
+        if (failedRequests) {
+            context.on('requestfailed', request => {
+                try {
+                    if (failedRequests.length >= 2000) return;
+                    failedRequests.push({
+                        testCaseName: testCaseContext.name,
+                        url: redactText(request.url(), policy),
+                        method: request.method(),
+                        resourceType: request.resourceType(),
+                        failure: request.failure()?.errorText || 'failed',
+                    });
+                } catch { /* never let evidence break a run */ }
+            });
+        }
 
         context.on('response', async response => {
             try {

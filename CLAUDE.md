@@ -399,6 +399,33 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Per-step evidence + failure investigation v2 (2026-10, WP3)** — workers
+  send `step_evidence` per result (`core/evidence.ts:StepEvidenceRecorder`),
+  stored in `result_payload.step_evidence` and rebuilt field by field on
+  ingestion (`result_aggregator.normalise_step_evidence`: ids re-derived from
+  position, screenshot keys kept only under `runs/{this run}/screenshots/`).
+  Ids are the citation contract: `s3`, `s3.c0` (console), `s3.r1` (failed
+  request; URL keeps query NAMES only), `s3.dom`, `s3.shot`, `error`,
+  `run:<id>`; old results get `console.<n>`/`net.<n>`. Gated by capture level:
+  `none` = step outcome only, `minimal` + console/requests/screenshot,
+  `standard`+ a ≤4 kB DOM excerpt around the FAILING step's target (input
+  values, scripts and `mask_selectors` removed in-page, text redacted). Both
+  redaction twins scrub the field. `FailureReport` is `schema_version: 2`
+  (`app/services/failure_investigation.py`): `observed` facts vs ranked
+  `hypotheses` with `evidence_refs`, `history` (same case + same row name +
+  same project, prior runs only; signatures recomputed, not read from
+  `cluster_id`, which races) and `changed_since_last_pass`. v1 fields mirror
+  the top hypothesis. LLM hypotheses citing no existing id are dropped
+  (`dropped_citations`). `fail_on_console_errors` + `console_error_ignore_patterns`
+  (suite chain; `testcase.fail_on_console_errors` overrides, migration
+  `c3a2b3c4d5e3`) fail the step on `pageerror`/`console.error`, checked
+  OUTSIDE the step's try so runtime heal never "heals" it. Suite-chain merge now
+  also carries `har_capture`/`auto_retry`/`max_retries`/`retry_backoff_ms`,
+  which it used to drop. **Also fixed:** workers read `data_policy` from the
+  job's top level but the dispatcher puts it in `settings` — every job ran at
+  the default `standard` level with built-in redaction only; `jobDataPolicy()`
+  reads both. `trace_parser.parse_actions` exists but is not wired in.
+  Worker + backend + frontend rebuild needed.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
