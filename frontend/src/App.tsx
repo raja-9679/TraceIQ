@@ -16,6 +16,7 @@ import FlakyTests from "@/pages/FlakyTests";
 import QualityDashboard from "@/pages/QualityDashboard";
 import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
+import AccessReviews from "@/pages/AccessReviews";
 import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
@@ -65,6 +66,7 @@ function App() {
                 <Route path="quality" element={<QualityDashboard />} />
                 <Route path="monitors" element={<Monitors />} />
                 <Route path="security" element={<Security />} />
+                <Route path="access-reviews" element={<AccessReviews />} />
                 <Route path="triage" element={<Triage />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="billing" element={<Billing />} />

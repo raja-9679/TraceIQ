@@ -152,6 +152,62 @@ test('jwt is redacted wherever it appears', () => {
     assert.ok(out.includes('[REDACTED:jwt]'));
 });
 
+// --------------------------------------------------------------------------
+// Cloud keys (WP7) — twin of the Python corpus. Built by concatenation so the
+// literal never appears in the repo (push protection / secret scanners).
+// --------------------------------------------------------------------------
+
+const AWS_KEY_ID = 'AKIA' + 'IOSFODNN7EXAMPLE';
+const GH_TOKEN = 'ghp' + '_' + 'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8';
+const SLACK_TOKEN = 'xox' + 'b-' + '123456789012-abcdefghijkl';
+const STRIPE_KEY = 'sk' + '_live_' + '4eC39HqLyjWDarjtT1zdp7dc';
+const GOOGLE_KEY = 'AIza' + 'SyA1234567890abcdefghijklmnopqrstuv';
+const AZURE_KEY = 'A'.repeat(86) + '==';
+const PEM = '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMIIEowIBAAKCAQEA7\n' + '-----END RSA ' + 'PRIVATE KEY-----';
+
+for (const [secret, name] of [
+    [AWS_KEY_ID, 'aws_access_key'],
+    [GH_TOKEN, 'github_token'],
+    [SLACK_TOKEN, 'slack_token'],
+    [STRIPE_KEY, 'stripe_key'],
+    [GOOGLE_KEY, 'google_api_key'],
+] as const) {
+    test(`cloud key ${name} is redacted by default`, () => {
+        const out = redactBody(JSON.stringify({ note: `key is ${secret} ok` }));
+        assert.ok(!out.includes(secret));
+        assert.ok(out.includes(`[REDACTED:${name}]`));
+    });
+}
+
+test('azure storage key in a connection string is redacted', () => {
+    const conn = `DefaultEndpointsProtocol=https;AccountName=x;AccountKey=${AZURE_KEY};`;
+    const out = redactText(conn);
+    assert.ok(!out.includes(AZURE_KEY));
+    assert.ok(out.includes('AccountKey=[REDACTED:azure_storage_key];'));
+});
+
+test('pem private key block is redacted whole', () => {
+    assert.equal(redactText(`cfg ${PEM} tail`), 'cfg [REDACTED:private_key] tail');
+});
+
+test('truncated pem private key is still redacted', () => {
+    assert.equal(redactText('-----BEGIN ' + 'PRIVATE KEY-----\nMIIEvQIBADANBgkq'), '[REDACTED:private_key]');
+});
+
+test('aws key digits are not eaten by the pan rule first', () => {
+    assert.equal(redactText('AKIA' + '4111111111111111'), '[REDACTED:aws_access_key]');
+});
+
+test('cloud key lookalikes are left alone', () => {
+    for (const text of ['AKIA-not-a-key', 'ghp_short', 'sk_test_4eC39HqLyjWDarjtT1zdp7dc', 'xoxb-short', 'AIzaShort']) {
+        assert.equal(redactText(text), text);
+    }
+});
+
+test('cloud keys can be switched off by policy', () => {
+    assert.equal(redactText(AWS_KEY_ID, { patterns: ['jwt'] }), AWS_KEY_ID);
+});
+
 test('email is kept by default', () => {
     assert.ok(redactBody(JSON.stringify({ to: 'a@b.com' })).includes('a@b.com'));
 });

@@ -399,6 +399,62 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Security operations (WP7, 2026-10)** — migration `c7a2b3c4d5e7`.
+  **SIEM**: instance-settings groups `siem` (`syslog` RFC 5424 tcp/tls/udp with
+  octet-counted framing, `splunk_hec`, `elastic` bulk with `_id`=row hash so
+  retries are idempotent, HMAC-signed `webhook`) and `security_alerts`.
+  The audit `before_flush` hook adds a `SecurityEventOutbox` row in the SAME
+  flush as each audit row (only when streaming or alerts are on), so an event
+  exists iff its audit row commits; beat `drain_security_events` (10s,
+  `FOR UPDATE SKIP LOCKED`) evaluates alerts and delivers in batches with
+  exponential backoff; `SIEM_OUTBOX_MAX` drops the OLDEST beyond the cap (the
+  audit table stays the record). Events carry `chain.{prev_hash,row_hash,
+  hashed_timestamp}` — the naive isoformat the hash was computed over, not the
+  `Z` timestamp. Destination goes through net_guard at save AND before each
+  delivery; no redirects. `POST /admin/siem/test`, `GET /admin/siem/status`.
+  **Alerts** (`app/services/security_alerts.py`) fire the burst rule when the
+  count reaches EXACTLY N (stateless — no "already alerted" table); channels
+  are `SECURITY_ALERT_*`, separate from run notifications. New audit rows the
+  rules depend on: every instance-setting change (`entity_type
+  instance_setting`, secrets as `changed` only), instance-admin grant/revoke,
+  `role_grant` (workspace invite-add, project access, federation group sync),
+  `mfa_enabled`/`mfa_disabled`, and `login_failed` for bad MFA codes and LDAP.
+  **Access reviews**: `app/services/access_review.py` + `app/api/access_reviews.py`
+  (workspace admin / instance admin; API keys refused for every write). Items
+  snapshot access at campaign start; revoke needs a note; sign-off needs every
+  item decided and is audited; `apply-revocations` only after sign-off and only
+  with `confirm: true` (workspace scope removes membership/teams/project grants,
+  instance scope deactivates + revokes refresh tokens; a reviewer can't revoke
+  themselves). CSV is formula-injection-safe; HTML export ships a CSP.
+  **Findings workflow** (`app/services/finding_lifecycle.py`): statuses
+  `open|in_progress|fixed_pending_verification|verified_fixed|accepted_risk|
+  false_positive` (old acknowledged/resolved migrated; still accepted on
+  input). Rows stay per scan; workflow lives on the newest row per (project,
+  scan_type, fingerprint) and older rows get `superseded_by_id` (soft, no FK).
+  `ingest()` carries owner + ORIGINAL due date + unexpired risk acceptance,
+  re-opens fixed findings that reappear; `verify_fixes()` is the only path to
+  `verified_fixed` — a LATER completed scan of the same target AND same
+  scan_type (ZAP), or a later run of the same suite that covered the origin
+  (passive) / re-ran the case (leak). Marking fixed queues a retest through the
+  same gates as a manual scan (`_scan_gate`); header-auth scans are not
+  retested (the token is gone). Accepted risk / due-date changes need project
+  admin; hourly beat re-opens lapsed acceptances. SLA per workspace
+  (`workspace.finding_sla_days`, `GET/PUT /workspaces/{id}/finding-sla`).
+  Register `GET /projects/{id}/security-findings`; SARIF 2.1.0 at
+  `…/security-findings/sarif` and `/security-scans/{id}/sarif` (waived findings
+  become `suppressions`). Passive findings now get fingerprints; re-scanning a
+  run (`_replace_run_findings`) inherits state and relinks predecessors.
+  **Leak detection** (`app/services/leak_detection.py`, task `scan_run_leaks` at
+  finalize, `LEAK_DETECTION_ENABLED`): response side only (bodies, headers,
+  network events + URLs, console errors, step DOM, execution log) — never
+  request data; `[REDACTED:<cloud kind>]` markers count, because the APP sent
+  it; email/phone only if the project's `redact_patterns` opt in; masked
+  samples only; fingerprints strip list indexes. New `cloud_keys` redaction
+  pattern (AWS/GitHub/Slack/Stripe/Google/Azure/PEM) is ON by default in both
+  twins and runs FIRST (before PAN) — needs a worker rebuild. Test corpora
+  build tokens by concatenation (push protection); `test_leak_detection.py` is
+  in `.gitleaks.toml`. UI: Security page register + SLA card + SARIF buttons;
+  Settings → Instance (Admin) SIEM/alerts cards; `/access-reviews` page.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

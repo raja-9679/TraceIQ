@@ -14,6 +14,8 @@ So the false-positive tests are as load-bearing as the true-positive ones.
 """
 import json
 
+import pytest
+
 from app.services.redaction import (
     REDACTED,
     RedactionPolicy,
@@ -143,6 +145,67 @@ def test_jwt_is_redacted_wherever_it_appears():
     out = redact_body(json.dumps({"debug": f"token={JWT}"}))
     assert JWT not in out
     assert "[REDACTED:jwt]" in out
+
+
+# --- cloud keys (WP7) ---------------------------------------------------------
+# Built by concatenation so the literal never appears in the repo: GitHub push
+# protection and secret scanners would (rightly) flag a contiguous token.
+AWS_KEY_ID = "AKIA" + "IOSFODNN7EXAMPLE"
+GH_TOKEN = "ghp" + "_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
+SLACK_TOKEN = "xox" + "b-" + "123456789012-abcdefghijkl"
+STRIPE_KEY = "sk" + "_live_" + "4eC39HqLyjWDarjtT1zdp7dc"
+GOOGLE_KEY = "AIza" + "SyA1234567890abcdefghijklmnopqrstuv"
+AZURE_KEY = "A" * 86 + "=="
+PEM = ("-----BEGIN RSA " + "PRIVATE KEY-----\nMIIEowIBAAKCAQEA7\n"
+       "-----END RSA " + "PRIVATE KEY-----")
+
+
+@pytest.mark.parametrize("secret,name", [
+    (AWS_KEY_ID, "aws_access_key"),
+    (GH_TOKEN, "github_token"),
+    (SLACK_TOKEN, "slack_token"),
+    (STRIPE_KEY, "stripe_key"),
+    (GOOGLE_KEY, "google_api_key"),
+])
+def test_cloud_keys_are_redacted_by_default(secret, name):
+    out = redact_body(json.dumps({"note": f"key is {secret} ok"}))
+    assert secret not in out
+    assert f"[REDACTED:{name}]" in out
+
+
+def test_azure_storage_key_in_a_connection_string_is_redacted():
+    conn = f"DefaultEndpointsProtocol=https;AccountName=x;AccountKey={AZURE_KEY};"
+    out = redact_text(conn)
+    assert AZURE_KEY not in out
+    assert "AccountKey=[REDACTED:azure_storage_key];" in out
+
+
+def test_pem_private_key_block_is_redacted_whole():
+    out = redact_text(f"cfg {PEM} tail")
+    assert "MIIEow" not in out
+    assert out == "cfg [REDACTED:private_key] tail"
+
+
+def test_truncated_pem_private_key_is_still_redacted():
+    out = redact_text("-----BEGIN " + "PRIVATE KEY-----\nMIIEvQIBADANBgkq")
+    assert out == "[REDACTED:private_key]"
+
+
+def test_aws_key_digits_are_not_eaten_by_the_pan_rule_first():
+    # Cloud keys run before PAN: the key is redacted as one token.
+    out = redact_text("AKIA" + "4111111111111111")
+    assert out == "[REDACTED:aws_access_key]"
+
+
+def test_cloud_key_lookalikes_are_left_alone():
+    for text in ("AKIA-not-a-key", "ghp_short", "sk_test_4eC39HqLyjWDarjtT1zdp7dc",
+                 "xoxb-short", "AIzaShort"):
+        assert redact_text(text) == text
+
+
+def test_cloud_keys_can_be_switched_off_by_policy():
+    policy = RedactionPolicy(patterns=("jwt",))
+    assert redact_text(AWS_KEY_ID, policy) == AWS_KEY_ID
 
 
 def test_email_is_kept_by_default():

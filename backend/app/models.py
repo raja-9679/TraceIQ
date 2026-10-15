@@ -136,6 +136,12 @@ class Workspace(SQLModel, table=True):
     # override (either being true permits active scans).
     active_scan_enabled: bool = Field(default=False)
 
+    # Security-finding remediation SLA in days per severity, e.g.
+    # {"critical": 7, "high": 30, "medium": 90, "low": 180}. NULL → the
+    # built-in DEFAULT_FINDING_SLA in app/services/finding_lifecycle.py.
+    finding_sla_days: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -931,10 +937,34 @@ class SecurityFinding(SQLModel, table=True):
     # Triage lifecycle. `fingerprint` identifies the same logical finding
     # across scans (category|title|host+path) so scan-over-scan diffs work and
     # false-positive verdicts carry forward instead of resurfacing every scan.
-    status: str = Field(default="open", index=True)  # open|acknowledged|false_positive|resolved
+    # open | in_progress | fixed_pending_verification | verified_fixed |
+    # accepted_risk | false_positive — see app/services/finding_lifecycle.py,
+    # which owns the transition rules. (Pre-WP7 rows used acknowledged/resolved;
+    # migration c7a2b3c4d5e7 renames them.)
+    status: str = Field(default="open", index=True)
+    # The finding's owner. Named assignee_id for history; the UI calls it owner.
     assignee_id: Optional[int] = Field(default=None, foreign_key="users.id")
     resolved_at: Optional[datetime] = Field(default=None)
     fingerprint: Optional[str] = Field(default=None, index=True)
+    # Workflow (WP7). due_at defaults from the workspace's severity SLA at first
+    # detection and is carried forward unchanged to later occurrences — the SLA
+    # clock starts when the problem was first seen, not when it was last seen.
+    due_at: Optional[datetime] = Field(default=None, index=True)
+    risk_justification: Optional[str] = Field(default=None)
+    risk_expires_at: Optional[datetime] = Field(default=None, index=True)
+    risk_approved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    risk_approved_at: Optional[datetime] = Field(default=None)
+    verified_at: Optional[datetime] = Field(default=None)
+    # Every scan writes its own rows; workflow state lives on the NEWEST row per
+    # (project, scan_type, fingerprint) and older rows point at their successor.
+    # Soft reference (no FK) on purpose: a self-FK would need its own delete
+    # policy and retention deletes runs — and their findings — out of order.
+    superseded_by_id: Optional[int] = Field(default=None, index=True)
+    # SecurityScan queued to retest this finding after it was marked fixed.
+    retest_scan_id: Optional[int] = Field(default=None)
+    # Where a leak-detection hit was found: {run_id, result_id, case_id, url,
+    # field}. Other scan types leave it NULL (target_url is their location).
+    location: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
 
 class SecurityScan(SQLModel, table=True):
@@ -961,6 +991,67 @@ class SecurityScan(SQLModel, table=True):
     # and cleared once the scan finishes.
     auth_header_name: Optional[str] = Field(default=None)
     auth_header_value: Optional[str] = Field(default=None)
+
+
+class SecurityEventOutbox(SQLModel, table=True):
+    """Transactional outbox for SIEM delivery and security-alert evaluation.
+
+    A row is added in the SAME flush as the audit row it describes (see
+    app/services/siem.py:install_outbox_listener), so an event exists exactly
+    when its audit row committed — never for a rolled-back change, never lost
+    because the process died between commit and send. A beat task drains it.
+
+    No foreign keys: like auditlog, this outlives what it describes. It is
+    instance-level, not workspace data, so it is not part of a workspace purge;
+    the drain deletes rows once both jobs are done and the SIEM_OUTBOX_MAX cap
+    bounds it during a long SIEM outage.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    kind: str = Field(default="audit")  # audit | security_alert | test
+    # Points at the audit row by its chain hash (its id is unknown before the
+    # flush). Indexed on auditlog already.
+    audit_row_hash: Optional[str] = Field(default=None)
+    # Inline event for kinds that are not an audit row.
+    payload: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    needs_delivery: bool = Field(default=False)
+    needs_alert_eval: bool = Field(default=False)
+    attempts: int = Field(default=0)
+    next_attempt_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    last_error: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AccessReviewCampaign(SQLModel, table=True):
+    """A quarterly access review (WP7). workspace_id NULL = instance-wide."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
+    name: str
+    status: str = Field(default="open")  # open | signed_off
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    signed_off_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    signed_off_at: Optional[datetime] = Field(default=None)
+    sign_off_note: Optional[str] = Field(default=None)
+    revocations_applied_at: Optional[datetime] = Field(default=None)
+    revocations_applied_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+
+
+class AccessReviewItem(SQLModel, table=True):
+    """One reviewable grant: a user's access, or an API key. `snapshot` is the
+    access as it stood when the campaign started — the review attests to what
+    the reviewer saw, even if access changes afterwards."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    campaign_id: int = Field(foreign_key="accessreviewcampaign.id", index=True)
+    subject_type: str  # user | api_key
+    subject_id: int
+    label: str
+    snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    decision: Optional[str] = Field(default=None)  # keep | revoke
+    note: Optional[str] = Field(default=None)
+    decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    decided_at: Optional[datetime] = Field(default=None)
+    applied_at: Optional[datetime] = Field(default=None)
+    apply_result: Optional[str] = Field(default=None)
 
 
 class SecuritySettings(SQLModel):
@@ -1006,6 +1097,16 @@ class SecurityFindingRead(SQLModel):
     assignee_id: Optional[int] = None
     resolved_at: Optional[datetime] = None
     fingerprint: Optional[str] = None
+    project_id: Optional[int] = None
+    due_at: Optional[datetime] = None
+    risk_justification: Optional[str] = None
+    risk_expires_at: Optional[datetime] = None
+    risk_approved_by_id: Optional[int] = None
+    risk_approved_at: Optional[datetime] = None
+    verified_at: Optional[datetime] = None
+    superseded_by_id: Optional[int] = None
+    retest_scan_id: Optional[int] = None
+    location: Optional[dict] = None
 
 
 class SecurityScanRead(SQLModel):

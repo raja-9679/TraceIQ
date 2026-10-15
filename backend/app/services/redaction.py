@@ -78,8 +78,10 @@ DEFAULT_BODY_KEYS: Tuple[str, ...] = (
 )
 
 #: Value patterns enabled unless a policy says otherwise. Each is either
-#: checksum-validated or structurally unambiguous.
-DEFAULT_PATTERNS: Tuple[str, ...] = ("pan", "aadhaar", "jwt")
+#: checksum-validated or structurally unambiguous. `cloud_keys` (WP7) is a
+#: family of vendor credential formats — each has a fixed, documented prefix, so
+#: none of them collides with ordinary test data the way email/phone would.
+DEFAULT_PATTERNS: Tuple[str, ...] = ("pan", "aadhaar", "jwt", "cloud_keys")
 
 
 def _normalize_key(key: str) -> str:
@@ -182,6 +184,29 @@ _PAN_RE = re.compile(r"(?<![\d.])(?:\d[ -]?){12,18}\d(?![\d.])")
 _AADHAAR_RE = re.compile(r"(?<![\d.])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\d.])")
 _JWT_RE = re.compile(r"eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}")
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+
+#: Vendor credential formats, as (token name, regex). Mirrored in redact.ts as
+#: CLOUD_KEY_PATTERNS and reused by app/services/leak_detection.py, which turns
+#: the same hits (and the markers they leave behind) into security findings.
+#: The PEM rule runs to the END line, or to the end of the text when a capture
+#: was truncated mid-key — a partial private key is still a private key.
+CLOUD_KEY_PATTERNS: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
+    ("private_key", re.compile(
+        r"-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)")),
+    ("aws_access_key", re.compile(r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])")),
+    ("github_token", re.compile(
+        r"(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})")),
+    ("slack_token", re.compile(r"(?<![A-Za-z0-9])xox[abposr]-[A-Za-z0-9-]{10,}")),
+    ("stripe_key", re.compile(r"(?<![A-Za-z0-9])[sr]k_live_[A-Za-z0-9]{20,}")),
+    ("google_api_key", re.compile(r"(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])")),
+    ("azure_storage_key", re.compile(r"(?<=AccountKey=)[A-Za-z0-9+/]{86}==")),
+)
+
+
+def _sub_cloud_keys(text: str) -> str:
+    for name, pattern in CLOUD_KEY_PATTERNS:
+        text = pattern.sub(_token(name), text)
+    return text
 _PHONE_RE = re.compile(r"(?<![\d.])\+?\d[\d ()-]{8,16}\d(?![\d.])")
 
 
@@ -204,6 +229,7 @@ def _sub_aadhaar(text: str) -> str:
 
 
 _PATTERN_FUNCS = {
+    "cloud_keys": _sub_cloud_keys,
     "pan": _sub_pan,
     "aadhaar": _sub_aadhaar,
     "jwt": lambda t: _JWT_RE.sub(_token("jwt"), t),
@@ -211,9 +237,11 @@ _PATTERN_FUNCS = {
     "phone": lambda t: _PHONE_RE.sub(_token("phone"), t),
 }
 
-# Order matters: JWT before PAN so a token's digit runs are already gone, and
-# Aadhaar before PAN so a 12-digit id is not first swallowed by the PAN regex.
-_PATTERN_ORDER = ("jwt", "aadhaar", "pan", "email", "phone")
+# Order matters: cloud keys first, because an AWS key id's digit run could
+# otherwise be half-eaten by the PAN rule and survive unrecognisable; JWT before
+# PAN so a token's digit runs are already gone; Aadhaar before PAN so a 12-digit
+# id is not first swallowed by the PAN regex.
+_PATTERN_ORDER = ("cloud_keys", "jwt", "aadhaar", "pan", "email", "phone")
 
 
 def redact_text(text: Optional[str], policy: RedactionPolicy = DEFAULT_POLICY) -> Optional[str]:

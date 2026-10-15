@@ -54,6 +54,18 @@ def _poll_to_complete(status_fn, timeout_s: int, interval_s: int = 3) -> bool:
     return False
 
 
+def _same_target(session: Session, finding: SecurityFinding, scan: SecurityScan) -> bool:
+    """Only a LATER scan of the same target URL and the same kind can verify a
+    fix: a baseline scan never runs the active rules, so it cannot vouch for a
+    finding an active scan produced."""
+    if not finding.scan_id or finding.scan_id == scan.id:
+        return False
+    source = session.get(SecurityScan, finding.scan_id)
+    return bool(source and source.id < scan.id
+                and source.target_url == scan.target_url
+                and source.scan_type == scan.scan_type)
+
+
 def _fail(session: Session, scan: SecurityScan, msg: str):
     scan.status = "error"
     scan.error = msg[:1000]
@@ -151,35 +163,31 @@ def run_zap_scan(self, scan_id: int):
             # finding outside its subtree.
             findings = map_alerts(client.alerts(_scan_origin(scan.target_url)))
 
-            # Carry triage forward: a finding marked false_positive in the
-            # previous completed scan of this project+target stays
-            # false_positive instead of resurfacing as open every scan.
-            from sqlmodel import select as _select
-
-            from app.models import SecurityScan as _Scan
+            # Workflow carry-forward (owner, due date, false-positive and
+            # risk-acceptance verdicts; re-open of fixes that came back) and
+            # retest verification live in finding_lifecycle, shared with the
+            # passive and leak passes.
+            from app.services import finding_lifecycle as lifecycle
             from app.services.passive_security import finding_fingerprint
-            prev_scan = s.exec(_select(_Scan).where(
-                _Scan.project_id == scan.project_id,
-                _Scan.target_url == scan.target_url,
-                _Scan.status == "completed",
-                _Scan.id != scan.id).order_by(_Scan.finished_at.desc())).first()
-            prev_fp_status: dict = {}
-            if prev_scan:
-                for pf in s.exec(_select(SecurityFinding).where(
-                        SecurityFinding.scan_id == prev_scan.id)).all():
-                    if pf.fingerprint:
-                        prev_fp_status[pf.fingerprint] = pf.status
 
             counts = {"high": 0, "medium": 0, "low": 0, "info": 0}
+            rows = []
             for f in findings:
                 counts[f["severity"]] = counts.get(f["severity"], 0) + 1
                 fp = finding_fingerprint(f["category"], f["title"], f["target_url"])
-                s.add(SecurityFinding(
+                row = SecurityFinding(
                     scan_id=scan.id, project_id=scan.project_id, scan_type="zap",
                     category=f["category"], severity=f["severity"], title=f["title"],
                     description=f["description"], evidence=f["evidence"],
-                    target_url=f["target_url"], fingerprint=fp,
-                    status="false_positive" if prev_fp_status.get(fp) == "false_positive" else "open"))
+                    target_url=f["target_url"], fingerprint=fp, status="open")
+                s.add(row)
+                rows.append(row)
+            lifecycle.ingest(s, rows, project_id=scan.project_id, scan_type="zap")
+            lifecycle.verify_fixes(
+                s, project_id=scan.project_id, scan_type="zap",
+                produced=[r.fingerprint for r in rows],
+                in_scope=lambda finding: _same_target(s, finding, scan),
+                evidence={"verified_by_scan_id": scan.id})
 
             scan.counts = counts
             scan.status = "completed"
