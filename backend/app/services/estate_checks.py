@@ -1,10 +1,10 @@
 """Estate & perimeter checks (WP9) — the logic, without the I/O wiring.
 
 Every check takes its network access as an argument (a `DnsClient`, a fetch
-function, a connect function) so the whole rubric is testable against local
-fakes and the Celery task decides what is actually allowed to touch the
-network. `app/tasks/estate_tasks.py` provides the real implementations, all of
-which go through `app/core/net_guard.py`.
+function, a certificate reader — bundled as `Net`) so the whole rubric is
+testable against local fakes. `app/services/estate_net.py` provides the real
+implementations; every HTTP(S) request there goes through
+`app/core/net_guard.py` with certificate verification on.
 
 Passive only (any allowlisted host): DNS lookups, certificate transparency,
 an ordinary verified HTTPS request (certificate expiry, HSTS, HTTP→HTTPS
@@ -47,6 +47,7 @@ RUBRIC: Dict[str, Tuple[int, str]] = {
     "dkim_missing": (5, "No DKIM key found for the checked selectors on a domain that receives mail."),
     "caa_missing": (2, "No CAA record: any certificate authority may issue for this domain."),
     "dnssec_missing": (2, "No DNSKEY published: DNS answers for this zone cannot be authenticated."),
+    "cert_untrusted": (25, "The certificate failed normal browser verification (expired, wrong name or untrusted issuer)."),
     "cert_expiring_7": (10, "Certificate expires within 7 days."),
     "cert_expiring_14": (5, "Certificate expires within 14 days."),
     "cert_expiring_30": (2, "Certificate expires within 30 days."),
@@ -507,8 +508,49 @@ def check_takeover(dns: DnsClient, host: str, fetch: Optional[Fetch]) -> Check:
 
 
 # ---------------------------------------------------------------------------
-# TLS
+# TLS — what an ordinary, verified HTTPS visit shows
 # ---------------------------------------------------------------------------
+
+class CertUntrusted(Exception):
+    """The verified handshake failed on the certificate itself."""
+
+
+class Unreachable(Exception):
+    """No HTTPS (or HTTP) answer at all — not a finding, just unknown."""
+
+
+CERT_THRESHOLDS = ((7, "cert_expiring_7", "fail"), (14, "cert_expiring_14", "warn"),
+                   (30, "cert_expiring_30", "warn"))
+
+
+def days_until(not_after_iso: str, now: datetime) -> int:
+    exp = datetime.fromisoformat(not_after_iso)
+    if exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    return int((exp - now).total_seconds() // 86400)
+
+
+def check_certificate(facts: Optional[Dict[str, Any]], now: datetime,
+                      untrusted: Optional[str] = None) -> Check:
+    base = dict(id="certificate", family="tls", title="Certificate", finding_category="tls",
+                explanation="Read from a normal verified HTTPS connection, the same one a browser makes.")
+    if untrusted is not None:
+        return Check(**base, status="fail", rubric="cert_untrusted",
+                     summary=f"Certificate verification failed: {untrusted}"[:300],
+                     finding_title="Certificate fails verification")
+    if not facts:
+        return Check(**base, status="info", summary="No certificate observed")
+    days = days_until(facts["not_after"], now)
+    evidence = f"issuer {facts.get('issuer')}; expires {facts['not_after']}"
+    for limit, rubric, status in CERT_THRESHOLDS:
+        if days <= limit:
+            return Check(**base, status=status, rubric=rubric, evidence=evidence,
+                         summary=f"Certificate expires in {days} day(s)",
+                         finding_title=f"Certificate expires within {limit} days")
+    return Check(**base, status="pass", evidence=evidence,
+                 summary=f"Certificate valid for {days} more day(s)")
 
 
 
@@ -567,6 +609,36 @@ def parse_hsts(value: Optional[str]) -> Optional[Dict[str, Any]]:
 SIX_MONTHS = 15_768_000
 
 
+def check_hsts(headers: Dict[str, str]) -> Check:
+    low = {k.lower(): v for k, v in (headers or {}).items()}
+    raw = low.get("strict-transport-security")
+    hsts = parse_hsts(raw)
+    base = dict(id="hsts", family="tls", title="HSTS", finding_category="tls",
+                explanation="Strict-Transport-Security makes browsers refuse plain HTTP for this host.")
+    if not hsts:
+        return Check(**base, status="warn", rubric="hsts_missing", summary="No HSTS header",
+                     finding_title="HSTS header missing")
+    if hsts["max_age"] < SIX_MONTHS:
+        return Check(**base, status="warn", rubric="hsts_short", evidence=raw,
+                     summary=f"HSTS max-age is {hsts['max_age']} seconds",
+                     finding_title="HSTS max-age under 6 months")
+    return Check(**base, status="pass", evidence=raw, summary="HSTS enabled")
+
+
+def check_http_redirect(status: Optional[int], location: Optional[str]) -> Check:
+    """`status` None means plain HTTP did not answer at all, which is fine."""
+    base = dict(id="http_redirect", family="tls", title="HTTP → HTTPS", finding_category="tls",
+                explanation="Plain-HTTP visitors should be sent to HTTPS straight away.")
+    if status is None:
+        return Check(**base, status="info", summary="Plain HTTP is not served")
+    if 300 <= status < 400 and (location or "").lower().startswith("https://"):
+        return Check(**base, status="pass", summary=f"HTTP {status} to {location}"[:300])
+    return Check(**base, status="warn", rubric="http_no_redirect",
+                 summary=f"Plain HTTP answers {status} without redirecting to HTTPS",
+                 finding_title="HTTP does not redirect to HTTPS")
+
+
+
 def _shingles(text: str, n: int = 3) -> set:
     words = text.split()
     if len(words) < n:
@@ -622,3 +694,75 @@ class DomainReport:
 
     def score(self) -> Tuple[int, List[Dict[str, Any]]]:
         return score_checks(self.checks)
+
+
+# ---------------------------------------------------------------------------
+# One host, end to end
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Net:
+    """Network access for a scan. Real implementations: app/services/estate_net.py."""
+    dns: DnsClient
+    # url -> (status, headers, body); never follows redirects; raises Unreachable.
+    fetch: Optional[Fetch] = None
+    # host -> cert_facts(); raises CertUntrusted / Unreachable.
+    cert: Optional[Callable[[str], Dict[str, Any]]] = None
+    # apex -> crt.sh JSON entries.
+    ct: Optional[Callable[[str], Any]] = None
+
+
+def scan_host(net: Net, host: str, *, is_apex: Optional[bool] = None,
+              dkim_selectors: Iterable[str] = (), now: Optional[datetime] = None) -> DomainReport:
+    """Every passive check for one host. A family only counts as having run
+    (and so may resolve earlier findings) when it got real answers."""
+    now = now or datetime.now(timezone.utc)
+    rep = DomainReport(host=host)
+    rep.is_apex = is_zone_apex(net.dns, host) if is_apex is None else bool(is_apex)
+    if rep.is_apex:
+        try:
+            rep.checks += domain_dns_checks(net.dns, host, dkim_selectors)
+            rep.families.add("dns")
+        except DnsError as e:
+            rep.checks.append(Check(id="dns", family="dns", title="DNS", status="error",
+                                    summary=f"DNS lookups failed: {e}"[:300]))
+    rep.checks.append(check_takeover(net.dns, host, net.fetch))
+    rep.families.add("takeover")
+
+    https_ok = False
+    if net.cert is not None:
+        try:
+            facts = net.cert(host)
+            rep.checks.append(check_certificate(facts, now))
+            rep.cert_expires_at = datetime.fromisoformat(facts["not_after"]).replace(tzinfo=None)
+            https_ok = True
+        except CertUntrusted as e:
+            rep.checks.append(check_certificate(None, now, untrusted=str(e)))
+            rep.families.add("tls")
+        except Unreachable as e:
+            rep.checks.append(Check(id="certificate", family="tls", title="Certificate", status="info",
+                                    summary=f"HTTPS not reachable: {e}"[:300]))
+    if https_ok and net.fetch is not None:
+        try:
+            _status, headers, _body = net.fetch(f"https://{host}/")
+            rep.checks.append(check_hsts(headers))
+            try:
+                st, h, _ = net.fetch(f"http://{host}/")
+                rep.checks.append(check_http_redirect(st, {k.lower(): v for k, v in h.items()}.get("location")))
+            except Unreachable:
+                rep.checks.append(check_http_redirect(None, None))
+            rep.families.add("tls")
+        except Unreachable as e:
+            rep.checks.append(Check(id="hsts", family="tls", title="HSTS", status="info",
+                                    summary=f"HTTPS request failed: {e}"[:300]))
+    return rep
+
+
+def discover_subdomains(net: Net, apex: str, cap: int = CT_MAX_SUBDOMAINS) -> Tuple[List[str], Optional[str]]:
+    """Hostnames under `apex` from certificate transparency, or ([], why not)."""
+    if net.ct is None:
+        return [], "certificate transparency lookup not available"
+    try:
+        return parse_ct_entries(net.ct(apex), apex, cap), None
+    except Exception as e:  # noqa: BLE001 — crt.sh is often slow; a scan goes on without it
+        return [], f"certificate transparency lookup failed: {e}"[:300]

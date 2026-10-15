@@ -20,6 +20,8 @@ bcrypt==4.0.1
 passlib[bcrypt]==1.7.4
 python-jose[cryptography]==3.4.0
 croniter==2.0.2
+# Estate scanning (WP9): SPF/DMARC/DKIM/CAA/DNSSEC/CNAME lookups.
+dnspython==2.7.0
 slowapi==0.1.9
 anthropic==0.39.0
 PyYAML==6.0.1

@@ -1,11 +1,11 @@
 """estate & perimeter scanning (WP9)
 
 Revision ID: c9a2b3c4d5ea
-Revises: c4a2b3c4d5e4
+Revises: c7a2b3c4d5e7
 Create Date: 2026-10-15 20:00:00.000000
 
-Adds estate / estatedomain / estatescan / estatedomainresult (domain checks,
-TLS grade, port exposure, score history) and monitoredpage / pagescript /
+Adds estate / estatedomain / estatescan / estatedomainresult (passive domain
+checks and score history) and monitoredpage / pagescript /
 pagechangeevent (third-party script inventory + defacement monitoring).
 """
 from typing import Sequence, Union
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 import sqlmodel
 
 revision: str = 'c9a2b3c4d5ea'
-down_revision: Union[str, None] = 'c4a2b3c4d5e4'
+down_revision: Union[str, None] = 'c7a2b3c4d5e7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
@@ -30,10 +30,6 @@ def upgrade() -> None:
         sa.Column('name', _S(), nullable=False),
         sa.Column('dkim_selectors', sa.JSON(), nullable=True),
         sa.Column('discover_subdomains', sa.Boolean(), nullable=False),
-        sa.Column('check_ports', sa.Boolean(), nullable=False),
-        sa.Column('check_waf', sa.Boolean(), nullable=False),
-        sa.Column('active_authorized_at', sa.DateTime(), nullable=True),
-        sa.Column('active_authorized_by_id', sa.Integer(), nullable=True),
         sa.Column('cron_expression', _S(), nullable=False),
         sa.Column('schedule_enabled', sa.Boolean(), nullable=False),
         sa.Column('next_scan_at', sa.DateTime(), nullable=True),
@@ -43,7 +39,6 @@ def upgrade() -> None:
         sa.Column('created_by_id', sa.Integer(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(['active_authorized_by_id'], ['users.id']),
         sa.ForeignKeyConstraint(['created_by_id'], ['users.id']),
         sa.ForeignKeyConstraint(['project_id'], ['project.id']),
         sa.PrimaryKeyConstraint('id'),
@@ -58,9 +53,7 @@ def upgrade() -> None:
         sa.Column('hostname', _S(), nullable=False),
         sa.Column('source', _S(), nullable=False),
         sa.Column('is_apex', sa.Boolean(), nullable=True),
-        sa.Column('origin_host', _S(), nullable=True),
         sa.Column('score', sa.Integer(), nullable=True),
-        sa.Column('tls_grade', _S(), nullable=True),
         sa.Column('cert_expires_at', sa.DateTime(), nullable=True),
         sa.Column('cert_alert_sent_days', sa.Integer(), nullable=True),
         sa.Column('last_scanned_at', sa.DateTime(), nullable=True),
@@ -77,7 +70,6 @@ def upgrade() -> None:
         sa.Column('estate_id', sa.Integer(), nullable=False),
         sa.Column('status', _S(), nullable=False),
         sa.Column('trigger', _S(), nullable=False),
-        sa.Column('active', sa.Boolean(), nullable=False),
         sa.Column('summary', sa.JSON(), nullable=True),
         sa.Column('error', _S(), nullable=True),
         sa.Column('requested_by_id', sa.Integer(), nullable=True),
@@ -96,7 +88,6 @@ def upgrade() -> None:
         sa.Column('scan_id', sa.Integer(), nullable=False),
         sa.Column('domain_id', sa.Integer(), nullable=False),
         sa.Column('score', sa.Integer(), nullable=False),
-        sa.Column('tls_grade', _S(), nullable=True),
         sa.Column('checks', sa.JSON(), nullable=True),
         sa.Column('deductions', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),

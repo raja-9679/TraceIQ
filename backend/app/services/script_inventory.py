@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import base64
 import hashlib
-from html.parser import HTMLParser
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urljoin, urlsplit
 
@@ -77,7 +76,9 @@ def build_entries(raw_scripts: Iterable[Dict[str, Any]], page_url: str,
                   external_hashes: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
     """Normalise observed scripts.
 
-    raw: {"src": str|None, "inline": str|None, "integrity": str|None, "type": str|None}
+    raw: {"src", "inline" | "inline_sha384", "integrity", "type"} — the worker
+    sends `inline_sha384` (hashed at capture) rather than inline source, so a
+    token embedded in an inline config script never leaves the worker.
     external_hashes: absolute script URL -> sha384 of the body as fetched.
     """
     external_hashes = external_hashes or {}
@@ -97,6 +98,10 @@ def build_entries(raw_scripts: Iterable[Dict[str, Any]], page_url: str,
                 entry = {"script_key": script_key_for(absolute), "kind": "external", "src": absolute[:2000],
                          "sha384": external_hashes.get(absolute), "integrity": (s.get("integrity") or None),
                          "third_party": is_third_party(absolute, page_url)}
+        elif s.get("inline_sha384"):
+            digest = str(s["inline_sha384"])[:120]
+            entry = {"script_key": "inline:" + digest, "kind": "inline", "src": None, "sha384": digest,
+                     "integrity": None, "third_party": False}
         else:
             body = (s.get("inline") or "")
             if not body.strip():
@@ -196,48 +201,3 @@ def defacement_signals(page: Any, text: str, element_texts: Dict[str, Optional[s
         sim = round(text_similarity(page.content_baseline, norm), 3)
     return sim, keyword_hits(text, page.forbidden_keywords or []), \
         evaluate_element_checks(page.element_checks or [], element_texts)
-
-
-# ---------------------------------------------------------------------------
-# Static HTML extraction (fallback when no headless browser is available)
-# ---------------------------------------------------------------------------
-
-class _Extractor(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.scripts: List[Dict[str, Any]] = []
-        self.text: List[str] = []
-        self._in_script: Optional[Dict[str, Any]] = None
-        self._skip = 0
-
-    def handle_starttag(self, tag, attrs):
-        a = dict(attrs)
-        if tag == "script":
-            self._in_script = {"src": a.get("src"), "integrity": a.get("integrity"),
-                               "type": a.get("type"), "inline": ""}
-        elif tag in ("style", "noscript", "template"):
-            self._skip += 1
-
-    def handle_endtag(self, tag):
-        if tag == "script" and self._in_script is not None:
-            self.scripts.append(self._in_script)
-            self._in_script = None
-        elif tag in ("style", "noscript", "template") and self._skip:
-            self._skip -= 1
-
-    def handle_data(self, data):
-        if self._in_script is not None:
-            if not self._in_script.get("src"):
-                self._in_script["inline"] += data
-        elif not self._skip:
-            self.text.append(data)
-
-
-def extract_from_html(html: str) -> Dict[str, Any]:
-    p = _Extractor()
-    try:
-        p.feed(html or "")
-        p.close()
-    except Exception:  # noqa: BLE001 — malformed markup yields what was parsed
-        pass
-    return {"scripts": p.scripts, "text": " ".join(p.text)}

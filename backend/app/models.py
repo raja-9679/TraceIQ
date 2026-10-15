@@ -2690,10 +2690,9 @@ class Estate(SQLModel, table=True):
     triage endpoints and access checks apply to them unchanged. The workspace
     view is a join through project.
 
-    Active checks (port probing, WAF detection strings, origin bypass) run only
-    while `active_authorized_at` is set — the stored form of the same
-    "authorized" attestation a manual scan requires, because scheduled scans
-    have no caller to attest on each run. Clearing it switches them off.
+    Passive checks only (DNS, certificate transparency, ordinary verified
+    HTTPS requests). Active probing is parked — SCOPE_NOTES.md "Estate: active
+    probing" — so there are deliberately no opt-in columns for it here.
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     project_id: int = Field(foreign_key="project.id", index=True)
@@ -2701,10 +2700,6 @@ class Estate(SQLModel, table=True):
     # Extra DKIM selectors to try on top of the common ones.
     dkim_selectors: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     discover_subdomains: bool = Field(default=True)
-    check_ports: bool = Field(default=False)
-    check_waf: bool = Field(default=False)
-    active_authorized_at: Optional[datetime] = None
-    active_authorized_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     cron_expression: str = Field(default="0 3 * * *")
     schedule_enabled: bool = Field(default=True)
     next_scan_at: Optional[datetime] = Field(default=None, index=True)
@@ -2727,10 +2722,7 @@ class EstateDomain(SQLModel, table=True):
     # None = decide by DNS (an SOA answer at the name means zone apex). Email
     # checks (SPF/DMARC/DKIM/MX) only make sense at an apex.
     is_apex: Optional[bool] = None
-    # Origin server for the CDN-bypass check (IP or hostname), user-supplied.
-    origin_host: Optional[str] = None
     score: Optional[int] = None
-    tls_grade: Optional[str] = None
     cert_expires_at: Optional[datetime] = None
     # Smallest cert_alert_days threshold already alerted for the current
     # certificate; reset when the expiry moves (renewal).
@@ -2744,8 +2736,6 @@ class EstateScan(SQLModel, table=True):
     estate_id: int = Field(foreign_key="estate.id", index=True)
     status: str = Field(default="pending")    # pending | running | completed | error
     trigger: str = Field(default="manual")    # manual | schedule
-    # Whether active checks were permitted for this scan (attestation present).
-    active: bool = Field(default=False)
     summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     error: Optional[str] = None
     requested_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
@@ -2761,7 +2751,6 @@ class EstateDomainResult(SQLModel, table=True):
     scan_id: int = Field(foreign_key="estatescan.id", index=True)
     domain_id: int = Field(foreign_key="estatedomain.id", index=True)
     score: int
-    tls_grade: Optional[str] = None
     checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
     deductions: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
