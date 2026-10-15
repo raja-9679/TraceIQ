@@ -7,7 +7,7 @@
 
 const core = require('@actions/core');
 const { decideSelection, reviewNotes } = require('./selection');
-const { mdCell, gateSection } = require('./markdown');
+const { mdCell, gateSection, failuresSection } = require('./markdown');
 const github = require('@actions/github');
 
 const TERMINAL = new Set(['passed', 'failed', 'error']);
@@ -81,6 +81,13 @@ async function triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, tr
 
 async function getRun(baseUrl, headers, runId) {
     return await http('GET', `${baseUrl}/api/runs/${runId}`, headers);
+}
+
+// Failing results with the failing step, a truncated error and a presigned
+// screenshot URL that expires (the server caps it and only signs keys under
+// this run's prefix). Older servers 404 this; the comment just omits it.
+async function getFailures(baseUrl, headers, runId) {
+    return await http('GET', `${baseUrl}/api/runs/${runId}/failures`, headers);
 }
 
 // Per-project CI config (opt-in). { enabled, enforce_gate, post_pr_comment }.
@@ -255,7 +262,7 @@ function failureAnalysisSection(runs) {
     return ['### Failure analysis', '', ...blocks];
 }
 
-function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced }) {
+function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced, failures }) {
     const runCount = runs.filter(Boolean).length;
     const lines = [
         COMMENT_MARKER,
@@ -266,6 +273,7 @@ function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCt
         (gitCtx.sha ? ` on commit \`${gitCtx.sha.slice(0, 8)}\`` : ''),
         '',
         ...gateSection(gate, gateEnforced),
+        ...failuresSection(failures, baseUrl),
         ...selectionSection(selection),
         '',
         ...resultsSection(runs, baseUrl),
@@ -457,7 +465,17 @@ async function main() {
         const commentAllowed = postComment && (ciSettings ? ciSettings.post_pr_comment !== false : true);
         if (commentAllowed && gitCtx.prNumber && octokit) {
             try {
-                const body = buildComment({ runs: finalRuns, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced });
+                const failures = [];
+                for (const r of finalRuns) {
+                    if (!r || !FAILING.has((r.status || '').toLowerCase())) continue;
+                    try {
+                        const f = await getFailures(baseUrl, headers, r.id);
+                        failures.push({ runId: r.id, failures: f.failures || [] });
+                    } catch (err) {
+                        core.warning(`Could not fetch failure details for run ${r.id}: ${err.message}`);
+                    }
+                }
+                const body = buildComment({ runs: finalRuns, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced, failures });
                 await upsertPrComment(octokit, gitCtx.prNumber, body);
             } catch (err) {
                 core.warning(`Failed to post PR comment: ${err.message}`);
