@@ -36,6 +36,8 @@ export class TestExecutor {
         'set-network-latency', 'switch-frame', 'switch-tab', 'totp', 'uncheck',
         'upload-file', 'verify-nth-child', 'wait-for-email', 'wait-for-response',
         'wait-for-selector', 'wait-for-webhook', 'wait-timeout',
+        // Security assertions (./security-steps.ts).
+        'expect-header', 'expect-cookie-flags', 'expect-blocked-after', 'expect-session-dead',
     ];
 
     /**
@@ -364,6 +366,14 @@ export class TestExecutor {
                 }
 
                 return allResults[0];
+            }
+
+            case 'expect-header':
+            case 'expect-cookie-flags':
+            case 'expect-blocked-after':
+            case 'expect-session-dead': {
+                const { executeSecurityStep } = require('./security-steps');
+                return executeSecurityStep(page, context, step, globalSettings, resolve);
             }
 
             case 'oauth2-token': {

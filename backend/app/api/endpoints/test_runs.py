@@ -49,6 +49,11 @@ class RunCreateContext(BaseModel):
     # project's stored auth session). Must belong to this suite's workspace,
     # and to this project when the persona is project-scoped.
     persona_id: Optional[int] = None
+    # Identity-matrix run: the same selection once per persona (each run is a
+    # normal persona run), sharing one `matrix_group` id. `include_anonymous`
+    # adds a column with no session at all. Not combinable with persona_id.
+    persona_ids: Optional[List[int]] = None
+    include_anonymous: bool = False
     # Targeted run: execute exactly these cases (each with its own suite's
     # inherited settings). Must all lie in suite_id's subtree. Not combinable
     # with case_id or tags. See docs/superpowers/specs/2026-10-14-targeted-runs-design.md.
@@ -178,21 +183,34 @@ async def create_run(
 
     # A persona carries live session cookies for some identity; one from
     # another workspace (or another project) must never be usable here.
+    from app.services.access_matrix import validate_personas
     if context and context.persona_id:
-        from app.models import Persona
-        persona = await session.get(Persona, context.persona_id)
-        if (not persona or persona.workspace_id != _ws_id
-                or (persona.project_id and persona.project_id != suite.project_id)):
-            raise HTTPException(
-                status_code=400,
-                detail="persona_id does not belong to this project")
-        # A workspace-wide persona isn't covered by this project's access:
-        # using it hands the run another identity's live session, so require
-        # the same workspace-editor role that managing personas requires.
-        if persona.project_id is None:
-            from app.api.personas import _ensure_editor
-            await _ensure_editor(_ws_id, current_user.id, session)
+        if context.persona_ids:
+            raise HTTPException(status_code=400,
+                                detail="persona_id cannot be combined with persona_ids")
+        await validate_personas(session, [context.persona_id], _ws_id,
+                                suite.project_id, current_user.id)
         run_defaults["persona_id"] = context.persona_id
+
+    # Identity columns: [None] is the ordinary single run. A matrix request
+    # repeats the whole selection once per column (persona id, or "anon").
+    identity_columns: List[Any] = [None]
+    if context and (context.persona_ids or context.include_anonymous):
+        wanted_personas = list(dict.fromkeys(context.persona_ids or []))
+        if len(wanted_personas) + int(context.include_anonymous) > 20:
+            raise HTTPException(status_code=400, detail="at most 20 identities per matrix run")
+        if not wanted_personas and not context.persona_id:
+            raise HTTPException(status_code=400,
+                                detail="include_anonymous needs persona_ids")
+        await validate_personas(session, wanted_personas, _ws_id, suite.project_id,
+                                current_user.id, field="persona_ids")
+        identity_columns = list(wanted_personas)
+        if context.persona_id and not wanted_personas:
+            identity_columns = [context.persona_id]
+        if context.include_anonymous:
+            identity_columns.append("anon")
+        import uuid as _uuid
+        run_defaults["matrix_group"] = _uuid.uuid4().hex
 
     # ── Execution-matrix resolution ──────────────────────────────────────
     # Precedence per test case:
@@ -324,68 +342,74 @@ async def create_run(
 
                 await find_and_process_separate_descendants(s_id)
 
-        if targeted_cases:
-            for case in targeted_cases:
-                case_settings = await test_service.get_effective_settings(case.test_suite_id, session)
-                case_path = await test_service.get_suite_path(case.test_suite_id, session)
-                case_browsers, case_devices = _resolve_matrix(case, case_settings)
+        for identity in identity_columns:
+            # Mutated per column; every TestRun(...) below reads it via **run_defaults.
+            if identity == "anon":
+                run_defaults["persona_id"], run_defaults["anonymous"] = None, True
+            elif identity is not None:
+                run_defaults["persona_id"], run_defaults["anonymous"] = identity, None
+            if targeted_cases:
+                for case in targeted_cases:
+                    case_settings = await test_service.get_effective_settings(case.test_suite_id, session)
+                    case_path = await test_service.get_suite_path(case.test_suite_id, session)
+                    case_browsers, case_devices = _resolve_matrix(case, case_settings)
+                    for target_browser in case_browsers:
+                        for target_device in case_devices:
+                            run = TestRun(
+                                status=TestStatus.PENDING,
+                                test_suite_id=case.test_suite_id,
+                                test_case_id=case.id,
+                                project_id=suite.project_id,
+                                suite_name=case_path,
+                                test_case_name=case.name,
+                                request_headers=case_settings.get("headers", {}),
+                                request_params=case_settings.get("params", {}),
+                                allowed_domains=case_settings.get("allowed_domains", []),
+                                domain_settings=case_settings.get("domain_settings", {}),
+                                browser=target_browser,
+                                device=target_device,
+                                user_id=current_user.id,
+                                selection_mode="targeted",
+                                selection_total=selection_total,
+                                **run_defaults,
+                            )
+                            session.add(run)
+                            await session.flush()
+                            created_runs.append(run)
+            # If a specific case is requested, just run that case
+            elif case_id:
+                suite_path = await test_service.get_suite_path(suite_id, session)
+                case = await session.get(TestCase, case_id)
+                test_case_name = case.name if case else None
+                case_browsers, case_devices = _resolve_matrix(case, effective_settings)
                 for target_browser in case_browsers:
                     for target_device in case_devices:
                         run = TestRun(
                             status=TestStatus.PENDING,
-                            test_suite_id=case.test_suite_id,
-                            test_case_id=case.id,
+                            test_suite_id=suite_id,
+                            test_case_id=case_id,
                             project_id=suite.project_id,
-                            suite_name=case_path,
-                            test_case_name=case.name,
-                            request_headers=case_settings.get("headers", {}),
-                            request_params=case_settings.get("params", {}),
-                            allowed_domains=case_settings.get("allowed_domains", []),
-                            domain_settings=case_settings.get("domain_settings", {}),
+                            suite_name=suite_path,
+                            test_case_name=test_case_name,
+                            request_headers=effective_settings.get("headers", {}),
+                            request_params=effective_settings.get("params", {}),
+                            allowed_domains=effective_settings.get(
+                                "allowed_domains", []),
+                            domain_settings=effective_settings.get(
+                                "domain_settings", {}),
                             browser=target_browser,
                             device=target_device,
                             user_id=current_user.id,
-                            selection_mode="targeted",
+                            selection_mode="case",
                             selection_total=selection_total,
                             **run_defaults,
                         )
                         session.add(run)
                         await session.flush()
                         created_runs.append(run)
-        # If a specific case is requested, just run that case
-        elif case_id:
-            suite_path = await test_service.get_suite_path(suite_id, session)
-            case = await session.get(TestCase, case_id)
-            test_case_name = case.name if case else None
-            case_browsers, case_devices = _resolve_matrix(case, effective_settings)
-            for target_browser in case_browsers:
-                for target_device in case_devices:
-                    run = TestRun(
-                        status=TestStatus.PENDING,
-                        test_suite_id=suite_id,
-                        test_case_id=case_id,
-                        project_id=suite.project_id,
-                        suite_name=suite_path,
-                        test_case_name=test_case_name,
-                        request_headers=effective_settings.get("headers", {}),
-                        request_params=effective_settings.get("params", {}),
-                        allowed_domains=effective_settings.get(
-                            "allowed_domains", []),
-                        domain_settings=effective_settings.get(
-                            "domain_settings", {}),
-                        browser=target_browser,
-                        device=target_device,
-                        user_id=current_user.id,
-                        selection_mode="case",
-                        selection_total=selection_total,
-                        **run_defaults,
-                    )
-                    session.add(run)
-                    await session.flush()
-                    created_runs.append(run)
-        else:
-            # Run the suite recursively
-            await process_suite(suite_id, effective_settings)
+            else:
+                # Run the suite recursively
+                await process_suite(suite_id, effective_settings)
 
         await session.commit()
         for r in created_runs:

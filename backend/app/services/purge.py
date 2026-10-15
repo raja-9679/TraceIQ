@@ -64,6 +64,14 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("securityfinding",
               f"DELETE FROM securityfinding WHERE scan_id IN ({_SCANS}) "
               f"OR project_id IN ({_PROJECTS}) OR run_id IN ({_RUNS})"),
+    PurgeStep("accessmatrixcell",
+              f"DELETE FROM accessmatrixcell WHERE matrix_run_id IN "
+              f"(SELECT id FROM accessmatrixrun WHERE project_id IN ({_PROJECTS})) "
+              f"OR test_run_id IN ({_RUNS})"),
+    PurgeStep("accessmatrixrun",
+              f"DELETE FROM accessmatrixrun WHERE project_id IN ({_PROJECTS}) "
+              f"OR matrix_id IN (SELECT id FROM accessmatrix WHERE project_id IN ({_PROJECTS}))"),
+    PurgeStep("accessmatrix", f"DELETE FROM accessmatrix WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("monitorcheck", f"DELETE FROM monitorcheck WHERE run_id IN ({_RUNS})"),
     PurgeStep("webhookcapture", f"DELETE FROM webhookcapture WHERE run_id IN ({_RUNS})"),
     PurgeStep("issueticket",
@@ -225,6 +233,12 @@ async def collect_object_keys(session, workspace_id: int) -> List[str]:
                               params={"workspace_id": workspace_id})
     for (run_id,) in runs.all():
         prefixes.append(f"runs/{run_id}/")
+
+    # Page-row screenshots of access-matrix runs.
+    mruns = await session.exec(
+        text(f"SELECT id FROM accessmatrixrun WHERE project_id IN ({_PROJECTS})"),
+        params={"workspace_id": workspace_id})
+    prefixes.extend(f"access-matrix/{mid}/" for (mid,) in mruns.all())
 
     builds = await session.exec(
         text("SELECT file_key FROM mobileappbuild WHERE project_id IN "

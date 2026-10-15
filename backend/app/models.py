@@ -621,6 +621,12 @@ class TestRunBase(SQLModel):
     # run installs and tests. Soft FK (like api_key_id) to stay
     # migration-friendly; irrelevant (None) for web runs.
     app_build_id: Optional[int] = Field(default=None)
+    # Identity-matrix runs (WP4): runs fanned out from one request over
+    # several personas share this id so results can be shown as a grid.
+    matrix_group: Optional[str] = Field(default=None, index=True)
+    # Run with NO identity at all: neither the project's stored session nor
+    # the suite's credential headers. The "anonymous" column of a matrix.
+    anonymous: Optional[bool] = Field(default=None)
 
 
 class UserRead(SQLModel):
@@ -1028,6 +1034,79 @@ class SecurityScanRead(SQLModel):
     # Whether header auth was configured — the value itself is never exposed.
     auth_header_name: Optional[str] = None
     findings: List[SecurityFindingRead] = []
+
+
+# =============================================================================
+# WP4 — Access-control matrix (rows = targets, columns = personas)
+# =============================================================================
+
+
+class AccessMatrix(SQLModel, table=True):
+    """Expected allow/deny per (target, identity) for one project.
+
+    `rows` is a JSON list — each row is a target (`kind` case | request | page)
+    with a stable string `key` and a `cells` map keyed by persona id (as a
+    string) or "anonymous". Kept as JSON rather than child tables because a
+    matrix is edited and executed as a whole; executions snapshot it, so a
+    later edit never rewrites what an earlier run tested. Shape and validation
+    live in `app/services/access_matrix.py`.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    description: Optional[str] = None
+    # Prefix for relative request/page paths (e.g. https://app.example.com).
+    base_url: Optional[str] = None
+    # Column order. Personas are validated against the project at save time
+    # and again at execution (they may have been deleted since).
+    persona_ids: Optional[List[int]] = Field(default=[], sa_column=Column(JSON))
+    include_anonymous: bool = Field(default=False)
+    # Statuses that count as an explicit denial. Default 401/403/404.
+    deny_statuses: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    rows: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AccessMatrixRun(SQLModel, table=True):
+    """One execution of an AccessMatrix: one cell row per non-skip cell."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    matrix_id: int = Field(foreign_key="accessmatrix.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    status: str = Field(default="pending")   # pending | running | completed | error
+    # Shared with the TestRuns created for case rows (TestRun.matrix_group).
+    matrix_group: str = Field(index=True)
+    # The matrix as executed (rows, persona names, deny statuses).
+    snapshot: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    summary: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # The caller attested authorization to send mutating requests.
+    authorized: bool = Field(default=False)
+    error: Optional[str] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    finished_at: Optional[datetime] = None
+
+
+class AccessMatrixCell(SQLModel, table=True):
+    """Expected vs observed for one (row, persona) of a matrix run."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    matrix_run_id: int = Field(foreign_key="accessmatrixrun.id", index=True)
+    row_key: str
+    # Persona id as a string, or "anonymous".
+    persona_key: str
+    expect: str                               # allow | deny
+    expected_status: Optional[int] = None
+    # pending | pass | fail | inconclusive
+    verdict: str = Field(default="pending")
+    reason: Optional[str] = None
+    # Redacted evidence: status, final url, headers, body excerpt, element
+    # presence, screenshot key, swapped id. Never raw secrets.
+    observed: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Case rows execute as a normal TestRun; the run outlives the cell link.
+    test_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
 
 
 class SecurityScanResult(SQLModel):

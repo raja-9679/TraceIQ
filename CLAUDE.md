@@ -399,6 +399,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Identity matrix + access-control matrix (WP4, 2026-10)** — migration
+  `c4a2b3c4d5e4`. `POST /api/runs` body `persona_ids[]` (+ `include_anonymous`)
+  repeats the selection once per identity, sharing `TestRun.matrix_group`;
+  `TestRun.anonymous` strips the project session AND credential headers
+  (`access_matrix_runtime.strip_identity`). Personas validated by the shared
+  `access_matrix.validate_personas` (same rules as `persona_id`).
+  `AccessMatrix` (rows JSON: `case|request|page` targets × persona/`anonymous`
+  columns, cells `allow|deny|skip` + optional status) at
+  `/api/projects/{id}/access-matrices`, `/api/access-matrices/{id}[/run|/runs]`,
+  `/api/access-matrix-runs/{id}`. Execution: case rows → ordinary persona
+  TestRuns; request/page rows → `job_type=access_check` side jobs
+  (`execution-engine/src/access-check.ts`) that only OBSERVE; verdicts are
+  computed in `app/services/access_matrix.py` and folded in by the
+  self-rescheduling `collect_access_matrix_run` task (45 min deadline →
+  `inconclusive`). Rules: request/page rows need project security testing
+  enabled + host on `security_settings.allowed_domains`; any non-GET/HEAD/OPTIONS
+  (including the ID-swap owner request) needs `authorized: true`; the worker
+  re-checks both and only writes `access_check:result:{cell_id}`. A DENY passes
+  only on a deny-set status (401/403/404 + the cell's status) or an absent
+  element on a page that loaded — timeouts/network/5xx/3xx are `inconclusive`.
+  A granted DENY upserts a `SecurityFinding` (`scan_type=access_matrix`,
+  `access_control`, high, fingerprint matrix|row|persona; resolved when fixed,
+  reopened on regression, false_positive sticks); a failed ALLOW is only a
+  summary regression. Evidence redacted by the `redactAccessObservation` /
+  `redact_access_observation` twins; page screenshots at
+  `access-matrix/{run}/{cell}.png` (purge + project delete cover the prefix;
+  run retention does not sweep matrix runs). **Tenant isolation:** create two
+  personas logged in to different tenants, add request rows with `swap`
+  (`owner_persona_id` = tenant A, owner URL lists A's resources, extractor
+  pulls an id, row URL contains `{id}`), expect allow for A and deny for B and
+  anonymous. Security steps `expect-header`, `expect-cookie-flags`,
+  `expect-blocked-after` (needs `params.authorized` + `security_allowlist`,
+  injected at dispatch only when security testing is enabled),
+  `expect-session-dead` (logs out itself so it can replay the old cookies) live
+  in `core/security-steps.ts` — worker image rebuild needed. The matrix grid
+  page in the frontend is NOT built yet (API client in `src/api/accessMatrix.ts`).
 - **Release readiness (2026-10)** — `GET /api/projects/{id}/release-readiness
   ?git_commit=&git_branch=` (viewer; project-scoped API keys honoured — now
   also on `GET .../quality-gate`) returns `verdict` ready | not_ready |

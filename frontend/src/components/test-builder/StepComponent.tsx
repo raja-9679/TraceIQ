@@ -13,11 +13,13 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { SchemaGeneratorModal } from './SchemaGeneratorModal';
+import { SecurityStepFields } from './SecurityStepFields';
+import { SECURITY_STEP_LABELS, isSecurityStep } from './securitySteps';
 import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match' | 'expect-header' | 'expect-cookie-flags' | 'expect-blocked-after' | 'expect-session-dead';
     selector?: string;
     value?: string;
     params?: {
@@ -160,6 +162,8 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
             case 'totp': return { border: 'border-amber-200', bg: 'bg-amber-50 text-amber-600', hue: 'amber', icon: <KeyRound size={18} />, label: '2FA Code' };
             case 'mobile-extract-value': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <ArrowRightToLine size={18} />, label: 'Extract Value (Mobile)' };
             case 'mobile-expect-visual-match': return { border: 'border-fuchsia-200', bg: 'bg-fuchsia-50 text-fuchsia-600', hue: 'fuchsia', icon: <Camera size={18} />, label: 'Visual Match (Mobile)' };
+            case 'expect-header': case 'expect-cookie-flags': case 'expect-blocked-after': case 'expect-session-dead':
+                return { border: 'border-red-200', bg: 'bg-red-50 text-red-600', hue: 'red', icon: <KeyRound size={18} />, label: SECURITY_STEP_LABELS[type] };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
             default: return { border: 'border-slate-200', bg: 'bg-slate-100 text-slate-500', hue: 'slate', icon: <PlayCircle size={18} />, label: type };
         }
@@ -229,6 +233,11 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <SelectItem value="check-tls"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> TLS Cert Check</div></SelectItem>
                                 <SelectItem value="extract-value"><div className="flex items-center gap-2"><ArrowRightToLine size={14} className="text-amber-500"/> Extract Value</div></SelectItem>
                                 <SelectItem value="totp"><div className="flex items-center gap-2"><KeyRound size={14} className="text-amber-500"/> Generate 2FA Code</div></SelectItem>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Security</div>
+                                <SelectItem value="expect-header"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Header</div></SelectItem>
+                                <SelectItem value="expect-cookie-flags"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Cookie Flags</div></SelectItem>
+                                <SelectItem value="expect-blocked-after"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Rate Limit</div></SelectItem>
+                                <SelectItem value="expect-session-dead"><div className="flex items-center gap-2"><KeyRound size={14} className="text-red-500"/> Expect Session Dead</div></SelectItem>
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
@@ -280,6 +289,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
                             </>
+                        ) : isSecurityStep(step.type) ? (
+                            <SecurityStepFields type={step.type} params={step.params || {}} value={step.value}
+                                onParam={updateParams} onValue={(v) => updateStep(step.id, 'value', v)} />
                         ) : step.type === 'feed-check' ? (
                             <Input
                                 placeholder="Feed URL (RSS/Atom/JSON)"

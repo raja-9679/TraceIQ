@@ -81,6 +81,9 @@ ON_DELETE: Dict[str, str] = {
     "requirement.project_id": DELETE,
     "incident.project_id": DELETE,
     "incidentwebhook.project_id": DELETE,
+    # The matrix is project configuration; its runs/cells are its history.
+    "accessmatrix.project_id": DELETE,
+    "accessmatrixrun.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.
@@ -137,10 +140,14 @@ ON_DELETE: Dict[str, str] = {
     "caseproposal.source_run_id": NULLIFY,
     "issueticket.run_id": NULLIFY,
     "monitorcheck.run_id": NULLIFY,
+    # A matrix cell's verdict outlives the TestRun a case row executed as.
+    "accessmatrixcell.test_run_id": NULLIFY,
 
     # --- into tables only reachable through project ---------------------------
     "monitorcheck.schedule_id": DELETE,     # NOT NULL; history of that monitor
     "securityfinding.scan_id": DELETE,      # a scan's own findings
+    "accessmatrixrun.matrix_id": DELETE,    # a matrix's own executions
+    "accessmatrixcell.matrix_run_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
@@ -398,6 +405,7 @@ def _object_keys(md, ids: Dict[str, Set[int]]) -> Generator:
     from app.services.purge import baseline_purge_prefix
 
     keys: List[str] = [f"runs/{rid}/" for rid in sorted(ids.get("testrun", ()))]
+    keys.extend(f"access-matrix/{rid}/" for rid in sorted(ids.get("accessmatrixrun", ())))
     case_ids = ids.get("testcase", set())
     if case_ids:
         vb = md.tables["visualbaseline"]

@@ -472,3 +472,27 @@ def test_message_regular_value_patterns_still_apply():
 def test_message_non_strings_pass_through():
     assert redact_message_text("") == ""
     assert redact_message_text(None) is None
+# --- access-matrix observations (twin: redact.test.ts "an access observation …")
+
+def test_access_observation_headers_body_and_urls_are_scrubbed():
+    from app.services.redaction import redact_access_observation
+    obs = redact_access_observation({
+        "status": 200, "element_present": None,
+        "headers": {"set-cookie": "sid=abc", "content-type": "application/json"},
+        "body_excerpt": json.dumps({"token": "abc", "id": 7}),
+        "url": f"https://shop.example.com/pay?card={VALID_PAN}",
+        "swapped_id": "101",
+    })
+    assert obs["headers"]["set-cookie"] == REDACTED
+    assert obs["headers"]["content-type"] == "application/json"
+    assert json.loads(obs["body_excerpt"])["token"] == REDACTED
+    assert json.loads(obs["body_excerpt"])["id"] == 7
+    assert VALID_PAN not in obs["url"]
+    assert obs["status"] == 200
+    assert obs["swapped_id"] == "101"
+
+
+def test_access_observation_truncated_excerpt_degrades_to_text_sweep():
+    from app.services.redaction import redact_access_observation
+    obs = redact_access_observation({"body_excerpt": f'{{"note": "{VALID_PAN}", "x": [1, 2'})
+    assert VALID_PAN not in obs["body_excerpt"]
