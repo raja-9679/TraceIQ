@@ -68,9 +68,21 @@ class InboxMessage:
 # Matching + extraction (pure, unit-tested)
 # --------------------------------------------------------------------------
 
+# Patterns come from test authors and run against mail the app under test (or
+# anyone who can reach the SMTP catcher) controls, on an API process with no
+# regex timeout. Nested quantifiers are the catastrophic-backtracking shape;
+# refuse them, and bound the text searched (see MAX_REGEX_TEXT).
+_NESTED_QUANTIFIER = re.compile(r"\([^)]*[+*}][^)]*\)\s*[+*{]")
+MAX_REGEX_TEXT = 100_000
+
+
 def _compile(pattern: str, what: str) -> re.Pattern:
     if len(pattern) > MAX_PATTERN:
         raise StepHooksError(f"{what} is longer than {MAX_PATTERN} characters")
+    if _NESTED_QUANTIFIER.search(pattern):
+        raise StepHooksError(
+            f"{what} has a nested quantifier such as (a+)+, which can take "
+            "exponential time; rewrite it without one")
     try:
         return re.compile(pattern, re.IGNORECASE)
     except re.error as exc:
@@ -89,7 +101,7 @@ def header_matches(msg: InboxMessage, subject: str = "", subject_regex: str = ""
                    sender: str = "") -> bool:
     if subject and subject.casefold() not in (msg.subject or "").casefold():
         return False
-    if subject_regex and not _compile(subject_regex, "subject pattern").search(msg.subject or ""):
+    if subject_regex and not _compile(subject_regex, "subject pattern").search((msg.subject or "")[:2000]):
         return False
     if sender and sender.casefold() not in (msg.sender or "").casefold():
         return False
@@ -145,12 +157,12 @@ def extract(msg: InboxMessage, mode: str, pattern: str = "") -> Optional[str]:
     if mode == "link":
         rx = _compile(pattern, "link pattern") if pattern else None
         for url in links(msg):
-            if rx is None or rx.search(url):
+            if rx is None or rx.search(url[:4000]):
                 return url
         return None
     if mode == "code":
         rx = _compile(pattern or DEFAULT_CODE_PATTERN, "code pattern")
-        for source in (plain_text(msg), msg.subject or ""):
+        for source in (plain_text(msg)[:MAX_REGEX_TEXT], (msg.subject or "")[:2000]):
             m = rx.search(source)
             if m:
                 return m.group(1) if rx.groups else m.group(0)

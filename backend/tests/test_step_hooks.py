@@ -418,3 +418,22 @@ def test_step_catalog_documents_both_steps():
     assert {"params.url", "params.where", "params.extract", "params.equals"} <= set(hook["params"])
     assert "{{inbox.address}}" in email["notes"] and "{{webhook.url}}" in hook["notes"]
     json.dumps(email), json.dumps(hook)
+
+
+# ── security review fixes (2026-10-15) ───────────────────────────────────────
+
+@pytest.mark.parametrize("pattern", ["(a+)+$", r"(\w*)*@", "(x{1,9})+"])
+def test_nested_quantifier_patterns_are_refused(pattern):
+    from app.services.inbox_providers import _compile
+    with pytest.raises(th.StepHooksError):
+        _compile(pattern, "code pattern")
+
+
+def test_capture_query_string_is_redacted():
+    from app.api.step_hooks import _redact_query
+    from app.services.redaction import DEFAULT_POLICY
+    out = _redact_query("id=42&access_token=abc123&signature=s3cr3t&x-api-key=k", DEFAULT_POLICY)
+    assert "id=42" in out
+    for secret in ("abc123", "s3cr3t", "x-api-key=k"):
+        assert secret not in out
+    assert out.count("REDACTED") == 3

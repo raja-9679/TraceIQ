@@ -292,17 +292,31 @@ export function consoleFailurePolicy(settings: any, testCase: any): ConsoleFailu
     return { enabled, ignore };
 }
 
+// Ignore regexes are editor-supplied and run against console text the site
+// under test controls, inside a shared worker with no regex timeout. Bound both
+// sides and refuse nested quantifiers — the classic catastrophic-backtracking
+// shape — so one pattern cannot stall every job on the worker.
+const MAX_IGNORE_PATTERN_CHARS = 200;
+const MAX_IGNORE_TEXT_CHARS = 2000;
+const NESTED_QUANTIFIER = /\([^)]*[+*}][^)]*\)\s*[+*{]/;
+
+export function safeIgnoreRegex(source: string, flags: string): RegExp | null {
+    if (source.length > MAX_IGNORE_PATTERN_CHARS || NESTED_QUANTIFIER.test(source)) return null;
+    try { return new RegExp(source, flags); } catch { return null; }
+}
+
 /**
  * Does `text` match an ignore pattern? Plain patterns are case-insensitive
  * substrings; `/.../` (optionally `/.../i`) is a regular expression. An
  * invalid regex matches nothing rather than throwing mid-test.
  */
 export function matchesIgnore(text: string, patterns: string[]): boolean {
-    const t = String(text || '');
+    const t = String(text || '').slice(0, MAX_IGNORE_TEXT_CHARS);
     for (const p of patterns) {
         const m = /^\/(.+)\/([imsu]*)$/.exec(p);
         if (m) {
-            try { if (new RegExp(m[1], m[2]).test(t)) return true; } catch { /* invalid: ignore */ }
+            const re = safeIgnoreRegex(m[1], m[2]);
+            if (re && re.test(t)) return true;
         } else if (t.toLowerCase().includes(p.toLowerCase())) {
             return true;
         }

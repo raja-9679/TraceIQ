@@ -20,6 +20,8 @@ from __future__ import annotations
 import hmac
 from typing import Optional
 
+from urllib.parse import parse_qsl, urlencode
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func
@@ -33,7 +35,9 @@ from app.core.limiter import limiter
 from app.models import Project, TestCase, TestRun, TestStatus, User, WebhookCapture
 from app.services import inbox_providers, step_hooks
 from app.services.data_policy import resolve_for_project
-from app.services.redaction import RedactionPolicy, redact_body, redact_headers
+from app.services.redaction import (
+    REDACTED, RedactionPolicy, _normalize_key, redact_body, redact_headers, redact_text,
+)
 
 router = APIRouter()
 
@@ -208,7 +212,7 @@ async def capture_webhook(
     capture = WebhookCapture(
         token=token, run_id=ref.run_id, test_case_id=ref.case_id, label=ref.label,
         method=request.method, path=("/" + subpath) if subpath else "",
-        query=str(request.url.query)[:2000],
+        query=_redact_query(str(request.url.query)[:2000], policy),
         headers=redact_headers(headers, policy),
         content_type=content_type,
         # A truncated JSON body no longer parses, so redact_body falls back to
@@ -219,6 +223,30 @@ async def capture_webhook(
     session.add(capture)
     await session.commit()
     return {"ok": True, "id": capture.id}
+
+
+# Query-string names that carry credentials in webhook/callback URLs but are
+# too generic for the global denylist (which also applies to request bodies).
+_QUERY_EXTRA_KEYS = frozenset({"signature", "sig", "token", "code"})
+
+
+def _redact_query(query: str, policy: RedactionPolicy) -> str:
+    """Webhook senders often put a token or signature in the query string;
+    it is stored, so redact it like a body: sensitive keys by name, the rest by
+    value pattern."""
+    if not query:
+        return ""
+    # Query keys can be either kind of name (`access_token`, `x-api-key`).
+    sensitive = (policy.body_key_set() | {_normalize_key(h) for h in policy.header_set()}
+                 | _QUERY_EXTRA_KEYS)
+    out = []
+    for key, value in parse_qsl(query, keep_blank_values=True):
+        if _normalize_key(key) in sensitive:
+            value = REDACTED
+        else:
+            value = redact_text(value, policy)
+        out.append((key, value))
+    return urlencode(out, safe="[]*")
 
 
 for _path in ("/hooks/capture/{token}", "/hooks/capture/{token}/{subpath:path}"):

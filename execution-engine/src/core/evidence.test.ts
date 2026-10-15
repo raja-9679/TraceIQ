@@ -37,7 +37,7 @@ test('caseStepDom picks one case out of a continuous job map', () => {
 
 import {
     StepEvidenceRecorder, blockingConsoleErrors, consoleFailureMessage, consoleFailurePolicy,
-    matchesIgnore, resolveScreenshotKeys, safeUrl,
+    matchesIgnore, safeIgnoreRegex, resolveScreenshotKeys, safeUrl,
 } from './evidence';
 
 function sources() {
@@ -195,4 +195,15 @@ test('console/request items are budgeted across the whole test', () => {
     const total = r.list().reduce((n, e) => n + (e.console?.length ?? 0), 0);
     assert.equal(total, 150);
     assert.equal(r.list().length, 40);
+});
+
+test('ignore patterns refuse catastrophic-backtracking regexes and bound the text', () => {
+    assert.equal(safeIgnoreRegex('(a+)+$', ''), null);
+    assert.equal(safeIgnoreRegex('(\\w*)*x', ''), null);
+    assert.equal(safeIgnoreRegex('x'.repeat(201), ''), null);
+    assert.ok(safeIgnoreRegex('ResizeObserver loop', 'i'));
+    const start = Date.now();
+    assert.equal(matchesIgnore('a'.repeat(50000) + '!', ['/(a+)+$/']), false);
+    assert.ok(Date.now() - start < 500);
+    assert.equal(matchesIgnore('ResizeObserver loop limit exceeded', ['/resizeobserver/i']), true);
 });
