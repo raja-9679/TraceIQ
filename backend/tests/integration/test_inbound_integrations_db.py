@@ -513,3 +513,21 @@ async def test_tracker_delete_keeps_requirements(session, scene, jira):
     with pytest.raises(HTTPException) as exc:
         await requirements.sync_requirement(req.id, principal=me(scene), session=session)
     assert exc.value.status_code == 502 and "re-import" in exc.value.detail
+
+
+async def test_project_editor_outside_the_workspace_cannot_use_its_trackers(session, scene, jira):
+    # A direct project grant can outlive workspace membership; the workspace's
+    # tracker credentials (arbitrary JQL) must not be usable through it.
+    cfg = await _tracker(session, await _ws(session, scene))
+    editor = await _user(session, "ex-member@corp.example.com", scene.project_id, "editor")
+    p = AuthPrincipal(user=editor, api_key=None)
+    with pytest.raises(HTTPException) as exc:
+        await requirements.search_tracker(
+            scene.project_id, requirements.SearchBody(config_id=cfg.id, jql="project = HR"),
+            principal=p, session=session)
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        await requirements.import_requirements(
+            scene.project_id, requirements.ImportBody(config_id=cfg.id, keys=["SHOP-12"]),
+            principal=p, session=session)
+    assert exc.value.status_code == 403

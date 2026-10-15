@@ -3,6 +3,7 @@
  * analysis and proactive selector heal. Pure helpers, kept out of worker.ts
  * (which starts a worker on import) so they can be unit-tested.
  */
+import * as vm from 'vm';
 import type { FrameLocator, Page } from 'playwright';
 import type { CaptureLevel } from './artifact-store';
 import { RedactionPolicy, redactText } from './redact';
@@ -293,16 +294,35 @@ export function consoleFailurePolicy(settings: any, testCase: any): ConsoleFailu
 }
 
 // Ignore regexes are editor-supplied and run against console text the site
-// under test controls, inside a shared worker with no regex timeout. Bound both
-// sides and refuse nested quantifiers — the classic catastrophic-backtracking
-// shape — so one pattern cannot stall every job on the worker.
+// under test controls, inside a shared worker. No syntax check can rule out
+// catastrophic backtracking (`(a|aa)+` passes any "nested quantifier" filter),
+// so each match runs under a vm timeout — V8 interrupts a runaway regex — and a
+// pattern that times out once is dropped for the rest of the worker's life.
 const MAX_IGNORE_PATTERN_CHARS = 200;
 const MAX_IGNORE_TEXT_CHARS = 2000;
-const NESTED_QUANTIFIER = /\([^)]*[+*}][^)]*\)\s*[+*{]/;
+const IGNORE_REGEX_TIMEOUT_MS = 50;
+const regexSandbox = vm.createContext({ re: null as RegExp | null, text: '' });
+const regexProbe = new vm.Script('re.test(text)');
+const timedOutPatterns = new Set<string>();
 
 export function safeIgnoreRegex(source: string, flags: string): RegExp | null {
-    if (source.length > MAX_IGNORE_PATTERN_CHARS || NESTED_QUANTIFIER.test(source)) return null;
+    if (source.length > MAX_IGNORE_PATTERN_CHARS || timedOutPatterns.has(`${flags}/${source}`)) return null;
     try { return new RegExp(source, flags); } catch { return null; }
+}
+
+/** `re.test(text)` that gives up (false) instead of stalling the worker. */
+export function boundedRegexTest(re: RegExp, text: string, timeoutMs = IGNORE_REGEX_TIMEOUT_MS): boolean {
+    regexSandbox.re = re;
+    regexSandbox.text = text;
+    try {
+        return regexProbe.runInContext(regexSandbox, { timeout: timeoutMs }) === true;
+    } catch {
+        timedOutPatterns.add(`${re.flags}/${re.source}`);
+        return false;
+    } finally {
+        regexSandbox.re = null;
+        regexSandbox.text = '';
+    }
 }
 
 /**
@@ -316,7 +336,7 @@ export function matchesIgnore(text: string, patterns: string[]): boolean {
         const m = /^\/(.+)\/([imsu]*)$/.exec(p);
         if (m) {
             const re = safeIgnoreRegex(m[1], m[2]);
-            if (re && re.test(t)) return true;
+            if (re && boundedRegexTest(re, t)) return true;
         } else if (t.toLowerCase().includes(p.toLowerCase())) {
             return true;
         }

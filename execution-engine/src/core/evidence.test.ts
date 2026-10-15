@@ -197,13 +197,13 @@ test('console/request items are budgeted across the whole test', () => {
     assert.equal(r.list().length, 40);
 });
 
-test('ignore patterns refuse catastrophic-backtracking regexes and bound the text', () => {
-    assert.equal(safeIgnoreRegex('(a+)+$', ''), null);
-    assert.equal(safeIgnoreRegex('(\\w*)*x', ''), null);
+test('ignore regexes cannot stall the worker, however they are written', () => {
     assert.equal(safeIgnoreRegex('x'.repeat(201), ''), null);
     assert.ok(safeIgnoreRegex('ResizeObserver loop', 'i'));
-    const start = Date.now();
-    assert.equal(matchesIgnore('a'.repeat(50000) + '!', ['/(a+)+$/']), false);
-    assert.ok(Date.now() - start < 500);
+    for (const p of ['/(a+)+$/', '/(a|aa)+$/', '/(\\w*)*x/']) {
+        const start = Date.now();
+        assert.equal(matchesIgnore('a'.repeat(1990) + '!', [p]), false);
+        assert.ok(Date.now() - start < 1000, `${p} took ${Date.now() - start}ms`);
+    }
     assert.equal(matchesIgnore('ResizeObserver loop limit exceeded', ['/resizeobserver/i']), true);
 });

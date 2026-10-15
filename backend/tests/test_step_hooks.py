@@ -422,11 +422,20 @@ def test_step_catalog_documents_both_steps():
 
 # ── security review fixes (2026-10-15) ───────────────────────────────────────
 
-@pytest.mark.parametrize("pattern", ["(a+)+$", r"(\w*)*@", "(x{1,9})+"])
-def test_nested_quantifier_patterns_are_refused(pattern):
+@pytest.mark.parametrize("pattern", ["(a+)+$", "(a|aa)+$", r"(\w*)*@"])
+def test_catastrophic_patterns_run_in_linear_time(pattern):
+    # RE2: no input can make a pattern backtrack exponentially.
+    import time
     from app.services.inbox_providers import _compile
-    with pytest.raises(th.StepHooksError):
-        _compile(pattern, "code pattern")
+    start = time.monotonic()
+    assert _compile(pattern, "code pattern").search("a" * 50_000 + "!") is None
+    assert time.monotonic() - start < 1.0
+
+
+def test_unsupported_regex_syntax_is_refused_clearly():
+    from app.services.inbox_providers import _compile
+    with pytest.raises(th.StepHooksError, match="backreferences"):
+        _compile(r"(a)\1", "code pattern")
 
 
 def test_capture_query_string_is_redacted():

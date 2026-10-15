@@ -34,6 +34,7 @@ from email.utils import getaddresses, parsedate_to_datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
+import re2
 
 from app.services.redaction import DEFAULT_POLICY, RedactionPolicy, redact_message_text
 from app.services.step_hooks import InboxConfig, StepHooksError, validate_inbox_config
@@ -69,24 +70,24 @@ class InboxMessage:
 # --------------------------------------------------------------------------
 
 # Patterns come from test authors and run against mail the app under test (or
-# anyone who can reach the SMTP catcher) controls, on an API process with no
-# regex timeout. Nested quantifiers are the catastrophic-backtracking shape;
-# refuse them, and bound the text searched (see MAX_REGEX_TEXT).
-_NESTED_QUANTIFIER = re.compile(r"\([^)]*[+*}][^)]*\)\s*[+*{]")
+# anyone who can reach the SMTP catcher) controls, on an API process where
+# Python's backtracking `re` cannot be interrupted. They are compiled with RE2,
+# which runs in linear time — no pattern can backtrack catastrophically. A
+# syntax check cannot give that guarantee: `(a|aa)+` passes any "nested
+# quantifier" filter and is still exponential. RE2 has no backreferences or
+# lookaround; such a pattern is refused with a clear message.
 MAX_REGEX_TEXT = 100_000
 
 
-def _compile(pattern: str, what: str) -> re.Pattern:
+def _compile(pattern: str, what: str):
     if len(pattern) > MAX_PATTERN:
         raise StepHooksError(f"{what} is longer than {MAX_PATTERN} characters")
-    if _NESTED_QUANTIFIER.search(pattern):
-        raise StepHooksError(
-            f"{what} has a nested quantifier such as (a+)+, which can take "
-            "exponential time; rewrite it without one")
     try:
-        return re.compile(pattern, re.IGNORECASE)
-    except re.error as exc:
-        raise StepHooksError(f"{what} is not a valid regular expression: {exc}")
+        return re2.compile("(?i)" + pattern)
+    except Exception as exc:  # re2.error; also unsupported syntax
+        raise StepHooksError(
+            f"{what} is not a valid regular expression ({exc}); "
+            "backreferences and lookaround are not supported")
 
 
 def addressed_to(msg: InboxMessage, address: str) -> bool:

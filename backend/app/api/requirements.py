@@ -37,7 +37,7 @@ from app.core.database import get_session
 from app.core.secrets import decrypt_secret
 from app.models import (
     CaseProposal, IssueTrackerConfig, Project, Requirement, RequirementLink, TestCase,
-    TestCaseResult, TestRun, TestStatus, TestSuite,
+    TestCaseResult, TestRun, TestStatus, TestSuite, UserWorkspace,
 )
 from app.services import acceptance_criteria, generation_proposals, tracker_import
 from app.services.access_service import access_service
@@ -91,6 +91,19 @@ async def _tracker(config_id: Optional[int], project: Project,
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=500, detail="Stored tracker credential could not be decrypted")
     return config, secret
+
+
+async def _require_workspace_member(principal: AuthPrincipal, project: Project,
+                                    session: AsyncSession) -> None:
+    """Tracker connections are workspace-wide credentials that can run any JQL
+    the connection can see. Project access alone is not enough to wield them:
+    a direct project grant can outlive the user's workspace membership."""
+    member = (await session.exec(select(UserWorkspace).where(
+        UserWorkspace.user_id == principal.user.id,
+        UserWorkspace.workspace_id == project.workspace_id))).first()
+    if member is None:
+        raise HTTPException(status_code=403,
+                            detail="Only members of this workspace can use its tracker connections")
 
 
 def _tracker_error(exc: tracker_import.TrackerImportError) -> HTTPException:
@@ -151,6 +164,7 @@ async def search_tracker(project_id: int, body: SearchBody,
                          principal: AuthPrincipal = Depends(get_current_principal),
                          session: AsyncSession = Depends(get_session)):
     project = await _project(project_id, principal, session, "editor")
+    await _require_workspace_member(principal, project, session)
     config, secret = await _tracker(body.config_id, project, session)
     try:
         issues = await tracker_import.search(
@@ -171,6 +185,7 @@ async def import_requirements(project_id: int, body: ImportBody,
                               principal: AuthPrincipal = Depends(get_current_principal),
                               session: AsyncSession = Depends(get_session)):
     project = await _project(project_id, principal, session, "editor")
+    await _require_workspace_member(principal, project, session)
     config, secret = await _tracker(body.config_id, project, session)
     try:
         issues = await tracker_import.fetch(config.provider, config.base_url, config.auth_user,
@@ -241,6 +256,7 @@ async def _sync_one(session: AsyncSession, req: Requirement, project: Project) -
 async def sync_requirement(req_id: int, principal: AuthPrincipal = Depends(get_current_principal),
                            session: AsyncSession = Depends(get_session)):
     req, project = await _requirement(req_id, principal, session, "editor")
+    await _require_workspace_member(principal, project, session)
     error = await _sync_one(session, req, project)
     await session.commit()
     await session.refresh(req)
@@ -254,6 +270,7 @@ async def sync_project_requirements(project_id: int,
                                     principal: AuthPrincipal = Depends(get_current_principal),
                                     session: AsyncSession = Depends(get_session)):
     project = await _project(project_id, principal, session, "editor")
+    await _require_workspace_member(principal, project, session)
     reqs = (await session.exec(select(Requirement).where(
         Requirement.project_id == project_id).order_by(Requirement.id))).all()
     errors = {}
