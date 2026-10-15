@@ -6,6 +6,7 @@
 // their compiled bundle).
 
 const core = require('@actions/core');
+const { decideSelection, reviewNotes } = require('./selection');
 const github = require('@actions/github');
 
 const TERMINAL = new Set(['passed', 'failed', 'error']);
@@ -59,7 +60,7 @@ function detectGitContext() {
     return { sha, branch, repo, prUrl, prNumber };
 }
 
-async function triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, triggeredBy, agentId) {
+async function triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, triggeredBy, agentId, caseIds) {
     const params = new URLSearchParams();
     params.set('suite_id', String(suiteId));
     if (caseId) params.set('case_id', String(caseId));
@@ -72,6 +73,7 @@ async function triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, tr
         git_repo: gitCtx.repo,
         triggered_by: triggeredBy,
         agent_id: agentId,
+        ...(caseIds && caseIds.length ? { case_ids: caseIds } : {}),
     };
     return await http('POST', url, headers, body);
 }
@@ -124,13 +126,14 @@ async function getChangedFiles(octokit, gitCtx) {
 
 // POST /api/runs/impact-analysis → { matched_cases: [{id, name,
 // test_suite_id, is_ai_authored, matched_paths}], cases_without_code_paths,
-// unmatched_files }. Reporting-only here: the comment explains which cases
-// the diff touches; the run itself executes the configured suite.
-async function runImpactAnalysis(baseUrl, headers, projectId, changedFiles) {
+// unmatched_files }. In `mode: suite` it only explains which cases the diff
+// touches; in `mode: targeted` (scoped with suite_id) it picks the cases run.
+async function runImpactAnalysis(baseUrl, headers, projectId, changedFiles, suiteId) {
     return await http('POST', `${baseUrl}/api/runs/impact-analysis`, headers, {
         project_id: projectId,
         changed_files: changedFiles,
         include_no_code_paths: false,
+        ...(suiteId ? { suite_id: suiteId } : {}),
     });
 }
 
@@ -161,6 +164,16 @@ function fmtDuration(ms) {
 
 function selectionSection(selection) {
     const lines = ['### Test selection', ''];
+    const d = selection.decision;
+    if (d && d.kind === 'targeted') {
+        lines.push(`**Targeted run: ${d.caseIds.length} of ${selection.casesTotal ?? '?'} cases** — only the cases this diff touches ran.`, '');
+        for (const q of d.skippedQuarantined) lines.push(`- skipped (quarantined): ${mdCell(q.name)}`);
+        const review = reviewNotes(d, selection.matchedCases);
+        for (const c of review) lines.push(`- ran, **may need editing**: ${mdCell(c.name)} — ${mdCell((c.reasons || []).join('; '))}`);
+        if (d.skippedQuarantined.length || review.length) lines.push('');
+    } else if (d && d.kind === 'fallback') {
+        lines.push(`**Full suite** (fallback: ${mdCell(d.reason)})`, '');
+    }
     if (selection.mode === 'impact') {
         const n = selection.matchedCases.length;
         lines.push(
@@ -184,7 +197,9 @@ function selectionSection(selection) {
             notes.push(`${selection.casesWithoutCodePaths} case(s) have no code-path mapping`);
         }
         if (notes.length) lines.push('', `_${notes.join('; ')}._`);
-        lines.push('', `The full configured suite was executed; the table above shows which cases the diff touches.`);
+        if (!d || d.kind !== 'targeted') {
+            lines.push('', `The full configured suite was executed; the table above shows which cases the diff touches.`);
+        }
     } else {
         lines.push(`Ran the configured suite${selection.suiteLabel ? ` **${mdCell(selection.suiteLabel)}**` : ''}.`);
         if (selection.reason) lines.push('', `_Impact analysis skipped: ${mdCell(selection.reason)}._`);
@@ -334,12 +349,14 @@ async function main() {
         const failOnNone = failOnRaw === 'none';
         const postComment = (core.getInput('post-pr-comment') || 'true').toLowerCase() === 'true';
         const githubToken = core.getInput('github-token') || process.env.GITHUB_TOKEN || '';
+        const mode = (core.getInput('mode') || 'suite').trim().toLowerCase();
 
         const headers = buildHeaders(apiKey, agentId);
         const gitCtx = detectGitContext();
         const octokit = githubToken ? github.getOctokit(githubToken) : null;
 
         // --- Test selection reporting: impact analysis on the PR diff -----
+        let impactError = null;
         let selection = { mode: 'suite', suiteLabel: `suite ${suiteId}`, reason: null };
         if (!projectId) {
             selection.reason = 'no `project-id` input provided';
@@ -350,7 +367,8 @@ async function main() {
         } else {
             try {
                 const changedFiles = await getChangedFiles(octokit, gitCtx);
-                const impact = await runImpactAnalysis(baseUrl, headers, projectId, changedFiles);
+                const impact = await runImpactAnalysis(baseUrl, headers, projectId, changedFiles,
+                    mode === 'targeted' ? suiteId : undefined);
                 selection = {
                     mode: 'impact',
                     changedFileCount: changedFiles.length,
@@ -363,14 +381,42 @@ async function main() {
                     `matched across ${changedFiles.length} changed file(s).`,
                 );
             } catch (err) {
+                impactError = err;
                 core.warning(`Impact analysis failed, falling back to suite report: ${err.message}`);
                 selection = { mode: 'suite', suiteLabel: `suite ${suiteId}`, reason: `impact analysis failed (${err.message})` };
             }
         }
 
+        // --- Decide what runs (targeted mode is strict; see selection.js) ----
+        if (mode === 'targeted' && gitCtx.prNumber && selection.mode !== 'impact' && !impactError) {
+            impactError = new Error(selection.reason || 'impact analysis unavailable');
+        }
+        const decision = decideSelection({
+            mode, isPullRequest: !!gitCtx.prNumber,
+            impact: selection.mode === 'impact'
+                ? { matched_cases: selection.matchedCases, unmatched_files: selection.unmatchedFiles }
+                : null,
+            impactError,
+        });
+
         // --- Trigger + poll ------------------------------------------------
-        core.info(`[TraceIQ] Triggering run for suite ${suiteId} on commit ${gitCtx.sha}`);
-        const created = await triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, triggeredBy, agentId);
+        core.info(`[TraceIQ] Triggering run for suite ${suiteId} on commit ${gitCtx.sha} (${decision.kind})`);
+        let created;
+        if (decision.kind === 'targeted') {
+            try {
+                created = await triggerRun(baseUrl, headers, suiteId, undefined, browser, gitCtx, triggeredBy, agentId, decision.caseIds);
+            } catch (err) {
+                decision.kind = 'fallback';
+                decision.reason = `targeted run was refused (${err.message})`;
+                decision.caseIds = [];
+                core.warning(`[TraceIQ] ${decision.reason}; running the full suite.`);
+            }
+        }
+        if (!created) {
+            created = await triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, triggeredBy, agentId);
+        }
+        if (decision.kind === 'fallback') core.info(`[TraceIQ] Full suite: ${decision.reason}`);
+        selection.decision = decision;
         const createdRuns = Array.isArray(created) ? created : [created];
         const runIds = createdRuns.map((r) => r.id);
         core.setOutput('run-id', runIds.join(','));
@@ -420,6 +466,13 @@ async function main() {
         const anyBad = runsBad || (gateBad && gateEnforced);
         const overall = anyBad ? 'failed' : 'passed';
 
+        const totalCases = finalRuns.find((r) => r && r.selection_total)?.selection_total;
+        const ranCases = new Set(finalRuns.filter((r) => r && r.test_case_id).map((r) => r.test_case_id)).size;
+        selection.casesTotal = totalCases;
+        core.setOutput('selection-mode', decision.kind);
+        core.setOutput('cases-run', String(decision.kind === 'targeted' ? ranCases : (totalCases ?? '')));
+        core.setOutput('cases-total', String(totalCases ?? ''));
+        core.setOutput('fallback-reason', decision.reason || '');
         core.setOutput('status', overall);
         core.setOutput('passed', String(passed));
         core.setOutput('failed', String(failed));

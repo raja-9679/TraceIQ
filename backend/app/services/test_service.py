@@ -232,6 +232,35 @@ class TestService:
         return await cascade_delete(session, "testsuite", [suite_id])
 
     @staticmethod
+    async def subtree_suite_ids(suite_id: int, session: AsyncSession) -> List[int]:
+        """The suite and every descendant module, whatever its execution mode.
+
+        Unlike collect_cases_recursive (which stops at SEPARATE sub-modules
+        because they run as their own units), this is the full scope a
+        targeted run may select from."""
+        ids: List[int] = [suite_id]
+        frontier = [suite_id]
+        while frontier:
+            res = await session.exec(select(TestSuite.id).where(TestSuite.parent_id.in_(frontier)))
+            frontier = [sid for sid in res.all() if sid not in ids]
+            ids.extend(frontier)
+        return ids
+
+    @staticmethod
+    async def subtree_case_ids(suite_id: int, session: AsyncSession) -> List[int]:
+        """Ids of every case in the subtree — sizing a run scope without
+        loading each case's steps."""
+        ids = await TestService.subtree_suite_ids(suite_id, session)
+        res = await session.exec(select(TestCase.id).where(TestCase.test_suite_id.in_(ids)))
+        return list(res.all())
+
+    @staticmethod
+    async def subtree_cases(suite_id: int, session: AsyncSession) -> List[TestCase]:
+        ids = await TestService.subtree_suite_ids(suite_id, session)
+        res = await session.exec(select(TestCase).where(TestCase.test_suite_id.in_(ids)))
+        return list(res.all())
+
+    @staticmethod
     async def collect_cases_recursive(suite_id: int, session: AsyncSession) -> List[TestCase]:
         cases = []
         # Explicit query to avoid async lazy load issues

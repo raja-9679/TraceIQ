@@ -122,10 +122,12 @@ def main() -> int:
 
     # --- 3. the legacy bridge ----------------------------------------------
     log("step 3: a database stamped inside the legacy chain must reach head")
-    # Put the database one legacy step behind the root: stamp the root (the
-    # only revision both chains share), then let the LEGACY chain downgrade
-    # one step, which really removes the F4 columns.
-    command.stamp(cfg(), LIVE_ROOT)
+    # Put the database one legacy step behind the root: downgrade the live
+    # chain to the root (the only revision both chains share), then let the
+    # LEGACY chain downgrade one step, which really removes the F4 columns.
+    # A downgrade, not a stamp: stamping skipped undoing every live migration
+    # after the root, which only worked while those were safe to re-run.
+    command.downgrade(cfg(), LIVE_ROOT)
     command.downgrade(cfg(legacy=True), LEGACY_ONE_BEFORE_HEAD)
     st = db_state()
     expect(st["stamps"] == [LEGACY_ONE_BEFORE_HEAD],

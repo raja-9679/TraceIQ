@@ -21,7 +21,8 @@ from traceiq_mcp.schemas.impact import (
 
 @mcp.tool()
 async def select_tests_for_diff(project_id: int, changed_files: List[str],
-                                include_no_code_paths: bool = False) -> ImpactAnalysis:
+                                include_no_code_paths: bool = False,
+                                suite_id: Optional[int] = None) -> ImpactAnalysis:
     """Given the files changed in a diff/PR, return which test cases are
     affected. Each matched case carries `suggested_action`:
       • run — just re-run it
@@ -31,9 +32,13 @@ async def select_tests_for_diff(project_id: int, changed_files: List[str],
         re-derive with set_code_paths afterwards
     Also returns `unmatched_files` (changed files no test covers — candidates
     for new proposals) and per-case match detail (which pattern hit which
-    file), last result, and last_validated_commit."""
+    file), last result, and last_validated_commit.
+
+    suite_id restricts matches to that suite and its sub-modules; files
+    matched only outside it are reported unmatched. Then run exactly the
+    matches with run_suite(suite_id=…, case_ids=[…])."""
     data = await new_client().impact_analysis(
-        project_id, changed_files, include_no_code_paths)
+        project_id, changed_files, include_no_code_paths, suite_id=suite_id)
     return ImpactAnalysis.model_validate(data)
 
 

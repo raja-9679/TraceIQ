@@ -199,6 +199,7 @@ class TraceIQClient:
         environment_id: Optional[int] = None,
         local_worker_id: Optional[str] = None,
         app_build_id: Optional[int] = None,
+        case_ids: Optional[List[int]] = None,
     ) -> Any:
         params: Dict[str, Any] = {"suite_id": suite_id}
         if case_id is not None:
@@ -216,6 +217,7 @@ class TraceIQClient:
             "environment_id": environment_id,
             "local_worker_id": local_worker_id,
             "app_build_id": app_build_id,
+            "case_ids": case_ids,
         })
         return await self._request("POST", "/api/runs", params=params, json=body)
 
@@ -251,10 +253,13 @@ class TraceIQClient:
     # ------------------------------------------------------------------
 
     async def impact_analysis(self, project_id: int, changed_files: List[str],
-                              include_no_code_paths: bool = False) -> Dict[str, Any]:
-        return await self._request("POST", "/api/runs/impact-analysis", json={
-            "project_id": project_id, "changed_files": changed_files,
-            "include_no_code_paths": include_no_code_paths})
+                              include_no_code_paths: bool = False,
+                              suite_id: Optional[int] = None) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"project_id": project_id, "changed_files": changed_files,
+                                "include_no_code_paths": include_no_code_paths}
+        if suite_id is not None:
+            body["suite_id"] = suite_id
+        return await self._request("POST", "/api/runs/impact-analysis", json=body)
 
     async def app_surface(self, project_id: int) -> Dict[str, Any]:
         return await self._request("GET", f"/api/apps/{project_id}/surface")

@@ -164,6 +164,30 @@ async def set_quality_gate_policy(
     return policy
 
 
+def coverage_check(finished_runs: list) -> QualityGateCheck:
+    """How much of the suite the evaluated runs covered. Informational only —
+    it never fails the gate (targeted runs are allowed to pass, labelled
+    partial); it exists so nobody reads a 4-case pass as a full pass."""
+    # Runs created outside POST /runs (schedules, comparisons, older rows)
+    # carry no selection data; judge by the runs that do, and say so.
+    tracked = [r for r in finished_runs if getattr(r, "selection_mode", None)]
+    untracked = len(finished_runs) - len(tracked)
+    if any(r.selection_mode == "full" for r in tracked):
+        actual = "full suite"
+    elif tracked:
+        ran = {r.test_case_id for r in tracked if r.test_case_id is not None}
+        total = max((r.selection_total or 0) for r in tracked)
+        actual = f"targeted — {len(ran)} of {total} cases ran"
+        if untracked:
+            actual += f" (+{untracked} run(s) with no selection data)"
+    else:
+        actual = "unknown (runs carry no selection data)"
+    return QualityGateCheck(name="coverage", passed=True, actual=actual,
+                            threshold="informational",
+                            detail=("partial coverage — not every case ran"
+                                    if actual.startswith("targeted") else None))
+
+
 async def evaluate_gate_for_runs(
     session: AsyncSession, project: Project, finished_runs: list,
     git_commit: Optional[str] = None, git_branch: Optional[str] = None,
@@ -182,6 +206,7 @@ async def evaluate_gate_for_runs(
         passed=bool(finished_runs) and pr >= policy.min_pass_rate,
         actual=f"{pr}%", threshold=f">= {policy.min_pass_rate}%",
         detail=None if finished_runs else "no finished runs found"))
+    checks.append(coverage_check(finished_runs))
 
     sev = await _severity_counts(session, run_ids=run_ids)
     high = sev.get("high", 0)

@@ -76,9 +76,15 @@ async def impact_analysis(
     ):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    res = await session.exec(
-        select(TestCase).where(TestCase.project_id == body.project_id)
-    )
+    stmt = select(TestCase).where(TestCase.project_id == body.project_id)
+    if body.suite_id is not None:
+        scope_suite = await session.get(TestSuite, body.suite_id)
+        if not scope_suite or scope_suite.project_id != body.project_id:
+            raise HTTPException(status_code=400, detail="suite_id is not in this project")
+        from app.services.test_service import test_service
+        scope_ids = await test_service.subtree_suite_ids(body.suite_id, session)
+        stmt = stmt.where(TestCase.test_suite_id.in_(scope_ids))
+    res = await session.exec(stmt)
     cases: List[TestCase] = list(res.all())
 
     suites_res = await session.exec(

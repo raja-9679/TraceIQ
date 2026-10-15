@@ -49,6 +49,10 @@ class RunCreateContext(BaseModel):
     # project's stored auth session). Must belong to this suite's workspace,
     # and to this project when the persona is project-scoped.
     persona_id: Optional[int] = None
+    # Targeted run: execute exactly these cases (each with its own suite's
+    # inherited settings). Must all lie in suite_id's subtree. Not combinable
+    # with case_id or tags. See docs/superpowers/specs/2026-10-14-targeted-runs-design.md.
+    case_ids: Optional[List[int]] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -76,6 +80,9 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         "api_key_id": api_key_id,
         "local_worker_id": (ctx.local_worker_id or None) and str(ctx.local_worker_id)[:64],
     }
+
+
+MAX_TARGETED_CASES = 500
 
 
 @router.post("/runs", response_model=Union[TestRunRead, List[TestRunRead]])
@@ -109,6 +116,39 @@ async def create_run(
             raise HTTPException(
                 status_code=402,
                 detail=f"Monthly run quota reached ({used}/{limit}). Upgrade the workspace plan to run more.")
+
+    # ── Targeted selection (case_ids) ───────────────────────────────────
+    targeted_cases: List[TestCase] = []
+    scope_ids = set(await test_service.subtree_case_ids(suite_id, session))
+    selection_total = len(scope_ids)
+    requested = context.case_ids if context else None
+    if requested is not None:
+        if case_id is not None or tags:
+            raise HTTPException(status_code=400,
+                                detail="case_ids cannot be combined with case_id or tags")
+        wanted = list(dict.fromkeys(requested))   # de-duplicate, keep order
+        if not wanted:
+            raise HTTPException(status_code=400, detail="case_ids is empty")
+        if len(wanted) > MAX_TARGETED_CASES:
+            raise HTTPException(status_code=400,
+                                detail=f"case_ids exceeds {MAX_TARGETED_CASES} cases")
+        outside = [cid for cid in wanted if cid not in scope_ids]
+        if outside:
+            raise HTTPException(status_code=400,
+                                detail=f"case_ids not in suite {suite_id}: {outside}")
+        from app.models import FlakeRecord
+        quarantined = set((await session.exec(
+            select(FlakeRecord.test_case_id).where(
+                FlakeRecord.test_case_id.in_(wanted),
+                FlakeRecord.is_quarantined == True))).all())  # noqa: E712
+        keep = [cid for cid in wanted if cid not in quarantined]
+        if keep:
+            rows = {c.id: c for c in (await session.exec(
+                select(TestCase).where(TestCase.id.in_(keep)))).all()}
+            targeted_cases = [rows[cid] for cid in keep]
+        if not targeted_cases:
+            raise HTTPException(status_code=400,
+                                detail="all selected cases are quarantined")
 
     # Get effective settings for this suite
     effective_settings = await test_service.get_effective_settings(suite_id, session)
@@ -227,6 +267,8 @@ async def create_run(
                                 browser=target_browser,
                                 device=target_device,
                                 user_id=current_user.id,
+                                selection_mode="full",
+                                selection_total=selection_total,
                                 **run_defaults,
                             )
                             session.add(run)
@@ -261,6 +303,8 @@ async def create_run(
                             browser=target_browser,
                             device=target_device,
                             user_id=current_user.id,
+                            selection_mode="full",
+                            selection_total=selection_total,
                             **run_defaults,
                         )
                         session.add(run)
@@ -279,8 +323,36 @@ async def create_run(
 
                 await find_and_process_separate_descendants(s_id)
 
+        if targeted_cases:
+            for case in targeted_cases:
+                case_settings = await test_service.get_effective_settings(case.test_suite_id, session)
+                case_path = await test_service.get_suite_path(case.test_suite_id, session)
+                case_browsers, case_devices = _resolve_matrix(case, case_settings)
+                for target_browser in case_browsers:
+                    for target_device in case_devices:
+                        run = TestRun(
+                            status=TestStatus.PENDING,
+                            test_suite_id=case.test_suite_id,
+                            test_case_id=case.id,
+                            project_id=suite.project_id,
+                            suite_name=case_path,
+                            test_case_name=case.name,
+                            request_headers=case_settings.get("headers", {}),
+                            request_params=case_settings.get("params", {}),
+                            allowed_domains=case_settings.get("allowed_domains", []),
+                            domain_settings=case_settings.get("domain_settings", {}),
+                            browser=target_browser,
+                            device=target_device,
+                            user_id=current_user.id,
+                            selection_mode="targeted",
+                            selection_total=selection_total,
+                            **run_defaults,
+                        )
+                        session.add(run)
+                        await session.flush()
+                        created_runs.append(run)
         # If a specific case is requested, just run that case
-        if case_id:
+        elif case_id:
             suite_path = await test_service.get_suite_path(suite_id, session)
             case = await session.get(TestCase, case_id)
             test_case_name = case.name if case else None
@@ -303,6 +375,8 @@ async def create_run(
                         browser=target_browser,
                         device=target_device,
                         user_id=current_user.id,
+                        selection_mode="case",
+                        selection_total=selection_total,
                         **run_defaults,
                     )
                     session.add(run)
