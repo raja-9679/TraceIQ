@@ -412,7 +412,8 @@ def test_window_and_step():
 def test_evaluate_parses_matrices_and_isolates_errors(monkeypatch):
     from app.services import server_metrics, instance_settings
     monkeypatch.setattr(instance_settings, "effective",
-                        lambda k: {"PROMETHEUS_URL": "http://prometheus:9090"}.get(k))
+                        lambda k: {"PROMETHEUS_URL": "http://prometheus:9090",
+                                   "PROMETHEUS_ALLOW_ADHOC_QUERIES": True}.get(k))
     calls = []
 
     async def fake_fetch(base, params, token):

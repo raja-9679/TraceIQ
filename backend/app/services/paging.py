@@ -21,8 +21,8 @@ paged at 02:00" has an answer. A resolve is only sent for a key whose last
 (because it was suppressed) would be harmless noise to PagerDuty but shows up
 as a stray "closed" alert in Opsgenie.
 
-Vendor endpoints are fixed hosts, not user input, so they do not go through
-net_guard. The routing key / API key never appears in a log line or a
+Vendor endpoints are fixed hosts, not user input; `_post` still pins them to
+the vendor host list and runs net_guard before every send. The routing key / API key never appears in a log line or a
 PagingEvent row.
 """
 from __future__ import annotations
@@ -175,9 +175,33 @@ def opsgenie_request(api_key: str, action: str, alias: str, *, summary: str,
             "json": {"source": "TraceIQ", "note": summary[:25000]}}
 
 
+VENDOR_HOSTS = frozenset({"events.pagerduty.com", "api.opsgenie.com", "api.eu.opsgenie.com"})
+
+
+def guard_vendor_url(url: str) -> str:
+    """Refuse anything but the vendor endpoints, then run net_guard on it.
+
+    The URLs are built from constants today, but this is where a routing key
+    leaves the instance: pinning the host keeps a future configurable base
+    URL from turning paging into an SSRF/credential-forwarding primitive, and
+    net_guard refuses a vendor name that resolves somewhere private (a
+    poisoned resolver or a hosts-file override)."""
+    from urllib.parse import urlsplit
+    from app.core.net_guard import validate_outbound_url_sync
+    parts = urlsplit(url)
+    if parts.scheme != "https" or (parts.hostname or "").lower() not in VENDOR_HOSTS \
+            or parts.port not in (None, 443) or parts.username or parts.password:
+        raise ValueError(f"refusing to send a page to {parts.scheme}://{parts.hostname}")
+    return validate_outbound_url_sync(url, allow_private=False)
+
+
 def _post(url: str, *, json: Dict[str, Any], headers: Optional[Dict[str, str]] = None):
-    """The single network call — tests replace this."""
-    return requests.post(url, json=json, headers=headers or {}, timeout=TIMEOUT_SECONDS)
+    """The single network call — tests replace this. Redirects are not
+    followed: requests would re-send the body (with the routing key) to
+    wherever a 307 pointed."""
+    guard_vendor_url(url)
+    return requests.post(url, json=json, headers=headers or {}, timeout=TIMEOUT_SECONDS,
+                         allow_redirects=False)
 
 
 def send(channel: Any, secret: str, action: str, dedup_key: str, *, summary: str,

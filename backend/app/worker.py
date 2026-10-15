@@ -137,6 +137,16 @@ def run_test_suite(run_id: int, tags: list = None):
             # it for auth-setup cases and cases with use_auth_session=False.
             auth_project_id = run.project_id or (
                 cases_to_run[0].project_id if cases_to_run else None)
+            # Region grant (WP8), re-checked at dispatch and before any secret
+            # is resolved: a schedule saved while a region was granted keeps
+            # firing after the grant is withdrawn, and the region's workers
+            # may be inside another customer's network.
+            if getattr(run, 'region', None):
+                from app.models import Project
+                from app.services.worker_fleet import check_region_access
+                region_project = session.get(Project, auth_project_id) if auth_project_id else None
+                check_region_access(run.region,
+                                    region_project.workspace_id if region_project else None)
             auth_state = _load_auth_state(auth_project_id, session)
             if auth_state:
                 effective_settings['storage_state'] = auth_state

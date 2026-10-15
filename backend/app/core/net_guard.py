@@ -37,7 +37,35 @@ def _settings():
     return settings
 
 
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _embedded_v4(ip: ipaddress._BaseAddress) -> Optional[ipaddress.IPv4Address]:
+    """The IPv4 address an IPv6 address actually reaches, if any (v4-mapped,
+    NAT64 64:ff9b::/96, 6to4). Mirrors execution-engine/src/core/egress-guard.ts:
+    without it `64:ff9b::a9fe:a9fe` is a "global" address that routes to the
+    metadata service through a NAT64 gateway."""
+    if not isinstance(ip, ipaddress.IPv6Address):
+        return None
+    if ip.ipv4_mapped:
+        return ip.ipv4_mapped
+    if ip in _NAT64:
+        return ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)
+    if ip.sixtofour:
+        return ip.sixtofour
+    return None
+
+
 def _is_never_allowed(ip: ipaddress._BaseAddress) -> Optional[str]:
+    inner = _embedded_v4(ip)
+    if inner is not None:
+        reason = _is_never_allowed_direct(inner)
+        if reason:
+            return reason
+    return _is_never_allowed_direct(ip)
+
+
+def _is_never_allowed_direct(ip: ipaddress._BaseAddress) -> Optional[str]:
     """Ranges denied even when private targets are permitted.
 
     Loopback is deliberately excluded here and handled as private instead, so
@@ -62,6 +90,9 @@ def _is_never_allowed(ip: ipaddress._BaseAddress) -> Optional[str]:
 
 
 def _is_private(ip: ipaddress._BaseAddress) -> bool:
+    inner = _embedded_v4(ip)
+    if inner is not None and (inner.is_private or inner.is_loopback):
+        return True
     return ip.is_private or ip.is_loopback
 
 
@@ -147,6 +178,20 @@ async def validate_outbound_url(
                 "single-tenant deployment."
             )
     return raw
+
+
+def validate_outbound_url_sync(raw: str, **kwargs) -> str:
+    """`validate_outbound_url` for synchronous callers (Celery tasks).
+
+    Runs the coroutine on a fresh loop, or on a helper thread when the caller
+    is already inside one (asyncio.run refuses to nest)."""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(validate_outbound_url(raw, **kwargs))
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, validate_outbound_url(raw, **kwargs)).result()
 
 
 async def safe_get(

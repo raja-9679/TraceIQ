@@ -38,8 +38,24 @@ export type Resolver = (host: string) => Promise<string[]>;
 const defaultResolver: Resolver = async (host) =>
     (await dns.promises.lookup(host, { all: true })).map(a => a.address);
 
+// --- address parsing ---------------------------------------------------------
+//
+// Every host is canonicalised exactly the way the browser does before it is
+// compared or classified: Chromium follows the WHATWG URL host parser, so
+// `http://2130706433/`, `http://0x7f.1/`, `http://127.0.0.1./` and
+// `http://①②⑦.0.0.1/` are all 127.0.0.1 to it, and they must be to us too.
+// IPv6 is then parsed to its 128 bits rather than pattern-matched, because the
+// serialiser writes `[::ffff:169.254.169.254]` as `::ffff:a9fe:a9fe` and a
+// regex over the dotted form never sees it. IPv6 forms that embed an IPv4
+// address the host stack will actually reach (v4-mapped, v4-compatible, NAT64
+// 64:ff9b::/96, 6to4 2002::/16) are classified by that IPv4 address.
+
 function ipv4ToInt(ip: string): number {
-    return ip.split('.').reduce((acc, oct) => (acc * 256) + parseInt(oct, 10), 0);
+    return ip.split('.').reduce((acc, oct) => (acc * 256) + parseInt(oct, 10), 0) >>> 0;
+}
+
+function intToIpv4(n: number): string {
+    return [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
 }
 
 function inV4(ip: string, base: string, bits: number): boolean {
@@ -47,38 +63,116 @@ function inV4(ip: string, base: string, bits: number): boolean {
     return ((ipv4ToInt(ip) & mask) >>> 0) === ((ipv4ToInt(base) & mask) >>> 0);
 }
 
-/** 'never' | 'private' | 'public' for an IP literal. */
+/** Eight 16-bit groups, or null if `ip` is not an IPv6 literal. */
+export function parseIpv6(ip: string): number[] | null {
+    let text = ip.toLowerCase().replace(/^\[|\]$/g, '');
+    const zone = text.indexOf('%');
+    if (zone >= 0) text = text.slice(0, zone);
+    if (net.isIP(text) !== 6) return null;
+    // A dotted IPv4 tail becomes two groups.
+    const tail = text.match(/(\d+\.\d+\.\d+\.\d+)$/);
+    if (tail) {
+        const n = ipv4ToInt(tail[1]);
+        text = text.slice(0, -tail[1].length) + `${(n >>> 16).toString(16)}:${(n & 0xffff).toString(16)}`;
+    }
+    const halves = text.split('::');
+    const head = halves[0] ? halves[0].split(':') : [];
+    const rest = halves.length > 1 && halves[1] ? halves[1].split(':') : [];
+    const fill = halves.length > 1 ? 8 - head.length - rest.length : 0;
+    const groups = [...head, ...Array(fill).fill('0'), ...rest].map(g => parseInt(g, 16));
+    return groups.length === 8 && groups.every(g => g >= 0 && g <= 0xffff) ? groups : null;
+}
+
+function v4FromGroups(hi: number, lo: number): string {
+    return intToIpv4(((hi << 16) | lo) >>> 0);
+}
+
+/** 'never' | 'private' | 'public' for an IP literal (any textual form). */
 export function classifyIp(ip: string): 'never' | 'private' | 'public' {
-    const kind = net.isIP(ip);
-    if (kind === 4) {
-        if (inV4(ip, '169.254.0.0', 16)) return 'never';   // link-local / metadata
-        if (inV4(ip, '0.0.0.0', 8)) return 'never';        // unspecified / "this network"
-        if (inV4(ip, '224.0.0.0', 4)) return 'never';      // multicast
-        if (inV4(ip, '240.0.0.0', 4)) return 'never';      // reserved + broadcast
-        if (inV4(ip, '127.0.0.0', 8) || inV4(ip, '10.0.0.0', 8) || inV4(ip, '172.16.0.0', 12)
-            || inV4(ip, '192.168.0.0', 16) || inV4(ip, '100.64.0.0', 10)
-            || inV4(ip, '198.18.0.0', 15) || inV4(ip, '192.0.0.0', 24)) return 'private';
+    const v4 = canonicalIpv4(ip);
+    if (v4) {
+        if (inV4(v4, '169.254.0.0', 16)) return 'never';   // link-local / metadata
+        if (inV4(v4, '0.0.0.0', 8)) return 'never';        // unspecified / "this network"
+        if (inV4(v4, '224.0.0.0', 4)) return 'never';      // multicast
+        if (inV4(v4, '240.0.0.0', 4)) return 'never';      // reserved + broadcast
+        if (inV4(v4, '127.0.0.0', 8) || inV4(v4, '10.0.0.0', 8) || inV4(v4, '172.16.0.0', 12)
+            || inV4(v4, '192.168.0.0', 16) || inV4(v4, '100.64.0.0', 10)
+            || inV4(v4, '198.18.0.0', 15) || inV4(v4, '192.0.0.0', 24)
+            || inV4(v4, '192.0.2.0', 24) || inV4(v4, '198.51.100.0', 24)
+            || inV4(v4, '203.0.113.0', 24)) return 'private';
         return 'public';
     }
-    if (kind === 6) {
-        const lower = ip.toLowerCase();
-        const mapped = lower.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-        if (mapped) return classifyIp(mapped[1]);
-        if (lower === '::') return 'never';
-        if (lower === '::1') return 'private';
-        if (/^fe[89ab]/.test(lower)) return 'never';           // fe80::/10
-        if (/^ff/.test(lower)) return 'never';                 // multicast
-        if (/^f[cd]/.test(lower)) return 'private';            // fc00::/7 ULA
-        return 'public';
+    const g = parseIpv6(ip);
+    if (!g) return 'never';                      // not an IP at all: refuse, never guess
+    const zeroUpTo = (n: number) => g.slice(0, n).every(x => x === 0);
+    if (zeroUpTo(8)) return 'never';                                  // ::
+    if (zeroUpTo(7) && g[7] === 1) return 'private';                  // ::1
+    if (zeroUpTo(5) && g[5] === 0xffff) return classifyIp(v4FromGroups(g[6], g[7]));  // ::ffff:a.b.c.d
+    if (zeroUpTo(4) && g[4] === 0xffff && g[5] === 0) return classifyIp(v4FromGroups(g[6], g[7])); // ::ffff:0:a.b.c.d
+    if (zeroUpTo(6)) return classifyIp(v4FromGroups(g[6], g[7]));     // ::a.b.c.d (v4-compatible)
+    if (g[0] === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every(x => x === 0)) {
+        return classifyIp(v4FromGroups(g[6], g[7]));                  // NAT64 64:ff9b::/96
     }
+    if (g[0] === 0x64 && g[1] === 0xff9b && g[2] === 1) return 'private';   // 64:ff9b:1::/48 local NAT64
+    if (g[0] === 0x2002) return classifyIp(v4FromGroups(g[1], g[2]));       // 6to4
+    if (g[0] === 0x2001 && g[1] === 0) return 'never';                // Teredo: embedded client is obfuscated
+    if (g[0] === 0x2001 && g[1] === 0x0db8) return 'never';           // documentation
+    if (g[0] === 0x0100 && g[1] === 0 && g[2] === 0 && g[3] === 0) return 'never';  // 100::/64 discard
+    if ((g[0] & 0xffc0) === 0xfe80) return 'never';                   // fe80::/10 link-local
+    if ((g[0] & 0xffc0) === 0xfec0) return 'never';                   // fec0::/10 site-local
+    if ((g[0] & 0xff00) === 0xff00) return 'never';                   // multicast
+    if ((g[0] & 0xfe00) === 0xfc00) return 'private';                 // fc00::/7 ULA
+    if (g[0] < 0x0100) return 'never';                                // rest of ::/8 is reserved
     return 'public';
 }
 
+/** Dotted-quad for an IPv4 literal in any form the URL parser accepts, else null. */
+function canonicalIpv4(host: string): string | null {
+    if (net.isIP(host) === 4) return host;
+    if (host.includes(':') || host.startsWith('[')) return null;
+    try {
+        const h = new URL(`http://${host}/`).hostname;
+        return net.isIP(h) === 4 ? h : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Canonical host as the browser sees it: WHATWG-parsed (IPv4 shorthand,
+ * IDN → punycode, case, percent-decoding), brackets and a trailing dot
+ * removed, IPv6 in its compressed serialisation. Returns null for something
+ * that is not a valid host.
+ */
+export function canonicalHost(raw: string): string | null {
+    let text = String(raw ?? '').trim();
+    if (!text) return null;
+    text = text.replace(/^\*\./, '');
+    const bare = text.replace(/^\[|\]$/g, '');
+    const literal6 = net.isIP(bare.split('%')[0]) === 6;
+    let host: string;
+    try {
+        host = new URL(`http://${literal6 ? `[${bare}]` : text}/`).hostname;
+    } catch {
+        return null;
+    }
+    host = host.toLowerCase().replace(/^\[|\]$/g, '');
+    // `a.b.` and `a.b` are the same name to DNS; the URL parser keeps the dot
+    // for names (only an IPv4 tail is normalised), so drop it here.
+    host = host.replace(/\.$/, '');
+    return host || null;
+}
+
 export function hostAllowed(host: string, allowed: string[]): boolean {
-    const h = host.toLowerCase().replace(/^\[|\]$/g, '').replace(/\.$/, '');
+    const h = canonicalHost(host);
+    if (!h) return false;
+    const isLiteral = net.isIP(h) !== 0;
     return allowed.some(entry => {
-        const e = String(entry).toLowerCase().replace(/^\*\./, '');
-        return !!e && (h === e || (!net.isIP(h) && h.endsWith(`.${e}`)));
+        const e = canonicalHost(String(entry));
+        if (!e) return false;
+        if (h === e) return true;
+        // An IP entry covers exactly itself; names cover their subdomains.
+        return !isLiteral && net.isIP(e) === 0 && h.endsWith(`.${e}`);
     });
 }
 
@@ -107,7 +201,8 @@ export class EgressGuard {
             return { allowed: false, reason: 'unparseable URL' };
         }
         if (!NETWORK_SCHEMES.has(url.protocol)) return { allowed: true };   // data:, blob:, about:
-        const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+        const host = canonicalHost(url.hostname);
+        if (!host) return { allowed: false, reason: 'URL has no usable host' };
         const listed = hostAllowed(host, this.policy.allowed_hosts || []);
         const literal = net.isIP(host) !== 0;
         if (literal) {
@@ -122,10 +217,13 @@ export class EgressGuard {
         try {
             ips = await this.resolve(host);
         } catch {
-            // The browser would fail to resolve it as well; let it, so the
-            // step error is the usual DNS one rather than a policy block.
-            return { allowed: true };
+            // Fail closed. Chromium has its own resolver (and /etc/hosts
+            // handling); "we could not resolve it" is not evidence that the
+            // browser cannot, and an unchecked address is exactly what this
+            // guard exists to stop.
+            return { allowed: false, reason: `${host} could not be resolved for the egress check` };
         }
+        if (!ips.length) return { allowed: false, reason: `${host} resolved to no address` };
         for (const ip of ips) {
             const cls = classifyIp(ip);
             if (cls === 'never') return { allowed: false, reason: `${host} resolves to ${ip}, a link-local/metadata or reserved address` };

@@ -61,6 +61,70 @@ def normalize_region(value: Optional[str]) -> Optional[str]:
     return text
 
 
+class RegionNotPermitted(PermissionError):
+    pass
+
+
+def parse_region_grants(entries: Optional[Iterable[str]]) -> Dict[str, Optional[set]]:
+    """`WORKER_REGIONS` entries → {region: None (every workspace) | {ws ids}}.
+
+    `eu` opens the region to every workspace; `acme-onprem=12,15` restricts it
+    to those workspaces. A malformed restriction grants nobody rather than
+    everybody — a line meant to restrict a region must never open it.
+    """
+    grants: Dict[str, Optional[set]] = {}
+    for raw in entries or []:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        name, sep, rest = text.partition("=")
+        try:
+            region = normalize_region(name)
+        except InvalidRegion:
+            continue
+        if not region:
+            continue
+        if not sep:
+            # An open line never widens a restriction stated elsewhere.
+            grants.setdefault(region, None)
+            continue
+        parts = [p for p in re.split(r"[\s,;]+", rest.strip()) if p]
+        ids = {int(p) for p in parts} if parts and all(p.isdigit() for p in parts) else set()
+        # A restriction we cannot read grants nobody, and any restricted line
+        # turns an open region into a restricted one.
+        if grants.get(region) is None:
+            grants[region] = ids
+        else:
+            grants[region] |= ids
+    return grants
+
+
+def check_region_access(region: Optional[str], workspace_id: Optional[int],
+                        entries: Optional[Iterable[str]] = None) -> None:
+    """Refuse a region the caller's workspace may not dispatch to.
+
+    A region is a routing label, and the workers behind it may sit inside one
+    customer's network (`WORKER_REGION_EXCLUSIVE`). Letting any caller pick
+    any label would let tenant A run its journeys — with its resolved secrets —
+    on tenant B's workers, and use them to reach B's internal network. So a
+    region must be declared by the instance admin in `WORKER_REGIONS`; an
+    undeclared region is refused, never treated as open.
+    """
+    if not region:
+        return
+    if entries is None:
+        from app.services.instance_settings import effective
+        entries = effective("WORKER_REGIONS") or []
+    grants = parse_region_grants(entries)
+    if region not in grants:
+        raise RegionNotPermitted(
+            f"region {region!r} is not configured on this instance "
+            "(an instance admin declares regions in WORKER_REGIONS)")
+    allowed = grants[region]
+    if allowed is not None and (workspace_id is None or int(workspace_id) not in allowed):
+        raise RegionNotPermitted(f"region {region!r} is not available to this workspace")
+
+
 def stream_for(base: str, region: Optional[str]) -> str:
     """`jobs:pending` + region → `jobs:pending:<region>`. No region = the base
     stream, which is what makes unlabelled deployments behave as before."""

@@ -346,6 +346,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("WORKER_LLM_BASE_URL", "worker", label="Worker LLM base URL",
                description="ollama / openai-compatible endpoint as reachable FROM "
                            "the workers"),
+    SettingDef("WORKER_REGIONS", "worker", type="list",
+               label="Worker regions",
+               description="one per line: 'eu' = any workspace may pin runs to "
+                           "region eu; 'acme-onprem=12,15' = only workspaces 12 and "
+                           "15 may. A region not listed here is refused — workers "
+                           "in a region can sit inside one customer's network"),
     SettingDef("EGRESS_ALLOWLIST_ENFORCED", "worker", type="bool",
                label="Enforce egress allowlists on every project",
                description="workers block browser requests to hosts outside the "
@@ -362,6 +368,18 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "window against it. Fetched through the outbound URL guard"),
     SettingDef("PROMETHEUS_BEARER_TOKEN", "observability", secret=True,
                label="Prometheus bearer token (optional)"),
+    SettingDef("PROMETHEUS_QUERY_TEMPLATES", "observability", type="list",
+               label="Approved load-test queries",
+               description="one per line, 'name=PromQL'. A load-test step names a "
+                           "template and gets it evaluated; $project_id, "
+                           "$workspace_id and $run_id are substituted, so a "
+                           "template can be label-scoped to the caller's project"),
+    SettingDef("PROMETHEUS_ALLOW_ADHOC_QUERIES", "observability", type="bool",
+               label="Allow arbitrary load-test queries",
+               description="evaluate PromQL written in the step itself. Any project "
+                           "member who can author a load test can then read ANY "
+                           "series this Prometheus holds — single-tenant instances "
+                           "or a label-enforcing proxy only"),
     # --- Network access control (WP8) ---
     SettingDef("TRUSTED_PROXY_CIDRS", "network", type="list",
                label="Trusted reverse proxies",

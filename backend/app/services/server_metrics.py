@@ -13,10 +13,15 @@ The Prometheus URL is operator configuration, fetched through net_guard with
 its own host as the private-network exemption (an in-cluster Prometheus is the
 normal case) — metadata/link-local ranges stay refused, redirects are not
 followed. Queries are user-authored but only ever sent to that one server.
-Note what that means on a shared instance: any project member who can author a
-load test can read any series that Prometheus holds. Point PROMETHEUS_URL at a
-Prometheus (or a label-enforcing proxy such as prom-label-proxy) scoped to what
-your users may see.
+Queries are restricted, because Prometheus has no tenancy of its own: a
+PromQL string the step author wrote could read any series the server holds
+(other tenants' services included). So by default only operator-approved
+templates run — `PROMETHEUS_QUERY_TEMPLATES`, `name=PromQL` per line, named by
+the step (`{"template": "cpu"}` or a bare `"cpu"`), with `$project_id`,
+`$workspace_id` and `$run_id` substituted server-side so a template can be
+label-scoped to the caller. Free-form PromQL needs the
+`PROMETHEUS_ALLOW_ADHOC_QUERIES` opt-in (single-tenant instances, or a
+label-enforcing proxy such as prom-label-proxy in front).
 """
 from __future__ import annotations
 
@@ -43,14 +48,61 @@ def queries_from_steps(steps: Optional[List[Any]]) -> List[Dict[str, str]]:
                 q = {"name": f"query {i + 1}", "query": q}
             if not isinstance(q, dict):
                 continue
+            template = str(q.get("template") or "").strip()[:80]
             query = str(q.get("query") or "").strip()
-            if not query or len(query) > MAX_QUERY_LEN:
+            if template:
+                out.append({"name": str(q.get("name") or template)[:80],
+                            "query": query, "template": template})
+            elif not query or len(query) > MAX_QUERY_LEN:
                 continue
-            out.append({"name": str(q.get("name") or f"query {i + 1}")[:80], "query": query})
+            else:
+                out.append({"name": str(q.get("name") or f"query {i + 1}")[:80], "query": query})
             if len(out) >= MAX_QUERIES:
                 break
         return out
     return []
+
+
+def parse_templates(entries: Optional[List[str]]) -> Dict[str, str]:
+    """`PROMETHEUS_QUERY_TEMPLATES` lines (`name=PromQL`) → {name: PromQL}."""
+    out: Dict[str, str] = {}
+    for raw in entries or []:
+        name, sep, query = str(raw or "").partition("=")
+        if sep and name.strip() and query.strip():
+            out[name.strip()] = query.strip()
+    return out
+
+
+_SCOPE_VARS = ("project_id", "workspace_id", "run_id")
+
+
+def resolve_query(q: Dict[str, str], templates: Dict[str, str], allow_adhoc: bool,
+                  scope: Dict[str, Any]) -> str:
+    """The PromQL actually sent for one step entry, or ValueError.
+
+    A template is looked up by its `template` name, or by a `query` that is
+    exactly a template name. Scope values are integers we hold, substituted
+    as digits only, so they cannot inject PromQL."""
+    name = q.get("template") or (q.get("query") if q.get("query") in templates else None)
+    if name:
+        if name not in templates:
+            raise ValueError(f"no approved query template named {name!r}")
+        text = templates[name]
+        # A missing scope value must not leave the literal placeholder in
+        # (that would silently widen a label-scoped template).
+        for var in _SCOPE_VARS:
+            token = "$" + var
+            if token in text:
+                value = scope.get(var)
+                if value is None:
+                    raise ValueError(f"template {name!r} needs ${var}, which this result has none of")
+                text = text.replace(token, str(int(value)))
+        return text
+    if not allow_adhoc:
+        raise ValueError("free-form PromQL is disabled on this instance; use one of the "
+                         "operator-approved query templates"
+                         + (f" ({', '.join(sorted(templates))})" if templates else ""))
+    return q["query"]
 
 
 def window_for(run_created: datetime, run_finalized: Optional[datetime],
@@ -107,7 +159,8 @@ async def _fetch(base: str, params: Dict[str, Any], token: Optional[str]) -> Dic
     return resp.json()
 
 
-async def evaluate(queries: List[Dict[str, str]], start: datetime, end: datetime) -> Dict[str, Any]:
+async def evaluate(queries: List[Dict[str, str]], start: datetime, end: datetime,
+                   scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     from app.services.instance_settings import effective
     base = str(effective("PROMETHEUS_URL") or "").strip()
     out: Dict[str, Any] = {
@@ -119,11 +172,17 @@ async def evaluate(queries: List[Dict[str, str]], start: datetime, end: datetime
     if not base or not queries:
         return out
     token = effective("PROMETHEUS_BEARER_TOKEN") or None
+    templates = parse_templates(effective("PROMETHEUS_QUERY_TEMPLATES") or [])
+    allow_adhoc = bool(effective("PROMETHEUS_ALLOW_ADHOC_QUERIES"))
     for q in queries:
-        entry: Dict[str, Any] = {"name": q["name"], "query": q["query"], "result": [], "error": None}
+        entry: Dict[str, Any] = {"name": q["name"], "query": q.get("template") or q["query"],
+                                 "result": [], "error": None}
         try:
+            # The resolved text is not echoed back: a template may embed label
+            # matchers the operator would rather not publish to every member.
+            promql = resolve_query(q, templates, allow_adhoc, scope or {})
             body = await _fetch(base, {
-                "query": q["query"],
+                "query": promql,
                 "start": start.timestamp() if start.tzinfo else (start - datetime(1970, 1, 1)).total_seconds(),
                 "end": end.timestamp() if end.tzinfo else (end - datetime(1970, 1, 1)).total_seconds(),
                 "step": out["step_seconds"],

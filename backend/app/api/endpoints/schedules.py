@@ -33,6 +33,22 @@ def _clean_regions(regions: Optional[List[str]]) -> Optional[List[str]]:
     return out or None
 
 
+async def _check_region_grants(session: AsyncSession, project_id: int,
+                               regions: Optional[List[str]]) -> None:
+    """Every region must be granted to the project's workspace (WP8): region
+    workers can sit inside another customer's network."""
+    if not regions:
+        return
+    from app.services.worker_fleet import RegionNotPermitted, check_region_access
+    project = await session.get(Project, project_id)
+    ws_id = project.workspace_id if project else None
+    try:
+        for region in regions:
+            check_region_access(region, ws_id)
+    except RegionNotPermitted as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+
 async def _region_statuses(schedule: TestSchedule, session: AsyncSession) -> List[MonitorRegionStatus]:
     """Per-region state for a multi-region monitor. The streak is computed
     from that region's own checks, so one flapping region cannot hide or
@@ -125,6 +141,7 @@ async def create_schedule(
         raise HTTPException(status_code=400, detail="Invalid cron expression")
 
     schedule.regions = _clean_regions(schedule.regions)
+    await _check_region_grants(session, schedule.project_id, schedule.regions)
 
     # Set next_run_at based on cron
     now = datetime.utcnow()
@@ -285,6 +302,7 @@ async def update_schedule(
     update_data = schedule_update.model_dump(exclude_unset=True)
     if "regions" in update_data:
         update_data["regions"] = _clean_regions(update_data["regions"])
+        await _check_region_grants(session, db_schedule.project_id, update_data["regions"])
         # Region states of regions no longer monitored would otherwise keep
         # the aggregate "down" forever.
         kept = set(update_data["regions"] or [])

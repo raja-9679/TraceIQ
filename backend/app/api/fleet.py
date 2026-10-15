@@ -144,6 +144,10 @@ async def load_result_server_metrics(
         case = None
     queries = server_metrics.queries_from_steps(case.steps if case else [])
     start, end = server_metrics.window_for(run.created_at, run.finalized_at, result.duration_ms)
-    out = await server_metrics.evaluate(queries, start, end)
+    from app.models import Project
+    project = await session.get(Project, run.project_id) if run.project_id else None
+    out = await server_metrics.evaluate(queries, start, end, scope={
+        "project_id": run.project_id, "run_id": run.id,
+        "workspace_id": project.workspace_id if project else None})
     out["queries_defined"] = len(queries)
     return out

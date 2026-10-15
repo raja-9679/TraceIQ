@@ -66,11 +66,13 @@ Passwords are embedded in connection URLs verbatim — keep them to
   regionWorkers:
     - name: eu
       region: eu-west
-      exclusive: false     # true = never take jobs from the global stream
+      exclusive: true      # default; false also drains the global stream (every tenant's jobs)
       replicas: 2
   ```
 
-  `executionWorker.region` labels the main pool instead. Region workers are
+  Workspaces may only pin runs to a region an instance admin granted them in
+  the `WORKER_REGIONS` instance setting (`eu` = everyone, `eu=12,15` = those
+  workspaces). `executionWorker.region` labels the main pool instead. Region workers are
   Node workers; no Celery queue is involved.
 - `celeryBeat.redbeat=true` (default) keeps the schedule in Redis with a lock,
   so a rescheduled beat pod resumes cleanly. `/health/beat` on the backend

@@ -123,8 +123,15 @@ spec:
 {{- $kedaOn := and .Values.keda .Values.keda.enabled -}}
 {{- include "traceiq.executionWorkerDeployment" (dict "root" . "component" "execution-worker" "region" .Values.executionWorker.region "exclusive" .Values.executionWorker.regionExclusive "replicas" .Values.executionWorker.replicas "resources" .Values.executionWorker.resources "scaled" (or .Values.executionWorker.autoscaling.enabled $kedaOn)) }}
 {{- range .Values.regionWorkers }}
+{{- $region := required "regionWorkers[].region is required" .region }}
+{{- if not (regexMatch "^[a-z0-9][a-z0-9-]{0,31}$" $region) }}
+{{- fail (printf "regionWorkers[].region %q: use 1-32 lowercase letters, digits or '-'" $region) }}
+{{- end }}
+{{- /* Exclusive unless explicitly false: a dedicated region pool that also
+drained the global stream would run every tenant's jobs. `default` cannot be
+used here — it treats an explicit false as unset. */}}
 ---
-{{ include "traceiq.executionWorkerDeployment" (dict "root" $ "component" (printf "execution-worker-%s" .name) "region" (required "regionWorkers[].region is required" .region) "exclusive" (default false .exclusive) "replicas" (default 1 .replicas) "resources" (default $.Values.executionWorker.resources .resources) "scaled" $kedaOn) }}
+{{ include "traceiq.executionWorkerDeployment" (dict "root" $ "component" (printf "execution-worker-%s" .name) "region" $region "exclusive" (ternary .exclusive true (hasKey . "exclusive")) "replicas" (default 1 .replicas) "resources" (default $.Values.executionWorker.resources .resources) "scaled" $kedaOn) }}
 {{- end }}
 {{- /* KEDA owns worker scaling when enabled; two autoscalers on one
 Deployment fight each other, so the CPU HPA is suppressed. */}}

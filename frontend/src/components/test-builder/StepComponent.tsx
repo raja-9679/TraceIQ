@@ -694,14 +694,14 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             <textarea
                                 id={`prom-${step.id}`}
                                 className="w-full h-20 p-3 text-xs font-mono border border-slate-200 rounded-xl bg-white"
-                                placeholder={'CPU | sum(rate(container_cpu_usage_seconds_total{pod=~"api-.*"}[1m]))\np99 | histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[1m])) by (le))'}
+                                placeholder={'CPU | cpu\np99 latency | p99'}
                                 defaultValue={formatPromQueries(step.params?.prometheus_queries)}
                                 onBlur={(e) => {
                                     const qs = parsePromQueries(e.target.value);
                                     updateParams('prometheus_queries', qs.length ? qs : undefined);
                                 }}
                             />
-                            <p className="text-[10px] text-gray-400 mt-1 italic">One "name | PromQL" per line (max 10). Evaluated over the test window and shown next to the k6 results.</p>
+                            <p className="text-[10px] text-gray-400 mt-1 italic">One "label | template" per line (max 10), naming a query template your admin approved (Settings → Instance → Observability). Free-form PromQL runs only if the instance allows it.</p>
                         </div>
                     </div>
                 )}

@@ -381,8 +381,11 @@ async def test_region_schedule_dispatches_one_run_per_region(session, scene, mon
     assert sorted(r.region for r in runs) == ["ap", "eu"]
 
 
-async def test_run_region_is_validated_on_create(session, scene):
+async def test_run_region_is_validated_on_create(session, scene, monkeypatch):
     from app.api.endpoints import test_runs
+    ws_id = (await session.exec(select(Project.workspace_id).where(
+        Project.id == scene.project_id))).one()
+    _settings(monkeypatch, WORKER_REGIONS=["eu"])
     with pytest.raises(HTTPException) as exc:
         await test_runs.create_run(
             suite_id=scene.root_id, case_id=None, browser=None, device=None, tags=None,
@@ -395,6 +398,69 @@ async def test_run_region_is_validated_on_create(session, scene):
         session=session, principal=AuthPrincipal(user=scene.user))
     run = runs[0] if isinstance(runs, list) else runs
     assert run.region == "eu"
+
+    # Security review: a region is a grant, not a free-form label. Undeclared
+    # regions and regions reserved for another workspace are refused.
+    for grants, region in ((["eu"], "acme-onprem"),
+                           ([f"acme-onprem={ws_id + 1000}"], "acme-onprem"),
+                           ([], "eu")):
+        _settings(monkeypatch, WORKER_REGIONS=grants)
+        before = len((await session.exec(select(TestRun.id))).all())
+        with pytest.raises(HTTPException) as exc:
+            await test_runs.create_run(
+                suite_id=scene.root_id, case_id=scene.root_cases[0], browser=None, device=None,
+                tags=None, context=test_runs.RunCreateContext(region=region),
+                session=session, principal=AuthPrincipal(user=scene.user))
+        assert exc.value.status_code == 403, (grants, region)
+        assert len((await session.exec(select(TestRun.id))).all()) == before
+    _settings(monkeypatch, WORKER_REGIONS=[f"acme-onprem={ws_id}"])
+    runs = await test_runs.create_run(
+        suite_id=scene.root_id, case_id=scene.root_cases[0], browser=None, device=None,
+        tags=None, context=test_runs.RunCreateContext(region="acme-onprem"),
+        session=session, principal=AuthPrincipal(user=scene.user))
+    assert (runs[0] if isinstance(runs, list) else runs).region == "acme-onprem"
+
+
+async def test_schedule_regions_need_a_grant(session, scene, monkeypatch):
+    from app.api.endpoints import schedules
+    from app.models import TestScheduleBase, TestScheduleUpdate
+    ws_id = (await session.exec(select(Project.workspace_id).where(
+        Project.id == scene.project_id))).one()
+    _settings(monkeypatch, WORKER_REGIONS=["eu", f"vip={ws_id + 1000}"])
+    base = dict(name="m", project_id=scene.project_id, test_case_id=scene.root_cases[0],
+                cron_expression="*/5 * * * *")
+    with pytest.raises(HTTPException) as exc:
+        await schedules.create_schedule(TestScheduleBase(**base, regions=["eu", "vip"]),
+                                        session=session, current_user=scene.user)
+    assert exc.value.status_code == 403
+    sched = await schedules.create_schedule(TestScheduleBase(**base, regions=["eu"]),
+                                            session=session, current_user=scene.user)
+    with pytest.raises(HTTPException) as exc:
+        await schedules.update_schedule(sched.id, TestScheduleUpdate(regions=["vip"]),
+                                        session=session, current_user=scene.user)
+    assert exc.value.status_code == 403
+
+
+def test_dispatch_rechecks_the_region_grant(scene, monkeypatch):
+    """A schedule saved while a region was granted keeps firing after the
+    grant is withdrawn; dispatch must refuse before resolving any secret."""
+    from app import worker
+    _settings(monkeypatch, WORKER_REGIONS=[])
+    with _sync_session() as s:
+        run = TestRun(test_suite_id=scene.root_id, project_id=scene.project_id,
+                      test_case_id=scene.root_cases[0], status=TestStatus.PENDING, region="eu")
+        s.add(run)
+        s.commit()
+        run_id = run.id
+    loaded = []
+    monkeypatch.setattr(worker, "_load_secrets", lambda *a, **k: loaded.append(1) or {})
+    monkeypatch.setattr(worker, "_load_auth_state", lambda *a, **k: loaded.append(1))
+    worker.run_test_suite(run_id)
+    with _sync_session() as s:
+        run = s.get(TestRun, run_id)
+        assert run.status == TestStatus.ERROR
+        assert "not configured" in (run.error_message or "")
+    assert loaded == []
 
 
 # --- egress policy -----------------------------------------------------------------------

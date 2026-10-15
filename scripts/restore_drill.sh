@@ -34,6 +34,8 @@
 # Exit status: 0 = every check PASS (WARNs allowed), 1 = any FAIL, 2 = usage.
 # --keep leaves the restored database for inspection.
 set -euo pipefail
+# Never `set -x` here: the database password is in this shell's variables.
+umask 077
 
 usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
@@ -58,6 +60,9 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRILL_DB="${DRILL_DB:-traceiq_restore_drill}"
+# Interpolated into SQL below, so restricted to a plain identifier.
+[[ "$DRILL_DB" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || {
+  echo "DRILL_DB must be a lowercase identifier ([a-z0-9_])" >&2; exit 2; }
 case "$DRILL_DB" in traceiq|postgres|template0|template1)
   echo "refusing to use '$DRILL_DB' as the drill database" >&2; exit 2 ;; esac
 
@@ -80,6 +85,17 @@ record() {  # record STATUS "check" "detail"
   RESULTS+=("$(printf '%-5s %-30s %s' "$1" "$2" "$3")")
   [ "$1" = "FAIL" ] && FAILED=1
   return 0
+}
+
+# Anything echoed into the report passes through this: a failing check's last
+# line can be a driver error quoting the connection string. Literal (not sed)
+# replacement, because the password may contain regex metacharacters.
+redact() {
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ -n "${PGPASS_:-}" ]; then line="${line//"$PGPASS_"/***}"; fi
+    printf '%s\n' "$line"
+  done
 }
 
 # --- target database -------------------------------------------------------
@@ -112,7 +128,10 @@ else
 fi
 NET="$(docker inspect "$PGC" -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')"
 
+LOG=""
 cleanup() {
+  # The restore log can hold row data quoted in psql error DETAIL lines.
+  if [ -n "$LOG" ]; then rm -f "$LOG"; fi
   if [ "$KEEP" = "1" ]; then
     echo "(--keep) restored database left in place: $DRILL_DB on $PGHOST_"
     return
@@ -148,15 +167,20 @@ ELAPSED=$(( $(date +%s) - START ))
 # its OWNER/GRANT statements; the data is still there, so those are tolerated.
 ERRORS="$(grep -E '^(psql:.*)?ERROR|pg_restore: error' "$LOG" | grep -v 'role ".*" does not exist' || true)"
 if [ -n "$ERRORS" ]; then
-  record FAIL "restore" "$(echo "$ERRORS" | wc -l) error(s), first: $(echo "$ERRORS" | head -1 | cut -c1-120)"
+  record FAIL "restore" "$(echo "$ERRORS" | wc -l) error(s), first: $(echo "$ERRORS" | head -1 | redact | cut -c1-120)"
 else
   record PASS "restore" "${ELAPSED}s, $(du -h "$DUMP" | cut -f1) dump"
 fi
-rm -f "$LOG"
+rm -f "$LOG"; LOG=""
 
+# The database URL carries the password, so it is handed to `docker run` via
+# the environment (`-e NAME` with no value copies it from the client's env)
+# rather than on the command line, where `ps` on the host would show it to
+# every local user for the duration of each check.
 run_backend() {
+  DATABASE_URL="postgresql+asyncpg://${PGUSER_}:${PGPASS_}@${PGHOST_}:5432/${DRILL_DB}" \
   docker run --rm -i --entrypoint "$1" --network "$NET" "${MOUNT[@]}" \
-    -e DATABASE_URL="postgresql+asyncpg://${PGUSER_}:${PGPASS_}@${PGHOST_}:5432/${DRILL_DB}" \
+    -e DATABASE_URL \
     -e CELERY_BROKER_URL=redis://127.0.0.1:6379/0 \
     -e CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0 \
     -e MINIO_ENDPOINT=127.0.0.1:9 -e MINIO_ACCESS_KEY=drill -e MINIO_SECRET_KEY=drill \
@@ -216,7 +240,7 @@ PY
 )"
 smoke() { echo "$SMOKE" | sed -n "s/^SMOKE_$1 //p" | tail -1; }
 if [ -z "$(smoke AUDIT)" ]; then
-  record FAIL "smoke queries" "$(echo "$SMOKE" | grep -v "^\s*$" | tail -1 | cut -c1-150)"
+  record FAIL "smoke queries" "$(echo "$SMOKE" | grep -v "^\s*$" | tail -1 | redact | cut -c1-150)"
 else
   if [ "$(smoke USERS)" = "0" ]; then
     record WARN "row counts" "$(smoke COUNTS) (no users — is this the right backup?)"

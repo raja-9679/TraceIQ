@@ -42,8 +42,11 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results.' },
 ];
 
-// Subject DNs contain commas, so this list is edited one entry per line.
-const LINE_LIST_KEYS = new Set(['WORKER_MTLS_ALLOWED_SUBJECTS']);
+// Subject DNs, region grants ("eu=12,15") and PromQL templates contain
+// commas, so these lists are edited one entry per line.
+const LINE_LIST_KEYS = new Set([
+    'WORKER_MTLS_ALLOWED_SUBJECTS', 'WORKER_REGIONS', 'PROMETHEUS_QUERY_TEMPLATES',
+]);
 
 const fetchInstanceSettings = async (): Promise<InstanceSetting[]> => {
     const response = await api.get('/admin/instance-settings');
@@ -200,7 +203,7 @@ export default function InstanceSettingsSection() {
                 <textarea
                     aria-label={s.label || s.key}
                     className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono"
-                    placeholder="one entry per line, e.g. CN=worker-1,O=Corp"
+                    placeholder="one entry per line"
                     value={displayValue(s)}
                     onChange={(e) => setPending((p) => ({ ...p, [s.key]: e.target.value }))}
                 />

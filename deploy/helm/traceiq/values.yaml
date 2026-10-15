@@ -177,11 +177,17 @@ executionWorker:
 
 # Extra execution-worker pools pinned to a region (WP8). Runs created with a
 # `region` (or monitors with `regions`) are dispatched to jobs:pending:<region>
-# and only workers with that WORKER_REGION claim them. Each entry renders its
+# and only workers with that WORKER_REGION claim them. Only workspaces granted
+# the region in the WORKER_REGIONS instance setting may pin runs to it. Every
+# pool holds the chart Secret's instance-wide Redis/MinIO/webhook credentials,
+# so do not run one where the cluster operator is not you. Each entry renders its
 # own Deployment named <release>-execution-worker-<name>.
 #   - name: eu            # DNS-safe, used in the Deployment name
 #     region: eu-west     # 1-32 chars [a-z0-9-]; must match the run's region
-#     exclusive: false    # true = never take global jobs (e.g. inside a customer network)
+#     exclusive: true     # DEFAULT true: only this region's jobs. false also
+#                         # drains the global stream = runs EVERY tenant's jobs
+#                         # (with their resolved secrets) on this pool; only for
+#                         # pools that are plain extra capacity you control.
 #     replicas: 1
 #     resources: {}       # empty = executionWorker.resources
 #     minReplicas: 0      # KEDA only; default keda.minReplicas

@@ -314,6 +314,19 @@ are 1–32 characters of `[a-z0-9-]`; an invalid one stops the worker at start
 rather than letting it consume a stream nothing dispatches to. **No
 `WORKER_REGION` behaves exactly as before.**
 
+**Declare every region before anyone can use it.** Instance setting
+`WORKER_REGIONS` (Settings → Instance → Execution workers), one per line:
+`eu` lets every workspace pin runs to `eu`; `acme-onprem=12,15` lets only
+workspaces 12 and 15 do so. A region that is not listed is refused (403) at
+run and schedule creation and again at dispatch — a region pool can sit inside
+one customer's network, and a free-form label would let any tenant run its
+journeys (and its resolved secrets) there. The compose region service and Helm
+`regionWorkers` are **exclusive by default** for the same reason; set
+`exclusive: false` / `WORKER_REGION_EXCLUSIVE=false` only for a pool that is
+plain extra capacity you control. Every worker holds the instance-wide Redis
+password and webhook secret, so a worker at a site you do not control is only
+appropriate on a single-tenant instance.
+
 Runs opt in with `"region": "eu"` in the `POST /api/runs` body; monitors and
 schedules take `regions: ["eu", "us"]` and create one run per region per cycle,
 each evaluated, alerted and paged on separately (the monitor's overall state is
@@ -521,12 +534,20 @@ that row.
 ## Server metrics next to load tests
 
 Set `PROMETHEUS_URL` (and optionally `PROMETHEUS_BEARER_TOKEN`; group
-*observability*). A `load-test` step can carry
-`params.prometheus_queries: [{name, query}]` (max 10); opening the result
-evaluates them as range queries over the test window and shows them next to the
-k6 numbers (`GET /api/runs/{id}/results/{result_id}/server-metrics`). Fetched
-through net_guard with the Prometheus host as the private-network exemption;
-redirects are not followed. On a shared instance note that anyone who can
-author a load test can read any series that Prometheus holds — point
-`PROMETHEUS_URL` at a Prometheus scoped to what your users may see, or at a
-label-enforcing proxy such as prom-label-proxy.
+*observability*), then approve queries in `PROMETHEUS_QUERY_TEMPLATES`, one
+`name=PromQL` per line, e.g.
+`cpu=sum(rate(container_cpu_usage_seconds_total{traceiq_project="$project_id"}[1m]))`.
+`$project_id`, `$workspace_id` and `$run_id` are substituted server-side (as
+integers), so a template can be label-scoped to the caller. A `load-test` step
+names templates in `params.prometheus_queries: [{name, template}]` (max 10, a
+bare string works too); opening the result evaluates them as range queries over
+the test window next to the k6 numbers
+(`GET /api/runs/{id}/results/{result_id}/server-metrics`).
+
+Free-form PromQL written in the step is **refused by default**: Prometheus has
+no tenancy, so it would let any member who can author a load test read every
+series the server holds. `PROMETHEUS_ALLOW_ADHOC_QUERIES=true` re-enables it —
+only on a single-tenant instance, or with `PROMETHEUS_URL` pointing at a
+label-enforcing proxy such as prom-label-proxy. Fetched through net_guard with
+the Prometheus host as the private-network exemption; redirects are not
+followed.

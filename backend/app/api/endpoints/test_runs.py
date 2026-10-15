@@ -129,6 +129,15 @@ async def create_run(
                 status_code=402,
                 detail=f"Monthly run quota reached ({used}/{limit}). Upgrade the workspace plan to run more.")
 
+    # Region pinning (WP8): the region's workers may belong to another
+    # customer's network, so the label must be one this workspace was granted.
+    if run_defaults.get("region"):
+        from app.services.worker_fleet import RegionNotPermitted, check_region_access
+        try:
+            check_region_access(run_defaults["region"], _ws_id)
+        except RegionNotPermitted as exc:
+            raise HTTPException(status_code=403, detail=str(exc))
+
     # ── Targeted selection (case_ids) ───────────────────────────────────
     targeted_cases: List[TestCase] = []
     scope_ids = set(await test_service.subtree_case_ids(suite_id, session))

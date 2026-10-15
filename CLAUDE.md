@@ -524,13 +524,18 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   provider (registry default first); `llm-provider.ts`'s exported `provider` is
   now a delegating object (`reconfigureProvider`). **Regions**: `TestRun.region`
   (body `region`, validated `[a-z0-9-]`, not combinable with
-  `local_worker_id`) → `jobs:pending:<region>` / `jobs:mobile:pending:<region>`;
+  `local_worker_id`; **a region is a grant**: instance setting `WORKER_REGIONS`,
+  one per line, `eu` = every workspace, `acme=12,15` = only those — undeclared
+  regions 403, checked at run/schedule create AND again at dispatch before any
+  secret is resolved, because region workers may sit in one customer's network) → `jobs:pending:<region>` / `jobs:mobile:pending:<region>`;
   jobs carry `region` so DLQ replay returns them there (replay also now sends
   mobile jobs back to the mobile stream — it used to send everything to
   `jobs:pending`). Workers with `WORKER_REGION` read their regional stream
   first, then the global one, **one stream per XREADGROUP** (a multi-stream
   read with COUNT 1 returns one entry *per stream* and strands the second in
-  the PEL); `WORKER_REGION_EXCLUSIVE=true` drops the global stream. No region
+  the PEL); `WORKER_REGION_EXCLUSIVE=true` drops the global stream (the DEFAULT for the
+  compose `execution-worker-region` service and Helm `regionWorkers` — a
+  dedicated pool that drained the global stream would run every tenant's jobs). No region
   = the old behaviour exactly. Schedules take `regions` (one run per
   region × device); monitors keep per-region state in
   `TestSchedule.region_states` with the pure `monitor_tasks.transition()`
@@ -566,13 +571,22 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   WebSockets/service workers are not intercepted. **Load tests**: `load-test`
   `params.prometheus_queries` evaluated on read by
   `GET /api/runs/{id}/results/{rid}/server-metrics` against `PROMETHEUS_URL`
-  (net_guard with its own host as the private exemption; any project member
-  can read any series that Prometheus holds — scope it). **Deploy**: optional
+  (net_guard with its own host as the private exemption). Prometheus has no
+  tenancy, so steps may only name operator templates
+  (`PROMETHEUS_QUERY_TEMPLATES`, `name=PromQL` per line, `$project_id`/
+  `$workspace_id`/`$run_id` substituted as integers); free-form PromQL needs
+  `PROMETHEUS_ALLOW_ADHOC_QUERIES`. Paging `_post` pins the vendor hosts, runs
+  net_guard (`validate_outbound_url_sync`) and does not follow redirects.
+  Egress guard canonicalises hosts with the WHATWG parser and classifies IPv6
+  by its 128 bits (v4-mapped/compatible, NAT64, 6to4 → the embedded IPv4;
+  `[::ffff:169.254.169.254]` serialises as `::ffff:a9fe:a9fe`), and a DNS
+  failure now fails closed; net_guard unwraps the same embedded forms. **Deploy**: optional
   `execution-worker-region` (compose profile `region`, all five files),
   Helm `regionWorkers: []` + values-gated KEDA ScaledObjects on stream lag
   (HPA suppressed when on); `scripts/restore_drill.sh` restores a pg_dump (+
   MinIO snapshot) into a throwaway DB and verifies migrations, row counts and
-  the audit chain.
+  the audit chain (DB URL passed to `docker run` via env, never argv; report
+  lines redacted; `umask 077`).
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
