@@ -420,3 +420,19 @@ async def test_scheduled_suite_runs_fan_out_but_monitors_do_not(session, scene):
     await _dispatch_schedule(monitor, session)
     mon = (await session.exec(select(TestRun).where(TestRun.agent_id == f"schedule:{monitor.id}"))).all()
     assert len(mon) == 1 and mon[0].emulation is None
+
+
+async def test_active_crawl_runs_per_project_are_capped(session, scene, monkeypatch):
+    # Each run can hold a shared worker for 15 minutes; a project may not
+    # start all its crawls at once.
+    from app.tasks import frontend_quality_tasks as tasks
+    monkeypatch.setattr(tasks.dispatch_site_crawl, "delay", lambda *a, **k: None)
+    monkeypatch.setattr(fq.site_crawl, "MAX_ACTIVE_RUNS_PER_PROJECT", 2)
+    await _with_host(session, scene)
+    crawls = [await fq.create_crawl(scene.project_id, _crawl_body(), None, session=session,
+                                    principal=me(scene)) for _ in range(3)]
+    for c in crawls[:2]:
+        await fq.run_crawl(c["id"], None, session=session, principal=me(scene))
+    with pytest.raises(HTTPException) as exc:
+        await fq.run_crawl(crawls[2]["id"], None, session=session, principal=me(scene))
+    assert exc.value.status_code == 429
