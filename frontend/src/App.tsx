@@ -22,6 +22,8 @@ import Billing from "@/pages/Billing";
 import LLMUsage from "@/pages/LLMUsage";
 import PublicStatus from "@/pages/PublicStatus";
 import Traceability from "@/pages/Traceability";
+import Requirements from "@/pages/Requirements";
+import Incidents from "@/pages/Incidents";
 import ImportPlaywright from "@/pages/ImportPlaywright";
 import IssueTrackers from "@/pages/IssueTrackers";
 import TestSuites from "@/pages/TestSuites";
@@ -70,6 +72,8 @@ function App() {
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="traceability" element={<Traceability />} />
+                <Route path="requirements" element={<Requirements />} />
+                <Route path="incidents" element={<Incidents />} />
                 <Route path="import-playwright" element={<ImportPlaywright />} />
                 <Route path="schedules" element={<Schedules />} />
                 <Route path="proposals" element={<Proposals />} />

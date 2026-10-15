@@ -47,7 +47,7 @@ export default function CreateTicketDialog({ runId }: { runId: number }) {
         onError: (e) => toast.error(errDetail(e)),
     });
 
-    const enabledConfigs = (configs.data || []).filter((c) => c.enabled);
+    const enabledConfigs = (configs.data || []).filter((c) => c.enabled && c.provider !== 'linear');
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>

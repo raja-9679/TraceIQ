@@ -94,7 +94,7 @@ function ClusterCard({ cluster }: { cluster: FailureCluster }) {
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">File one ticket for this cluster</div>
                             <Select value={trackerId} onValueChange={setTrackerId}>
                                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select tracker" /></SelectTrigger>
-                                <SelectContent>{(trackers.data || []).filter((c) => c.enabled).map((c) => <SelectItem key={c.id} value={c.id.toString()}>{c.name} ({c.provider})</SelectItem>)}</SelectContent>
+                                <SelectContent>{(trackers.data || []).filter((c) => c.enabled && c.provider !== 'linear').map((c) => <SelectItem key={c.id} value={c.id.toString()}>{c.name} ({c.provider})</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
                         <Button size="sm" variant="outline" className="h-8 rounded-lg text-xs gap-1.5" disabled={!trackerId || fileTicket.isPending} onClick={() => fileTicket.mutate()}>

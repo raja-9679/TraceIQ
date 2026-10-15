@@ -15,6 +15,7 @@ const PROVIDER_HINTS: Record<string, { user: string; secret: string; settings: s
     jira: { user: 'Jira email', secret: 'API token', settings: 'project_key, issue_type' },
     itop: { user: 'iTop username', secret: 'Password', settings: 'class (UserRequest), org_id' },
     github: { user: '(unused)', secret: 'Personal access token', settings: 'repo (owner/name)' },
+    linear: { user: '(unused)', secret: 'Linear API key', settings: 'none — import-only (Requirements page)' },
 };
 
 function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: () => void }) {
@@ -48,6 +49,7 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
                             <SelectItem value="jira">Jira</SelectItem>
                             <SelectItem value="itop">iTop</SelectItem>
                             <SelectItem value="github">GitHub Issues</SelectItem>
+                            <SelectItem value="linear">Linear (import only)</SelectItem>
                         </SelectContent>
                     </Select>
                 </div>
@@ -58,12 +60,12 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
             </div>
             <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Base URL</label>
-                <Input className="h-9 mt-1" placeholder={f.provider === 'github' ? 'https://api.github.com' : 'https://your.instance'} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} />
+                <Input className="h-9 mt-1" placeholder={f.provider === 'github' ? 'https://api.github.com' : f.provider === 'linear' ? 'https://api.linear.app/graphql (default)' : 'https://your.instance'} value={f.base_url} onChange={(e) => setF({ ...f, base_url: e.target.value })} />
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
                 <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{hint.user}</label>
-                    <Input className="h-9 mt-1" value={f.auth_user} onChange={(e) => setF({ ...f, auth_user: e.target.value })} disabled={f.provider === 'github'} />
+                    <Input className="h-9 mt-1" value={f.auth_user} onChange={(e) => setF({ ...f, auth_user: e.target.value })} disabled={f.provider === 'github' || f.provider === 'linear'} />
                 </div>
                 <div>
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{hint.secret}</label>
@@ -75,7 +77,7 @@ function NewConfigForm({ workspaceId, onDone }: { workspaceId: number; onDone: (
                 <textarea className="w-full h-24 font-mono text-xs border border-slate-200 rounded-lg p-2 mt-1" value={settingsText} onChange={(e) => setSettingsText(e.target.value)} />
             </div>
             <div className="flex gap-2">
-                <Button size="sm" className="h-9 rounded-lg" onClick={() => create.mutate()} disabled={create.isPending || !f.name || !f.base_url || !f.auth_secret}>Add tracker</Button>
+                <Button size="sm" className="h-9 rounded-lg" onClick={() => create.mutate()} disabled={create.isPending || !f.name || (!f.base_url && f.provider !== 'linear') || !f.auth_secret}>Add tracker</Button>
                 <Button size="sm" variant="outline" className="h-9 rounded-lg" onClick={onDone}>Cancel</Button>
             </div>
         </div>

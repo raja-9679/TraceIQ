@@ -399,6 +399,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Inbound integrations (WP6, 2026-10)** — migration `c6a2b3c4d5e6`: tables
+  `requirement`, `incident`, `incidentwebhook`. **Requirements**
+  (`app/api/requirements.py`): import from the workspace's existing
+  `IssueTrackerConfig` rows (Jira, plus new import-only `linear`; ticket
+  creation refuses Linear) via `app/services/tracker_import.py` — Jira v3
+  `/search/jql` with `/search` fallback (ADF flattened), Linear GraphQL with
+  the filter as a *variable*; base URLs through net_guard, redirects not
+  followed; issue keys regex-checked before going into JQL. Mock-verified only
+  (`httpx.MockTransport` via `tracker_import._TRANSPORT`). The config's
+  workspace must equal the project's (404 otherwise — the cross-tenant hole).
+  `app/services/acceptance_criteria.py` parses Gherkin / AC headings / lists /
+  checklists / `AC1:` and flags ambiguity (vague words; no observable outcome;
+  perf words forgiven with a measurable bound). `POST /requirements/{id}/generate`
+  makes one CREATE `CaseProposal` per criterion (never direct; ambiguous ones
+  reported unless `include_ambiguous`); generation is the shared
+  `case_generation.generate_steps`. Null provider / quota / daily cap → a
+  *skeleton* proposal (empty selectors, `needs_authoring`, confidence 0 so it
+  can never auto-apply). Proposal payload carries `requirement_id` /
+  `incident_id`; `_apply_proposal` → `generation_proposals.link_accepted_case`
+  creates the `RequirementLink` / sets `regression_case_id` **only if the
+  origin is in the proposal's project** (payloads are caller-writable).
+  Coverage joins `RequirementLink.ref == external_key` (manual links count):
+  `covered|failing|untested|not_covered`. Old `GET /projects/{id}/requirements`
+  is untouched; the new list is `/requirements/imported`. **Incidents**
+  (`app/api/incidents.py`): `POST /projects/{id}/incidents/webhook` (no user
+  auth) accepts `X-TraceIQ-Signature: sha256=`, `X-PagerDuty-Signature: v1=`, or
+  — Opsgenie can't sign — `X-TraceIQ-Token`; 404 when no webhook exists so it
+  can't enumerate projects. Secret: per project, Fernet-encrypted, shown once,
+  create/rotate is project-admin and human-only. Same `(source, external_id)`
+  updates the incident (PagerDuty lifecycle), otherwise a new one; recurrence =
+  same `fingerprint` (service + title with numbers/ids/times stripped) →
+  `previous_incident_id` + `recurrence_count`. Webhook regression proposals run
+  in a BackgroundTask after the response. Escaped defects: `POST
+  /incidents/{id}/escaped` names the missing case or `no_test_existed`;
+  `escaped-report` counts "test added after" only when the regression case was
+  created at/after the incident started. UI: `/requirements`, `/incidents`.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
