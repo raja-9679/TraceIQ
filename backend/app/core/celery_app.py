@@ -73,6 +73,7 @@ celery_app = Celery(
         "app.tasks.ticket_tasks",       # Issue-tracker ticket creation
         "app.tasks.triage_tasks",       # Failure clustering / triage
         "app.tasks.report_tasks",       # Scheduled quality reports
+        "app.tasks.paging_tasks",       # PagerDuty / Opsgenie run-failure paging
     ]
 )
 
@@ -98,6 +99,7 @@ celery_app.conf.task_routes = {
     "app.tasks.result_aggregator.check_stale_runs": "aggregator-queue",
     "app.tasks.schedule_tasks.process_test_schedules": "main-queue",
     "app.tasks.monitor_tasks.evaluate_monitor_for_run": "main-queue",
+    "app.tasks.paging_tasks.page_for_run": "main-queue",
     "app.tasks.security_tasks.scan_run_passive": "main-queue",
     "app.tasks.zap_tasks.run_zap_scan": "main-queue",
     "app.tasks.ticket_tasks.create_issue_ticket": "main-queue",

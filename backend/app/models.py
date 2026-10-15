@@ -165,6 +165,12 @@ class Project(SQLModel, table=True):
     # instance-wide MAX_CAPTURE_LEVEL ceiling. Shape mirrors DataPolicy.
     data_policy: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
+    # Worker egress allowlist (WP8). None → not enforced unless the instance
+    # forces it (EGRESS_ALLOWLIST_ENFORCED). Shape mirrors
+    # app.services.network_policy.NetworkPolicy; resolved at dispatch and
+    # carried in the job as settings.egress_policy.
+    network_policy: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
 
     # Relationships
     workspace: Workspace = Relationship(back_populates="projects")
@@ -535,6 +541,10 @@ class TestRunBase(SQLModel):
     # Redis-stream workers — the bridge that lets TraceIQ test `localhost`
     # before code is deployed anywhere.
     local_worker_id: Optional[str] = Field(default=None, index=True)
+    # Region label (WP8). When set, jobs go to `jobs:pending:<region>` and only
+    # workers started with WORKER_REGION=<region> claim them. NULL = the global
+    # stream, i.e. exactly the pre-region behaviour.
+    region: Optional[str] = Field(default=None, index=True)
     # How this run's cases were chosen (targeted runs, 2026-10):
     # "full" = whole suite, "targeted" = POST /runs case_ids, "case" = single
     # case_id; NULL = created before selection tracking. selection_total is
@@ -829,6 +839,9 @@ class TestScheduleBase(SQLModel):
     # the attacking scan keeps its manual double-opt-in. The same
     # security_settings gates (enabled + host allowlist) apply at dispatch.
     security_scan_target: Optional[str] = Field(default=None)
+    # Multi-region monitors (WP8): one run per listed region per cycle, each
+    # evaluated and alerted on separately. None/empty = one unlabelled run.
+    regions: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
 
 
 class TestSchedule(TestScheduleBase, table=True):
@@ -840,6 +853,10 @@ class TestSchedule(TestScheduleBase, table=True):
     monitor_state: Optional[str] = Field(default=None)   # "up" | "down" | None(unknown)
     last_alert_state: Optional[str] = Field(default=None)  # last state an alert was sent for
     last_checked_at: Optional[datetime] = Field(default=None)
+    # Per-region monitor state for multi-region monitors:
+    # {region: {"state", "last_alert_state", "last_checked_at"}}. The scalar
+    # columns above then hold the aggregate (down if any region is down).
+    region_states: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
     project: Optional["Project"] = Relationship()
     test_suite: Optional["TestSuite"] = Relationship()
@@ -856,6 +873,7 @@ class TestScheduleRead(TestScheduleBase):
     id: int
     monitor_state: Optional[str] = None
     last_checked_at: Optional[datetime] = None
+    region_states: Optional[Dict[str, Any]] = None
 
 
 class TestScheduleUpdate(SQLModel):
@@ -870,6 +888,7 @@ class TestScheduleUpdate(SQLModel):
     alert_on_recovery: Optional[bool] = None
     alert_emails: Optional[List[str]] = None
     security_scan_target: Optional[str] = None
+    regions: Optional[List[str]] = None
 
 
 class MonitorCheck(SQLModel, table=True):
@@ -886,6 +905,8 @@ class MonitorCheck(SQLModel, table=True):
     status: TestStatus = Field(sa_column=Column(String, nullable=False))
     is_up: bool  # True iff the run passed (status == PASSED)
     checked_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # Which region the check ran from (multi-region monitors); NULL = unlabelled.
+    region: Optional[str] = Field(default=None)
 
 
 class MonitorCheckRead(SQLModel):
@@ -894,6 +915,14 @@ class MonitorCheckRead(SQLModel):
     status: TestStatus
     is_up: bool
     checked_at: datetime
+    region: Optional[str] = None
+
+
+class MonitorRegionStatus(SQLModel):
+    region: str
+    state: str  # "up" | "down" | "unknown"
+    consecutive_failures: int = 0
+    last_checked_at: Optional[datetime] = None
 
 
 class MonitorStatusRead(SQLModel):
@@ -908,6 +937,7 @@ class MonitorStatusRead(SQLModel):
     uptime_7d: Optional[float] = None
     last_checked_at: Optional[datetime] = None
     recent_checks: List[MonitorCheckRead] = []
+    regions: List[MonitorRegionStatus] = []
 
 
 class SecurityFinding(SQLModel, table=True):
@@ -1418,6 +1448,9 @@ class ApiKey(SQLModel, table=True):
     last_used_at: Optional[datetime] = Field(default=None)
     expires_at: Optional[datetime] = Field(default=None)
     revoked_at: Optional[datetime] = Field(default=None)
+    # Source-IP allowlist (WP8): CIDR strings. None/empty = any address. The
+    # client address is resolved by app.core.client_ip (trusted proxies only).
+    allowed_cidrs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
 
 
 class ApiKeyCreate(SQLModel):
@@ -1426,6 +1459,7 @@ class ApiKeyCreate(SQLModel):
     project_id: Optional[int] = None
     role_id: Optional[int] = None
     expires_in_days: Optional[int] = None
+    allowed_cidrs: Optional[List[str]] = None
 
 
 class ApiKeyRead(SQLModel):
@@ -1438,6 +1472,7 @@ class ApiKeyRead(SQLModel):
     last_used_at: Optional[datetime]
     expires_at: Optional[datetime]
     revoked_at: Optional[datetime]
+    allowed_cidrs: Optional[List[str]] = None
 
 
 class ApiKeyCreateResponse(ApiKeyRead):
@@ -2494,6 +2529,74 @@ class IncidentWebhook(SQLModel, table=True):
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     rotated_at: Optional[datetime] = None
+
+
+# ---------------------------------------------------------------------------
+# WP8 — paging channels (PagerDuty / Opsgenie) and maintenance windows
+# ---------------------------------------------------------------------------
+
+class PagingChannel(SQLModel, table=True):
+    """A project's on-call paging integration.
+
+    `secret_encrypted` is the PagerDuty Events v2 routing key or the Opsgenie
+    API key (app.core.secrets); it is write-only through the API. Pages are
+    de-duplicated by key (PagerDuty `dedup_key`, Opsgenie `alias`), so a
+    monitor that stays down pages once and a recovery resolves that page."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    kind: str                       # "pagerduty" | "opsgenie"
+    secret_encrypted: str
+    # Opsgenie only: "us" (api.opsgenie.com) or "eu" (api.eu.opsgenie.com).
+    api_region: Optional[str] = Field(default=None)
+    # PagerDuty severity (critical|error|warning|info); mapped to an Opsgenie
+    # priority (P1..P4).
+    severity: str = Field(default="error")
+    on_monitor: bool = Field(default=True)
+    on_run_failure: bool = Field(default=False)
+    enabled: bool = Field(default=True)
+    last_sent_at: Optional[datetime] = Field(default=None)
+    last_error: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class MaintenanceWindow(SQLModel, table=True):
+    """A period during which a project's paging is suppressed (still recorded).
+
+    Either one-off (`starts_at`/`ends_at`, UTC) or weekly recurring
+    (`weekdays` 0=Mon..6=Sun + `start_time`/`end_time` "HH:MM" in `timezone`;
+    an end before the start wraps past midnight)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    starts_at: Optional[datetime] = Field(default=None)
+    ends_at: Optional[datetime] = Field(default=None)
+    weekdays: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    start_time: Optional[str] = Field(default=None)
+    end_time: Optional[str] = Field(default=None)
+    timezone: str = Field(default="UTC")
+    enabled: bool = Field(default=True)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class PagingEvent(SQLModel, table=True):
+    """Log of every page decision — sent, suppressed by a maintenance window,
+    or failed. Also the state that decides whether a recovery needs a resolve
+    (only a key whose last *sent* action was a trigger is open). channel_id,
+    run_id and schedule_id are soft references: the log outlives them."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    channel_id: Optional[int] = Field(default=None, index=True)
+    source: str                     # "monitor" | "run"
+    action: str                     # "trigger" | "resolve"
+    dedup_key: str = Field(index=True)
+    outcome: str                    # "sent" | "suppressed" | "failed"
+    detail: Optional[str] = Field(default=None)
+    run_id: Optional[int] = Field(default=None)
+    schedule_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

@@ -53,6 +53,9 @@ class RunCreateContext(BaseModel):
     # inherited settings). Must all lie in suite_id's subtree. Not combinable
     # with case_id or tags. See docs/superpowers/specs/2026-10-14-targeted-runs-design.md.
     case_ids: Optional[List[int]] = None
+    # Region label (WP8): run on workers started with WORKER_REGION=<region>
+    # (their own `jobs:pending:<region>` stream). Omit for the global pool.
+    region: Optional[str] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -70,7 +73,16 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
 
     agent_id = ctx.agent_id or principal.agent_id
     api_key_id = principal.api_key.id if principal.api_key else None
+    from app.services.worker_fleet import InvalidRegion, normalize_region
+    try:
+        region = normalize_region(ctx.region)
+    except InvalidRegion as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if region and ctx.local_worker_id:
+        raise HTTPException(status_code=400,
+                            detail="region and local_worker_id cannot be combined")
     return {
+        "region": region,
         "git_commit": ctx.git_commit,
         "git_branch": ctx.git_branch,
         "git_pr_url": ctx.git_pr_url,
@@ -937,6 +949,14 @@ async def finalize_test_run(
         evaluate_monitor_for_run.delay(run_id)
     except Exception as e:
         print(f"[Finalize] Failed to queue monitor evaluation for run {run_id}: {e}")
+
+    # On-call paging for unattended runs (PagerDuty / Opsgenie channels with
+    # on_run_failure). No-op unless the project has such a channel.
+    try:
+        from app.tasks.paging_tasks import page_for_run
+        page_for_run.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue paging for run {run_id}: {e}")
 
     # Passive security scan: analyse already-captured responses for missing
     # security headers, insecure cookies, etc. Best-effort; read-only.

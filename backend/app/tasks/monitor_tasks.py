@@ -52,12 +52,16 @@ def _schedule_id_from_run(run: TestRun) -> Optional[int]:
         return None
 
 
-def _consecutive_failures(session: Session, schedule_id: int) -> int:
-    """Leading (most-recent-first) run of failing checks for this monitor."""
+def _consecutive_failures(session: Session, schedule_id: int,
+                          region: Optional[str] = None) -> int:
+    """Leading (most-recent-first) run of failing checks for this monitor —
+    for one region when `region` is given, else across all checks (the
+    unlabelled, pre-region behaviour)."""
+    query = select(MonitorCheck).where(MonitorCheck.schedule_id == schedule_id)
+    if region is not None:
+        query = query.where(MonitorCheck.region == region)
     rows = session.exec(
-        select(MonitorCheck)
-        .where(MonitorCheck.schedule_id == schedule_id)
-        .order_by(MonitorCheck.checked_at.desc(), MonitorCheck.id.desc())
+        query.order_by(MonitorCheck.checked_at.desc(), MonitorCheck.id.desc())
         .limit(200)
     ).all()
     streak = 0
@@ -66,6 +70,30 @@ def _consecutive_failures(session: Session, schedule_id: int) -> int:
             break
         streak += 1
     return streak
+
+
+def transition(*, is_up: bool, streak: int, threshold: int,
+               prev_state: Optional[str], prev_alert: Optional[str],
+               alert_on_recovery: bool):
+    """(new_state, alert_to_send or None, new_last_alert_state). Pure, so the
+    single-region and per-region paths cannot drift apart."""
+    if is_up:
+        new_state = "up"
+    elif streak >= threshold:
+        new_state = "down"
+    else:
+        # Failing but below the alert threshold: hold prior state.
+        new_state = prev_state or "up"
+    alert, last_alert = None, prev_alert
+    if new_state == "down" and prev_alert != "down":
+        alert, last_alert = "down", "down"
+    elif new_state == "up" and prev_alert == "down":
+        alert = "up" if alert_on_recovery else None
+        last_alert = "up"
+    elif new_state == "up" and prev_alert is None:
+        # First-ever check is healthy: set baseline silently.
+        last_alert = "up"
+    return new_state, alert, last_alert
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
@@ -91,6 +119,7 @@ def evaluate_monitor_for_run(self, run_id: int):
 
             is_up = run.status == TestStatus.PASSED
             now = datetime.utcnow()
+            region = getattr(run, "region", None)
 
             session.add(MonitorCheck(
                 schedule_id=schedule_id,
@@ -98,41 +127,55 @@ def evaluate_monitor_for_run(self, run_id: int):
                 status=run.status,
                 is_up=is_up,
                 checked_at=now,
+                region=region,
             ))
             session.commit()
 
-            streak = _consecutive_failures(session, schedule_id)
             threshold = max(1, schedule.alert_after_failures or 1)
 
-            if is_up:
-                new_state = "up"
-            elif streak >= threshold:
-                new_state = "down"
+            if region and region in (schedule.regions or []):
+                # Multi-region monitor (WP8): each region has its own streak,
+                # state and alert history, so eu-west being down does not
+                # suppress (or fake) us-east's alerts.
+                streak = _consecutive_failures(session, schedule_id, region)
+                states = dict(schedule.region_states or {})
+                info = dict(states.get(region) or {})
+                new_state, alert, last_alert = transition(
+                    is_up=is_up, streak=streak, threshold=threshold,
+                    prev_state=info.get("state"), prev_alert=info.get("last_alert_state"),
+                    alert_on_recovery=schedule.alert_on_recovery)
+                if alert:
+                    _send_monitor_alert(session, schedule, run, alert, streak, region=region)
+                _maybe_page(session, schedule, run, streak, region,
+                            prev_alert=info.get("last_alert_state"), new_state=new_state)
+                info.update(state=new_state, last_alert_state=last_alert,
+                            last_checked_at=now.isoformat())
+                states[region] = info
+                schedule.region_states = states          # reassign: JSON column
+                monitored = set(schedule.regions or [])
+                schedule.monitor_state = "down" if any(
+                    (v or {}).get("state") == "down"
+                    for k, v in states.items() if k in monitored) else "up"
             else:
-                # Failing but below the alert threshold: hold prior state.
-                new_state = schedule.monitor_state or "up"
+                streak = _consecutive_failures(session, schedule_id)
+                new_state, alert, last_alert = transition(
+                    is_up=is_up, streak=streak, threshold=threshold,
+                    prev_state=schedule.monitor_state, prev_alert=schedule.last_alert_state,
+                    alert_on_recovery=schedule.alert_on_recovery)
+                if alert:
+                    _send_monitor_alert(session, schedule, run, alert, streak)
+                _maybe_page(session, schedule, run, streak, None,
+                            prev_alert=schedule.last_alert_state, new_state=new_state)
+                schedule.last_alert_state = last_alert
+                schedule.monitor_state = new_state
 
-            prev_alert = schedule.last_alert_state
-
-            if new_state == "down" and prev_alert != "down":
-                _send_monitor_alert(session, schedule, run, "down", streak)
-                schedule.last_alert_state = "down"
-            elif new_state == "up" and prev_alert == "down":
-                if schedule.alert_on_recovery:
-                    _send_monitor_alert(session, schedule, run, "up", 0)
-                schedule.last_alert_state = "up"
-            elif new_state == "up" and prev_alert is None:
-                # First-ever check is healthy: set baseline silently.
-                schedule.last_alert_state = "up"
-
-            schedule.monitor_state = new_state
             schedule.last_checked_at = now
             session.add(schedule)
             session.commit()
 
             logger.info(
-                "[Monitor] schedule=%s run=%s up=%s streak=%s state=%s",
-                schedule_id, run_id, is_up, streak, new_state)
+                "[Monitor] schedule=%s run=%s region=%s up=%s streak=%s state=%s",
+                schedule_id, run_id, region, is_up, streak, new_state)
 
     except Exception as e:
         logger.error("[Monitor] Error evaluating run %s: %s", run_id, e)
@@ -140,8 +183,9 @@ def evaluate_monitor_for_run(self, run_id: int):
 
 
 def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
-                        state: str, streak: int):
-    """Post a DOWN/RECOVERY alert to the configured Slack/Teams webhooks."""
+                        state: str, streak: int, region: Optional[str] = None):
+    """Post a DOWN/RECOVERY alert to the configured Slack/Teams webhooks.
+    Paging (PagerDuty / Opsgenie) is decided separately in the evaluator."""
     project = session.get(Project, schedule.project_id) if schedule.project_id else None
     cfg = get_notification_settings(project, session)
     # Per-monitor email recipients are explicit opt-in, so they fire even when
@@ -150,8 +194,9 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
         cfg = {}
 
     down = state == "down"
-    title = (f"🔴 Monitor DOWN: {schedule.name}" if down
-             else f"🟢 Monitor recovered: {schedule.name}")
+    where = f" [{region}]" if region else ""
+    title = (f"🔴 Monitor DOWN: {schedule.name}{where}" if down
+             else f"🟢 Monitor recovered: {schedule.name}{where}")
     detail = (f"{streak} consecutive failing check(s)." if down
               else "Monitor is passing again.")
     color = "#ef4444" if down else "#22c55e"
@@ -202,6 +247,40 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
     recipients = [r for r in (schedule.alert_emails or []) if r and "@" in r]
     if recipients:
         _send_alert_email(recipients, title, schedule, state, detail, run)
+
+
+def _maybe_page(session: Session, schedule: TestSchedule, run: TestRun, streak: int,
+                region: Optional[str], *, prev_alert: Optional[str], new_state: str) -> None:
+    if new_state == "down" and prev_alert != "down":
+        _page_monitor(session, schedule, run, "down", streak, region)
+    elif new_state == "up" and prev_alert == "down":
+        _page_monitor(session, schedule, run, "up", 0, region)
+
+
+def _page_monitor(session: Session, schedule: TestSchedule, run: TestRun,
+                  state: str, streak: int, region: Optional[str]) -> None:
+    """DOWN triggers, RECOVERY resolves — always, regardless of
+    alert_on_recovery (that flag is about chat noise; leaving a page open
+    after the monitor recovered is just wrong)."""
+    if not schedule.project_id:
+        return
+    from app.services import paging
+    where = f" [{region}]" if region else ""
+    paging.page(
+        session, project_id=schedule.project_id, source="monitor",
+        action="trigger" if state == "down" else "resolve",
+        dedup_key=paging.monitor_dedup_key(schedule.id, region),
+        summary=(f"TraceIQ monitor DOWN: {schedule.name}{where} — "
+                 f"{streak} consecutive failing check(s)" if state == "down"
+                 else f"TraceIQ monitor recovered: {schedule.name}{where}"),
+        details={"monitor": schedule.name, "schedule_id": schedule.id,
+                 "region": region or "", "run_id": run.id, "streak": streak},
+        link=_run_link(run.id), run_id=run.id, schedule_id=schedule.id)
+
+
+def _run_link(run_id: int) -> Optional[str]:
+    base = (getattr(settings, "FRONTEND_BASE_URL", None) or "").rstrip("/")
+    return f"{base}/runs/{run_id}" if base else None
 
 
 def _send_alert_email(recipients, title: str, schedule: TestSchedule,

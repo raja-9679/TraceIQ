@@ -81,6 +81,9 @@ ON_DELETE: Dict[str, str] = {
     "requirement.project_id": DELETE,
     "incident.project_id": DELETE,
     "incidentwebhook.project_id": DELETE,
+    "pagingchannel.project_id": DELETE,
+    "maintenancewindow.project_id": DELETE,
+    "pagingevent.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.

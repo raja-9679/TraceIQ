@@ -14,9 +14,8 @@
  */
 import { jsonPath } from './json-path';
 import { redactMessageText } from './redact';
+import { backendFetch } from './backend-http';
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://backend:8000';
-const WORKER_TOKEN = process.env.WORKER_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET || '';
 
 export const DEFAULT_TIMEOUT_MS = 60_000;
 export const MAX_TIMEOUT_MS = 300_000;
@@ -39,9 +38,11 @@ export const hooksRuntime = {
     now: () => Date.now(),
     sleep: (ms: number) => new Promise<void>(r => setTimeout(r, ms)),
     post: async (path: string, body: any): Promise<{ status: number; json: any }> => {
-        const res = await fetch(`${BACKEND_URL}${path}`, {
+        // backendFetch adds X-Worker-Secret and, when configured, the mTLS
+        // client certificate (WP8).
+        const res = await backendFetch(path, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Worker-Secret': WORKER_TOKEN },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
         });
         let json: any = null;

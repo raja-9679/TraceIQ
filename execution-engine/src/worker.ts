@@ -30,8 +30,12 @@ import {
     ArtifactStore, CaptureLevel, PutResult, artifactKeys, normalizeCaptureLevel,
 } from './core/artifact-store';
 import {
-    RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents,
+    RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents, redactText,
 } from './core/redact';
+import { installEgressGuard } from './core/egress-guard';
+import { Heartbeat } from './core/heartbeat';
+import { workerRegion } from './core/job-queue';
+import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
 import {
     AttemptSummary, StepEvidenceRecorder, blockingConsoleErrors, captureDomExcerpt, caseStepDom,
     consoleErrorsFor, consoleFailureMessage, consoleFailurePolicy, levelAtLeast, resolveScreenshotKeys,
@@ -90,6 +94,8 @@ const IDLE_TIMEOUT_MS = parseInt(process.env.WORKER_IDLE_TIMEOUT || '60000');
 const MAX_JOBS_BEFORE_RESTART = parseInt(process.env.MAX_JOBS_BEFORE_RESTART || '50');
 // Maximum wall-clock time a single job may run before it is aborted (default 10 min)
 const MAX_JOB_DURATION_MS = parseInt(process.env.MAX_JOB_DURATION_MS || '600000');
+// Re-read per job: the backend's worker-config (WP8) may change it at runtime.
+const maxJobDurationMs = () => parseInt(process.env.MAX_JOB_DURATION_MS || '600000') || MAX_JOB_DURATION_MS;
 const MAX_CONSOLE_LOG_ENTRIES = parseInt(process.env.MAX_CONSOLE_LOG_ENTRIES || '5000');
 // A HAR above this size is dropped rather than uploaded unscrubbed — it has
 // to be held in memory to be redacted, and an un-redactable HAR is precisely
@@ -103,6 +109,7 @@ class ExecutionWorker {
     private jobsProcessed: number = 0;
     private idleTimer: NodeJS.Timeout | null = null;
     private aiEngine: AIEngine = new AIEngine();
+    private heartbeat: Heartbeat | null = null;
 
     /**
      * Reactive selector heal: on a selector-looking failure, ask the LLM for
@@ -223,6 +230,30 @@ class ExecutionWorker {
         // Initialize job queue
         await this.jobQueue.initialize();
 
+        // Runtime config from the backend (WP8); falls back to env when the
+        // backend is unreachable, so this never blocks startup for long.
+        await startWorkerConfigPolling();
+
+        // Fleet heartbeat (WP8): who this worker is and what it is doing.
+        this.heartbeat = new Heartbeat(this.jobQueue.duplicateRedis() as any, {
+            workerId: this.jobQueue.workerId,
+            kind: 'web',
+            region: workerRegion(),
+            streams: this.jobQueue.streams,
+            stepTypes: TestExecutor.SUPPORTED_STEP_TYPES,
+            capabilities: {
+                browsers: ['chromium', 'firefox', 'webkit'],
+                executors: ['ui_playwright', 'load',
+                    ...(process.env.RAW_PLAYWRIGHT_ENABLED === 'true' ? ['raw_playwright'] : [])],
+            },
+            startedAt: new Date().toISOString(),
+            jobsProcessed: 0,
+            jobsFailed: 0,
+            currentJob: null,
+        });
+        this.heartbeat.start();
+        console.log(`[Worker] ${this.jobQueue.workerId} consuming ${this.jobQueue.streams.join(', ')}`);
+
         // Setup graceful shutdown
         this.setupShutdownHandlers();
 
@@ -258,6 +289,7 @@ class ExecutionWorker {
                 await this.jobQueue.checkDeadLetterQueue();
             }
 
+            let claimedJob = false;
             try {
                 // Try to claim a job
                 const claimed = await this.jobQueue.claimJob();
@@ -268,6 +300,8 @@ class ExecutionWorker {
                 }
 
                 const { streamId, job } = claimed;
+                claimedJob = true;
+                this.heartbeat?.jobStarted(job);
 
                 // Cancel idle timer while processing
                 this.cancelIdleTimer();
@@ -277,6 +311,7 @@ class ExecutionWorker {
                 if ((job as any).job_type === 'discovery') {
                     await this.handleDiscoveryJob(streamId, job as any);
                     this.jobsProcessed++;
+                    this.heartbeat?.jobFinished(false);
                     continue;
                 }
 
@@ -285,12 +320,14 @@ class ExecutionWorker {
                 if ((job as any).job_type === 'persona_refresh') {
                     await this.handlePersonaRefreshJob(streamId, job as any);
                     this.jobsProcessed++;
+                    this.heartbeat?.jobFinished(false);
                     continue;
                 }
 
                 // Process the job with a hard wall-clock timeout.
+                const limitMs = maxJobDurationMs();
                 const timeout = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${MAX_JOB_DURATION_MS}ms)`)), MAX_JOB_DURATION_MS)
+                    setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${limitMs}ms)`)), limitMs)
                 );
                 const result = await Promise.race([this.executeJob(job), timeout]);
 
@@ -298,9 +335,12 @@ class ExecutionWorker {
                 await this.jobQueue.completeJob(streamId, result, this.redactionPolicyFor(job));
 
                 this.jobsProcessed++;
+                this.heartbeat?.jobFinished(result.status !== 'passed');
+                claimedJob = false;
                 console.log(`[Worker] Completed job ${job.job_id} (total: ${this.jobsProcessed})`);
 
             } catch (err: any) {
+                if (claimedJob) this.heartbeat?.jobFinished(true);
                 console.error('[Worker] Error in processing loop:', err);
                 // Small delay before retrying
                 await this.sleep(1000);
@@ -651,6 +691,11 @@ class ExecutionWorker {
                 job.settings,
                 sourceDomain
             );
+            // Egress allowlist (WP8). Registered after the header-injection
+            // route so it runs first; blocked requests land in networkEvents.
+            await installEgressGuard(context, job.settings?.egress_policy, networkEvents, {
+                testCaseName: () => contextData.name, redact: (u: string) => redactText(u, policy),
+            });
 
             // Create page
             page = await context.newPage();
@@ -996,6 +1041,9 @@ class ExecutionWorker {
                 job.settings,
                 sourceDomain
             );
+            await installEgressGuard(sharedContext, job.settings?.egress_policy, networkEvents, {
+                testCaseName: () => sharedContextData.name, redact: (u: string) => redactText(u, policy),
+            });
 
             // Create shared page
             let page = await sharedContext.newPage();
@@ -1578,6 +1626,8 @@ class ExecutionWorker {
     private async shutdown(): Promise<void> {
         console.log('[Worker] Shutting down...');
         this.cancelIdleTimer();
+        stopWorkerConfigPolling();
+        await this.heartbeat?.stop();
         await this.browserManager.stop();
         await this.jobQueue.shutdown();
         console.log('[Worker] Shutdown complete');

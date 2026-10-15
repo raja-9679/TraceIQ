@@ -505,6 +505,69 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   /incidents/{id}/escaped` names the missing case or `no_test_existed`;
   `escaped-report` counts "test added after" only when the regression case was
   created at/after the incident started. UI: `/requirements`, `/incidents`.
+- **Fleet & infrastructure (WP8, 2026-10)** — migration `c8a2b3c4d5e8`;
+  operator guide in `docs/OPERATIONS.md`, CI snippets in `docs/CI_RECIPES.md`.
+  **Heartbeats**: web/mobile workers write `workers:hb:<consumer name>` (EX 45,
+  every 15s, `execution-engine/src/core/heartbeat.ts`) + ZSET `workers:index`
+  straight to Redis; local workers `POST /api/jobs/heartbeat` (API key,
+  namespaced `local:<ws>:<id>`). `GET /api/admin/workers` (instance admin,
+  `app/services/worker_fleet.py`) joins them with stream length/lag/XPENDING
+  per consumer, DLQ depth, and **version skew** (catalog step types a live
+  worker's `SUPPORTED_STEP_TYPES` lacks; `load-test` is executor-only; a worker
+  reporting no list is "unknown", not skewed). Gauges `traceiq_workers_alive`,
+  `traceiq_queue_lag`, `traceiq_workers_version_skew`. **Worker config**:
+  instance-settings group `worker`, served by `GET /api/internal/worker-config`
+  and polled every 60s by `core/worker-config.ts`, which writes into
+  `process.env` for the four managed vars; `null` restores the worker's
+  *original* env, backend unreachable keeps last-known-good. LLM:
+  `WORKER_LLM_PROVIDER` blank = worker env, `inherit` = the backend's default
+  provider (registry default first); `llm-provider.ts`'s exported `provider` is
+  now a delegating object (`reconfigureProvider`). **Regions**: `TestRun.region`
+  (body `region`, validated `[a-z0-9-]`, not combinable with
+  `local_worker_id`) → `jobs:pending:<region>` / `jobs:mobile:pending:<region>`;
+  jobs carry `region` so DLQ replay returns them there (replay also now sends
+  mobile jobs back to the mobile stream — it used to send everything to
+  `jobs:pending`). Workers with `WORKER_REGION` read their regional stream
+  first, then the global one, **one stream per XREADGROUP** (a multi-stream
+  read with COUNT 1 returns one entry *per stream* and strands the second in
+  the PEL); `WORKER_REGION_EXCLUSIVE=true` drops the global stream. No region
+  = the old behaviour exactly. Schedules take `regions` (one run per
+  region × device); monitors keep per-region state in
+  `TestSchedule.region_states` with the pure `monitor_tasks.transition()`
+  shared by both paths; aggregate = down if any monitored region is down.
+  **Paging** (`app/services/paging.py`, `app/api/paging.py`): project
+  `PagingChannel` (PagerDuty Events v2 / Opsgenie, key Fernet-encrypted,
+  write-only) + `MaintenanceWindow` (one-off UTC or weekly in its own tz,
+  overnight wraps to the start day) + `PagingEvent` log (soft refs). Monitors
+  page on their DOWN/RECOVERY transition (resolve regardless of
+  `alert_on_recovery`); `on_run_failure` pages only SCHEDULE/CI/WEBHOOK runs,
+  never human/agent/local runs (`paging_tasks.page_for_run`, queued at
+  finalize). A window suppresses but records; a resolve is only sent for a key
+  whose last *sent* action was a trigger. Vendor HTTP is mocked at
+  `paging._post` — not yet tried against a real PagerDuty/Opsgenie account.
+  **IP allowlists**: `ApiKey.allowed_cidrs` (checked in
+  `_principal_from_api_key` *before* `last_used_at`; refusal → 403 + audit
+  `ip_refused`), `SCIM_ALLOWED_CIDRS` (only a *valid* token from outside is
+  audited — scanner noise would flood the append-only log). Client IP is
+  `app/core/client_ip.py`: XFF believed only from `TRUSTED_PROXY_CIDRS`
+  (default none), walked right-to-left; an unparseable hop fails every match.
+  **mTLS** (`app/core/worker_auth.py`): `REQUIRE_WORKER_MTLS` makes a pure-ASGI
+  middleware demand `X-Client-Verify: SUCCESS` (+ optional subject list) on
+  `/api/internal/*`, believed only from a trusted proxy; the worker secret is
+  still required. Engine side `core/backend-http.ts` (`WORKER_TLS_*`) is now
+  the only path to internal endpoints (test-hooks, baselines, llm-usage).
+  **Egress**: `Project.network_policy` + `EGRESS_ALLOWLIST_ENFORCED` /
+  `EGRESS_ALLOWED_HOSTS`, resolved at dispatch (`app/services/network_policy.py`;
+  base_url host implicit; `allow_private` capped by
+  `ALLOW_PRIVATE_NETWORK_TARGETS`; a corrupt policy fails closed) →
+  `settings.egress_policy`; `core/egress-guard.ts` registers its route *after*
+  the header-injection route, `fallback()` when allowed, abort + a
+  `blocked: true` network event otherwise; metadata ranges never allowed;
+  WebSockets/service workers are not intercepted. **Load tests**: `load-test`
+  `params.prometheus_queries` evaluated on read by
+  `GET /api/runs/{id}/results/{rid}/server-metrics` against `PROMETHEUS_URL`
+  (net_guard with its own host as the private exemption; any project member
+  can read any series that Prometheus holds — scope it).
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

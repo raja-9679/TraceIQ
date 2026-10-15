@@ -11,8 +11,51 @@ from app.services.rbac_service import rbac_service
 from app.models import (
     User, AuditLog, Project, UserWorkspace, UserTeam, UserProjectAccess, UserSystemRole, Role, Workspace, TeamProjectAccess,
     TestSchedule, TestScheduleRead, TestScheduleUpdate, TestScheduleBase, TestSuite, TestCase,
-    MonitorCheck, MonitorCheckRead, MonitorStatusRead
+    MonitorCheck, MonitorCheckRead, MonitorStatusRead, MonitorRegionStatus
 )
+from app.services.worker_fleet import InvalidRegion, normalize_region
+
+
+def _clean_regions(regions: Optional[List[str]]) -> Optional[List[str]]:
+    """Validate and de-duplicate a monitor's region list (None = unlabelled)."""
+    if not regions:
+        return None
+    out: List[str] = []
+    try:
+        for r in regions:
+            region = normalize_region(r)
+            if region and region not in out:
+                out.append(region)
+    except InvalidRegion as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if len(out) > 20:
+        raise HTTPException(status_code=400, detail="at most 20 regions per schedule")
+    return out or None
+
+
+async def _region_statuses(schedule: TestSchedule, session: AsyncSession) -> List[MonitorRegionStatus]:
+    """Per-region state for a multi-region monitor. The streak is computed
+    from that region's own checks, so one flapping region cannot hide or
+    inflate another's."""
+    out: List[MonitorRegionStatus] = []
+    states = schedule.region_states or {}
+    for region in schedule.regions or []:
+        rows = (await session.exec(
+            select(MonitorCheck)
+            .where(MonitorCheck.schedule_id == schedule.id, MonitorCheck.region == region)
+            .order_by(MonitorCheck.checked_at.desc(), MonitorCheck.id.desc())
+            .limit(50))).all()
+        streak = 0
+        for check in rows:
+            if check.is_up:
+                break
+            streak += 1
+        info = states.get(region) or {}
+        out.append(MonitorRegionStatus(
+            region=region, state=info.get("state") or "unknown",
+            consecutive_failures=streak,
+            last_checked_at=rows[0].checked_at if rows else None))
+    return out
 from croniter import croniter
 
 router = APIRouter()
@@ -63,6 +106,7 @@ async def _build_monitor_status(schedule: TestSchedule, session: AsyncSession) -
         uptime_7d=await _uptime(session, schedule.id, now - timedelta(days=7)),
         last_checked_at=schedule.last_checked_at,
         recent_checks=[MonitorCheckRead.model_validate(c, from_attributes=True) for c in recent],
+        regions=await _region_statuses(schedule, session),
     )
 
 
@@ -79,6 +123,8 @@ async def create_schedule(
     # Validate cron expression
     if not croniter.is_valid(schedule.cron_expression):
         raise HTTPException(status_code=400, detail="Invalid cron expression")
+
+    schedule.regions = _clean_regions(schedule.regions)
 
     # Set next_run_at based on cron
     now = datetime.utcnow()
@@ -237,6 +283,14 @@ async def update_schedule(
         raise HTTPException(status_code=403, detail="Permission denied to modify schedules in this project")
 
     update_data = schedule_update.model_dump(exclude_unset=True)
+    if "regions" in update_data:
+        update_data["regions"] = _clean_regions(update_data["regions"])
+        # Region states of regions no longer monitored would otherwise keep
+        # the aggregate "down" forever.
+        kept = set(update_data["regions"] or [])
+        if db_schedule.region_states:
+            db_schedule.region_states = {
+                k: v for k, v in db_schedule.region_states.items() if k in kept} or None
 
     # Re-evaluate next run if cron was updated
     if "cron_expression" in update_data and update_data["cron_expression"] != db_schedule.cron_expression:
