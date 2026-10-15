@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 export interface IssueTrackerConfig {
     id: number;
     workspace_id: number;
-    provider: 'jira' | 'itop' | 'github';
+    provider: 'jira' | 'itop' | 'github' | 'linear';
     name: string;
     base_url: string;
     auth_user?: string | null;

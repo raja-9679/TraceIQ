@@ -24,6 +24,8 @@ from app.api import external_results as external_results_api
 from app.api import status_pages as status_pages_api
 from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
+from app.api import requirements as requirements_api
+from app.api import incidents as incidents_api
 from app.api import app_builds as app_builds_api
 from app.api import case_revisions as case_revisions_api
 from app.api import observability as observability_api
@@ -158,6 +160,8 @@ app.include_router(external_results_api.router, prefix="/api", tags=["external-r
 app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
 app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
+app.include_router(requirements_api.router, prefix="/api", tags=["requirements"])
+app.include_router(incidents_api.router, prefix="/api", tags=["incidents"])
 app.include_router(app_builds_api.router, prefix="/api", tags=["app-builds"])
 app.include_router(case_revisions_api.router, prefix="/api", tags=["case-revisions"])
 # Observability paths are absolute inside the router (/metrics, /health/ready,

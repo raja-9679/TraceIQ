@@ -17,6 +17,7 @@ generator's output is treated as a draft, not a contract.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -149,58 +150,14 @@ async def generate_case(
     if project:
         await _check_and_consume_ai_budget(project.workspace_id, session)
 
-    # Probe the target URL so selectors/assertions are grounded in what the
-    # page/endpoint actually serves, instead of hallucinated from the
-    # description alone.
-    kind, target_context = ("", "")
-    if body.target_url:
-        kind, target_context = await _fetch_target_context(body.target_url)
-
-    if kind == "html":
-        prompt = (
-            f"Description: {body.description}\n"
-            f"Target URL: {body.target_url}\n\n"
-            "Below are the interactive elements extracted from a live fetch of the "
-            "target page. Build selectors ONLY from these real elements — prefer "
-            "#id, [data-testid=...], [name=...], then text-based selectors. Never "
-            "invent an id or class that is not listed.\n\n"
-            f"{target_context}\n\n"
-            "Generate the steps needed to verify the described user journey. "
-            "Begin with a `goto` step to the target URL. End with an "
-            "`expect-visible` or `expect-text` step that proves the journey succeeded."
-        )
-    elif kind in ("json", "feed"):
-        step_type = "http-request" if kind == "json" else "feed-check"
-        prompt = (
-            f"Description: {body.description}\n"
-            f"Target URL: {body.target_url}\n\n"
-            f"The target URL serves {'JSON (an API endpoint)' if kind == 'json' else 'an XML/RSS/Atom feed'}, "
-            "not an HTML page. Below is the actual response from a live probe. "
-            f"Generate `{step_type}` steps whose assertions are grounded in this real "
-            "response shape — assert on fields/paths that actually exist. Do NOT "
-            "generate browser steps like goto/click/fill.\n\n"
-            f"{target_context}"
-        )
-    else:
-        prompt = (
-            f"Description: {body.description}\n"
-            f"Target URL: {body.target_url or '(none provided)'}\n\n"
-            "Generate the steps needed to verify the described user journey. "
-            "Begin with a `goto` step if a target URL is provided. End with an "
-            "`expect-visible` or `expect-text` step that proves the journey "
-            "succeeded."
-        )
-    with llm_call_context(
-        feature="case_generation",
+    steps = await generate_steps(
+        body.description, body.target_url,
         workspace_id=project.workspace_id if project else None,
-        project_id=suite.project_id,
-    ):
-        raw = llm_provider.complete(prompt, system=_GENERATION_SYSTEM, max_tokens=1500)
-    steps = _parse_steps_payload(raw)
+        project_id=suite.project_id)
     if not steps:
         raise HTTPException(
             status_code=502,
-            detail=f"LLM returned no parseable steps. Raw response: {raw[:200]}",
+            detail="LLM returned no parseable steps",
         )
 
     case_name = body.case_name or _slug_from_description(body.description)
@@ -261,6 +218,72 @@ async def generate_case(
         "status": proposal.status,
         "review_endpoint": f"/api/case-proposals/{proposal.id}/accept",
     }
+
+
+async def generate_steps(
+    description: str,
+    target_url: Optional[str],
+    *,
+    workspace_id: Optional[int],
+    project_id: Optional[int],
+    feature: str = "case_generation",
+) -> List[Dict[str, Any]]:
+    """Description (+ optional target URL) → draft steps, or [] when the LLM is
+    unavailable, over its quota, or answers with nothing parseable.
+
+    Shared by /cases/generate and the requirement/incident proposal paths
+    (app/services/generation_proposals.py), so all three ground their prompts
+    the same way and meter under the same context."""
+    # Probe the target URL so selectors/assertions are grounded in what the
+    # page/endpoint actually serves, instead of hallucinated from the
+    # description alone.
+    kind, target_context = ("", "")
+    if target_url:
+        kind, target_context = await _fetch_target_context(target_url)
+    prompt = _generation_prompt(description, target_url, kind, target_context)
+    with llm_call_context(feature=feature, workspace_id=workspace_id, project_id=project_id):
+        # The provider call is blocking; to_thread keeps the event loop free
+        # (and copies the metering context into the worker thread).
+        raw = await asyncio.to_thread(
+            llm_provider.complete, prompt, system=_GENERATION_SYSTEM, max_tokens=1500)
+    return _parse_steps_payload(raw)
+
+
+def _generation_prompt(description: str, target_url: Optional[str], kind: str,
+                       target_context: str) -> str:
+    if kind == "html":
+        return (
+            f"Description: {description}\n"
+            f"Target URL: {target_url}\n\n"
+            "Below are the interactive elements extracted from a live fetch of the "
+            "target page. Build selectors ONLY from these real elements — prefer "
+            "#id, [data-testid=...], [name=...], then text-based selectors. Never "
+            "invent an id or class that is not listed.\n\n"
+            f"{target_context}\n\n"
+            "Generate the steps needed to verify the described user journey. "
+            "Begin with a `goto` step to the target URL. End with an "
+            "`expect-visible` or `expect-text` step that proves the journey succeeded."
+        )
+    if kind in ("json", "feed"):
+        step_type = "http-request" if kind == "json" else "feed-check"
+        return (
+            f"Description: {description}\n"
+            f"Target URL: {target_url}\n\n"
+            f"The target URL serves {'JSON (an API endpoint)' if kind == 'json' else 'an XML/RSS/Atom feed'}, "
+            "not an HTML page. Below is the actual response from a live probe. "
+            f"Generate `{step_type}` steps whose assertions are grounded in this real "
+            "response shape — assert on fields/paths that actually exist. Do NOT "
+            "generate browser steps like goto/click/fill.\n\n"
+            f"{target_context}"
+        )
+    return (
+        f"Description: {description}\n"
+        f"Target URL: {target_url or '(none provided)'}\n\n"
+        "Generate the steps needed to verify the described user journey. "
+        "Begin with a `goto` step if a target URL is provided. End with an "
+        "`expect-visible` or `expect-text` step that proves the journey "
+        "succeeded."
+    )
 
 
 # ---------------------------------------------------------------------------

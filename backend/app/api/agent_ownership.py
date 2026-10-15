@@ -955,6 +955,10 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         from app.services.case_revisions import record_revision
         await record_revision(session, case, "proposal", user_id=user_id,
                               agent_id=proposal.agent_id)
+        # Proposals generated from an imported requirement or an incident
+        # carry their origin; accepting one links the new case back to it.
+        from app.services.generation_proposals import link_accepted_case
+        await link_accepted_case(proposal, case.id, user_id, session)
         return
 
     if proposal.action == CaseProposalAction.UPDATE_SUITE_SETTINGS:

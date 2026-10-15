@@ -32,7 +32,9 @@ import {
     CreditCard,
     GitMerge,
     Sparkles,
-    Smartphone
+    Smartphone,
+    ClipboardCheck,
+    Siren
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/context/AuthContext';
@@ -58,7 +60,9 @@ const navigation = [
     { name: 'Triage', href: '/triage', icon: Bug },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'AI Usage', href: '/ai-usage', icon: Sparkles },
+    { name: 'Requirements', href: '/requirements', icon: ClipboardCheck },
     { name: 'Traceability', href: '/traceability', icon: GitMerge },
+    { name: 'Incidents', href: '/incidents', icon: Siren },
     { name: 'Import Playwright', href: '/import-playwright', icon: FileCode2 },
     { name: 'Schedules', href: '/schedules', icon: CalendarClock },
     { name: 'Proposals', href: '/proposals', icon: GitPullRequestArrow },

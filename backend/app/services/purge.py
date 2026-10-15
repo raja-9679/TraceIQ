@@ -90,6 +90,15 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("authsession",
               f"DELETE FROM authsession WHERE project_id IN ({_PROJECTS}) "
               f"OR captured_by_case_id IN ({_CASES})"),
+    PurgeStep("requirement",
+              f"DELETE FROM requirement WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("incident",
+              f"DELETE FROM incident WHERE project_id IN ({_PROJECTS}) "
+              f"OR matched_case_id IN ({_CASES}) OR regression_case_id IN ({_CASES}) "
+              f"OR escaped_case_id IN ({_CASES})"),
+    PurgeStep("incidentwebhook",
+              f"DELETE FROM incidentwebhook WHERE project_id IN ({_PROJECTS}) "
+              f"OR default_suite_id IN ({_SUITES})"),
     PurgeStep("failurecluster",
               f"DELETE FROM failurecluster WHERE project_id IN ({_PROJECTS})"),
 

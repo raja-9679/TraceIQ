@@ -2391,6 +2391,111 @@ class RequirementCoverage(SQLModel):
     test_names: List[str] = []
 
 
+# =============================================================================
+# Inbound integrations (WP6): requirements imported from Jira/Linear, and
+# incidents pushed in by paging tools. See app/api/requirements.py and
+# app/api/incidents.py.
+# =============================================================================
+
+
+class Requirement(SQLModel, table=True):
+    """A ticket imported from an external tracker as a testable requirement.
+
+    Coverage is NOT stored here: it joins RequirementLink on `external_key`
+    (so a manual link with the same ref counts too) and reads the latest
+    results. `acceptance_criteria` is the parsed + ambiguity-flagged list,
+    re-derived on every sync; per-criterion proposal ids survive a sync when
+    the criterion text is unchanged."""
+    __table_args__ = (UniqueConstraint("project_id", "source", "external_key",
+                                       name="uq_requirement_project_source_key"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    # The workspace's tracker connection it came from (credentials reused for
+    # re-sync). Cleared when the connection is deleted; the row stays.
+    tracker_config_id: Optional[int] = Field(default=None, foreign_key="issuetrackerconfig.id", index=True)
+    source: str                                  # jira | linear
+    external_key: str = Field(index=True)        # PROJ-123 / ENG-42
+    external_id: Optional[str] = None
+    title: str
+    url: Optional[str] = None
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    external_status: Optional[str] = None
+    # [{index, text, kind, ambiguous, reasons, proposal_id?, proposal_status?}]
+    acceptance_criteria: Optional[list] = Field(default=None, sa_column=Column(JSON))
+    external_updated_at: Optional[datetime] = None
+    last_synced_at: datetime = Field(default_factory=datetime.utcnow)
+    sync_error: Optional[str] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Incident(SQLModel, table=True):
+    """A production incident, created by hand or by the inbound webhook.
+
+    `fingerprint` (service + normalised title, app/services/incidents.py) links
+    recurrences: a new incident with the fingerprint of an earlier one gets
+    `previous_incident_id` and `recurrence_count = earlier + 1`.
+    `previous_incident_id`, `matched_cluster_id` and `regression_proposal_id`
+    are plain ids on purpose (like IssueTicket.cluster_id): they are pointers
+    into history, and an FK would make deleting the target a cascade problem."""
+    __table_args__ = (UniqueConstraint("project_id", "source", "external_id",
+                                       name="uq_incident_project_source_external"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    source: str = Field(default="manual")        # manual | generic | pagerduty | opsgenie
+    external_id: Optional[str] = None            # the paging tool's id (webhook idempotency)
+    title: str
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    severity: str = Field(default="unknown")     # critical | high | medium | low | unknown
+    status: str = Field(default="open", index=True)  # open | acknowledged | resolved
+    service: Optional[str] = None
+    url: Optional[str] = None                    # the incident in the paging tool
+    affected_url: Optional[str] = None           # the app URL that broke (matching + generation)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    resolved_at: Optional[datetime] = None
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    release: Optional[str] = None
+    fingerprint: str = Field(index=True)
+    recurrence_count: int = Field(default=0)
+    previous_incident_id: Optional[int] = None
+    matched_cluster_id: Optional[int] = None
+    matched_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    match_reason: Optional[str] = None
+    regression_proposal_id: Optional[int] = None
+    # proposed | needs_authoring | no_suite | accepted
+    regression_status: Optional[str] = None
+    regression_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    # Escaped-defect tracking: the incident is a bug that reached production.
+    # Either `escaped_case_id` names the test that should have caught it, or
+    # `escaped_no_test` records that no test existed.
+    escaped_defect: bool = Field(default=False, index=True)
+    escaped_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id")
+    escaped_no_test: bool = Field(default=False)
+    escaped_note: Optional[str] = None
+    escaped_marked_at: Optional[datetime] = None
+    escaped_marked_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class IncidentWebhook(SQLModel, table=True):
+    """Per-project inbound incident webhook. The secret is the HMAC key the
+    sender signs with, so it is stored reversibly encrypted (app/core/secrets),
+    shown once at creation/rotation and never returned again."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True, unique=True)
+    secret_encrypted: str
+    # Where webhook-created regression proposals go (CREATE needs a suite).
+    default_suite_id: Optional[int] = Field(default=None, foreign_key="testsuite.id")
+    enabled: bool = Field(default=True)
+    last_received_at: Optional[datetime] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    rotated_at: Optional[datetime] = None
+
+
 # Seal every AuditLog row as it is flushed, in whichever process created it —
 # the API, a Celery worker, a script. Installed here rather than in a startup
 # hook because models.py is imported by every path that can write an audit row,
