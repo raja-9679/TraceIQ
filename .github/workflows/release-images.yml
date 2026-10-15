@@ -95,6 +95,10 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
+          # Workers report it in their fleet heartbeat (TRACEIQ_GIT_SHA);
+          # images that do not declare the ARG ignore it.
+          build-args: |
+            GIT_SHA=${{ github.sha }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

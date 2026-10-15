@@ -567,7 +567,12 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `params.prometheus_queries` evaluated on read by
   `GET /api/runs/{id}/results/{rid}/server-metrics` against `PROMETHEUS_URL`
   (net_guard with its own host as the private exemption; any project member
-  can read any series that Prometheus holds — scope it).
+  can read any series that Prometheus holds — scope it). **Deploy**: optional
+  `execution-worker-region` (compose profile `region`, all five files),
+  Helm `regionWorkers: []` + values-gated KEDA ScaledObjects on stream lag
+  (HPA suppressed when on); `scripts/restore_drill.sh` restores a pg_dump (+
+  MinIO snapshot) into a throwaway DB and verifies migrations, row counts and
+  the audit chain.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

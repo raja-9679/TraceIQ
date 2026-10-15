@@ -221,6 +221,25 @@ services:
       - qip_network
     shm_size: '1gb'
 
+  # Region-pinned workers (WP8) — opt-in via the "region" profile:
+  #   WORKER_REGION=eu docker compose -f docker-compose.prod.yml --profile region up -d
+  # Runs created with `"region": "eu"` (or monitors with `regions`) go to
+  # jobs:pending:eu and only workers with that WORKER_REGION claim them. This
+  # worker takes its region's jobs first and then helps with the global
+  # stream; WORKER_REGION_EXCLUSIVE=true keeps it to its region only (e.g. a
+  # worker inside a customer network). Usually you run this service on a
+  # different host/site than the main stack, pointed at the same Redis.
+  # Not a Celery worker — no new queue (tests/test_celery_routing.py).
+  execution-worker-region:
+    extends:
+      service: execution-worker
+    profiles: ["region"]
+    environment:
+      WORKER_REGION: ${WORKER_REGION:-eu}
+      WORKER_REGION_EXCLUSIVE: ${WORKER_REGION_EXCLUSIVE:-false}
+    deploy:
+      replicas: ${REGION_WORKERS:-1}
+
 volumes:
   postgres_data:
   redis_data:

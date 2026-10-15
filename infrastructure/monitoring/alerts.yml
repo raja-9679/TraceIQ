@@ -92,6 +92,63 @@ groups:
             usually means they crashed mid-run. They will be reclaimed and
             eventually dead-lettered after three attempts.
 
+  # Worker fleet (WP8). Workers heartbeat into Redis every 15s with a 45s TTL;
+  # traceiq_workers_alive counts the live ones, traceiq_queue_lag is the
+  # consumer-group lag (dispatched, never delivered) per stream — region streams
+  # included — which is also what KEDA scales on.
+  - name: traceiq-fleet
+    interval: 30s
+    rules:
+      - alert: TraceIQNoLiveWorkers
+        expr: sum(traceiq_workers_alive{kind="web"}) == 0 and on() sum(traceiq_queue_lag) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Jobs are waiting and no execution worker has a live heartbeat"
+          description: >-
+            No web execution worker has heartbeated for five minutes while jobs
+            are queued. Every queued run is stalled at RUNNING. Check the worker
+            containers/pods; GET /api/admin/workers (Worker fleet page) lists the
+            last-seen time of each lost worker.
+
+      - alert: TraceIQQueueLagHigh
+        expr: traceiq_queue_lag > 50
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} undelivered jobs on {{ $labels.stream }}"
+          description: >-
+            Jobs on this stream are not being picked up fast enough, so runs
+            start late and monitors check late. For a jobs:pending:<region>
+            stream it usually means that region has too few (or no) workers;
+            scale that region's pool or enable KEDA (deploy/helm keda.enabled).
+
+      - alert: TraceIQQueueLagGrowing
+        expr: deriv(traceiq_queue_lag[15m]) > 0 and traceiq_queue_lag > 10
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Backlog on {{ $labels.stream }} has grown for 30 minutes"
+          description: >-
+            Workers are consuming this stream more slowly than jobs arrive.
+            Without more capacity the wait before a run starts keeps growing.
+
+      - alert: TraceIQWorkerVersionSkew
+        expr: traceiq_workers_version_skew > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} live worker(s) are older than the backend's step catalog"
+          description: >-
+            These workers do not support step types the backend offers. Cases
+            using those steps fail on them with "Unknown step type" whenever
+            they land there. Rebuild/redeploy the execution-worker image; the
+            Worker fleet page lists the missing step types per worker.
+
   - name: traceiq-availability
     interval: 30s
     rules:

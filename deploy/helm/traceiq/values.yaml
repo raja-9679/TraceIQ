@@ -168,6 +168,39 @@ executionWorker:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+  # Region label for the main pool (WP8). Empty = the global jobs:pending
+  # stream only, exactly as before. With a region the pool consumes
+  # jobs:pending:<region> first and then helps with the global stream, unless
+  # regionExclusive is true.
+  region: ""
+  regionExclusive: false
+
+# Extra execution-worker pools pinned to a region (WP8). Runs created with a
+# `region` (or monitors with `regions`) are dispatched to jobs:pending:<region>
+# and only workers with that WORKER_REGION claim them. Each entry renders its
+# own Deployment named <release>-execution-worker-<name>.
+#   - name: eu            # DNS-safe, used in the Deployment name
+#     region: eu-west     # 1-32 chars [a-z0-9-]; must match the run's region
+#     exclusive: false    # true = never take global jobs (e.g. inside a customer network)
+#     replicas: 1
+#     resources: {}       # empty = executionWorker.resources
+#     minReplicas: 0      # KEDA only; default keda.minReplicas
+#     maxReplicas: 5      # KEDA only; default keda.maxReplicas
+regionWorkers: []
+
+# KEDA autoscaling of execution workers on Redis stream lag (WP8). Requires the
+# KEDA operator (https://keda.sh) installed in the cluster. When enabled it
+# replaces executionWorker.autoscaling (the CPU HPA is not rendered).
+keda:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  # Target undelivered jobs per worker replica.
+  lagCount: 2
+  # Scale from zero once this many jobs are waiting (minReplicas: 0 only).
+  activationLagCount: 1
+  pollingInterval: 15
+  cooldownPeriod: 300
 
 frontend:
   replicas: 1

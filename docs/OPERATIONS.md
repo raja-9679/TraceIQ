@@ -227,7 +227,8 @@ so an issue, its log lines and its trace can be joined.
 
 `deploy/helm/traceiq/` (workstream H5) deploys the community stack: backend,
 Celery worker/aggregator/beat, execution workers with a memory-backed
-`/dev/shm` and optional HPA, frontend + Ingress, and single-replica PostgreSQL/
+`/dev/shm` and optional HPA (or KEDA, below), region worker pools
+(`regionWorkers`), frontend + Ingress, and single-replica PostgreSQL/
 Redis/MinIO StatefulSets for evaluation that you switch off in favour of
 managed services for production. Same rule as compose: **no default secrets** —
 `required` on every one, plus refusals for `webhookSecret == secretKey` and
@@ -240,9 +241,292 @@ and what is deliberately not in it (mobile emulator, the monitoring overlay).
 See `docs/DATA_RESIDENCY.md`. Everything is off by default; the orphaned-artifact
 sweep additionally defaults to report-only.
 
-## Not done: Kubernetes
+## Worker fleet (WP8)
 
-There is no Helm chart or manifest set — compose only. Tracked as H5. The
-container images are ordinary and stateless apart from the object store, so a
-chart is mechanical work rather than a design problem, but it does not exist and
-this document is not going to imply otherwise.
+Execution workers used to be invisible: the only evidence one existed was a
+consumer name in `XINFO GROUPS`, and a worker image older than the backend
+showed up as cases failing with "Unknown step type".
+
+Every web worker (`worker.ts`) and mobile worker (`mobile-worker.ts`) now
+writes a heartbeat to Redis every 15 s with a 45 s TTL — directly, not through
+the API, so "the API is down" never looks like "every worker is dead". Local
+(developer) workers report through `POST /api/jobs/heartbeat` with their API
+key, namespaced by workspace like their job queue.
+
+```bash
+curl -s "$API/admin/workers" -H "Authorization: Bearer $TOKEN"   # instance admin
+```
+
+Returns each worker (id = its Redis consumer name, host, version + git sha,
+region, consumed streams, capabilities, current job, processed/failed counters,
+start time), every job stream with its length, consumer-group **lag**
+(dispatched, never delivered) and per-consumer pending counts from `XPENDING`,
+the dead-letter depth, and warnings. The admin *Worker fleet* page renders it.
+
+- **lost** — the heartbeat key expired. The worker is listed for ten more
+  minutes with its last-seen time instead of silently disappearing. A graceful
+  shutdown deletes the key, so a lost worker is one that crashed or was killed.
+- **version skew** — the worker's supported step types (it reports its own
+  list) lack types the backend's `/api/step-types` catalog has. Cases using
+  those steps fail on that worker. Rebuild the image; the page lists the
+  missing types. Workers older than WP8 report no list and are shown as
+  unknown, not skewed.
+
+Image provenance: build with `--build-arg GIT_SHA=$(git rev-parse HEAD)`
+(`release-images.yml` passes it); the worker reports `TRACEIQ_GIT_SHA`.
+
+`/metrics` gained `traceiq_workers_alive{kind,region}`,
+`traceiq_queue_lag{stream}` and `traceiq_workers_version_skew`;
+`monitoring/alerts.yml` alerts on no live workers while jobs wait, lag high or
+growing, and skew, and the Grafana dashboard has panels for the first two.
+
+## DB-driven worker config
+
+Instance settings group **worker** (Settings → Instance (Admin)) holds what a
+worker can safely take at runtime: default step timeout, maximum job duration,
+runtime self-heal, HAR capture, and the worker-side LLM provider
+(`WORKER_LLM_PROVIDER`: `inherit` = use the backend's own default provider,
+a provider name = worker-specific model/key/base URL, blank = the worker's env).
+
+Workers fetch `GET /api/internal/worker-config` (shared `X-Worker-Secret`,
+optional mTLS below) at start and every 60 s (`WORKER_CONFIG_POLL_MS`). A value
+that is not set comes back as `null`, meaning **keep the worker's own env** —
+not the backend's. When the backend is unreachable, or older than this
+endpoint, the last applied config stays in force (last-known-good, the same
+rule as the backend's instance-settings cache); before the first successful
+fetch the env is the config. The LLM key is the only secret in the response; it
+is sent only to an authenticated worker and logged by neither side.
+
+Env-only, by construction — a worker needs these before it can reach the
+backend at all: `REDIS_URL` / `REDIS_*`, `WORKER_WEBHOOK_SECRET` /
+`WEBHOOK_SECRET`, `BACKEND_URL`, `WORKER_TLS_*`, `MINIO_*` (credentials and
+endpoint), `WORKER_REGION` / `WORKER_REGION_EXCLUSIVE`, `APPIUM_URL` and the
+device-cloud credentials, and process-shape settings read once at start
+(`MAX_JOBS_BEFORE_RESTART`, `ARTIFACTS_DIR`).
+
+## Regions
+
+A worker started with `WORKER_REGION=eu` consumes `jobs:pending:eu` first and
+then helps with the global `jobs:pending`; add `WORKER_REGION_EXCLUSIVE=true`
+for a worker that must only ever run its region's jobs (e.g. inside a customer
+network). Mobile workers do the same on `jobs:mobile:pending:<region>`. Labels
+are 1–32 characters of `[a-z0-9-]`; an invalid one stops the worker at start
+rather than letting it consume a stream nothing dispatches to. **No
+`WORKER_REGION` behaves exactly as before.**
+
+Runs opt in with `"region": "eu"` in the `POST /api/runs` body; monitors and
+schedules take `regions: ["eu", "us"]` and create one run per region per cycle,
+each evaluated, alerted and paged on separately (the monitor's overall state is
+down if any region is down; the monitor status API returns each region's
+state under `regions`).
+
+Deploying a region pool: compose `--profile region` (`execution-worker-region`
+service, in every compose file), Helm `regionWorkers: [{name, region,
+exclusive, replicas}]`, the all-in-one image `-e WORKER_REGION=eu`. Region
+workers are Node workers, not Celery workers — there is no new queue.
+
+A run pinned to a region with **no** worker there waits. The fleet page warns
+("has queued jobs but no live worker in region …") and `TraceIQQueueLagHigh`
+fires on that stream. A dead-letter replay puts a job back on the stream it
+came from — its region's, or the mobile stream; before WP8 every replay went to
+`jobs:pending`, where a web worker cannot run a mobile case.
+
+## Paging: PagerDuty, Opsgenie, maintenance windows
+
+Per project (`/api/projects/{id}/paging-channels`, project admin; the routing
+key / API key is encrypted at rest and never returned):
+
+- **PagerDuty** Events API v2 — trigger/resolve with `dedup_key`.
+- **Opsgenie** Alerts API (US or EU) — create/close by `alias`.
+
+What pages:
+
+- **Monitors** (`on_monitor`) on the DOWN/RECOVERY transitions that already
+  drive Slack/Teams/email. Key `traceiq:monitor:<schedule>[:<region>]`. A
+  recovery always resolves, even when `alert_on_recovery` is off — that flag is
+  about chat noise; leaving a page open after recovery is wrong.
+- **Run failures** (`on_run_failure`, opt-in) — only unattended runs:
+  scheduled (non-monitor), `triggered_by=ci` and webhook runs. A human clicking
+  Run or an agent iterating on a branch never pages; local-worker runs never
+  page. Key `traceiq:run:<project>:<suite>[:<case>][@region]`; the next passing
+  run of the same target resolves it.
+
+**Maintenance windows** (`/api/projects/{id}/maintenance-windows`) are one-off
+(`starts_at`/`ends_at`) or weekly (`weekdays` 0=Mon…6=Sun, `start_time`/
+`end_time` HH:MM in an IANA `timezone`, DST-correct; an end before the start
+wraps past midnight). A page inside a window is **suppressed and recorded**
+(`GET /api/projects/{id}/paging-events`, outcome `suppressed`) — "why was
+nobody paged at 02:00" has an answer. A resolve is only sent for a key whose
+last *sent* action was a trigger, so a suppressed outage does not produce a
+stray "closed" alert. Vendor errors are recorded as `failed` on the event and
+the channel's `last_error`. `POST …/paging-channels/{id}/test` sends a trigger
+and an immediate resolve under a one-off key.
+
+## IP allowlists: API keys and SCIM
+
+- `ApiKey.allowed_cidrs` — set at creation or with
+  `PUT /api/workspaces/{ws}/api-keys/{id}/allowed-cidrs` (key creator or
+  workspace admin; an API key can never change any key's list). Empty = any
+  address.
+- `SCIM_ALLOWED_CIDRS` (instance settings, group *network*) — the ranges your
+  IdP provisions from (Okta and Entra publish theirs).
+
+The client address is the TCP peer unless the peer is in
+`TRUSTED_PROXY_CIDRS` — **default empty: no proxy is trusted** and
+`X-Forwarded-For` is ignored, because any client can send that header. Behind
+the shipped nginx, trust nginx's network and let nginx append the real address:
+
+```nginx
+location /api/ {
+    proxy_pass http://backend:8000;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+```bash
+# e.g. the compose network nginx and backend share
+TRUSTED_PROXY_CIDRS='["172.18.0.0/16"]'   # or set it in the admin UI
+```
+
+The header is walked right to left, skipping trusted hops, so only the address
+your first trusted proxy saw is believed. An unparseable hop matches nothing
+(fail closed). Saving an invalid CIDR is refused at the form.
+
+Refusals answer 403 and are audited (`api_key` / `ip_refused`, `scim` /
+`ip_refused`, with the client IP) when the credential itself was **valid** —
+that is a leaked credential in use. An invalid token from outside the range is
+refused without an audit row; on an internet-facing SCIM endpoint it is scanner
+noise and would flood an append-only log.
+
+## Optional worker mTLS
+
+The shared worker secret stays required. On top of it, `REQUIRE_WORKER_MTLS`
+(instance settings, group *network*) makes `/api/internal/*` demand a client
+certificate verified by your reverse proxy. TLS ends at the proxy, so the
+backend sees the result as headers — and believes them **only from a trusted
+proxy** (`TRUSTED_PROXY_CIDRS`); from anyone else they are attacker-supplied
+text. `WORKER_MTLS_ALLOWED_SUBJECTS` (one DN per line) optionally pins which
+certificates.
+
+Workers:
+
+```bash
+BACKEND_URL=https://traceiq-internal.example.com     # must be https://
+WORKER_TLS_CERT_FILE=/certs/worker.crt
+WORKER_TLS_KEY_FILE=/certs/worker.key
+WORKER_TLS_CA_FILE=/certs/ca.crt                     # CA of the proxy's server cert
+```
+
+Every internal call (worker-config, LLM usage, visual baselines, test-inbox /
+webhook-capture lookups) goes through one client that presents the
+certificate. Setting only one of cert/key is an error, not "no mTLS".
+
+nginx — a separate server for workers, and the public server must strip the
+headers so nobody can forge them through it:
+
+```nginx
+server {                          # workers only
+    listen 8443 ssl;
+    ssl_certificate         /etc/nginx/tls/server.crt;
+    ssl_certificate_key     /etc/nginx/tls/server.key;
+    ssl_client_certificate  /etc/nginx/tls/worker-ca.crt;
+    ssl_verify_client       on;
+    location /api/internal/ {
+        proxy_pass http://backend:8000;
+        proxy_set_header X-Client-Verify       $ssl_client_verify;
+        proxy_set_header X-Client-Cert-Subject $ssl_client_s_dn;
+        proxy_set_header X-Forwarded-For       $proxy_add_x_forwarded_for;
+    }
+}
+server {                          # public
+    # ...
+    location /api/ {
+        proxy_set_header X-Client-Verify "";
+        proxy_set_header X-Client-Cert-Subject "";
+        proxy_pass http://backend:8000;
+    }
+}
+```
+
+## Worker egress allowlist
+
+`PUT /api/projects/{id}/network-policy` (project admin):
+`{"enforce": true, "allowed_hosts": ["shop.example.com"], "allow_private": false}`.
+`EGRESS_ALLOWLIST_ENFORCED` (group *worker*) forces enforcement on every
+project; `EGRESS_ALLOWED_HOSTS` adds hosts every project may reach (SSO, CDN).
+The environment's `base_url` host is always allowed. Entries cover subdomains.
+
+Resolved at dispatch and carried in the job — a worker never decides its own
+policy. When enforced the worker aborts any http(s)/ws(s) request to a host
+off the list and records it in the run's network events with `blocked: true`
+and the reason, so "the page called a host it should not have" is visible
+evidence. Rules match net_guard: link-local/metadata, multicast and reserved
+addresses are never allowed; private and loopback addresses need
+`allow_private`, which only takes effect when the instance allows private
+targets (`ALLOW_PRIVATE_NETWORK_TARGETS` is the ceiling) — so an allowlisted
+public name that resolves to 10.x is refused.
+
+Limits, so nobody mistakes this for a firewall: Playwright routing does not see
+WebSocket upgrades or service-worker fetches, and the browser does its own DNS,
+so a rebinding host can differ between the worker's check and the connection.
+Network egress rules on the worker hosts remain the real control.
+
+## KEDA (Helm)
+
+`keda.enabled=true` (needs the KEDA operator) renders a `ScaledObject` per
+worker Deployment — the main pool on `jobs:pending`, each `regionWorkers` entry
+on its own `jobs:pending:<region>` — with the `redis-streams` trigger on the
+`execution-workers` group's lag (`keda.lagCount` undelivered jobs per replica),
+and a `TriggerAuthentication` reading `REDIS_PASSWORD` from the chart Secret.
+The CPU HPA (`executionWorker.autoscaling`) is not rendered while KEDA is on;
+two autoscalers on one Deployment fight. `minReplicas: 0` scales a pool to zero
+when idle (`activationLagCount` wakes it). Off by default; with it off the
+chart renders byte-for-byte what it did before.
+
+## Restore drill
+
+`scripts/restore_drill.sh` restores the newest backup into a throwaway
+database and proves it is usable:
+
+```bash
+BACKUP_DIR=/srv/backups scripts/restore_drill.sh \
+  --artifacts /srv/backups/traceiq-artifacts-2026-10-15.tar.gz
+scripts/restore_drill.sh --dump traceiq-2026-10-15.sql.gz --compose   # own postgres
+```
+
+It takes the formats SELF_HOSTING.md's backup recipe writes (`.sql.gz`, plus
+`.sql` and `pg_dump -Fc` `.dump`), restores into `DRILL_DB` (default
+`traceiq_restore_drill`) inside the running postgres container — or, with
+`--compose`, into a separate postgres in a throwaway compose project
+`traceiq-drill`, which is the mode for production hosts — and then, inside the
+backend image:
+
+| check | FAIL when |
+|---|---|
+| restore | psql/pg_restore errors (missing owner roles are tolerated) |
+| schema revision | — (WARN when the backup is behind the code; bootstrap migrates it) |
+| bootstrap_db | `scripts/bootstrap_db.py` cannot bring the data to head |
+| alembic check | the restored schema drifts from the models |
+| row counts / latest run | WARN when there are no users |
+| audit append-only trigger | missing |
+| audit chain | the hash chain breaks (WARN when old rows predate chaining) |
+| artifact snapshot | the MinIO snapshot is unreadable (objects counted by `xl.meta`) |
+
+It prints a PASS/FAIL table, drops what it created (`--keep` to inspect) and
+exits 1 on any FAIL — schedule it and alert on the exit code. Verified
+2026-10-15 against the local stack: a seeded backup passes every check in both
+modes; the same dump with one audit row edited fails `audit chain` at
+that row.
+
+## Server metrics next to load tests
+
+Set `PROMETHEUS_URL` (and optionally `PROMETHEUS_BEARER_TOKEN`; group
+*observability*). A `load-test` step can carry
+`params.prometheus_queries: [{name, query}]` (max 10); opening the result
+evaluates them as range queries over the test window and shows them next to the
+k6 numbers (`GET /api/runs/{id}/results/{result_id}/server-metrics`). Fetched
+through net_guard with the Prometheus host as the private-network exemption;
+redirects are not followed. On a shared instance note that anyone who can
+author a load test can read any series that Prometheus holds — point
+`PROMETHEUS_URL` at a Prometheus scoped to what your users may see, or at a
+label-enforcing proxy such as prom-label-proxy.
