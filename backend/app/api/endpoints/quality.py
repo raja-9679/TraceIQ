@@ -9,6 +9,10 @@ Two things on top of everything shipped so far:
   for a commit/branch against a per-project policy and returns a go/no-go.
   Principal auth (JWT *or* API key) so CI/agents can call it after a run.
   `GET/PUT .../quality-gate/policy` reads/writes the policy.
+- **Release readiness** — `GET /api/projects/{id}/release-readiness` wraps the
+  gate for one commit with the evidence behind it (runs, critical cases,
+  quarantines, requirements) and a ready / not ready / insufficient-data
+  verdict. Logic in app/services/release_readiness.py.
 """
 from collections import defaultdict
 from datetime import datetime, timedelta
@@ -23,11 +27,14 @@ from app.core.database import get_session
 from app.core.auth import get_current_user, get_current_principal, AuthPrincipal
 from app.services.access_service import access_service
 from app.services.flake_policy import active_quarantine_clause
+from app.services import release_readiness
+from app.services.audit import record as audit_record
+from app.api.jobs import api_key_allows_project
 from app.models import (
     User, Project, TestRun, TestStatus, TestCase, TestCaseResult, FlakeRecord,
     TestSchedule,
     SecurityFinding, QualitySnapshot, QualityTrendPoint, QualityGatePolicy,
-    QualityGateCheck, QualityGateResult, DEFAULT_QUALITY_GATE,
+    QualityGateCheck, QualityGateResult, DEFAULT_QUALITY_GATE, ReleaseReadiness,
     CiSettings, DEFAULT_CI_SETTINGS, RunReport, ReportTestResult,
 )
 
@@ -159,8 +166,17 @@ async def set_quality_gate_policy(
         raise HTTPException(status_code=404, detail="Project not found")
     if not await access_service.has_project_access(current_user.id, project_id, session, min_role="editor"):
         raise HTTPException(status_code=403, detail="Editor role required")
-    project.quality_gate_policy = policy.model_dump()
+    before = _policy(project).model_dump()
+    after = policy.model_dump()
+    project.quality_gate_policy = after
     session.add(project)
+    # The gate decides releases; who loosened it, and when, has to be answerable.
+    changed = {k: {"from": before.get(k), "to": v} for k, v in after.items() if before.get(k) != v}
+    if changed:
+        await audit_record(
+            session, entity_type="project", entity_id=project_id,
+            action="quality_gate_policy_update", workspace_id=project.workspace_id,
+            user_id=current_user.id, changes=changed)
     await session.commit()
     return policy
 
@@ -206,7 +222,8 @@ async def evaluate_gate_for_runs(
         name="pass_rate",
         passed=bool(finished_runs) and pr >= policy.min_pass_rate,
         actual=f"{pr}%", threshold=f">= {policy.min_pass_rate}%",
-        detail=None if finished_runs else "no finished runs found"))
+        detail=None if finished_runs else "no finished runs found",
+        missing_data=not finished_runs))
     checks.append(coverage_check(finished_runs))
 
     sev = await _severity_counts(session, run_ids=run_ids)
@@ -244,7 +261,7 @@ async def evaluate_gate_for_runs(
         if latest_ext is None:
             checks.append(QualityGateCheck(
                 name="external_tests", passed=False, actual="no report",
-                threshold="0 failures",
+                threshold="0 failures", missing_data=True,
                 detail=("no external CI report ingested"
                         + (f" for commit {git_commit}" if git_commit else ""))))
         else:
@@ -292,11 +309,28 @@ async def evaluate_gate_for_runs(
         if policy.max_ttfb_ms:
             _budget_check("perf_ttfb", "ttfb_ms", policy.max_ttfb_ms)
 
+    checks.extend(await release_readiness.readiness_gate_checks(
+        session, project.id, policy, run_ids, git_commit))
+
     passed_gate = bool(finished_runs) and all(c.passed for c in checks)
     return QualityGateResult(
         project_id=project.id, passed=passed_gate,
         git_commit=git_commit, git_branch=git_branch,
         evaluated_run_ids=run_ids, checks=checks)
+
+
+async def _readable_project(project_id: int, session: AsyncSession,
+                            principal: AuthPrincipal) -> Project:
+    """Viewer access, and a project-scoped API key only reads its own project
+    whatever its creator could reach."""
+    project = await session.get(Project, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if principal.api_key is not None and not api_key_allows_project(principal.api_key, project_id):
+        raise HTTPException(status_code=403, detail="API key is not scoped to this project")
+    if not await access_service.has_project_access(principal.user.id, project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+    return project
 
 
 @router.get("/projects/{project_id}/quality-gate", response_model=QualityGateResult)
@@ -309,12 +343,7 @@ async def evaluate_quality_gate(
 ):
     """Go/no-go for a release. Evaluates the runs for a commit (or branch, or
     the single latest run) against the project policy."""
-    current_user = principal.user
-    project = await session.get(Project, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    if not await access_service.has_project_access(current_user.id, project_id, session):
-        raise HTTPException(status_code=403, detail="Access denied")
+    project = await _readable_project(project_id, session, principal)
 
     stmt = select(TestRun).where(TestRun.project_id == project_id)
     if git_commit:
@@ -328,6 +357,25 @@ async def evaluate_quality_gate(
         finished = finished[:1]  # latest finished run only
 
     return await evaluate_gate_for_runs(session, project, finished, git_commit, git_branch)
+
+
+@router.get("/projects/{project_id}/release-readiness", response_model=ReleaseReadiness)
+async def release_readiness_view(
+    project_id: int,
+    git_commit: Optional[str] = Query(None),
+    git_branch: Optional[str] = Query(None),
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """One go/no-go for a release with the reasons and the evidence behind
+    it. Without a commit, the newest finished run (on `git_branch`, if given)
+    chooses the commit, and every finished run on that commit is evaluated."""
+    project = await _readable_project(project_id, session, principal)
+    scope, commit, runs = await release_readiness.resolve_runs(
+        session, project_id, git_commit, git_branch)
+    gate = await evaluate_gate_for_runs(session, project, runs, commit, git_branch)
+    return await release_readiness.build_readiness(
+        session, project_id, scope, commit, git_branch, runs, gate)
 
 
 # ---------------------------------------------------------------------------

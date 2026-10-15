@@ -22,6 +22,7 @@ import {
     KeyRound,
     Webhook,
     Gauge,
+    Rocket,
     Radio,
     ShieldAlert,
     FileCode2,
@@ -49,6 +50,7 @@ import { useQuery } from '@tanstack/react-query';
 const navigation = [
     { name: 'Dashboard', href: '/', icon: LayoutDashboard },
     { name: 'Quality', href: '/quality', icon: Gauge },
+    { name: 'Release Readiness', href: '/release-readiness', icon: Rocket },
     { name: 'Test Suites', href: '/suites', icon: FolderTree },
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
     { name: 'Monitors', href: '/monitors', icon: Radio },

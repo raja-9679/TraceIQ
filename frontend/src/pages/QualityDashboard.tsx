@@ -280,6 +280,26 @@ export default function QualityDashboard() {
                                             onChange={(e) => setPolicy({ ...policy, require_external_tests_pass: e.target.checked })} />
                                     </label>
                                     <div className="pt-2 border-t border-slate-100">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Release readiness (blank = off)</p>
+                                        <div className="space-y-3">
+                                            <label className="flex items-center justify-between text-sm">
+                                                <span className="text-slate-600">Max flaky cases (quarantined or score ≥ 0.4)</span>
+                                                <Input type="number" min={0} className="w-24 h-8" value={policy.max_flaky_cases ?? ''}
+                                                    onChange={(e) => setPolicy({ ...policy, max_flaky_cases: e.target.value === '' ? null : Math.max(0, parseInt(e.target.value) || 0) })} />
+                                            </label>
+                                            <label className="flex items-center justify-between text-sm cursor-pointer">
+                                                <span className="text-slate-600">Require every critical case passed on the commit</span>
+                                                <input type="checkbox" className="w-4 h-4" checked={policy.require_critical_passed ?? false}
+                                                    onChange={(e) => setPolicy({ ...policy, require_critical_passed: e.target.checked })} />
+                                            </label>
+                                            <label className="flex items-center justify-between text-sm">
+                                                <span className="text-slate-600">Max evidence age, days (critical cases; all if none)</span>
+                                                <Input type="number" min={1} className="w-24 h-8" value={policy.max_evidence_age_days ?? ''}
+                                                    onChange={(e) => setPolicy({ ...policy, max_evidence_age_days: e.target.value === '' ? null : Math.max(1, parseInt(e.target.value) || 1) })} />
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-100">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Performance budgets (0 = off)</p>
                                         <div className="space-y-3">
                                             <label className="flex items-center justify-between text-sm">

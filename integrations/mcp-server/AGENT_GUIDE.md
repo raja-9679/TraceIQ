@@ -648,7 +648,7 @@ final = await mcp.wait_for_run(run_id=run.id, timeout_seconds=300)
 | Run a suite + watch | `run_suite` (git context! tags, environment_id), `wait_for_run`, `get_run`, `get_run_results` |
 | Test a dev server on localhost | `run_suite(local_worker_id=…)` + `npm run worker:local` on the dev machine |
 | Diagnose a failure | `get_failure_analysis`, `analyze_run` (re-run AI analysis, pick `provider_id`), `get_artifact_url`, `get_run_history`, `list_failure_clusters` / `get_failure_cluster` |
-| Judge the change / gate a merge | `get_run_report` (PR-ready markdown), `evaluate_quality_gate`, `get_quality_snapshot` |
+| Judge the change / gate a merge | `get_run_report` (PR-ready markdown), `evaluate_quality_gate`, `get_release_readiness` (verdict + evidence), `get_quality_snapshot` |
 | Find weak or noisy tests | `get_test_effectiveness`, `list_flakes`, `list_heal_proposals` |
 | Compare two deployments | `create_comparison_run`, `get_comparison` |
 | Correlate unit tests on the same commit | `ingest_junit_report`, `list_external_results` |

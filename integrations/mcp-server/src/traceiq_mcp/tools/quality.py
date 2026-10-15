@@ -17,6 +17,7 @@ from traceiq_mcp.schemas.quality import (
     HealProposalList,
     QualityGateResult,
     QualitySnapshot,
+    ReleaseReadiness,
     RunReport,
 )
 from traceiq_mcp.schemas.runs import RunRef
@@ -40,6 +41,22 @@ async def evaluate_quality_gate(project_id: int,
     finish to decide whether the change is safe to merge."""
     data = await new_client().quality_gate(project_id, git_commit, git_branch)
     return QualityGateResult.model_validate(data)
+
+
+@mcp.tool()
+async def get_release_readiness(project_id: int,
+                                git_commit: Optional[str] = None,
+                                git_branch: Optional[str] = None) -> ReleaseReadiness:
+    """Release go/no-go WITH the evidence: verdict (ready | not_ready |
+    insufficient_data), the gate checks with actual vs threshold, the runs
+    considered, critical cases (passed / failed / not_run on the commit),
+    active quarantines with owners and expiry, and linked requirements.
+    Every finished run on the commit is evaluated; without git_commit the
+    newest finished run (on git_branch, if given) chooses the commit.
+    "insufficient_data" means nothing failed but evidence is missing — run
+    the missing cases rather than treating it as a pass."""
+    data = await new_client().release_readiness(project_id, git_commit, git_branch)
+    return ReleaseReadiness.model_validate(data)
 
 
 @mcp.tool()
