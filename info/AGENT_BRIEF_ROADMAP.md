@@ -32,7 +32,7 @@ the map of the codebase and lists the traps. `info/CODEBASE.md` has the data mod
 
 ## Rules that bite (from CLAUDE.md — do not skip)
 - Migrations: one new file in `backend/app/alembic/versions/`, use the revision
-  id you are given, `down_revision = 'b8c9d0e1f2a3'` unless told otherwise.
+  id and `down_revision` you are given (the head moves as WPs merge).
   Unnamed FKs (`op.create_foreign_key(None, ...)`), `op.f('ix_...')` index names
   matching `index=True` on the model, `sqlmodel.sql.sqltypes.AutoString()` for str.
   Downgrade must drop what upgrade made (FK names are `<table>_<col>_fkey`).
@@ -51,6 +51,13 @@ the map of the codebase and lists the traps. `info/CODEBASE.md` has the data mod
   (twins; add tests to both `redact.test.ts` and `tests/test_redaction.py`).
   Artifact uploads only via `core/artifact-store.ts`.
 - User-supplied URLs fetched by the backend go through `app/core/net_guard.py`.
+- Regexes supplied by users/test authors never run on Python `re` or a bare JS
+  `RegExp` against content the site under test (or any outsider) controls —
+  no syntax filter prevents catastrophic backtracking. Backend: compile with
+  RE2 (`import re2`, see `app/services/inbox_providers.py:_compile`). Worker:
+  `boundedRegexTest` in `execution-engine/src/core/evidence.ts` (vm timeout).
+- Shared credentials (tracker connections, workspace secrets) need workspace
+  membership, not just project access — a direct project grant can outlive it.
 - Secrets at rest: `app/core/secrets.py` (encrypt/decrypt), never plaintext.
 - Access control: every endpoint checks project/workspace access via
   `access_service` (min_role editor for writes); project-scoped API keys via
