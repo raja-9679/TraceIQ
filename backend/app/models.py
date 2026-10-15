@@ -1081,6 +1081,16 @@ class QualityGatePolicy(SQLModel):
     # Require the team's own CI results (ingested JUnit reports) to be green.
     # Fails closed when required but no report exists for the commit/project.
     require_external_tests_pass: bool = False
+    # Release readiness (2026-10). All off by default so a stored policy that
+    # predates them evaluates exactly as before. See
+    # app/services/release_readiness.py for how each one decides.
+    # Cases with an ACTIVE quarantine or flake_score >= 0.4. None = no limit.
+    max_flaky_cases: Optional[int] = Field(default=None, ge=0)
+    # Every priority="critical" case must have passed on the evaluated commit.
+    require_critical_passed: bool = False
+    # Newest passing result of each critical case (all cases when none is
+    # critical) must be at most this many days old. None = not enforced.
+    max_evidence_age_days: Optional[int] = Field(default=None, ge=1)
 
 
 class QualityGateCheck(SQLModel):
@@ -1089,6 +1099,10 @@ class QualityGateCheck(SQLModel):
     actual: str
     threshold: str
     detail: Optional[str] = None
+    # The check failed because evidence is absent (no run, no report, a case
+    # that never ran), not because something failed. Release readiness turns
+    # a gate that fails ONLY on missing data into "insufficient data".
+    missing_data: bool = False
 
 
 class QualityGateResult(SQLModel):
@@ -1101,6 +1115,95 @@ class QualityGateResult(SQLModel):
 
 
 DEFAULT_QUALITY_GATE = QualityGatePolicy()
+
+
+class ReadinessRun(SQLModel):
+    id: int
+    status: TestStatus
+    created_at: datetime
+    suite_name: Optional[str] = None
+    browser: Optional[str] = None
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    selection_mode: Optional[str] = None
+    total_tests: int = 0
+    passed_tests: int = 0
+    failed_tests: int = 0
+
+
+class ReadinessCriticalCase(SQLModel):
+    case_id: int
+    name: str
+    # On the evaluated commit: passed | failed | not_run. "not_run" is never
+    # read as a pass.
+    status: str
+    run_id: Optional[int] = None
+    detail: Optional[str] = None
+    # Newest result anywhere in the project (any commit), so "not_run" still
+    # says when the case last produced evidence.
+    last_status: Optional[str] = None
+    last_at: Optional[datetime] = None
+    last_commit: Optional[str] = None
+    last_passed_at: Optional[datetime] = None
+
+
+class ReadinessPerson(SQLModel):
+    id: int
+    email: str
+    full_name: Optional[str] = None
+
+
+class ReadinessQuarantine(SQLModel):
+    flake_record_id: int
+    case_id: int
+    case_name: str
+    flake_score: float
+    source: Optional[str] = None
+    reason: Optional[str] = None
+    quarantined_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    owner: Optional[ReadinessPerson] = None
+
+
+class ReadinessRequirementCase(SQLModel):
+    case_id: int
+    name: str
+    status: str  # passed | failed | not_run (on the evaluated commit)
+
+
+class ReadinessRequirement(SQLModel):
+    ref: str
+    source: str
+    title: Optional[str] = None
+    url: Optional[str] = None
+    # passing = every linked case passed; failing = any failed; partial =
+    # some passed, the rest did not run; untested = none ran.
+    status: str
+    cases: List[ReadinessRequirementCase] = []
+
+
+class ReadinessCommit(SQLModel):
+    """A recent commit with finished runs — options for the commit picker."""
+    git_commit: str
+    git_branch: Optional[str] = None
+    last_run_at: datetime
+    runs: int
+
+
+class ReleaseReadiness(SQLModel):
+    project_id: int
+    verdict: str  # ready | not_ready | insufficient_data
+    reasons: List[str] = []
+    # How the evaluated runs were chosen: commit | branch | latest_run | none
+    scope: str
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    gate: QualityGateResult
+    runs: List[ReadinessRun] = []
+    critical_cases: List[ReadinessCriticalCase] = []
+    quarantines: List[ReadinessQuarantine] = []
+    requirements: List[ReadinessRequirement] = []
+    recent_commits: List[ReadinessCommit] = []
 
 
 # =============================================================================

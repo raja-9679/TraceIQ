@@ -34,11 +34,16 @@ class QualitySnapshot(TQModel):
 
 
 class QualityGateCheck(TQModel):
+    # Free-form: new server-side checks (flaky_cases, critical_passed,
+    # evidence_age, ...) pass through without a client release.
     name: str
     passed: bool
     actual: str
     threshold: str
     detail: Optional[str] = None
+    # True when the check failed for lack of evidence (no run / no result),
+    # not because something failed.
+    missing_data: bool = False
 
 
 class QualityGateResult(TQModel):
@@ -48,6 +53,88 @@ class QualityGateResult(TQModel):
     git_branch: Optional[str] = None
     evaluated_run_ids: List[int] = []
     checks: List[QualityGateCheck] = []
+
+
+class ReadinessRun(TQModel):
+    id: int
+    status: str
+    created_at: Optional[datetime] = None
+    suite_name: Optional[str] = None
+    browser: Optional[str] = None
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    selection_mode: Optional[str] = None
+    total_tests: int = 0
+    passed_tests: int = 0
+    failed_tests: int = 0
+
+
+class ReadinessCriticalCase(TQModel):
+    case_id: int
+    name: str
+    status: str  # passed | failed | not_run (on the evaluated commit)
+    run_id: Optional[int] = None
+    detail: Optional[str] = None
+    last_status: Optional[str] = None
+    last_at: Optional[datetime] = None
+    last_commit: Optional[str] = None
+    last_passed_at: Optional[datetime] = None
+
+
+class ReadinessPerson(TQModel):
+    id: int
+    email: str
+    full_name: Optional[str] = None
+
+
+class ReadinessQuarantine(TQModel):
+    flake_record_id: int
+    case_id: int
+    case_name: str
+    flake_score: float = 0.0
+    source: Optional[str] = None
+    reason: Optional[str] = None
+    quarantined_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
+    owner: Optional[ReadinessPerson] = None
+
+
+class ReadinessRequirementCase(TQModel):
+    case_id: int
+    name: str
+    status: str
+
+
+class ReadinessRequirement(TQModel):
+    ref: str
+    source: str = "manual"
+    title: Optional[str] = None
+    url: Optional[str] = None
+    status: str  # passing | failing | partial | untested
+    cases: List[ReadinessRequirementCase] = []
+
+
+class ReadinessCommit(TQModel):
+    git_commit: str
+    git_branch: Optional[str] = None
+    last_run_at: Optional[datetime] = None
+    runs: int = 0
+
+
+class ReleaseReadiness(TQModel):
+    """One release's go/no-go with the evidence behind it."""
+    project_id: int
+    verdict: str  # ready | not_ready | insufficient_data
+    reasons: List[str] = []
+    scope: str  # commit | branch | latest_run | none
+    git_commit: Optional[str] = None
+    git_branch: Optional[str] = None
+    gate: QualityGateResult
+    runs: List[ReadinessRun] = []
+    critical_cases: List[ReadinessCriticalCase] = []
+    quarantines: List[ReadinessQuarantine] = []
+    requirements: List[ReadinessRequirement] = []
+    recent_commits: List[ReadinessCommit] = []
 
 
 class ReportTestResult(TQModel):

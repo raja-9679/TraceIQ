@@ -361,7 +361,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   TraceIQ principal; recording it as `system` makes "who removed this person's
   access" unanswerable).
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
-  0.2.0, FastMCP, `mcp>=1.10,<2`): 51 tools, each with Pydantic input/output
+  0.2.0, FastMCP, `mcp>=1.10,<2`): 52 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio
   (`traceiq-mcp`) + streamable HTTP (`traceiq-mcp-http`, POST /mcp on 8088,
   per-request `X-API-Key`/Bearer). Add a tool = output model in
@@ -399,6 +399,25 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Release readiness (2026-10)** — `GET /api/projects/{id}/release-readiness
+  ?git_commit=&git_branch=` (viewer; project-scoped API keys honoured — now
+  also on `GET .../quality-gate`) returns `verdict` ready | not_ready |
+  insufficient_data + reasons, the gate, runs, critical cases, active
+  quarantines (owner/expiry), linked requirements, recent commits. Logic in
+  `app/services/release_readiness.py`. Three opt-in policy fields (no
+  migration — the policy is JSON; absent = off): `max_flaky_cases` (active
+  quarantine OR score ≥ 0.4), `require_critical_passed`, `max_evidence_age_days`.
+  Rules: priority `"critical"` matched trimmed/case-insensitive; results
+  matched by `TestCaseResult.test_case_id` only (never name) and, with a
+  commit, over EVERY finished run on it; newest result per browser/device
+  must pass (green rerun replaces red; chromium can't hide firefox).
+  `require_critical_passed` with no critical case fails closed. Evidence age
+  covers critical cases, or all cases when none is critical. Checks carry
+  `missing_data`; a gate failing ONLY on missing data reads "insufficient
+  data", never pass. No commit given → the newest finished run (on the
+  branch) picks the commit. Policy PUT is now audited. UI `/release-readiness`;
+  MCP `get_release_readiness` (52 tools); the Action's PR comment shows
+  check `detail` (dist rebuilt).
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

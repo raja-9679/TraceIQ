@@ -14,6 +14,7 @@ import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
 import FlakyTests from "@/pages/FlakyTests";
 import QualityDashboard from "@/pages/QualityDashboard";
+import ReleaseReadiness from "@/pages/ReleaseReadiness";
 import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
 import Triage from "@/pages/Triage";
@@ -63,6 +64,7 @@ function App() {
                 <Route path="suites" element={<TestSuites />} />
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="quality" element={<QualityDashboard />} />
+                <Route path="release-readiness" element={<ReleaseReadiness />} />
                 <Route path="monitors" element={<Monitors />} />
                 <Route path="security" element={<Security />} />
                 <Route path="triage" element={<Triage />} />

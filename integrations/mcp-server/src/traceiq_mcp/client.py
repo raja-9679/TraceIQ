@@ -337,6 +337,13 @@ class TraceIQClient:
             "GET", f"/api/projects/{project_id}/quality-gate",
             params=self._clean({"git_commit": git_commit, "git_branch": git_branch}))
 
+    async def release_readiness(self, project_id: int,
+                                git_commit: Optional[str] = None,
+                                git_branch: Optional[str] = None) -> Dict[str, Any]:
+        return await self._request(
+            "GET", f"/api/projects/{project_id}/release-readiness",
+            params=self._clean({"git_commit": git_commit, "git_branch": git_branch}))
+
     async def test_effectiveness(self, project_id: int, days: int = 30,
                                  limit: int = 100) -> List[Dict[str, Any]]:
         return await self._request(
