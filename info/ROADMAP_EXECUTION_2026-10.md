@@ -56,3 +56,4 @@ with mocks/fakes; they are marked **mock-verified**.
 - 2026-10-15: tracker created; WP0 already merged. WP1, 2, 3, 6, 7 started in parallel (agents, own worktrees).
 - 2026-10-15: WP1, WP3, WP2, WP6 merged (migrations chained c3→c2→c6). Security review fixes: bounded regex (RE2 backend, vm timeout worker), webhook query redaction, Mailpit SMTP localhost, tracker creds need workspace membership. WP5, WP8 started.
 - 2026-10-15: WP4 (UI follow-up in wp4b) and WP7 merged; migration head c7a2b3c4d5e7. Review fixes: leak mask, alert webhooks via net_guard. WP9, WP10 started.
+- 2026-10-15: WP9 agent was stopped by a safety check while writing active probing (ports, WAF strings, origin bypass, TLS cipher enumeration). Those parts were removed and parked in SCOPE_NOTES.md (feat/wp9) for the owner's decision; the passive half is being completed. WP4b merged.
