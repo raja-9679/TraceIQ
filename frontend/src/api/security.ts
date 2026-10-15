@@ -14,11 +14,54 @@ export interface SecurityFinding {
     evidence?: string | null;
     target_url?: string | null;
     created_at: string;
-    status?: 'open' | 'acknowledged' | 'false_positive' | 'resolved';
-    assignee_id?: number | null;
+    status?: FindingStatus;
+    assignee_id?: number | null;   // the finding's owner
     resolved_at?: string | null;
     fingerprint?: string | null;
+    project_id?: number | null;
+    due_at?: string | null;
+    risk_justification?: string | null;
+    risk_expires_at?: string | null;
+    risk_approved_by_id?: number | null;
+    risk_approved_at?: string | null;
+    verified_at?: string | null;
+    superseded_by_id?: number | null;
+    retest_scan_id?: number | null;
+    location?: { run_id?: number; result_id?: number; case_id?: number; url?: string; field?: string } | null;
+    overdue?: boolean;
+    retest?: { queued: boolean; scan_id?: number; reused?: boolean; reason?: string };
 }
+
+export type FindingStatus =
+    | 'open' | 'in_progress' | 'fixed_pending_verification' | 'verified_fixed'
+    | 'accepted_risk' | 'false_positive';
+
+export interface FindingUpdate {
+    status?: FindingStatus;
+    owner_id?: number | null;
+    due_at?: string | null;
+    risk_justification?: string;
+    risk_expires_at?: string;
+    note?: string;
+}
+
+export interface FindingsRegister {
+    project_id: number;
+    total: number;
+    by_status: Record<string, number>;
+    actionable: number;
+    overdue: number;
+    findings: SecurityFinding[];
+}
+
+export interface FindingSla {
+    workspace_id: number;
+    sla_days: Record<string, number>;
+    default_sla_days: Record<string, number>;
+    can_edit: boolean;
+}
+
+export interface OwnerCandidate { id: number; email: string; full_name: string }
 
 export interface ScanDiff {
     scan_id: number;
@@ -95,10 +138,29 @@ export const securityApi = {
         const r = await api.post(`/projects/${projectId}/security-scan`, body);
         return r.data;
     },
-    updateFinding: async (findingId: number, body: { status?: string; assignee_id?: number | null }): Promise<SecurityFinding> => {
+    updateFinding: async (findingId: number, body: FindingUpdate): Promise<SecurityFinding> => {
         const r = await api.patch(`/security-findings/${findingId}`, body);
         return r.data;
     },
+    // Findings register + workflow (WP7).
+    listFindings: async (projectId: number, params: { status?: string; overdue?: boolean; scan_type?: string; owner_id?: number } = {}): Promise<FindingsRegister> => {
+        const r = await api.get(`/projects/${projectId}/security-findings`, { params });
+        return r.data;
+    },
+    ownerCandidates: async (projectId: number): Promise<OwnerCandidate[]> => {
+        const r = await api.get(`/projects/${projectId}/security-findings/owner-candidates`);
+        return r.data;
+    },
+    getSla: async (workspaceId: number): Promise<FindingSla> => {
+        const r = await api.get(`/workspaces/${workspaceId}/finding-sla`);
+        return r.data;
+    },
+    setSla: async (workspaceId: number, sla: Record<string, number>): Promise<FindingSla> => {
+        const r = await api.put(`/workspaces/${workspaceId}/finding-sla`, { sla_days: sla });
+        return r.data;
+    },
+    projectSarifPath: (projectId: number) => `/projects/${projectId}/security-findings/sarif`,
+    scanSarifPath: (scanId: number) => `/security-scans/${scanId}/sarif`,
     scanDiff: async (scanId: number): Promise<ScanDiff> => {
         const r = await api.get(`/security-scans/${scanId}/diff`);
         return r.data;

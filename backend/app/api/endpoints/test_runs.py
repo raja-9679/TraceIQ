@@ -638,27 +638,17 @@ async def security_scan_run(run_id: int, session: AsyncSession = Depends(get_ses
     if not await access_service.has_project_access(current_user.id, run.project_id, session):
         raise HTTPException(status_code=403, detail="Access denied")
 
-    from app.services.passive_security import analyze_run, summarize
-    findings = analyze_run(run)
-
-    await session.exec(
-        delete(SecurityFinding).where(
-            SecurityFinding.run_id == run_id,
-            SecurityFinding.scan_type == "passive"))
-    rows = []
-    for f in findings:
-        row = SecurityFinding(
-            run_id=run.id, project_id=run.project_id, scan_type="passive",
-            category=f["category"], severity=f["severity"], title=f["title"],
-            description=f["description"], evidence=f["evidence"], target_url=f["target_url"])
-        session.add(row)
-        rows.append(row)
+    # Same code path as the finalize-time task, so a re-scan inherits each
+    # finding's workflow state (owner, due date, risk acceptance) instead of
+    # silently resetting it.
+    from app.tasks.security_tasks import _persist_sync
+    counts = await session.run_sync(lambda s: _persist_sync(s, run))
     await session.commit()
-    for r in rows:
-        await session.refresh(r)
+    rows = (await session.exec(select(SecurityFinding).where(
+        SecurityFinding.run_id == run_id, SecurityFinding.scan_type == "passive"))).all()
 
     return SecurityScanResult(
-        run_id=run.id, scan_type="passive", counts=summarize(findings),
+        run_id=run.id, scan_type="passive", counts=counts,
         findings=[SecurityFindingRead.model_validate(r, from_attributes=True) for r in rows])
 
 
@@ -969,6 +959,14 @@ async def finalize_test_run(
         scan_run_passive.delay(run_id)
     except Exception as e:
         print(f"[Finalize] Failed to queue passive security scan for run {run_id}: {e}")
+
+    # Leak detection (WP7): credentials the application under test exposed in
+    # what this run stored. Best-effort; read-only.
+    try:
+        from app.tasks.security_tasks import scan_run_leaks
+        scan_run_leaks.delay(run_id)
+    except Exception as e:
+        print(f"[Finalize] Failed to queue leak detection for run {run_id}: {e}")
 
     # Failure triage: fingerprint failing results into clusters so identical
     # root causes de-duplicate across runs. Best-effort.

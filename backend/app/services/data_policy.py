@@ -40,7 +40,7 @@ from app.services.redaction import DEFAULT_PATTERNS  # noqa: E402
 #: Value patterns a project may ask for. Mirrors the engine's redact.ts and
 #: app/services/redaction.py — a name not in here would silently scan for
 #: nothing, so the API rejects it rather than accepting a typo.
-AVAILABLE_PATTERNS = ("pan", "aadhaar", "jwt", "email", "phone")
+AVAILABLE_PATTERNS = ("pan", "aadhaar", "jwt", "cloud_keys", "email", "phone")
 
 #: Artifact kinds, mirroring execution-engine/src/core/artifact-store.ts. Used
 #: to tell the UI what the chosen level actually permits.

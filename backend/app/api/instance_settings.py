@@ -9,7 +9,7 @@ row so the environment value applies again.
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -106,11 +106,36 @@ async def list_instance_settings(_: User = Depends(get_current_instance_admin)):
     return [_read_one(k) for k in insvc.REGISTRY]
 
 
+async def _audit_setting(session: AsyncSession, admin: User, request: Optional[Request],
+                         key: str, action: str, before: Any, after: Any) -> None:
+    """Instance settings carry the security posture (MFA_REQUIRED, SSO-only,
+    SCIM token, SIEM sink), so every change is an audit event — and the
+    security-alert rules key off these rows. Secret values are never recorded,
+    only that they changed."""
+    from app.services.audit import record
+    secret = insvc.REGISTRY[key].secret
+    changes = {"key": key, "changed": True} if secret else {"key": key, "from": before, "to": after}
+    if secret:
+        changes["was_set"] = bool(before)
+        changes["is_set"] = bool(after)
+    await record(session, entity_type="instance_setting", entity_id=0, action=action,
+                 user_id=admin.id, request=request, changes=changes)
+
+
+def _same(key: str, a: Any, b: Any) -> bool:
+    d = insvc.REGISTRY[key]
+    try:
+        return insvc.serialize(d, a) == insvc.serialize(d, b) if a is not None and b is not None else a == b
+    except Exception:
+        return a == b
+
+
 @router.put("/admin/instance-settings", response_model=list[SettingRead])
 async def update_instance_settings(
     body: SettingsUpdate,
     session: AsyncSession = Depends(get_session),
     admin: User = Depends(get_current_instance_admin),
+    request: Request = None,
 ):
     unknown = [k for k in body.values if k not in insvc.REGISTRY]
     if unknown:
@@ -128,22 +153,39 @@ async def update_instance_settings(
                 status_code=400,
                 detail="Configure and save SSO (OIDC or SAML) before disabling password login")
 
+    def proposed(key: str):
+        if key in body.values:
+            v = body.values[key]
+            if v is None:
+                return insvc.env_default(key)
+            if insvc.REGISTRY[key].secret and v == "":
+                return insvc.effective(key)   # masked field left untouched
+            if insvc.REGISTRY[key].type == "bool":
+                return v in (True, "true", "True", 1, "1")
+            return v
+        return insvc.effective(key)
+
+    # SIEM: the sink is checked the way the drain will use it, including the
+    # outbound-URL guard, so a typo or a metadata-range address is refused on
+    # the form instead of failing silently in a beat task.
+    if any(k.startswith("SIEM_") for k in body.values):
+        from app.core.net_guard import UnsafeUrlError
+        from app.services import siem
+        try:
+            sink = siem.load_config(proposed)
+            if sink is not None:
+                await siem.check_destination(sink)
+        except siem.SiemConfigError as exc:
+            raise HTTPException(status_code=400, detail=f"SIEM: {exc}")
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=400, detail=f"SIEM destination refused: {exc}")
+
     # SAML settings are validated the way the login path will use them — the
     # settings dict is built and, if a metadata URL is involved, fetched right
     # now — so a bad certificate or unreachable IdP surfaces on the form rather
     # than as a 503 for the first person who clicks the button.
     if any(k.startswith("SAML_") for k in body.values):
         from app.services import saml_auth
-
-        def proposed(key: str):
-            if key in body.values:
-                v = body.values[key]
-                if v is None:
-                    return insvc.env_default(key)
-                if insvc.REGISTRY[key].secret and v == "":
-                    return insvc.effective(key)   # masked field left untouched
-                return v
-            return insvc.effective(key)
 
         if saml_auth.is_configured(proposed):
             try:
@@ -197,10 +239,16 @@ async def update_instance_settings(
 
         if value is None:
             if row:
+                await _audit_setting(session, admin, request, key, "reset",
+                                     insvc.effective(key), insvc.env_default(key))
                 await session.delete(row)
             continue
         if d.secret and value == "":
             continue  # masked field left untouched in the UI
+        before = insvc.effective(key)
+        after = proposed(key)
+        if d.secret or not _same(key, before, after):
+            await _audit_setting(session, admin, request, key, "update", before, after)
 
         try:
             raw = insvc.serialize(d, value)
@@ -245,13 +293,16 @@ async def update_instance_settings(
 async def reset_instance_setting(
     key: str,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_instance_admin),
+    admin: User = Depends(get_current_instance_admin),
+    request: Request = None,
 ):
     if key not in insvc.REGISTRY:
         raise HTTPException(status_code=404, detail="Unknown setting key")
     row = (await session.exec(
         select(InstanceSetting).where(InstanceSetting.key == key))).first()
     if row:
+        await _audit_setting(session, admin, request, key, "reset",
+                             insvc.effective(key), insvc.env_default(key))
         await session.delete(row)
         await session.commit()
     insvc.invalidate_cache()
@@ -301,13 +352,17 @@ async def list_instance_admins(
 async def grant_instance_admin(
     user_id: int,
     session: AsyncSession = Depends(get_session),
-    _: User = Depends(get_current_instance_admin),
+    granter: User = Depends(get_current_instance_admin),
+    request: Request = None,
 ):
     user = await session.get(User, user_id)
     if not user or not user.is_active:
         raise HTTPException(status_code=404, detail="User not found")
     user.is_instance_admin = True
     session.add(user)
+    from app.services.audit import record
+    await record(session, entity_type="user", entity_id=user.id, action="instance_admin_grant",
+                 user_id=granter.id, request=request, changes={"email": user.email})
     await session.commit()
     return InstanceAdminRead(id=user.id, email=user.email, full_name=user.full_name,
                              explicit=True, via_first_tenant=False)
@@ -318,6 +373,7 @@ async def revoke_instance_admin(
     user_id: int,
     session: AsyncSession = Depends(get_session),
     admin: User = Depends(get_current_instance_admin),
+    request: Request = None,
 ):
     """Revokes the explicit grant only — the first-tenant fallback is not
     revocable from the API, so an instance can never talk itself out of
@@ -329,6 +385,9 @@ async def revoke_instance_admin(
         raise HTTPException(status_code=400, detail="You cannot revoke your own instance-admin grant")
     user.is_instance_admin = False
     session.add(user)
+    from app.services.audit import record
+    await record(session, entity_type="user", entity_id=user.id, action="instance_admin_revoke",
+                 user_id=admin.id, request=request, changes={"email": user.email})
     await session.commit()
     return InstanceAdminRead(id=user.id, email=user.email, full_name=user.full_name,
                              explicit=False, via_first_tenant=False)

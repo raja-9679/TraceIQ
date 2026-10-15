@@ -227,10 +227,12 @@ async def _apply_federated_access(
     membership = (await session.exec(
         select(UserWorkspace).where(UserWorkspace.user_id == user.id,
                                     UserWorkspace.workspace_id == workspace.id))).first()
+    granted = False
     if membership is None:
         session.add(UserWorkspace(
             user_id=user.id, workspace_id=workspace.id,
             role=LEGACY_ROLE_LEVEL[role_name], role_id=role.id))
+        granted = True
     elif (authoritative_role or policy.group_role_map) and membership.role_id != role.id:
         # access_service still falls back to the legacy string column for rows
         # with no role_id, so the two must never disagree.
@@ -238,6 +240,17 @@ async def _apply_federated_access(
         membership.role_id = role.id
         membership.role = LEGACY_ROLE_LEVEL[role_name]
         session.add(membership)
+        granted = True
+    if granted:
+        # An IdP group change that makes someone a workspace admin is exactly
+        # what the admin-granted alert exists for.
+        from app.services.audit import record
+        await record(session, entity_type="workspace", entity_id=workspace.id,
+                     action="role_grant", workspace_id=workspace.id,
+                     actor_type="system", actor_label="federation",
+                     changes={"user_id": user.id, "email": user.email, "scope": "workspace",
+                              "scope_id": workspace.id, "role": role_name,
+                              "source": "idp_groups"})
 
     await _sync_federated_teams(session, user, workspace, policy, groups)
     await session.flush()

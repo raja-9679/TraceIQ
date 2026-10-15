@@ -122,6 +122,29 @@ export interface MatrixRun {
     cells?: MatrixCellResult[];
 }
 
+export interface MatrixFinding {
+    id: number;
+    title: string;
+    severity: string;
+    status: 'open' | 'acknowledged' | 'false_positive' | 'resolved';
+    category: string;
+    evidence: string | null;
+    target_url: string | null;
+    created_at: string;
+    resolved_at: string | null;
+    /** The latest run of this matrix whose cell granted the access. */
+    matrix_run_id: number;
+    cell_id: number;
+    row_key: string;
+    persona_key: string;
+}
+
+export interface ProjectCase {
+    id: number;
+    name: string;
+    test_suite_id: number;
+}
+
 export const accessMatrixApi = {
     list: (projectId: number) =>
         api.get<AccessMatrix[]>(`/projects/${projectId}/access-matrices`).then(r => r.data),
@@ -138,4 +161,9 @@ export const accessMatrixApi = {
     getRun: (runId: number) => api.get<MatrixRun>(`/access-matrix-runs/${runId}`).then(r => r.data),
     screenshot: (runId: number, cellId: number) =>
         api.get<{ url: string }>(`/access-matrix-runs/${runId}/cells/${cellId}/screenshot`).then(r => r.data),
+    findings: (id: number) =>
+        api.get<MatrixFinding[]>(`/access-matrices/${id}/findings`).then(r => r.data),
+    cases: (projectId: number) =>
+        api.get<{ items: ProjectCase[] }>(`/cases`, { params: { project_id: projectId, limit: 200 } })
+            .then(r => r.data.items),
 };

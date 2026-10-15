@@ -65,6 +65,9 @@ RETAINED_AUTHORSHIP: List[str] = [
     "failurecluster.assignee_id", "securityfinding.assignee_id",
     "teaminvitation.invited_by_id", "workspaceinvitation.invited_by_id",
     "instance_settings.updated_by_id", "llm_provider_config.updated_by_id",
+    "securityfinding.risk_approved_by_id", "accessreviewcampaign.created_by_id",
+    "accessreviewcampaign.signed_off_by_id", "accessreviewcampaign.revocations_applied_by_id",
+    "accessreviewitem.decided_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {
@@ -72,6 +75,10 @@ RETAINED_WITH_REASON: Dict[str, str] = {
                 "under the legal-obligation basis (SOC 2 CC7, PCI DSS Req 10) "
                 "and bounded by AUDIT_RETENTION_DAYS, not by an erasure request. "
                 "actor_label holds the email as it was at the time.",
+    "accessreviewitem": "access-review items snapshot each reviewed person's email "
+                        "and grants as the reviewer saw them; that snapshot IS the "
+                        "evidence of the review (SOC 2 CC6.2/CC6.3), so it is kept "
+                        "like the audit trail and goes with the workspace purge.",
     "tenant.owner_id": "a tenant must have an owner; erasing the account does not "
                        "dissolve the organisation. Transfer ownership first if the "
                        "tenant is to outlive the person.",

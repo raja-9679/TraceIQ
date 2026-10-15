@@ -425,7 +425,10 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   summary regression. Evidence redacted by the `redactAccessObservation` /
   `redact_access_observation` twins; page screenshots at
   `access-matrix/{run}/{cell}.png` (purge + project delete cover the prefix;
-  run retention does not sweep matrix runs). **Tenant isolation:** create two
+  run retention sweeps finished matrix runs + cells + that prefix with the
+  same per-project windows — `cleanup_tasks.purge_old_matrix_runs`, called
+  from `purge_old_runs`; pending/running runs and the matrix definition are
+  never swept). **Tenant isolation:** create two
   personas logged in to different tenants, add request rows with `swap`
   (`owner_persona_id` = tenant A, owner URL lists A's resources, extractor
   pulls an id, row URL contains `{id}`), expect allow for A and deny for B and
@@ -433,8 +436,17 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `expect-blocked-after` (needs `params.authorized` + `security_allowlist`,
   injected at dispatch only when security testing is enabled),
   `expect-session-dead` (logs out itself so it can replay the old cookies) live
-  in `core/security-steps.ts` — worker image rebuild needed. The matrix grid
-  page in the frontend is NOT built yet (API client in `src/api/accessMatrix.ts`).
+  in `core/security-steps.ts` — worker image rebuild needed.
+  **UI (WP4b)**: `/access-matrix` (`pages/AccessMatrix.tsx` is a thin shell;
+  components + pure helpers in `components/access-matrix/`, logic in
+  `grid.ts`/`model.ts` with vitest). Selection lives in the URL
+  (`?matrix=&tab=runs&run=&cell=`) so evidence is deep-linkable. The
+  prerequisites panel *previews* the backend safety gates (`grid.ts:
+  prerequisites` mirrors `host_allowed`/`safety_problems`); the backend stays
+  the authority and its refusal `detail` is shown verbatim. SecurityFinding has
+  no matrix column, so `GET /api/access-matrices/{id}/findings` recomputes the
+  link: fingerprint(matrix,row,persona) + the latest run whose DENY cell was
+  granted.
 - **Release readiness (2026-10)** — `GET /api/projects/{id}/release-readiness
   ?git_commit=&git_branch=` (viewer; project-scoped API keys honoured — now
   also on `GET .../quality-gate`) returns `verdict` ready | not_ready |
@@ -541,6 +553,62 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   /incidents/{id}/escaped` names the missing case or `no_test_existed`;
   `escaped-report` counts "test added after" only when the regression case was
   created at/after the incident started. UI: `/requirements`, `/incidents`.
+- **Security operations (WP7, 2026-10)** — migration `c7a2b3c4d5e7`.
+  **SIEM**: instance-settings groups `siem` (`syslog` RFC 5424 tcp/tls/udp with
+  octet-counted framing, `splunk_hec`, `elastic` bulk with `_id`=row hash so
+  retries are idempotent, HMAC-signed `webhook`) and `security_alerts`.
+  The audit `before_flush` hook adds a `SecurityEventOutbox` row in the SAME
+  flush as each audit row (only when streaming or alerts are on), so an event
+  exists iff its audit row commits; beat `drain_security_events` (10s,
+  `FOR UPDATE SKIP LOCKED`) evaluates alerts and delivers in batches with
+  exponential backoff; `SIEM_OUTBOX_MAX` drops the OLDEST beyond the cap (the
+  audit table stays the record). Events carry `chain.{prev_hash,row_hash,
+  hashed_timestamp}` — the naive isoformat the hash was computed over, not the
+  `Z` timestamp. Destination goes through net_guard at save AND before each
+  delivery; no redirects. `POST /admin/siem/test`, `GET /admin/siem/status`.
+  **Alerts** (`app/services/security_alerts.py`) fire the burst rule when the
+  count reaches EXACTLY N (stateless — no "already alerted" table); channels
+  are `SECURITY_ALERT_*`, separate from run notifications. New audit rows the
+  rules depend on: every instance-setting change (`entity_type
+  instance_setting`, secrets as `changed` only), instance-admin grant/revoke,
+  `role_grant` (workspace invite-add, project access, federation group sync),
+  `mfa_enabled`/`mfa_disabled`, and `login_failed` for bad MFA codes and LDAP.
+  **Access reviews**: `app/services/access_review.py` + `app/api/access_reviews.py`
+  (workspace admin / instance admin; API keys refused for every write). Items
+  snapshot access at campaign start; revoke needs a note; sign-off needs every
+  item decided and is audited; `apply-revocations` only after sign-off and only
+  with `confirm: true` (workspace scope removes membership/teams/project grants,
+  instance scope deactivates + revokes refresh tokens; a reviewer can't revoke
+  themselves). CSV is formula-injection-safe; HTML export ships a CSP.
+  **Findings workflow** (`app/services/finding_lifecycle.py`): statuses
+  `open|in_progress|fixed_pending_verification|verified_fixed|accepted_risk|
+  false_positive` (old acknowledged/resolved migrated; still accepted on
+  input). Rows stay per scan; workflow lives on the newest row per (project,
+  scan_type, fingerprint) and older rows get `superseded_by_id` (soft, no FK).
+  `ingest()` carries owner + ORIGINAL due date + unexpired risk acceptance,
+  re-opens fixed findings that reappear; `verify_fixes()` is the only path to
+  `verified_fixed` — a LATER completed scan of the same target AND same
+  scan_type (ZAP), or a later run of the same suite that covered the origin
+  (passive) / re-ran the case (leak). Marking fixed queues a retest through the
+  same gates as a manual scan (`_scan_gate`); header-auth scans are not
+  retested (the token is gone). Accepted risk / due-date changes need project
+  admin; hourly beat re-opens lapsed acceptances. SLA per workspace
+  (`workspace.finding_sla_days`, `GET/PUT /workspaces/{id}/finding-sla`).
+  Register `GET /projects/{id}/security-findings`; SARIF 2.1.0 at
+  `…/security-findings/sarif` and `/security-scans/{id}/sarif` (waived findings
+  become `suppressions`). Passive findings now get fingerprints; re-scanning a
+  run (`_replace_run_findings`) inherits state and relinks predecessors.
+  **Leak detection** (`app/services/leak_detection.py`, task `scan_run_leaks` at
+  finalize, `LEAK_DETECTION_ENABLED`): response side only (bodies, headers,
+  network events + URLs, console errors, step DOM, execution log) — never
+  request data; `[REDACTED:<cloud kind>]` markers count, because the APP sent
+  it; email/phone only if the project's `redact_patterns` opt in; masked
+  samples only; fingerprints strip list indexes. New `cloud_keys` redaction
+  pattern (AWS/GitHub/Slack/Stripe/Google/Azure/PEM) is ON by default in both
+  twins and runs FIRST (before PAN) — needs a worker rebuild. Test corpora
+  build tokens by concatenation (push protection); `test_leak_detection.py` is
+  in `.gitleaks.toml`. UI: Security page register + SLA card + SARIF buttons;
+  Settings → Instance (Admin) SIEM/alerts cards; `/access-reviews` page.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

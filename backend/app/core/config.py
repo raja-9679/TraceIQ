@@ -229,6 +229,32 @@ class Settings(BaseSettings):
     # Security scanning (PLATFORM_VISION.md P-4).
     # Passive analysis of captured responses (item 2) — read-only, safe.
     PASSIVE_SECURITY_SCAN_ENABLED: bool = True
+    # Leak detection over a run's stored responses/console/evidence (WP7).
+    LEAK_DETECTION_ENABLED: bool = True
+
+    # Security operations (WP7). All admin-editable as instance settings
+    # (groups `siem` and `security_alerts`); these are the defaults.
+    SIEM_ENABLED: bool = False
+    SIEM_SINK_TYPE: Optional[str] = None     # syslog | splunk_hec | elastic | webhook
+    SIEM_URL: Optional[str] = None
+    SIEM_TOKEN: Optional[str] = None
+    SIEM_ELASTIC_INDEX: str = "traceiq-audit"
+    SIEM_TLS_VERIFY: bool = True
+    SIEM_CA_CERT: Optional[str] = None
+    SIEM_OUTBOX_MAX: int = 10000
+    SECURITY_ALERTS_ENABLED: bool = False
+    ALERT_FAILED_LOGIN_BURST: bool = True
+    ALERT_FAILED_LOGIN_THRESHOLD: int = 5
+    ALERT_FAILED_LOGIN_WINDOW_MINUTES: int = 10
+    ALERT_ADMIN_GRANTED: bool = True
+    ALERT_API_KEY_CHANGES: bool = True
+    ALERT_MFA_WEAKENED: bool = True
+    ALERT_SSO_ONLY_DISABLED: bool = True
+    ALERT_SCIM_TOKEN_CHANGED: bool = True
+    ALERT_SCIM_DEACTIVATION: bool = True
+    SECURITY_ALERT_EMAILS: list[str] = []
+    SECURITY_ALERT_SLACK_WEBHOOK_URL: Optional[str] = None
+    SECURITY_ALERT_TEAMS_WEBHOOK_URL: Optional[str] = None
     # OWASP ZAP daemon for active/authenticated DAST (item 6). Scans are refused
     # when ZAP_API_URL is unset. Active (attacking) scans additionally require
     # SECURITY_ACTIVE_SCAN_ENABLED=true AND per-project opt-in + target allowlist.

@@ -2,17 +2,21 @@ import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
     ShieldAlert, RefreshCw, AlertCircle, Layers, Save, Play, X, Plus, ShieldCheck, Lock,
-    ChevronRight, ChevronDown,
+    ChevronRight, ChevronDown, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { errDetail } from '@/lib/errors';
 import { getProjects } from '@/lib/api';
-import { securityApi, SecuritySettings, SecurityScan, SecurityFinding } from '@/api/security';
+import { securityApi, SecuritySettings, SecurityScan, SecurityFinding, type FindingUpdate } from '@/api/security';
+import { downloadFromApi } from '@/lib/download';
+import { FindingSlaCard, FindingStatusControl, FindingsRegister } from '@/components/security/FindingsRegister';
+import { isClosed } from '@/components/security/findingStatus';
 
-const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
+
 
 const SEV_TONE: Record<string, string> = {
     high: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -243,12 +247,6 @@ function NewScanCard({ projectId }: { projectId: number }) {
     );
 }
 
-const FINDING_STATUSES = ['open', 'acknowledged', 'false_positive', 'resolved'] as const;
-const FINDING_STATUS_TONE: Record<string, string> = {
-    open: 'text-rose-600', acknowledged: 'text-amber-600',
-    false_positive: 'text-slate-400', resolved: 'text-emerald-600',
-};
-
 // Minimal inline markdown → JSX for finding bodies (**bold**, `code`, links).
 function inlineMd(text: string): ReactNode[] {
     const nodes: ReactNode[] = [];
@@ -278,9 +276,9 @@ function FindingBody({ text }: { text: string }) {
     );
 }
 
-function FindingRow({ f, onTriage }: { f: SecurityFinding; onTriage: (status: string) => void }) {
+function FindingRow({ f, onTriage, busy }: { f: SecurityFinding; onTriage: (body: FindingUpdate) => void; busy: boolean }) {
     const [open, setOpen] = useState(false);
-    const muted = f.status === 'false_positive' || f.status === 'resolved';
+    const muted = isClosed(f.status);
     const hasDetail = !!(f.description || f.evidence);
     return (
         <div className="border border-slate-100 rounded-md">
@@ -298,13 +296,11 @@ function FindingRow({ f, onTriage }: { f: SecurityFinding; onTriage: (status: st
                     <span className={`font-medium ${muted ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{f.title}</span>
                     {f.target_url && <span className="text-xs text-slate-400 ml-1 break-all">{f.target_url}</span>}
                 </div>
-                <select
-                    className={`text-[11px] font-semibold bg-transparent border border-slate-200 rounded-md px-1.5 py-0.5 shrink-0 ${FINDING_STATUS_TONE[f.status || 'open']}`}
-                    value={f.status || 'open'}
-                    onChange={(e) => onTriage(e.target.value)}
-                >
-                    {FINDING_STATUSES.map((s) => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
-                </select>
+                <div className="shrink-0">
+                    {f.superseded_by_id
+                        ? <span className="text-[10px] text-slate-400">tracked on a newer scan</span>
+                        : <FindingStatusControl finding={f} busy={busy} onChange={onTriage} />}
+                </div>
             </div>
             {open && hasDetail && (
                 <div className="px-3 pb-3 pl-9 text-xs text-slate-600 space-y-3">
@@ -335,10 +331,20 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
         enabled: open && scan.status === 'completed',
     });
     const triage = useMutation({
-        mutationFn: ({ id, status }: { id: number; status: string }) => securityApi.updateFinding(id, { status }),
-        onSuccess: () => qc.invalidateQueries({ queryKey: ['sec-scan', scan.id] }),
-        onError: (e: any) => toast.error(e?.response?.data?.detail || 'Update failed'),
+        mutationFn: ({ id, body }: { id: number; body: FindingUpdate }) => securityApi.updateFinding(id, body),
+        onSuccess: () => {
+            qc.invalidateQueries({ queryKey: ['sec-scan', scan.id] });
+            qc.invalidateQueries({ queryKey: ['sec-findings', scan.project_id] });
+        },
+        onError: (e) => toast.error(errDetail(e)),
     });
+    const sarif = async () => {
+        try {
+            await downloadFromApi(securityApi.scanSarifPath(scan.id), `traceiq-scan-${scan.id}.sarif`);
+        } catch (e) {
+            toast.error(errDetail(e));
+        }
+    };
     const counts = scan.counts || {};
     return (
         <div className="border border-slate-200 rounded-xl overflow-hidden">
@@ -361,6 +367,13 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
             {open && (
                 <div className="border-t border-slate-100 p-4 bg-slate-50/30">
                     {scan.error && <p className="text-sm text-rose-600 mb-2">{scan.error}</p>}
+                    {scan.status === 'completed' && (
+                        <div className="flex justify-end mb-2">
+                            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={sarif}>
+                                <Download className="w-3.5 h-3.5 mr-1" /> SARIF for this scan
+                            </Button>
+                        </div>
+                    )}
                     {diff?.baseline_available && (
                         <p className="text-xs mb-3 text-slate-500">
                             vs scan #{diff.previous_scan_id}:{' '}
@@ -375,7 +388,7 @@ function ScanRow({ scan }: { scan: SecurityScan }) {
                             : (
                                 <div className="space-y-2">
                                     {detail.findings.map((f) => (
-                                        <FindingRow key={f.id} f={f} onTriage={(status) => triage.mutate({ id: f.id, status })} />
+                                        <FindingRow key={f.id} f={f} busy={triage.isPending} onTriage={(body) => triage.mutate({ id: f.id, body })} />
                                     ))}
                                 </div>
                             )}
@@ -401,6 +414,7 @@ export default function Security() {
         localStorage.setItem('activeProjectId', id.toString());
         window.dispatchEvent(new Event('projectChanged'));
     };
+    const workspaceId = (projects || []).find((p) => p.id === projectId)?.workspace_id ?? null;
     const scans = useQuery({
         queryKey: ['sec-scans', projectId],
         queryFn: () => securityApi.listScans(projectId!),
@@ -416,10 +430,11 @@ export default function Security() {
                 </div>
                 <div className="flex flex-col sm:flex-row sm:items-end gap-4">
                     <div>
-                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Security Scans</h1>
+                        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Security</h1>
                         <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
-                            Authenticated DAST (OWASP ZAP) against authorized targets. Baseline is passive and safe;
-                            active scanning attacks the target and needs explicit opt-in.
+                            Authenticated DAST (OWASP ZAP) against authorized targets, plus passive analysis and leak
+                            detection on every run. Baseline scans are passive and safe; active scanning attacks the
+                            target and needs explicit opt-in. Findings have owners, due dates and a verified-fix workflow.
                         </p>
                     </div>
                     <div className="sm:ml-auto shrink-0">
@@ -448,9 +463,11 @@ export default function Security() {
             ) : (
                 <div className="space-y-6">
                     <div className="grid md:grid-cols-2 gap-6">
-                        <SettingsCard projectId={projectId} workspaceId={(projects || []).find((p) => p.id === projectId)?.workspace_id ?? null} />
+                        <SettingsCard projectId={projectId} workspaceId={workspaceId} />
                         <NewScanCard projectId={projectId} />
                     </div>
+                    <FindingsRegister projectId={projectId} />
+                    {workspaceId && <FindingSlaCard workspaceId={workspaceId} />}
                     <div>
                         <h3 className="font-bold text-slate-800 mb-3 flex items-center gap-2"><ShieldAlert className="w-4 h-4 text-slate-500" /> Scans</h3>
                         {scans.isLoading ? <div className="p-8 flex justify-center"><RefreshCw className="animate-spin w-5 h-5 text-slate-400" /></div>

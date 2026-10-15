@@ -213,8 +213,10 @@ class WorkspaceService:
         return [{"id": m[0].id, "full_name": m[0].full_name, "email": m[0].email, "access_level": m[1]} for m in members]
 
     @staticmethod
-    async def add_user_project_access(user_id: int, project_id: int, access_level: str, session: AsyncSession) -> bool:
+    async def add_user_project_access(user_id: int, project_id: int, access_level: str,
+                                      session: AsyncSession, actor_id: Optional[int] = None) -> bool:
         from app.models import UserProjectAccess
+        from app.services.audit import record
         from app.services.rbac_service import rbac_service
         
         role_name = "Project Viewer"
@@ -236,6 +238,11 @@ class WorkspaceService:
         else:
             upa = UserProjectAccess(user_id=user_id, project_id=project_id, access_level=access_level, role_id=role_id)
             session.add(upa)
+        project = await session.get(Project, project_id)
+        await record(session, entity_type="project", entity_id=project_id, action="role_grant",
+                     user_id=actor_id, workspace_id=project.workspace_id if project else None,
+                     changes={"user_id": user_id, "scope": "project", "scope_id": project_id,
+                              "role": role_name})
         await session.commit()
         return True
 
@@ -454,10 +461,21 @@ class WorkspaceService:
             if not result.first():
                 uw = UserWorkspace(user_id=user.id, workspace_id=workspace_id, role=role, role_id=role_id)
                 session.add(uw)
+                # Role grants are what the access-review report and the
+                # admin-granted alert are built on, so they are audited here
+                # rather than at each of the endpoints that call this.
+                from app.services.audit import record
+                await record(session, entity_type="workspace", entity_id=workspace_id,
+                             action="role_grant", user_id=invited_by_id,
+                             workspace_id=workspace_id,
+                             changes={"user_id": user.id, "email": user.email,
+                                      "scope": "workspace", "scope_id": workspace_id,
+                                      "role": rbac_role_name})
             
             # If Project Access Requested
             if project_id and project_role:
-                await WorkspaceService.add_user_project_access(user.id, project_id, project_role, session)
+                await WorkspaceService.add_user_project_access(user.id, project_id, project_role, session,
+                                                               actor_id=invited_by_id)
 
             await session.commit()
             return {"status": "success", "message": "User added to workspace"}
