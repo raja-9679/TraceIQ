@@ -609,6 +609,39 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   build tokens by concatenation (push protection); `test_leak_detection.py` is
   in `.gitleaks.toml`. UI: Security page register + SLA card + SARIF buttons;
   Settings → Instance (Admin) SIEM/alerts cards; `/access-reviews` page.
+- **Developer workflow (WP11, 2026-10)** — `app/api/developer.py`, migration
+  `cba2b3c4d5ec` (`projectapispec`, one OpenAPI doc per project).
+  `GET /api/runs/{run}/results/{result}/bundle` (viewer; project-scoped keys
+  honoured; audited) zips case/settings/data row/run meta/step evidence/this
+  run's artifacts + a standalone `repro.spec.ts` (`app/services/repro_bundle.py`).
+  It **never reads ProjectSecret**: `{{secret.X}}` stays a template; literal
+  credentials (sensitive header/param/body names, password-field fills,
+  redaction-pattern hits) become `{{secret.REPRO_*}}`; the spec reads
+  `TRACEIQ_SECRET_<KEY>` from env. Untranslatable steps are `//` TODOs with the
+  step JSON; regex operators are never compiled into the spec. Artifact keys are
+  only fetched under `runs/{run_id}/`. `GET /api/runs/{id}/failures` gives the
+  failing step + truncated error + a presigned screenshot (`ttl_seconds`,
+  default 1h, same-run keys only) — the GitHub Action renders it as a "Failing
+  cases" section in its sticky comment (dist rebuilt with ncc).
+  Git sync: `GET/POST /api/suites/{id}/sync` — export docs carry a content hash
+  (`app/services/case_sync.py`, mirrored in the CLI's `sync.py`: keep the two
+  identical) over name/steps/tags/priority/code_paths; import turns edits into
+  CaseProposals (create/update/move/delete; same `maybe_auto_apply` policy as
+  agents, deletions only ever proposed), reports a server-side change since pull
+  as a conflict, dedupes identical pending proposals, `dry_run` writes nothing.
+  UPDATE/DELETE payloads carry `sync_base_hash`, re-checked in `_apply_proposal`
+  (409 if the case changed while the proposal waited).
+  `expect_schema` on `http-request` (`{schema}` or `{openapi:{operationId|method+path},
+  status?}`): openapi refs are resolved to an inline schema in
+  `app/worker.py:_case_payload` from `ProjectApiSpec` (`app/services/api_specs.py`;
+  unresolvable → `{error}` which FAILS the step); the worker validates strictly
+  with ajv in `execution-engine/src/core/schema-check.ts` (needs a worker
+  rebuild). Specs are stored by `PUT /api/projects/{id}/openapi-spec` and by
+  `/cases/from-openapi` (`store_spec`, default true). `GET /api/version`
+  (authenticated; `api_version` major is what the CLI checks).
+  CLI: `integrations/cli/` (`traceiq-cli`, stdlib-only Python — zipfile/urllib,
+  pipx-installable): `login` (0600 config), `run --wait` (exit from the gate),
+  `status`, `replay`, `pull`/`push`, `version`; exit codes in `main.py`.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

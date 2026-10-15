@@ -1,0 +1,20 @@
+[project]
+name = "traceiq-cli"
+version = "0.1.0"
+description = "TraceIQ command line: trigger and gate runs, replay failures locally, sync test cases with git"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+# No runtime dependencies on purpose: urllib, zipfile, argparse and json are
+# all the CLI needs, so `pipx install traceiq-cli` works on any CI image.
+dependencies = []
+
+[project.scripts]
+traceiq = "traceiq_cli.main:main"
+
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
