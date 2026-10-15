@@ -10,6 +10,7 @@
     GET    /api/access-matrices/{id}/runs                        history (viewer)
     GET    /api/access-matrix-runs/{run_id}                      run + cells (viewer)
     GET    /api/access-matrix-runs/{run_id}/cells/{cell_id}/screenshot  presigned (viewer)
+    GET    /api/access-matrices/{id}/findings                    access_control findings + run links (viewer)
 
 Rules (see app/services/access_matrix.py): request/page rows only run against
 the project's security allowlist with security testing enabled; mutating
@@ -380,3 +381,44 @@ async def cell_screenshot(run_id: int, cell_id: int, session: AsyncSession = Dep
         raise HTTPException(status_code=404, detail="No screenshot for this cell")
     from app.core.storage import minio_client
     return {"url": minio_client.get_presigned_url(key)}
+
+
+@router.get("/access-matrices/{matrix_id}/findings")
+async def matrix_findings(matrix_id: int, session: AsyncSession = Depends(get_session),
+                          principal: AuthPrincipal = Depends(get_current_principal)):
+    """The `access_control` findings this matrix raised, each linked to the
+    latest run whose cell granted the access.
+
+    SecurityFinding has no matrix column (its run_id/scan_id are FKs to other
+    tables), so the link is recomputed: the finding fingerprint is a function of
+    (matrix, row, persona), and the run comes from this matrix's own failed
+    DENY cells. Scoped by project AND fingerprint, so another matrix's (or
+    project's) findings never appear here.
+    """
+    from app.models import SecurityFinding
+
+    m, _ = await _matrix_for(session, principal, matrix_id)
+    granted = (await session.exec(
+        select(AccessMatrixCell.id, AccessMatrixCell.row_key, AccessMatrixCell.persona_key,
+               AccessMatrixRun.id)
+        .join(AccessMatrixRun, AccessMatrixRun.id == AccessMatrixCell.matrix_run_id)
+        .where(AccessMatrixRun.matrix_id == m.id, AccessMatrixCell.expect == "deny",
+               AccessMatrixCell.verdict == "fail")
+        .order_by(AccessMatrixRun.id.desc()))).all()
+    latest: Dict[str, Dict[str, Any]] = {}
+    for cell_id, row_key, persona_key, run_id in granted:
+        fp = am.finding_fingerprint(m.id, row_key, persona_key)
+        latest.setdefault(fp, {"matrix_run_id": run_id, "cell_id": cell_id,
+                               "row_key": row_key, "persona_key": persona_key})
+    if not latest:
+        return []
+    findings = (await session.exec(select(SecurityFinding).where(
+        SecurityFinding.project_id == m.project_id,
+        SecurityFinding.scan_type == am.FINDING_SCAN_TYPE,
+        SecurityFinding.fingerprint.in_(list(latest)))
+        .order_by(SecurityFinding.created_at.desc()))).all()
+    return [{
+        "id": f.id, "title": f.title, "severity": f.severity, "status": f.status,
+        "category": f.category, "evidence": f.evidence, "target_url": f.target_url,
+        "created_at": f.created_at, "resolved_at": f.resolved_at, **latest[f.fingerprint],
+    } for f in findings]

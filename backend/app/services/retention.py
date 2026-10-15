@@ -17,7 +17,8 @@ The selection rule is deliberately conservative:
 """
 from __future__ import annotations
 
-from typing import Any, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 def _clean(value: Any) -> int:
@@ -56,3 +57,24 @@ def project_retention_days(project: Any) -> Optional[int]:
     return effective_retention_days(
         project_days=(policy or {}).get("retention_days"),
         global_days=effective("RUN_RETENTION_DAYS"))
+
+
+def select_expired(items: Iterable[Tuple[int, Any, Optional[datetime]]],
+                   windows: Dict[Any, Optional[int]], now: datetime,
+                   limit: int) -> List[int]:
+    """Ids of `(id, project_id, created_at)` items older than their project's
+    window, oldest-first input order preserved, at most `limit`.
+
+    A project with no window (None/0) keeps everything; an item with no
+    created_at is never treated as old — an unknown age is not an expired one.
+    """
+    out: List[int] = []
+    for item_id, project_id, created_at in items:
+        if len(out) >= limit:
+            break
+        days = windows.get(project_id)
+        if not days or created_at is None:
+            continue
+        if created_at < now - timedelta(days=days):
+            out.append(item_id)
+    return out

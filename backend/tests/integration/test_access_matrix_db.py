@@ -387,3 +387,61 @@ async def test_deleting_the_project_removes_matrices_runs_and_cells(session, sce
     assert (await session.exec(select(AccessMatrixRun))).all() == []
     assert (await session.exec(select(AccessMatrixCell))).all() == []
     assert any(k.startswith("access-matrix/") for k in report.object_keys)
+
+
+async def test_findings_endpoint_links_back_to_the_granting_run(session, scene):
+    a, b = await _personas(session, scene)
+    await _enable_security(session, scene)
+    m = await api.create_matrix(scene.project_id, _body([a, b], [_req_row("orders", a, b)]), REQ,
+                                session=session, principal=_me(scene))
+    other = await api.create_matrix(scene.project_id, _body([a, b], [_req_row("users", a, b)]), REQ,
+                                    session=session, principal=_me(scene))
+    granted = {("orders", str(a.id)): {"status": 200}, ("orders", str(b.id)): {"status": 200},
+               ("users", str(a.id)): {"status": 200}, ("users", str(b.id)): {"status": 200}}
+    first, _ = await _execute(session, scene, m["id"], granted)
+    second, _ = await _execute(session, scene, m["id"], granted)
+    await _execute(session, scene, other["id"], granted)
+    out = await api.matrix_findings(m["id"], session=session, principal=_me(scene))
+    assert len(out) == 1                          # the other matrix's finding is not here
+    assert out[0]["matrix_run_id"] == second and out[0]["persona_key"] == str(b.id)
+    assert out[0]["row_key"] == "orders" and out[0]["category"] == "access_control"
+
+
+async def test_retention_sweeps_old_matrix_runs_but_keeps_the_matrix(session, scene):
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import text
+
+    from app.models import AccessMatrix
+    from app.tasks.cleanup_tasks import purge_old_runs
+
+    a, b = await _personas(session, scene)
+    await _enable_security(session, scene)
+    m = await api.create_matrix(scene.project_id, _body([a, b], [_req_row("orders", a, b)]), REQ,
+                                session=session, principal=_me(scene))
+    old_run, _ = await _execute(session, scene, m["id"], {
+        ("orders", str(a.id)): {"status": 200}, ("orders", str(b.id)): {"status": 403}})
+    new_run, _ = await _execute(session, scene, m["id"], {
+        ("orders", str(a.id)): {"status": 200}, ("orders", str(b.id)): {"status": 403}})
+    # An in-flight execution is never swept, however old.
+    stuck = await api.run_matrix(m["id"], REQ, api.MatrixRunRequest(), session=session,
+                                 principal=_me(scene))
+    await session.exec(text("UPDATE project SET data_policy = CAST(:p AS JSON) WHERE id = :i"),
+                       params={"p": '{"retention_days": 7}', "i": scene.project_id})
+    await session.exec(text("UPDATE accessmatrixrun SET created_at = :t WHERE id IN (:a, :s)"),
+                       params={"t": datetime.utcnow() - timedelta(days=30),
+                               "a": old_run, "s": stuck["id"]})
+    await session.commit()
+
+    purge_old_runs()
+
+    engine = _sync()
+    with Session(engine) as s:
+        left = sorted(r.id for r in s.exec(select(AccessMatrixRun)).all())
+        assert left == sorted([new_run, stuck["id"]])
+        assert s.exec(select(AccessMatrixCell).where(
+            AccessMatrixCell.matrix_run_id == old_run)).all() == []
+        assert s.exec(select(AccessMatrixCell).where(
+            AccessMatrixCell.matrix_run_id == new_run)).all() != []
+        assert s.get(AccessMatrix, m["id"]) is not None
+    engine.dispose()

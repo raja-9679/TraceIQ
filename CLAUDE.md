@@ -425,7 +425,10 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   summary regression. Evidence redacted by the `redactAccessObservation` /
   `redact_access_observation` twins; page screenshots at
   `access-matrix/{run}/{cell}.png` (purge + project delete cover the prefix;
-  run retention does not sweep matrix runs). **Tenant isolation:** create two
+  run retention sweeps finished matrix runs + cells + that prefix with the
+  same per-project windows — `cleanup_tasks.purge_old_matrix_runs`, called
+  from `purge_old_runs`; pending/running runs and the matrix definition are
+  never swept). **Tenant isolation:** create two
   personas logged in to different tenants, add request rows with `swap`
   (`owner_persona_id` = tenant A, owner URL lists A's resources, extractor
   pulls an id, row URL contains `{id}`), expect allow for A and deny for B and
@@ -433,8 +436,17 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `expect-blocked-after` (needs `params.authorized` + `security_allowlist`,
   injected at dispatch only when security testing is enabled),
   `expect-session-dead` (logs out itself so it can replay the old cookies) live
-  in `core/security-steps.ts` — worker image rebuild needed. The matrix grid
-  page in the frontend is NOT built yet (API client in `src/api/accessMatrix.ts`).
+  in `core/security-steps.ts` — worker image rebuild needed.
+  **UI (WP4b)**: `/access-matrix` (`pages/AccessMatrix.tsx` is a thin shell;
+  components + pure helpers in `components/access-matrix/`, logic in
+  `grid.ts`/`model.ts` with vitest). Selection lives in the URL
+  (`?matrix=&tab=runs&run=&cell=`) so evidence is deep-linkable. The
+  prerequisites panel *previews* the backend safety gates (`grid.ts:
+  prerequisites` mirrors `host_allowed`/`safety_problems`); the backend stays
+  the authority and its refusal `detail` is shown verbatim. SecurityFinding has
+  no matrix column, so `GET /api/access-matrices/{id}/findings` recomputes the
+  link: fingerprint(matrix,row,persona) + the latest run whose DENY cell was
+  granted.
 - **Release readiness (2026-10)** — `GET /api/projects/{id}/release-readiness
   ?git_commit=&git_branch=` (viewer; project-scoped API keys honoured — now
   also on `GET .../quality-gate`) returns `verdict` ready | not_ready |
