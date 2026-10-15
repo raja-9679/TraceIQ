@@ -10,6 +10,49 @@ it belongs here rather than in a chat history.
 
 ---
 
+## Resume here (2026-10-15 16:10)
+
+The October roadmap (`info/FEATURE_ROADMAP_2026-10.md`: ten roles × run/test
+lenses + 24 candidates) was largely BUILT on 2026-10-14/15. The tracker with
+every work package, branch, decision and log line is
+**`info/ROADMAP_EXECUTION_2026-10.md`** — read it next. The shareable status
+page is https://claude.ai/artifact/LCuvPCFBWW8H1i74CeiS6j (private).
+
+- **Done, merged, pushed, deployed locally:** WP0 targeted runs + flake
+  owners/expiry/attempts + TOTP; WP1 release readiness; WP2 test inbox +
+  webhook capture; WP3 per-step evidence + failure investigation v2; WP4
+  identity/access matrix + security steps; WP5 run-scoped data + suite hooks;
+  WP6 requirements/incidents; WP7 SIEM, alerts, access reviews, SARIF,
+  findings workflow, leak detection; WP8 fleet, regions, paging, IP
+  allowlists, mTLS, egress allowlist, KEDA, restore drill; WP9 passive estate
+  scanning + script inventory; WP10 sweeps, crawler, page budgets, selector
+  health, Storybook; WP11 repro bundle, CLI (`integrations/cli`), git sync,
+  PR comments, expect_schema. More than twenty security-review findings were
+  fixed along the way (commits titled `fix(security): …`).
+- **Branches:** `feature/enterprise-auth-ai` → pushed as
+  `feature/enterprise-auth-ai-2026-10`; `feature/redesign-a` (design branch,
+  base merged in, UI ported). Migration head `caa2b3c4d5eb`. GitHub Actions are
+  workflow_dispatch-only. GitHub push protection flagged the fake Stripe test
+  keys in the redaction corpora; the owner allowed them on 2026-10-15.
+- **On hold by the owner — do not start without being told:** WP12 reporting,
+  WP13 compliance/solution, WP14 AI & platform.
+- **Parked for an owner decision:** estate active probing (ports, WAF strings,
+  origin bypass, TLS cipher enumeration) — `SCOPE_NOTES.md`. A safety check
+  stopped the agent writing it; do not re-add it without an explicit decision.
+- **Pending on the owner:** acceptance testing of the new pages on the local
+  stack; default billing plans; the C5 mirror push / main fast-forward
+  (below); production credential rotation; external pen test + SOC 2.
+- **Known gaps:** crawler DNS-rebinding on browser page loads and robots.txt
+  (worker egress rules are the control); trace parser not wired into
+  analysis; INP is approximate; CLI tests not in CI; external services
+  (Jira, Linear, Splunk, Elastic, PagerDuty, Opsgenie, IMAP, crt.sh,
+  Storybook) are mock-verified only.
+- **How the work was done** (repeatable): one worktree + agent per WP from
+  `info/AGENT_BRIEF_ROADMAP.md`, unique scratch DBs per agent
+  (`TRACEIQ_SCRATCH_DB`), migrations re-chained linearly at merge, every merge
+  followed by the full suite set. Merges of the redact twins' test files lose
+  a closing `});` easily — always run `tsc`/pytest after resolving.
+
 ## Where we are
 
 `info/REGULATED_READINESS.md` is the plan: nine workstreams (A-I) to make
