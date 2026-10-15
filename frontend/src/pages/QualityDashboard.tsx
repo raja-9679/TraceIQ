@@ -15,6 +15,7 @@ import {
     DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
+import { OpenApiSpecSection } from '@/components/settings/OpenApiSpecSection';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
@@ -143,6 +144,7 @@ function PolicyPanel({ projectId }: { projectId: number }) {
             {/* Data-capture policy sits with the other per-project policies: it is
                 scoped to a project and reads alongside the gate it feeds. */}
             <DataPolicySection projectId={projectId} />
+            <OpenApiSpecSection projectId={projectId} />
         </div>
     );
 }
