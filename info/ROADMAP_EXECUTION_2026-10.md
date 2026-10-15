@@ -36,10 +36,10 @@ with mocks/fakes; they are marked **mock-verified**.
 | WP | Scope (roadmap ids / role items) | Status | Branch |
 |---|---|---|---|
 | 0 | Targeted runs (B7), flake owners/expiry/attempts (A3 part, PM "owners on quarantined flakes"), TOTP step | done | (merged) |
-| 1 | **Release readiness**: gate checks for flaky cases, critical-priority coverage on the commit, evidence age; readiness view with per-check explanations and linked requirements (B8, PM/CPO/CTO) | wip | feat/wp1 |
+| 1 | **Release readiness**: gate checks for flaky cases, critical-priority coverage on the commit, evidence age; readiness view with per-check explanations and linked requirements (B8, PM/CPO/CTO) | done | feat/wp1 |
 | 2 | **Test inbox + webhook capture**: email inbox step (receive mail, extract link/code), webhook capture step (full-stack) | wip | feat/wp2 |
 | 3 | **Per-step evidence → failure investigation v2**: per-step console/network/DOM/screenshot key, ranked hypotheses linked to evidence, observed vs likely cause, history + git correlation (A2); fail-on-JS-errors option (frontend) | wip | feat/wp3 |
-| 4 | **Identity matrix + access control**: AccessMatrix, per-persona fan-out, allow/deny verdicts → SecurityFinding, ID-swap replay (C11, AppSec access matrix); security assertion steps (headers, cookie flags, blocked-after-N, session-dead-after-logout) | todo | |
+| 4 | **Identity matrix + access control**: AccessMatrix, per-persona fan-out, allow/deny verdicts → SecurityFinding, ID-swap replay (C11, AppSec access matrix); security assertion steps (headers, cookie flags, blocked-after-N, session-dead-after-logout) | wip | feat/wp4 |
 | 5 | **Run-scoped test data + hooks**: `{{run.id}}`/worker-index vars, seeded fakes, suite setup/teardown that run after failures, cleanup lifecycle (D16, D18, full-stack hooks) | todo | |
 | 6 | **Inbound integrations**: Jira/Linear ticket + acceptance-criteria import → case proposals with source links (A1, PM); incident webhook → regression proposal, recurrence, escaped-defect tracking (A6, CPO) | wip | feat/wp6 |
 | 7 | **Security operations**: audit/security-event streaming to syslog/Splunk HEC/Elastic, security event alerts, quarterly access-review report, SARIF export, findings workflow (owner/deadline/accept-risk/reopen), retest-on-fix, leak detection findings (C12) | wip | feat/wp7 |
