@@ -21,6 +21,7 @@ check_stale_runs() reads this field to decide whether a run is inactive.
 """
 import json
 from datetime import datetime
+import math
 from typing import Dict, Any, List, Optional
 import redis
 from sqlmodel import Session, create_engine, select
@@ -471,16 +472,25 @@ def _attempts(raw: Any) -> List[Dict[str, Any]]:
     trusted for anything."""
     if not isinstance(raw, list):
         return []
+    # A bad entry is dropped, never raised: an exception here would leave the
+    # whole job's result un-acked (local-worker results come from API-key
+    # holders, so the shape is not guaranteed).
     out = []
     for item in raw[:MAX_ATTEMPTS_KEPT]:
         if not isinstance(item, dict) or not isinstance(item.get('status'), str):
             continue
-        entry: Dict[str, Any] = {'attempt': int(item.get('attempt') or len(out) + 1),
-                                 'status': item['status']}
+        number = item.get('attempt')
+        entry: Dict[str, Any] = {
+            'attempt': number if isinstance(number, int) and not isinstance(number, bool) and number > 0
+            else len(out) + 1,
+            'status': item['status'][:20],
+        }
         if isinstance(item.get('error'), str):
             entry['error'] = item['error'][:1000]
-        if isinstance(item.get('duration_ms'), (int, float)):
-            entry['duration_ms'] = int(item['duration_ms'])
+        duration = item.get('duration_ms')
+        if (isinstance(duration, (int, float)) and not isinstance(duration, bool)
+                and math.isfinite(duration) and duration >= 0):
+            entry['duration_ms'] = int(duration)
         out.append(entry)
     return out
 

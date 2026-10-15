@@ -125,3 +125,16 @@ def test_attempts_are_capped():
     from app.tasks.result_aggregator import MAX_ATTEMPTS_KEPT, _attempts
     raw = [{"attempt": i, "status": "failed"} for i in range(1, 50)]
     assert len(_attempts(raw)) == MAX_ATTEMPTS_KEPT
+
+
+@pytest.mark.parametrize("bad", [
+    {"attempt": "x", "status": "failed"},
+    {"attempt": 1, "status": "failed", "duration_ms": float("inf")},
+    {"attempt": 1, "status": "failed", "duration_ms": float("nan")},
+    {"attempt": True, "status": "failed", "duration_ms": -5},
+])
+def test_malformed_attempts_never_raise(bad):
+    # An exception here would leave the whole job's result un-acked.
+    from app.tasks.result_aggregator import _attempts
+    out = _attempts([bad])
+    assert out[0]["attempt"] == 1 and "duration_ms" not in out[0]

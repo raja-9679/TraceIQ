@@ -62,31 +62,6 @@ export function QuarantineDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const queryClient = useQueryClient();
-  const { data: people } = useOwnerCandidates(projectId);
-  const [reason, setReason] = useState('');
-  const [days, setDays] = useState(String(QUARANTINE_DEFAULT_DAYS));
-  const [owner, setOwner] = useState(entry.owner ? String(entry.owner.id) : '');
-
-  const daysNum = Number(days);
-  const daysValid = Number.isInteger(daysNum) && daysNum >= 1 && daysNum <= QUARANTINE_MAX_DAYS;
-  const valid = reason.trim().length > 0 && daysValid;
-
-  const mutation = useMutation({
-    mutationFn: () => flakesApi.quarantine(entry.flake_id!, {
-      reason: reason.trim(),
-      days: daysNum,
-      owner_user_id: owner ? Number(owner) : null,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['flakiness', projectId] });
-      toast.success(`"${entry.name}" quarantined for ${daysNum} day${daysNum === 1 ? '' : 's'}`);
-      onOpenChange(false);
-      setReason('');
-    },
-    onError: (err: unknown) => toast.error(`Could not quarantine: ${errorDetail(err)}`),
-  });
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -97,57 +72,97 @@ export function QuarantineDialog({
             number of days you choose, and the case runs again.
           </DialogDescription>
         </DialogHeader>
-        <form
-          className="space-y-4"
-          onSubmit={(e) => { e.preventDefault(); if (valid) mutation.mutate(); }}
-        >
-          <div className="space-y-1.5">
-            <Label htmlFor="quarantine-reason">Reason</Label>
-            <Input
-              id="quarantine-reason"
-              value={reason}
-              maxLength={500}
-              placeholder="e.g. races the payment mock; fix tracked in JIRA-123"
-              onChange={(e) => setReason(e.target.value)}
-              autoFocus
-            />
-          </div>
-          <div className="flex gap-3">
-            <div className="space-y-1.5 w-28">
-              <Label htmlFor="quarantine-days">Days</Label>
-              <Input
-                id="quarantine-days"
-                type="number"
-                min={1}
-                max={QUARANTINE_MAX_DAYS}
-                value={days}
-                onChange={(e) => setDays(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5 flex-1">
-              <Label>Owner</Label>
-              <Select value={owner || 'me'} onValueChange={(v) => setOwner(v === 'me' ? '' : v)}>
-                <SelectTrigger aria-label="Owner" className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {!entry.owner && <SelectItem value="me">Me</SelectItem>}
-                  {(people || []).map((p) => (
-                    <SelectItem key={p.id} value={String(p.id)}>{p.full_name || p.email}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          {!daysValid && (
-            <p className="text-xs text-rose-600">Choose between 1 and {QUARANTINE_MAX_DAYS} days.</p>
-          )}
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={!valid || mutation.isPending}>Quarantine</Button>
-          </DialogFooter>
-        </form>
+        {/* Content unmounts while closed, so the form starts fresh from the
+            current entry (owner included) every time it opens. */}
+        <QuarantineForm entry={entry} projectId={projectId} onDone={() => onOpenChange(false)} />
       </DialogContent>
     </Dialog>
+  );
+}
+
+// "Keep the current owner" — or, for an unowned test, "me". The backend
+// resolves it the same way (and hands an owner who lost access to the caller).
+const DEFAULT_OWNER = 'default';
+
+function QuarantineForm({
+  entry, projectId, onDone,
+}: { entry: FlakinessEntry; projectId: number; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const { data: people } = useOwnerCandidates(projectId);
+  const [reason, setReason] = useState('');
+  const [days, setDays] = useState(String(QUARANTINE_DEFAULT_DAYS));
+  const [owner, setOwner] = useState(DEFAULT_OWNER);
+
+  const daysNum = Number(days);
+  const daysValid = Number.isInteger(daysNum) && daysNum >= 1 && daysNum <= QUARANTINE_MAX_DAYS;
+  const valid = reason.trim().length > 0 && daysValid;
+  const defaultLabel = entry.owner ? `Keep ${entry.owner.full_name || entry.owner.email}` : 'Me';
+  const others = (people || []).filter((p) => p.id !== entry.owner?.id);
+
+  const mutation = useMutation({
+    mutationFn: () => flakesApi.quarantine(entry.flake_id!, {
+      reason: reason.trim(),
+      days: daysNum,
+      owner_user_id: owner === DEFAULT_OWNER ? null : Number(owner),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flakiness', projectId] });
+      toast.success(`"${entry.name}" quarantined for ${daysNum} day${daysNum === 1 ? '' : 's'}`);
+      onDone();
+    },
+    onError: (err: unknown) => toast.error(`Could not quarantine: ${errorDetail(err)}`),
+  });
+
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(e) => { e.preventDefault(); if (valid) mutation.mutate(); }}
+    >
+      <div className="space-y-1.5">
+        <Label htmlFor="quarantine-reason">Reason</Label>
+        <Input
+          id="quarantine-reason"
+          value={reason}
+          maxLength={500}
+          placeholder="e.g. races the payment mock; fix tracked in JIRA-123"
+          onChange={(e) => setReason(e.target.value)}
+          autoFocus
+        />
+      </div>
+      <div className="flex gap-3">
+        <div className="space-y-1.5 w-28">
+          <Label htmlFor="quarantine-days">Days</Label>
+          <Input
+            id="quarantine-days"
+            type="number"
+            min={1}
+            max={QUARANTINE_MAX_DAYS}
+            value={days}
+            onChange={(e) => setDays(e.target.value)}
+          />
+        </div>
+        <div className="space-y-1.5 flex-1">
+          <Label>Owner</Label>
+          <Select value={owner} onValueChange={setOwner}>
+            <SelectTrigger aria-label="Owner" className="h-10">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={DEFAULT_OWNER}>{defaultLabel}</SelectItem>
+              {others.map((p) => (
+                <SelectItem key={p.id} value={String(p.id)}>{p.full_name || p.email}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      {!daysValid && (
+        <p className="text-xs text-rose-600">Choose between 1 and {QUARANTINE_MAX_DAYS} days.</p>
+      )}
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onDone}>Cancel</Button>
+        <Button type="submit" disabled={!valid || mutation.isPending}>Quarantine</Button>
+      </DialogFooter>
+    </form>
   );
 }

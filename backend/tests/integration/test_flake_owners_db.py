@@ -18,7 +18,7 @@ pytestmark = pytest.mark.skipif(
 
 from app.api import analytics, flake_records                  # noqa: E402
 from app.core.auth import AuthPrincipal                        # noqa: E402
-from app.models import AuditLog, FlakeRecord, User              # noqa: E402
+from app.models import ApiKey, AuditLog, FlakeRecord, User      # noqa: E402
 from app.services.flake_policy import active_quarantine_clause  # noqa: E402
 
 # Reuse the targeted-runs scene: one project, root+child suites, a foreign case.
@@ -127,3 +127,37 @@ async def test_flakiness_summary_carries_state_owner_and_expiry(session, scene):
     assert row["quarantine_state"] == "expired"
     assert row["owner"]["id"] == scene.user.id
     assert row["quarantine_source"] == "auto"
+
+
+async def test_release_clears_step_level_rows_too(session, scene):
+    case = scene.root_cases[0]
+    rec = await _flake(session, case, is_quarantined=True)
+    await _flake(session, case, step_id="s1", is_quarantined=True)
+    await flake_records.release(rec.id, None, principal=_me(scene), session=session)
+    left = (await session.exec(select(FlakeRecord).where(
+        FlakeRecord.test_case_id == case, active_quarantine_clause()))).all()
+    assert left == []
+
+
+async def test_project_scoped_key_cannot_act_on_another_project(session, scene):
+    rec = await _flake(session, scene.root_cases[0])
+    # Never persisted: only its project scope matters here.
+    key = ApiKey(name="ci", workspace_id=1, project_id=scene.other_project_id,
+                 prefix="tiq_x", hashed_key="h")
+    scoped = AuthPrincipal(user=scene.user, api_key=key)
+    with pytest.raises(HTTPException) as exc:
+        await flake_records.release(rec.id, None, principal=scoped, session=session)
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException):
+        await flake_records.owner_candidates(
+            project_id=scene.project_id, principal=scoped, session=session)
+
+
+async def test_requarantine_replaces_an_owner_who_lost_access(session, scene):
+    gone = User(email="gone@corp.example.com", full_name="Gone", hashed_password="x", is_active=False)
+    session.add(gone)
+    await session.commit()
+    rec = await _flake(session, scene.root_cases[0], owner_user_id=gone.id)
+    out = await flake_records.quarantine(
+        rec.id, flake_records.QuarantineRequest(reason="r"), None, principal=_me(scene), session=session)
+    assert out["owner"]["id"] == scene.user.id

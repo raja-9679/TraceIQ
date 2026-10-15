@@ -22,12 +22,20 @@ from sqlmodel import select
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
+from app.api.jobs import api_key_allows_project
 from app.models import FlakeRecord, Project, TestCase, User, UserWorkspace
 from app.services import flake_policy
 from app.services.access_service import access_service
 from app.services.audit import record as audit_record
 
 router = APIRouter()
+
+
+def _check_key_scope(principal: AuthPrincipal, project_id: int) -> None:
+    """A project-scoped API key acts on its own project only, whatever its
+    creator could reach."""
+    if principal.api_key is not None and not api_key_allows_project(principal.api_key, project_id):
+        raise HTTPException(status_code=403, detail="API key is not scoped to this project")
 
 
 class QuarantineRequest(BaseModel):
@@ -115,16 +123,21 @@ async def _load(flake_id: int, principal: AuthPrincipal, session: AsyncSession):
     if not await access_service.has_project_access(
             principal.user.id, case.project_id, session, min_role="editor"):
         raise HTTPException(status_code=403, detail="Editor access required")
+    _check_key_scope(principal, case.project_id)
     project = await session.get(Project, case.project_id)
     return record, case, project
 
 
-async def _check_owner(owner_id: int, project_id: int, session: AsyncSession) -> None:
+async def _can_own(owner_id: int, project_id: int, session: AsyncSession) -> bool:
     """An owner must be an active user who can edit the project — otherwise
     they could not fix the test they are made responsible for."""
     user = await session.get(User, owner_id)
-    if (not user or not user.is_active
-            or not await access_service.has_project_access(owner_id, project_id, session, min_role="editor")):
+    return bool(user and user.is_active and await access_service.has_project_access(
+        owner_id, project_id, session, min_role="editor"))
+
+
+async def _check_owner(owner_id: int, project_id: int, session: AsyncSession) -> None:
+    if not await _can_own(owner_id, project_id, session):
         raise HTTPException(status_code=422,
                             detail="Owner must be an active user with editor access to this project")
 
@@ -138,6 +151,7 @@ async def owner_candidates(
     """Workspace members who could own a flaky test in this project."""
     if not await access_service.has_project_access(principal.user.id, project_id, session):
         raise HTTPException(status_code=403, detail="Access denied")
+    _check_key_scope(principal, project_id)
     project = await session.get(Project, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -163,9 +177,14 @@ async def quarantine(
 ):
     record, case, project = await _load(flake_id, principal, session)
     previous_owner = record.owner_user_id
-    owner_id = body.owner_user_id or previous_owner or principal.user.id
-    if owner_id != previous_owner:
+    if body.owner_user_id:
+        owner_id = body.owner_user_id
         await _check_owner(owner_id, case.project_id, session)
+    elif previous_owner and await _can_own(previous_owner, case.project_id, session):
+        owner_id = previous_owner
+    else:
+        # No owner, or one who has since lost access: the caller takes it.
+        owner_id = principal.user.id
     flake_policy.quarantine(record, source=flake_policy.SOURCE_MANUAL, days=body.days,
                             reason=body.reason.strip(), by_user_id=principal.user.id)
     record.owner_user_id = owner_id
@@ -194,8 +213,15 @@ async def release(
     record, case, project = await _load(flake_id, principal, session)
     was = {"state": flake_policy.quarantine_state(record), "reason": record.quarantine_reason,
            "source": record.quarantine_source}
-    flake_policy.release(record)
-    session.add(record)
+    # Every row for the case: dispatch skips a case if ANY of its rows (case-
+    # or step-level) is quarantined, so releasing one row only would leave it
+    # hidden with a Release button that does nothing.
+    siblings = (await session.exec(select(FlakeRecord).where(
+        FlakeRecord.test_case_id == record.test_case_id,
+        FlakeRecord.is_quarantined == True))).all()  # noqa: E712
+    for row in {r.id: r for r in [record, *siblings]}.values():
+        flake_policy.release(row)
+        session.add(row)
     await audit_record(
         session, entity_type="flake_record", entity_id=flake_id, action="release",
         workspace_id=project.workspace_id if project else None,
