@@ -346,6 +346,30 @@ export function redactJobResult(result: any, policy?: RedactionPolicy): any {
 }
 
 // --------------------------------------------------------------------------
+// Access-matrix observations
+// --------------------------------------------------------------------------
+
+const OBSERVATION_TEXT_FIELDS = ['url', 'final_url', 'error', 'swapped_id', 'owner_url'];
+
+/**
+ * Scrub an access-matrix cell observation (twin of `redact_access_observation`
+ * in backend/app/services/redaction.py). It carries response headers and a body
+ * excerpt of a request made AS a persona — exactly where a session token gets
+ * echoed back.
+ */
+export function redactAccessObservation(obs: any, policy?: RedactionPolicy): any {
+    if (!obs || typeof obs !== 'object' || Array.isArray(obs)) return obs;
+    const out = { ...obs };
+    if ('headers' in out) out.headers = redactHeaders(out.headers, policy);
+    if ('owner_headers' in out) out.owner_headers = redactHeaders(out.owner_headers, policy);
+    if ('body_excerpt' in out) out.body_excerpt = redactBody(out.body_excerpt, out.content_type, policy);
+    for (const field of OBSERVATION_TEXT_FIELDS) {
+        if (typeof out[field] === 'string') out[field] = redactText(out[field], policy);
+    }
+    return out;
+}
+
+// --------------------------------------------------------------------------
 // HAR
 // --------------------------------------------------------------------------
 

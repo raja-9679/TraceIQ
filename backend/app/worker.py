@@ -160,6 +160,17 @@ def run_test_suite(run_id: int, tags: list = None):
                         **persona_headers,
                     }
                 print(f"[Worker] Run {run_id}: running as persona {run.persona_id}")
+            # The anonymous column of an identity matrix: no identity at all.
+            if getattr(run, 'anonymous', None):
+                from app.services.access_matrix_runtime import strip_identity
+                strip_identity(effective_settings)
+                print(f"[Worker] Run {run_id}: running anonymously")
+
+            # Security assertion steps that send repeated/mutating requests
+            # (expect-blocked-after) only target the project's allowlisted hosts.
+            from app.services.access_matrix_runtime import security_allowlist_for
+            effective_settings['security_allowlist'] = security_allowlist_for(
+                auth_project_id, session)
 
             # Environment ({{env.X}}, base_url) + decrypted secrets
             # ({{secret.X}}) for worker-side interpolation.
@@ -333,6 +344,9 @@ def _settings_payload(settings: dict) -> dict:
         payload['data_policy'] = settings['data_policy']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
+    # Hosts expect-blocked-after may hammer (project security allowlist).
+    if settings.get('security_allowlist'):
+        payload['security_allowlist'] = settings['security_allowlist']
     return payload
 
 

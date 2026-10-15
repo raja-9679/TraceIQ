@@ -475,6 +475,29 @@ def redact_worker_result(payload: Any, policy: RedactionPolicy = DEFAULT_POLICY)
     return out
 
 
+_OBSERVATION_TEXT_FIELDS = ("url", "final_url", "error", "swapped_id", "owner_url")
+
+
+def redact_access_observation(obs: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Scrub an access-matrix cell observation (twin of `redactAccessObservation`
+    in redact.ts). It carries the response headers and a body excerpt of a
+    request made AS a persona — exactly where a session token gets echoed back.
+    """
+    if not isinstance(obs, dict):
+        return obs
+    out = dict(obs)
+    if "headers" in out:
+        out["headers"] = redact_headers(out["headers"], policy)
+    if "owner_headers" in out:
+        out["owner_headers"] = redact_headers(out["owner_headers"], policy)
+    if "body_excerpt" in out:
+        out["body_excerpt"] = redact_body(out["body_excerpt"], out.get("content_type"), policy)
+    for field in _OBSERVATION_TEXT_FIELDS:
+        if isinstance(out.get(field), str):
+            out[field] = redact_text(out[field], policy)
+    return out
+
+
 def redact_audit_changes(changes: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
     """Scrub an `AuditLog.changes` payload.
 

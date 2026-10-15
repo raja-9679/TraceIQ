@@ -500,6 +500,74 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "Validates AMP HTML compliance.",
     },
     # ------------------------------------------------------------------
+    # Security assertions (WP4). Header values in results are redacted;
+    # cookie values are never reported, only flags.
+    # ------------------------------------------------------------------
+    {
+        "type": "expect-header",
+        "category": "security",
+        "params": {
+            "params.name": "Header name (case-insensitive), e.g. Strict-Transport-Security",
+            "params.mode": "'present' (default) | 'absent' | 'equals' | 'regex' (case-insensitive)",
+            "params.value": "Expected value for equals / pattern for regex",
+            "params.url": "Optional URL to GET (shares the browser's cookies); default the current page URL",
+        },
+        "example": {"id": "<uuid>", "type": "expect-header",
+                    "params": {"name": "Content-Security-Policy", "mode": "regex", "value": "default-src"}},
+        "notes": "Re-requests the page and checks the response header — HSTS, CSP, X-Frame-Options, "
+                 "or 'absent' for X-Powered-By / Server version leaks.",
+    },
+    {
+        "type": "expect-cookie-flags",
+        "category": "security",
+        "params": {
+            "params.name": "Cookie name",
+            "params.secure": "true/false — required Secure flag (omit to not check)",
+            "params.httpOnly": "true/false — required HttpOnly flag",
+            "params.sameSite": "'Strict' | 'Lax' | 'None'",
+            "params.url": "Optional URL to GET first so its Set-Cookie lands in the jar",
+        },
+        "example": {"id": "<uuid>", "type": "expect-cookie-flags",
+                    "params": {"name": "sessionid", "secure": True, "httpOnly": True, "sameSite": "Lax"}},
+        "notes": "Fails when the cookie is missing or any matching cookie lacks a required flag.",
+    },
+    {
+        "type": "expect-blocked-after",
+        "category": "security",
+        "params": {
+            "value": "URL to repeat (or params.url); relative paths use the environment base_url",
+            "params.method": "Default POST",
+            "params.body": "Request body (e.g. a wrong-password login)",
+            "params.headers": "Extra headers",
+            "params.attempts": "N — must be blocked by this attempt (default 10, max 50)",
+            "params.statuses": "Blocking statuses (default [429, 423, 403])",
+            "params.interval_ms": "Optional delay between attempts (max 5000)",
+            "params.authorized": "MUST be true — attestation that you may hammer this target",
+        },
+        "example": {"id": "<uuid>", "type": "expect-blocked-after", "value": "/api/auth/login",
+                    "params": {"body": {"email": "probe@example.com", "password": "wrong"},
+                               "attempts": 10, "authorized": True}},
+        "notes": "Rate-limit / lockout check. Refused unless the project's security testing is enabled, "
+                 "the host is on its Security allowlist, and authorized=true.",
+    },
+    {
+        "type": "expect-session-dead",
+        "category": "security",
+        "params": {
+            "value": "URL to replay with the pre-logout session (or params.url)",
+            "params.logout_url": "Logout endpoint (sent with params.logout_method, default POST)",
+            "params.logout_selector": "…or a logout button to click instead",
+            "params.headers": "Extra replay headers, e.g. {'Authorization': 'Bearer {{token}}'}",
+            "params.statuses": "Statuses that mean 'dead' (default [401, 403, 440])",
+            "params.login_pattern": "Regex a redirect Location must match to count as dead",
+        },
+        "example": {"id": "<uuid>", "type": "expect-session-dead", "value": "/api/me",
+                    "params": {"logout_url": "/api/auth/logout"}},
+        "notes": "Snapshots the cookies, logs out, then replays the old session. Passes on a dead status "
+                 "or a redirect to login; fails if the server still accepts it (logout only cleared the "
+                 "browser cookie).",
+    },
+    # ------------------------------------------------------------------
     # Mobile (native app) steps — Phase MOB. Cases using these MUST set
     # executor='mobile_appium' and the run MUST pin an app_build_id
     # (POST /api/runs body). Executed by the mobile worker via Appium.

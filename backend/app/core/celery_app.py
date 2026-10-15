@@ -73,6 +73,7 @@ celery_app = Celery(
         "app.tasks.ticket_tasks",       # Issue-tracker ticket creation
         "app.tasks.triage_tasks",       # Failure clustering / triage
         "app.tasks.report_tasks",       # Scheduled quality reports
+        "app.tasks.access_matrix_tasks",  # Access-control matrix cells (WP4)
     ]
 )
 

@@ -467,3 +467,29 @@ test('a policy naming extra fields still applies the built-in denylist', () => {
     assert.equal(out.policyno, REDACTED);
     assert.equal(out.ok, 1);
 });
+
+// --- access-matrix observations (twin: test_access_observation_* in test_redaction.py)
+
+test('an access observation has its headers, body excerpt and urls scrubbed', async () => {
+    const { redactAccessObservation } = await import('./redact');
+    const obs = redactAccessObservation({
+        status: 200, element_present: null,
+        headers: { 'set-cookie': 'sid=abc', 'content-type': 'application/json' },
+        body_excerpt: JSON.stringify({ token: 'abc', id: 7 }),
+        url: `https://shop.example.com/pay?card=${VALID_PAN}`,
+        swapped_id: '101',
+    });
+    assert.equal(obs.headers['set-cookie'], REDACTED);
+    assert.equal(obs.headers['content-type'], 'application/json');
+    assert.equal(JSON.parse(obs.body_excerpt).token, REDACTED);
+    assert.equal(JSON.parse(obs.body_excerpt).id, 7);
+    assert.equal(obs.url.includes(VALID_PAN), false);
+    assert.equal(obs.status, 200);
+    assert.equal(obs.swapped_id, '101');
+});
+
+test('a truncated body excerpt degrades to a text sweep, not a throw', async () => {
+    const { redactAccessObservation } = await import('./redact');
+    const obs = redactAccessObservation({ body_excerpt: `{"note": "${VALID_PAN}", "x": [1, 2` });
+    assert.equal(obs.body_excerpt.includes(VALID_PAN), false);
+});

@@ -267,6 +267,14 @@ class ExecutionWorker {
                     continue;
                 }
 
+                // Access-matrix cell (WP4): one request/page as one identity.
+                // Observation only — the backend computes the verdict.
+                if ((job as any).job_type === 'access_check') {
+                    await this.handleAccessCheckJob(streamId, job as any);
+                    this.jobsProcessed++;
+                    continue;
+                }
+
                 // Process the job with a hard wall-clock timeout.
                 const timeout = new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${MAX_JOB_DURATION_MS}ms)`)), MAX_JOB_DURATION_MS)
@@ -348,6 +356,36 @@ class ExecutionWorker {
         await this.jobQueue.completeSideJob(
             streamId, job.job_id, `persona_refresh:result:${refreshId}`, result, 180);
         console.log(`[Worker] Persona refresh ${refreshId}: ${result.status}`);
+    }
+
+    /** Access-matrix cell job — see ./access-check.ts. */
+    private async handleAccessCheckJob(streamId: string, job: any): Promise<void> {
+        const access = require('./access-check');
+        const key = access.safeResultKey(job);
+        if (!key) {
+            console.warn(`[Worker] Access check ${job.job_id}: refusing result key ${job.result_key}`);
+            await this.jobQueue.completeSideJob(streamId, job.job_id, `${access.RESULT_KEY_PREFIX}invalid`, {}, 1);
+            return;
+        }
+        const store = new ArtifactStore(normalizeCaptureLevel(job.data_policy?.capture_level));
+        const upload = async (objKey: string, png: Buffer) => (await store.putBuffer('screenshot', objKey, png, 'image/png')).key;
+        let result: any;
+        const needsBrowser = job.target?.kind === 'page';
+        try {
+            const browser = needsBrowser ? await this.browserManager.start('chromium') : null;
+            try {
+                result = await access.executeAccessCheckJob(job, {
+                    newRequestContext: access.requestContextFactory(),
+                    openPage: browser ? access.pageOpener(browser, job, upload) : undefined,
+                });
+            } finally {
+                if (browser) await this.browserManager.stop();
+            }
+        } catch (err: any) {
+            result = { url: job.target?.url, error_kind: 'error', error: String(err?.message || err).slice(0, 300) };
+        }
+        await this.jobQueue.completeSideJob(streamId, job.job_id, key, result, 3600);
+        console.log(`[Worker] Access check cell ${job.cell_id}: ${result.error_kind || result.status}`);
     }
 
     /**
