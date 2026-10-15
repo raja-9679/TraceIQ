@@ -51,9 +51,14 @@ export const DEFAULT_BODY_KEYS: readonly string[] = [
     'ssn', 'socialsecuritynumber', 'aadhaar', 'aadhar', 'taxid',
 ];
 
-export type PatternName = 'pan' | 'aadhaar' | 'jwt' | 'email' | 'phone';
+export type PatternName = 'pan' | 'aadhaar' | 'jwt' | 'cloud_keys' | 'email' | 'phone';
 
-export const DEFAULT_PATTERNS: readonly PatternName[] = ['pan', 'aadhaar', 'jwt'];
+/**
+ * `cloud_keys` is a family of vendor credential formats (AWS, GitHub, Slack,
+ * Stripe, Google, Azure, PEM private keys). Each has a fixed prefix, so unlike
+ * email/phone it does not collide with ordinary test data.
+ */
+export const DEFAULT_PATTERNS: readonly PatternName[] = ['pan', 'aadhaar', 'jwt', 'cloud_keys'];
 
 export interface RedactionPolicy {
     /** Extra header names beyond DEFAULT_HEADER_NAMES. */
@@ -171,7 +176,24 @@ const JWT_RE = /eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}/g;
 const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const PHONE_RE = /(?<![\d.])\+?\d[\d ()-]{8,16}\d(?![\d.])/g;
 
+/**
+ * Mirrors CLOUD_KEY_PATTERNS in backend/app/services/redaction.py. The PEM rule
+ * runs to the END line or to the end of the text, because a capture truncated
+ * mid-key still leaks a private key.
+ */
+export const CLOUD_KEY_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
+    ['private_key', /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)/g],
+    ['aws_access_key', /(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])/g],
+    ['github_token', /(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})/g],
+    ['slack_token', /(?<![A-Za-z0-9])xox[abposr]-[A-Za-z0-9-]{10,}/g],
+    ['stripe_key', /(?<![A-Za-z0-9])[sr]k_live_[A-Za-z0-9]{20,}/g],
+    ['google_api_key', /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])/g],
+    ['azure_storage_key', /(?<=AccountKey=)[A-Za-z0-9+/]{86}==/g],
+];
+
 const PATTERN_FUNCS: Record<string, (text: string) => string> = {
+    cloud_keys: text => CLOUD_KEY_PATTERNS.reduce(
+        (out, [name, re]) => out.replace(re, token(name)), text),
     pan: text => text.replace(PAN_RE, match => {
         const digits = match.replace(/[ -]/g, '');
         return digits.length >= 13 && digits.length <= 19 && luhnValid(digits) ? token('pan') : match;
@@ -185,9 +207,10 @@ const PATTERN_FUNCS: Record<string, (text: string) => string> = {
     phone: text => text.replace(PHONE_RE, token('phone')),
 };
 
-// JWT first so a token's digit runs are already gone; Aadhaar before PAN so a
-// 12-digit id is not first swallowed by the wider PAN window.
-const PATTERN_ORDER: readonly string[] = ['jwt', 'aadhaar', 'pan', 'email', 'phone'];
+// Cloud keys first so an AWS key id's digit run is not half-eaten by the PAN
+// rule; JWT before PAN so a token's digit runs are already gone; Aadhaar before
+// PAN so a 12-digit id is not first swallowed by the wider PAN window.
+const PATTERN_ORDER: readonly string[] = ['cloud_keys', 'jwt', 'aadhaar', 'pan', 'email', 'phone'];
 
 export function redactText(text: any, policy?: RedactionPolicy): any {
     if (typeof text !== 'string' || !text) return text;

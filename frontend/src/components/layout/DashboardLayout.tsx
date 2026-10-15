@@ -57,6 +57,7 @@ const navigation = [
     { name: 'Test Runs', href: '/runs', icon: PlayCircle },
     { name: 'Monitors', href: '/monitors', icon: Radio },
     { name: 'Security', href: '/security', icon: ShieldAlert },
+    { name: 'Access Reviews', href: '/access-reviews', icon: ClipboardCheck },
     { name: 'Triage', href: '/triage', icon: Bug },
     { name: 'Analytics', href: '/analytics', icon: BarChart3 },
     { name: 'AI Usage', href: '/ai-usage', icon: Sparkles },

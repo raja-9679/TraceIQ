@@ -147,6 +147,13 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("workspacewebhook",
               f"DELETE FROM workspacewebhook WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})"),
+    # Access-review campaigns are workspace governance records. The sign-off
+    # itself is in the audit trail (exempt above), so it survives this.
+    PurgeStep("accessreviewitem",
+              "DELETE FROM accessreviewitem WHERE campaign_id IN "
+              "(SELECT id FROM accessreviewcampaign WHERE workspace_id = :workspace_id)"),
+    PurgeStep("accessreviewcampaign",
+              "DELETE FROM accessreviewcampaign WHERE workspace_id = :workspace_id"),
     PurgeStep("apikey",
               f"DELETE FROM apikey WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})",

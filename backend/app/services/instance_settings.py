@@ -45,7 +45,7 @@ class SettingDef:
 
 
 # Groups: email | notifications | ai | storage | sso | saml | ldap | federation |
-#         test_inbox | policies
+#         test_inbox | siem | security_alerts | policies
 REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     # --- Email (SMTP) ---
     SettingDef("SMTP_HOST", "email", label="SMTP host"),
@@ -266,6 +266,75 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "https://traceiq.example.com — {{webhook.url}} becomes "
                            "<this>/api/hooks/capture/<token>. Blank falls back to "
                            "FRONTEND_BASE_URL (nginx proxies /api)"),
+    # --- SIEM streaming (WP7) ---
+    SettingDef("SIEM_ENABLED", "siem", type="bool", label="Stream audit events to a SIEM",
+               description="every audit row (with its hash-chain fields, so the SIEM "
+                           "can verify the chain) plus security alerts. Sent from an "
+                           "outbox after commit — a SIEM outage never fails a request, "
+                           "events queue and retry with backoff"),
+    SettingDef("SIEM_SINK_TYPE", "siem", label="Sink type",
+               description="syslog | splunk_hec | elastic | webhook"),
+    SettingDef("SIEM_URL", "siem", label="Destination",
+               description="syslog: tcp://host:6514, tls://host:6514 or udp://host:514 "
+                           "(RFC 5424; TCP uses octet-counted framing). splunk_hec: "
+                           "https://splunk:8088 (the /services/collector/event path is "
+                           "added). elastic: https://es:9200 (bulk API). webhook: any "
+                           "HTTPS URL. Checked by the outbound-URL guard — a SIEM on a "
+                           "private network needs its host in Always-allowed hostnames"),
+    SettingDef("SIEM_TOKEN", "siem", secret=True, label="Token / key / signing secret",
+               description="splunk_hec: the HEC token. elastic: an API key (the base64 "
+                           "id:key form). webhook: the HMAC-SHA256 secret behind "
+                           "X-TraceIQ-Signature. Unused for syslog"),
+    SettingDef("SIEM_ELASTIC_INDEX", "siem", label="Elastic index",
+               description="index (or data stream) the bulk API writes to"),
+    SettingDef("SIEM_TLS_VERIFY", "siem", type="bool", label="Verify the SIEM's TLS certificate",
+               description="leave on; turning it off lets anyone on the path read your "
+                           "audit stream"),
+    SettingDef("SIEM_CA_CERT", "siem", label="CA bundle path (optional)",
+               description="PEM file inside the backend container for a private CA"),
+    SettingDef("SIEM_OUTBOX_MAX", "siem", type="int", label="Outbox cap (events)",
+               description="events kept while the SIEM is unreachable; past this the "
+                           "OLDEST are dropped (and a warning logged) so an outage "
+                           "cannot fill the database. The audit table keeps everything "
+                           "regardless — replay from /audit/export"),
+    # --- Security alerts (WP7) ---
+    SettingDef("SECURITY_ALERTS_ENABLED", "security_alerts", type="bool",
+               label="Security alerts master switch",
+               description="evaluate the rules below against the audit stream and "
+                           "notify the channels at the bottom. Alerts are also sent "
+                           "to the SIEM as security_alert events"),
+    SettingDef("ALERT_FAILED_LOGIN_BURST", "security_alerts", type="bool",
+               label="Rule: failed-login burst",
+               description="N failed logins for one account or from one IP address "
+                           "within M minutes (password, MFA code and LDAP failures)"),
+    SettingDef("ALERT_FAILED_LOGIN_THRESHOLD", "security_alerts", type="int",
+               label="Failed-login burst: N failures"),
+    SettingDef("ALERT_FAILED_LOGIN_WINDOW_MINUTES", "security_alerts", type="int",
+               label="Failed-login burst: within M minutes"),
+    SettingDef("ALERT_ADMIN_GRANTED", "security_alerts", type="bool",
+               label="Rule: admin granted",
+               description="instance-admin grant, or a workspace/project admin role "
+                           "given to someone"),
+    SettingDef("ALERT_API_KEY_CHANGES", "security_alerts", type="bool",
+               label="Rule: API key created or revoked"),
+    SettingDef("ALERT_MFA_WEAKENED", "security_alerts", type="bool",
+               label="Rule: MFA weakened",
+               description="a user disabled MFA, or MFA_REQUIRED was turned off"),
+    SettingDef("ALERT_SSO_ONLY_DISABLED", "security_alerts", type="bool",
+               label="Rule: SSO-only mode turned off"),
+    SettingDef("ALERT_SCIM_TOKEN_CHANGED", "security_alerts", type="bool",
+               label="Rule: SCIM token changed"),
+    SettingDef("ALERT_SCIM_DEACTIVATION", "security_alerts", type="bool",
+               label="Rule: user deactivated by SCIM"),
+    SettingDef("SECURITY_ALERT_EMAILS", "security_alerts", type="list",
+               label="Alert email recipients",
+               description="comma-separated; uses the SMTP settings above"),
+    SettingDef("SECURITY_ALERT_SLACK_WEBHOOK_URL", "security_alerts", secret=True,
+               label="Alert Slack webhook URL",
+               description="separate from run notifications on purpose — security "
+                           "alerts belong in the security team's channel"),
+    SettingDef("SECURITY_ALERT_TEAMS_WEBHOOK_URL", "security_alerts", secret=True,
+               label="Alert Teams webhook URL"),
     # --- Policies ---
     SettingDef("REQUIRE_SEPARATE_APPROVER", "policies", type="bool",
                label="Agent proposals need a second person",
@@ -317,6 +386,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                description="list what would be deleted instead of deleting it. A "
                            "sweep keyed on 'the database does not mention this' is "
                            "exactly the job to run in report mode first"),
+    SettingDef("LEAK_DETECTION_ENABLED", "policies", type="bool",
+               label="Leak detection on finished runs",
+               description="scan each run's stored responses, console errors and step "
+                           "evidence for exposed credentials (cloud keys, tokens, private "
+                           "keys, high-entropy secrets) and file them as security "
+                           "findings with a masked sample"),
     SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
                label="Maximum capture level",
                description="ceiling no project may exceed: none | minimal | standard | "

@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { api } from '@/lib/api';
 import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
 import IdpQuickSetupCard from '@/components/settings/IdpQuickSetupCard';
+import SiemStatusPanel from '@/components/settings/SiemStatusPanel';
 
 // Mirrors backend/app/api/instance_settings.py::SettingRead
 interface InstanceSetting {
@@ -36,6 +37,8 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'ldap', title: 'LDAP / Active Directory', description: 'Optional corporate login for on-prem AD. TraceIQ binds as the logging-in user — no service account, no password sync. See docs/ENTERPRISE_AUTH.md.' },
     { id: 'federation', title: 'Federated provisioning (SSO + LDAP)', description: 'Where users who sign in through your IdP land. The default gives every one of them their own tenant, which is right for a single user and wrong for an organisation — set a target workspace before rolling SSO out to a team. See docs/ENTERPRISE_AUTH.md.' },
     { id: 'test_inbox', title: 'Test inbox & webhook capture', description: 'Lets test cases receive email ({{inbox.address}} + Wait For Email) and webhooks ({{webhook.url}} + Wait For Webhook). Mailpit: start the compose profile "inbox" and point the app under test\'s SMTP at mailpit:1025. IMAP: a real mailbox that supports plus-addressing (qa+tag@company.com). Mail credentials stay on the backend — workers never see them.' },
+    { id: 'siem', title: 'SIEM streaming', description: 'Stream every audit event (with its hash-chain fields, so your SIEM can verify the chain) and every security alert to syslog, Splunk HEC, Elastic or a signed webhook. Delivery is asynchronous with retry; a SIEM outage never blocks a request.' },
+    { id: 'security_alerts', title: 'Security alerts', description: 'Rules over the audit stream — failed-login bursts, admin grants, API key changes, MFA or SSO-only being weakened, SCIM token changes and SCIM deactivations. Alerts go to the channels below and to the SIEM.' },
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
 ];
 
@@ -300,6 +303,7 @@ export default function InstanceSettingsSection() {
                                     <span className="text-xs text-gray-500">Save first — the test uses saved values.</span>
                                 </div>
                             )}
+                            {group.id === 'siem' && <SiemStatusPanel />}
                             {group.id === 'ai' && (
                                 <div className="flex items-center gap-2 pt-2 border-t">
                                     <Button
