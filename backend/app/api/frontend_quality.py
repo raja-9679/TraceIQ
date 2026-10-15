@@ -289,7 +289,14 @@ async def run_crawl(crawl_id: int, request: Request, session: AsyncSession = Dep
         SiteCrawlRun.status.in_(("pending", "running"))))).first()
     if busy:
         raise HTTPException(status_code=409, detail=f"crawl run {busy} is still in progress")
-    from app.services.site_crawl import snapshot
+    from app.services.site_crawl import MAX_ACTIVE_RUNS_PER_PROJECT, snapshot
+    active = (await session.exec(select(func.count()).select_from(SiteCrawlRun).where(
+        SiteCrawlRun.project_id == crawl.project_id,
+        SiteCrawlRun.status.in_(("pending", "running"))))).one()
+    if active >= MAX_ACTIVE_RUNS_PER_PROJECT:
+        raise HTTPException(status_code=429, detail=(
+            f"{active} crawl runs are already in progress for this project "
+            f"(at most {MAX_ACTIVE_RUNS_PER_PROJECT}); try again when one finishes"))
     run = SiteCrawlRun(crawl_id=crawl.id, project_id=crawl.project_id, trigger="manual",
                        config=snapshot(crawl), requested_by_id=principal.user.id)
     session.add(run)

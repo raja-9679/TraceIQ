@@ -156,7 +156,9 @@ def start_crawl_run(session, crawl, *, trigger: str, user_id: Optional[int]):
 @celery_app.task(name="app.tasks.frontend_quality_tasks.process_due_crawls")
 def process_due_crawls() -> Dict[str, Any]:
     from croniter import croniter
+    from sqlalchemy import func
     from app.models import SiteCrawlRun
+    from app.services.site_crawl import MAX_ACTIVE_RUNS_PER_PROJECT
 
     now = datetime.utcnow()
     started = []
@@ -167,7 +169,11 @@ def process_due_crawls() -> Dict[str, Any]:
             busy = session.exec(select(SiteCrawlRun.id).where(
                 SiteCrawlRun.crawl_id == crawl.id,
                 SiteCrawlRun.status.in_(("pending", "running")))).first()
-            if not busy:
+            # Same per-project ceiling as manual runs (site_crawl.py).
+            active = session.exec(select(func.count()).select_from(SiteCrawlRun).where(
+                SiteCrawlRun.project_id == crawl.project_id,
+                SiteCrawlRun.status.in_(("pending", "running")))).one()
+            if not busy and active < MAX_ACTIVE_RUNS_PER_PROJECT:
                 run = start_crawl_run(session, crawl, trigger="schedule", user_id=crawl.created_by_id)
                 session.flush()
                 started.append(run.id)

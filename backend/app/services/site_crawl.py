@@ -45,6 +45,12 @@ MAX_EXTRA_HOSTS = 10
 # hourly: each run can occupy a worker for MAX_DURATION_MS, so neither may be
 # left to the request (security review: resource-cap bypass).
 MAX_CRAWLS_PER_PROJECT = 20
+# Crawl runs in flight per project. Each can hold a shared worker for up to
+# MAX_DURATION_MS, so 20 crawls started at once would starve other tenants.
+MAX_ACTIVE_RUNS_PER_PROJECT = 3
+# Report entries examined at ingestion. Invalid entries are skipped, so the
+# stored cap alone would not bound the work a junk-filled report causes.
+MAX_ISSUES_EXAMINED = MAX_ISSUES_STORED * 2
 MIN_SCHEDULE_GAP_SECONDS = 3600
 
 CATEGORIES = ("broken", "network", "slow", "redirect_loop", "mixed_content", "redirect_chain", "not_checked")
@@ -262,7 +268,9 @@ def normalise_result(raw: Any) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     }
     issues: List[Dict[str, Any]] = []
     raw_issues = raw.get("issues") if isinstance(raw.get("issues"), list) else []
-    for item in raw_issues:
+    if len(raw_issues) > MAX_ISSUES_EXAMINED:
+        fields["truncated"] = True
+    for item in raw_issues[:MAX_ISSUES_EXAMINED]:
         if len(issues) >= MAX_ISSUES_STORED:
             fields["truncated"] = True
             break

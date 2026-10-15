@@ -344,3 +344,10 @@ def test_matrix_axes_inherit_down_the_suite_chain():
     merged = _merge_settings({"viewports": ["mobile"], "color_schemes": ["dark"]},
                              {"viewports": ["wide"]})
     assert merged["viewports"] == ["wide"] and merged["color_schemes"] == ["dark"]
+
+
+def test_crawl_report_ingestion_examines_a_bounded_number_of_entries():
+    from app.services import site_crawl
+    junk = [{"category": "nope"}] * (site_crawl.MAX_ISSUES_EXAMINED + 50)
+    fields, issues = site_crawl.normalise_result({"status": "ok", "issues": junk})
+    assert issues == [] and fields["truncated"] is True
