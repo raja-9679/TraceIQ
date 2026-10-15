@@ -51,6 +51,10 @@ MAX_ACTIVE_RUNS_PER_PROJECT = 3
 # Report entries examined at ingestion. Invalid entries are skipped, so the
 # stored cap alone would not bound the work a junk-filled report causes.
 MAX_ISSUES_EXAMINED = MAX_ISSUES_STORED * 2
+# Transaction-scoped Postgres advisory lock namespace for "start a crawl run in
+# project N": the in-flight count and the insert must not interleave, or
+# concurrent requests all see room under MAX_ACTIVE_RUNS_PER_PROJECT.
+RUN_START_LOCK_NAMESPACE = 85342176  # int4: the two-key pg_advisory_xact_lock form
 MIN_SCHEDULE_GAP_SECONDS = 3600
 
 CATEGORIES = ("broken", "network", "slow", "redirect_loop", "mixed_content", "redirect_chain", "not_checked")

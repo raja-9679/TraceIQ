@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field as PydField
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlmodel import delete, select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
@@ -284,6 +284,9 @@ async def delete_crawl(crawl_id: int, request: Request, session: AsyncSession = 
 async def run_crawl(crawl_id: int, request: Request, session: AsyncSession = Depends(get_session),
                     principal: AuthPrincipal = Depends(get_current_principal)):
     crawl, project = await _crawl_for(session, principal, crawl_id, "editor")
+    # Serialise run starts per project until commit (see site_crawl).
+    await session.exec(text("SELECT pg_advisory_xact_lock(CAST(:ns AS integer), CAST(:pid AS integer))").bindparams(
+        ns=site_crawl.RUN_START_LOCK_NAMESPACE, pid=crawl.project_id))
     busy = (await session.exec(select(SiteCrawlRun.id).where(
         SiteCrawlRun.crawl_id == crawl.id,
         SiteCrawlRun.status.in_(("pending", "running"))))).first()
