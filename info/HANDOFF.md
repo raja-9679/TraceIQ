@@ -17,6 +17,8 @@ lenses + 24 candidates) was largely BUILT on 2026-10-14/15. The tracker with
 every work package, branch, decision and log line is
 **`info/ROADMAP_EXECUTION_2026-10.md`** — read it next. The shareable status
 page is https://claude.ai/artifact/LCuvPCFBWW8H1i74CeiS6j (private).
+How the owner wants work done, local-stack steps and traps for a new
+machine: **`info/WORKING_NOTES.md`**.
 
 - **Done, merged, pushed, deployed locally:** WP0 targeted runs + flake
   owners/expiry/attempts + TOTP; WP1 release readiness; WP2 test inbox +
