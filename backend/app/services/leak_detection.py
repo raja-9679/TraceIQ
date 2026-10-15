@@ -80,16 +80,24 @@ def shannon_entropy(value: str) -> float:
     return -sum(c / n * math.log2(c / n) for c in counts.values())
 
 
+# Vendor prefixes worth showing: they say WHICH kind of key leaked and are
+# fixed per vendor, so they disclose nothing about the secret itself.
+_KNOWN_PREFIXES = (
+    "AKIA", "ASIA", "ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_",
+    "xoxb-", "xoxp-", "xoxa-", "xoxs-", "sk_live_", "rk_live_", "pk_live_", "AIza",
+)
+
+
 def mask(secret: str) -> str:
-    """A sample that identifies a secret to its owner without disclosing it:
-    the vendor prefix (useful — it says WHICH kind of key) and the last two
-    characters, plus the length."""
+    """A sample that identifies the KIND of secret without disclosing any of
+    its random part: a known vendor prefix (if any) and the length. Showing
+    leading/trailing characters would hand out a real fraction of short
+    secrets."""
     secret = secret.strip()
     if secret.startswith("-----BEGIN"):
         return f"-----{secret.split('-----')[1]}----- …"   # the header line only
-    if len(secret) >= 12:
-        return f"{secret[:4]}…{secret[-2:]} ({len(secret)} chars)"
-    return f"{secret[:1]}… ({len(secret)} chars)"
+    prefix = next((p for p in _KNOWN_PREFIXES if secret.startswith(p)), "")
+    return f"{prefix}… ({len(secret)} chars)"
 
 
 def _normalize_key(key: str) -> str:

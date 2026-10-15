@@ -61,7 +61,12 @@ def test_the_secret_itself_is_never_in_the_finding():
     out = ld.scan_run(run(), [result(response_body=json.dumps({"k": AWS, "g": GH}))])
     blob = json.dumps(out)
     assert AWS not in blob and GH not in blob
-    assert any("AKIA…LE (20 chars)" in f["evidence"] for f in out)
+    assert any("AKIA… (20 chars)" in f["evidence"] for f in out)
+
+
+def test_mask_discloses_no_random_characters():
+    assert ld.mask("Zq8xW2pL9vT4") == "… (12 chars)"
+    assert ld.mask("ghp_" + "a1B2" * 9) == "ghp_… (40 chars)"
 
 
 def test_pem_sample_is_the_header_line_only():

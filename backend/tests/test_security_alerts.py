@@ -198,3 +198,11 @@ def test_render_text_mentions_rule_actor_and_audit_row():
                            row_hash="abc"), CFG)[0]
     text = sa.render_text(alert)
     assert "Instance admin granted" in text and "admin_granted" in text and "abc" in text
+
+
+def test_alert_webhook_to_cloud_metadata_is_refused():
+    # Slack/Teams alert URLs are POSTed to by the server: net_guard applies.
+    import pytest
+    from app.tasks.security_ops_tasks import _guard
+    with pytest.raises(Exception):
+        _guard("http://169.254.169.254/latest/meta-data/")

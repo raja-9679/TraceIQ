@@ -155,6 +155,16 @@ def drain_once(session: Session, *, sender=None, notify=None) -> Dict[str, Any]:
     return out
 
 
+def _guard(url: str) -> None:
+    """Webhook URLs are admin-entered destinations the server POSTs to; vet
+    them with net_guard at delivery time like the SIEM sink (no metadata or
+    link-local targets, private ranges only when allowed; DNS can change
+    after the setting was saved)."""
+    import asyncio
+    from app.core.net_guard import validate_outbound_url
+    asyncio.run(validate_outbound_url(url))
+
+
 def _queue_notification(alert: Dict[str, Any]) -> None:
     try:
         notify_security_alert.delay(alert)
@@ -204,6 +214,7 @@ def notify_security_alert(self, alert: Dict[str, Any]) -> Dict[str, Any]:
     slack = effective("SECURITY_ALERT_SLACK_WEBHOOK_URL")
     if slack:
         try:
+            _guard(slack)
             r = requests.post(slack, json={"text": f"*{subject}*\n```{text}```"}, timeout=10,
                               allow_redirects=False)
             r.raise_for_status()
@@ -214,6 +225,7 @@ def notify_security_alert(self, alert: Dict[str, Any]) -> Dict[str, Any]:
     teams = effective("SECURITY_ALERT_TEAMS_WEBHOOK_URL")
     if teams:
         try:
+            _guard(teams)
             color = "b91c1c" if alert.get("severity") in ("critical", "high") else "d97706"
             r = requests.post(teams, json={
                 "@type": "MessageCard", "@context": "http://schema.org/extensions",
