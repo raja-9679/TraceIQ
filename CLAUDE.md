@@ -609,6 +609,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   build tokens by concatenation (push protection); `test_leak_detection.py` is
   in `.gitleaks.toml`. UI: Security page register + SLA card + SARIF buttons;
   Settings → Instance (Admin) SIEM/alerts cards; `/access-reviews` page.
+- **Run-scoped data + suite hooks + cleanup (WP5, 2026-10)** — migration
+  `c5a2b3c4d5e5` (`testrun.data_seed`). Tokens (`core/run-scope.ts`, resolved in
+  `interpolate.ts` via `templateContextFrom`, which the step switch now uses):
+  `{{run.id|short|worker|case|row|started_at|attempt}}` (`row` 1-based, 0 = no
+  dataset; `short` = HMAC of the run id, `suite_hooks.run_short_token`) and
+  `{{unique.NAME}}` (sha256 of run+short+case+row+**attempt**+name: stable in an
+  attempt, a retry gets new values so it can't collide with what attempt 1
+  created; never seeded). `{{fake.*}}` is seeded (mulberry32 keyed by
+  seed+case+row, NOT run — a replay must reproduce) when `data_seed` is set: POST
+  /runs body wins over the suite chain's `data_seed` (an inherited execution
+  flag). `run_test_suite` writes the effective seed onto the run and ships
+  `settings.run` = run context. Hooks: suite settings `setup_steps` /
+  `teardown_steps`, validated on save/proposal (`suite_hooks.validate_suite_settings`),
+  NOT merged into effective settings — each case gets `test_case.suite_hooks`, its
+  own chain (outermost first, cut after the first `inherit_settings=false` suite;
+  `hook_chain_sync`, cached in `session.info`). Worker `core/suite-hooks.ts`
+  `HookRunner` keeps a frame STACK: before each case pop frames it doesn't share
+  (teardown) and push new ones (setup) — so single-case jobs wrap every case and a
+  continuous sub-suite job sets each suite up once. Setup failure → case `error`,
+  not run; teardown ALWAYS runs (also for the frame whose setup failed), is best
+  effort, and only produces `result_payload.hook_warnings`. Case steps are raced
+  against `MAX_JOB_DURATION_MS - HOOK_TEARDOWN_BUDGET_MS` when hooks exist —
+  the job-level timeout otherwise abandons the job with no teardown. Cleanup:
+  `params.cleanup` (true = DELETE Location / extracted URL, or `{method,url,...}`
+  resolved right after the step) registers once something was created (a 2xx
+  that then failed an assertion counts); case cleanups LIFO after the case,
+  setup ones after their frame's teardown; 2xx/404/410 = ok. Reports
+  (`hook_report` → `result_payload.hooks|cleanup`) show the URL TEMPLATE and drop
+  query values — twin `redactHookReport`/`redact_hook_report`. **Fixed on the
+  way:** accepting an UPDATE_SUITE_SETTINGS proposal ran `_merge_settings`,
+  which drops every key it doesn't know (`_proposed_suite_settings` now keeps
+  them). Local worker supports hooks; mobile worker gets run tokens only. UI:
+  suite settings "Setup & teardown" card (reuses `StepComponent`), step editor
+  "Clean up afterwards", run page seed + "Re-run with this seed" + per-result
+  outcomes. MCP: `run_suite(data_seed=)`, `describe_step_types` → `templates`.
+  Worker + backend + frontend rebuild needed.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

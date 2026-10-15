@@ -5,7 +5,7 @@ import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import * as path from 'path';
 import { spawn } from 'child_process';
-import { resolveTemplates } from './interpolate';
+import { resolveTemplates, templateContextFrom } from './interpolate';
 import { maskSelectorsFrom } from './redact';
 import { totp, totpClock, secondsLeft, looksLikeLiteralSeed } from './totp';
 import { waitForEmail, waitForWebhook } from './test-hooks';
@@ -76,13 +76,8 @@ export class TestExecutor {
             }
         };
 
-        const resolve = (val: any): any => resolveTemplates(val, {
-            envVars: globalSettings?.environment?.variables,
-            secrets: globalSettings?.secrets,
-            dataRow: testCaseContext?.data,
-            variables: testCaseContext?.variables,
-            hooks: testCaseContext?.hooks,
-        });
+        const resolve = (val: any): any =>
+            resolveTemplates(val, templateContextFrom(globalSettings, testCaseContext));
 
         const getLocator = (selector: string) => {
             return context.locator(selector).first();

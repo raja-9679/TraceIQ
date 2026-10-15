@@ -521,6 +521,66 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
         }
     if isinstance(out.get("step_evidence"), list):
         out["step_evidence"] = redact_step_evidence(out["step_evidence"], policy)
+    if isinstance(out.get("hook_report"), dict):
+        out["hook_report"] = redact_hook_report(out["hook_report"], policy)
+    return out
+
+
+def _query_names_only(raw: str) -> str:
+    """A URL (or URL template) with query parameter VALUES dropped.
+    Twin of `queryNamesOnly` in redact.ts."""
+    s = raw.split("#", 1)[0]
+    if "?" not in s:
+        return s
+    head, query = s.split("?", 1)
+    names = list(dict.fromkeys(p.split("=", 1)[0] for p in query.split("&") if p.split("=", 1)[0]))
+    return head + ("?" + "&".join(f"{n}=\u2026" for n in names) if names else "")
+
+
+def redact_hook_report(report: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Suite setup/teardown + cleanup outcomes (`hook_report`): phase and step
+    errors, cleanup URLs (query values dropped — captured ids and tokens live
+    there) and cleanup errors. Twin of `redactHookReport` in redact.ts."""
+    if not isinstance(report, dict):
+        return report
+
+    def phase(items: Any) -> Any:
+        if not isinstance(items, list):
+            return items
+        out = []
+        for p in items:
+            if not isinstance(p, dict):
+                out.append(p)
+                continue
+            item = dict(p)
+            if isinstance(item.get("error"), str):
+                item["error"] = redact_text(item["error"], policy)
+            if isinstance(item.get("steps"), list):
+                item["steps"] = [
+                    {**st, "error": redact_text(st["error"], policy)}
+                    if isinstance(st, dict) and isinstance(st.get("error"), str) else st
+                    for st in item["steps"]
+                ]
+            out.append(item)
+        return out
+
+    out = dict(report)
+    for key in ("setup", "teardown"):
+        if key in out:
+            out[key] = phase(out[key])
+    if isinstance(out.get("cleanup"), list):
+        cleaned = []
+        for c in out["cleanup"]:
+            if not isinstance(c, dict):
+                cleaned.append(c)
+                continue
+            item = dict(c)
+            if isinstance(item.get("url"), str):
+                item["url"] = redact_text(_query_names_only(item["url"]), policy)
+            if isinstance(item.get("error"), str):
+                item["error"] = redact_text(item["error"], policy)
+            cleaned.append(item)
+        out["cleanup"] = cleaned
     return out
 
 

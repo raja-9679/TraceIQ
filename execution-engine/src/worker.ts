@@ -38,6 +38,11 @@ import {
     summariseAttempt,
 } from './core/evidence';
 import { jobDataPolicy, maskSelectorsFrom } from './core/redact';
+import { RunScope } from './core/run-scope';
+import {
+    HOOK_TEARDOWN_BUDGET_MS, HookReport, HookRunner, caseUsesHooks, isEmptyReport, mergeReports,
+    playwrightRequester, withinDeadline,
+} from './core/suite-hooks';
 
 // Per-step DOM excerpt for proactive selector heal (backend reads 8000 chars).
 const MAX_STEP_DOM_CHARS = 8000;
@@ -544,14 +549,18 @@ class ExecutionWorker {
         const backoffBase = job.settings?.retry_backoff_ms ?? 1000;
 
         let attempt = 0;
-        let result = await this.executeSingleTestJob(job);
+        // Suite hooks reserve time for teardown inside the job's hard limit
+        // (see HOOK_TEARDOWN_BUDGET_MS); one deadline spans every retry.
+        const deadline = job.test_case && caseUsesHooks(job.test_case)
+            ? Date.now() + Math.max(0, MAX_JOB_DURATION_MS - HOOK_TEARDOWN_BUDGET_MS) : undefined;
+        let result = await this.executeSingleTestJob(job, 1, deadline);
         const attempts: AttemptSummary[] = [summariseAttempt(1, result)];
         while (result.status !== 'passed' && attempt < maxRetries) {
             attempt++;
             const delay = backoffBase * Math.pow(2, attempt - 1);
             console.log(`[Worker] Test "${result.test_name}" ${result.status}; retry ${attempt}/${maxRetries} after ${delay}ms`);
             await new Promise(res => setTimeout(res, delay));
-            result = await this.executeSingleTestJob(job);
+            result = await this.executeSingleTestJob(job, attempt + 1, deadline);
             attempts.push(summariseAttempt(attempt + 1, result));
         }
         result.retry_count = attempt;
@@ -565,7 +574,7 @@ class ExecutionWorker {
     /**
      * Execute a single test job with complete isolation
      */
-    private async executeSingleTestJob(job: TestJob): Promise<JobResult> {
+    private async executeSingleTestJob(job: TestJob, attempt = 1, deadline?: number): Promise<JobResult> {
         // Validate that job has test_case (required for single test jobs)
         if (!job.test_case || !job.test_case_id) {
             throw new Error(`Invalid single test job ${job.job_id}: missing test_case or test_case_id`);
@@ -608,6 +617,8 @@ class ExecutionWorker {
         let webVitals: WebVitals | null = null;
         const healSuggestions: any[] = [];
         let healedStepCount = 0;
+        let hookRunner: HookRunner | null = null;
+        let hookReport: HookReport | undefined;
 
         try {
             // Launch browser
@@ -673,6 +684,10 @@ class ExecutionWorker {
                 // Per-run inbox addresses / capture URLs ({{inbox.address}},
                 // {{webhook.url}}) derived by the backend at dispatch.
                 hooks: (testCase as any).test_hooks || undefined,
+                // {{run.*}}, {{unique.*}} and the seeded {{fake.*}} stream.
+                scope: RunScope.forCase(job, testCase, this.jobQueue.workerId, attempt),
+                // {{setup.*}}: filled once the suite setup hooks have run.
+                setup: {} as Record<string, any>,
             };
             const sourceDomain = { value: null as string | null };
 
@@ -714,6 +729,29 @@ class ExecutionWorker {
                 // Ignore navigation errors on about:blank
             }
 
+            // Suite setup hooks (parent chain first). Teardown runs in the
+            // finally below whatever happens from here on.
+            if (caseUsesHooks(testCase)) {
+                const hookContext = context;
+                hookRunner = new HookRunner({
+                    runStep: async (hookStep, ctx) => {
+                        if (!page || page.isClosed()) page = await hookContext.newPage();
+                        return TestExecutor.executeStep(page, page, hookStep, job.settings, ctx);
+                    },
+                    request: playwrightRequester(() => hookContext.request),
+                    settings: job.settings,
+                    caseContext: () => contextData,
+                    policy,
+                });
+                const entered = await hookRunner.enter((testCase as any).suite_hooks);
+                contextData.setup = hookRunner.exports();
+                if (!entered.ok) {
+                    const setupErr: any = new Error(entered.error);
+                    setupErr.hookSetupFailed = true;
+                    throw setupErr;
+                }
+            }
+
             // Execute test steps
             currentContext = page;
 
@@ -730,13 +768,16 @@ class ExecutionWorker {
                             step
                         );
                     } else {
-                        const stepResponse = await TestExecutor.executeStep(
-                            page,
+                        const runCaseStep = () => TestExecutor.executeStep(
+                            page!,
                             currentContext!,
                             step,
                             job.settings,
                             contextData
                         );
+                        const stepResponse = hookRunner
+                            ? await hookRunner.track(step, contextData, () => withinDeadline(deadline, runCaseStep))
+                            : await runCaseStep();
                         if (job.settings?.capture_step_dom && step.id && step.selector && step.intent) {
                             const dom = await captureStepDom(page);
                             if (dom) stepDom[step.id] = dom;
@@ -807,7 +848,9 @@ class ExecutionWorker {
             }
 
         } catch (err: any) {
-            status = 'failed';
+            // A failed suite setup means the case never ran: 'error', not a
+            // verdict on the case itself.
+            status = err?.hookSetupFailed ? 'error' : 'failed';
             errorMessage = err.message;
             console.error(`[Worker] Test failed: ${err.message}`);
 
@@ -852,6 +895,18 @@ class ExecutionWorker {
             // perf data is real as long as the page is still open.
             if (page && !page.isClosed()) {
                 webVitals = await collectWebVitals(page);
+            }
+
+            // Case cleanups, then suite teardown (innermost first) — after a
+            // pass, a failure or a case timeout alike. Never changes status.
+            if (hookRunner) {
+                try {
+                    await hookRunner.finishCase();
+                    await hookRunner.exitAll();
+                } catch (hookErr: any) {
+                    console.warn(`[Worker] Suite teardown error: ${hookErr.message}`);
+                }
+                hookReport = hookRunner.drain();
             }
 
             // Stop tracing and save
@@ -925,6 +980,7 @@ class ExecutionWorker {
             ...(stepEvidence.length ? { step_evidence: stepEvidence } : {}),
             ...(capturedAuthState && status === 'passed' ? { auth_state: capturedAuthState } : {}),
             ...(healSuggestions.length ? { heal_suggestions: healSuggestions } : {}),
+            ...(hookReport && !isEmptyReport(hookReport) ? { hook_report: hookReport } : {}),
             completed_at: new Date().toISOString()
         };
     }
@@ -957,6 +1013,15 @@ class ExecutionWorker {
         let capturedAuthState: any = null;
         let capturedAuthCaseId: number | undefined;
         const healSuggestions: any[] = [];
+        // Suite hooks: once per suite group within this job (see suite-hooks.ts).
+        let hookRunner: HookRunner | null = null;
+        const usesHooks = (job.test_cases || []).some(caseUsesHooks);
+        const deadline = usesHooks
+            ? startTime + Math.max(0, MAX_JOB_DURATION_MS - HOOK_TEARDOWN_BUDGET_MS) : undefined;
+        const attachHookReport = (target: TestCaseResult | undefined, report: HookReport) => {
+            if (!target || isEmptyReport(report)) return;
+            target.hook_report = mergeReports(target.hook_report, report);
+        };
 
         try {
             // Launch browser
@@ -1018,6 +1083,10 @@ class ExecutionWorker {
                 data: {} as Record<string, any>,
                 // Per-case test hooks; reassigned as each case starts.
                 hooks: undefined as any,
+                // Per-case run scope ({{run.*}}, {{unique.*}}, seeded fakes)
+                // and suite-setup exports ({{setup.*}}).
+                scope: undefined as RunScope | undefined,
+                setup: {} as Record<string, any>,
             };
             const sourceDomain = { value: null as string | null };
 
@@ -1048,6 +1117,20 @@ class ExecutionWorker {
             });
             recordPageErrors(page, consoleLogs, () => sharedContextData.name);
 
+            if (usesHooks) {
+                const hookContext = sharedContext;
+                hookRunner = new HookRunner({
+                    runStep: async (hookStep, ctx) => {
+                        if (page.isClosed()) page = await hookContext.newPage();
+                        return TestExecutor.executeStep(page, page, hookStep, job.settings, ctx);
+                    },
+                    request: playwrightRequester(() => hookContext.request),
+                    settings: job.settings,
+                    caseContext: () => sharedContextData,
+                    policy,
+                });
+            }
+
             // Execute each test case sequentially
             for (const testCase of job.test_cases!) {
                 const caseStartTime = Date.now();
@@ -1063,6 +1146,8 @@ class ExecutionWorker {
                 let failedStepIndex = -1;
                 let currentContext: Page | FrameLocator = page;
                 sharedContextData.hooks = (testCase as any).test_hooks || undefined;
+                sharedContextData.scope = RunScope.forCase(job, testCase, this.jobQueue.workerId);
+                let caseHookReport: HookReport | undefined;
 
                 // Snapshot network events length before this test so we can
                 // slice out only the events generated by this test case.
@@ -1113,6 +1198,22 @@ class ExecutionWorker {
                         // Ignore if page is in unexpected state
                     }
 
+                    // Leave the suites this case is not in (their teardown is
+                    // reported on the previous case) and enter its own.
+                    if (hookRunner) {
+                        const entered = await hookRunner.enter((testCase as any).suite_hooks);
+                        const pre = hookRunner.drain();
+                        attachHookReport(testResults[testResults.length - 1],
+                            { setup: [], teardown: pre.teardown, cleanup: pre.cleanup });
+                        caseHookReport = { setup: pre.setup, teardown: [], cleanup: [] };
+                        sharedContextData.setup = hookRunner.exports();
+                        if (!entered.ok) {
+                            const setupErr: any = new Error(entered.error);
+                            setupErr.hookSetupFailed = true;
+                            throw setupErr;
+                        }
+                    }
+
                     // Execute test steps
                     currentContext = page;
 
@@ -1129,13 +1230,16 @@ class ExecutionWorker {
                                     step
                                 );
                             } else {
-                                const stepResponse = await TestExecutor.executeStep(
+                                const runCaseStep = () => TestExecutor.executeStep(
                                     page,
                                     currentContext,
                                     step,
                                     job.settings,
                                     sharedContextData
                                 );
+                                const stepResponse = hookRunner
+                                    ? await hookRunner.track(step, sharedContextData, () => withinDeadline(deadline, runCaseStep))
+                                    : await runCaseStep();
                                 if (job.settings?.capture_step_dom && step.id && step.selector && step.intent) {
                                     const dom = await captureStepDom(page);
                                     if (dom) stepDom[`${testCase.id}:${step.id}`] = dom;
@@ -1191,7 +1295,7 @@ class ExecutionWorker {
                     }
 
                 } catch (err: any) {
-                    caseStatus = 'failed';
+                    caseStatus = err?.hookSetupFailed ? 'error' : 'failed';
                     caseError = err.message;
                     overallStatus = 'failed';
                     console.error(`[Worker] Test case failed: ${testCase.name} - ${err.message}`);
@@ -1233,10 +1337,21 @@ class ExecutionWorker {
                     }
                 }
 
-                const caseDuration = Date.now() - caseStartTime;
-
                 const caseVitals = (page && !page.isClosed())
                     ? await collectWebVitals(page) : null;
+
+                // This case's own cleanups run now; suite teardown waits
+                // until the job leaves the suite.
+                if (hookRunner) {
+                    try {
+                        await hookRunner.finishCase();
+                    } catch (hookErr: any) {
+                        console.warn(`[Worker] Case cleanup error: ${hookErr.message}`);
+                    }
+                    caseHookReport = mergeReports(caseHookReport, hookRunner.drain());
+                }
+
+                const caseDuration = Date.now() - caseStartTime;
 
                 // Record test result, including only the network events for
                 // this test case (sliced from the shared accumulator).
@@ -1251,7 +1366,8 @@ class ExecutionWorker {
                     console_errors: consoleErrorsFor(consoleLogs, testCase.name, policy),
                     ...(caseStepDom(stepDom, testCase.id)),
                     ...(recorder.list().length ? { step_evidence: recorder.list() } : {}),
-                    ...(caseVitals ? { web_vitals: caseVitals } : {})
+                    ...(caseVitals ? { web_vitals: caseVitals } : {}),
+                    ...(caseHookReport && !isEmptyReport(caseHookReport) ? { hook_report: caseHookReport } : {}),
                 });
 
                 console.log(`[Worker] Completed test case: ${testCase.name} (${caseStatus}, ${caseDuration}ms)`);
@@ -1262,6 +1378,16 @@ class ExecutionWorker {
             overallError = err.message;
             console.error(`[Worker] Continuous job failed: ${err.message}`);
         } finally {
+            // Tear down every suite still entered; reported on the last case.
+            if (hookRunner) {
+                try {
+                    await hookRunner.exitAll();
+                } catch (hookErr: any) {
+                    console.warn(`[Worker] Suite teardown error: ${hookErr.message}`);
+                }
+                attachHookReport(testResults[testResults.length - 1], hookRunner.drain());
+            }
+
             // Stop tracing and save
             if (sharedContext) {
                 try {

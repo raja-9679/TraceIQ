@@ -633,6 +633,10 @@ class TestRunBase(SQLModel):
     # Run with NO identity at all: neither the project's stored session nor
     # the suite's credential headers. The "anonymous" column of a matrix.
     anonymous: Optional[bool] = Field(default=None)
+    # Effective {{fake.*}} seed (POST /runs body `data_seed`, else the suite
+    # chain's `data_seed` setting), recorded at dispatch so a failing run can
+    # be replayed with the same generated data. NULL = unseeded (random).
+    data_seed: Optional[str] = Field(default=None, max_length=64)
 
 
 class UserRead(SQLModel):

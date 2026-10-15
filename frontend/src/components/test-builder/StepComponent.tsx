@@ -5,6 +5,7 @@ import { Trash2, ArrowUp, ArrowDown, PlusCircle, Link2, MousePointerClick, TextC
 import { ElementPickerDialog } from './ElementPickerDialog';
 import { bodyToText, textToBody } from './requestBody';
 import { EmailWaitFields, WebhookWaitFields } from './HookStepFields';
+import { CleanupField } from './CleanupField';
 import {
     Select,
     SelectContent,
@@ -728,6 +729,15 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             <p className="text-[10px] text-gray-400 mt-1 italic">Assertions/extract are editable via the case JSON or an AI agent (data-path assertions on the response).</p>
                         </div>
                     </div>
+                )}
+
+                {/* Cleanup lifecycle: delete what this step created after the test */}
+                {(step.type === 'http-request' || step.type === 'extract-value') && (
+                    <CleanupField
+                        stepType={step.type}
+                        spec={step.params?.cleanup}
+                        onChange={(next) => updateParams('cleanup', next)}
+                    />
                 )}
 
                 {/* Extended Configuration for OAuth2 token */}

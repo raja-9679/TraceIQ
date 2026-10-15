@@ -21,6 +21,8 @@
 import { chromium, firefox, webkit, Browser, Page, FrameLocator } from 'playwright';
 import { TestExecutor } from './core/test-executor';
 import { collectWebVitals } from './web-vitals';
+import { RunScope } from './core/run-scope';
+import { HookReport, HookRunner, caseUsesHooks, isEmptyReport, playwrightRequester } from './core/suite-hooks';
 
 const BASE_URL = (process.env.TRACEIQ_URL || process.env.BACKEND_URL || 'http://localhost:8000').replace(/\/$/, '');
 const API_KEY = process.env.TRACEIQ_API_KEY || '';
@@ -93,6 +95,8 @@ async function executeJob(job: any): Promise<any> {
     let responseData: any = undefined;
     let lastStepResult: any = null;
     let webVitals: any = null;
+    let hookRunner: HookRunner | null = null;
+    let hookReport: HookReport | undefined;
 
     try {
         browser = await browserFor(job.browser || 'chromium').launch({ headless: process.env.TRACEIQ_HEADED !== 'true' });
@@ -106,7 +110,25 @@ async function executeJob(job: any): Promise<any> {
             id: tc.id, name: tc.name,
             browser: job.browser || 'chromium', device: job.device || null,
             variables: {}, data: tc.data_row || {},
+            scope: RunScope.forCase(job, tc, WORKER_ID),
+            setup: {} as Record<string, any>,
         };
+
+        // Suite setup/teardown hooks, same semantics as the server worker.
+        if (caseUsesHooks(tc)) {
+            hookRunner = new HookRunner({
+                runStep: async (hookStep, ctx) => {
+                    if (page.isClosed()) page = await context.newPage();
+                    return TestExecutor.executeStep(page, page, hookStep, job.settings || {}, ctx);
+                },
+                request: playwrightRequester(() => context.request),
+                settings: job.settings || {},
+                caseContext: () => contextData,
+            });
+            const entered = await hookRunner.enter(tc.suite_hooks);
+            contextData.setup = hookRunner.exports();
+            if (!entered.ok) throw new Error(entered.error);
+        }
 
         let currentContext: Page | FrameLocator = page;
         for (const step of tc.steps) {
@@ -116,8 +138,10 @@ async function executeJob(job: any): Promise<any> {
                     : sel ? currentContext.frameLocator(sel) : currentContext;
                 continue;
             }
-            const stepResponse = await TestExecutor.executeStep(
+            const runCaseStep = () => TestExecutor.executeStep(
                 page, currentContext, step, job.settings || {}, contextData);
+            const stepResponse = hookRunner
+                ? await hookRunner.track(step, contextData, runCaseStep) : await runCaseStep();
             if (stepResponse?.__switchToPage) {
                 page = stepResponse.__switchToPage;
                 currentContext = page;
@@ -142,6 +166,16 @@ async function executeJob(job: any): Promise<any> {
             };
         }
     } finally {
+        // Teardown always runs, before the browser goes away.
+        if (hookRunner) {
+            try {
+                await hookRunner.finishCase();
+                await hookRunner.exitAll();
+            } catch (hookErr: any) {
+                console.warn(`[LocalWorker] suite teardown error: ${hookErr.message}`);
+            }
+            hookReport = hookRunner.drain();
+        }
         try { await browser?.close(); } catch { /* ignore */ }
     }
 
@@ -152,6 +186,7 @@ async function executeJob(job: any): Promise<any> {
         error: errorMessage,
         response_data: responseData,
         ...(webVitals ? { web_vitals: webVitals } : {}),
+        ...(hookReport && !isEmptyReport(hookReport) ? { hook_report: hookReport } : {}),
     };
 }
 

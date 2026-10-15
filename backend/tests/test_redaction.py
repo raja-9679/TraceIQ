@@ -23,6 +23,7 @@ from app.services.redaction import (
     redact_headers,
     redact_message_text,
     redact_audit_changes,
+    redact_hook_report,
     redact_steps,
     redact_text,
     redact_worker_result,
@@ -559,3 +560,38 @@ def test_access_observation_truncated_excerpt_degrades_to_text_sweep():
     from app.services.redaction import redact_access_observation
     obs = redact_access_observation({"body_excerpt": f'{{"note": "{VALID_PAN}", "x": [1, 2'})
     assert VALID_PAN not in obs["body_excerpt"]
+
+
+# --------------------------------------------------------------------------
+# hook_report (suite setup/teardown + cleanup). Twin corpus:
+# execution-engine/src/core/redact.test.ts "hook report: ..."
+# --------------------------------------------------------------------------
+
+def test_hook_report_cleanup_url_keeps_query_names_and_errors_are_scrubbed():
+    out = redact_worker_result({
+        "hook_report": {
+            "setup": [{"suite_id": 1, "phase": "setup", "status": "failed",
+                       "error": f"401 for token {JWT}",
+                       "steps": [{"index": 0, "type": "http-request", "status": "failed",
+                                  "error": f"bad {JWT}"}]}],
+            "teardown": [],
+            "cleanup": [{"method": "DELETE", "url": "https://api.test/items/9?token=s3cret&x=1",
+                         "status": "failed", "error": "card 4111 1111 1111 1111 rejected",
+                         "origin": "case"}],
+        },
+    })
+    r = out["hook_report"]
+    assert JWT not in r["setup"][0]["error"]
+    assert JWT not in r["setup"][0]["steps"][0]["error"]
+    assert r["cleanup"][0]["url"] == "https://api.test/items/9?token=\u2026&x=\u2026"
+    assert "4111 1111 1111 1111" not in r["cleanup"][0]["error"]
+    assert r["cleanup"][0]["status"] == "failed"
+    assert r["setup"][0]["suite_id"] == 1
+
+
+def test_hook_report_continuous_results_and_odd_shapes():
+    out = redact_worker_result({"test_results": [{"hook_report": {"cleanup": [{"url": "/x?a=1#frag"}]}}]})
+    assert out["test_results"][0]["hook_report"]["cleanup"][0]["url"] == "/x?a=\u2026"
+    assert redact_hook_report(["x"]) == ["x"]
+    out = redact_hook_report({"cleanup": [{"url": "{{api}}/items/{{id}}"}]})
+    assert out["cleanup"][0]["url"] == "{{api}}/items/{{id}}"

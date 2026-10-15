@@ -49,6 +49,7 @@ const { JobQueue } = require('./core/job-queue') as typeof import('./core/job-qu
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
 import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
+import { RunScope } from './core/run-scope';
 import { ArtifactStore, CaptureLevel, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
 import { jobDataPolicy, policyFromDataPolicy } from './core/redact';
 import { AIEngine } from './ai';
@@ -280,6 +281,9 @@ class MobileWorker {
             secrets: job.settings?.secrets,
             dataRow: testCase.data_row,
             variables,
+            // {{run.*}} / {{unique.*}} / seeded {{fake.*}}. Suite hooks are
+            // not run by the mobile worker.
+            scope: RunScope.forCase(job, testCase),
         };
         const meta: StepExecMeta = {
             testCaseId: testCase.id,

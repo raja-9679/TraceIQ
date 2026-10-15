@@ -463,6 +463,10 @@ def _evidence_payload(res: Dict[str, Any], run_id: Optional[int] = None) -> Dict
     step_evidence = normalise_step_evidence(res.get('step_evidence'), run_id)
     if step_evidence:
         out['step_evidence'] = step_evidence
+    # Suite setup/teardown + cleanup outcomes -> `hooks`, `cleanup` and
+    # `hook_warnings` (teardown/cleanup failures never change the status).
+    from app.services.suite_hooks import hook_payload
+    out.update(hook_payload(res.get('hook_report')))
     return out
 
 

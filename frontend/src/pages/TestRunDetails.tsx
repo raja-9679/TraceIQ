@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl } from "@/lib/api";
+import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl, triggerRun } from "@/lib/api";
 import { llmProvidersApi } from "@/api/llmProviders";
 import { ArrowLeft, Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Clock, Activity, LayoutGrid, Bug, PlayCircle, Layers, Server, Globe, Zap, ExternalLink, GitCompareArrows } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -15,6 +15,8 @@ import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
 import { InvestigationReport } from '@/components/evidence/InvestigationReport';
 import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
+import { HookOutcomes, RunDataSummary } from '@/components/suite-hooks/HookOutcomes';
+import { hookOutcomesOf, resultsWithHookWarnings } from '@/components/suite-hooks/suiteHooks';
 import {
     isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
 } from '@/components/evidence/evidenceHelpers';
@@ -155,6 +157,19 @@ export default function TestRunDetails() {
             });
         }
     });
+    // Replay: same suite/case/browser/device, same {{fake.*}} seed.
+    const replayMutation = useMutation({
+        mutationFn: () => triggerRun(run!.test_suite_id, run!.test_case_id ?? undefined,
+            run!.browser, run!.device ?? undefined, { data_seed: run!.data_seed ?? undefined }),
+        onSuccess: (created) => {
+            const first = Array.isArray(created) ? created[0] : created;
+            if (first) navigate(`/runs/${first.id}`);
+        },
+        onError: (error: unknown) => {
+            const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+            toast.error("Failed to start the run", { description: detail || "An error occurred" });
+        }
+    });
     const isFinishedRun = run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error';
 
     // Check if test is stuck (running for more than 10 minutes)
@@ -241,6 +256,13 @@ export default function TestRunDetails() {
             </div>
 
             <div className="max-w-7xl mx-auto space-y-8">
+                <RunDataSummary
+                    seed={run.data_seed}
+                    warningResults={resultsWithHookWarnings(run.results)}
+                    onReplay={() => replayMutation.mutate()}
+                    replaying={replayMutation.isPending}
+                />
+
                 {/* Metric Summary Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-shadow">
@@ -1046,6 +1068,11 @@ function TestCaseResultItem({ result, networkEvents = [], focus = null }: { resu
                             )}
 
                             <RetryAttempts attempts={attemptsOf(result as any)} />
+
+                            {(() => {
+                                const hookOutcomes = hookOutcomesOf(result.result_payload);
+                                return hookOutcomes ? <HookOutcomes outcomes={hookOutcomes} /> : null;
+                            })()}
 
                             <StepEvidenceTimeline
                                 resultId={result.id}

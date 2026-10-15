@@ -64,6 +64,9 @@ class StepTypeCatalog(TQModel):
     step_types: List[StepType] = []
     total: int = 0
     last_updated: Optional[str] = None
+    # Template tokens ({{run.*}}, {{unique.*}}, {{setup.*}}, seeded
+    # {{fake.*}}, …) plus the suite-hook and cleanup lifecycle rules.
+    templates: Optional[Dict[str, Any]] = None
 
 
 class AuthoringGuide(TQModel):

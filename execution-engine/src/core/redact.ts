@@ -398,6 +398,51 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
                 ? { ...a, error: redactText(a.error, policy) } : a);
     }
     if (Array.isArray(out.step_evidence)) out.step_evidence = redactStepEvidence(out.step_evidence, policy);
+    if (out.hook_report && typeof out.hook_report === 'object') out.hook_report = redactHookReport(out.hook_report, policy);
+    return out;
+}
+
+/**
+ * A URL (or URL template) with query parameter VALUES dropped — values are
+ * where captured ids, tokens and signatures live. Twin: `_query_names_only`.
+ */
+export function queryNamesOnly(raw: any): string {
+    const s = String(raw ?? '').split('#')[0];
+    const q = s.indexOf('?');
+    if (q < 0) return s;
+    const names = Array.from(new Set(s.slice(q + 1).split('&').map(p => p.split('=')[0]).filter(Boolean)));
+    return `${s.slice(0, q)}${names.length ? '?' + names.map(n => `${n}=…`).join('&') : ''}`;
+}
+
+/**
+ * Suite setup/teardown + cleanup outcomes (`hook_report`). Errors can quote
+ * response bodies and cleanup URLs carry ids captured at run time, so both are
+ * scrubbed; statuses and suite ids are routing data. Twin: `redact_hook_report`.
+ */
+export function redactHookReport(report: any, policy?: RedactionPolicy): any {
+    if (!report || typeof report !== 'object' || Array.isArray(report)) return report;
+    const phase = (list: any) => Array.isArray(list) ? list.map((p: any) => {
+        if (!p || typeof p !== 'object') return p;
+        const out = { ...p };
+        if (typeof out.error === 'string') out.error = redactText(out.error, policy);
+        if (Array.isArray(out.steps)) {
+            out.steps = out.steps.map((st: any) =>
+                st && typeof st === 'object' && typeof st.error === 'string' ? { ...st, error: redactText(st.error, policy) } : st);
+        }
+        return out;
+    }) : list;
+    const out = { ...report };
+    if ('setup' in out) out.setup = phase(out.setup);
+    if ('teardown' in out) out.teardown = phase(out.teardown);
+    if (Array.isArray(out.cleanup)) {
+        out.cleanup = out.cleanup.map((c: any) => {
+            if (!c || typeof c !== 'object') return c;
+            const item = { ...c };
+            if (typeof item.url === 'string') item.url = redactText(queryNamesOnly(item.url), policy);
+            if (typeof item.error === 'string') item.error = redactText(item.error, policy);
+            return item;
+        });
+    }
     return out;
 }
 

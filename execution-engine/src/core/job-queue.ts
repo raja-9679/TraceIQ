@@ -2,6 +2,7 @@ import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { RedactionPolicy, redactJobResult } from './redact';
 import type { StepEvidence } from './evidence';
+import type { HookReport } from './suite-hooks';
 
 // Types for job queue system
 // Single test case structure
@@ -106,6 +107,7 @@ export interface TestCaseResult {
     console_errors?: any[];  // Redacted console errors/warnings for failure analysis
     step_dom?: Record<string, string>;  // step id -> compact DOM (capture level full only)
     step_evidence?: StepEvidence[];  // per-step evidence for failure investigation
+    hook_report?: HookReport;  // suite setup/teardown + cleanup outcomes
 }
 
 // Job result - can contain single or multiple test results
@@ -129,6 +131,8 @@ export interface JobResult {
     console_errors?: any[];
     step_dom?: Record<string, string>;
     step_evidence?: StepEvidence[];
+    // Suite setup/teardown + cleanup outcomes (result_payload.hooks/cleanup).
+    hook_report?: HookReport;
 
     // Type-aware result payload for non-UI executors (keystone). e.g. a load
     // job reports result_kind='load' with aggregate k6 metrics + threshold
@@ -196,7 +200,7 @@ const CLAIM_IDLE_TIME_MS = parseInt(process.env.JOB_CLAIM_IDLE_TIME || '60000');
 
 export class JobQueue {
     private redis: Redis;
-    private workerId: string;
+    public readonly workerId: string;
     
     constructor(redisUrl?: string) {
         this.redis = new Redis(redisUrl || process.env.REDIS_URL || 'redis://localhost:6379');
