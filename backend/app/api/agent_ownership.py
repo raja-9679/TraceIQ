@@ -1015,6 +1015,17 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
     case = await session.get(TestCase, proposal.target_case_id)
     if not case or case.project_id != proposal.project_id:
         raise HTTPException(status_code=404, detail="Target case not found in this project")
+    # Git-sync proposals (WP11) record the content hash they were based on; if
+    # the case changed while the proposal waited, applying it would silently
+    # discard that edit.
+    if payload.get("sync_base_hash") and proposal.action in (
+            CaseProposalAction.UPDATE, CaseProposalAction.DELETE):
+        from app.services.case_sync import case_doc
+        if case_doc(case)["hash"] != payload["sync_base_hash"]:
+            raise HTTPException(
+                status_code=409,
+                detail="The case changed after this git-sync proposal was filed; "
+                       "pull, merge and push again, or reject this proposal.")
 
     if proposal.action == CaseProposalAction.UPDATE:
         if "name" in payload:

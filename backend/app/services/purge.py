@@ -98,6 +98,8 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("authsession",
               f"DELETE FROM authsession WHERE project_id IN ({_PROJECTS}) "
               f"OR captured_by_case_id IN ({_CASES})"),
+    PurgeStep("projectapispec",
+              f"DELETE FROM projectapispec WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("requirement",
               f"DELETE FROM requirement WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("incident",

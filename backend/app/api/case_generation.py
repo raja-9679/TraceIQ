@@ -330,6 +330,16 @@ async def cases_from_openapi(
     if not isinstance(schema, dict):
         raise HTTPException(status_code=400, detail="schema_url/schema_inline did not yield a dict")
 
+    if body.store_spec:
+        from app.api.developer import store_project_spec
+        from app.services.api_specs import SchemaRefError, validate_spec
+        try:
+            validate_spec(schema)
+            await store_project_spec(session, suite.project_id, schema, principal.user.id,
+                                     source_url=body.schema_url if not body.schema_inline else None)
+        except (SchemaRefError, HTTPException) as exc:
+            # Generation still works from a document we would not keep.
+            print(f"[case-gen] OpenAPI spec not stored for project {suite.project_id}: {exc}")
     base_url = body.base_url or _detect_base_url(schema)
     paths = schema.get("paths") or {}
     if not isinstance(paths, dict):

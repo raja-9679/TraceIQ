@@ -6,6 +6,7 @@ import { ElementPickerDialog } from './ElementPickerDialog';
 import { bodyToText, textToBody } from './requestBody';
 import { EmailWaitFields, WebhookWaitFields } from './HookStepFields';
 import { CleanupField } from './CleanupField';
+import { ExpectSchemaFields } from './ExpectSchemaFields';
 import {
     Select,
     SelectContent,
@@ -881,6 +882,11 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                         </div>
                                     )}
                                 </div>
+                            )}
+
+                            {step.type === 'http-request' && (
+                                <ExpectSchemaFields value={step.params?.expect_schema}
+                                    onChange={(value) => updateParams('expect_schema', value)} />
                             )}
                         </div>
 

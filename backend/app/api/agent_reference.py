@@ -375,8 +375,15 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.cleanup": ("true (DELETE the response's Location) or {method?, url, headers?, body?, "
                                "expect_status?} — registers a cleanup that runs after the case even if it "
                                "fails; see `templates` → cleanup"),
+            "params.expect_schema": (
+                "Optional response contract check: {schema: <JSON Schema object>} or "
+                "{openapi: {operationId} | {method, path}, status?: '200'} referencing the project's "
+                "stored OpenAPI spec (PUT /api/projects/{id}/openapi-spec, or imported via "
+                "/cases/from-openapi). Strict JSON Schema; every violation is reported by path"),
         },
         "notes": (
+            "params.expect_schema validates the JSON body strictly (unlike the lenient "
+            "json-schema assertion); an openapi reference that cannot be resolved fails the step. "
             "Assertion shapes inside params.assertions: "
             "{type:'status', value:200}; "
             "{type:'json-path', path:'postgres.articles', operator:'equals'|'contains', value:...}; "

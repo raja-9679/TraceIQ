@@ -10,6 +10,7 @@ import { maskSelectorsFrom } from './redact';
 import { totp, totpClock, secondsLeft, looksLikeLiteralSeed } from './totp';
 import { waitForEmail, waitForWebhook } from './test-hooks';
 import { jsonPath } from './json-path';
+import { checkExpectSchema, formatViolations } from './schema-check';
 
 // jsonPath lives in ./json-path (shared with the wait-for-webhook step);
 // re-exported so existing imports keep working.
@@ -302,6 +303,17 @@ export class TestExecutor {
                                 errors.push(`[${reqUrl}] ${e.message}`);
                                 resultObject.error = e.message;
                             }
+                        }
+                    }
+
+                    // Response contract check (WP11, ./schema-check.ts).
+                    if (step.params?.expect_schema) {
+                        const violations = checkExpectSchema(step.params.expect_schema, respBody, jsonBody);
+                        if (violations.length) {
+                            const msg = formatViolations(violations, step.params.expect_schema.source);
+                            errors.push(`[${reqUrl}] ${msg}`);
+                            resultObject.error = msg;
+                            resultObject.schema_violations = violations;
                         }
                     }
 

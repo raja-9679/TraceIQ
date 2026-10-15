@@ -1910,6 +1910,9 @@ class CaseFromOpenAPIRequest(SQLModel):
     test_suite_id: int
     base_url: Optional[str] = None
     operations: Optional[List[str]] = None  # specific operationIds to cover
+    # Also keep the document as the project's OpenAPI spec, so http-request
+    # steps can reference its operations in `expect_schema` (WP11).
+    store_spec: bool = True
 
 
 class ComparisonRunRequest(SQLModel):
@@ -2678,6 +2681,24 @@ class IncidentWebhook(SQLModel, table=True):
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     rotated_at: Optional[datetime] = None
+
+
+class ProjectApiSpec(SQLModel, table=True):
+    """The project's OpenAPI document (WP11), one per project.
+
+    Stored so `http-request` steps can say `expect_schema: {openapi:
+    {operationId}}` instead of pasting a schema into every step. Resolved to
+    an inline JSON Schema at dispatch (app.services.api_specs), so workers
+    never need the database. Set by PUT /projects/{id}/openapi-spec or as a
+    side effect of POST /cases/from-openapi."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True, unique=True)
+    spec: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    source_url: Optional[str] = None
+    title: Optional[str] = None
+    spec_version: Optional[str] = None
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

@@ -40,7 +40,54 @@ function gateSection(gate, enforced) {
     return [...lines, ''];
 }
 
-module.exports = { mdCell, gateSection };
+// Code spans can't escape backticks, so pick a fence longer than any run
+// of backticks inside (CommonMark), padding when the content touches one.
+function mdCode(text, maxLen = 120) {
+    const s = mdCell(text, maxLen);
+    if (!s) return '';
+    const longest = Math.max(0, ...(s.match(/`+/g) || []).map((m) => m.length));
+    const fence = '`'.repeat(longest + 1);
+    const pad = s.startsWith('`') || s.endsWith('`') ? ' ' : '';
+    return `${fence}${pad}${s}${pad}${fence}`;
+}
+
+function fmtTtl(seconds) {
+    if (!seconds) return '';
+    return seconds >= 3600 ? `${Math.round(seconds / 3600)}h` : `${Math.round(seconds / 60)}m`;
+}
+
+// One entry per failing case: the failing step, the error (truncated), a
+// short-lived screenshot link and the run page. `groups` is
+// [{ runId, failures: [...] }] from GET /api/runs/{id}/failures.
+function failuresSection(groups, baseUrl, maxCases = 20) {
+    const all = [];
+    for (const g of groups || []) {
+        for (const f of (g && g.failures) || []) all.push({ runId: g.runId, ...f });
+    }
+    if (all.length === 0) return [];
+    const lines = ['### Failing cases', ''];
+    for (const f of all.slice(0, maxCases)) {
+        const runUrl = `${baseUrl}/runs/${f.runId}`;
+        const step = f.failing_step;
+        const stepText = step
+            ? `step ${Number(step.index) + 1} ${mdCode(step.type, 40)}${step.selector ? ` on ${mdCode(step.selector)}` : ''}`
+            : 'no step evidence';
+        lines.push(`- :x: **${mdCell(f.test_name, 120)}** — ${stepText}`);
+        const err = (step && step.error) || f.error;
+        if (err) lines.push(`  > ${mdCell(err, 300)}`);
+        const links = [];
+        if (f.screenshot_url) {
+            const ttl = fmtTtl(f.screenshot_expires_in);
+            links.push(`[Screenshot](${f.screenshot_url})${ttl ? ` _(link expires in ${ttl})_` : ''}`);
+        }
+        links.push(`[Run #${f.runId}](${runUrl})`);
+        lines.push(`  ${links.join(' · ')}`);
+    }
+    if (all.length > maxCases) lines.push('', `_…and ${all.length - maxCases} more failing case(s); see TraceIQ._`);
+    return [...lines, ''];
+}
+
+module.exports = { mdCell, mdCode, gateSection, failuresSection };
 
 
 /***/ }),
@@ -31928,7 +31975,7 @@ var __webpack_exports__ = {};
 
 const core = __nccwpck_require__(24);
 const { decideSelection, reviewNotes } = __nccwpck_require__(3822);
-const { mdCell, gateSection } = __nccwpck_require__(4011);
+const { mdCell, gateSection, failuresSection } = __nccwpck_require__(4011);
 const github = __nccwpck_require__(1544);
 
 const TERMINAL = new Set(['passed', 'failed', 'error']);
@@ -32002,6 +32049,13 @@ async function triggerRun(baseUrl, headers, suiteId, caseId, browser, gitCtx, tr
 
 async function getRun(baseUrl, headers, runId) {
     return await http('GET', `${baseUrl}/api/runs/${runId}`, headers);
+}
+
+// Failing results with the failing step, a truncated error and a presigned
+// screenshot URL that expires (the server caps it and only signs keys under
+// this run's prefix). Older servers 404 this; the comment just omits it.
+async function getFailures(baseUrl, headers, runId) {
+    return await http('GET', `${baseUrl}/api/runs/${runId}/failures`, headers);
 }
 
 // Per-project CI config (opt-in). { enabled, enforce_gate, post_pr_comment }.
@@ -32176,7 +32230,7 @@ function failureAnalysisSection(runs) {
     return ['### Failure analysis', '', ...blocks];
 }
 
-function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced }) {
+function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced, failures }) {
     const runCount = runs.filter(Boolean).length;
     const lines = [
         COMMENT_MARKER,
@@ -32187,6 +32241,7 @@ function buildComment({ runs, baseUrl, selection, overall, passed, failed, gitCt
         (gitCtx.sha ? ` on commit \`${gitCtx.sha.slice(0, 8)}\`` : ''),
         '',
         ...gateSection(gate, gateEnforced),
+        ...failuresSection(failures, baseUrl),
         ...selectionSection(selection),
         '',
         ...resultsSection(runs, baseUrl),
@@ -32378,7 +32433,17 @@ async function main() {
         const commentAllowed = postComment && (ciSettings ? ciSettings.post_pr_comment !== false : true);
         if (commentAllowed && gitCtx.prNumber && octokit) {
             try {
-                const body = buildComment({ runs: finalRuns, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced });
+                const failures = [];
+                for (const r of finalRuns) {
+                    if (!r || !FAILING.has((r.status || '').toLowerCase())) continue;
+                    try {
+                        const f = await getFailures(baseUrl, headers, r.id);
+                        failures.push({ runId: r.id, failures: f.failures || [] });
+                    } catch (err) {
+                        core.warning(`Could not fetch failure details for run ${r.id}: ${err.message}`);
+                    }
+                }
+                const body = buildComment({ runs: finalRuns, baseUrl, selection, overall, passed, failed, gitCtx, gate, gateEnforced, failures });
                 await upsertPrComment(octokit, gitCtx.prNumber, body);
             } catch (err) {
                 core.warning(`Failed to post PR comment: ${err.message}`);
