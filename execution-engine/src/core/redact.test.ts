@@ -548,6 +548,8 @@ test('message: the regular value patterns still apply', () => {
 test('message: non-strings pass through', () => {
     assert.equal(redactMessageText(''), '');
     assert.equal(redactMessageText(null), null);
+});
+
 // --- access-matrix observations (twin: test_access_observation_* in test_redaction.py)
 
 test('an access observation has its headers, body excerpt and urls scrubbed', async () => {
