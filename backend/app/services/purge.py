@@ -57,6 +57,10 @@ _SUITES = f"SELECT id FROM testsuite WHERE project_id IN ({_PROJECTS})"
 _CASES = f"SELECT id FROM testcase WHERE project_id IN ({_PROJECTS})"
 _RUNS = f"SELECT id FROM testrun WHERE project_id IN ({_PROJECTS})"
 _SCANS = f"SELECT id FROM securityscan WHERE project_id IN ({_PROJECTS})"
+_ESTATES = f"SELECT id FROM estate WHERE project_id IN ({_PROJECTS})"
+_ESTATE_SCANS = f"SELECT id FROM estatescan WHERE estate_id IN ({_ESTATES})"
+_ESTATE_DOMAINS = f"SELECT id FROM estatedomain WHERE estate_id IN ({_ESTATES})"
+_PAGES = f"SELECT id FROM monitoredpage WHERE project_id IN ({_PROJECTS})"
 
 # Dependents first. Within a level the order does not matter.
 PURGE_PLAN: List[PurgeStep] = [
@@ -72,6 +76,17 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM accessmatrixrun WHERE project_id IN ({_PROJECTS}) "
               f"OR matrix_id IN (SELECT id FROM accessmatrix WHERE project_id IN ({_PROJECTS}))"),
     PurgeStep("accessmatrix", f"DELETE FROM accessmatrix WHERE project_id IN ({_PROJECTS})"),
+    # Estate scanning (WP9): results hang off scans AND domains of an estate.
+    PurgeStep("estatedomainresult",
+              f"DELETE FROM estatedomainresult WHERE scan_id IN ({_ESTATE_SCANS}) "
+              f"OR domain_id IN ({_ESTATE_DOMAINS})"),
+    PurgeStep("estatescan", f"DELETE FROM estatescan WHERE estate_id IN ({_ESTATES})"),
+    PurgeStep("estatedomain", f"DELETE FROM estatedomain WHERE estate_id IN ({_ESTATES})"),
+    PurgeStep("estate", f"DELETE FROM estate WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("pagechangeevent",
+              f"DELETE FROM pagechangeevent WHERE page_id IN ({_PAGES})"),
+    PurgeStep("pagescript", f"DELETE FROM pagescript WHERE page_id IN ({_PAGES})"),
+    PurgeStep("monitoredpage", f"DELETE FROM monitoredpage WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("monitorcheck", f"DELETE FROM monitorcheck WHERE run_id IN ({_RUNS})"),
     PurgeStep("webhookcapture", f"DELETE FROM webhookcapture WHERE run_id IN ({_RUNS})"),
     PurgeStep("issueticket",
