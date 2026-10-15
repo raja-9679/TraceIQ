@@ -11,6 +11,8 @@ import * as Tabs from "@radix-ui/react-tabs";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { RetryAttempts } from '@/components/flakes/RetryAttempts';
+import { attemptsOf } from '@/components/flakes/flakeHelpers';
 
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
@@ -993,6 +995,8 @@ function TestCaseResultItem({ result, networkEvents = [] }: { result: any, netwo
                                     </pre>
                                 </div>
                             )}
+
+                            <RetryAttempts attempts={attemptsOf(result as any)} />
 
                             {(result as any).result_kind === 'load' && (result as any).result_payload && (() => {
                                 const lp = (result as any).result_payload;

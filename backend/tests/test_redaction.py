@@ -357,6 +357,16 @@ def test_worker_result_redacts_network_events_and_error():
     assert VALID_PAN not in out["error"]
 
 
+def test_worker_result_redacts_each_retry_attempt_error():
+    out = redact_worker_result({
+        **_worker_payload(),
+        "attempts": [{"attempt": 1, "status": "failed", "error": f"card {VALID_PAN} declined"},
+                     {"attempt": 2, "status": "passed"}],
+    })
+    assert VALID_PAN not in out["attempts"][0]["error"]
+    assert out["attempts"][1]["status"] == "passed"
+
+
 def test_worker_result_preserves_routing_and_status():
     # These drive aggregation and finalization; losing one loses a result.
     out = redact_worker_result(_worker_payload())

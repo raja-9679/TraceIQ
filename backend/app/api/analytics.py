@@ -155,21 +155,44 @@ async def project_flakiness(
     # A case can have several FlakeRecords (case-level step_id=None plus
     # per-step rows). Rows arrive sorted by score desc, so the first row per
     # case carries its max score; quarantine is OR-ed across its rows.
+    # Owner and quarantine details come from the case-level row (step_id
+    # NULL), which is the one the aggregator and the /flakes page manage.
+    from app.api.flake_records import _person, _users_by_id
+    from app.services import flake_policy
+    users = await _users_by_id([r.owner_user_id for r, _ in flake_rows], session)
+    _rank = {"none": 0, "expired": 1, "active": 2}
     entries: Dict[int, Dict[str, Any]] = {}
     for record, case_name in flake_rows:
+        state = flake_policy.quarantine_state(record)
         entry = entries.get(record.test_case_id)
         if entry is None:
-            entries[record.test_case_id] = {
+            entry = entries[record.test_case_id] = {
                 "test_case_id": record.test_case_id,
                 "name": case_name,
                 "flake_score": record.flake_score,
                 "is_quarantined": record.is_quarantined,
+                "quarantine_state": state,
                 "sample_count": record.sample_count,
                 "last_failure_message": record.last_failure_message,
                 "recent_failures": failures_by_name.get(case_name, 0),
+                "flake_id": None,
+                "owner": None,
+                "quarantine_reason": None,
+                "quarantine_source": None,
+                "quarantine_expires_at": None,
             }
-        elif record.is_quarantined:
-            entry["is_quarantined"] = True
+        else:
+            entry["is_quarantined"] = entry["is_quarantined"] or record.is_quarantined
+            if _rank[state] > _rank[entry["quarantine_state"]]:
+                entry["quarantine_state"] = state
+        if record.step_id is None:
+            entry.update(
+                flake_id=record.id,
+                owner=_person(users.get(record.owner_user_id)),
+                quarantine_reason=record.quarantine_reason,
+                quarantine_source=record.quarantine_source,
+                quarantine_expires_at=record.quarantine_expires_at,
+            )
 
     return sorted(entries.values(), key=lambda e: e["flake_score"], reverse=True)
 

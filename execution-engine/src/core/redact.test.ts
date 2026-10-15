@@ -366,6 +366,16 @@ test('job result redacts the error message', () => {
     assert.ok(!redactJobResult(sampleResult()).error.includes(VALID_PAN));
 });
 
+test('job result redacts each retry attempt error', () => {
+    const out = redactJobResult({
+        ...sampleResult(),
+        attempts: [{ attempt: 1, status: 'failed', error: `card ${VALID_PAN} declined` },
+                   { attempt: 2, status: 'passed' }],
+    });
+    assert.ok(!out.attempts[0].error.includes(VALID_PAN));
+    assert.equal(out.attempts[1].status, 'passed');
+});
+
 test('job result preserves routing and status fields exactly', () => {
     // These drive aggregation and finalization; mangling one loses a result.
     const out = redactJobResult(sampleResult());

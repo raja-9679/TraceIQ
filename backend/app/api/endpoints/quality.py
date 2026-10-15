@@ -22,6 +22,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import get_current_user, get_current_principal, AuthPrincipal
 from app.services.access_service import access_service
+from app.services.flake_policy import active_quarantine_clause
 from app.models import (
     User, Project, TestRun, TestStatus, TestCase, TestCaseResult, FlakeRecord,
     TestSchedule,
@@ -107,7 +108,7 @@ async def project_quality(
         select(func.count()).select_from(FlakeRecord)
         .join(TestCase, TestCase.id == FlakeRecord.test_case_id)
         .where(TestCase.project_id == project_id,
-               FlakeRecord.is_quarantined == True))).one()  # noqa: E712
+               active_quarantine_clause()))).one()
 
     # Monitors.
     monitors = (await session.exec(

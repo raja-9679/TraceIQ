@@ -32,7 +32,7 @@ import {
 import {
     RedactionPolicy, policyFromDataPolicy, redactHar, redactNetworkEvents,
 } from './core/redact';
-import { caseStepDom, consoleErrorsFor } from './core/evidence';
+import { AttemptSummary, caseStepDom, consoleErrorsFor, summariseAttempt } from './core/evidence';
 
 // Per-step DOM excerpt for proactive selector heal (backend reads 8000 chars).
 const MAX_STEP_DOM_CHARS = 8000;
@@ -475,7 +475,9 @@ class ExecutionWorker {
      * Run a single-test job, retrying the whole case on failure/error when the
      * suite's auto_retry policy is enabled. Uses exponential backoff between
      * attempts. The returned result is the last attempt's, with retry_count set
-     * to the number of retries performed (0 = passed first try).
+     * to the number of retries performed (0 = passed first try) and, when a
+     * retry happened, `attempts` summarising every try so a pass-after-retry
+     * still shows what failed first.
      */
     private async executeSingleTestJobWithRetry(job: TestJob): Promise<JobResult> {
         const autoRetry = job.settings?.auto_retry === true;
@@ -484,14 +486,17 @@ class ExecutionWorker {
 
         let attempt = 0;
         let result = await this.executeSingleTestJob(job);
+        const attempts: AttemptSummary[] = [summariseAttempt(1, result)];
         while (result.status !== 'passed' && attempt < maxRetries) {
             attempt++;
             const delay = backoffBase * Math.pow(2, attempt - 1);
             console.log(`[Worker] Test "${result.test_name}" ${result.status}; retry ${attempt}/${maxRetries} after ${delay}ms`);
             await new Promise(res => setTimeout(res, delay));
             result = await this.executeSingleTestJob(job);
+            attempts.push(summariseAttempt(attempt + 1, result));
         }
         result.retry_count = attempt;
+        if (attempt > 0) result.attempts = attempts;
         if (attempt > 0) {
             console.log(`[Worker] Test "${result.test_name}" final status ${result.status} after ${attempt} retry(ies)`);
         }

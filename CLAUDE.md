@@ -387,6 +387,18 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   ("targeted — N of M cases ran"). Impact analysis takes `suite_id`. The
   GitHub Action's `mode: targeted` falls back to the full suite on any
   unmapped file, no match, all-quarantined or an impact error.
+- **Flake owners + quarantine expiry (2026-10)** — `FlakeRecord` gains
+  `owner_user_id` and `quarantine_{source,reason,expires_at}`/`quarantined_{at,by_id}`
+  (migration `b8c9d0e1f2a3`; existing quarantines got 14 days). Rules in
+  `app/services/flake_policy.py`: every quarantine expires (default 14, max 90
+  days); past expiry the case **runs again** but stays flagged "expired" and is
+  never silently re-quarantined; score-based auto-release only undoes `auto`
+  (or legacy NULL-source) quarantines, never a manual one. Every "is it
+  quarantined?" query must use `active_quarantine_clause()` / `is_active()`.
+  `POST /flakes/{id}/quarantine` needs `{reason, days?, owner_user_id?}`;
+  `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
+  all audited. Retried tests carry `result_payload.attempts` (worker
+  `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

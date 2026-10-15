@@ -433,6 +433,12 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
             if isinstance(e, dict) and isinstance(e.get("text"), str) else e
             for e in out["console_errors"]
         ]
+    if isinstance(out.get("attempts"), list):
+        out["attempts"] = [
+            {**a, "error": redact_text(a["error"], policy)}
+            if isinstance(a, dict) and isinstance(a.get("error"), str) else a
+            for a in out["attempts"]
+        ]
     if isinstance(out.get("step_dom"), dict):
         out["step_dom"] = {
             k: redact_text(v, policy) if isinstance(v, str) else v

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, RefreshCw, AlertCircle, ShieldAlert, ShieldCheck, Layers, Info, CheckCircle2,
+  Activity, RefreshCw, AlertCircle, ShieldAlert, ShieldCheck, Layers, Info, CheckCircle2, Clock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -14,15 +14,8 @@ import {
 import { toast } from 'sonner';
 import { getProjects } from '@/lib/api';
 import { flakesApi, FlakinessEntry } from '@/api/flakes';
-
-interface ApiError extends Error {
-  response?: { data?: { detail?: string } };
-}
-
-const errorDetail = (err: unknown): string => {
-  const e = err as ApiError;
-  return e.response?.data?.detail || e.message || 'Unknown error';
-};
+import { FlakeOwnerSelect, QuarantineDialog } from '@/components/flakes/FlakeControls';
+import { errorDetail, quarantineSummary } from '@/components/flakes/flakeHelpers';
 
 // ---------------------------------------------------------------------------
 // Flake score bar — 0.0 stable (emerald) → 1.0 pure flake (rose)
@@ -43,35 +36,21 @@ function FlakeScoreBar({ score }: { score: number }) {
 }
 
 // ---------------------------------------------------------------------------
-// Row — quarantine/release act on all FlakeRecords for the case
+// Row — owner picker, quarantine dialog, release
 // ---------------------------------------------------------------------------
 
 function FlakeRow({ entry, projectId }: { entry: FlakinessEntry; projectId: number }) {
   const queryClient = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const summary = quarantineSummary(entry);
 
-  const mutation = useMutation({
-    mutationFn: async (action: 'quarantine' | 'release') => {
-      // The flakiness summary is keyed by test case, but quarantine/release
-      // operate on individual FlakeRecord rows (a case may have a case-level
-      // row plus per-step rows). Fetch them and toggle each.
-      const records = await flakesApi.list(entry.test_case_id);
-      if (records.length === 0) {
-        throw new Error('No flake records found for this test case');
-      }
-      await Promise.all(
-        records.map((r) =>
-          action === 'quarantine' ? flakesApi.quarantine(r.id) : flakesApi.release(r.id),
-        ),
-      );
-      return action;
-    },
-    onSuccess: (action) => {
+  const release = useMutation({
+    mutationFn: () => flakesApi.release(entry.flake_id!),
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['flakiness', projectId] });
-      toast.success(action === 'quarantine'
-        ? `"${entry.name}" quarantined — it will be skipped at dispatch`
-        : `"${entry.name}" released back into runs`);
+      toast.success(`"${entry.name}" released back into runs`);
     },
-    onError: (err: unknown) => toast.error(`Failed to update quarantine: ${errorDetail(err)}`),
+    onError: (err: unknown) => toast.error(`Failed to release: ${errorDetail(err)}`),
   });
 
   return (
@@ -97,38 +76,53 @@ function FlakeRow({ entry, projectId }: { entry: FlakinessEntry; projectId: numb
         )}
       </TableCell>
       <TableCell className="py-4">
-        {entry.is_quarantined ? (
+        <FlakeOwnerSelect entry={entry} projectId={projectId} />
+      </TableCell>
+      <TableCell className="py-4">
+        {entry.quarantine_state === 'active' ? (
           <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-amber-50 text-amber-700 border-amber-200">
             <ShieldAlert className="w-3 h-3 mr-1" /> quarantined
           </Badge>
+        ) : entry.quarantine_state === 'expired' ? (
+          <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-rose-50 text-rose-700 border-rose-200">
+            <Clock className="w-3 h-3 mr-1" /> quarantine expired
+          </Badge>
         ) : (
           <Badge variant="outline" className="rounded-md text-[10px] font-bold uppercase bg-emerald-50 text-emerald-700 border-emerald-200">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> active
+            <CheckCircle2 className="w-3 h-3 mr-1" /> running
           </Badge>
+        )}
+        {summary && (
+          <p className="text-[11px] text-slate-500 mt-1 max-w-[220px]" title={summary}>{summary}</p>
         )}
       </TableCell>
       <TableCell className="py-4 text-right">
-        {entry.is_quarantined ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate('release')}
-            className="h-8 rounded-lg text-xs border-slate-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Release
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={mutation.isPending}
-            onClick={() => mutation.mutate('quarantine')}
-            className="h-8 rounded-lg text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
-          >
-            <ShieldAlert className="w-3.5 h-3.5 mr-1" /> Quarantine
-          </Button>
-        )}
+        <div className="flex justify-end gap-2">
+          {entry.quarantine_state !== 'active' && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!entry.flake_id}
+              onClick={() => setDialogOpen(true)}
+              className="h-8 rounded-lg text-xs border-amber-200 text-amber-700 hover:bg-amber-50"
+            >
+              <ShieldAlert className="w-3.5 h-3.5 mr-1" />
+              {entry.quarantine_state === 'expired' ? 'Quarantine again' : 'Quarantine'}
+            </Button>
+          )}
+          {entry.quarantine_state !== 'none' && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!entry.flake_id || release.isPending}
+              onClick={() => release.mutate()}
+              className="h-8 rounded-lg text-xs border-slate-200 text-emerald-700 hover:bg-emerald-50 hover:border-emerald-200"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 mr-1" /> Release
+            </Button>
+          )}
+        </div>
+        <QuarantineDialog entry={entry} projectId={projectId} open={dialogOpen} onOpenChange={setDialogOpen} />
       </TableCell>
     </TableRow>
   );
@@ -217,7 +211,9 @@ export default function FlakyTests() {
             <p>
               The flake score ranges from <span className="font-semibold">0% (stable)</span> to{' '}
               <span className="font-semibold">100% (pure flake)</span> and is maintained by the result-aggregator
-              pipeline. Quarantining toggles every flake record for the case.
+              pipeline. A quarantine needs a reason and ends on its own (14 days by default, at most 90) —
+              after that the case runs again until someone releases it or quarantines it again. Give each
+              flaky test an owner so its fix doesn't get lost.
             </p>
           </div>
 
@@ -248,8 +244,9 @@ export default function FlakyTests() {
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[200px]">Flake Score</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[90px]">Samples</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12">Recent failures</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[130px]">Status</TableHead>
-                      <TableHead className="text-right font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[150px]">Actions</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[180px]">Owner</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[230px]">Status</TableHead>
+                      <TableHead className="text-right font-bold text-slate-500 uppercase tracking-widest text-xs h-12 w-[220px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
