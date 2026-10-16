@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle } from 'lucide-react';
 import InstanceSettingsSection from '@/components/settings/InstanceSettingsSection';
+import { DataPolicySection } from '@/components/settings/DataPolicySection';
+import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { toast } from 'sonner';
 import {
     Select,
@@ -117,6 +119,7 @@ const selectTriggerClass = 'h-10 w-full rounded-full';
 
 export default function Settings() {
     const queryClient = useQueryClient();
+    const activeProjectId = useActiveProjectId();
     const [activeSection, setActiveSection] = useState<SectionId>('general');
     const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
@@ -277,7 +280,7 @@ export default function Settings() {
         { id: 'general', name: 'General' },
         { id: 'execution', name: 'Test execution' },
         { id: 'notifications', name: 'Notifications' },
-        { id: 'storage', name: 'Storage and retention' },
+        { id: 'storage', name: 'Recordings and retention' },
         { id: 'account', name: 'Account and API keys' },
         { id: 'security', name: 'Two-factor sign-in' },
         // Tenant-admin only; the section itself shows an access message to
@@ -605,10 +608,24 @@ export default function Settings() {
                     {/* Storage & Retention */}
                     {activeSection === 'storage' && (
                         <>
+                            {/* The project's capture level is the ceiling for everything
+                                below (video and traces need Full), so it sits here, where
+                                people look for recording options. Same component and API
+                                as the Quality gate page. */}
+                            {activeProjectId ? (
+                                <DataPolicySection projectId={activeProjectId} />
+                            ) : (
+                                <section className="rounded-3xl border border-border bg-white p-6">
+                                    <h2 className="text-base font-semibold text-ink">Data capture and redaction</h2>
+                                    <p className="mt-1 text-[13px] text-ink-soft">
+                                        Select a project at the top of the page to see and change what its runs may record.
+                                    </p>
+                                </section>
+                            )}
                             <SettingsCard
                                 labelledBy="settings-artifacts"
                                 title="Recordings and screenshots"
-                                description="Applies to runs you start and schedules you created, within each project's capture level. Video and Playwright traces are only kept for projects whose Data policy (Quality page) is Full; on Standard they are never recorded, whatever you choose here."
+                                description="Your choices for runs you start and schedules you created. They apply within the project's capture level above: video and Playwright traces are only recorded when it is Full."
                                 footer={saveFooter}
                             >
                                 <div className="flex flex-col">
