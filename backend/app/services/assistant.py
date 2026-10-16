@@ -69,6 +69,10 @@ TEXT = {
     "not_configured": "AI is not configured on this TraceIQ instance, so the assistant cannot "
                       "answer. An instance admin can add an LLM provider under Instance settings → AI.",
     "disabled": "The assistant is switched off for this instance.",
+    "ai_off": "AI features are switched off for this workspace by its admins, so the assistant "
+              "cannot answer.",
+    "policy": "The assistant is not available for this request right now (a usage policy "
+              "applies). Ask a workspace admin if you think this is wrong.",
     "quota": "This workspace has used its monthly AI token allowance, so the assistant cannot "
              "answer until next month (or until the plan's limit is raised).",
     "no_response": "The AI provider did not answer. Please try again in a moment.",
@@ -87,9 +91,10 @@ HIDDEN = "This answer used data from a project you can no longer access, so it i
 async def assistant_allowed(session: Any, workspace_id: int) -> Tuple[bool, Optional[str]]:
     """Whether the assistant may call an LLM for this workspace, and why not.
 
-    Today: the instance switch ASSISTANT_ENABLED and a configured provider.
-    The AI opt-out policy (W2) plugs in here, so this stays the single gate
-    (`session` / `workspace_id` are for that rule).
+    The instance switch ASSISTANT_ENABLED, a configured provider, then the
+    policy engine's `ai.use` rules (workspace AI opt-out W2, plan token quota,
+    agent kill switch / budgets) so the user gets the reason, not a provider
+    error.
     """
     from app.ai.providers import get_provider
     from app.services.instance_settings import effective
@@ -97,6 +102,15 @@ async def assistant_allowed(session: Any, workspace_id: int) -> Tuple[bool, Opti
         return False, "disabled"
     if get_provider().name == "null":
         return False, "not_configured"
+    from app.services.policy import ai_allowed
+    decision = await ai_allowed(session, workspace_id)
+    if not decision.allowed:
+        rule = decision.rule or ""
+        if rule == "ai.workspace_opt_out":
+            return False, "ai_off"
+        if rule == "plan.llm_token_quota":
+            return False, "quota"
+        return False, "policy"
     return True, None
 
 

@@ -517,3 +517,29 @@ def test_answers_are_hidden_once_a_used_project_is_out_of_scope():
     assert shown["content"] == "secret stuff" and not shown["hidden"]
     hidden = svc.present_message(m, [1])
     assert hidden["hidden"] and hidden["content"] == svc.HIDDEN and hidden["citations"] == []
+
+
+# --- wired to the policy engine at integration (W2) -----------------------------
+
+def test_assistant_respects_the_workspace_ai_opt_out(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace
+    from app.services import assistant
+    from app.services import policy
+    monkeypatch.setattr("app.services.instance_settings.effective", lambda k: True)
+    monkeypatch.setattr("app.ai.providers.get_provider", lambda *a, **k: SimpleNamespace(name="anthropic"))
+
+    async def deny(session, ws, **kw):
+        return SimpleNamespace(allowed=False, rule="ai.workspace_opt_out")
+    monkeypatch.setattr(policy, "ai_allowed", deny)
+    assert asyncio.run(assistant.assistant_allowed(None, 1)) == (False, "ai_off")
+
+    async def quota(session, ws, **kw):
+        return SimpleNamespace(allowed=False, rule="plan.llm_token_quota")
+    monkeypatch.setattr(policy, "ai_allowed", quota)
+    assert asyncio.run(assistant.assistant_allowed(None, 1)) == (False, "quota")
+
+    async def ok(session, ws, **kw):
+        return SimpleNamespace(allowed=True, rule=None)
+    monkeypatch.setattr(policy, "ai_allowed", ok)
+    assert asyncio.run(assistant.assistant_allowed(None, 1)) == (True, None)
