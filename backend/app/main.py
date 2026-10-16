@@ -14,6 +14,7 @@ from app.api import (
 )
 from app.api.endpoints import test_suites, test_cases, test_runs, websockets, schedules, quality
 from app.api import security as security_api
+from app.api import compliance as compliance_api
 from app.api import access_matrix as access_matrix_api
 from app.api import estates as estates_api
 from app.api import frontend_quality as frontend_quality_api
@@ -157,6 +158,7 @@ app.include_router(scim_api.router, prefix="/api", tags=["scim"])
 app.include_router(dead_letter_api.router, prefix="/api", tags=["dead-letter"])
 app.include_router(siem_api.router, prefix="/api", tags=["siem"])
 app.include_router(access_reviews_api.router, prefix="/api", tags=["access-reviews"])
+app.include_router(compliance_api.router, prefix="/api", tags=["compliance"])
 app.include_router(fleet_api.router, prefix="/api", tags=["fleet"])
 app.include_router(paging_api.router, prefix="/api", tags=["paging"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])

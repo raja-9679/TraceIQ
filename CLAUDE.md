@@ -1031,6 +1031,52 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (`GET /benchmark-groups/{id}`) only reads runs of the group's own project.
   Worker image rebuild needed (flag interpolation).
 
+- **Controls, evidence packs, restore drills (WP13a, 2026-10)** — migration
+  `cf12b3c4d5f5` (`compliancecontrol`, `controlevidence`, `controlexception`,
+  `evidencepack`, `drillresult`). API `app/api/compliance.py`; rules in
+  `app/services/compliance.py`, pack in `app/services/evidence_pack.py`, task
+  `app.tasks.compliance_tasks.build_evidence_pack` (main-queue, no beat).
+  **Controls**: workspace-scoped; members read, workspace admin (or Tenant
+  Admin of its tenant, via `workspace:manage_users`) writes; the control's
+  owner (must be a member) may add evidence and request exceptions; API keys
+  never write and must match the workspace + not be project-scoped to read.
+  Status is computed on read (never stored): excepted > failing (any source
+  fails or newest manual evidence is a fail) > not_assessed > stale (newest
+  PASSING evidence older than `freshness_days`) > passing. Sources (`SOURCES`)
+  are typed checks over existing data (access review signed off within N days,
+  incl. instance-wide reviews; audit chain verifies — global walk in id
+  batches, cached 5 min per chain head, never names another workspace's row;
+  data policy on every project; no findings past SLA; restore drill passed
+  within N days; MFA for admins; SSO only; API keys expire). Exceptions:
+  approver ≠ requester (409), expiry ≤ 365 days, expired ones stop counting
+  without a job. "Load SOC 2 starter set" is idempotent by
+  `(workspace_id, seed_key)` unique key; nothing is auto-seeded. Every change
+  (incl. evidence + exceptions) is audited as entity_type
+  `compliance_control` — the control's history is that query. Evidence files:
+  10 MB, extension allow-list, content type from our map, downloaded as an
+  attachment with `sandbox` CSP. **Evidence packs**: always built in Celery
+  (bounded memory: spooled temp file, audit rows in id batches) → object store
+  under `compliance/ws<id>/` (the workspace purge deletes that prefix) →
+  `POST /evidence-packs/{id}/download` returns a 5-minute presigned URL
+  (audited). One build per workspace at a time; queued/building > 2 h shows as
+  failed. `manifest.json` = SHA-256 + size per file, HMAC-SHA256 over its
+  canonical JSON with `secrets.purpose_keys("traceiq/evidence-pack-manifest/v1")`
+  (HKDF from SECRETS_KEY, fallback SECRET_KEY material — never the raw JWT
+  key; `_PREVIOUS` keys still verify). `POST /evidence-packs/verify` (zip, or
+  zip + separate manifest) reports mismatched/missing/unexpected files and
+  signature validity, only to members of the workspace the manifest names.
+  Every pack query filters by the pack's workspace (live test asserts no
+  other tenant's audit rows, findings or project names). **Restore drills**:
+  `scripts/restore_drill.sh --report-to URL` (key via `TRACEIQ_DRILL_API_KEY`,
+  passed to curl on an fd) POSTs `/api/admin/restore-drills`: instance admin
+  only — a JWT, or an API key whose creator is an instance admin now and that
+  is not project-scoped (a workspace key alone could forge instance-wide
+  evidence for every tenant). `DrillReport` is `extra=forbid` and REJECTS
+  (422, input not echoed) anything that looks like a credential; dump name
+  must be a basename. Workspace views get check names + verdicts only (details
+  hold instance-wide row counts). UI: `/compliance/controls`,
+  `/compliance/evidence-packs`, `/audit-log`.
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

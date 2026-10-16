@@ -3376,6 +3376,103 @@ class CostBudgetAlert(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+# WP13a — compliance: controls, evidence, exceptions, evidence packs, restore drills.
+
+class ComplianceControl(SQLModel, table=True):
+    """A control a workspace claims to operate (SOC 2 CC6.1, ...), with an
+    owner, the automated checks that evidence it (`evidence_sources`: a list
+    of {type, params} the product evaluates live — see
+    app/services/compliance.py) and how fresh passing evidence must be.
+    Status is computed on read, never stored: a cached "passing" outliving the
+    evidence behind it is exactly what an auditor would catch.
+    `seed_key` marks rows loaded from the SOC 2 starter set so loading it
+    again is a no-op; it stays set when an admin edits the row."""
+    __table_args__ = (UniqueConstraint("workspace_id", "seed_key", name="uq_compliance_control_seed"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    framework: str = Field(index=True)
+    reference: str
+    title: str
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    evidence_sources: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    freshness_days: int = Field(default=90)
+    seed_key: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ControlEvidence(SQLModel, table=True):
+    """Manual evidence for a control: a note, an uploaded file (object key
+    under compliance/ws<id>/, size/type limited), or both. `outcome` lets a
+    person record a failed check as well as a passing one."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    control_id: int = Field(foreign_key="compliancecontrol.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    outcome: str = Field(default="pass")          # pass | fail
+    note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    file_key: Optional[str] = Field(default=None)
+    file_name: Optional[str] = Field(default=None)
+    content_type: Optional[str] = Field(default=None)
+    size_bytes: Optional[int] = Field(default=None)
+    sha256: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ControlException(SQLModel, table=True):
+    """A time-boxed waiver of a control. Four-eyes: approved_by must differ
+    from requested_by. Only an approved, unexpired exception counts."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    control_id: int = Field(foreign_key="compliancecontrol.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    reason: str = Field(sa_column=Column(Text, nullable=False))
+    compensating_control: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="pending")        # pending | approved | rejected | revoked
+    requested_by_id: int = Field(foreign_key="users.id")
+    requested_at: datetime = Field(default_factory=datetime.utcnow)
+    approved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    approved_at: Optional[datetime] = Field(default=None)
+    decided_note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    expires_at: datetime
+
+
+class EvidencePack(SQLModel, table=True):
+    """One generated compliance evidence pack (zip in the object store)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    requested_by_id: int = Field(foreign_key="users.id")
+    period_start: datetime
+    period_end: datetime
+    status: str = Field(default="queued")         # queued | building | ready | failed
+    object_key: Optional[str] = Field(default=None)
+    size_bytes: Optional[int] = Field(default=None)
+    sha256: Optional[str] = Field(default=None)
+    file_count: Optional[int] = Field(default=None)
+    manifest: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    error: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+
+
+class DrillResult(SQLModel, table=True):
+    """A restore drill reported by scripts/restore_drill.sh --report-to.
+    Instance-wide (a drill restores the whole database), so no workspace.
+    Only the summary table is stored — never a connection string or password
+    (the endpoint rejects payloads that look like one)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ran_at: datetime = Field(index=True)
+    received_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str                                   # pass | fail
+    dump_name: Optional[str] = Field(default=None)
+    target: Optional[str] = Field(default=None)
+    duration_seconds: Optional[int] = Field(default=None)
+    checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    reported_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    reporter_label: Optional[str] = Field(default=None)
+
+
 # Seal every AuditLog row as it is flushed, in whichever process created it —
 # the API, a Celery worker, a script. Installed here rather than in a startup
 # hook because models.py is imported by every path that can write an audit row,

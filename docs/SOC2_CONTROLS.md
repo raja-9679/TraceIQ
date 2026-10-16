@@ -61,11 +61,30 @@ its own; it produces the evidence a CPA firm samples.
 | Control | Status | Implementation | Evidence |
 |---|---|---|---|
 | Availability of scheduler | Built | Beat heartbeat with TTL (`/health/beat`), RedBeat option, DLQ replay | metrics `traceiq_beat_healthy`, alert rules |
-| Backup / restore | Yours | Postgres + object store are standard; `docs/OPERATIONS.md` prescribes snapshot before upgrade | your backup logs |
+| Backup / restore | Yours (backups) / Built (drill) | Postgres + object store are standard; `docs/OPERATIONS.md` prescribes snapshot before upgrade; `scripts/restore_drill.sh --report-to` records each restore test | your backup logs; restore-drill history (Controls, evidence pack) |
 | Data deletion | Built | Workspace purge cascades 39 tables + object prefixes (`tests/test_purge_plan.py` walks the FK graph); per-project retention; orphan sweep report-only by default | purge dry-run output; retention task logs |
 | Right to erasure | Built | `DELETE /api/auth/me`: erased / retained-de-identified / retained-with-reason | erasure audit row (no email) |
 | Data residency | Yours | Single-region deployment; `docs/DATA_RESIDENCY.md` | your deployment record |
 | Tenant isolation | Built (application layer) | Every boundary is a code check — no RLS, one bucket; covered by `test_tenant_isolation_db.py` | CI |
+
+## Controls and evidence packs in the product
+
+The rows above are also available as **editable data** per workspace: on the
+Controls page a workspace admin loads the "SOC 2 starter set" (idempotent —
+loading it again only adds controls that are missing), assigns owners and
+adjusts evidence sources and freshness. Each control is evaluated live from
+the product's own data (access reviews, audit chain, data policies, finding
+SLAs, restore drills, MFA, SSO, API-key expiry) plus manual evidence, and is
+passing / failing / stale / excepted / not assessed. Exceptions need a second
+admin to approve them and expire within 365 days.
+
+The **compliance evidence pack** (Evidence packs page) is one zip for a
+workspace and a date range: the audit-log CSV and the chain verification,
+access-review exports, controls with status and exceptions, effective data
+policies, SARIF per project with the finding-SLA summary, and restore-drill
+history — with a signed `manifest.json` (SHA-256 of every file, HMAC-SHA256
+with a key derived only for this purpose). Upload a pack on the same page to
+check nothing in it was changed.
 
 ## What an auditor will ask that is not in the code
 
@@ -73,9 +92,16 @@ its own; it produces the evidence a CPA firm samples.
    short and the grants audited (they are).
 2. **Is MFA actually on?** Screenshot of `MFA_REQUIRED` in Instance settings,
    dated; plus the audit rows showing enrolments.
-3. **Show me the last 90 days of access reviews.** Not a product feature —
-   export `/api/workspaces/{id}/audit/export` monthly and sign off on it.
-4. **Show me a restore test.** Not a product feature — do one per quarter.
+3. **Show me the last 90 days of access reviews.** A product feature since
+   WP7: the Access reviews page runs a campaign (every person and API key,
+   keep/revoke with a note, sign-off recorded in the audit trail) and exports
+   it as CSV and a printable HTML report. The CC6.3 control's
+   "access review signed off within 90 days" source tracks whether one is due,
+   and the evidence pack includes every campaign in the period.
+4. **Show me a restore test.** Run `scripts/restore_drill.sh` quarterly with
+   `--report-to <TraceIQ URL>` (API key from an instance admin): each result
+   is stored as restore-drill history, evidences the A1.2 control ("restore
+   drill passed within 90 days") and is included in the evidence pack.
 5. **Show me the pen test.** `docs/SECURITY_ASSESSMENT.md` is the internal
    pre-assessment; the external test is scheduled by you (scope there).
 6. **Patch cadence.** The advisory CI jobs list what is outstanding; the
@@ -86,7 +112,8 @@ its own; it produces the evidence a CPA firm samples.
 
 Product controls: **in place** for every row marked Built or Opt-in above.
 Evidence layer: audit trail, metrics, logs and CI exist; **the sampling
-routines** (monthly access review export, quarterly restore test, ticketed
-vulnerability triage) are organisational and have not started. Start the
+routines** (quarterly access review, quarterly restore drill, ticketed
+vulnerability triage) are tracked by the product's controls but have to be run
+on a calendar by people. Start the
 observation clock only once those run on a calendar, because the auditor
 samples the window, not the code.

@@ -80,6 +80,7 @@ celery_app = Celery(
         "app.tasks.frontend_quality_tasks",  # Site crawler dispatch/collect + schedules (WP10)
         "app.tasks.reliability_tasks",  # Flake trend snapshots + vendor health roll-ups (WP12b)
         "app.tasks.cost_tasks",         # Project budget alerts (WP12d)
+        "app.tasks.compliance_tasks",   # Evidence-pack generation (WP13a)
     ]
 )
 
@@ -127,6 +128,7 @@ celery_app.conf.task_routes = {
     "app.tasks.reliability_tasks.snapshot_flake_trends": "main-queue",
     "app.tasks.reliability_tasks.aggregate_vendor_health": "main-queue",
     "app.tasks.cost_tasks.check_project_budgets": "main-queue",
+    "app.tasks.compliance_tasks.build_evidence_pack": "main-queue",
 }
 
 # Configure Celery Beat schedule for periodic tasks

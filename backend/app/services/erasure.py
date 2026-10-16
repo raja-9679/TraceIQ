@@ -72,6 +72,13 @@ RETAINED_AUTHORSHIP: List[str] = [
     # WP12d. A manual result's tester is result_payload.tester_id (JSON, same
     # position: the id survives, the identity does not).
     "releasesignoff.signed_by_id", "projectcostbudget.updated_by_id",
+    # WP13a compliance records: who owns a control, who added evidence, who
+    # requested / approved an exception, who generated a pack or reported a
+    # drill. Governance records of the workspace (or instance, for drills).
+    "compliancecontrol.owner_id", "compliancecontrol.created_by_id",
+    "controlevidence.created_by_id", "controlexception.requested_by_id",
+    "controlexception.approved_by_id", "evidencepack.requested_by_id",
+    "drillresult.reported_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {
@@ -83,6 +90,9 @@ RETAINED_WITH_REASON: Dict[str, str] = {
                         "and grants as the reviewer saw them; that snapshot IS the "
                         "evidence of the review (SOC 2 CC6.2/CC6.3), so it is kept "
                         "like the audit trail and goes with the workspace purge.",
+    "drillresult.reporter_label": "restore-drill results are instance-level evidence; the "
+                                  "label (the reporter's email or an API-key prefix) is kept "
+                                  "like the audit trail's actor_label.",
     "tenant.owner_id": "a tenant must have an owner; erasing the account does not "
                        "dissolve the organisation. Transfer ownership first if the "
                        "tenant is to outlive the person.",

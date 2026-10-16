@@ -223,6 +223,17 @@ PURGE_PLAN: List[PurgeStep] = [
               "(SELECT id FROM accessreviewcampaign WHERE workspace_id = :workspace_id)"),
     PurgeStep("accessreviewcampaign",
               "DELETE FROM accessreviewcampaign WHERE workspace_id = :workspace_id"),
+    # Compliance (WP13a): exceptions and evidence before their controls. The
+    # evidence files and packs live under compliance/ws<id>/ (collect_object_keys).
+    PurgeStep("controlexception",
+              "DELETE FROM controlexception WHERE workspace_id = :workspace_id "
+              "OR control_id IN (SELECT id FROM compliancecontrol WHERE workspace_id = :workspace_id)"),
+    PurgeStep("controlevidence",
+              "DELETE FROM controlevidence WHERE workspace_id = :workspace_id "
+              "OR control_id IN (SELECT id FROM compliancecontrol WHERE workspace_id = :workspace_id)"),
+    PurgeStep("compliancecontrol",
+              "DELETE FROM compliancecontrol WHERE workspace_id = :workspace_id"),
+    PurgeStep("evidencepack", "DELETE FROM evidencepack WHERE workspace_id = :workspace_id"),
     PurgeStep("apikey",
               f"DELETE FROM apikey WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})",
@@ -332,6 +343,12 @@ async def collect_object_keys(session, workspace_id: int) -> List[str]:
         params={"workspace_id": workspace_id})
     prefixes.extend(baseline_purge_prefix(case_id)
                     for (case_id,) in baselines.all() if case_id)
+
+    # Compliance evidence files and evidence packs (WP13a). Derived from the
+    # workspace id, never from stored keys, for the reason baseline_purge_prefix
+    # gives.
+    from app.services.compliance import workspace_prefix
+    prefixes.append(workspace_prefix(workspace_id))
     return prefixes
 
 
