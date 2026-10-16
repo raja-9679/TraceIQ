@@ -68,7 +68,7 @@ app.kubernetes.io/component: {{ .component }}
 {{- if and (not .Values.redis.enabled) .Values.redis.external.tls -}}rediss{{- else -}}redis{{- end -}}
 {{- end -}}
 {{- define "traceiq.minioEndpoint" -}}
-{{- if .Values.minio.enabled -}}{{ include "traceiq.fullname" . }}-minio:9000{{- else -}}{{ required "minio.external.endpoint is required when minio.enabled=false" .Values.minio.external.endpoint }}{{- end -}}
+{{- if .Values.minio.enabled -}}{{ include "traceiq.fullname" . }}-object-store:9000{{- else -}}{{ required "minio.external.endpoint is required when minio.enabled=false" .Values.minio.external.endpoint }}{{- end -}}
 {{- end -}}
 {{- define "traceiq.minioUseSSL" -}}
 {{- if .Values.minio.enabled -}}false{{- else -}}{{ .Values.minio.external.useSSL }}{{- end -}}

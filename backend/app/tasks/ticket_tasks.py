@@ -42,19 +42,16 @@ def _classify(key: str) -> str:
 
 
 def _list_artifacts(run_id: int) -> List[str]:
-    """Object keys under the run's MinIO prefix."""
+    """Object keys under the run's object-store prefix (all pages)."""
     try:
-        resp = minio_client.s3.list_objects_v2(
-            Bucket=minio_client.bucket, Prefix=f"runs/{run_id}/")
-        return [o["Key"] for o in resp.get("Contents", [])]
+        return [o["key"] for o in minio_client.list_objects(f"runs/{run_id}/")]
     except Exception as e:  # noqa: BLE001
         logger.warning("[Ticket] could not list artifacts for run %s: %s", run_id, e)
         return []
 
 
 def _fetch(key: str) -> bytes:
-    obj = minio_client.s3.get_object(Bucket=minio_client.bucket, Key=key)
-    return obj["Body"].read()
+    return minio_client.get_object_bytes(key)
 
 
 def _selected_keys(run_id: int, attach_trace: bool, attach_video: bool,

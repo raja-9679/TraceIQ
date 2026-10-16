@@ -119,21 +119,6 @@ jobs:
           --health-timeout 5s
           --health-retries 20
 
-      # A real object store, so the artifact-deletion paths (workspace purge,
-      # retention, the orphan sweep) are genuinely exercised. No health-cmd:
-      # that runs inside the container and depends on which tools this image
-      # happens to ship. The wait step below polls from the runner instead.
-      # bitnami/minio, not minio/minio: GitHub service containers cannot supply a
-      # command, and the upstream image needs `server /data` to do anything. This
-      # one starts the server from its own entrypoint.
-      minio:
-        image: bitnami/minio:2024
-        env:
-          MINIO_ROOT_USER: ci
-          MINIO_ROOT_PASSWORD: ci-secret-key
-          MINIO_DEFAULT_BUCKETS: traceiq-ci
-        ports: ["9000:9000"]
-
     env:
       DATABASE_URL: postgresql+asyncpg://traceiq:traceiq_ci@localhost:5432/traceiq_ci
       CELERY_BROKER_URL: redis://localhost:6379/0
@@ -145,6 +130,7 @@ jobs:
       SECRET_KEY: ci-only-secret-not-for-any-real-deployment
       WEBHOOK_SECRET: ci-only-webhook-secret
       TRACEIQ_LIVE_DB: "1"
+      TRACEIQ_LIVE_STORE: "1"
 
     steps:
       - uses: actions/checkout@v4
@@ -161,19 +147,31 @@ jobs:
         working-directory: backend
         run: pip install -r requirements.txt -r requirements-dev.txt
 
+      # A real object store, so the artifact-deletion paths (workspace purge,
+      # retention, the orphan sweep) are genuinely exercised. Started here
+      # rather than as a service container so it is the exact image (version +
+      # digest) the compose stacks and Helm chart pin.
+      - name: Start the object store
+        run: |
+          docker run -d --name object-store -p 9000:9000 \
+            -e RUSTFS_ACCESS_KEY=ci -e RUSTFS_SECRET_KEY=ci-secret-key \
+            -e RUSTFS_CONSOLE_ENABLE=false \
+            rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+
       # Polled from the runner, not via a container health-cmd: an unreachable
       # object store does not fail the tests, it makes them SLOW (botocore
       # retries with backoff), which reads as a flaky timeout rather than a
       # missing service.
-      - name: Wait for MinIO
+      - name: Wait for the object store
         run: |
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live; then
-              echo "MinIO is up"; exit 0
+            if curl -sf http://localhost:9000/health/ready; then
+              echo "object store is up"; exit 0
             fi
             sleep 2
           done
-          echo "MinIO did not become ready" >&2; exit 1
+          docker logs object-store >&2 || true
+          echo "object store did not become ready" >&2; exit 1
 
       - name: Create the bucket
         working-directory: backend

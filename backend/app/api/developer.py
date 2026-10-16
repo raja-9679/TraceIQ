@@ -87,12 +87,14 @@ async def _case_for_result(run: TestRun, result: TestCaseResult, session: AsyncS
 
 
 def _download(key: str, budget: int) -> bytes:
-    from app.core.storage import minio_client
-    head = minio_client.s3.head_object(Bucket=minio_client.bucket, Key=key)
-    size = int(head.get("ContentLength") or 0)
-    if size > min(repro_bundle.MAX_ARTIFACT_BYTES, budget):
+    from app.core.storage import object_store
+    limit = min(repro_bundle.MAX_ARTIFACT_BYTES, budget)
+    size = object_store.object_size(key)
+    if size is None:
+        raise ValueError("not found")
+    if size > limit:
         raise ValueError(f"too large ({size} bytes)")
-    return minio_client.s3.get_object(Bucket=minio_client.bucket, Key=key)["Body"].read()
+    return object_store.get_object_bytes(key, max_bytes=limit)
 
 
 async def _artifacts(run: TestRun, result: TestCaseResult, evidence: List[dict]) -> tuple:

@@ -38,21 +38,36 @@ PGPASS_="$(docker exec "$PGC" printenv POSTGRES_PASSWORD)"
 NET="$(docker inspect "$PGC" -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}')"
 URL="postgresql+asyncpg://${PGUSER_}:${PGPASS_}@${PGC}:5432/${SCRATCH}"
 
-# Point the object store at the real MinIO with a SCRATCH bucket. Not for
-# coverage — for speed: code that deletes artifacts (the purge, retention) hits
-# an unreachable endpoint otherwise and boto3's retry/backoff turned a 10-second
-# test file into two minutes. A reachable endpoint that answers NoSuchBucket
-# fails immediately.
-MINIOC="${TRACEIQ_MINIO_CONTAINER:-traceiq-minio-1}"
+# Point the object store at the stack's real one with a SCRATCH bucket. Not for
+# coverage alone — for speed: code that deletes artifacts (the purge,
+# retention) hits an unreachable endpoint otherwise and boto3's retry/backoff
+# turned a 10-second test file into two minutes. A reachable endpoint that
+# answers NoSuchBucket fails immediately. Falls back to a pre-RustFS stack's
+# MinIO container.
+STOREC="${TRACEIQ_STORE_CONTAINER:-${TRACEIQ_MINIO_CONTAINER:-}}"
+if [ -z "$STOREC" ]; then
+  for c in traceiq-object-store-1 traceiq-minio-1; do
+    if docker inspect "$c" >/dev/null 2>&1; then STOREC="$c"; break; fi
+  done
+fi
 MINIO_EP=""; MINIO_AK="scratch"; MINIO_SK="scratch"
-if docker inspect "$MINIOC" >/dev/null 2>&1; then
-  MINIO_EP="${MINIOC}:9000"
-  MINIO_AK="$(docker exec "$MINIOC" printenv MINIO_ROOT_USER 2>/dev/null || echo scratch)"
-  MINIO_SK="$(docker exec "$MINIOC" printenv MINIO_ROOT_PASSWORD 2>/dev/null || echo scratch)"
+store_env() {  # first variable the container defines, of the names given
+  local v
+  for v in "$@"; do
+    docker exec "$STOREC" printenv "$v" 2>/dev/null && return 0
+  done
+  echo scratch
+}
+if [ -n "$STOREC" ] && docker inspect "$STOREC" >/dev/null 2>&1; then
+  MINIO_EP="${STOREC}:9000"
+  MINIO_AK="$(store_env RUSTFS_ACCESS_KEY MINIO_ROOT_USER)"
+  MINIO_SK="$(store_env RUSTFS_SECRET_KEY MINIO_ROOT_PASSWORD)"
 else
-  echo "note: '$MINIOC' not running — artifact-deletion paths will report errors."
+  echo "note: no object-store container running — artifact-deletion paths will report errors."
   MINIO_EP="127.0.0.1:9000"
 fi
+# Exposed to tests so live object-store tests can skip cleanly without one.
+STORE_AVAILABLE=0; [ "$MINIO_EP" != "127.0.0.1:9000" ] && STORE_AVAILABLE=1
 
 cleanup() {
   [ -n "${KEEP_DB:-}" ] && { echo "Keeping scratch database '$SCRATCH'."; return; }
@@ -79,6 +94,7 @@ run() {
     -e MINIO_BUCKET_NAME="${TRACEIQ_SCRATCH_BUCKET:-traceiq-scratch-tests}" \
     -e SECRET_KEY=test-only-secret-value-not-real \
     -e TRACEIQ_LIVE_DB=1 \
+    -e TRACEIQ_LIVE_STORE="$STORE_AVAILABLE" \
     "$IMAGE" "${@:2}"
 }
 

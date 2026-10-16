@@ -54,6 +54,7 @@ secrets:
   redisPassword: ""        # openssl rand -hex 24
   minioRootUser: ""        # anything but minioadmin
   minioRootPassword: ""    # openssl rand -hex 24
+  storageSseMasterKey: ""  # optional: openssl rand -base64 32 — enables SSE-S3 (AES256) on the bundled store
   secretsKey: ""           # optional: Fernet key ring for stored secrets (see docs)
   secretsKeyPrevious: ""
   metricsToken: ""         # optional: bearer token Prometheus presents to /metrics
@@ -272,9 +273,15 @@ redis:
     port: 6379
     tls: false            # rediss:// when true
 
+# Bundled S3-compatible object store. The key is still `minio` so existing
+# values files keep working; the server is RustFS (MinIO's images are no longer
+# published). Pinned by version and digest — when mirroring into a private
+# registry keep the digest. Installs that ran the bundled MinIO get a NEW
+# volume (the StatefulSet is now <release>-object-store); the old MinIO PVC is
+# kept, not reused. See README.md "Object storage" for migrating its objects.
 minio:
   enabled: true
-  image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+  image: rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
   storage: 50Gi
   storageClass: ""
   bucket: test-artifacts
