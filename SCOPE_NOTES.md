@@ -78,6 +78,11 @@ For a full feature-coverage scorecard against a modern-platform checklist (and t
   project whose endpoints answer 403. Pick one rule.
 - **Daily digest** (the removed "Daily summary" toggle) was never built.
 
+### API authz / business-rule fuzzing and abuse templates (WP14d, parked 2026-10-16)
+Not built in WP14. Needs an explicit owner decision on scope and safeguards before
+work starts, the same way estate active probing was parked. The existing access
+matrix (WP4) with ID-swap replay remains the supported authorization testing path.
+
 ### Estate: active probing (parked 2026-10-15, needs the owner's decision)
 WP9 built the passive estate checks only. These were designed but deliberately
 not built, because they actively probe hosts and should be a conscious product
