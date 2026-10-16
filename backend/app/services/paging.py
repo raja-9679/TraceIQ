@@ -269,6 +269,9 @@ def page(session, *, project_id: int, source: str, action: str, dedup_key: str,
 
     now = now or datetime.utcnow()
     outcomes: List[Dict[str, Any]] = []
+    from app.services.demo_workspace import is_demo_project_sync
+    if is_demo_project_sync(session, project_id):
+        return outcomes   # demo workspace (WP13c): never pages anyone
     try:
         flag = PagingChannel.on_monitor if source == "monitor" else PagingChannel.on_run_failure
         channels = session.exec(select(PagingChannel).where(

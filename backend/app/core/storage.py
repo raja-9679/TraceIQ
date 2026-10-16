@@ -328,6 +328,20 @@ class MinioClient:
         )
         return url
 
+    def get_presigned_download_url(self, object_name: str, filename: str,
+                                   content_type: str, expiration: int = 60):
+        """Short-lived public GET that forces a download with our own
+        content type, whatever the object was stored with (trust-center
+        documents: a browser must never render one inline as HTML)."""
+        safe = "".join(c if c.isalnum() or c in "._- " else "_" for c in (filename or "document"))
+        return self.s3_public.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": self.bucket, "Key": object_name,
+                    "ResponseContentDisposition": f'attachment; filename="{safe}"',
+                    "ResponseContentType": content_type},
+            ExpiresIn=expiration,
+        )
+
     def get_internal_presigned_url(self, object_name: str, expiration=3600):
         """Presigned URL against the internal endpoint (object-store:9000) — for
         consumers on the docker network (workers); the public URL's

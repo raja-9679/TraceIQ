@@ -142,6 +142,15 @@ class Workspace(SQLModel, table=True):
     finding_sla_days: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
 
+    # WP13c — seeded demo workspace (decision C5). Set only by
+    # app/services/demo_workspace.py, never by the create/update API. A demo
+    # workspace never delivers notifications (email, chat, paging, outbound
+    # webhooks — see is_demo_project_sync) and is removed with the ordinary
+    # workspace purge. demo_owner_id is who asked for it: one active demo per
+    # user is looked up on it.
+    is_demo: bool = Field(default=False)
+    demo_owner_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -372,6 +381,9 @@ class TestStep(BaseModel):
 
 class TestCaseBase(SQLModel):
     name: str
+    # What the case checks and why, in prose (integration test packs, WP13c;
+    # carried by suite export/import). Optional and display-only.
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
     steps: List[TestStep] = Field(
         default=[], sa_column=Column(JSON))  # List of TestSteps
     # Which kind of worker runs this case. Defaults to the original
@@ -462,6 +474,7 @@ class TestCaseRead(TestCaseBase):
 
 class TestCaseUpdate(SQLModel):
     name: Optional[str] = None
+    description: Optional[str] = None
     steps: Optional[List[TestStep]] = None
     test_suite_id: Optional[int] = None
     project_id: Optional[int] = None
@@ -2452,7 +2465,10 @@ class ReportScheduleRead(SQLModel):
 class ShareLink(SQLModel, table=True):
     """A read-only, expiring, revocable public link to one report.
 
-    kind: run_report (target_id = run id) | project_summary | workspace_summary.
+    kind: run_report (target_id = run id) | project_summary | workspace_summary
+    | poc_report (params = range/projects/assumptions) | trust_document
+    (target_id = TrustDocument id; resolved only by the trust-center download
+    endpoint, never by /share/view).
     Only the SHA-256 of the token is stored; the token itself is shown once,
     at creation. `target_id` is a plain id like Incident's pointers: a deleted
     run makes the link 404 rather than cascade. `project_id` is NULL only for
@@ -2472,6 +2488,9 @@ class ShareLink(SQLModel, table=True):
     revoked_at: Optional[datetime] = Field(default=None)
     last_viewed_at: Optional[datetime] = Field(default=None)
     view_count: int = Field(default=0)
+    # Kind-specific inputs frozen at creation (WP13b): a poc_report link's date
+    # range, project selection and time-saved assumptions. NULL for the others.
+    params: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
 
 # =============================================================================
@@ -3373,6 +3392,180 @@ class CostBudgetAlert(SQLModel, table=True):
     spent: float
     budget: float
     currency: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# WP13a — compliance: controls, evidence, exceptions, evidence packs, restore drills.
+
+class ComplianceControl(SQLModel, table=True):
+    """A control a workspace claims to operate (SOC 2 CC6.1, ...), with an
+    owner, the automated checks that evidence it (`evidence_sources`: a list
+    of {type, params} the product evaluates live — see
+    app/services/compliance.py) and how fresh passing evidence must be.
+    Status is computed on read, never stored: a cached "passing" outliving the
+    evidence behind it is exactly what an auditor would catch.
+    `seed_key` marks rows loaded from the SOC 2 starter set so loading it
+    again is a no-op; it stays set when an admin edits the row."""
+    __table_args__ = (UniqueConstraint("workspace_id", "seed_key", name="uq_compliance_control_seed"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    framework: str = Field(index=True)
+    reference: str
+    title: str
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    evidence_sources: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    freshness_days: int = Field(default=90)
+    seed_key: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ControlEvidence(SQLModel, table=True):
+    """Manual evidence for a control: a note, an uploaded file (object key
+    under compliance/ws<id>/, size/type limited), or both. `outcome` lets a
+    person record a failed check as well as a passing one."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    control_id: int = Field(foreign_key="compliancecontrol.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    outcome: str = Field(default="pass")          # pass | fail
+    note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    file_key: Optional[str] = Field(default=None)
+    file_name: Optional[str] = Field(default=None)
+    content_type: Optional[str] = Field(default=None)
+    size_bytes: Optional[int] = Field(default=None)
+    sha256: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ControlException(SQLModel, table=True):
+    """A time-boxed waiver of a control. Four-eyes: approved_by must differ
+    from requested_by. Only an approved, unexpired exception counts."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    control_id: int = Field(foreign_key="compliancecontrol.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    reason: str = Field(sa_column=Column(Text, nullable=False))
+    compensating_control: Optional[str] = Field(default=None, sa_column=Column(Text))
+    status: str = Field(default="pending")        # pending | approved | rejected | revoked
+    requested_by_id: int = Field(foreign_key="users.id")
+    requested_at: datetime = Field(default_factory=datetime.utcnow)
+    approved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    approved_at: Optional[datetime] = Field(default=None)
+    decided_note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    expires_at: datetime
+
+
+class EvidencePack(SQLModel, table=True):
+    """One generated compliance evidence pack (zip in the object store)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    requested_by_id: int = Field(foreign_key="users.id")
+    period_start: datetime
+    period_end: datetime
+    status: str = Field(default="queued")         # queued | building | ready | failed
+    object_key: Optional[str] = Field(default=None)
+    size_bytes: Optional[int] = Field(default=None)
+    sha256: Optional[str] = Field(default=None)
+    file_count: Optional[int] = Field(default=None)
+    manifest: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    error: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+
+
+class DrillResult(SQLModel, table=True):
+    """A restore drill reported by scripts/restore_drill.sh --report-to.
+    Instance-wide (a drill restores the whole database), so no workspace.
+    Only the summary table is stored — never a connection string or password
+    (the endpoint rejects payloads that look like one)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ran_at: datetime = Field(index=True)
+    received_at: datetime = Field(default_factory=datetime.utcnow)
+    status: str                                   # pass | fail
+    dump_name: Optional[str] = Field(default=None)
+    target: Optional[str] = Field(default=None)
+    duration_seconds: Optional[int] = Field(default=None)
+    checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    reported_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    reporter_label: Optional[str] = Field(default=None)
+
+
+# =============================================================================
+# WP13b — trust center (E24, decision C3). One per workspace, off by default.
+# Public view: app/api/trust_center.py; what may be published:
+# app/services/trust_center.py. Document links are ShareLink rows of kind
+# trust_document (same hashing, expiry, revocation and audit).
+# =============================================================================
+
+
+class TrustCenter(SQLModel, table=True):
+    """A workspace's public trust page. `slug` is an unguessable identifier
+    (like StatusPage.slug), not a credential: the page only ever shows what an
+    admin chose to publish. `status_page_ids` are re-filtered to the
+    workspace's own enabled status pages on every view; `posture_items` are
+    keys of app/services/trust_center.POSTURE_ITEMS the admin opted in to."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", unique=True, index=True)
+    slug: str = Field(unique=True, index=True)
+    enabled: bool = Field(default=False)
+    title: str = Field(default="Trust center")
+    intro: Optional[str] = Field(default=None, sa_column=Column(Text))
+    contact_email: Optional[str] = Field(default=None)
+    status_page_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    posture_items: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    allow_access_requests: bool = Field(default=False)
+    # Result of the last "verify audit chain" an admin ran from the trust
+    # center config; a full-chain walk is too heavy for every public view.
+    audit_verified_at: Optional[datetime] = Field(default=None)
+    audit_verified_ok: Optional[bool] = Field(default=None)
+    # Public views are counted, not audited row by row: an anonymous page
+    # would otherwise let anyone grow the append-only audit table at will.
+    view_count: int = Field(default=0)
+    last_viewed_at: Optional[datetime] = Field(default=None)
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TrustIncidentPost(SQLModel, table=True):
+    """An admin-authored incident communication. Only `published` posts are
+    public. `updates` is an append-only JSON list of {at, status, body}; the
+    body is plain text with a tiny markdown subset, rendered escape-first
+    (app/services/trust_center.render_markdown_safe) - raw HTML never passes."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    title: str
+    status: str = Field(default="investigating")  # investigating | identified | monitoring | resolved
+    components: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    updates: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    published: bool = Field(default=False)
+    published_at: Optional[datetime] = Field(default=None)
+    resolved_at: Optional[datetime] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TrustDocument(SQLModel, table=True):
+    """A gated document (security whitepaper, pen-test letter, SOC 2 report).
+    The public page lists `listed` titles; the file itself is only reachable
+    through a trust_document ShareLink an admin issues per recipient. The
+    object key is always under trust/<workspace_id>/ (purge deletes that
+    prefix); `content_type` is what the bytes were sniffed as, not what the
+    uploader claimed."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    title: str
+    description: Optional[str] = Field(default=None)
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    object_key: str
+    listed: bool = Field(default=True)
+    uploaded_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

@@ -32,18 +32,32 @@
 # so the checks run the checkout's code (TRACEIQ_DRILL_MOUNT_SOURCE=0 to use
 # the image's own code — what you want on a production host).
 #
-# Exit status: 0 = every check PASS (WARNs allowed), 1 = any FAIL, 2 = usage.
+# Recording the result (controls evidence "restore drill passed within N days"
+# and the compliance evidence pack): --report-to https://traceiq.example.com
+# POSTs the summary table to /api/admin/restore-drills. Authenticate with a
+# workspace-wide API key minted by an INSTANCE ADMIN, preferably from the
+# environment (TRACEIQ_DRILL_API_KEY) — `--api-key` works but puts the key in
+# `ps` output. TRACEIQ_DRILL_REPORT_URL is the env form of --report-to. Only
+# the check names, verdicts and (redacted) one-line details are sent, plus the
+# dump's file name — never a password or connection string; the server rejects
+# a report that looks like it carries one.
+#
+# Exit status: 0 = every check PASS (WARNs allowed), 1 = any FAIL, 2 = usage,
+# 3 = the drill passed but reporting it failed.
 # --keep leaves the restored database for inspection.
 set -euo pipefail
 # Never `set -x` here: the database password is in this shell's variables.
 umask 077
 
-usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,48p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 
 DUMP=""; ARTIFACTS=""; COMPOSE=0; KEEP=0
+REPORT_TO="${TRACEIQ_DRILL_REPORT_URL:-}"; REPORT_KEY="${TRACEIQ_DRILL_API_KEY:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --dump) DUMP="${2:-}"; shift 2 ;;
+    --report-to) REPORT_TO="${2:-}"; shift 2 ;;
+    --api-key) REPORT_KEY="${2:-}"; shift 2 ;;
     --artifacts) ARTIFACTS="${2:-}"; shift 2 ;;
     --compose) COMPOSE=1; shift ;;
     --keep) KEEP=1; shift ;;
@@ -58,6 +72,12 @@ if [ -z "$DUMP" ]; then
   [ -n "$DUMP" ] || { echo "no *.sql, *.sql.gz or *.dump in $BACKUP_DIR" >&2; exit 2; }
 fi
 [ -r "$DUMP" ] || { echo "cannot read dump $DUMP" >&2; exit 2; }
+if [ -n "$REPORT_TO" ]; then
+  [ -n "$REPORT_KEY" ] || { echo "--report-to needs an API key (TRACEIQ_DRILL_API_KEY or --api-key)" >&2; exit 2; }
+  case "$REPORT_TO" in http://*|https://*) ;; *) echo "--report-to must be an http(s) URL" >&2; exit 2 ;; esac
+  command -v curl >/dev/null || { echo "--report-to needs curl" >&2; exit 2; }
+fi
+RAN_AT="$(date -u +%FT%TZ)"; DRILL_START=$(date +%s)
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DRILL_DB="${DRILL_DB:-traceiq_restore_drill}"
@@ -81,9 +101,11 @@ if [ "${TRACEIQ_DRILL_MOUNT_SOURCE:-1}" = "1" ] && [ -f "$REPO_ROOT/backend/scri
 fi
 
 RESULTS=()
+R_STATUS=(); R_CHECK=(); R_DETAIL=()   # the same table, unformatted, for --report-to
 FAILED=0
 record() {  # record STATUS "check" "detail"
   RESULTS+=("$(printf '%-5s %-30s %s' "$1" "$2" "$3")")
+  R_STATUS+=("$1"); R_CHECK+=("$2"); R_DETAIL+=("$3")
   [ "$1" = "FAIL" ] && FAILED=1
   return 0
 }
@@ -295,5 +317,40 @@ echo "image: $IMAGE$([ ${#MOUNT[@]} -gt 0 ] && echo ' + checkout source')"
 echo "----------------------------------------------------------------------"
 printf '%s\n' "${RESULTS[@]}"
 echo "----------------------------------------------------------------------"
+
+# --- report (optional) ------------------------------------------------------------
+json_str() {  # JSON string literal; control characters dropped
+  local v
+  v="$(printf '%s' "$1" | tr -d '\000-\010\013-\037' | tr '\n\t' '  ')"
+  v="${v//\\/\\\\}"; v="${v//\"/\\\"}"
+  printf '"%s"' "$v"
+}
+REPORT_RC=0
+if [ -n "$REPORT_TO" ]; then
+  CHECKS=""
+  for i in "${!R_STATUS[@]}"; do
+    # Every detail goes through redact() once more: it is leaving this host.
+    detail="$(printf '%s' "${R_DETAIL[$i]}" | redact | cut -c1-300)"
+    CHECKS+="${CHECKS:+,}{\"status\":$(json_str "${R_STATUS[$i]}"),\"check\":$(json_str "${R_CHECK[$i]:0:80}"),\"detail\":$(json_str "$detail")}"
+  done
+  TARGET_DESC="${DRILL_DB}$([ "$COMPOSE" = "1" ] && echo ' (throwaway compose project)' || echo " on ${PGHOST_}")"
+  BODY="{\"status\":\"$([ "$FAILED" = "1" ] && echo fail || echo pass)\",\"ran_at\":\"${RAN_AT}\",\"dump_name\":$(json_str "$(basename "$DUMP")"),\"target\":$(json_str "$TARGET_DESC"),\"duration_seconds\":$(( $(date +%s) - DRILL_START )),\"checks\":[${CHECKS}]}"
+  # The key goes to curl through a file descriptor, not argv (visible in ps).
+  if RESP="$(printf '%s' "$BODY" | curl -sS -m 30 -X POST \
+        -H 'Content-Type: application/json' -H @<(printf 'X-API-Key: %s\n' "$REPORT_KEY") \
+        --data-binary @- -w '\n%{http_code}' "${REPORT_TO%/}/api/admin/restore-drills" 2>&1)"; then
+    CODE="$(printf '%s' "$RESP" | tail -1)"
+  else
+    CODE="000"
+  fi
+  if [ "$CODE" = "201" ]; then
+    echo "reported to ${REPORT_TO%/} (restore drill history)"
+  else
+    echo "WARNING: could not report the result to ${REPORT_TO%/} (HTTP $CODE): $(printf '%s' "$RESP" | sed '$d' | redact | cut -c1-200)" >&2
+    REPORT_RC=3
+  fi
+fi
+
 if [ "$FAILED" = "1" ]; then echo "RESULT: FAIL"; exit 1; fi
 echo "RESULT: PASS"
+exit "$REPORT_RC"

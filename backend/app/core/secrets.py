@@ -240,3 +240,43 @@ def decrypt_secret(ciphertext: str) -> str:
 
 def secret_needs_rotation(ciphertext: str) -> bool:
     return default_box().needs_rotation(ciphertext)
+
+
+# ---------------------------------------------------------------------------
+# Purpose-bound keys (WP13a)
+# ---------------------------------------------------------------------------
+
+def derive_purpose_key(key_material: str, purpose: str) -> bytes:
+    """HKDF-SHA256 a 32-byte key for ONE purpose from instance key material.
+
+    Signing an evidence-pack manifest with the Fernet key (or SECRET_KEY, which
+    signs sessions) would tie three unrelated secrets together: a leaked
+    manifest key could forge sessions, and rotating the JWT key would orphan
+    every signed pack. HKDF with a purpose label gives an independent key from
+    the same material, so no new secret has to be provisioned.
+    """
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+    return HKDF(algorithm=hashes.SHA256(), length=32, salt=b"traceiq-purpose-keys/v1",
+                info=purpose.encode()).derive(key_material.strip().encode())
+
+
+def purpose_keys(purpose: str) -> List[bytes]:
+    """[current, *previous] purpose keys, from SECRETS_KEY (+ _PREVIOUS).
+
+    Falls back to SECRET_KEY as the material only when SECRETS_KEY is unset —
+    the same fallback `default_box` makes — and the result is still derived,
+    never the raw JWT key. Previous keys let a pack signed before a rotation
+    still verify.
+    """
+    from app.core.config import settings
+    current = (getattr(settings, "SECRETS_KEY", "") or "").strip() or settings.SECRET_KEY
+    previous = [p.strip() for p in (getattr(settings, "SECRETS_KEY_PREVIOUS", "") or "").split(",")
+                if p.strip()]
+    return [derive_purpose_key(m, purpose) for m in [current, *previous]]
+
+
+def key_id(key: bytes) -> str:
+    """Short, non-reversible identifier of a derived key (shown in manifests)."""
+    return hashlib.sha256(b"traceiq-key-id:" + key).hexdigest()[:16]

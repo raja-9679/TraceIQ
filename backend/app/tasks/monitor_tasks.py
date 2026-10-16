@@ -186,6 +186,10 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
                         state: str, streak: int, region: Optional[str] = None):
     """Post a DOWN/RECOVERY alert to the configured Slack/Teams webhooks.
     Paging (PagerDuty / Opsgenie) is decided separately in the evaluator."""
+    from app.services.demo_workspace import is_demo_project_sync
+    if is_demo_project_sync(session, schedule.project_id):
+        # Demo workspace (WP13c): not even the per-monitor emails below.
+        return
     project = session.get(Project, schedule.project_id) if schedule.project_id else None
     cfg = get_notification_settings(project, session)
     # Per-monitor email recipients are explicit opt-in, so they fire even when

@@ -1,0 +1,152 @@
+{
+  "format": "traceiq-test-pack",
+  "format_version": 1,
+  "id": "scim-2",
+  "version": "1.0.0",
+  "title": "SCIM 2.0 provisioning",
+  "category": "identity",
+  "description": "Exercises a SCIM 2.0 service provider (RFC 7643/7644) the way Okta and Entra ID do: discovery endpoints, the full user lifecycle (create, read, deactivate with PATCH, delete), filtering by userName, and refusing unauthenticated requests. Every response is checked against a JSON Schema. Test users are named traceiq-<random>@<domain> and are deleted by the case (with a cleanup that also runs if a step fails).",
+  "variables": [
+    {"name": "SCIM_BASE_URL", "description": "SCIM base URL without a trailing slash (e.g. https://app.example.com/scim/v2).", "required": true, "secret": false},
+    {"name": "SCIM_TOKEN", "description": "Bearer token the identity provider would use. Stored as a project secret.", "required": true, "secret": true},
+    {"name": "SCIM_TEST_DOMAIN", "description": "Email domain for the throwaway test users.", "required": false, "secret": false, "default": "example.com"}
+  ],
+  "suites": [
+    {
+      "name": "SCIM 2.0 provisioning",
+      "description": "Service-provider discovery, user lifecycle, filtering and authentication.",
+      "cases": [
+        {
+          "name": "ServiceProviderConfig is published",
+          "description": "GET /ServiceProviderConfig answers 200 and declares patch and filter support.",
+          "tags": ["scim", "discovery"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/ServiceProviderConfig",
+             "params": {"method": "GET",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Accept": "application/scim+json"},
+                        "assertions": [{"type": "status", "value": 200}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["schemas", "patch", "filter"],
+                          "properties": {
+                            "schemas": {"type": "array", "items": {"type": "string"}},
+                            "patch": {"type": "object", "required": ["supported"], "properties": {"supported": {"type": "boolean"}}},
+                            "filter": {"type": "object", "required": ["supported"], "properties": {"supported": {"type": "boolean"}}}
+                          }}}}}
+          ]
+        },
+        {
+          "name": "Schemas and ResourceTypes are published",
+          "description": "GET /Schemas and /ResourceTypes return ListResponses with resources.",
+          "tags": ["scim", "discovery"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Schemas",
+             "params": {"method": "GET",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Accept": "application/scim+json"},
+                        "assertions": [{"type": "status", "value": 200}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["Resources"],
+                          "properties": {"Resources": {"type": "array", "minItems": 1,
+                                                       "items": {"type": "object", "required": ["id"]}}}}}}},
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/ResourceTypes",
+             "params": {"method": "GET",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Accept": "application/scim+json"},
+                        "assertions": [{"type": "status", "value": 200}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["Resources"],
+                          "properties": {"Resources": {"type": "array", "minItems": 1,
+                                                       "items": {"type": "object", "required": ["name", "endpoint"]}}}}}}}
+          ]
+        },
+        {
+          "name": "User lifecycle: create, read, deactivate, delete",
+          "description": "POST /Users creates an active user, GET returns it, PATCH active=false deactivates it, DELETE removes it and a second GET answers 404.",
+          "tags": ["scim", "users", "lifecycle"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users",
+             "params": {"method": "POST",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Content-Type": "application/scim+json"},
+                        "body": {"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                                 "userName": "traceiq-{{unique.user}}@{{env.SCIM_TEST_DOMAIN}}",
+                                 "name": {"givenName": "Trace", "familyName": "Test"},
+                                 "emails": [{"value": "traceiq-{{unique.user}}@{{env.SCIM_TEST_DOMAIN}}", "primary": true}],
+                                 "active": true},
+                        "assertions": [{"type": "status", "value": 201},
+                                       {"type": "json-path", "path": "active", "operator": "equals", "value": "true"}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["schemas", "id", "userName"],
+                          "properties": {"id": {"type": "string", "minLength": 1}, "userName": {"type": "string"},
+                                         "active": {"type": "boolean"}}}},
+                        "extract": [{"path": "id", "variable": "scim_user_id"}],
+                        "cleanup": {"method": "DELETE", "url": "{{env.SCIM_BASE_URL}}/Users/{{scim_user_id}}",
+                                    "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}"}}}},
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users/{{scim_user_id}}",
+             "params": {"method": "GET",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Accept": "application/scim+json"},
+                        "assertions": [{"type": "status", "value": 200},
+                                       {"type": "json-path", "path": "userName", "operator": "contains", "value": "traceiq-"}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["id", "userName", "active"],
+                          "properties": {"id": {"type": "string"}, "userName": {"type": "string"}, "active": {"type": "boolean"}}}}}},
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users/{{scim_user_id}}",
+             "params": {"method": "PATCH",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Content-Type": "application/scim+json"},
+                        "body": {"schemas": ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+                                 "Operations": [{"op": "replace", "path": "active", "value": false}]},
+                        "assertions": [{"type": "status", "value": 200},
+                                       {"type": "json-path", "path": "active", "operator": "equals", "value": "false"}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["id", "active"],
+                          "properties": {"active": {"type": "boolean", "const": false}}}}}},
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users/{{scim_user_id}}",
+             "params": {"method": "DELETE",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}"},
+                        "assertions": [{"type": "status", "value": 204}]}},
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users/{{scim_user_id}}",
+             "params": {"method": "GET",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Accept": "application/scim+json"},
+                        "assertions": [{"type": "status", "value": 404}]}}
+          ]
+        },
+        {
+          "name": "Filter users by userName",
+          "description": "filter=userName eq \"...\" finds exactly the user just created (how IdPs match existing accounts).",
+          "tags": ["scim", "users", "filter"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users",
+             "params": {"method": "POST",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Content-Type": "application/scim+json"},
+                        "body": {"schemas": ["urn:ietf:params:scim:schemas:core:2.0:User"],
+                                 "userName": "traceiq-{{unique.user}}@{{env.SCIM_TEST_DOMAIN}}",
+                                 "name": {"givenName": "Trace", "familyName": "Filter"},
+                                 "active": true},
+                        "assertions": [{"type": "status", "value": 201}],
+                        "extract": [{"path": "id", "variable": "scim_user_id"}],
+                        "cleanup": {"method": "DELETE", "url": "{{env.SCIM_BASE_URL}}/Users/{{scim_user_id}}",
+                                    "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}"}}}},
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users",
+             "params": {"method": "GET",
+                        "headers": {"Authorization": "Bearer {{secret.SCIM_TOKEN}}", "Accept": "application/scim+json"},
+                        "params": {"filter": "userName eq \"traceiq-{{unique.user}}@{{env.SCIM_TEST_DOMAIN}}\""},
+                        "assertions": [{"type": "status", "value": 200},
+                                       {"type": "json-path", "path": "totalResults", "operator": "equals", "value": "1"}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["schemas", "totalResults", "Resources"],
+                          "properties": {"totalResults": {"type": "integer"},
+                                         "Resources": {"type": "array", "maxItems": 1,
+                                                       "items": {"type": "object", "required": ["id", "userName"]}}}}}}}
+          ]
+        },
+        {
+          "name": "Requests without a token are refused",
+          "description": "GET /Users with no Authorization header answers 401.",
+          "tags": ["scim", "auth", "negative"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.SCIM_BASE_URL}}/Users",
+             "params": {"method": "GET", "headers": {"Accept": "application/scim+json"},
+                        "assertions": [{"type": "status", "value": 401}]}}
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -223,6 +223,17 @@ PURGE_PLAN: List[PurgeStep] = [
               "(SELECT id FROM accessreviewcampaign WHERE workspace_id = :workspace_id)"),
     PurgeStep("accessreviewcampaign",
               "DELETE FROM accessreviewcampaign WHERE workspace_id = :workspace_id"),
+    # Compliance (WP13a): exceptions and evidence before their controls. The
+    # evidence files and packs live under compliance/ws<id>/ (collect_object_keys).
+    PurgeStep("controlexception",
+              "DELETE FROM controlexception WHERE workspace_id = :workspace_id "
+              "OR control_id IN (SELECT id FROM compliancecontrol WHERE workspace_id = :workspace_id)"),
+    PurgeStep("controlevidence",
+              "DELETE FROM controlevidence WHERE workspace_id = :workspace_id "
+              "OR control_id IN (SELECT id FROM compliancecontrol WHERE workspace_id = :workspace_id)"),
+    PurgeStep("compliancecontrol",
+              "DELETE FROM compliancecontrol WHERE workspace_id = :workspace_id"),
+    PurgeStep("evidencepack", "DELETE FROM evidencepack WHERE workspace_id = :workspace_id"),
     PurgeStep("apikey",
               f"DELETE FROM apikey WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})",
@@ -252,6 +263,12 @@ PURGE_PLAN: List[PurgeStep] = [
               "DELETE FROM usagerecord WHERE workspace_id = :workspace_id"),
     PurgeStep("workspacesubscription",
               "DELETE FROM workspacesubscription WHERE workspace_id = :workspace_id"),
+    # WP13b trust center. Document objects live under trust/<workspace_id>/
+    # (collect_object_keys); their links are sharelink rows, purged above.
+    PurgeStep("trustincidentpost",
+              "DELETE FROM trustincidentpost WHERE workspace_id = :workspace_id"),
+    PurgeStep("trustdocument", "DELETE FROM trustdocument WHERE workspace_id = :workspace_id"),
+    PurgeStep("trustcenter", "DELETE FROM trustcenter WHERE workspace_id = :workspace_id"),
 
     # --- finally the workspace itself ---
     PurgeStep("workspace", "DELETE FROM workspace WHERE id = :workspace_id"),
@@ -332,6 +349,15 @@ async def collect_object_keys(session, workspace_id: int) -> List[str]:
         params={"workspace_id": workspace_id})
     prefixes.extend(baseline_purge_prefix(case_id)
                     for (case_id,) in baselines.all() if case_id)
+
+    # Compliance evidence files and evidence packs (WP13a). Derived from the
+    # workspace id, never from stored keys, for the reason baseline_purge_prefix
+    # gives.
+    from app.services.compliance import workspace_prefix
+    prefixes.append(workspace_prefix(workspace_id))
+    # Trust-center documents: the prefix is derived from the workspace id,
+    # never from a stored key, for the same reason as baselines above.
+    prefixes.append(f"trust/{int(workspace_id)}/")
     return prefixes
 
 

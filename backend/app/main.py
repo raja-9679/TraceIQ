@@ -14,6 +14,7 @@ from app.api import (
 )
 from app.api.endpoints import test_suites, test_cases, test_runs, websockets, schedules, quality
 from app.api import security as security_api
+from app.api import compliance as compliance_api
 from app.api import access_matrix as access_matrix_api
 from app.api import estates as estates_api
 from app.api import frontend_quality as frontend_quality_api
@@ -30,6 +31,8 @@ from app.api import manual_testing as manual_testing_api
 from app.api import step_hooks as step_hooks_api
 from app.api import external_results as external_results_api
 from app.api import status_pages as status_pages_api
+from app.api import trust_center as trust_center_api
+from app.api import poc_reports as poc_reports_api
 from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
 from app.api import requirements as requirements_api
@@ -40,6 +43,9 @@ from app.api import app_builds as app_builds_api
 from app.api import case_revisions as case_revisions_api
 from app.api import observability as observability_api
 from app.api import onboarding as onboarding_api
+from app.api import sizing as sizing_api
+from app.api import demo_workspace as demo_workspace_api
+from app.api import test_packs as test_packs_api
 from app.api import instance_settings as instance_settings_api
 from app.api import llm_providers as llm_providers_api
 from app.api import scim as scim_api
@@ -157,6 +163,7 @@ app.include_router(scim_api.router, prefix="/api", tags=["scim"])
 app.include_router(dead_letter_api.router, prefix="/api", tags=["dead-letter"])
 app.include_router(siem_api.router, prefix="/api", tags=["siem"])
 app.include_router(access_reviews_api.router, prefix="/api", tags=["access-reviews"])
+app.include_router(compliance_api.router, prefix="/api", tags=["compliance"])
 app.include_router(fleet_api.router, prefix="/api", tags=["fleet"])
 app.include_router(paging_api.router, prefix="/api", tags=["paging"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])
@@ -190,6 +197,8 @@ app.include_router(costs_api.router, prefix="/api", tags=["costs"])
 app.include_router(step_hooks_api.router, prefix="/api", tags=["step-hooks"])
 app.include_router(external_results_api.router, prefix="/api", tags=["external-results"])
 app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
+app.include_router(trust_center_api.router, prefix="/api", tags=["trust-center"])
+app.include_router(poc_reports_api.router, prefix="/api", tags=["poc-report"])
 app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
 app.include_router(requirements_api.router, prefix="/api", tags=["requirements"])
@@ -203,6 +212,9 @@ app.include_router(developer_api.router, prefix="/api", tags=["developer"])
 # /api/admin/queue-health) — no prefix here.
 app.include_router(observability_api.router, tags=["observability"])
 app.include_router(onboarding_api.router, prefix="/api", tags=["onboarding"])
+app.include_router(sizing_api.router, prefix="/api", tags=["sizing"])
+app.include_router(demo_workspace_api.router, prefix="/api", tags=["demo-workspace"])
+app.include_router(test_packs_api.router, prefix="/api", tags=["test-packs"])
 app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 app.include_router(agent_reference.router, prefix="/api", tags=["agent-reference"])
 app.include_router(environments.router, prefix="/api", tags=["environments"])

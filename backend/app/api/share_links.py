@@ -2,9 +2,12 @@
 
     POST   /api/projects/{id}/share-links       run_report | project_summary (editor)
     GET    /api/projects/{id}/share-links       the project's links (viewer; no tokens)
-    POST   /api/workspaces/{id}/share-links     workspace_summary (member; covers the
-                                                projects where the creator is an editor)
-    GET    /api/workspaces/{id}/share-links     the workspace summary links (member)
+    POST   /api/workspaces/{id}/share-links     workspace_summary | poc_report (member;
+                                                covers the projects where the creator
+                                                is an editor)
+    GET    /api/workspaces/{id}/share-links     the workspace-level links (member;
+                                                trust_document links are listed on the
+                                                trust center, for admins only)
     DELETE /api/share-links/{id}                revoke (editor on the project; for a
                                                 workspace link, its creator or a workspace admin)
     POST   /api/share/view  {"token": ...}     PUBLIC, rate-limited, every view audited
@@ -31,6 +34,7 @@ from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.core.limiter import limiter
 from app.models import Project, ShareLink, TestCaseResult, TestRun, User, UserWorkspace, Workspace
+from app.services import poc_report
 from app.services import reporting
 from app.services import share_links as sl
 from app.services.access_service import _ROLE_MAP, _workspace_role_level, access_service
@@ -47,6 +51,9 @@ class ShareLinkCreate(BaseModel):
     expires_in_days: int = Field(default=sl.DEFAULT_DAYS)
     window_days: int = Field(default=30, ge=1, le=reporting.MAX_WINDOW_DAYS)
     label: Optional[str] = Field(default=None, max_length=120)
+    # poc_report only: {start, end, project_ids, minutes_per_execution,
+    # hourly_rate, currency}.
+    params: Optional[Dict[str, Any]] = None
 
 
 async def _creators(session: AsyncSession, links: List[ShareLink]) -> Dict[int, User]:
@@ -58,7 +65,8 @@ async def _creators(session: AsyncSession, links: List[ShareLink]) -> Dict[int, 
 
 async def _issue(session: AsyncSession, request: Request, principal: AuthPrincipal,
                  workspace_id: int, project_id: Optional[int], body: ShareLinkCreate,
-                 target_id: Optional[int]) -> Dict[str, Any]:
+                 target_id: Optional[int], *, path: str = "/share",
+                 params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     now = datetime.utcnow()
     try:
         expires_at = sl.expiry(body.expires_in_days, now)
@@ -67,7 +75,7 @@ async def _issue(session: AsyncSession, request: Request, principal: AuthPrincip
     token = sl.new_token()
     link = ShareLink(workspace_id=workspace_id, project_id=project_id, kind=body.kind,
                      target_id=target_id, window_days=body.window_days,
-                     label=(body.label or None), token_hash=sl.hash_token(token),
+                     label=(body.label or None), token_hash=sl.hash_token(token), params=params,
                      created_by_id=principal.user.id, created_at=now, expires_at=expires_at)
     session.add(link)
     await session.flush()
@@ -80,7 +88,7 @@ async def _issue(session: AsyncSession, request: Request, principal: AuthPrincip
     out = sl.describe(link, principal.user)
     # The only time the token leaves the server.
     out["token"] = token
-    out["path"] = f"/share#{token}"
+    out["path"] = f"{path}#{token}"
     return out
 
 
@@ -118,22 +126,49 @@ async def create_workspace_share_link(workspace_id: int, request: Request,
                                       session: AsyncSession = Depends(get_session),
                                       principal: AuthPrincipal = Depends(get_current_principal)):
     await _workspace(session, principal, workspace_id)
-    if body.kind != "workspace_summary":
-        raise HTTPException(status_code=422, detail="kind must be workspace_summary")
+    if body.kind not in ("workspace_summary", "poc_report"):
+        raise HTTPException(status_code=422, detail="kind must be workspace_summary or poc_report")
     if principal.api_key is not None and principal.api_key.project_id is not None:
         raise HTTPException(status_code=403, detail="A project-scoped API key cannot share a workspace")
-    if not await accessible_projects(session, principal, workspace_id, min_role="editor"):
+    editable = await accessible_projects(session, principal, workspace_id, min_role="editor")
+    if not editable:
         raise HTTPException(status_code=403, detail="Editor role on at least one project required")
-    return await _issue(session, request, principal, workspace_id, None, body, None)
+    params = None
+    if body.kind == "poc_report":
+        params = poc_share_params(body.params or {}, {p.id for p in editable})
+    return await _issue(session, request, principal, workspace_id, None, body, None, params=params)
+
+
+def poc_share_params(raw: Dict[str, Any], editable_ids: set) -> Dict[str, Any]:
+    """Validated, frozen inputs of a poc_report link. A selection may name
+    only projects the creator can share (editor); none = all of those."""
+    try:
+        start, end = poc_report.parse_range(raw.get("start"), raw.get("end"))
+        assumptions = poc_report.parse_assumptions(raw.get("minutes_per_execution"),
+                                                   raw.get("hourly_rate"), raw.get("currency"))
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    ids = raw.get("project_ids") or []
+    if not isinstance(ids, list) or len(ids) > 500 or not all(
+            isinstance(i, int) and not isinstance(i, bool) for i in ids):
+        raise HTTPException(status_code=422, detail="project_ids must be a list of project ids")
+    if any(i not in editable_ids for i in ids):
+        raise HTTPException(status_code=403, detail="You can share only projects where you are an editor")
+    return {"start": start.isoformat(), "end": end.isoformat(), "project_ids": sorted(set(ids)),
+            **assumptions}
 
 
 @router.get("/workspaces/{workspace_id}/share-links")
-async def list_workspace_share_links(workspace_id: int, session: AsyncSession = Depends(get_session),
+async def list_workspace_share_links(workspace_id: int, kind: Optional[str] = None,
+                                     session: AsyncSession = Depends(get_session),
                                      principal: AuthPrincipal = Depends(get_current_principal)):
     await _workspace(session, principal, workspace_id)
-    links = (await session.exec(select(ShareLink).where(
-        ShareLink.workspace_id == workspace_id, ShareLink.project_id.is_(None))
-        .order_by(ShareLink.created_at.desc()))).all()
+    q = select(ShareLink).where(ShareLink.workspace_id == workspace_id, ShareLink.project_id.is_(None),
+                                # Recipients of gated documents are an admin matter.
+                                ShareLink.kind != "trust_document")
+    if kind:
+        q = q.where(ShareLink.kind == kind)
+    links = (await session.exec(q.order_by(ShareLink.created_at.desc()))).all()
     who = await _creators(session, links)
     return [sl.describe(l, who.get(l.created_by_id)) for l in links]
 
@@ -155,6 +190,10 @@ async def revoke_share_link(link_id: int, request: Request,
         raise HTTPException(status_code=404, detail="Share link not found")
     if link.project_id is not None:
         await _project(session, principal, link.project_id, min_role="editor")
+    elif link.kind == "trust_document":
+        await _workspace(session, principal, link.workspace_id)
+        if not await _is_workspace_admin(session, principal.user.id, link.workspace_id):
+            raise HTTPException(status_code=403, detail="Workspace admin access required")
     else:
         await _workspace(session, principal, link.workspace_id)
         if link.created_by_id != principal.user.id and not await _is_workspace_admin(
@@ -182,7 +221,7 @@ async def build_public_payload(session: AsyncSession, link: ShareLink) -> Option
     creator = await session.get(User, link.created_by_id) if link.created_by_id else None
     if not creator or not getattr(creator, "is_active", True):
         return None
-    if link.kind == "workspace_summary":
+    if link.kind in ("workspace_summary", "poc_report"):
         ws = await session.get(Workspace, link.workspace_id)
         if not ws:
             return None
@@ -191,6 +230,21 @@ async def build_public_payload(session: AsyncSession, link: ShareLink) -> Option
             return None
         projects = await accessible_projects(session, AuthPrincipal(user=creator), ws.id,
                                              min_role="editor")
+        if link.kind == "poc_report":
+            p = link.params or {}
+            picked = set(p.get("project_ids") or [])
+            if picked:
+                projects = [x for x in projects if x.id in picked]
+            if not projects:
+                return None
+            try:
+                start, end = poc_report.parse_range(p.get("start"), p.get("end"))
+                assumptions = poc_report.parse_assumptions(
+                    p.get("minutes_per_execution"), p.get("hourly_rate"), p.get("currency"))
+            except ValueError:
+                return None
+            report = await poc_report.build(session, ws, projects, start, end, assumptions)
+            return poc_report.public_payload(report)
         snap = await reporting.workspace_snapshot(session, ws, projects, link.window_days)
         return sl.public_summary(snap)
 

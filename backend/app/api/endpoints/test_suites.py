@@ -418,6 +418,11 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
             )
 
     execution_mode = data.get("execution_mode", ExecutionMode.CONTINUOUS)
+    if isinstance(execution_mode, str):
+        try:
+            execution_mode = ExecutionMode(execution_mode.lower())
+        except ValueError:
+            execution_mode = ExecutionMode.CONTINUOUS
     if data.get("sub_modules"):
         execution_mode = ExecutionMode.SEPARATE
 
@@ -436,9 +441,15 @@ async def create_suite_from_data(data: Dict[str, Any], parent_id: Optional[int],
     await session.flush()
 
     for case_data in data.get("test_cases", []):
+        # description / tags / priority arrived with export format 2 (WP13c);
+        # older exports simply lack them.
+        tags = case_data.get("tags")
         new_case = TestCase(
             name=case_data.get("name"),
+            description=case_data.get("description") if isinstance(case_data.get("description"), str) else None,
             steps=normalize_steps(case_data.get("steps")),
+            tags=[t for t in tags if isinstance(t, str)] if isinstance(tags, list) else [],
+            priority=case_data.get("priority") if isinstance(case_data.get("priority"), str) else None,
             test_suite_id=new_suite.id,
             project_id=project_id,
             created_by_id=user_id,
@@ -464,7 +475,10 @@ async def get_suite_export_data(suite_id: int, session: AsyncSession):
         "execution_mode": suite.execution_mode,
         "settings": suite.settings,
         "inherit_settings": suite.inherit_settings,
-        "test_cases": [{"name": c.name, "steps": c.steps} for c in cases],
+        # Format 2 (WP13c) adds description / tags / priority per case;
+        # importers that predate it ignore the extra keys.
+        "test_cases": [{"name": c.name, "description": c.description, "tags": c.tags or [],
+                        "priority": c.priority, "steps": c.steps} for c in cases],
         "sub_modules": [await get_suite_export_data(sub.id, session) for sub in subs]
     }
 
@@ -477,7 +491,14 @@ async def export_test_suite(suite_id: int, session: AsyncSession = Depends(get_s
     if not await access_service.has_project_access(current_user.id, suite.project_id, session):
         raise HTTPException(status_code=403, detail="Access denied")
     
-    return await get_suite_export_data(suite_id, session)
+    data = await get_suite_export_data(suite_id, session)
+    # Top level only: which {{env.X}} / {{secret.X}} the tree needs (pack
+    # declarations when it came from a test pack) — names and non-secret
+    # defaults, never a secret's value.
+    from app.services.test_packs import export_variables
+    data["format_version"] = 2
+    data["variables"] = export_variables(data)
+    return data
 
 @router.post("/suites/import-suite")
 async def import_top_level_suite(suite_data: Dict[str, Any], project_id: int = Query(...), session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):

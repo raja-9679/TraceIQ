@@ -1032,6 +1032,128 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (`GET /benchmark-groups/{id}`) only reads runs of the group's own project.
   Worker image rebuild needed (flag interpolation).
 
+- **Controls, evidence packs, restore drills (WP13a, 2026-10)** — migration
+  `cf12b3c4d5f5` (`compliancecontrol`, `controlevidence`, `controlexception`,
+  `evidencepack`, `drillresult`). API `app/api/compliance.py`; rules in
+  `app/services/compliance.py`, pack in `app/services/evidence_pack.py`, task
+  `app.tasks.compliance_tasks.build_evidence_pack` (main-queue, no beat).
+  **Controls**: workspace-scoped; members read, workspace admin (or Tenant
+  Admin of its tenant, via `workspace:manage_users`) writes; the control's
+  owner (must be a member) may add evidence and request exceptions; API keys
+  never write and must match the workspace + not be project-scoped to read.
+  Status is computed on read (never stored): excepted > failing (any source
+  fails or newest manual evidence is a fail) > not_assessed > stale (newest
+  PASSING evidence older than `freshness_days`) > passing. Sources (`SOURCES`)
+  are typed checks over existing data (access review signed off within N days,
+  incl. instance-wide reviews; audit chain verifies — global walk in id
+  batches, cached 5 min per chain head, never names another workspace's row;
+  data policy on every project; no findings past SLA; restore drill passed
+  within N days; MFA for admins; SSO only; API keys expire). Exceptions:
+  approver ≠ requester (409), expiry ≤ 365 days, expired ones stop counting
+  without a job. "Load SOC 2 starter set" is idempotent by
+  `(workspace_id, seed_key)` unique key; nothing is auto-seeded. Every change
+  (incl. evidence + exceptions) is audited as entity_type
+  `compliance_control` — the control's history is that query. Evidence files:
+  10 MB, extension allow-list, content type from our map, downloaded as an
+  attachment with `sandbox` CSP. **Evidence packs**: always built in Celery
+  (bounded memory: spooled temp file, audit rows in id batches) → object store
+  under `compliance/ws<id>/` (the workspace purge deletes that prefix) →
+  `POST /evidence-packs/{id}/download` returns a 5-minute presigned URL
+  (audited). One build per workspace at a time; queued/building > 2 h shows as
+  failed. `manifest.json` = SHA-256 + size per file, HMAC-SHA256 over its
+  canonical JSON with `secrets.purpose_keys("traceiq/evidence-pack-manifest/v1")`
+  (HKDF from SECRETS_KEY, fallback SECRET_KEY material — never the raw JWT
+  key; `_PREVIOUS` keys still verify). `POST /evidence-packs/verify` (zip, or
+  zip + separate manifest) reports mismatched/missing/unexpected files and
+  signature validity, only to members of the workspace the manifest names.
+  Every pack query filters by the pack's workspace (live test asserts no
+  other tenant's audit rows, findings or project names). **Restore drills**:
+  `scripts/restore_drill.sh --report-to URL` (key via `TRACEIQ_DRILL_API_KEY`,
+  passed to curl on an fd) POSTs `/api/admin/restore-drills`: instance admin
+  only — a JWT, or an API key whose creator is an instance admin now and that
+  is not project-scoped (a workspace key alone could forge instance-wide
+  evidence for every tenant). `DrillReport` is `extra=forbid` and REJECTS
+  (422, input not echoed) anything that looks like a credential; dump name
+  must be a basename. Workspace views get check names + verdicts only (details
+  hold instance-wide row counts). UI: `/compliance/controls`,
+  `/compliance/evidence-packs`, `/audit-log`.
+- **Trust center + PoC report (WP13b, 2026-10, decisions C3/C4)** — migration
+  `cf22b3c4d5f6` (`trustcenter`, `trustincidentpost`, `trustdocument`,
+  `sharelink.params`). API `app/api/trust_center.py`, rules
+  `app/services/trust_center.py`. **Trust center**: one per workspace, OFF by
+  default, workspace admin only (project-scoped keys refused); public
+  `GET /api/trust/{slug}` (60/min) + page `/trust/:slug`; the slug is an
+  unguessable identifier (like status pages). Everything 404s while it is off.
+  Status = the workspace's own picked status pages, re-filtered per view
+  (enabled, still in the workspace), monitors reduced to name/state/uptime.
+  Incident posts: only `published` are public; updates are a JSON list
+  rendered by `render_markdown_safe` (escape FIRST, then p/br/ul/li/strong/em/
+  code only — no links). Posture: registry `POSTURE_ITEMS` (opt-in per item;
+  an item with no data is hidden, never shown as "no"); findings are a count
+  BAND, never titles; audit item = the last `POST .../verify-audit` result
+  (stored on the row; a full-chain walk per public view is too heavy); restore
+  drill has no data source yet. Adding WP13a's controls summary = one fact in
+  `collect_facts` + one `PostureItem`. Documents: multipart upload, 20 MB,
+  type SNIFFED from bytes (PDF/PNG/JPEG/Office/TXT; HTML/SVG refused), key
+  `trust/<ws>/<uuid>` (purge deletes the prefix). Downloads only via
+  ShareLink kind `trust_document` (`target_id` = doc) issued per recipient:
+  link `/trust/<slug>#<token>`, `POST /api/trust/{slug}/document {token}` →
+  60 s presigned URL forced to `attachment` with the sniffed type; resolves
+  only for the slug's workspace, a doc of that workspace, an issuer still a
+  workspace admin. `/share/view` never resolves that kind; the member-visible
+  workspace link list hides it. Another workspace's doc/post id → 404.
+  Request-access form (opt-in, 5/hour): emails ONLY this workspace's admins via
+  `send_account_email`; requester email is not written to the audit row. Page
+  views are counted on the row, downloads audited. **PoC report**:
+  `GET /api/workspaces/{id}/poc-report?start&end&project_ids&minutes_per_execution&hourly_rate&currency`
+  (`app/services/poc_report.py`) over the caller's viewer projects (others
+  silently dropped; `project_ids` says what was covered). Estimate = automated
+  (non-manual) case executions × minutes (default 5) / 60, money only with a
+  rate AND a typed 3-letter code — always labelled "Estimated". Shared via
+  `POST /workspaces/{id}/share-links` kind `poc_report` with `params` frozen
+  on the link (editor projects only); public payload is `public_payload`'s
+  allow-list (counts and names; no errors, URLs, emails, cluster titles).
+- **Sizing, demo workspace, test packs (WP13c, 2026-10)** — migration
+  `cf32b3c4d5f7` (`workspace.is_demo`, `workspace.demo_owner_id`,
+  `testcase.description`). **Sizing** (C6): `app/services/sizing.py` is pure
+  arithmetic over the documented figures (1 CPU / 1.5 GB per worker, one job
+  per worker, 70% target utilisation, capture-level kinds from
+  `data_policy._LEVEL_ALLOWS`); `POST /sizing/estimate` (any signed-in user)
+  returns results plus every formula row (`formula` + `substituted`) and the
+  assumptions with their source — the page renders those rows, so a new
+  number must be added through `_Sheet.add`. Workers = max(throughput at 70%,
+  burst wave: `ceil(burst / (floor(wait/duration)+1))`); KEDA `lagCount` =
+  `floor(wait/duration)`. Artifact sizes are DECLARED (nothing measures them)
+  and overridable via `artifact_sizes_kb`. **Demo workspace** (C5):
+  `GET/POST/DELETE /demo-workspace`, one per USER (users row locked for the
+  check, 409 otherwise; slowapi 5/hour). `app/services/demo_workspace.py`:
+  `build_demo_plan(seed, today)` is pure + deterministic; the writer inserts
+  2 projects, envs, encrypted todolite secrets, personas, requirements, a
+  PAUSED monitor (`is_active=False`, checks + `schedule:<id>` runs), 30 days of
+  runs/results, a failure cluster, a passive finding, flake records + daily
+  snapshots, deployments — no worker, no network; hosts only example.com /
+  httpbin.org / localhost:8080. Delete = `purge_workspace`. Every delivery
+  path refuses demo projects via `is_demo_project_sync` (run email/chat in
+  `get_notification_settings`, monitor alerts incl. per-monitor emails,
+  digests, `paging.page`, outbound webhooks) and the projects are also seeded
+  with notifications off. **Test packs** (C7): JSON in `backend/app/packs/`
+  (`format: traceiq-test-pack`, v1: id, version, variables{name, description,
+  required, secret, default}, suites→cases{name, description, tags, steps});
+  `validate_pack` (run over every pack in `tests/test_test_packs.py`) rejects
+  unknown step types (vs `/step-types`), undeclared/unused variables,
+  `{{env.X}}` for a secret (or the reverse), secret defaults, and templates in
+  assertion values (the worker compares those verbatim). `GET /test-packs`;
+  `POST /projects/{id}/test-packs/{pack}/import {variables, environment_id?}`
+  (editor) creates "<title> pack v<version>" (409 on clash), non-secret values
+  into the chosen/default environment (created "default" if none; a default
+  never overwrites an existing value), secrets into `ProjectSecret`
+  (encrypted; audit logs names only), reports `missing`; never contacts the
+  target. Suite export is format 2: per-case description/tags/priority and a
+  top-level `variables` block (pack declarations from `settings.test_pack`,
+  else names derived from templates; never secret values); import reads the
+  new case fields and ignores `variables`. wait-for-webhook cannot assert
+  headers, so the webhook pack does not check signatures (says so).
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

@@ -122,6 +122,13 @@ def get_notification_settings(project: Optional[Project], session: Session) -> D
     Also used by monitor and estate alerts (same keys).
     """
     from app.services import project_notifications as pn
+    from app.services.demo_workspace import is_demo_project_sync
+    if project is not None and is_demo_project_sync(session, getattr(project, 'id', None)):
+        # A demo workspace (WP13c) never notifies anyone, whatever its
+        # project settings say.
+        return {'enabled': False, 'email_enabled': False, 'slack_enabled': False,
+                'teams_enabled': False, 'notify_on_failure_only': False,
+                'slack_webhook_url': None, 'teams_webhook_url': None, 'demo': True}
     inst_on = bool(insvc.effective('NOTIFICATIONS_ENABLED'))
     cfg = pn.merged(project) if project else dict(pn.DEFAULTS)
     slack_url = pn.webhook_url(project, 'slack') if project else None
