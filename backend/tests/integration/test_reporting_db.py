@@ -104,7 +104,11 @@ async def test_snapshot_trend_against_the_previous_window(session, scene):
     assert snap["top_failing"] == [{"test_name": "cart", "failures": 1},
                                    {"test_name": "pay", "failures": 1}]
     assert snap["open_clusters"] == 1
-    assert len(snap["daily"]) == 7 and sum(d["runs"] for d in snap["daily"]) == 4
+    # The window's first (partial) day through today: 8 points for 7 days,
+    # and the last one is today (it used to stop at yesterday).
+    from datetime import datetime as _dt
+    assert len(snap["daily"]) == 8 and sum(d["runs"] for d in snap["daily"]) == 4
+    assert snap["daily"][-1]["date"] == _dt.utcnow().date().isoformat()
     assert snap["readiness"]["verdict"] in ("ready", "not_ready", "insufficient_data")
     assert snap["headline"].startswith("75% of 4 runs passed this week, up 25 points")
 
