@@ -91,3 +91,24 @@ the map of the codebase and lists the traps. `info/CODEBASE.md` has the data mod
    migrations (revision id), tests run with counts, anything mock-verified or
    deliberately left out, and whether the worker/frontend/backend image needs
    rebuilding.
+
+## Lessons from WP12/WP13 (2026-10-16) — apply to every new package
+- SEPARATE commits for backend/engine/integrations/docs and for `frontend/` (the
+  integrator cherry-picks backend to `feature/enterprise-auth-ai`, frontend to
+  `feature/redesign-a`). Never mix them in one commit.
+- Don't edit `frontend/src/components/layout/nav.ts` / `nav.test.tsx`; register
+  routes in `App.tsx` and list them (path + title) in the final report.
+- New models: ONE contiguous block at the END of `backend/app/models.py`, before
+  the `# Seal every AuditLog row…` section, with a `# WP14x — …` header.
+- Migration: one file, the revision id you are given, `down_revision` = the head
+  you are given; the integrator re-chains.
+- Public/unauthenticated pages: slowapi rate limit, reduced payload, audit without
+  secrets, tokens NEVER in a URL path/query (link `/<route>#<token>`, page POSTs it;
+  see share links). Unguessable slugs are identifiers, fine in a path.
+- Recipients/chat: `app/services/project_notifications.py` + `post_webhook`; never the
+  instance-wide webhook. SMTP via `instance_settings.effective`.
+- Redesign UI look; reuse `components/redesign/primitives.tsx` and
+  `components/redesign-local/groupD/settingsForm.tsx`; narrow cards → stack labels
+  above inputs (FieldRow is side-by-side).
+- Baseline: backend unit suite has NO failures except 4 `tests/e2e` errors.
+
