@@ -14,6 +14,10 @@ import VisualReview from "@/pages/VisualReview";
 import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
 import FlakyTests from "@/pages/FlakyTests";
+import DeliveryReport from "@/pages/DeliveryReport";
+import SloReports from "@/pages/SloReports";
+import FlakeTrends from "@/pages/FlakeTrends";
+import DependencyHealth from "@/pages/DependencyHealth";
 import FrontendQuality from "@/pages/FrontendQuality";
 import QualityDashboard from "@/pages/QualityDashboard";
 import ReleaseReadiness from "@/pages/ReleaseReadiness";
@@ -107,6 +111,10 @@ function App() {
                 <Route path="app-builds" element={<AppBuilds />} />
                 <Route path="visual-review" element={<VisualReview />} />
                 <Route path="flaky-tests" element={<FlakyTests />} />
+                <Route path="reports/delivery" element={<DeliveryReport />} />
+                <Route path="reports/slo" element={<SloReports />} />
+                <Route path="reports/flake-trends" element={<FlakeTrends />} />
+                <Route path="reports/dependencies" element={<DependencyHealth />} />
                 <Route path="frontend-quality" element={<FrontendQuality />} />
                 <Route path="api-keys" element={<ApiKeys />} />
                 <Route path="webhooks" element={<Webhooks />} />
