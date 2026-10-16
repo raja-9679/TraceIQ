@@ -73,6 +73,7 @@ async def _region_statuses(schedule: TestSchedule, session: AsyncSession) -> Lis
             last_checked_at=rows[0].checked_at if rows else None))
     return out
 from croniter import croniter
+from app.services.schedule_time import next_run_utc, validate_timezone
 
 router = APIRouter()
 
@@ -139,14 +140,16 @@ async def create_schedule(
     # Validate cron expression
     if not croniter.is_valid(schedule.cron_expression):
         raise HTTPException(status_code=400, detail="Invalid cron expression")
+    try:
+        schedule.timezone = validate_timezone(schedule.timezone)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     schedule.regions = _clean_regions(schedule.regions)
     await _check_region_grants(session, schedule.project_id, schedule.regions)
 
-    # Set next_run_at based on cron
-    now = datetime.utcnow()
-    cron = croniter(schedule.cron_expression, now)
-    schedule.next_run_at = cron.get_next(datetime)
+    # Set next_run_at based on cron, read in the schedule's timezone
+    schedule.next_run_at = next_run_utc(schedule.cron_expression, schedule.timezone)
 
     new_schedule = TestSchedule.model_validate(schedule)
     new_schedule.created_by_id = current_user.id
@@ -310,13 +313,19 @@ async def update_schedule(
             db_schedule.region_states = {
                 k: v for k, v in db_schedule.region_states.items() if k in kept} or None
 
-    # Re-evaluate next run if cron was updated
-    if "cron_expression" in update_data and update_data["cron_expression"] != db_schedule.cron_expression:
-        if not croniter.is_valid(update_data["cron_expression"]):
+    if "timezone" in update_data:
+        try:
+            update_data["timezone"] = validate_timezone(update_data["timezone"])
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    # Re-evaluate next run if the cron expression or its timezone changed
+    new_cron = update_data.get("cron_expression", db_schedule.cron_expression)
+    new_tz = update_data.get("timezone", db_schedule.timezone)
+    if new_cron != db_schedule.cron_expression or new_tz != db_schedule.timezone:
+        if not croniter.is_valid(new_cron):
             raise HTTPException(status_code=400, detail="Invalid cron expression")
-        now = datetime.utcnow()
-        cron = croniter(update_data["cron_expression"], now)
-        db_schedule.next_run_at = cron.get_next(datetime)
+        db_schedule.next_run_at = next_run_utc(new_cron, new_tz)
 
     changes = {}
     for key, value in update_data.items():

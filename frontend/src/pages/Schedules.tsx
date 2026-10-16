@@ -14,6 +14,7 @@ import {
 } from '@/components/redesign/primitives';
 import { toneClasses } from '@/components/redesign/kinds';
 import { Segmented, SkeletonRows } from '@/components/redesign-local/groupB/bits';
+import { formatScheduleTime } from '@/lib/schedules';
 
 // Small icon chip for a schedule: lavender while it is running on its timer,
 // neutral while paused. Suite-level schedules get a folder, single cases a page.
@@ -85,12 +86,7 @@ export default function Schedules() {
     }
   };
 
-  const formatDate = (dateString?: string) => {
-      if (!dateString) return 'Never';
-      return new Date(dateString).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
-  };
+  const formatDate = formatScheduleTime;
 
   const filteredSchedules: TestSchedule[] = useMemo(() => {
     if (!schedules) return [];
@@ -204,7 +200,7 @@ export default function Schedules() {
                 <div><dt className="text-xs text-ink-soft">Browser</dt><dd className="font-semibold text-ink">{env(schedule)}</dd></div>
               </dl>
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#F0EEE8] pt-4">
-                <span className="rounded-full bg-secondary px-2.5 py-0.5 font-mono text-xs text-ink-soft">{schedule.cron_expression}</span>
+                <span className="rounded-full bg-secondary px-2.5 py-0.5 font-mono text-xs text-ink-soft">{schedule.cron_expression} · {schedule.timezone || 'UTC'}</span>
                 <div className="flex flex-wrap gap-2">{actions(schedule)}</div>
               </div>
             </article>
@@ -222,7 +218,7 @@ export default function Schedules() {
                   leading={<ScheduleChip schedule={s} />}
                   title={s.name}
                   meta={s.is_active ? `Next ${formatDate(s.next_run_at)} · ${target(s)}` : `Paused · ${target(s)}`}
-                  trailing={<span className="font-mono text-xs text-ink-soft">{s.cron_expression}</span>}
+                  trailing={<span className="font-mono text-xs text-ink-soft">{s.cron_expression} · {s.timezone || 'UTC'}</span>}
                 />
               ))}
             </ListGroup>
@@ -242,11 +238,11 @@ export default function Schedules() {
                 <Fact label="Browser and device">{env(selected)}</Fact>
               </div>
 
-              <Panel title="Timing" right={<span className="font-mono">{selected.cron_expression}</span>}>
+              <Panel title="Timing" right={<span className="font-mono">{selected.cron_expression} · {selected.timezone || 'UTC'}</span>}>
                 <span className="flex items-center gap-2">
                   <Calendar className="h-4 w-4 flex-none text-ink-soft" aria-hidden="true" />
                   {selected.is_active
-                    ? 'Runs on this cron schedule, evaluated in UTC. Pause it to stop new runs without losing the settings.'
+                    ? `Runs on this cron schedule in ${selected.timezone || 'UTC'} time; daylight-saving changes are followed. Times shown here are in your own timezone. Pause it to stop new runs without losing the settings.`
                     : 'Paused. Nothing runs until you resume it; the schedule and its settings are kept.'}
                 </span>
               </Panel>
