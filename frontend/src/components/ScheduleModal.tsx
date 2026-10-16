@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { schedulesApi, TestSchedule } from '@/api/schedules';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import {
 import { Loader2 } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { parseRegions } from '@/lib/fleet';
+import { browserTimezone, listTimezones } from '@/lib/schedules';
 
 interface ScheduleModalProps {
   isOpen: boolean;
@@ -45,6 +46,8 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
   const [browser, setBrowser] = useState('chromium');
   const [device, setDevice] = useState('Desktop');
   const [regions, setRegions] = useState('');
+  const [timezone, setTimezone] = useState(browserTimezone);
+  const timezones = useMemo(listTimezones, []);
 
   useEffect(() => {
     if (scheduleToEdit && isOpen) {
@@ -64,6 +67,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       setBrowser(scheduleToEdit.browser);
       setDevice(scheduleToEdit.device || 'Desktop');
       setRegions((scheduleToEdit.regions || []).join(', '));
+      setTimezone(scheduleToEdit.timezone || 'UTC');
     } else if (isOpen) {
       setName(`Schedule for ${targetName}`);
       setDescription('');
@@ -73,6 +77,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       setBrowser('chromium');
       setDevice('Desktop');
       setRegions('');
+      setTimezone(browserTimezone());
     }
   }, [scheduleToEdit, isOpen, targetName]);
 
@@ -122,6 +127,12 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       return;
     }
 
+    const tz = timezone.trim() || 'UTC';
+    if (!timezones.includes(tz)) {
+      toast.error(`Unknown timezone "${tz}". Pick one from the list, e.g. Asia/Kolkata.`);
+      return;
+    }
+
     const payload = {
       name,
       description,
@@ -129,6 +140,7 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
       browser,
       device: device === 'Desktop' ? null : device,
       cron_expression: finalCron,
+      timezone: tz,
       regions: parseRegions(regions),
     };
 
@@ -206,7 +218,23 @@ export function ScheduleModal({ isOpen, onClose, projectId, testSuiteId, testCas
                 }} 
               />
             )}
-            <p className="text-xs text-muted-foreground">Times are evaluated in UTC.</p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="schedule-timezone">Timezone</Label>
+            <Input
+              id="schedule-timezone"
+              list="schedule-timezone-options"
+              value={timezone}
+              onChange={e => setTimezone(e.target.value)}
+              placeholder="e.g. Asia/Kolkata"
+            />
+            <datalist id="schedule-timezone-options">
+              {timezones.map(z => <option key={z} value={z} />)}
+            </datalist>
+            <p className="text-xs text-muted-foreground">
+              The frequency above is read in this timezone; daylight-saving changes are followed.
+            </p>
           </div>
           
           <div className="grid grid-cols-2 gap-4">

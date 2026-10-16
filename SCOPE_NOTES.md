@@ -239,11 +239,16 @@ deferred pieces don't get lost.
   (every provider's `complete()` already accepts `system`), but back-filling or
   re-generating historic analyses is deliberately out of scope — decide whether
   to retranslate on read, regenerate on demand, or leave them.
-- **Schedule timezones** — `TestSchedule` has no `timezone` column and croniter
-  runs on naive UTC, so the `Every Monday at 9AM` presets are wrong for every
-  non-UTC customer and the UI just discloses "Times are evaluated in UTC."
-  Deferred behind the `TIMESTAMPTZ` migration because DST correctness needs a
-  tz-aware croniter base, not just a column.
+- ~~**Schedule timezones**~~ — SHIPPED 2026-10-16: `TestSchedule.timezone`
+  (IANA, default `UTC` so existing schedules are unchanged; migration
+  `cbb2b3c4d5ed`). The cron expression is read in that zone by
+  `app/services/schedule_time.py`; `next_run_at` stays naive UTC, so no
+  `TIMESTAMPTZ` migration was needed. DST: a time skipped by spring-forward
+  fires just after the gap, a repeated fall-back time fires once (croniter's
+  own tz handling gets both wrong, hence the helper). The schedule dialog has a
+  timezone field defaulting to the browser's zone; the Schedules page now reads
+  the server's naive-UTC timestamps as UTC. Still UTC-only: report schedules,
+  estate and site-crawl schedules.
 - **SOC 2 Type II observation window** — Type I is a point-in-time design
   opinion and is what the plan targets. Type II additionally needs 3–12 months
   during which the audit-log and monitoring evidence actually accumulates, so it

@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { schedulesApi, TestSchedule } from '@/api/schedules';
 import { ScheduleModal } from '@/components/ScheduleModal';
 import { motion } from 'framer-motion';
+import { formatScheduleTime } from '@/lib/schedules';
 
 export default function Schedules() {
   const queryClient = useQueryClient();
@@ -73,12 +74,7 @@ export default function Schedules() {
     }
   };
 
-  const formatDate = (dateString?: string) => {
-      if (!dateString) return 'Never';
-      return new Date(dateString).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
-  };
+  const formatDate = formatScheduleTime;
 
   const filteredSchedules = useMemo(() => {
     if (!schedules) return [];
@@ -211,7 +207,7 @@ export default function Schedules() {
                           variant="outline"
                           className={`font-mono text-[10px] tracking-wider shrink-0 rounded-lg px-2 py-0.5 ${schedule.is_active ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}
                         >
-                          {schedule.cron_expression}
+                          {schedule.cron_expression}{schedule.timezone && schedule.timezone !== 'UTC' ? ` · ${schedule.timezone}` : ' · UTC'}
                         </Badge>
                       </div>
                       <p className="text-sm text-slate-500 mt-1 line-clamp-2 min-h-[40px]">
@@ -326,7 +322,7 @@ export default function Schedules() {
                       </TableCell>
                       <TableCell className="py-4">
                         <Badge variant="outline" className="font-mono text-xs bg-slate-50 text-slate-600 border-slate-200 whitespace-nowrap">
-                           {schedule.cron_expression}
+                           {schedule.cron_expression}{schedule.timezone && schedule.timezone !== 'UTC' ? ` · ${schedule.timezone}` : ' · UTC'}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-4">

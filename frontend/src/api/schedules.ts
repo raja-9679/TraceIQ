@@ -10,6 +10,8 @@ export interface TestSchedule {
   browser: string;
   device?: string;
   cron_expression: string;
+  // IANA zone the cron expression is read in (default UTC).
+  timezone?: string;
   is_active: boolean;
   next_run_at?: string;
   last_run_at?: string;

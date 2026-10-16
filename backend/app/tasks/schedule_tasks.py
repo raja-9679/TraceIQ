@@ -13,7 +13,7 @@ from app.models import (
     TestSuite,
 )
 from app.services.test_service import test_service
-from croniter import croniter
+from app.services.schedule_time import next_run_utc
 
 async def _process_schedules_async():
     async with get_session_context() as session:
@@ -32,9 +32,9 @@ async def _process_schedules_async():
                 await _dispatch_schedule(schedule, session)
                 
                 # 2. Update schedule times
-                cron = croniter(schedule.cron_expression, now)
                 schedule.last_run_at = now
-                schedule.next_run_at = cron.get_next(datetime)
+                schedule.next_run_at = next_run_utc(
+                    schedule.cron_expression, schedule.timezone, after=now)
                 session.add(schedule)
                 
             except Exception as e:

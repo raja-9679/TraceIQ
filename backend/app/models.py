@@ -836,6 +836,9 @@ class TestScheduleBase(SQLModel):
     browser: str = Field(default="chromium")
     device: Optional[str] = Field(default=None)
     cron_expression: str
+    # IANA zone the cron expression is read in ("0 9 * * 1" = 9 AM Monday
+    # there). next_run_at stays naive UTC; see app/services/schedule_time.py.
+    timezone: str = Field(default="UTC")
     is_active: bool = Field(default=True)
     next_run_at: Optional[datetime] = Field(default=None)
     last_run_at: Optional[datetime] = Field(default=None)
@@ -903,6 +906,7 @@ class TestScheduleUpdate(SQLModel):
     name: Optional[str] = None
     description: Optional[str] = None
     cron_expression: Optional[str] = None
+    timezone: Optional[str] = None
     is_active: Optional[bool] = None
     browser: Optional[str] = None
     device: Optional[str] = None
