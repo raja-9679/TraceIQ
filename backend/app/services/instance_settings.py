@@ -65,9 +65,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("NOTIFY_ON_FAILURE_ONLY", "notifications", type="bool",
                label="Notify on failures only"),
     SettingDef("SLACK_WEBHOOK_URL", "notifications", secret=True,
-               label="Slack webhook URL"),
+               label="Slack webhook URL (unused)",
+               description="no longer used: it posted every project's runs to one channel. "
+                           "Set a webhook per project in Project settings → Notifications"),
     SettingDef("TEAMS_WEBHOOK_URL", "notifications", secret=True,
-               label="Teams webhook URL"),
+               label="Teams webhook URL (unused)",
+               description="no longer used: set a webhook per project in Project settings → Notifications"),
     # --- AI / LLM ---
     SettingDef("LLM_PROVIDER", "ai", label="Provider",
                description="anthropic | openai | gemini | ollama | openai-compatible; empty disables AI"),

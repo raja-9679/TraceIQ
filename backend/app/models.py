@@ -177,6 +177,14 @@ class Project(SQLModel, table=True):
     # carried in the job as settings.egress_policy.
     network_policy: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
+    # Who hears about this project's runs and where (email recipients, the
+    # project's own Slack/Teams webhooks, encrypted). None → email the run
+    # starter only, no chat. Shape and rules: app/services/project_notifications.py.
+    # Instance switches stay the master control; the instance-wide webhook is
+    # no longer used for project runs (it posted every project's runs to one
+    # channel).
+    notification_settings: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
 
     # Relationships
     workspace: Workspace = Relationship(back_populates="projects")
@@ -185,6 +193,21 @@ class Project(SQLModel, table=True):
         back_populates="projects", link_model=TeamProjectAccess)
     users: List["User"] = Relationship(
         back_populates="projects", link_model=UserProjectAccess)
+
+
+class ProjectNotificationPref(SQLModel, table=True):
+    """One person's choice for one project's run notifications.
+
+    mode: "all" | "failures" | "off". No row = follow the person's own
+    default (Settings → Notifications). Only consulted for people who are
+    recipients of that project in the first place.
+    """
+    __table_args__ = (UniqueConstraint("user_id", "project_id", name="uq_project_notification_pref"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    mode: str = Field(default="all")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class ProjectRead(SQLModel):

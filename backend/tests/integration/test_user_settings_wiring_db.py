@@ -61,10 +61,14 @@ async def test_failures_only_and_custom_address(session, scene):
 
 
 async def test_opt_out_drops_only_the_owner(session, scene):
+    from app.models import Project
     session.add(UserSettings(user_id=scene.user.id, email_notifications=False))
+    project = await session.get(Project, scene.project_id)
+    project.notification_settings = {"extra_emails": ["team@corp.example.com"]}
+    session.add(project)
     await session.commit()
     run = await _run(session, scene, TestStatus.FAILED)
-    assert _recipients(run.id, extra=["team@corp.example.com"]) == ["team@corp.example.com"]
+    assert _recipients(run.id) == ["team@corp.example.com"]
 
 
 async def test_new_settings_rows_default_to_email_on(session, scene):
