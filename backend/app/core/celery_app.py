@@ -79,6 +79,7 @@ celery_app = Celery(
         "app.tasks.paging_tasks",       # PagerDuty / Opsgenie run-failure paging
         "app.tasks.frontend_quality_tasks",  # Site crawler dispatch/collect + schedules (WP10)
         "app.tasks.reliability_tasks",  # Flake trend snapshots + vendor health roll-ups (WP12b)
+        "app.tasks.cost_tasks",         # Project budget alerts (WP12d)
     ]
 )
 
@@ -125,6 +126,7 @@ celery_app.conf.task_routes = {
     "app.tasks.frontend_quality_tasks.collect_site_crawl": "main-queue",
     "app.tasks.reliability_tasks.snapshot_flake_trends": "main-queue",
     "app.tasks.reliability_tasks.aggregate_vendor_health": "main-queue",
+    "app.tasks.cost_tasks.check_project_budgets": "main-queue",
 }
 
 # Configure Celery Beat schedule for periodic tasks
@@ -223,6 +225,12 @@ celery_app.conf.beat_schedule = {
     'aggregate-vendor-health': {
         'task': 'app.tasks.reliability_tasks.aggregate_vendor_health',
         'schedule': 3600.0,   # hourly; rebuilds today + yesterday
+    },
+    # WP12d: 80% / 100% monthly budget alerts, once per threshold per month.
+    # A no-op until COST_CURRENCY is set and a project has a budget.
+    'check-project-budgets': {
+        'task': 'app.tasks.cost_tasks.check_project_budgets',
+        'schedule': 3600.0,
     },
 }
 

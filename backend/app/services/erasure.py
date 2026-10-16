@@ -69,6 +69,9 @@ RETAINED_AUTHORSHIP: List[str] = [
     "securityfinding.risk_approved_by_id", "accessreviewcampaign.created_by_id",
     "accessreviewcampaign.signed_off_by_id", "accessreviewcampaign.revocations_applied_by_id",
     "accessreviewitem.decided_by_id", "sharelink.created_by_id",
+    # WP12d. A manual result's tester is result_payload.tester_id (JSON, same
+    # position: the id survives, the identity does not).
+    "releasesignoff.signed_by_id", "projectcostbudget.updated_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {

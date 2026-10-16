@@ -138,6 +138,13 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM projectapispec WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("projectnotificationpref",
               f"DELETE FROM projectnotificationpref WHERE project_id IN ({_PROJECTS})"),
+    # WP12d: release sign-offs and cost budgets / alert dedupe rows.
+    PurgeStep("releasesignoff",
+              f"DELETE FROM releasesignoff WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("projectcostbudget",
+              f"DELETE FROM projectcostbudget WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("costbudgetalert",
+              f"DELETE FROM costbudgetalert WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("requirement",
               f"DELETE FROM requirement WHERE project_id IN ({_PROJECTS})"),
     # Reporting (WP12c): analytics imports, path rules, journeys, flag catalogue.

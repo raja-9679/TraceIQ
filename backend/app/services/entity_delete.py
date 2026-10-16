@@ -69,6 +69,11 @@ ON_DELETE: Dict[str, str] = {
     "projectapispec.project_id": DELETE,
     # A person's notification choice for a deleted project means nothing.
     "projectnotificationpref.project_id": DELETE,
+    # A sign-off is a decision about this project's release; budgets and their
+    # alert dedupe rows are project configuration (WP12d).
+    "releasesignoff.project_id": DELETE,
+    "projectcostbudget.project_id": DELETE,
+    "costbudgetalert.project_id": DELETE,
     "externaltestreport.project_id": DELETE,
     "failurecluster.project_id": DELETE,
     "mobileappbuild.project_id": DELETE,

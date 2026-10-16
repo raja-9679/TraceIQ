@@ -406,6 +406,39 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Manual testing + release sign-off (WP12d, 2026-10)** — `executor="manual"`
+  cases hold only `manual-step` steps (`value`=instruction,
+  `params.expected`); the step type makes the case manual and mixing is a 400.
+  Manual cases are **never dispatched**: `run_test_suite` and `_expand_cases`
+  drop them (all-manual selection → run ERROR), a manual TestRun is ignored by
+  the Celery task, and the engine's `core/manual-guard.ts` reports one that
+  arrives anyway as not executed (no browser). A manual run is a normal
+  `TestRun(executor=manual)` + one `TestCaseResult(result_kind=manual)` per
+  case (steps snapshotted), so history/analytics/gate see it. It stays
+  **PENDING** while open (RUNNING would be swept as stale and count against
+  the concurrency cap). Outcomes passed/failed/blocked/skipped map to
+  PASSED/FAILED/ERROR/PENDING (TestStatus is a native enum); notes, per-step
+  results, `tester_id` (names looked up, never stored) and screenshot
+  attachments (magic-byte sniffed, 5 MB, under `runs/<id>/manual/`) live in
+  `result_payload`. API `app/api/manual_testing.py` (editor to record).
+  `ReleaseSignoff` (project, label, run_ids/case_ids as JSON, verdict, signer):
+  editor, never an API key; with `require_separate_approver` (workspace or
+  instance floor) the signer may not have started or recorded any covered
+  manual run. Gate check `require_manual_signoff` (off by default) = newest
+  sign-off (for the commit) is an approval. Migration `ce42b3c4d5f4`.
+- **Cost in money (WP12d, 2026-10)** — instance settings group `cost`:
+  `COST_CURRENCY`, `COST_LLM_PRICES` (new setting type `json`, validated on
+  save in `app/services/cost.py`), `COST_BROWSER_MINUTE_PRICE`. All empty by
+  default: no currency → no money anywhere; a model without a price is "not
+  priced" (amount null), never 0. Decimal math, rounded once half-up to the
+  currency's minor unit. Browser-minutes = summed `TestCaseResult.duration_ms`
+  of automated, non-local runs — an approximation and labelled so.
+  `GET /api/costs/workspaces/{id}` covers only projects the caller can read;
+  LLM use with no project only for workspace admins. `ProjectCostBudget`
+  (project admin) + hourly beat `check_project_budgets`: 80%/100% alerts via
+  the project's own recipients/webhooks, deduped by the
+  `CostBudgetAlert(project, month, threshold)` unique key (row committed
+  before sending; one message when both thresholds are crossed at once).
 - **Identity matrix + access-control matrix (WP4, 2026-10)** — migration
   `c4a2b3c4d5e4`. `POST /api/runs` body `persona_ids[]` (+ `include_anonymous`)
   repeats the selection once per identity, sharing `TestRun.matrix_group`;

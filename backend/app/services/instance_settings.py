@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 class SettingDef:
     key: str                 # canonical name; matches Settings attr / env var
     group: str               # UI section
-    type: str = "str"        # str | int | bool | list
+    type: str = "str"        # str | int | bool | list | json
     secret: bool = False     # Fernet-encrypted at rest, masked in the API
     restart_required: bool = False
     label: str = ""
@@ -45,7 +45,8 @@ class SettingDef:
 
 
 # Groups: email | notifications | ai | storage | sso | saml | ldap | federation |
-#         test_inbox | siem | security_alerts | policies | worker | network | observability
+#         test_inbox | siem | security_alerts | policies | worker | network | observability |
+#         cost
 REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     # --- Email (SMTP) ---
     SettingDef("SMTP_HOST", "email", label="SMTP host"),
@@ -480,6 +481,19 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                description="exact subject DNs from X-Client-Cert-Subject "
                            "($ssl_client_s_dn); empty accepts any certificate the "
                            "proxy verified against its CA"),
+    # --- Cost intelligence (WP12d). Empty = no money shown anywhere; the
+    # rates are the operator's contract prices, never defaults we invent. ---
+    SettingDef("COST_CURRENCY", "cost", label="Currency",
+               description="3-letter ISO 4217 code (USD, EUR, INR …) every amount is "
+                           "shown in. Leave blank to hide money everywhere"),
+    SettingDef("COST_LLM_PRICES", "cost", type="json", label="LLM prices per 1M tokens",
+               description="per model, as recorded in AI usage: {\"<model>\": "
+                           "{\"input_per_1m\": 3.0, \"output_per_1m\": 15.0}}. Usage of a "
+                           "model not listed is reported as not priced"),
+    SettingDef("COST_BROWSER_MINUTE_PRICE", "cost", label="Worker price per browser-minute",
+               description="what one minute of automated test execution costs you; "
+                           "browser-minutes are summed case durations (an approximation "
+                           "of worker time)"),
     SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
                label="Maximum capture level",
                description="ceiling no project may exceed: none | minimal | standard | "
@@ -506,6 +520,8 @@ def _parse(defn: SettingDef, raw: str) -> Any:
         return int(raw.strip() or 0)
     if defn.type == "list":
         return json.loads(raw) if raw.strip() else []
+    if defn.type == "json":
+        return json.loads(raw) if raw.strip() else None
     return raw
 
 
@@ -516,6 +532,8 @@ def serialize(defn: SettingDef, value: Any) -> str:
         return str(int(value))
     if defn.type == "list":
         return json.dumps(value if isinstance(value, list) else [value])
+    if defn.type == "json":
+        return json.dumps(json.loads(value) if isinstance(value, str) else value)
     return str(value)
 
 

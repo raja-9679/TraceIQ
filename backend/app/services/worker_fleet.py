@@ -38,7 +38,8 @@ DEAD_LETTER_STREAM = "jobs:dead-letter"
 # Catalog entries that declare an executor rather than run in the step switch
 # (a `load-test` step makes the case executor=load, run by k6). A worker not
 # listing them is not out of date.
-EXECUTOR_ONLY_STEP_TYPES = frozenset({"load-test"})
+# manual-step: a person executes it; no worker ever receives a manual case.
+EXECUTOR_ONLY_STEP_TYPES = frozenset({"load-test", "manual-step"})
 
 REGION_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,31}$")
 

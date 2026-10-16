@@ -269,6 +269,10 @@ class ExecutorType(str, Enum):
     LOAD = "load"                     # k6/Locust performance runs (time-series result)
     SECURITY = "security"             # ZAP/nuclei DAST scans (findings result)
     MOBILE_APPIUM = "mobile_appium"   # native Android/iOS journeys via Appium (mobile worker)
+    # A person follows written steps and records the outcome (WP12d). Never
+    # dispatched to a worker: run from the manual-run screen, see
+    # app/services/manual_testing.py.
+    MANUAL = "manual"
 
 
 class RunTrigger(str, Enum):
@@ -1361,6 +1365,9 @@ class QualityGatePolicy(SQLModel):
     # Newest passing result of each critical case (all cases when none is
     # critical) must be at most this many days old. None = not enforced.
     max_evidence_age_days: Optional[int] = Field(default=None, ge=1)
+    # The newest release sign-off (for the commit when one is evaluated) must
+    # be an approval. Off by default; see release_readiness.signoff_check.
+    require_manual_signoff: bool = False
 
 
 class QualityGateCheck(SQLModel):
@@ -3265,6 +3272,36 @@ class JourneyConfig(SQLModel, table=True):
     project_id: int = Field(foreign_key="project.id", index=True, unique=True)
     # [{pattern, kind: "pattern"|"regex", name?}]
     path_rules: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+class ReleaseSignoff(SQLModel, table=True):
+    """A person's go / no-go for a release of one project (WP12d).
+
+    Scope is a set of runs (usually manual runs, automated ones are allowed)
+    and optionally a subset of their cases. run_ids / case_ids are plain JSON
+    on purpose: a sign-off is evidence of a decision and must not vanish, or
+    silently change meaning, when a run it covered is purged by retention.
+    When the workspace (or instance) requires a separate approver, the signer
+    may not be anyone who executed the covered manual runs — enforced in
+    app/api/manual_testing.py, rule in app/services/manual_testing.py.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    release_label: str = Field(index=True)
+    git_commit: Optional[str] = Field(default=None, index=True)
+    run_ids: List[int] = Field(default=[], sa_column=Column(JSON))
+    case_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    verdict: str                              # "approve" | "reject"
+    note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    signed_by_id: int = Field(foreign_key="users.id")
+    signed_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ProjectCostBudget(SQLModel, table=True):
+    """Optional monthly spend budget for a project, in the instance currency
+    (COST_CURRENCY). Alerts at 80% / 100% go through the project's own
+    notification rules — see app/tasks/cost_tasks.py."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", unique=True, index=True)
+    monthly_amount: float
     updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -3319,6 +3356,20 @@ class BenchmarkGroup(SQLModel, table=True):
     browser: str = Field(default="chromium")
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+class CostBudgetAlert(SQLModel, table=True):
+    """One budget threshold crossed in one month. The unique key is the
+    "once per threshold per month" guarantee: a second beat tick (or a second
+    beat process) inserting the same row fails instead of re-alerting."""
+    __table_args__ = (UniqueConstraint("project_id", "period", "threshold",
+                                       name="uq_cost_budget_alert"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    period: str                     # "YYYY-MM" (UTC)
+    threshold: int                  # 80 | 100
+    spent: float
+    budget: float
+    currency: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —
