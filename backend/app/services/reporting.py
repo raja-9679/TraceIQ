@@ -282,7 +282,11 @@ async def daily_series(session: AsyncSession, project_ids: Sequence[int],
             r["runs"] += int(n)
             if _status_key(status) == "passed":
                 r["passed"] += int(n)
-    return fill_days(rows, since.date(), days)
+    # From the window's first (partial) day THROUGH today: `days` points from
+    # since.date() stopped at yesterday, so today's runs counted in the totals
+    # but never appeared on the chart.
+    start = since.date()
+    return fill_days(rows, start, (datetime.utcnow().date() - start).days + 1)
 
 
 async def top_failing(session: AsyncSession, project_ids: Sequence[int],

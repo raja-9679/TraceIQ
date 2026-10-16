@@ -209,3 +209,16 @@ def test_public_workspace_summary_lists_projects_by_name_only():
     assert out["projects"][0]["name"] == "Shop"
     assert "project_id" not in out["projects"][0]
     assert SECRETS[6] not in json.dumps(out)
+
+
+def test_daily_series_runs_through_today(monkeypatch):
+    """Regression: the chart stopped at yesterday, hiding today's runs."""
+    import asyncio
+    from datetime import datetime, timedelta
+    from app.services import reporting
+
+    since = datetime.utcnow() - timedelta(days=7)
+    points = asyncio.run(reporting.daily_series(session=None, project_ids=[], since=since, days=7))
+    assert points[0]["date"] == since.date().isoformat()
+    assert points[-1]["date"] == datetime.utcnow().date().isoformat()
+    assert len(points) == 8   # first partial day .. today
