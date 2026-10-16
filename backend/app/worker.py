@@ -382,6 +382,35 @@ def _expand_cases(cases: list) -> list:
     return expanded
 
 
+#: Suite retry bounds. The value comes from a settings blob anyone with edit
+#: rights (or the API) can write, and every retry re-runs the whole case with
+#: exponential backoff — unbounded, one bad value would pin a worker for hours.
+MAX_RETRIES_LIMIT = 5
+DEFAULT_MAX_RETRIES = 2
+MAX_RETRY_BACKOFF_MS = 60_000
+DEFAULT_RETRY_BACKOFF_MS = 1000
+
+
+def _bounded_int(value, default: int, low: int, high: int) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(low, min(high, n))
+
+
+def retry_count(value) -> int:
+    """Retries after the first attempt: 0..5, default 2. 0 is respected
+    (it used to be coerced to 2 by an `or 2`)."""
+    return _bounded_int(value, DEFAULT_MAX_RETRIES, 0, MAX_RETRIES_LIMIT)
+
+
+def retry_backoff_ms(value) -> int:
+    return _bounded_int(value, DEFAULT_RETRY_BACKOFF_MS, 0, MAX_RETRY_BACKOFF_MS)
+
+
 def _settings_payload(settings: dict) -> dict:
     """The per-job settings sub-dict shared by every dispatch path."""
     payload = {
@@ -397,10 +426,10 @@ def _settings_payload(settings: dict) -> dict:
     if settings.get('secrets'):
         payload['secrets'] = settings['secrets']
     # Per-test retry policy (inherited from suite settings; falls back to off).
-    if settings.get('auto_retry'):
+    if settings.get('auto_retry') is True:
         payload['auto_retry'] = True
-        payload['max_retries'] = int(settings.get('max_retries', 2) or 2)
-        payload['retry_backoff_ms'] = int(settings.get('retry_backoff_ms', 1000) or 1000)
+        payload['max_retries'] = retry_count(settings.get('max_retries'))
+        payload['retry_backoff_ms'] = retry_backoff_ms(settings.get('retry_backoff_ms'))
     # Mobile app binary (presigned URL + capabilities) for mobile_appium jobs.
     if settings.get('mobile_app'):
         payload['mobile_app'] = settings['mobile_app']
