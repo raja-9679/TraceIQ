@@ -70,6 +70,8 @@ import UsersPage from "@/pages/UsersPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
 import WorkerFleet from "@/pages/WorkerFleet";
 import OnCall from "@/pages/OnCall";
+import SizingCalculator from "@/pages/SizingCalculator";
+import TestPacks from "@/pages/TestPacks";
 import PrivateRoute from "@/components/PrivateRoute";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -156,6 +158,8 @@ function App() {
                 <Route path="admin/users" element={<AdminUsersPage />} />
                 <Route path="admin/workers" element={<WorkerFleet />} />
                 <Route path="on-call" element={<OnCall />} />
+                <Route path="sizing" element={<SizingCalculator />} />
+                <Route path="test-packs" element={<TestPacks />} />
                 <Route path="settings" element={<Settings />} />
                 <Route path="project-settings" element={<ProjectSettings />} />
                 <Route path="instance-settings" element={<InstanceSettings />} />

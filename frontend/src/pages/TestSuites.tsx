@@ -9,6 +9,7 @@ import {
 import { useState, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import DemoWorkspaceButton from '@/components/demo/DemoWorkspaceButton';
 import { usePermission } from "@/hooks/usePermission";
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
@@ -359,7 +360,7 @@ export default function TestSuites() {
                 <EmptyState title="Pick a project">
                     Choose a project in the sidebar to see and manage its test suites.
                     {seedTargetWorkspaceId && (
-                        <span className="mt-4 flex justify-center">
+                        <span className="mt-4 flex flex-wrap justify-center gap-2">
                             <Button
                                 variant="outline"
                                 onClick={() => seedSampleMutation.mutate(seedTargetWorkspaceId)}
@@ -367,6 +368,7 @@ export default function TestSuites() {
                             >
                                 {seedSampleMutation.isPending ? 'Seeding…' : 'New here? Create a sample project'}
                             </Button>
+                            <DemoWorkspaceButton />
                         </span>
                     )}
                 </EmptyState>
@@ -402,6 +404,7 @@ export default function TestSuites() {
                                 {seedSampleMutation.isPending ? 'Seeding…' : 'Try a sample project'}
                             </Button>
                         )}
+                        <DemoWorkspaceButton size="lg" />
                     </div>
                 </div>
             ) : (

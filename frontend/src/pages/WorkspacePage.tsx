@@ -14,6 +14,8 @@ import {
 } from '@/lib/api';
 import type { DetailedMember } from '@/lib/api';
 import WorkspaceDeleteDialog from '@/components/WorkspaceDeleteDialog';
+import DemoBadge from '@/components/demo/DemoBadge';
+import DemoWorkspaceCard from '@/components/demo/DemoWorkspaceCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -745,6 +747,7 @@ export default function WorkspacePage() {
         <div className="flex flex-col gap-5">
             <PageHeader
                 title={selectedWorkspace ? selectedWorkspace.name : 'Workspace'}
+                badge={selectedWorkspace?.is_demo ? <DemoBadge /> : undefined}
                 subtitle={
                     selectedWorkspace
                         ? <>
@@ -765,7 +768,9 @@ export default function WorkspacePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                     {workspaces?.map((ws) => (
-                                        <SelectItem key={ws.id} value={ws.id.toString()}>{ws.name}</SelectItem>
+                                        <SelectItem key={ws.id} value={ws.id.toString()}>
+                                            <span className="flex items-center gap-2">{ws.name}{ws.is_demo && <DemoBadge />}</span>
+                                        </SelectItem>
                                     ))}
                                 </SelectContent>
                             </Select>
@@ -809,6 +814,8 @@ export default function WorkspacePage() {
             ) : (
                 <EmptyState title="No workspace selected">Create a workspace to get started.</EmptyState>
             )}
+
+            <DemoWorkspaceCard />
 
             {/* Create Workspace Dialog */}
             <Dialog open={showCreateWorkspace} onOpenChange={setShowCreateWorkspace}>

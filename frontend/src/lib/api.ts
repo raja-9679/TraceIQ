@@ -460,6 +460,8 @@ export interface Workspace {
     id: number;
     name: string;
     description?: string;
+    /** Seeded demo workspace (WP13c): generated data, never notifies. */
+    is_demo?: boolean;
 }
 
 export interface Team {

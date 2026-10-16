@@ -12,7 +12,8 @@ import {
     Plus,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { getProjects } from '@/lib/api';
+import { getProjects, getWorkspaces } from '@/lib/api';
+import DemoBadge from '@/components/demo/DemoBadge';
 import { usePermission } from '@/hooks/usePermission';
 import {
     DropdownMenu,
@@ -184,6 +185,11 @@ export default function DashboardLayout() {
     });
 
     const activeProject = projects?.find(p => p.id === selectedProjectId);
+    // Projects of a seeded demo workspace (WP13c) carry a DEMO badge wherever
+    // they are listed, so generated data is never mistaken for real.
+    const { data: workspaces } = useQuery({ queryKey: ['workspaces'], queryFn: () => getWorkspaces() });
+    const demoWorkspaceIds = new Set((workspaces || []).filter((w) => w.is_demo).map((w) => w.id));
+    const isDemoProject = (p?: { workspace_id: number }) => !!p && demoWorkspaceIds.has(p.workspace_id);
 
     useEffect(() => {
         if (projects && projects.length > 0) {
@@ -221,6 +227,7 @@ export default function DashboardLayout() {
                     className={p.id === selectedProjectId ? "bg-accent" : ""}
                 >
                     <span className="truncate">{p.name}</span>
+                    {isDemoProject(p) && <DemoBadge className="ml-auto" />}
                 </DropdownMenuItem>
             ))}
             {(!projects || projects.length === 0) && (
@@ -278,7 +285,10 @@ export default function DashboardLayout() {
                             {initials(activeProject?.name)}
                         </span>
                         <span className="flex min-w-0 flex-1 flex-col">
-                            <span className="truncate font-semibold">{activeProject?.name || 'Select project'}</span>
+                            <span className="flex min-w-0 items-center gap-1.5">
+                                <span className="truncate font-semibold">{activeProject?.name || 'Select project'}</span>
+                                {isDemoProject(activeProject) && <DemoBadge />}
+                            </span>
                             <span className="text-xs text-ink-soft">{projects?.length ?? 0} projects</span>
                         </span>
                         <ChevronsUpDown className="h-4 w-4 text-ink-soft" />
@@ -500,6 +510,7 @@ export default function DashboardLayout() {
                         <Menu className="h-5 w-5" />
                     </button>
                     <span className="truncate text-sm font-semibold text-ink">{activeProject?.name || 'TraceIQ'}</span>
+                    {isDemoProject(activeProject) && <DemoBadge />}
                 </header>
 
                 <main className="p-4 sm:p-6 lg:p-8 print:p-0">
