@@ -95,6 +95,17 @@ def _drill(f: Dict[str, Any]):
     return {"value": _date(at), "state": "info"} if at else None
 
 
+def _controls(f: Dict[str, Any]):
+    """Aggregate only: how many controls are passing, never which ones or why."""
+    c = f.get("controls")
+    if not c or not c.get("total"):
+        return None
+    good = int(c.get("passing", 0)) + int(c.get("excepted", 0))
+    frameworks = ", ".join(c.get("frameworks") or [])
+    value = f"{good} of {c['total']} passing" + (f" ({frameworks})" if frameworks else "")
+    return {"value": value, "state": "ok" if good == c["total"] else "warn"}
+
+
 @dataclass(frozen=True)
 class PostureItem:
     key: str
@@ -117,7 +128,11 @@ POSTURE_ITEMS: List[PostureItem] = [
     PostureItem("access_review", "Last access review completed",
                 "Sign-off date of the newest access-review campaign.", _review),
     PostureItem("restore_drill", "Last backup restore drill",
-                "Not recorded by the product yet: stays hidden until restore drills are tracked.", _drill),
+                "Date of the newest PASSING restore drill reported by scripts/restore_drill.sh "
+                "(instance-wide: one database serves every workspace).", _drill),
+    PostureItem("controls", "Compliance controls",
+                "How many of this workspace's controls are passing (an active exception counts). "
+                "A count only: control names, evidence and reasons are never published.", _controls),
 ]
 POSTURE_KEYS = tuple(i.key for i in POSTURE_ITEMS)
 
@@ -177,10 +192,15 @@ async def collect_facts(session, workspace_id: int, center: Any) -> Dict[str, An
         "encryption_at_rest": bool(str(effective("MINIO_SSE_ALGORITHM") or "").strip()),
         "audit_verified_at": getattr(center, "audit_verified_at", None),
         "audit_verified_ok": getattr(center, "audit_verified_ok", None),
-        # Not recorded anywhere yet (the WP8 restore-drill script reports to
-        # its operator, not the database). Hidden until it is.
-        "last_restore_drill_at": None,
     }
+    # Restore drills (WP13a DrillResult) are instance-wide: the newest PASS.
+    from app.services import compliance
+    facts["last_restore_drill_at"] = (await compliance._drills(session))[0]
+    rows = await compliance.controls_overview(session, workspace_id)
+    counts = compliance.status_counts(rows)
+    facts["controls"] = ({**counts, "total": len(rows),
+                          "frameworks": sorted({r["framework"] for r in rows if r.get("framework")})}
+                         if rows else None)
 
     if _on("MFA_REQUIRED"):
         facts["mfa_admins"] = True

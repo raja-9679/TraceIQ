@@ -184,3 +184,22 @@ def test_safe_filename():
     assert tc.safe_filename("../../etc/passwd") == "passwd"
     assert tc.safe_filename('a"b<c>.pdf') == "a_b_c_.pdf"
     assert tc.safe_filename(None) == "document"
+
+
+# --- WP13a sources wired in at integration -------------------------------------
+
+def test_controls_item_is_an_aggregate_only():
+    from app.services.trust_center import _controls
+    assert _controls({"controls": None}) is None
+    assert _controls({"controls": {"total": 0}}) is None
+    v = _controls({"controls": {"total": 17, "passing": 15, "excepted": 1, "failing": 1,
+                                "frameworks": ["SOC 2"]}})
+    assert v == {"value": "16 of 17 passing (SOC 2)", "state": "warn"}
+    assert _controls({"controls": {"total": 2, "passing": 2, "frameworks": []}})["state"] == "ok"
+
+
+def test_drill_item_shows_the_date_only():
+    from datetime import datetime
+    from app.services.trust_center import _drill
+    assert _drill({"last_restore_drill_at": None}) is None
+    assert _drill({"last_restore_drill_at": datetime(2026, 10, 1, 3, 4)})["value"].startswith("2026-10-01")
