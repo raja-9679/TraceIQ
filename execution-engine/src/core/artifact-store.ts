@@ -212,6 +212,24 @@ export interface PutResult {
 
 const SUPPRESSED: PutResult = { key: null, suppressed: true };
 
+/**
+ * Content type for an object key, by extension. Set on every upload so a
+ * presigned video plays inline in the browser (and a trace downloads as a
+ * zip) instead of arriving as application/octet-stream.
+ */
+export function contentTypeFor(key: string): string {
+    const ext = (key.split('.').pop() || '').toLowerCase();
+    switch (ext) {
+        case 'webm': return 'video/webm';
+        case 'mp4': return 'video/mp4';
+        case 'zip': return 'application/zip';
+        case 'png': return 'image/png';
+        case 'jpg': case 'jpeg': return 'image/jpeg';
+        case 'json': case 'har': return 'application/json';
+        default: return 'application/octet-stream';
+    }
+}
+
 export class ArtifactStore {
     private client: any;
     private bucketReady = false;
@@ -247,7 +265,10 @@ export class ArtifactStore {
         }
         if (!localPath || !fs.existsSync(localPath)) return { key: null, suppressed: false };
         await this.ensureBucket();
-        const meta = contentType ? { 'Content-Type': contentType } : undefined;
+        // Always an object: minio-js rejects `undefined` metadata ("metaData
+        // should be of type object"), which silently failed every video and
+        // trace upload — they were the callers that passed no content type.
+        const meta = { 'Content-Type': contentType || contentTypeFor(key) };
         await this.client.fPutObject(this.bucket, key, localPath, meta);
         return { key, suppressed: false };
     }
@@ -260,7 +281,7 @@ export class ArtifactStore {
         }
         if (!body || body.length === 0) return { key: null, suppressed: false };
         await this.ensureBucket();
-        const meta = contentType ? { 'Content-Type': contentType } : undefined;
+        const meta = { 'Content-Type': contentType || contentTypeFor(key) };
         await this.client.putObject(this.bucket, key, body, body.length, meta);
         return { key, suppressed: false };
     }
