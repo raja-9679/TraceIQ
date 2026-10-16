@@ -40,6 +40,18 @@ with mocks/fakes; they are marked **mock-verified**.
 | R6 | Journey analytics | Generic CSV/JSON page-view import (decision 5), matched against routes the cases visit. |
 | R7 | SLOs | Per monitor: availability % and latency (p95 ms) targets over a rolling 30 days, error budget and burn rate. |
 
+## WP13 product defaults (2026-10-16, owner may overrule)
+
+| # | Question | Decision |
+|---|---|---|
+| C1 | Evidence pack integrity | Zip with a manifest listing every file's SHA-256, manifest signed with an HMAC key derived for this purpose (not the JWT key); verify endpoint. |
+| C2 | Controls | SOC 2 (from docs/SOC2_CONTROLS.md) seeded as editable data; each control has an owner, evidence sources, a freshness SLA; exceptions need an approver other than the requester and expire (max 365 days). |
+| C3 | Trust center | Per workspace, off by default, public page on an unguessable slug; posture shows aggregate status only (never finding details); documents only through expiring links an admin issues. |
+| C4 | PoC "time saved" | Labelled estimate from editable assumptions (default 5 min per manual case execution). |
+| C5 | Demo workspace | Separate workspace flagged demo, seeded with history, removable in one click, never contacts real sites (example.com / httpbin / local todolite). |
+| C6 | Sizing calculator | Estimates with the formulas shown, derived from the documented per-worker and storage figures. |
+| C7 | Integration test packs | Versioned JSON packs shipped in the repo (SSO, SCIM, webhooks); import creates a suite with variables to fill; import never contacts a target. |
+
 ## Status legend
 `done` merged into base · `wip` in progress · `todo` · `skip` (decision above)
 
