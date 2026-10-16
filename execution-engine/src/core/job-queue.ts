@@ -77,6 +77,8 @@ export interface TestJob {
         // Worker egress allowlist (WP8), resolved by the backend at dispatch.
         // Absent = not enforced.
         egress_policy?: { enforce: boolean; allowed_hosts: string[]; allow_private: boolean };
+        // Feature flags / variant the run declared (WP12c), for {{flag.NAME}}.
+        flags?: Record<string, string | boolean>;
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
         // MinIO URL + metadata the mobile worker needs to install/launch it.
         mobile_app?: {

@@ -185,6 +185,14 @@ def run_test_suite(run_id: int, tags: list = None):
             # Environment ({{env.X}}, base_url) + decrypted secrets
             # ({{secret.X}}) for worker-side interpolation.
             environment = _load_environment(run, auth_project_id, session)
+            # Comparison / benchmark runs (target_url): the target replaces the
+            # environment's base URL, so relative gotos hit that site. The URL
+            # was checked against net_guard and the project's egress allowlist
+            # when the run was created; being the base URL it is then allowed
+            # by the egress policy below like any environment base URL.
+            if getattr(run, 'target_url', None):
+                environment = {**(environment or {'name': 'target', 'variables': {}}),
+                               'base_url': run.target_url}
             if environment:
                 effective_settings['environment'] = environment
                 print(f"[Worker] Run {run_id}: environment '{environment['name']}'")
@@ -215,6 +223,10 @@ def run_test_suite(run_id: int, tags: list = None):
             # scheme this run emulates. Already validated at run creation.
             if getattr(run, 'emulation', None):
                 effective_settings['emulation'] = run.emulation
+            # Declared feature flags / variant ({{flag.NAME}}), validated at
+            # run creation. Older workers ignore the key.
+            if getattr(run, 'flags', None):
+                effective_settings['flags'] = run.flags
             print(f"[Worker] Run {run_id}: capture level "
                   f"'{data_policy['capture_level']}'")
 
@@ -456,6 +468,8 @@ def _settings_payload(settings: dict) -> dict:
         payload['egress_policy'] = settings['egress_policy']
     if settings.get('emulation'):
         payload['emulation'] = settings['emulation']
+    if settings.get('flags'):
+        payload['flags'] = settings['flags']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).

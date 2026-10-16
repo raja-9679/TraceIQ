@@ -957,6 +957,47 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (mergeable; percentiles are bucket upper bounds). Correlation = share of
   failed vs passed results whose run saw an error from that vendor.
   `GET /projects/{id}/dependency-health?days=`. All reads: project viewer.
+- **Journeys, flags, benchmarks (WP12c, 2026-10)** — migration `ce32b3c4d5f3`
+  (`journeyimport`, `journeyconfig`, `businessjourney`, `flagcatalogentry`,
+  `benchmarkgroup`, `testrun.flags`, `testrun.benchmark_group_id`). API in
+  `app/api/journey_reports.py` + `app/api/benchmarks.py`; logic in
+  `app/services/{journey_coverage,business_journeys,flag_coverage,benchmarks}.py`.
+  **Journey coverage**: `POST /projects/{id}/journey-imports` (multipart CSV or
+  JSON, generic columns path|url + views [+ journey/funnel, step, date]; 5 MB /
+  50k rows, read bounded, newest 20 kept). Rows are stored normalised (no
+  host/query/fragment/trailing slash) but NOT rule-mapped, so editing
+  `PUT /projects/{id}/journey-rules` re-applies without re-import. Rules:
+  `pattern` (`{id}`/`*` one segment, `**` any, `*` in a segment — hand-written
+  matchers) or `regex` (RE2 only). Covered = canonical keys of the project's
+  cases' top-level goto values (same source as `/apps/{id}/surface`
+  routes_covered); `GET /journey-coverage` = traffic-weighted %, top uncovered,
+  tested-but-low-traffic (<0.5% or absent), per-journey step coverage. When a
+  file has page rows, journey rows don't add to the total (funnel steps repeat
+  page views). **Business journeys**: `case_ids` is an ordered JSON list
+  (validated in-project on write, re-filtered on read — no FK, so deleted cases
+  drop out as `missing_case_ids`); health per case from the last 30 days of
+  results under THIS project's runs (failing > flaky [quarantined / is_flaky /
+  mixed recent] > passing > not_run); requirements = declared refs plus the
+  cases' RequirementLinks; traffic from the latest import's `traffic_journey`,
+  else the cases' pages. Owner must have project access. **Flags**: `POST /runs`
+  body `flags {name: str|bool}` (max 50, name `[A-Za-z0-9_.-]{1,64}`) →
+  `TestRun.flags`, job `settings.flags`, `{{flag.NAME}}` in
+  `core/interpolate.ts` (web + mobile; older workers ignore it).
+  `GET /projects/{id}/flag-coverage?days=` vs the catalogue (`/flag-catalog`):
+  runs/cases/last seen per value, never-tested values, uncatalogued flags;
+  values compared as strings ("true"/"false").
+  **Benchmarks**: `POST /projects/{id}/benchmark-groups {name, test_suite_id,
+  targets[2..10], browser}` → one suite-level run per target with
+  `target_url` = base URL. `target_url` (also comparison runs, where it was
+  previously stored but ignored) now overrides the environment `base_url` at
+  dispatch, so only RELATIVE gotos follow the target (the report lists cases
+  with absolute gotos). Targets pass net_guard and, when the project enforces
+  an egress allowlist, must be on it — the base URL is otherwise allowed
+  implicitly, so this check is what stops a retarget bypassing the policy;
+  comparison runs now get the same check. The matrix
+  (`GET /benchmark-groups/{id}`) only reads runs of the group's own project.
+  Worker image rebuild needed (flag interpolation).
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

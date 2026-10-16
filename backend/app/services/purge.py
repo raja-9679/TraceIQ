@@ -140,6 +140,15 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM projectnotificationpref WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("requirement",
               f"DELETE FROM requirement WHERE project_id IN ({_PROJECTS})"),
+    # Reporting (WP12c): analytics imports, path rules, journeys, flag catalogue.
+    PurgeStep("journeyimport",
+              f"DELETE FROM journeyimport WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("journeyconfig",
+              f"DELETE FROM journeyconfig WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("businessjourney",
+              f"DELETE FROM businessjourney WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("flagcatalogentry",
+              f"DELETE FROM flagcatalogentry WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("incident",
               f"DELETE FROM incident WHERE project_id IN ({_PROJECTS}) "
               f"OR matched_case_id IN ({_CASES}) OR regression_case_id IN ({_CASES}) "
@@ -161,6 +170,10 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM testschedule WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("testrun", f"DELETE FROM testrun WHERE project_id IN ({_PROJECTS})",
               label="runs"),
+    # After its runs (testrun.benchmark_group_id), before suites (test_suite_id).
+    PurgeStep("benchmarkgroup",
+              f"DELETE FROM benchmarkgroup WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_suite_id IN ({_SUITES})"),
 
     # --- the case/suite tree. Suites are self-referential (parent_id), so the
     # whole set goes in one statement rather than leaf-first. ---

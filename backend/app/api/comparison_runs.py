@@ -21,6 +21,7 @@ from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import (
     ComparisonRunRequest,
+    Project,
     RunTrigger,
     TestCaseResult,
     TestRun,
@@ -47,6 +48,19 @@ async def create_comparison_run(
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
 
+    # target_url now really retargets the run (it becomes the environment
+    # base URL at dispatch), so it gets the same checks as a benchmark target:
+    # net_guard and the project's worker egress allowlist.
+    target_url = body.target_url
+    if target_url:
+        from app.api.benchmarks import BenchmarkError, check_target, normalize_base_url
+        project = await session.get(Project, baseline.project_id)
+        try:
+            target_url = normalize_base_url(target_url)
+        except BenchmarkError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        await check_target(project, target_url)
+
     effective_settings = await test_service.get_effective_settings(
         baseline.test_suite_id, session
     )
@@ -72,7 +86,7 @@ async def create_comparison_run(
         agent_id=principal.agent_id,
         api_key_id=principal.api_key.id if principal.api_key else None,
         baseline_run_id=body.baseline_run_id,
-        target_url=body.target_url,
+        target_url=target_url,
         # Carry git context forward from baseline so the comparison run is
         # navigable from the same change.
         git_commit=baseline.git_commit,

@@ -105,6 +105,13 @@ ON_DELETE: Dict[str, str] = {
     "sitecrawl.project_id": DELETE,
     "sitecrawlrun.project_id": DELETE,
     "pagebudgetsample.project_id": DELETE,
+    # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
+    # benchmark groups are all project data.
+    "journeyimport.project_id": DELETE,
+    "journeyconfig.project_id": DELETE,
+    "businessjourney.project_id": DELETE,
+    "flagcatalogentry.project_id": DELETE,
+    "benchmarkgroup.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.
@@ -124,6 +131,9 @@ ON_DELETE: Dict[str, str] = {
     "testschedule.test_suite_id": DELETE,
     # The webhook keeps working; its proposals fall back to the first suite.
     "incidentwebhook.default_suite_id": NULLIFY,
+    # A benchmark of a deleted suite cannot be re-run; its runs go anyway
+    # (testrun.test_suite_id).
+    "benchmarkgroup.test_suite_id": DELETE,
 
     # --- into testcase ---------------------------------------------------------
     "testrun.test_case_id": DELETE,         # a single-case run of that case
@@ -184,6 +194,7 @@ ON_DELETE: Dict[str, str] = {
     "sitecrawlissue.crawl_run_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "deployment.environment_id": NULLIFY,   # a deployment record outlives it too
+    "testrun.benchmark_group_id": NULLIFY,  # a run outlives its benchmark group
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
 

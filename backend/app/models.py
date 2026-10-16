@@ -677,6 +677,14 @@ class TestRunBase(SQLModel):
     # side by side.
     emulation: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     sweep_group: Optional[str] = Field(default=None, index=True)
+    # A/B + feature-flag coverage (WP12c): the variant / flags this run
+    # exercised, declared by the caller ({name: str | bool}). Read by the flag
+    # coverage report and exposed to steps as {{flag.NAME}}. NULL = undeclared.
+    flags: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Cross-site benchmarking (WP12c): one run per target of a BenchmarkGroup;
+    # the target's base URL is this run's `target_url`.
+    benchmark_group_id: Optional[int] = Field(
+        default=None, foreign_key="benchmarkgroup.id", index=True)
 
 
 class UserRead(SQLModel):
@@ -3220,6 +3228,97 @@ class VendorHealthDaily(SQLModel, table=True):
     passed_results: int = 0
     passed_results_vendor_errors: int = 0
     computed_at: datetime = Field(default_factory=datetime.utcnow)
+# Reporting (WP12c): journey coverage from analytics imports, business
+# journeys, feature-flag catalogue, cross-site benchmarks.
+# ---------------------------------------------------------------------------
+
+class JourneyImport(SQLModel, table=True):
+    """One uploaded page-view / journey export (CSV or JSON), kept as a
+    version: the newest row is "latest", older ones are history (pruned to the
+    last few). `rows` holds the parsed data aggregated per (normalised path,
+    journey, step) — paths are normalised but NOT rule-mapped, so editing the
+    project's path rules re-applies without re-importing.
+    See app/services/journey_coverage.py."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    label: Optional[str] = Field(default=None)
+    filename: Optional[str] = Field(default=None)
+    source_format: str = Field(default="csv")          # csv | json
+    row_count: int = Field(default=0)                  # data rows read
+    skipped_rows: int = Field(default=0)
+    path_count: int = Field(default=0)                 # distinct stored rows
+    total_views: int = Field(default=0)
+    period_start: Optional[str] = Field(default=None)  # YYYY-MM-DD
+    period_end: Optional[str] = Field(default=None)
+    # [{path, views, journey?, step?}]
+    rows: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    warnings: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class JourneyConfig(SQLModel, table=True):
+    """Per-project path rules that fold concrete paths into one key
+    (/product/123 -> /product/{id}). Applied to traffic AND to the cases'
+    goto URLs. Matched with segment wildcards or RE2, never Python `re`."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True, unique=True)
+    # [{pattern, kind: "pattern"|"regex", name?}]
+    path_rules: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BusinessJourney(SQLModel, table=True):
+    """A named business journey ("Checkout") grouping cases of one project.
+    `case_ids` is an ordered JSON list on purpose (order is the journey's
+    step order); ids are validated against the project on write and
+    re-filtered by project on read, so a deleted or moved case just drops out.
+    `traffic_journey` names the journey/funnel column value in the latest
+    analytics import whose traffic this journey reports."""
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_business_journey_name"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    criticality: str = Field(default="medium")     # low | medium | high | critical
+    case_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    requirement_refs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    traffic_journey: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FlagCatalogEntry(SQLModel, table=True):
+    """A feature flag / experiment the project expects runs to cover, with its
+    possible values; the flag coverage report lists values no run exercised."""
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_flag_catalog_name"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    values: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    description: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BenchmarkGroup(SQLModel, table=True):
+    """One dispatch of a suite against N target base URLs. Each target gets
+    one suite-level TestRun with `target_url` = its base URL (the comparison
+    -run override: relative gotos resolve against it) and
+    `benchmark_group_id` = this row. Re-running makes a new group."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_suite_id: int = Field(foreign_key="testsuite.id", index=True)
+    name: str
+    # [{label, base_url}]
+    targets: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    browser: str = Field(default="chromium")
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

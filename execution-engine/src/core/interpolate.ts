@@ -1,7 +1,7 @@
 /**
  * Template interpolation shared by every executor (web test-executor,
  * mobile worker): {{env.KEY}}, {{secret.KEY}}, {{data.KEY}}, {{fake.KIND}},
- * {{run.KEY}}, {{unique.NAME}}, {{setup.NAME}} and bare {{name}} runtime
+ * {{run.KEY}}, {{unique.NAME}}, {{setup.NAME}}, {{flag.NAME}} and bare {{name}} runtime
  * variables. Unknown tokens are left in place so mistakes are visible rather
  * than silently blank.
  */
@@ -78,6 +78,9 @@ export interface TemplateContext {
     scope?: RunScope | null;
     /** {{setup.NAME}} — values exported by the suite setup hooks. */
     setup?: Record<string, any> | null;
+    /** {{flag.NAME}} — feature flags / variant the run declared (job
+     *  `settings.flags`). Booleans render as "true" / "false". */
+    flags?: Record<string, any> | null;
 }
 
 /**
@@ -94,6 +97,7 @@ export function templateContextFrom(globalSettings: any, testCaseContext: any): 
         hooks: testCaseContext?.hooks,
         scope: testCaseContext?.scope,
         setup: testCaseContext?.setup,
+        flags: globalSettings?.flags,
     };
 }
 
@@ -144,6 +148,12 @@ export function resolveTemplates(val: any, ctx: TemplateContext): any {
             const setup = ctx.setup;
             out = out.replace(/\{\{\s*setup\.([\w-]+)\s*\}\}/g, (tok: string, key: string) =>
                 setup[key] !== undefined ? String(setup[key]) : tok);
+        }
+        if (ctx.flags && out.includes('{{')) {
+            const flags = ctx.flags;
+            // Flag names may contain '.' and '-' (validated by the backend).
+            out = out.replace(/\{\{\s*flag\.([\w.-]+)\s*\}\}/g, (tok: string, key: string) =>
+                flags[key] !== undefined ? String(flags[key]) : tok);
         }
         if (out.includes('{{fake.')) {
             const random = ctx.scope?.fakeRng;
