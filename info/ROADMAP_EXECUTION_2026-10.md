@@ -40,6 +40,18 @@ with mocks/fakes; they are marked **mock-verified**.
 | R6 | Journey analytics | Generic CSV/JSON page-view import (decision 5), matched against routes the cases visit. |
 | R7 | SLOs | Per monitor: availability % and latency (p95 ms) targets over a rolling 30 days, error budget and burn rate. |
 
+## WP13 product defaults (2026-10-16, owner may overrule)
+
+| # | Question | Decision |
+|---|---|---|
+| C1 | Evidence pack integrity | Zip with a manifest listing every file's SHA-256, manifest signed with an HMAC key derived for this purpose (not the JWT key); verify endpoint. |
+| C2 | Controls | SOC 2 (from docs/SOC2_CONTROLS.md) seeded as editable data; each control has an owner, evidence sources, a freshness SLA; exceptions need an approver other than the requester and expire (max 365 days). |
+| C3 | Trust center | Per workspace, off by default, public page on an unguessable slug; posture shows aggregate status only (never finding details); documents only through expiring links an admin issues. |
+| C4 | PoC "time saved" | Labelled estimate from editable assumptions (default 5 min per manual case execution). |
+| C5 | Demo workspace | Separate workspace flagged demo, seeded with history, removable in one click, never contacts real sites (example.com / httpbin / local todolite). |
+| C6 | Sizing calculator | Estimates with the formulas shown, derived from the documented per-worker and storage figures. |
+| C7 | Integration test packs | Versioned JSON packs shipped in the repo (SSO, SCIM, webhooks); import creates a suite with variables to fill; import never contacts a target. |
+
 ## Status legend
 `done` merged into base · `wip` in progress · `todo` · `skip` (decision above)
 
@@ -60,7 +72,7 @@ with mocks/fakes; they are marked **mock-verified**.
 | 10 | **Frontend quality**: screen-size sweep, broken-link crawler, Lighthouse/SEO budgets, locale/RTL/theme matrix, selector-health report, component (Storybook) targets | done | feat/wp10 |
 | 11 | **Developer workflow**: reproduce-locally bundle + CLI replay (D15), git export of cases, PR comment with failing step + screenshot, API response-schema validation | done | feat/wp11 |
 | 12 | **Reporting**: weekly digest, manual cases + tester sign-off, shareable read-only report, journey coverage map (A4, analytics import), business journey board, DORA, exec summary, portfolio dashboard, SLO reports, third-party dependency health (B9), cost intelligence in money (E23), A/B + flag coverage, cross-site benchmarking, flake trend/patterns (A3 rest) | done | feat/wp12a..d |
-| 13 | **Solution & compliance**: compliance evidence pack, control model with owners/freshness/exceptions (C14), sizing calculator + seeded demo workspace, one suite vs N URLs side by side, integration test packs (SSO/SCIM/webhooks), PoC report, trust center (E24) | hold (owner) | - |
+| 13 | **Solution & compliance**: compliance evidence pack, control model with owners/freshness/exceptions (C14), sizing calculator + seeded demo workspace, one suite vs N URLs side by side, integration test packs (SSO/SCIM/webhooks), PoC report, trust center (E24) | wip (started 2026-10-16; "one suite vs N URLs" already delivered by WP12c benchmarks) | feat/wp13a..c |
 | 14 | **AI & platform**: in-app assistant (E20), agent action log + per-task budgets (E21), heal candidate ranking + uniqueness recheck (A5), API authz/business-rule fuzzing + abuse templates (C10, C13), policy engine single evaluation point (E22), visual change grouping/comments/element baselines (D17) | hold (owner) | - |
 | — | Plugin / custom-step SDK (D19) | skip | decision 1 |
 
@@ -73,4 +85,5 @@ with mocks/fakes; they are marked **mock-verified**.
 - 2026-10-15 15:45: WP5, 8, 9 (passive), 10, 11 merged with all review fixes; base head migration caa2b3c4d5eb; redesign merged (57a4ddf); local stack redeployed with everything. WP12-14 on hold.
 - 2026-10-16: owner restarted WP12 (reporting). Inventory first, then four sub-packages built in parallel worktrees off feature/redesign-a (backend commits cherry-picked to the base, UI to redesign). Also shipped today outside the WPs: RustFS object store, schedule timezones, per-project notifications, settings split, suite retry control, video upload fix.
 - 2026-10-16: WP12 merged. 12a digest fix (per-project recipients/webhooks, HTML, trend) + share links (hashed, expiring, token only in the URL fragment + POST body) + executive summary + portfolio; 12b DORA (deployment events from CI), monitor SLOs, flake trends/patterns, dependency health; 12c journey coverage import, business journeys, flag coverage + {{flag.NAME}}, cross-site benchmarks (comparison target_url now actually applied); 12d manual cases + tester screen + release sign-off (four-eyes), cost in money (empty price table until an admin sets it) + budget alerts. Migration chain ce12b3c4d5f1 → ce22b3c4d5f2 → ce32b3c4d5f3 → ce42b3c4d5f4. Sidebar "Reports" place. Integration fixes: JourneyConfig fields lost in a merge (caught by the migration check), trend chart stopped at yesterday.
+- 2026-10-16: owner started WP13 (solution & compliance). Inventory first; "one suite vs N URLs side by side" counted as done (WP12c Benchmarks).
 
