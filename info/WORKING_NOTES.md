@@ -49,7 +49,7 @@ top) → `info/ROADMAP_EXECUTION_2026-10.md` (tracker) → this file → `CLAUDE
   owner's permission. For API tests, probe the real response first, then
   write assertions.
 
-## Branches (as of 2026-10-15)
+## Branches (as of 2026-10-16)
 
 | Local | GitHub | Notes |
 |---|---|---|
@@ -59,8 +59,10 @@ top) → `info/ROADMAP_EXECUTION_2026-10.md` (tracker) → this file → `CLAUDE
 
 On a new laptop: clone, then
 `git checkout -b feature/enterprise-auth-ai origin/feature/enterprise-auth-ai-2026-10`
-and `git checkout -b feature/redesign-a origin/feature/redesign-a`.
-Those two are safe to pull. Do not check out or merge the other origin
+and `git branch feature/redesign-a origin/feature/redesign-a`, then
+`git worktree add ../TraceIQ-redesign feature/redesign-a` (the redesign branch
+lives in a second folder, `TraceIQ-redesign`, which images are built from).
+Full checklist: HANDOFF "Setting up a fresh laptop" → 0. Those two are safe to pull. Do not check out or merge the other origin
 branches.
 
 ## Running it locally
