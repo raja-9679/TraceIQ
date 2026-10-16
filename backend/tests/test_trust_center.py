@@ -194,8 +194,8 @@ def test_controls_item_is_an_aggregate_only():
     assert _controls({"controls": {"total": 0}}) is None
     v = _controls({"controls": {"total": 17, "passing": 15, "excepted": 1, "failing": 1,
                                 "frameworks": ["SOC 2"]}})
-    assert v == {"value": "16 of 17 passing (SOC 2)", "state": "warn"}
-    assert _controls({"controls": {"total": 2, "passing": 2, "frameworks": []}})["state"] == "ok"
+    assert v == {"value": "16 of 17 passing (SOC 2)", "state": "attention"}
+    assert _controls({"controls": {"total": 2, "passing": 2, "frameworks": []}})["state"] == "good"
 
 
 def test_drill_item_shows_the_date_only():
