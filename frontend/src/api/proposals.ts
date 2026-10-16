@@ -44,6 +44,28 @@ export interface CaseProposal {
 
 export type HealProposalStatus = 'pending' | 'accepted' | 'rejected' | 'auto_applied';
 
+export type HealStrategy = 'test-id' | 'id' | 'role' | 'label' | 'text' | 'css-path' | 'llm';
+
+/** One ranked replacement selector with its evidence (W5). */
+export interface HealCandidate {
+    selector: string;
+    strategy: HealStrategy;
+    source: 'deterministic' | 'llm' | 'both';
+    matches: number;
+    applicable: boolean;
+    score: number;
+    breakdown: { stability: number; similarity: number; llm: number; uniqueness: number };
+}
+
+export type HealRecheckStatus = 'unique' | 'not_unique' | 'no_match' | 'unsupported' | 'unavailable';
+
+export interface HealRecheck {
+    status: HealRecheckStatus;
+    matches: number | null;
+    selector: string;
+    detail: string;
+}
+
 export interface HealProposal {
     id: number;
     test_case_id: number;
@@ -56,6 +78,10 @@ export interface HealProposal {
     source_run_id: number | null;
     status: HealProposalStatus;
     created_at: string;
+    candidates?: HealCandidate[];
+    chosen_selector?: string | null;
+    has_dom_snapshot?: boolean;
+    recheck?: HealRecheck | null;
 }
 
 // Shape of GET /api/cases/{id} (TestCaseRead) — only fields the review UI needs.
@@ -106,8 +132,15 @@ export const healProposalsApi = {
         return response.data;
     },
 
-    accept: async (id: number): Promise<{ status: string; applied: boolean }> => {
-        const response = await api.post(`/heal-proposals/${id}/accept`);
+    /** Apply a heal; `selector` picks one of the proposal's candidates. */
+    accept: async (id: number, selector?: string): Promise<{ status: string; applied: boolean; selector: string; recheck: HealRecheck }> => {
+        const response = await api.post(`/heal-proposals/${id}/accept`, selector ? { selector } : undefined);
+        return response.data;
+    },
+
+    /** Dry run of the accept-time uniqueness check against the stored DOM snapshot. */
+    recheck: async (id: number, selector?: string): Promise<HealRecheck> => {
+        const response = await api.post(`/heal-proposals/${id}/recheck`, selector ? { selector } : undefined);
         return response.data;
     },
 

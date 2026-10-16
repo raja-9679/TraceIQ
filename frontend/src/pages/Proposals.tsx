@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import {
     caseProposalsApi, healProposalsApi, getTestCaseInfo,
-    CaseProposal, HealProposal, ProposedStep, TestCaseInfo,
+    CaseProposal, HealProposal, HealRecheck, ProposedStep, TestCaseInfo,
 } from '@/api/proposals';
+import HealCandidateList from '@/components/heal/HealCandidateList';
+import { candidatesOf, defaultPick } from '@/components/heal/healCandidates';
 import { api, getProjects } from '@/lib/api';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import {
@@ -516,13 +518,29 @@ function CaseProposalsView({ proposals }: { proposals: CaseProposal[] }) {
 // Heal proposals
 // ---------------------------------------------------------------------------
 
-function HealDetail({ proposal: p, caseName, onDecide, busy }: {
+function HealDetail({ proposal: p, caseName, onDecide, busy, refusal }: {
     proposal: HealProposal;
     caseName: string;
-    onDecide: (decision: 'accept' | 'reject') => void;
+    onDecide: (decision: 'accept' | 'reject', selector?: string) => void;
     busy: boolean;
+    /** Why the last accept of this proposal was refused (409), if it was. */
+    refusal?: string | null;
 }) {
     const st = statusStyle(p.status);
+    const candidates = candidatesOf(p);
+    const legacy = !p.candidates || p.candidates.length === 0;
+    const [picked, setPicked] = useState(defaultPick(p));
+    const [recheck, setRecheck] = useState<HealRecheck | null>(p.recheck ?? null);
+    const recheckMutation = useMutation({
+        mutationFn: (selector: string) => healProposalsApi.recheck(p.id, selector),
+        onSuccess: (r) => setRecheck(r),
+        onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
+            toast.error(`Couldn't check the selector: ${err.response?.data?.detail || err.message}`),
+    });
+    const pick = (selector: string) => {
+        setPicked(selector);
+        setRecheck(null);
+    };
     return (
         <DetailCard label="Selected heal proposal">
             <div className="flex flex-col gap-2">
@@ -548,10 +566,36 @@ function HealDetail({ proposal: p, caseName, onDecide, busy }: {
                     <div className="flex items-start gap-3 border-t border-[#F0EEE8] px-4 py-3">
                         <span className="w-14 flex-none pt-0.5 text-xs font-semibold text-ink-soft">After</span>
                         <code className="min-w-0 flex-1 break-all rounded-lg bg-pastel-mint/70 px-2 py-1 font-mono text-xs text-ink">
-                            {p.new_selector}
+                            {p.status === 'pending' ? picked : (p.chosen_selector || p.new_selector)}
                         </code>
                     </div>
                 </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+                <Eyebrow>{legacy ? 'Proposed selector' : `Ranked candidates (${candidates.length})`}</Eyebrow>
+                {!legacy && (
+                    <p className="text-xs text-ink-soft">
+                        Only a candidate matching exactly one element can be applied. Accepting rechecks
+                        the pick against the redacted page captured when the step failed
+                        {p.has_dom_snapshot ? '' : ' (no snapshot was stored for this proposal)'}.
+                    </p>
+                )}
+                <HealCandidateList
+                    candidates={candidates}
+                    picked={picked}
+                    onPick={pick}
+                    legacy={legacy}
+                    editable={p.status === 'pending' && !busy}
+                    onRecheck={p.has_dom_snapshot ? () => recheckMutation.mutate(picked) : undefined}
+                    recheck={recheck}
+                    checking={recheckMutation.isPending}
+                />
+                {refusal && (
+                    <p role="alert" className="rounded-2xl border border-border bg-pastel-pink/40 px-4 py-3 text-xs text-ink">
+                        Not applied: {refusal}
+                    </p>
+                )}
             </div>
 
             {(p.intent || p.rationale) && (
@@ -570,7 +614,7 @@ function HealDetail({ proposal: p, caseName, onDecide, busy }: {
 
             {p.status === 'pending' && (
                 <div className="flex flex-wrap gap-2.5 border-t border-border pt-5">
-                    <Button size="lg" disabled={busy} onClick={() => onDecide('accept')}>
+                    <Button size="lg" disabled={busy} onClick={() => onDecide('accept', picked)}>
                         <Check className="h-4 w-4" /> Apply to the test
                     </Button>
                     <Button size="lg" variant="outline" disabled={busy} onClick={() => onDecide('reject')}>
@@ -610,15 +654,26 @@ function HealProposalsTab({ status }: { status: string }) {
         return map;
     }, [caseQueries, caseIds]);
 
+    // Accept refusals (409: assertion step, stale, or the recheck found the
+    // pick not unique) are shown next to the candidates, per proposal.
+    const [refusals, setRefusals] = useState<Record<number, string>>({});
     const decideMutation = useMutation({
-        mutationFn: ({ id, decision }: { id: number; decision: 'accept' | 'reject' }) =>
-            decision === 'accept' ? healProposalsApi.accept(id) : healProposalsApi.reject(id),
+        mutationFn: ({ id, decision, selector }: { id: number; decision: 'accept' | 'reject'; selector?: string }) =>
+            decision === 'accept' ? healProposalsApi.accept(id, selector) : healProposalsApi.reject(id),
         onSuccess: (_data, vars) => {
             queryClient.invalidateQueries({ queryKey: ['heal-proposals'] });
+            setRefusals((r) => {
+                const next = { ...r };
+                delete next[vars.id];
+                return next;
+            });
             toast.success(vars.decision === 'accept' ? 'Selector heal applied to the test case' : 'Heal proposal rejected');
         },
-        onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
-            toast.error(`Failed to update heal proposal: ${err.response?.data?.detail || err.message}`),
+        onError: (err: Error & { response?: { status?: number; data?: { detail?: string } } }, vars) => {
+            const detail = err.response?.data?.detail || err.message;
+            if (err.response?.status === 409) setRefusals((r) => ({ ...r, [vars.id]: detail }));
+            toast.error(`Failed to update heal proposal: ${detail}`);
+        },
     });
 
     if (isLoading) {
@@ -669,7 +724,8 @@ function HealProposalsTab({ status }: { status: string }) {
                     proposal={selected}
                     caseName={nameOf(selected)}
                     busy={decideMutation.isPending}
-                    onDecide={(decision) => decideMutation.mutate({ id: selected.id, decision })}
+                    refusal={refusals[selected.id] ?? null}
+                    onDecide={(decision, selector) => decideMutation.mutate({ id: selected.id, decision, selector })}
                 />
             )}
         />
