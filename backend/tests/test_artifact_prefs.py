@@ -23,6 +23,7 @@ def test_no_settings_row_gets_the_defaults():
 
 @pytest.mark.parametrize("video,expected", [
     ("always", "always"), ("off", "off"), ("on-failure", "on-failure"),
+    ("never", "off"),   # what the Settings page actually stores for "Never record"
     ("ALWAYS", "always"), ("sometimes", "on-failure"), (None, "on-failure"),
 ])
 def test_video_choice_is_validated(video, expected):
