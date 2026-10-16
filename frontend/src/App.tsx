@@ -28,6 +28,9 @@ import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
 import LLMUsage from "@/pages/LLMUsage";
 import PublicStatus from "@/pages/PublicStatus";
+import PublicShare from "@/pages/PublicShare";
+import ExecutiveSummary from "@/pages/ExecutiveSummary";
+import Portfolio from "@/pages/Portfolio";
 import Traceability from "@/pages/Traceability";
 import Requirements from "@/pages/Requirements";
 import Incidents from "@/pages/Incidents";
@@ -66,6 +69,7 @@ function App() {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/status/:slug" element={<PublicStatus />} />
+            <Route path="/share/:token" element={<PublicShare />} />
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>
@@ -89,6 +93,8 @@ function App() {
                 <Route path="script-inventory" element={<ScriptInventory />} />
                 <Route path="triage" element={<Triage />} />
                 <Route path="analytics" element={<Analytics />} />
+                <Route path="reports/summary" element={<ExecutiveSummary />} />
+                <Route path="reports/portfolio" element={<Portfolio />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="traceability" element={<Traceability />} />

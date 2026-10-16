@@ -21,6 +21,7 @@ import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline
 import { HookOutcomes, RunDataSummary } from '@/components/suite-hooks/HookOutcomes';
 import { hookOutcomesOf, resultsWithHookWarnings } from '@/components/suite-hooks/suiteHooks';
 import { ReproBundleButton } from '@/components/ReproBundleButton';
+import { ShareRunButton } from '@/components/reports/ShareLinks';
 import SweepView from '@/components/frontend-quality/SweepView';
 import {
     isInvestigation, stepAnchorId, stepEvidenceOf, stepIndexOfRef, type EvidenceFocus,
@@ -225,6 +226,7 @@ export default function TestRunDetails() {
                         </Button>
                     )}
                     <CreateTicketDialog runId={run.id} />
+                    {isFinishedRun && run.project_id && <ShareRunButton runId={run.id} projectId={run.project_id} />}
                     {isStuckTest && (
                         <Button variant="destructive" onClick={() => setShowForceCompleteDialog(true)}>
                             <AlertTriangle size={16} /> Force complete

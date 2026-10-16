@@ -101,6 +101,7 @@ export interface TestRun {
     emulation?: { label?: string; viewport?: { name: string; width: number; height: number };
         locale?: { locale: string }; color_scheme?: string; reduced_motion?: boolean } | null;
     sweep_group?: string | null;
+    project_id?: number | null;
     created_at: string;
     status: "pending" | "running" | "passed" | "failed" | "error";
     total_tests: number;

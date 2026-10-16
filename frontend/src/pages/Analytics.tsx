@@ -1,12 +1,8 @@
 import { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Send, Plus, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { analyticsApi } from '@/api/analytics';
-import { reportsApi, ReportSchedule } from '@/api/reports';
+import { DigestCard } from '@/components/reports/DigestCard';
 import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
 import { Segmented, SkeletonRows, Tile } from '@/components/redesign-local/groupB/bits';
 import { BAR } from '@/components/redesign-local/groupB/look';
@@ -40,78 +36,6 @@ function RankedList({ title, empty, rows, color }: {
                             <span className="h-1.5 overflow-hidden rounded-full bg-secondary" aria-hidden="true">
                                 <span className="block h-full rounded-full" style={{ width: `${Math.max(4, (r.value / max) * 100)}%`, background: color }} />
                             </span>
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </section>
-    );
-}
-
-function ReportsSection({ projectId }: { projectId: number }) {
-    const qc = useQueryClient();
-    const [adding, setAdding] = useState(false);
-    const [f, setF] = useState({ name: '', cron_expression: '0 9 * * 1', window_days: 7, channels: 'slack', recipients: '' });
-    const reports = useQuery({ queryKey: ['reports', projectId], queryFn: () => reportsApi.list(projectId) });
-
-    const create = useMutation({
-        mutationFn: () => reportsApi.create(projectId, {
-            name: f.name, cron_expression: f.cron_expression, window_days: f.window_days,
-            channels: f.channels.split(',').map((s) => s.trim()).filter(Boolean),
-            recipients: f.recipients.split(',').map((s) => s.trim()).filter(Boolean),
-        }),
-        onSuccess: () => { toast.success('Report scheduled'); qc.invalidateQueries({ queryKey: ['reports', projectId] }); setAdding(false); },
-        onError: (e) => toast.error(errDetail(e)),
-    });
-    const sendNow = useMutation({ mutationFn: (id: number) => reportsApi.sendNow(id), onSuccess: () => toast.success('Report queued'), onError: (e) => toast.error(errDetail(e)) });
-    const del = useMutation({ mutationFn: (id: number) => reportsApi.remove(id), onSuccess: () => { toast.success('Removed'); qc.invalidateQueries({ queryKey: ['reports', projectId] }); }, onError: (e) => toast.error(errDetail(e)) });
-
-    return (
-        <section className="flex flex-col gap-4 rounded-3xl border border-border bg-white p-6">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex flex-col gap-1">
-                    <h2 className="text-base font-semibold text-ink">Scheduled reports</h2>
-                    <p className="text-[13px] text-ink-soft">A recurring quality summary sent to Slack, Teams or email.</p>
-                </div>
-                {!adding && <Button variant="outline" onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> New report</Button>}
-            </div>
-            {adding && (
-                <div className="grid gap-3 rounded-2xl bg-background p-4 sm:grid-cols-2">
-                    <label className="flex flex-col gap-1 text-[13px] text-ink-soft">Name
-                        <Input className="h-10 rounded-full bg-white" placeholder="Weekly quality" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[13px] text-ink-soft">Cron schedule
-                        <Input className="h-10 rounded-full bg-white font-mono" placeholder="0 9 * * 1" value={f.cron_expression} onChange={(e) => setF({ ...f, cron_expression: e.target.value })} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[13px] text-ink-soft">Window (days)
-                        <Input className="h-10 rounded-full bg-white" type="number" placeholder="7" value={f.window_days} onChange={(e) => setF({ ...f, window_days: parseInt(e.target.value) || 7 })} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[13px] text-ink-soft">Channels
-                        <Input className="h-10 rounded-full bg-white" placeholder="slack,email" value={f.channels} onChange={(e) => setF({ ...f, channels: e.target.value })} />
-                    </label>
-                    <label className="flex flex-col gap-1 text-[13px] text-ink-soft sm:col-span-2">Email recipients (comma-separated)
-                        <Input className="h-10 rounded-full bg-white" placeholder="qa@example.com" value={f.recipients} onChange={(e) => setF({ ...f, recipients: e.target.value })} />
-                    </label>
-                    <div className="flex gap-2 sm:col-span-2">
-                        <Button onClick={() => create.mutate()} disabled={create.isPending || !f.name || !f.cron_expression}>Create</Button>
-                        <Button variant="outline" onClick={() => setAdding(false)}>Cancel</Button>
-                    </div>
-                </div>
-            )}
-            {!reports.data || reports.data.length === 0 ? (
-                <p className="text-sm text-ink-soft">No scheduled reports yet.</p>
-            ) : (
-                <ul className="flex flex-col">
-                    {reports.data.map((r: ReportSchedule, i: number) => (
-                        <li key={r.id} className={`flex min-h-14 flex-wrap items-center justify-between gap-2 py-2 ${i > 0 ? 'border-t border-[#F0EEE8]' : ''}`}>
-                            <div className="flex min-w-0 flex-col">
-                                <span className="text-sm font-semibold text-ink">{r.name}</span>
-                                <span className="text-xs text-ink-soft"><span className="font-mono">{r.cron_expression}</span> · last {r.window_days} days · {(r.channels || []).join(', ') || 'slack'}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <Button size="sm" variant="outline" className="h-10 px-4" onClick={() => sendNow.mutate(r.id)}><Send className="h-4 w-4" /> Send now</Button>
-                                <Button size="icon" variant="ghost" className="text-ink-soft hover:bg-pastel-peach hover:text-pastel-ink-peach" aria-label={`Delete report ${r.name}`} onClick={() => del.mutate(r.id)}><Trash2 className="h-4 w-4" /></Button>
-                            </div>
                         </li>
                     ))}
                 </ul>
@@ -214,7 +138,7 @@ export default function Analytics() {
                         </div>
                     </section>
 
-                    <ReportsSection projectId={projectId} />
+                    <DigestCard projectId={projectId} />
                 </>
             )}
         </div>

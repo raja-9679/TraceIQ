@@ -465,7 +465,7 @@ export default function DashboardLayout() {
             <aside
                 aria-label="Workspace"
                 className={cn(
-                    "bg-tiq-gradient fixed inset-y-0 left-0 z-40 hidden border-r border-ink/[0.06] lg:block",
+                    "bg-tiq-gradient fixed inset-y-0 left-0 z-40 hidden border-r border-ink/[0.06] lg:block print:!hidden",
                     collapsed ? "w-16" : "w-64"
                 )}
             >
@@ -488,9 +488,9 @@ export default function DashboardLayout() {
                 </>
             )}
 
-            <div className={collapsed ? "lg:pl-16" : "lg:pl-64"}>
+            <div className={cn(collapsed ? "lg:pl-16" : "lg:pl-64", "print:!pl-0")}>
                 {/* Top bar: phones only — on desktop the sidebar or its icon rail is always there. */}
-                <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur lg:hidden">
+                <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/85 px-4 backdrop-blur lg:hidden print:hidden">
                     <button
                         type="button"
                         onClick={() => setMobileOpen(true)}
@@ -502,7 +502,7 @@ export default function DashboardLayout() {
                     <span className="truncate text-sm font-semibold text-ink">{activeProject?.name || 'TraceIQ'}</span>
                 </header>
 
-                <main className="p-4 sm:p-6 lg:p-8">
+                <main className="p-4 sm:p-6 lg:p-8 print:p-0">
                     <Outlet />
                 </main>
             </div>
