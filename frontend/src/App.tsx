@@ -46,6 +46,8 @@ import PublicStatus from "@/pages/PublicStatus";
 import PublicShare from "@/pages/PublicShare";
 import PublicTrust from "@/pages/PublicTrust";
 import TrustCenterSettings from "@/pages/TrustCenterSettings";
+import Policies from "@/pages/Policies";
+import Agents from "@/pages/Agents";
 import PocReport from "@/pages/PocReport";
 import ExecutiveSummary from "@/pages/ExecutiveSummary";
 import Portfolio from "@/pages/Portfolio";
@@ -122,6 +124,8 @@ function App() {
                 <Route path="reports/portfolio" element={<Portfolio />} />
                 <Route path="reports/poc" element={<PocReport />} />
                 <Route path="trust-center" element={<TrustCenterSettings />} />
+                <Route path="policies" element={<Policies />} />
+                <Route path="agents" element={<Agents />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="costs" element={<Costs />} />
