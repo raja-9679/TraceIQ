@@ -1185,6 +1185,57 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `assistant`. Purge plan, erasure (`PERSONAL_TABLES`) and entity delete
   (`assistantconversation.project_id` NULLIFY) cover the tables. UI: "Ask
   TraceIQ" button in the DashboardLayout header opens a drawer.
+- **Policy engine, AI opt-out, agent budgets (WP14b, 2026-10, decisions
+  W2/W3/W4)** — migration `d022b3c4d5f9` (`policydecisionlog`, `agentcontrol`,
+  `agentsession`, `workspace.ai_enabled` default true,
+  `testrun.agent_session_id`, `llmusageevent.agent_id/agent_session_id`).
+  `app/services/policy/`: `evaluate(action, ctx)` / `evaluate_sync` →
+  `Decision(allowed, rule, reason, data, status_code, detail, effect)`; rules
+  in `rules.py` WRAP the legacy functions (which stay the source of truth —
+  `tests/test_policy_parity.py` compares them table by table, so changing a
+  check means changing the wrapped function, not the rule). Actions:
+  `run.dispatch` (stages `create` = quota + agent rules in the run/benchmark/
+  access-matrix endpoints, `admit` = concurrency cap as a DEFER, `configure` =
+  capture ceiling, egress, `ai_allowed` job flag — all in `worker.py`),
+  `ai.use`, `agent.write`, `proposal.create|approve|auto_apply`,
+  `security.scan` (`_scan_gate` → rule → `_scan_gate_reason`), `backend.fetch`
+  (net_guard, documented only, `enforced=False`). Every DENY is written to
+  `PolicyDecisionLog` in its own transaction (the caller is about to raise);
+  defers and `log=False` probes are not; identical denies dedupe for 60 s per
+  process; `purge_policy_decisions` (daily beat) keeps
+  `POLICY_DENY_RETENTION_DAYS` (default 90). Legacy HTTP details are kept
+  verbatim; new rules return dict details (`error`, `rule`, `message`, …).
+  **AI opt-out** (W2): `get_provider()` returns `_PolicyGuarded(inner)` (Null
+  passes through) whose `complete` evaluates `ai.use` from the ambient
+  `llm_call_context` — so EVERY backend LLM call needs `workspace_id` in that
+  context or it is not workspace-gated. Assistant/feature code asks
+  `policy.ai_allowed(session, ws_id, principal=...)` (async) /
+  `ai_allowed_sync(...)`. Jobs carry `settings.ai_allowed`; the worker's
+  `core/ai-gate.ts` (`withAiGate` around each job, checked in
+  `provider.complete` by `runId`) skips heal/analysis LLM calls; absent flag =
+  allowed (old backends). The legacy CONTINUOUS engine (`server.ts`) does not
+  honour it. **Agents** (W3): `get_current_principal` binds X-Agent-Id/
+  X-Agent-Session-Id into the LLM context for the request and applies the
+  kill switch (`agent.write`) to API-key writes (non-GET) using the key's
+  workspace; JWT callers with agent headers are checked at runs, proposals
+  (single, bulk, generated), case create/update/import and suite create
+  (`agent_controls.enforce_agent_write`). Budgets are per SESSION:
+  `AgentControl` for the agent id → the workspace `"*"` row → instance
+  `AGENT_SESSION_MAX_{RUNS,LLM_TOKENS,PROPOSALS,MINUTES}`; None inherits, 0 =
+  no limit; refused once the counter has reached the cap (429, detail
+  `{error:"agent_budget_exceeded", limit, used, max, agent_id,
+  agent_session_id, message}`); wall clock counts from the session's first
+  budgeted action. Counters are an upsert on `agentsession` (separate
+  transaction); tokens come from `record_llm_usage` and the worker ingest
+  (`/internal/llm-usage`, attributed via the run). No session header = not
+  session-budgeted (budgets stop cooperative agents; the hard stop is the kill
+  switch / revoking the key). APIs: `/policy/rules`,
+  `/workspaces/{id}/ai-policy` (GET member, PUT admin humans-only, audited),
+  `/workspaces/{id}/policy-decisions` (ws admin), `/admin/policy-decisions`
+  (instance admin), `/workspaces/{id}/agents[/sessions|/timeline]` and
+  `/workspaces/{id}/agent-controls` (ws admin; PUT/DELETE humans-only,
+  audited `agent_blocked|agent_unblocked|agent_controls_updated|removed`).
+  Pages `/policies`, `/agents`.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

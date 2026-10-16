@@ -959,6 +959,14 @@ async def bulk_propose_cases(
         principal.user.id, body.project_id, session, min_role="editor"
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
+    # Agent kill switch + per-session proposal budget (WP14b), once per call.
+    from app.services.policy import PolicyContext, evaluate
+    _project = await session.get(Project, body.project_id)
+    _ws_id = getattr(_project, "workspace_id", None)
+    verdict = await evaluate("proposal.create", PolicyContext.from_principal(
+        principal, workspace_id=_ws_id, project_id=body.project_id, session=session))
+    if not verdict.allowed:
+        raise verdict.http_exception()
 
     results: List[BulkProposalItemResult] = []
     created = 0
@@ -994,6 +1002,8 @@ async def bulk_propose_cases(
             results.append(BulkProposalItemResult(index=idx, status="rejected", error=str(exc)[:200]))
 
     await session.commit()
+    from app.services.agent_controls import record_usage
+    await record_usage(session, principal, _ws_id, proposals=created)
     return BulkProposalResponse(
         project_id=body.project_id,
         submitted=len(body.proposals),

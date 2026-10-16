@@ -41,16 +41,21 @@ def llm_call_context(
     workspace_id: Optional[int] = None,
     project_id: Optional[int] = None,
     run_id: Optional[int] = None,
+    agent_id: Optional[str] = None,
+    agent_session_id: Optional[str] = None,
 ) -> Iterator[None]:
     """Attach business context to LLM calls made inside the block.
 
     Merges with any outer context, so e.g. a task can set workspace/run once
-    and inner helpers only add their feature name.
+    and inner helpers only add their feature name. `agent_id` /
+    `agent_session_id` (WP14b) attribute the tokens to an agent session and
+    make the `ai.use` policy apply that session's budget and kill switch.
     """
     merged = dict(_ctx.get())
     for key, value in (
         ("feature", feature), ("workspace_id", workspace_id),
         ("project_id", project_id), ("run_id", run_id),
+        ("agent_id", agent_id), ("agent_session_id", agent_session_id),
     ):
         if value is not None:
             merged[key] = value
@@ -63,6 +68,19 @@ def llm_call_context(
 
 def get_llm_context() -> dict:
     return dict(_ctx.get())
+
+
+def bind_request_agent(agent_id: Optional[str], agent_session_id: Optional[str]) -> None:
+    """Attach the calling agent to every LLM call for the rest of this
+    request. Called once by auth (get_current_principal) — the contextvar
+    lives in the request's task, so it never leaks into another request."""
+    if not agent_id:
+        return
+    merged = dict(_ctx.get())
+    merged["agent_id"] = str(agent_id)[:200]
+    if agent_session_id:
+        merged["agent_session_id"] = str(agent_session_id)[:200]
+    _ctx.set(merged)
 
 
 def record_llm_usage(
@@ -79,6 +97,8 @@ def record_llm_usage(
     workspace_id: Optional[int] = None,
     project_id: Optional[int] = None,
     run_id: Optional[int] = None,
+    agent_id: Optional[str] = None,
+    agent_session_id: Optional[str] = None,
 ) -> None:
     """Persist one LLM call. Explicit kwargs override the ambient context."""
     from app.models import LLMUsageEvent, UsageRecord
@@ -88,6 +108,8 @@ def record_llm_usage(
     workspace_id = workspace_id if workspace_id is not None else ctx.get("workspace_id")
     project_id = project_id if project_id is not None else ctx.get("project_id")
     run_id = run_id if run_id is not None else ctx.get("run_id")
+    agent_id = agent_id or ctx.get("agent_id")
+    agent_session_id = agent_session_id or ctx.get("agent_session_id")
     total = int(input_tokens or 0) + int(output_tokens or 0)
 
     try:
@@ -98,7 +120,12 @@ def record_llm_usage(
                 input_tokens=int(input_tokens or 0), output_tokens=int(output_tokens or 0),
                 total_tokens=total, latency_ms=int(latency_ms or 0),
                 success=success, error=(error or None) and str(error)[:500],
+                agent_id=agent_id, agent_session_id=agent_session_id,
             ))
+            if workspace_id and total and agent_id and agent_session_id:
+                from app.services.agent_controls import add_session_usage_sync
+                add_session_usage_sync(session, workspace_id, agent_id, agent_session_id,
+                                       llm_tokens=total)
             if workspace_id and total:
                 period = datetime.utcnow().strftime("%Y-%m")
                 rec = session.exec(select(UsageRecord).where(

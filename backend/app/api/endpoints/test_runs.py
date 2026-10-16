@@ -122,6 +122,7 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
         "git_repo": ctx.git_repo,
         "triggered_by": triggered_by,
         "agent_id": agent_id,
+        "agent_session_id": (principal.agent_session_id or None) and str(principal.agent_session_id)[:200],
         "api_key_id": api_key_id,
         "local_worker_id": (ctx.local_worker_id or None) and str(ctx.local_worker_id)[:64],
         "data_seed": data_seed,
@@ -153,15 +154,17 @@ async def create_run(
         raise HTTPException(
             status_code=403, detail="You do not have permission to run tests in this project")
 
-    # Plan quota: enforce the workspace's monthly run allowance (0 = unlimited).
+    # Policy engine, run.dispatch/create: the agent kill switch, the plan's
+    # monthly run allowance (402, 0 = unlimited) and the agent session's run
+    # budget (429). Every refusal is logged with the rule that fired.
     from app.services import billing as _billing
+    from app.services.policy import PolicyContext, evaluate as _evaluate_policy
     _ws_id = await _billing.workspace_id_for_project(session, suite.project_id)
-    if _ws_id:
-        allowed, used, limit = await _billing.check_quota(session, _ws_id, "runs")
-        if not allowed:
-            raise HTTPException(
-                status_code=402,
-                detail=f"Monthly run quota reached ({used}/{limit}). Upgrade the workspace plan to run more.")
+    _verdict = await _evaluate_policy("run.dispatch", PolicyContext.from_principal(
+        principal, workspace_id=_ws_id, project_id=suite.project_id, stage="create",
+        session=session))
+    if not _verdict.allowed:
+        raise _verdict.http_exception()
 
     # Region pinning (WP8): the region's workers may belong to another
     # customer's network, so the label must be one this workspace was granted.
@@ -503,6 +506,8 @@ async def create_run(
                 await _billing.record_usage(session, _ws_id, "runs", len(created_runs))
             except Exception as e:
                 print(f"Failed to record run usage for workspace {_ws_id}: {e}")
+            from app.services.agent_controls import record_usage as _agent_usage
+            await _agent_usage(session, principal, _ws_id, runs=len(created_runs))
 
     except HTTPException:
         # Same trap as get_run: this handler used to turn every deliberate 4xx

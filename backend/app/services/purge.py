@@ -268,6 +268,11 @@ PURGE_PLAN: List[PurgeStep] = [
               "DELETE FROM issuetrackerconfig WHERE workspace_id = :workspace_id"),
     PurgeStep("llmusageevent",
               "DELETE FROM llmusageevent WHERE workspace_id = :workspace_id"),
+    # WP14b: deny log, agent kill switch / budgets, agent session counters.
+    PurgeStep("policydecisionlog",
+              "DELETE FROM policydecisionlog WHERE workspace_id = :workspace_id"),
+    PurgeStep("agentcontrol", "DELETE FROM agentcontrol WHERE workspace_id = :workspace_id"),
+    PurgeStep("agentsession", "DELETE FROM agentsession WHERE workspace_id = :workspace_id"),
     PurgeStep("usagerecord",
               "DELETE FROM usagerecord WHERE workspace_id = :workspace_id"),
     PurgeStep("workspacesubscription",

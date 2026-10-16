@@ -55,6 +55,15 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
         run = session.get(TestRun, run_id)
         if not run:
             return {"status": "run_not_found"}
+        # Workspace AI opt-out / token quota / agent budget (ai.use): stop
+        # here rather than have every step's LLM call refused one by one.
+        from app.services.policy import ai_allowed_sync
+        _ws_project = session.get(Project, run.project_id) if run.project_id else None
+        verdict = ai_allowed_sync(_ws_project.workspace_id if _ws_project else None,
+                                  agent_id=run.agent_id, agent_session_id=run.agent_session_id,
+                                  project_id=run.project_id)
+        if not verdict.allowed:
+            return {"status": "ai_not_allowed", "rule": verdict.rule}
 
         results = session.exec(
             select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)
@@ -89,6 +98,7 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
                     feature="selector_heal",
                     workspace_id=project.workspace_id if project else None,
                     project_id=run.project_id, run_id=run_id,
+                    agent_id=run.agent_id, agent_session_id=run.agent_session_id,
                 ):
                     raw = llm.complete(prompt, max_tokens=300)
                 verdict = _parse_verdict(raw)

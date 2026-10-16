@@ -87,6 +87,9 @@ RETAINED_AUTHORSHIP: List[str] = [
     # the rest of their share links below.
     "trustcenter.updated_by_id", "trustincidentpost.created_by_id",
     "trustdocument.uploaded_by_id",
+    # WP14b: who last changed an agent's controls; whose credentials an agent
+    # session ran under. Workspace governance / usage records.
+    "agentcontrol.updated_by_id", "agentsession.user_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {
@@ -101,6 +104,10 @@ RETAINED_WITH_REASON: Dict[str, str] = {
     "drillresult.reporter_label": "restore-drill results are instance-level evidence; the "
                                   "label (the reporter's email or an API-key prefix) is kept "
                                   "like the audit trail's actor_label.",
+    "policydecisionlog.user_id": "the policy deny log records who was refused what (an id, "
+                                 "no name or email); it is security evidence like the audit "
+                                 "trail and ages out under POLICY_DENY_RETENTION_DAYS (90 days "
+                                 "by default).",
     "tenant.owner_id": "a tenant must have an owner; erasing the account does not "
                        "dissolve the organisation. Transfer ownership first if the "
                        "tenant is to outlive the person.",

@@ -59,6 +59,8 @@ async def create_test_suite(
     # Check project access
     if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You do not have permission to create suites/modules in this project")
+    from app.services.agent_controls import enforce_agent_write
+    await enforce_agent_write(session, principal, suite.project_id)
 
     suite.settings = _validated_settings(suite.settings)
 

@@ -58,6 +58,7 @@ import {
 } from './core/artifact-store';
 import { jobDataPolicy, policyFromDataPolicy } from './core/redact';
 import { AIEngine } from './ai';
+import { aiAllowedForRun, withAiGate } from './core/ai-gate';
 import { provider as llmProvider } from './llm-provider';
 import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
 import * as fs from 'fs';
@@ -167,6 +168,11 @@ class MobileWorker {
     }
 
     private async runJob(job: TestJob): Promise<JobResult> {
+        // WP14b: the backend's ai_allowed flag gates every LLM call for this run.
+        return withAiGate(job.run_id, job.settings, () => this.runJobInner(job));
+    }
+
+    private async runJobInner(job: TestJob): Promise<JobResult> {
         const startedAt = Date.now();
         const cases: TestCase[] = job.test_cases || (job.test_case ? [job.test_case] : []);
         const app = job.settings?.mobile_app;
@@ -557,7 +563,7 @@ class MobileWorker {
         meta: StepExecMeta,
     ): Promise<boolean> {
         try {
-            if (llmProvider.name === 'null') return false;
+            if (llmProvider.name === 'null' || !aiAllowedForRun(job.run_id)) return false;
             if (!step?.selector || !testCase.id) return false;
             if (!MOBILE_SELECTOR_FAILURE_RE.test(err.message || '')) return false;
 

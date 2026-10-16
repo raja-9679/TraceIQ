@@ -25,6 +25,7 @@ import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
 import { isManualCase, manualJobResult, splitManualCases } from './core/manual-guard';
 import { AIEngine } from './ai';
+import { aiAllowedForRun, withAiGate } from './core/ai-gate';
 import { provider as llmProvider } from './llm-provider';
 import { collectWebVitals, WebVitals } from './web-vitals';
 import {
@@ -139,7 +140,7 @@ class ExecutionWorker {
         sink: any[]
     ): Promise<void> {
         try {
-            if (llmProvider.name === 'null') return;
+            if (llmProvider.name === 'null' || !aiAllowedForRun(runId)) return;
             if (!step?.selector || !testCaseId) return;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return;
             if (!page || page.isClosed()) return;
@@ -184,7 +185,7 @@ class ExecutionWorker {
     ): Promise<boolean> {
         try {
             if (process.env.RUNTIME_HEAL_ENABLED !== 'true') return false;
-            if (llmProvider.name === 'null') return false;
+            if (llmProvider.name === 'null' || !aiAllowedForRun(runId)) return false;
             if (!step?.selector || !page || page.isClosed()) return false;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return false;
 
@@ -563,6 +564,11 @@ class ExecutionWorker {
      * Execute a test job - routes to appropriate handler based on job type
      */
     private async executeJob(job: TestJob): Promise<JobResult> {
+        // WP14b: the backend's ai_allowed flag gates every LLM call for this run.
+        return withAiGate(job.run_id, job.settings, () => this.executeJobInner(job));
+    }
+
+    private async executeJobInner(job: TestJob): Promise<JobResult> {
         // Manual cases are run by people; never start a browser for one.
         if (job.test_case && isManualCase(job.test_case)) {
             console.warn(`[Worker] Job ${job.job_id} carries a manual case; not executing it`);

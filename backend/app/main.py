@@ -33,6 +33,8 @@ from app.api import external_results as external_results_api
 from app.api import status_pages as status_pages_api
 from app.api import trust_center as trust_center_api
 from app.api import assistant as assistant_api
+from app.api import policies as policies_api
+from app.api import agents as agents_api
 from app.api import poc_reports as poc_reports_api
 from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
@@ -200,6 +202,8 @@ app.include_router(external_results_api.router, prefix="/api", tags=["external-r
 app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
 app.include_router(trust_center_api.router, prefix="/api", tags=["trust-center"])
 app.include_router(assistant_api.router, prefix="/api", tags=["assistant"])
+app.include_router(policies_api.router, prefix="/api", tags=["policies"])
+app.include_router(agents_api.router, prefix="/api", tags=["agents"])
 app.include_router(poc_reports_api.router, prefix="/api", tags=["poc-report"])
 app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])

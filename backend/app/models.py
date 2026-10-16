@@ -136,6 +136,11 @@ class Workspace(SQLModel, table=True):
     # override (either being true permits active scans).
     active_scan_enabled: bool = Field(default=False)
 
+    # WP14b (decision W2): workspace admins can switch off ALL LLM use for the
+    # workspace — failure analysis, case generation, heal, the assistant — on
+    # the server and on workers (jobs carry ai_allowed). Default on.
+    ai_enabled: bool = Field(default=True)
+
     # Security-finding remediation SLA in days per severity, e.g.
     # {"critical": 7, "high": 30, "medium": 90, "low": 180}. NULL → the
     # built-in DEFAULT_FINDING_SLA in app/services/finding_lifecycle.py.
@@ -661,6 +666,10 @@ class TestRunBase(SQLModel):
                                 values_callable=lambda obj: [e.value for e in obj])),
     )
     agent_id: Optional[str] = Field(default=None)
+    # WP14b: the X-Agent-Session-Id of the request that created the run, so
+    # the Agents page can show a session's runs and per-session budgets can
+    # count them.
+    agent_session_id: Optional[str] = Field(default=None, index=True)
     # API key id if this run was triggered by a service account (FK soft;
     # column added separately to keep the legacy/agent path migration-friendly).
     api_key_id: Optional[int] = Field(default=None)
@@ -2614,6 +2623,10 @@ class LLMUsageEvent(SQLModel, table=True):
     success: bool = Field(default=True)
     error: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # WP14b: the agent (X-Agent-Id / X-Agent-Session-Id) the call was made for,
+    # when known — from the request, or from the run a worker call belongs to.
+    agent_id: Optional[str] = Field(default=None)
+    agent_session_id: Optional[str] = Field(default=None, index=True)
 
 
 class WebhookCapture(SQLModel, table=True):
@@ -3615,6 +3628,71 @@ class AssistantMessage(SQLModel, table=True):
     dropped_citations: int = Field(default=0)
     provider: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+
+
+# WP14b — policy engine deny log (E22, W4) and agent controls (E21, W3).
+
+class PolicyDecisionLog(SQLModel, table=True):
+    """One DENY from the policy engine (app/services/policy). Allows are not
+    logged — they are the overwhelming majority and say nothing an operator
+    needs. Kept POLICY_DENY_RETENTION_DAYS (cleanup_tasks.purge_policy_decisions).
+    `project_id` is a plain column, not a foreign key: a deny about a project
+    must not block deleting that project, and the workspace purge removes the
+    row with the workspace."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    action: str = Field(index=True)            # run.dispatch | ai.use | proposal.create | ...
+    rule: str = Field(index=True)              # the rule that fired
+    reason: str = Field(default="")
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, index=True)
+    user_id: Optional[int] = Field(default=None)
+    api_key_id: Optional[int] = Field(default=None)
+    agent_id: Optional[str] = Field(default=None, index=True)
+    agent_session_id: Optional[str] = Field(default=None)
+    data: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class AgentControl(SQLModel, table=True):
+    """Workspace admin's settings for one agent id — or, with agent_id "*",
+    the workspace default for every agent. Budgets apply per agent SESSION
+    (X-Agent-Session-Id); None = inherit (agent row -> "*" row -> instance
+    AGENT_SESSION_MAX_*), 0 = no limit. `blocked` is the kill switch: the
+    agent gets 403 on writes in this workspace, reads still work."""
+    __table_args__ = (UniqueConstraint("workspace_id", "agent_id", name="uq_agentcontrol_ws_agent"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    agent_id: str
+    blocked: bool = Field(default=False)
+    blocked_reason: Optional[str] = Field(default=None)
+    max_runs: Optional[int] = Field(default=None)
+    max_llm_tokens: Optional[int] = Field(default=None)
+    max_proposals: Optional[int] = Field(default=None)
+    max_minutes: Optional[int] = Field(default=None)
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AgentSession(SQLModel, table=True):
+    """Usage counters for one agent session in one workspace — what the
+    per-session budgets are measured against. Created the first time the
+    session does something budgeted (first_seen_at starts the wall clock)."""
+    __table_args__ = (UniqueConstraint("workspace_id", "agent_id", "agent_session_id",
+                                       name="uq_agentsession_ws_agent_session"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    agent_id: str = Field(index=True)
+    agent_session_id: str = Field(index=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    runs: int = Field(default=0)
+    proposals: int = Field(default=0)
+    llm_tokens: int = Field(default=0)
+    denials: int = Field(default=0)
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

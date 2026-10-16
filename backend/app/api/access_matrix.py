@@ -258,10 +258,15 @@ async def run_matrix(matrix_id: int, request: Request,
 
     from app.services import billing as _billing
     if case_cells:
-        allowed, used, limit = await _billing.check_quota(session, project.workspace_id, "runs")
-        if not allowed:
-            raise HTTPException(status_code=402,
-                                detail=f"Monthly run quota reached ({used}/{limit}).")
+        from app.services.policy import PolicyContext, evaluate
+        verdict = await evaluate("run.dispatch", PolicyContext.from_principal(
+            principal, workspace_id=project.workspace_id, project_id=project.id,
+            stage="create", session=session))
+        if not verdict.allowed:
+            if verdict.rule == "plan.run_quota":
+                raise HTTPException(status_code=402, detail=(
+                    f"Monthly run quota reached ({verdict.data['used']}/{verdict.data['limit']})."))
+            raise verdict.http_exception()
 
     group = uuid.uuid4().hex
     mrun = AccessMatrixRun(
@@ -325,6 +330,8 @@ async def run_matrix(matrix_id: int, request: Request,
             await _billing.record_usage(session, project.workspace_id, "runs", len(created_runs))
         except Exception as e:  # noqa: BLE001
             print(f"[AccessMatrix] usage metering failed: {e}")
+        from app.services.agent_controls import record_usage
+        await record_usage(session, principal, project.workspace_id, runs=len(created_runs))
     from app.tasks.access_matrix_tasks import dispatch_access_matrix_run
     try:
         dispatch_access_matrix_run.delay(mrun.id)

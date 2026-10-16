@@ -155,10 +155,16 @@ async def ingest_worker_llm_usage(
     period = datetime.utcnow().strftime("%Y-%m")
     rollup: dict[int, int] = {}
     accepted = 0
+    agent_tokens: dict[tuple, int] = {}
     for ev in body.events[:200]:
         workspace_id = project_id = None
+        agent_id = agent_session_id = None
         if ev.run_id:
             run = await session.get(TestRun, ev.run_id)
+            if run:
+                # WP14b: a worker call made for an agent's run counts against
+                # that agent session's token budget.
+                agent_id, agent_session_id = run.agent_id, run.agent_session_id
             if run and run.project_id:
                 project_id = run.project_id
                 project = await session.get(Project, run.project_id)
@@ -172,9 +178,13 @@ async def ingest_worker_llm_usage(
             output_tokens=max(0, int(ev.output_tokens)),
             total_tokens=total, latency_ms=max(0, int(ev.latency_ms)),
             success=ev.success, error=(ev.error or None) and str(ev.error)[:500],
+            agent_id=agent_id, agent_session_id=agent_session_id,
         ))
         if workspace_id and total:
             rollup[workspace_id] = rollup.get(workspace_id, 0) + total
+            if agent_id and agent_session_id:
+                key = (workspace_id, agent_id, agent_session_id)
+                agent_tokens[key] = agent_tokens.get(key, 0) + total
         accepted += 1
 
     for ws_id, tokens in rollup.items():
@@ -190,4 +200,11 @@ async def ingest_worker_llm_usage(
         session.add(rec)
 
     await session.commit()
+    if agent_tokens:
+        from app.services.agent_controls import bump_session
+        for (ws_id, agent_id, sess_id), tokens in agent_tokens.items():
+            try:
+                await bump_session(session.bind, ws_id, agent_id, sess_id, llm_tokens=tokens)
+            except Exception as exc:  # noqa: BLE001 — metering must not fail ingest
+                print(f"[LLMUsage] agent session tokens not recorded: {exc}")
     return {"accepted": accepted}
