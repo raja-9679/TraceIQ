@@ -265,9 +265,10 @@ export function RunReview({ projectId, canEdit }: { projectId: number; canEdit: 
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-wrap items-end gap-3 rounded-3xl border border-border bg-white px-5 py-4">
-                <ControlSelect id="vr-run" label="Run" value={String(runId ?? shownRunId ?? '')}
-                    onChange={(v) => { setRunId(Number(v)); setSelection(null); }}
-                    options={runOptions.length ? runOptions : [{ value: String(shownRunId ?? ''), label: shownRunId ? `Run #${shownRunId}` : 'No runs yet' }]} />
+                {/* Radix Select rejects an empty item value, so "no run yet" is a sentinel. */}
+                <ControlSelect id="vr-run" label="Run" value={String(runId ?? shownRunId ?? 'none')}
+                    onChange={(v) => { if (v !== 'none') { setRunId(Number(v)); setSelection(null); } }}
+                    options={runOptions.length ? runOptions : [{ value: String(shownRunId ?? 'none'), label: shownRunId ? `Run #${shownRunId}` : 'No runs yet' }]} />
                 <ControlSelect id="vr-filter" label="Show" value={filter} onChange={(v) => { setFilter(v); setSelection(null); }}
                     options={[{ value: 'changed', label: 'Changes and new captures' }, { value: 'undecided', label: 'Not yet decided' }, { value: 'all', label: 'Everything compared' }]} />
                 <ControlSelect id="vr-sort" label="Sort by" value={sort} onChange={setSort}
