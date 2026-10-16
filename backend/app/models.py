@@ -136,6 +136,11 @@ class Workspace(SQLModel, table=True):
     # override (either being true permits active scans).
     active_scan_enabled: bool = Field(default=False)
 
+    # WP14b (decision W2): workspace admins can switch off ALL LLM use for the
+    # workspace — failure analysis, case generation, heal, the assistant — on
+    # the server and on workers (jobs carry ai_allowed). Default on.
+    ai_enabled: bool = Field(default=True)
+
     # Security-finding remediation SLA in days per severity, e.g.
     # {"critical": 7, "high": 30, "medium": 90, "low": 180}. NULL → the
     # built-in DEFAULT_FINDING_SLA in app/services/finding_lifecycle.py.
@@ -661,6 +666,10 @@ class TestRunBase(SQLModel):
                                 values_callable=lambda obj: [e.value for e in obj])),
     )
     agent_id: Optional[str] = Field(default=None)
+    # WP14b: the X-Agent-Session-Id of the request that created the run, so
+    # the Agents page can show a session's runs and per-session budgets can
+    # count them.
+    agent_session_id: Optional[str] = Field(default=None, index=True)
     # API key id if this run was triggered by a service account (FK soft;
     # column added separately to keep the legacy/agent path migration-friendly).
     api_key_id: Optional[int] = Field(default=None)
@@ -1814,6 +1823,12 @@ class VisualBaseline(SQLModel, table=True):
     image_url: str
     mask_regions: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
     tolerance: float = Field(default=0.01)
+    # WP14e element baselines: '' = the full-page baseline of the step,
+    # `el-<12 hex>` = one element's (hash of the normalised selector, see
+    # app/services/visual_review.py:element_key). Part of the lookup key, so
+    # the two never collide.
+    element_key: str = Field(default="", sa_column_kwargs={"server_default": ""})
+    selector: Optional[str] = Field(default=None)
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -1829,6 +1844,8 @@ class VisualBaselineRead(SQLModel):
     image_url: str
     tolerance: float
     created_at: datetime
+    element_key: str = ""
+    selector: Optional[str] = None
 
 
 class MobileAppBuild(SQLModel, table=True):
@@ -1948,6 +1965,16 @@ class SelectorHealProposal(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     decided_at: Optional[datetime] = Field(default=None)
     decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    # W5 — ranked candidates [{selector, strategy, source, matches, applicable,
+    # score, breakdown{stability, similarity, llm, uniqueness}}] (see
+    # app/services/heal_candidates.py); the candidate that is (or was) applied —
+    # the system's pick until a reviewer accepts another; the object-store key
+    # of the redacted DOM snapshot (under runs/{run}/heal/, never in this row);
+    # and the last accept-time uniqueness recheck.
+    candidates: Optional[List[Dict[str, Any]]] = Field(default=None, sa_column=Column(JSON))
+    chosen_selector: Optional[str] = None
+    dom_snapshot_key: Optional[str] = None
+    recheck: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 class SelectorHealProposalRead(SQLModel):
@@ -1962,6 +1989,10 @@ class SelectorHealProposalRead(SQLModel):
     source_run_id: Optional[int]
     status: str
     created_at: datetime
+    candidates: List[Dict[str, Any]] = []
+    chosen_selector: Optional[str] = None
+    has_dom_snapshot: bool = False
+    recheck: Optional[Dict[str, Any]] = None
 
 
 class FlakeRecord(SQLModel, table=True):
@@ -2614,6 +2645,10 @@ class LLMUsageEvent(SQLModel, table=True):
     success: bool = Field(default=True)
     error: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # WP14b: the agent (X-Agent-Id / X-Agent-Session-Id) the call was made for,
+    # when known — from the request, or from the run a worker call belongs to.
+    agent_id: Optional[str] = Field(default=None)
+    agent_session_id: Optional[str] = Field(default=None, index=True)
 
 
 class WebhookCapture(SQLModel, table=True):
@@ -3566,6 +3601,178 @@ class TrustDocument(SQLModel, table=True):
     object_key: str
     listed: bool = Field(default=True)
     uploaded_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# WP14a — in-app assistant (E20, decision W1). A read-only chat over the
+# caller's own data: app/services/assistant.py (orchestration, citations) and
+# app/services/assistant_tools.py (the read-only tool allow-list). Per user and
+# workspace, never visible to anyone else, kept 30 days
+# (cleanup_tasks.purge_assistant_conversations) and deletable by the user.
+# =============================================================================
+
+
+class AssistantConversation(SQLModel, table=True):
+    """One chat thread. `project_id` is only the focus the thread was opened
+    from; tools may read any project the caller can access at question time."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    title: str = Field(default="New conversation")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class AssistantMessage(SQLModel, table=True):
+    """A question or an answer. Stored content is what the user may see again:
+    the question after redaction, the answer the model gave. Raw prompts and
+    tool payloads are never stored — `tool_calls` keeps only the tool name,
+    its arguments and the refs it returned (the audit trail of what was read).
+    `project_ids` lists every project whose data reached the model for this
+    answer; reading the answer later requires access to all of them.
+    user_id / workspace_id are denormalised so erasure and the workspace purge
+    reach messages without a join."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    conversation_id: int = Field(foreign_key="assistantconversation.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    role: str                                   # user | assistant
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    # assistant only: answered | step_limit | invalid | not_configured |
+    # disabled | quota | no_response
+    status: Optional[str] = Field(default=None)
+    citations: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    tool_calls: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    project_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    uncited: bool = Field(default=False)
+    dropped_citations: int = Field(default=0)
+    provider: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+
+
+# WP14b — policy engine deny log (E22, W4) and agent controls (E21, W3).
+
+class PolicyDecisionLog(SQLModel, table=True):
+    """One DENY from the policy engine (app/services/policy). Allows are not
+    logged — they are the overwhelming majority and say nothing an operator
+    needs. Kept POLICY_DENY_RETENTION_DAYS (cleanup_tasks.purge_policy_decisions).
+    `project_id` is a plain column, not a foreign key: a deny about a project
+    must not block deleting that project, and the workspace purge removes the
+    row with the workspace."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    action: str = Field(index=True)            # run.dispatch | ai.use | proposal.create | ...
+    rule: str = Field(index=True)              # the rule that fired
+    reason: str = Field(default="")
+    workspace_id: Optional[int] = Field(default=None, foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, index=True)
+    user_id: Optional[int] = Field(default=None)
+    api_key_id: Optional[int] = Field(default=None)
+    agent_id: Optional[str] = Field(default=None, index=True)
+    agent_session_id: Optional[str] = Field(default=None)
+    data: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class AgentControl(SQLModel, table=True):
+    """Workspace admin's settings for one agent id — or, with agent_id "*",
+    the workspace default for every agent. Budgets apply per agent SESSION
+    (X-Agent-Session-Id); None = inherit (agent row -> "*" row -> instance
+    AGENT_SESSION_MAX_*), 0 = no limit. `blocked` is the kill switch: the
+    agent gets 403 on writes in this workspace, reads still work."""
+    __table_args__ = (UniqueConstraint("workspace_id", "agent_id", name="uq_agentcontrol_ws_agent"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    agent_id: str
+    blocked: bool = Field(default=False)
+    blocked_reason: Optional[str] = Field(default=None)
+    max_runs: Optional[int] = Field(default=None)
+    max_llm_tokens: Optional[int] = Field(default=None)
+    max_proposals: Optional[int] = Field(default=None)
+    max_minutes: Optional[int] = Field(default=None)
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AgentSession(SQLModel, table=True):
+    """Usage counters for one agent session in one workspace — what the
+    per-session budgets are measured against. Created the first time the
+    session does something budgeted (first_seen_at starts the wall clock)."""
+    __table_args__ = (UniqueConstraint("workspace_id", "agent_id", "agent_session_id",
+                                       name="uq_agentsession_ws_agent_session"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    agent_id: str = Field(index=True)
+    agent_session_id: str = Field(index=True)
+    user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    runs: int = Field(default=0)
+    proposals: int = Field(default=0)
+    llm_tokens: int = Field(default=0)
+    denials: int = Field(default=0)
+    first_seen_at: datetime = Field(default_factory=datetime.utcnow)
+    last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# WP14e — visual review: stored comparisons (diff stats, change regions) and
+# comment threads on review items and groups
+# ---------------------------------------------------------------------------
+
+class VisualComparison(SQLModel, table=True):
+    """One `expect-visual-match` outcome in a run, as the worker reported it.
+
+    Keyed like the baseline it was compared with — (case, step, browser,
+    device, element_key) — where `element_key` is what the worker says it
+    captured, never what the step definition asks for: an older worker
+    ignores `selector`, takes a full page and reports no element key.
+    `regions` are the changed areas ({x, y, width, height, pixels,
+    hash_candidate, hash_baseline}), which the review groups on.
+    `baseline_id` is a soft pointer (a baseline can be deleted; the record of
+    the comparison stays with its run)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id", index=True)
+    test_name: Optional[str] = Field(default=None)
+    step_id: str
+    browser: str = Field(default="chromium")
+    device: Optional[str] = Field(default=None)
+    element_key: str = Field(default="")
+    selector: Optional[str] = Field(default=None)
+    baseline_id: Optional[int] = Field(default=None)
+    # passed | failed | capture_only
+    status: str = Field(default="capture_only")
+    candidate_key: Optional[str] = Field(default=None)
+    diff_key: Optional[str] = Field(default=None)
+    diff_ratio: Optional[float] = Field(default=None)
+    diff_pixels: Optional[int] = Field(default=None)
+    total_pixels: Optional[int] = Field(default=None)
+    width: Optional[int] = Field(default=None)
+    height: Optional[int] = Field(default=None)
+    size_mismatch: bool = Field(default=False)
+    tolerance: Optional[float] = Field(default=None)
+    regions: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VisualReviewComment(SQLModel, table=True):
+    """A comment on a visual review item (`comparison_id`) or on a group of
+    related changes in a run (`test_run_id` + `group_key`, e.g. 'g42' — the
+    group anchored on comparison 42). Plain text; rendered escaped."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id", index=True)
+    comparison_id: Optional[int] = Field(default=None, foreign_key="visualcomparison.id", index=True)
+    group_key: Optional[str] = Field(default=None)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    body: str = Field(sa_column=Column(Text, nullable=False))
+    resolved: bool = Field(default=False)
+    resolved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    resolved_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

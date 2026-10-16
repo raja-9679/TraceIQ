@@ -215,6 +215,30 @@ async def _principal_from_api_key(
     return AuthPrincipal(user=user, api_key=key, agent_id=agent_id)
 
 
+_READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+
+
+async def _agent_gate(request: Request, session: AsyncSession, principal: AuthPrincipal) -> None:
+    """WP14b. Attribute this request's LLM calls to the calling agent, and
+    apply the agent kill switch to writes made with a workspace API key (the
+    key names the workspace). JWT callers sending X-Agent-Id are checked at
+    the agent write paths themselves (runs, proposals, cases, suites), where
+    the target workspace is known."""
+    if not principal.agent_id:
+        return
+    from app.services.llm_usage import bind_request_agent
+    bind_request_agent(principal.agent_id, principal.agent_session_id)
+    if principal.api_key is None or request.method.upper() in _READ_METHODS:
+        return
+    from app.services.policy import PolicyContext, evaluate
+    decision = await evaluate("agent.write", PolicyContext.from_principal(
+        principal, workspace_id=principal.api_key.workspace_id,
+        project_id=principal.api_key.project_id, session=session,
+        facts={"path": request.url.path, "method": request.method}))
+    if not decision.allowed:
+        raise decision.http_exception()
+
+
 async def get_current_principal(
     request: Request,
     token: Optional[str] = Depends(oauth2_scheme),
@@ -241,17 +265,20 @@ async def get_current_principal(
             api_key_raw, session, agent_id, client_addr=client_ip(request))
         if principal:
             principal.agent_session_id = agent_session_id
+            await _agent_gate(request, session, principal)
             return principal
         raise HTTPException(status_code=401, detail="Invalid API key")
 
     if token:
         user = await _user_from_jwt(token, session)
         if user:
-            return AuthPrincipal(
+            principal = AuthPrincipal(
                 user=user,
                 agent_id=agent_id,
                 agent_session_id=agent_session_id,
             )
+            await _agent_gate(request, session, principal)
+            return principal
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

@@ -578,6 +578,12 @@ async def create_proposal(
         principal.user.id, body.project_id, session, min_role="editor"
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
+    # Agent kill switch + per-session proposal budget (WP14b).
+    from app.services.policy import PolicyContext, evaluate
+    verdict = await evaluate("proposal.create", PolicyContext.from_principal(
+        principal, workspace_id=project.workspace_id, project_id=project.id, session=session))
+    if not verdict.allowed:
+        raise verdict.http_exception()
 
     if body.action == CaseProposalAction.CREATE and body.test_suite_id is None:
         raise HTTPException(status_code=400, detail="CREATE requires test_suite_id")
@@ -650,6 +656,8 @@ async def create_proposal(
     await maybe_auto_apply(proposal, principal.user.id, session)
     await session.commit()
     await session.refresh(proposal)
+    from app.services.agent_controls import record_usage
+    await record_usage(session, principal, project.workspace_id, proposals=1)
     return _proposal_read(proposal)
 
 
@@ -762,19 +770,17 @@ async def _enforce_separation(proposal: CaseProposal, approver_id: int,
     person. Rejection is deliberately NOT gated — withdrawing your own proposal
     is harmless, and blocking it would leave proposals stuck with nobody able to
     clear them."""
-    from app.models import Project, Workspace
-    from app.services.proposal_policy import approver_conflict, separation_required
-
+    # The check itself is the policy engine's proposal.separation_of_duties
+    # rule (wrapping app/services/proposal_policy.py), so a refusal is logged.
+    from app.models import Project
+    from app.services.policy import PolicyContext, evaluate
     project = await session.get(Project, proposal.project_id)
-    workspace = await session.get(Workspace, project.workspace_id) if project else None
-    required = separation_required(
-        workspace_flag=bool(getattr(workspace, "require_separate_approver", False)))
-    if approver_conflict(created_by_id=proposal.created_by_id,
-                         approver_id=approver_id, required=required):
-        raise HTTPException(
-            status_code=403,
-            detail="You filed this proposal, so you cannot accept it. This "
-                   "workspace requires a second person to approve agent changes.")
+    decision = await evaluate("proposal.approve", PolicyContext(
+        workspace_id=getattr(project, "workspace_id", None), project_id=proposal.project_id,
+        user_id=approver_id, session=session,
+        facts={"proposal": proposal, "approver_id": approver_id}))
+    if not decision.allowed:
+        raise decision.http_exception()
 
 
 async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncSession) -> bool:
@@ -790,13 +796,6 @@ async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncS
             return False
         if proposal.action not in (CaseProposalAction.CREATE, CaseProposalAction.UPDATE):
             return False
-        # Instance-wide kill switch (F4). An auto-applied change has no human
-        # reviewer at any point, so an operator has to be able to switch that off
-        # for the whole instance and demonstrate that it is off — which is why it
-        # is an instance setting rather than an environment variable.
-        from app.services.proposal_policy import auto_apply_disabled
-        if auto_apply_disabled():
-            return False
         from app.models import Project, Workspace
         project = await session.get(Project, proposal.project_id)
         if not project:
@@ -804,6 +803,19 @@ async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncS
         workspace = await session.get(Workspace, project.workspace_id)
         threshold = getattr(workspace, "auto_apply_threshold", None) or 0
         if threshold <= 0 or proposal.ai_confidence < threshold:
+            return False
+        # Instance-wide kill switch (F4). An auto-applied change has no human
+        # reviewer at any point, so an operator has to be able to switch that off
+        # for the whole instance and demonstrate that it is off — which is why it
+        # is an instance setting rather than an environment variable. Asked of
+        # the policy engine only once the threshold would apply, so the deny
+        # log records proposals the switch actually held back.
+        from app.services.policy import PolicyContext, evaluate
+        verdict = await evaluate("proposal.auto_apply", PolicyContext(
+            workspace_id=project.workspace_id, project_id=project.id, user_id=user_id,
+            agent_id=proposal.created_by_agent_id, agent_session_id=proposal.agent_session_id,
+            session=session, facts={"proposal": proposal}))
+        if not verdict.allowed:
             return False
 
         await _apply_proposal(proposal, user_id, session)

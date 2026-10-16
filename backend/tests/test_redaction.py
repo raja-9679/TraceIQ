@@ -633,3 +633,94 @@ def test_crawl_report_urls_and_redirect_hops_are_scrubbed():
     assert out["issues"][0]["status_code"] == 404
     assert out["issues"][0]["redirect_chain"][0]["status"] == 302
     assert out["links_checked"] == 3
+
+
+# --------------------------------------------------------------------------
+# DOM snapshots for selector heal (twin: redact.test.ts "redactDom")
+# --------------------------------------------------------------------------
+
+from app.services.redaction import redact_dom  # noqa: E402
+
+_DOM_FIXTURE = """<!DOCTYPE html><html><head>
+<meta name="csrf-token" content="s3cr3t-csrf"><link rel="stylesheet" href="/a.css?v=1">
+<script>window.API_KEY = "sk_live_abc123";</script><style>.x{color:red}</style></head>
+<body><!-- build 4f2a debug token=xyz -->
+<form id="login" action="/session?next=/home&amp;sig=abcdef">
+  <input type="hidden" name="authenticity_token" value="tok-123">
+  <input id="email" name="email" type="email" value="jane@corp.example" placeholder="Email">
+  <input id="password" name="password" type="password" value="hunter2">
+  <input type="submit" value="Sign in" onclick="steal()">
+  <textarea name="notes">private notes</textarea>
+  <button data-testid="login-submit" class="btn primary" aria-label="Log in" style="color:red">Log in</button>
+  <img src="data:image/png;base64,AAAA" alt="logo">
+  <div class="api-token-display">ghp_abcdefghijklmnopqrstuvwxyz0123456789</div>
+  <span data-token="abc">Card 4111 1111 1111 1111</span>
+  <div style="display: none" title="XLONG">Hidden panel</div>
+  <div class="profile-card"><p>Jane Doe, 12 Main St</p></div>
+</form></body></html>""".replace("XLONG", "x" * 300)
+
+
+def test_redact_dom_strips_scripts_styles_comments_meta_and_hidden_inputs():
+    out = redact_dom(_DOM_FIXTURE)
+    for leaked in ("sk_live_abc123", "color:red}", "build 4f2a", "s3cr3t-csrf", "tok-123", "authenticity_token"):
+        assert leaked not in out, leaked
+    assert "<script></script>" in out
+
+
+def test_redact_dom_drops_input_values_and_textarea_text_but_keeps_button_labels():
+    out = redact_dom(_DOM_FIXTURE)
+    assert "jane@corp.example" not in out
+    assert "hunter2" not in out
+    assert "private notes" not in out
+    assert 'value="Sign in"' in out
+
+
+def test_redact_dom_removes_text_in_credential_elements_and_secret_attributes():
+    out = redact_dom(_DOM_FIXTURE)
+    assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in out
+    assert "data-token" not in out
+    assert "4111 1111 1111 1111" not in out
+
+
+def test_redact_dom_strips_handlers_data_uris_url_queries_and_long_attributes():
+    out = redact_dom(_DOM_FIXTURE)
+    assert "onclick" not in out
+    assert "base64,AAAA" not in out
+    assert 'src="data:[REDACTED]"' in out
+    assert 'action="/session"' in out
+    assert "xxxxxxxxxx" not in out
+    assert 'style="display:none"' in out
+    assert "color:red" not in out
+
+
+def test_redact_dom_keeps_what_selectors_are_built_from():
+    out = redact_dom(_DOM_FIXTURE)
+    for kept in ('id="email"', 'name="email"', 'placeholder="Email"', 'data-testid="login-submit"',
+                 'class="btn primary"', 'aria-label="Log in"', ">Log in</button>", 'id="password"',
+                 'alt="logo"', "Hidden panel"):
+        assert kept in out, kept
+
+
+def test_redact_dom_applies_mask_selectors_and_policy_body_keys():
+    out = redact_dom(_DOM_FIXTURE, RedactionPolicy(body_keys=("notes",)), mask_selectors=["div.profile-card"])
+    assert "Jane Doe" not in out
+    assert 'class="profile-card"' in out
+    assert "Jane Doe" in redact_dom(_DOM_FIXTURE)
+
+
+def test_redact_dom_is_idempotent_and_tolerates_junk():
+    once = redact_dom(_DOM_FIXTURE)
+    assert redact_dom(once) == once
+    assert redact_dom("") == ""
+    assert redact_dom(None) == ""
+    assert redact_dom("<div <p>broken < 3 </div>")
+
+
+def test_worker_result_heal_snapshots_are_redacted_as_a_backstop():
+    out = redact_worker_result({
+        "heal_suggestions": [{"dom_snapshot": '<input type="password" value="hunter2">'}],
+        "step_dom": {"s1": '<script>secret()</script><input value="x1">'},
+    })
+    blob = str(out)
+    assert "hunter2" not in blob
+    assert "secret()" not in blob

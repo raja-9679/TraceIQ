@@ -8,7 +8,7 @@ from app.core.storage import minio_client
 from app.core.limiter import limiter
 from app.api import (
     api_keys, audit, auth, data_policy, project_notifications, settings, workspaces, projects, admin,
-    workspace_webhooks, visual_baselines, personas, heal_proposals,
+    workspace_webhooks, visual_baselines, visual_review, personas, heal_proposals,
     flake_records, case_generation, comparison_runs, agent_ownership,
     agent_reference, environments, analytics, inspect,
 )
@@ -32,6 +32,9 @@ from app.api import step_hooks as step_hooks_api
 from app.api import external_results as external_results_api
 from app.api import status_pages as status_pages_api
 from app.api import trust_center as trust_center_api
+from app.api import assistant as assistant_api
+from app.api import policies as policies_api
+from app.api import agents as agents_api
 from app.api import poc_reports as poc_reports_api
 from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
@@ -174,6 +177,7 @@ app.include_router(data_policy.router, prefix="/api", tags=["data-policy"])
 app.include_router(project_notifications.router, prefix="/api", tags=["notifications"])
 app.include_router(workspace_webhooks.router, prefix="/api", tags=["webhooks"])
 app.include_router(visual_baselines.router, prefix="/api", tags=["visual-baselines"])
+app.include_router(visual_review.router, prefix="/api", tags=["visual-review"])
 app.include_router(personas.router, prefix="/api", tags=["personas"])
 app.include_router(heal_proposals.router, prefix="/api", tags=["heal-proposals"])
 app.include_router(flake_records.router, prefix="/api", tags=["flakes"])
@@ -198,6 +202,9 @@ app.include_router(step_hooks_api.router, prefix="/api", tags=["step-hooks"])
 app.include_router(external_results_api.router, prefix="/api", tags=["external-results"])
 app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
 app.include_router(trust_center_api.router, prefix="/api", tags=["trust-center"])
+app.include_router(assistant_api.router, prefix="/api", tags=["assistant"])
+app.include_router(policies_api.router, prefix="/api", tags=["policies"])
+app.include_router(agents_api.router, prefix="/api", tags=["agents"])
 app.include_router(poc_reports_api.router, prefix="/api", tags=["poc-report"])
 app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])

@@ -147,6 +147,20 @@ async def generate_case(
 
     # Resolve the project's workspace + enforce budget cap.
     project = await session.get(Project, suite.project_id)
+    # WP14b: the workspace AI opt-out and the calling agent's kill switch /
+    # token budget refuse up front with a reason. The plan token quota stays
+    # where it was (inside the provider: an empty answer -> 502), unchanged.
+    from app.services.policy import PolicyContext, ai_allowed, evaluate
+    ws_id = project.workspace_id if project else None
+    verdict = await ai_allowed(session, ws_id, principal=principal, project_id=suite.project_id,
+                               only=("ai.workspace_opt_out", "agent.kill_switch", "agent.budget"))
+    if not verdict.allowed:
+        raise verdict.http_exception()
+    if mode == "propose":
+        verdict = await evaluate("proposal.create", PolicyContext.from_principal(
+            principal, workspace_id=ws_id, project_id=suite.project_id, session=session))
+        if not verdict.allowed:
+            raise verdict.http_exception()
     if project:
         await _check_and_consume_ai_budget(project.workspace_id, session)
 
@@ -212,6 +226,8 @@ async def generate_case(
     await maybe_auto_apply(proposal, principal.user.id, session)
     await session.commit()
     await session.refresh(proposal)
+    from app.services.agent_controls import record_usage
+    await record_usage(session, principal, ws_id, proposals=1)
     return {
         "mode": "propose",
         "proposal_id": proposal.id,

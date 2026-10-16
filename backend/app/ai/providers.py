@@ -12,17 +12,43 @@ import threading
 import time
 from typing import Any, Dict, List, Optional, Protocol
 
-from app.services.llm_usage import llm_tokens_quota_exceeded, record_llm_usage
+from app.services.llm_usage import record_llm_usage
 
 
 def _quota_blocked(provider_name: str) -> bool:
-    """Plan-level monthly token cap (see services/llm_usage.py). When the
-    ambient workspace is over its `monthly_llm_tokens` limit the call is
-    skipped and callers fall back to their non-AI behavior."""
-    if llm_tokens_quota_exceeded():
-        print(f"[LLM] {provider_name} call skipped: workspace over monthly token quota")
+    """The `ai.use` policy (app/services/policy) for the ambient call context:
+    the workspace AI opt-out, the calling agent's kill switch and token budget,
+    and the plan's monthly token cap (services/llm_usage.py). When it refuses,
+    the call is skipped and callers fall back to their non-AI behavior."""
+    from app.services.llm_usage import get_llm_context
+    from app.services.policy import PolicyContext, evaluate_sync
+    ctx = get_llm_context()
+    decision = evaluate_sync("ai.use", PolicyContext(
+        workspace_id=ctx.get("workspace_id"), project_id=ctx.get("project_id"),
+        agent_id=ctx.get("agent_id"), agent_session_id=ctx.get("agent_session_id")))
+    if not decision.allowed:
+        print(f"[LLM] {provider_name} call skipped: {decision.reason}")
         return True
     return False
+
+
+class _PolicyGuarded:
+    """Every provider handed out by get_provider() goes through this, so no
+    feature can reach an LLM without the ai.use policy — including ones
+    written later. The Null provider is passed straight through (nothing to
+    guard, and its callers already short-circuit on name == "null")."""
+
+    def __init__(self, inner: "LLMProvider") -> None:
+        self._inner = inner
+
+    @property
+    def name(self) -> str:
+        return self._inner.name
+
+    def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
+        if _quota_blocked(self._inner.name):
+            return ""
+        return self._inner.complete(prompt, system=system, max_tokens=max_tokens)
 
 
 class LLMProvider(Protocol):
@@ -53,8 +79,6 @@ class OpenAICompatibleProvider:
         self._model = model
 
     def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
-        if _quota_blocked(self.name):
-            return ""
         started = time.monotonic()
         try:
             messages: List[dict] = []
@@ -102,8 +126,6 @@ class AnthropicProvider:
         self._model = model
 
     def complete(self, prompt: str, *, system: Optional[str] = None, max_tokens: int = 1024) -> str:
-        if _quota_blocked(self.name):
-            return ""
         started = time.monotonic()
         try:
             kwargs = {
@@ -351,6 +373,14 @@ def _built(cfg: Dict[str, Any]) -> LLMProvider:
 
 
 def get_provider(provider_id: Optional[int] = None) -> LLMProvider:
+    """The provider to use for a call, behind the ai.use policy guard."""
+    inner = _resolve_provider(provider_id)
+    if isinstance(inner, NullProvider) or getattr(inner, "name", "") == "null":
+        return inner
+    return _PolicyGuarded(inner)
+
+
+def _resolve_provider(provider_id: Optional[int] = None) -> LLMProvider:
     """The provider to use for a call.
 
     provider_id names a saved ACTIVE config; missing/inactive ids fall back to

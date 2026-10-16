@@ -47,6 +47,7 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
         usage_ctx = llm_call_context(
             workspace_id=project.workspace_id if project else None,
             project_id=run.project_id, run_id=run_id,
+            agent_id=run.agent_id, agent_session_id=run.agent_session_id,
         )
 
         reports = []

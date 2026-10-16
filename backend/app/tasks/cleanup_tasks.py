@@ -420,3 +420,66 @@ def purge_webhook_captures(ttl_hours: int = WEBHOOK_CAPTURE_TTL_HOURS):
     if total:
         print(f"[Cleanup] Expired {total} webhook capture(s) older than {ttl_hours} h")
     return total
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_assistant_conversations")
+def purge_assistant_conversations():
+    """Delete assistant messages older than 30 days and conversations idle
+    that long (WP14a). A beat task rather than a purge on read: retention has
+    to hold for users who never open the assistant again. The read path also
+    hides anything older, so the gap between runs is never visible."""
+    from app.services.assistant import purge_expired_sync
+
+    with Session(sync_engine) as session:
+        total = purge_expired_sync(session)
+    if total:
+        print(f"[Cleanup] Expired {total} assistant message/conversation row(s)")
+    return total
+
+
+#: Default deny-log retention when POLICY_DENY_RETENTION_DAYS is unset (W4).
+POLICY_DENY_RETENTION_DEFAULT_DAYS = 90
+
+
+def policy_deny_retention_days() -> int:
+    from app.services.instance_settings import effective
+    raw = effective("POLICY_DENY_RETENTION_DAYS")
+    if raw is None or raw == "":
+        return POLICY_DENY_RETENTION_DEFAULT_DAYS
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return POLICY_DENY_RETENTION_DEFAULT_DAYS
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_policy_decisions")
+def purge_policy_decisions():
+    """Expire PolicyDecisionLog rows (refused actions, WP14b) past retention.
+
+    A bounded window on purpose: the deny log is an operator's "what got
+    blocked lately" view, not the audit trail — significant changes (kill
+    switch, budgets, AI opt-out) are in the audit log under its own retention.
+    """
+    from sqlalchemy import text
+
+    days = policy_deny_retention_days()
+    if days <= 0:
+        return 0
+    cutoff = datetime.utcnow() - timedelta(days=days)
+    batch = int(getattr(settings, 'RETENTION_BATCH_SIZE', 500) or 500)
+    total = 0
+    with Session(sync_engine) as session:
+        while True:
+            deleted = session.execute(text("""
+                DELETE FROM policydecisionlog
+                 WHERE id IN (SELECT id FROM policydecisionlog
+                               WHERE created_at < :cutoff
+                               ORDER BY id LIMIT :batch)
+            """), {"cutoff": cutoff, "batch": batch}).rowcount or 0
+            session.commit()
+            total += deleted
+            if deleted < batch:
+                break
+    if total:
+        print(f"[Cleanup] Expired {total} policy deny-log row(s) older than {days} days")
+    return total

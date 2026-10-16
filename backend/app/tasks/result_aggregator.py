@@ -614,8 +614,30 @@ def flake_verdict(status, retry_count: int, flake_score: Optional[float]):
     return is_flaky, confidence
 
 
+def _heal_snapshot_policy(session, run_id):
+    """(RedactionPolicy, mask selectors, capture level) of the run's project,
+    for the backend's own pass over a heal snapshot before it is stored."""
+    from app.models import Project
+    from app.services.data_policy import resolve_for_project
+    from app.services.redaction import RedactionPolicy
+    run = session.get(TestRun, run_id) if run_id else None
+    project = session.get(Project, run.project_id) if run and run.project_id else None
+    if project is None:
+        return RedactionPolicy(), [], "standard"
+    blob = resolve_for_project(project)
+    return (RedactionPolicy.from_data_policy(blob), blob.get("mask_selectors") or [],
+            blob.get("capture_level") or "standard")
+
+
 def _persist_heal_suggestions(result: Dict[str, Any]):
     """Insert worker heal suggestions as pending SelectorHealProposal rows.
+
+    W5: a suggestion carries its ranked candidates (evidence included) and the
+    redacted DOM they were scored against. The DOM is redacted again here
+    with the project's policy and stored in the object store under the run's
+    prefix (not in the row) unless the project captures nothing; accept
+    re-checks uniqueness against it. Older workers send neither, and get the
+    pre-W5 single-candidate row.
 
     Dedupes on (test_case_id, step_id, new_selector) against existing
     pending proposals so a repeatedly failing selector doesn't flood the
@@ -625,9 +647,13 @@ def _persist_heal_suggestions(result: Dict[str, Any]):
         return
 
     from app.models import SelectorHealProposal
+    from app.services import heal_candidates
+    from app.services.redaction import redact_dom
 
     try:
         with Session(sync_engine) as session:
+            run_id = result.get('run_id')
+            policy = None
             created = 0
             for s in suggestions[:10]:
                 if not s.get('test_case_id') or not s.get('new_selector'):
@@ -643,26 +669,45 @@ def _persist_heal_suggestions(result: Dict[str, Any]):
                 if existing:
                     continue
                 matches = int(s.get('matches') or 0)
+                candidates = heal_candidates.sanitize_candidates(s.get('candidates'))
+                chosen = next((c for c in candidates if c['selector'] == s['new_selector']), None)
+                snapshot_key = None
+                if isinstance(s.get('dom_snapshot'), str) and s['dom_snapshot']:
+                    if policy is None:
+                        policy = _heal_snapshot_policy(session, run_id)
+                    redaction_policy, masks, capture_level = policy
+                    if capture_level != 'none':
+                        snapshot_key = heal_candidates.store_snapshot(
+                            run_id, s['test_case_id'], s.get('step_id') or '',
+                            redact_dom(s['dom_snapshot'], redaction_policy, masks))
+                if chosen is not None:
+                    confidence = chosen['score']
+                else:
+                    # A pre-W5 worker: one candidate, judged by its match count.
+                    confidence = 0.75 if matches == 1 else (0.5 if matches > 1 else 0.25)
+                applied = " (applied at run time)" if s.get('applied') else ""
                 session.add(SelectorHealProposal(
                     test_case_id=s['test_case_id'],
                     step_id=s.get('step_id') or '',
                     old_selector=s.get('old_selector'),
                     new_selector=s['new_selector'],
                     intent=s.get('intent'),
-                    # A healed selector that matches exactly one element in the
-                    # failing DOM is a much stronger candidate.
-                    confidence=0.75 if matches == 1 else (0.5 if matches > 1 else 0.25),
+                    confidence=confidence,
                     rationale=(
-                        f"Reactive heal after step failure in run {result.get('run_id')}: "
-                        f"proposed selector matched {matches} element(s) in the live DOM."),
-                    source_run_id=result.get('run_id'),
+                        f"Reactive heal after step failure in run {run_id}{applied}: "
+                        f"chosen selector matched {matches} element(s) in the live DOM"
+                        + (f"; {len(candidates)} candidate(s) ranked." if candidates else ".")),
+                    source_run_id=run_id,
                     status='pending',
+                    candidates=candidates or None,
+                    chosen_selector=s['new_selector'],
+                    dom_snapshot_key=snapshot_key,
                 ))
                 created += 1
             if created:
                 session.commit()
                 print(f"[Aggregator] Stored {created} heal proposal(s) "
-                      f"from run {result.get('run_id')}")
+                      f"from run {run_id}")
     except Exception as e:
         print(f"[Aggregator] Failed to persist heal suggestions: {e}")
 
@@ -678,6 +723,20 @@ def _persist_page_budgets(session, run, test_case_id, test_name, res: Dict[str, 
         persist_samples(session, run, test_case_id, test_name, res.get('page_budgets'))
     except Exception as e:  # noqa: BLE001
         print(f"[Aggregator] Failed to store page budgets for run {getattr(run, 'id', None)}: {e}")
+
+
+def _persist_visual_results(session, run, test_case_id, test_name, res: Dict[str, Any],
+                            screenshot_keys):
+    """`expect-visual-match` outcomes -> VisualComparison rows (WP14e).
+    Older workers send none. Never raises, like the page budgets."""
+    if not res.get('visual_results'):
+        return
+    try:
+        from app.services.visual_review import persist_comparisons
+        persist_comparisons(session, run, test_case_id, test_name,
+                            res.get('visual_results'), screenshot_keys or [])
+    except Exception as e:  # noqa: BLE001
+        print(f"[Aggregator] Failed to store visual results for run {getattr(run, 'id', None)}: {e}")
 
 
 def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, Any], test_results: list):
@@ -773,6 +832,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 )
                 session.add(test_result)
             _persist_page_budgets(session, run, test_res.get('test_case_id'), test_name, test_res)
+            _persist_visual_results(session, run, test_res.get('test_case_id'), test_name, test_res,
+                                    artifacts.get('screenshots'))
 
         # Update run with network events (tagged by test name already)
         if network_events:
@@ -913,6 +974,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             )
             session.add(test_result)
         _persist_page_budgets(session, run, test_case_id, test_name, result)
+        _persist_visual_results(session, run, test_case_id, test_name, result,
+                                artifacts.get('screenshots'))
 
         # Update run with network events (accumulate from all test results)
         if network_events:

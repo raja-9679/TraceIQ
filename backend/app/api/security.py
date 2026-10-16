@@ -65,10 +65,24 @@ def _host_allowed(target_url: str, allowed_domains: List[str]) -> bool:
 
 
 async def _scan_gate(session: AsyncSession, project: Project, target_url: str,
-                     scan_type: str) -> Optional[str]:
+                     scan_type: str, principal: Optional[AuthPrincipal] = None,
+                     user_id: Optional[int] = None) -> Optional[str]:
     """Why a scan of this target may not run right now, or None. Shared by the
     scan endpoint and retest-on-fix, so a retest can never get past a gate a
-    person could not."""
+    person could not. Asks the policy engine (security.scan), whose rule wraps
+    `_scan_gate_reason` — so a refusal is logged with the gate that fired."""
+    from app.services.policy import PolicyContext, evaluate
+    ctx = (PolicyContext.from_principal(principal) if principal is not None
+           else PolicyContext(user_id=user_id))
+    ctx.workspace_id, ctx.project_id, ctx.session = project.workspace_id, project.id, session
+    ctx.facts = {"project": project, "target_url": target_url, "scan_type": scan_type}
+    decision = await evaluate("security.scan", ctx)
+    return None if decision.allowed else decision.reason
+
+
+async def _scan_gate_reason(session: AsyncSession, project: Project, target_url: str,
+                            scan_type: str) -> Optional[str]:
+    """The gate itself (the security.scan policy rule)."""
     sec = _security_settings(project)
     if not sec.enabled:
         return "Security scanning is disabled for this project"
@@ -140,7 +154,7 @@ async def create_security_scan(
     scan_type = (req.scan_type or "baseline").lower()
     if scan_type not in ("baseline", "active"):
         raise HTTPException(status_code=400, detail="scan_type must be 'baseline' or 'active'")
-    gate = await _scan_gate(session, project, req.target_url, scan_type)
+    gate = await _scan_gate(session, project, req.target_url, scan_type, principal=principal)
     if gate:
         raise HTTPException(status_code=403, detail=gate)
     sec = _security_settings(project)
@@ -271,7 +285,8 @@ async def _queue_retest(session: AsyncSession, finding: SecurityFinding,
     if in_flight:
         finding.retest_scan_id = in_flight.id
         return {"queued": True, "scan_id": in_flight.id, "reused": True}
-    gate = await _scan_gate(session, project, source.target_url, source.scan_type)
+    gate = await _scan_gate(session, project, source.target_url, source.scan_type,
+                            user_id=getattr(requested_by, "id", None))
     if gate:
         return {"queued": False, "reason": f"{gate}; the next scan of this target will verify it"}
     retest = SecurityScan(

@@ -77,6 +77,10 @@ export interface TestJob {
         // Worker egress allowlist (WP8), resolved by the backend at dispatch.
         // Absent = not enforced.
         egress_policy?: { enforce: boolean; allowed_hosts: string[]; allow_private: boolean };
+        // WP14b: false when the workspace switched AI off (or its token quota /
+        // the agent session's budget is spent). Every LLM call for the run is
+        // then skipped (core/ai-gate.ts). Absent = allowed.
+        ai_allowed?: boolean;
         // Feature flags / variant the run declared (WP12c), for {{flag.NAME}}.
         flags?: Record<string, string | boolean>;
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
@@ -163,6 +167,12 @@ export interface JobResult {
         new_selector: string;
         matches: number;
         intent?: string | null;
+        // W5: every ranked candidate with its evidence, the redacted DOM
+        // they were derived from (stored by the backend in the object store)
+        // and whether the runtime heal applied the chosen one.
+        candidates?: Array<Record<string, any>>;
+        dom_snapshot?: string;
+        applied?: boolean;
     }>;
 
     // Artifacts at job level

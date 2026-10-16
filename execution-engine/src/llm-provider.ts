@@ -32,6 +32,7 @@ export interface LLMProvider {
 // ---------------------------------------------------------------------------
 
 import { backendFetch } from './core/backend-http';
+import { aiAllowedForRun } from './core/ai-gate';
 
 function reportUsage(event: {
     provider: string; model: string; feature?: string; runId?: number;
@@ -256,7 +257,24 @@ export function reconfigureProvider(cfg: WorkerLlmConfig | null): boolean {
 
 // Callers hold this object; it always delegates to the current provider, so
 // a config change applies without restarting the worker.
+//
+// The AI gate (core/ai-gate.ts) is checked here, ahead of any SDK: a run
+// whose job said ai_allowed=false never reaches an LLM, whichever feature
+// asks.
 export const provider: LLMProvider = {
     get name() { return current.name; },
-    complete: (prompt: string, opts?: LLMCallOpts) => current.complete(prompt, opts),
+    complete: (prompt: string, opts?: LLMCallOpts) => {
+        if (!aiAllowedForRun(opts?.runId)) {
+            console.log(`[LLM] call skipped for run ${opts?.runId}: AI not allowed by workspace policy`);
+            return Promise.resolve('');
+        }
+        return current.complete(prompt, opts);
+    },
 };
+
+/** Test hook: install a provider directly (returns the previous one). */
+export function _setProviderForTests(p: LLMProvider): LLMProvider {
+    const prev = current;
+    current = p;
+    return prev;
+}

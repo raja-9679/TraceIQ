@@ -10,6 +10,7 @@ export interface BaselineRecord {
     browser: string;
     device?: string;
     viewport?: string;
+    element_key?: string;
     image_url: string;
     tolerance: number;
     mask_regions?: any[];
@@ -20,6 +21,8 @@ export async function resolveBaseline(query: {
     stepId: string;
     browser?: string;
     device?: string;
+    /** '' / absent = the full-page baseline; `el-…` = one element's. */
+    elementKey?: string;
 }): Promise<BaselineRecord | null> {
     if (!query.testCaseId) {
         console.warn('[baseline-client] no testCaseId in context — cannot resolve baseline');
@@ -30,6 +33,7 @@ export async function resolveBaseline(query: {
     params.set('step_id', query.stepId);
     if (query.browser) params.set('browser', query.browser);
     if (query.device) params.set('device', query.device);
+    if (query.elementKey) params.set('element_key', query.elementKey);
     try {
         const res = await backendFetch(`/api/internal/visual-baselines/resolve?${params.toString()}`);
         if (res.status === 404) return null; // genuinely no baseline yet

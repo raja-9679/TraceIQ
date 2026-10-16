@@ -90,9 +90,15 @@ def run_test_suite(run_id: int, tags: list = None):
         # Per-workspace concurrency cap: if the run's workspace is already at
         # its RUNNING limit, leave this run PENDING and retry shortly. This
         # bounds a single tenant's fan-out so it can't starve other tenants.
-        if _workspace_at_capacity(run, session):
+        # Asked of the policy engine (run.dispatch/admit), whose
+        # workspace.max_concurrent_runs rule wraps _workspace_at_capacity.
+        from app.services.policy import PolicyContext, evaluate_sync
+        admit = evaluate_sync("run.dispatch", PolicyContext(
+            project_id=run.project_id, stage="admit", session=session, facts={"run": run}))
+        if not admit.allowed:
             print(f"[Worker] Run {run_id} deferred: workspace at concurrency cap")
-            run_test_suite.apply_async((run_id,), {'tags': tags}, countdown=30)
+            run_test_suite.apply_async((run_id,), {'tags': tags},
+                                       countdown=admit.data.get('retry_seconds', 30))
             return
 
         print(f"[Worker] Starting run {run_id}")
@@ -230,8 +236,23 @@ def run_test_suite(run_id: int, tags: list = None):
             # it. Resolved here rather than in the worker so the instance-wide
             # MAX_CAPTURE_LEVEL ceiling is applied at dispatch — a worker
             # cannot be talked into exceeding it by a crafted job.
-            data_policy = _load_data_policy(auth_project_id, session)
+            # Capture ceiling, egress allowlist and the AI flag all come from
+            # the policy engine (run.dispatch/configure); its rules wrap
+            # _load_data_policy / _load_egress_policy below.
+            from app.models import Project as _Project
+            _cfg_project = session.get(_Project, auth_project_id) if auth_project_id else None
+            configured = evaluate_sync("run.dispatch", PolicyContext(
+                workspace_id=getattr(_cfg_project, 'workspace_id', None),
+                project_id=auth_project_id, stage="configure", session=session,
+                agent_id=getattr(run, 'agent_id', None),
+                agent_session_id=getattr(run, 'agent_session_id', None),
+                facts={"run": run, "environment": environment}))
+            data_policy = configured.data['data_policy']
             effective_settings['data_policy'] = data_policy
+            # Workspace AI opt-out / token quota / agent budget (WP14b): workers
+            # skip heal and failure-analysis LLM calls when this is false.
+            # Older workers ignore the key.
+            effective_settings['ai_allowed'] = bool(configured.data.get('ai_allowed', True))
             # The run starter's Settings → video/trace/screenshot choices. The
             # worker applies them within the capture level above, never past it.
             from app.services.artifact_prefs import load_for_user
@@ -266,7 +287,7 @@ def run_test_suite(run_id: int, tags: list = None):
             # Egress allowlist (WP8), resolved here for the same reason as the
             # capture level: the instance-wide switch must not be something a
             # crafted job can omit. None = not enforced.
-            egress = _load_egress_policy(auth_project_id, environment, session)
+            egress = configured.data.get('egress_policy')
             if egress:
                 effective_settings['egress_policy'] = egress
                 print(f"[Worker] Run {run_id}: egress allowlist enforced "
@@ -488,6 +509,8 @@ def _settings_payload(settings: dict) -> dict:
         payload['artifact_prefs'] = settings['artifact_prefs']
     if settings.get('egress_policy'):
         payload['egress_policy'] = settings['egress_policy']
+    if 'ai_allowed' in settings:
+        payload['ai_allowed'] = bool(settings['ai_allowed'])
     if settings.get('emulation'):
         payload['emulation'] = settings['emulation']
     if settings.get('flags'):

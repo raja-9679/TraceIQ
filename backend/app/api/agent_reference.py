@@ -321,8 +321,18 @@ _STEP_TYPES: List[Dict[str, Any]] = [
     {
         "type": "expect-visual-match",
         "category": "assertion",
-        "params": {},
-        "notes": "Phase B. Compares against a stored VisualBaseline keyed by (test_case_id, step.id, browser, device).",
+        "params": {
+            "selector": "Optional. Screenshot only this element (locator.screenshot) instead of the "
+                        "full page. Element baselines are keyed separately from the step's full-page "
+                        "baseline by an element key (hash of the normalised selector).",
+        },
+        "example": {"id": "<uuid>", "type": "expect-visual-match", "selector": "header.site-nav"},
+        "notes": "Compares against a stored VisualBaseline keyed by (test_case_id, step.id, browser, "
+                 "device, element_key). First run is capture-only; promote via "
+                 "POST /api/visual-baselines/promote. Each comparison (diff ratio, changed pixels, "
+                 "change regions) is stored for the project's visual review, which groups related "
+                 "changes across cases (GET /api/projects/{id}/visual-review). Workers older than "
+                 "WP14e ignore `selector` and compare the full page.",
     },
     {
         "type": "mock-response",
@@ -959,6 +969,14 @@ async def bulk_propose_cases(
         principal.user.id, body.project_id, session, min_role="editor"
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
+    # Agent kill switch + per-session proposal budget (WP14b), once per call.
+    from app.services.policy import PolicyContext, evaluate
+    _project = await session.get(Project, body.project_id)
+    _ws_id = getattr(_project, "workspace_id", None)
+    verdict = await evaluate("proposal.create", PolicyContext.from_principal(
+        principal, workspace_id=_ws_id, project_id=body.project_id, session=session))
+    if not verdict.allowed:
+        raise verdict.http_exception()
 
     results: List[BulkProposalItemResult] = []
     created = 0
@@ -994,6 +1012,8 @@ async def bulk_propose_cases(
             results.append(BulkProposalItemResult(index=idx, status="rejected", error=str(exc)[:200]))
 
     await session.commit()
+    from app.services.agent_controls import record_usage
+    await record_usage(session, principal, _ws_id, proposals=created)
     return BulkProposalResponse(
         project_id=body.project_id,
         submitted=len(body.proposals),

@@ -46,6 +46,10 @@ PERSONAL_TABLES: Dict[str, str] = {
     "user_settings": "user_id",
     "projectnotificationpref": "user_id",
     "refreshtoken": "user_id",
+    # WP14a: assistant chats are the person's own questions and the answers
+    # given to them. Messages before conversations (FK order).
+    "assistantmessage": "user_id",
+    "assistantconversation": "user_id",
 }
 
 # Authorship columns. Left pointing at the scrubbed row: these are the
@@ -58,6 +62,8 @@ RETAINED_AUTHORSHIP: List[str] = [
     "testsuite.updated_by_id", "testrun.user_id", "testcaserevision.changed_by_id",
     "caseproposal.created_by_id", "caseproposal.decided_by_id",
     "selectorhealproposal.decided_by_id", "visualbaseline.created_by_id",
+    # WP14e review comments: the thread is the project's review record.
+    "visualreviewcomment.author_id", "visualreviewcomment.resolved_by_id",
     "mobileappbuild.created_by_id", "securityscan.requested_by_id",
     "persona.created_by_id", "requirementlink.created_by_id",
     "reportschedule.created_by_id", "testschedule.created_by_id",
@@ -83,6 +89,9 @@ RETAINED_AUTHORSHIP: List[str] = [
     # the rest of their share links below.
     "trustcenter.updated_by_id", "trustincidentpost.created_by_id",
     "trustdocument.uploaded_by_id",
+    # WP14b: who last changed an agent's controls; whose credentials an agent
+    # session ran under. Workspace governance / usage records.
+    "agentcontrol.updated_by_id", "agentsession.user_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {
@@ -97,6 +106,10 @@ RETAINED_WITH_REASON: Dict[str, str] = {
     "drillresult.reporter_label": "restore-drill results are instance-level evidence; the "
                                   "label (the reporter's email or an API-key prefix) is kept "
                                   "like the audit trail's actor_label.",
+    "policydecisionlog.user_id": "the policy deny log records who was refused what (an id, "
+                                 "no name or email); it is security evidence like the audit "
+                                 "trail and ages out under POLICY_DENY_RETENTION_DAYS (90 days "
+                                 "by default).",
     "tenant.owner_id": "a tenant must have an owner; erasing the account does not "
                        "dissolve the organisation. Transfer ownership first if the "
                        "tenant is to outlive the person.",

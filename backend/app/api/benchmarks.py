@@ -86,11 +86,13 @@ async def _dispatch(session: AsyncSession, principal: AuthPrincipal, project: Pr
                     ) -> BenchmarkGroup:
     from app.services import billing as _billing
     ws_id = await _billing.workspace_id_for_project(session, project.id)
-    if ws_id:
-        allowed, used, limit = await _billing.check_quota(session, ws_id, "runs")
-        if not allowed or (limit and used + len(targets) > limit):
-            raise HTTPException(status_code=402, detail=(
-                f"Monthly run quota would be exceeded ({used}+{len(targets)}/{limit})."))
+    # plan.run_quota via the policy engine, "would exceed" form (planned runs).
+    from app.services.policy import PolicyContext, evaluate
+    verdict = await evaluate("run.dispatch", PolicyContext.from_principal(
+        principal, workspace_id=ws_id, project_id=project.id, stage="create",
+        session=session, facts={"planned": len(targets)}))
+    if not verdict.allowed:
+        raise verdict.http_exception()
     group = BenchmarkGroup(project_id=project.id, test_suite_id=suite.id, name=name,
                            targets=targets, browser=browser, created_by_id=principal.user.id)
     session.add(group)
@@ -131,6 +133,8 @@ async def _dispatch(session: AsyncSession, principal: AuthPrincipal, project: Pr
             await _billing.record_usage(session, ws_id, "runs", len(runs))
         except Exception as exc:  # noqa: BLE001
             print(f"[Benchmark] usage not recorded for workspace {ws_id}: {exc}")
+    from app.services.agent_controls import record_usage
+    await record_usage(session, principal, ws_id, runs=len(runs))
     await session.refresh(group)
     return group
 

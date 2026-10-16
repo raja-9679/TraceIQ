@@ -12,6 +12,7 @@ import { waitForEmail, waitForWebhook } from './test-hooks';
 import { jsonPath } from './json-path';
 import { checkExpectSchema, formatViolations } from './schema-check';
 import { localiseUrl } from './frontend-quality/emulation';
+import { executeVisualMatch } from './visual-step';
 
 // jsonPath lives in ./json-path (shared with the wait-for-webhook step);
 // re-exported so existing imports keep working.
@@ -934,63 +935,10 @@ export class TestExecutor {
             }
 
             case 'expect-visual-match': {
-                // Phase B: perceptual diff against a stored VisualBaseline.
-                // Workflow:
-                //   1. Capture candidate screenshot.
-                //   2. Resolve baseline via the backend (HTTP) using
-                //      (test_case_id, step_id, browser, device).
-                //   3. Run pixelmatch; fail the step if diffRatio > tolerance.
-                //   4. Always upload the diff image alongside other artifacts.
-                const stepId = step.id || `visual-${Date.now()}`;
-                const videoPathVisual = await page.video()?.path();
-                const candidateDir = videoPathVisual ? path.dirname(videoPathVisual) : '/tmp';
-                const candidatePath = path.join(candidateDir, `visual-${stepId}.png`);
-                await page.screenshot(TestExecutor.screenshotOptions(
-                    page, globalSettings, { path: candidatePath, fullPage: true }));
-
-                // Lazy require to keep this branch optional: a deployment
-                // without pixelmatch installed continues working (with the
-                // step degrading to a passing capture-only behavior).
-                try {
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires
-                    const { compareScreenshots } = require('../visual-diff');
-                    // eslint-disable-next-line @typescript-eslint/no-var-requires
-                    const { resolveBaseline, fetchImageBytes } = require('../baseline-client');
-
-                    // executeStep is static — the case id/browser come from the
-                    // per-case context the worker builds, not from `this`.
-                    const testCaseId = testCaseContext?.id || step.params?.test_case_id;
-                    const browserName = testCaseContext?.browser || 'chromium';
-                    const baseline = await resolveBaseline({
-                        testCaseId,
-                        stepId,
-                        browser: browserName,
-                        device: testCaseContext?.device,
-                    });
-                    if (!baseline) {
-                        console.log(`[visual-match] no baseline for step ${stepId} — capture-only`);
-                        break;
-                    }
-                    const baselineBytes = await fetchImageBytes(baseline.image_url);
-                    const result = await compareScreenshots({
-                        candidatePath,
-                        baselineBytes,
-                        tolerance: baseline.tolerance ?? 0.01,
-                        maskRegions: baseline.mask_regions || [],
-                    });
-                    console.log(
-                        `[visual-match] step=${stepId} diffRatio=${result.diffRatio.toFixed(4)} passed=${result.passed}`,
-                    );
-                    if (!result.passed) {
-                        throw new Error(
-                            `Visual regression: diffRatio=${result.diffRatio.toFixed(4)} > tolerance=${baseline.tolerance ?? 0.01}` +
-                            (result.diffImagePath ? ` (diff at ${result.diffImagePath})` : ''),
-                        );
-                    }
-                } catch (err: any) {
-                    if (err?.message?.startsWith('Visual regression')) throw err;
-                    console.log(`[visual-match] degraded to capture-only: ${err?.message}`);
-                }
+                // Full page, or one element when the step has a selector
+                // (WP14e) — see ./visual-step.ts.
+                await executeVisualMatch(page, context, step, globalSettings, testCaseContext,
+                    TestExecutor.screenshotOptions);
                 break;
             }
 

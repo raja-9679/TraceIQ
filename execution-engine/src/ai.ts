@@ -1,4 +1,5 @@
 import { provider } from './llm-provider';
+import { redactDom, redactPageSource } from './core/redact';
 
 // Max characters to send to the LLM (~5 000 tokens at ~4 chars/token)
 const DOM_SNAPSHOT_MAX_CHARS = 20_000;
@@ -44,9 +45,13 @@ export class AIEngine {
             runHealCounts.set(runId, count + 1);
         }
 
-        const truncatedDom = domSnapshot.length > DOM_SNAPSHOT_MAX_CHARS
-            ? domSnapshot.substring(0, DOM_SNAPSHOT_MAX_CHARS) + '\n<!-- DOM truncated -->'
-            : domSnapshot;
+        // Callers pass a DOM already redacted with the project's policy; this
+        // second pass with the built-in rules guarantees no caller can send a
+        // raw page (input values, scripts, tokens) to the provider.
+        const safeDom = redactDom(domSnapshot);
+        const truncatedDom = safeDom.length > DOM_SNAPSHOT_MAX_CHARS
+            ? safeDom.substring(0, DOM_SNAPSHOT_MAX_CHARS) + '\n<!-- DOM truncated -->'
+            : safeDom;
 
         const cacheKey = `${brokenSelector}||${truncatedDom.substring(0, 200)}`;
         const cached = lruGet(cacheKey);
@@ -78,9 +83,10 @@ export class AIEngine {
             runHealCounts.set(runId, count + 1);
         }
 
-        const truncated = pageSourceXml.length > DOM_SNAPSHOT_MAX_CHARS
-            ? pageSourceXml.substring(0, DOM_SNAPSHOT_MAX_CHARS) + '\n<!-- page source truncated -->'
-            : pageSourceXml;
+        const safeSource = redactPageSource(pageSourceXml);
+        const truncated = safeSource.length > DOM_SNAPSHOT_MAX_CHARS
+            ? safeSource.substring(0, DOM_SNAPSHOT_MAX_CHARS) + '\n<!-- page source truncated -->'
+            : safeSource;
 
         const cacheKey = `mobile:${brokenLocator}||${truncated.substring(0, 200)}`;
         const cached = lruGet(cacheKey);

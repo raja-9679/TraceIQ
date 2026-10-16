@@ -45,6 +45,8 @@ async def import_playwright_case(
         raise HTTPException(status_code=404, detail="Suite not found")
     if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You cannot create test cases in this project")
+    from app.services.agent_controls import enforce_agent_write
+    await enforce_agent_write(session, principal, suite.project_id)
     if (await session.exec(select(TestSuite).where(TestSuite.parent_id == req.suite_id))).first():
         raise HTTPException(status_code=400, detail="Cannot add test case to a suite that contains sub-modules")
 
@@ -102,6 +104,8 @@ async def create_test_case(
     # Check project access
     if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=suite.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You cannot create test cases in this project")
+    from app.services.agent_controls import enforce_agent_write
+    await enforce_agent_write(session, principal, suite.project_id)
 
     # Enforce mutual exclusivity
     result = await session.exec(select(TestSuite).where(TestSuite.parent_id == suite_id))
@@ -231,6 +235,8 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
     
     if not await rbac_service.has_permission(session, current_user.id, "test:create", project_id=db_case.project_id):
         raise HTTPException(status_code=403, detail="Permission denied: You cannot update test cases in this project")
+    from app.services.agent_controls import enforce_agent_write
+    await enforce_agent_write(session, principal, db_case.project_id)
 
     case_data = case_update.model_dump(exclude_unset=True)
     changes = {}

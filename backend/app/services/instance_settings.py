@@ -82,6 +82,9 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("OLLAMA_BASE_URL", "ai", label="Ollama base URL"),
     SettingDef("LLM_BASE_URL", "ai", label="OpenAI-compatible base URL"),
     SettingDef("LLM_API_KEY", "ai", secret=True, label="OpenAI-compatible API key"),
+    SettingDef("ASSISTANT_ENABLED", "ai", type="bool", label="In-app assistant",
+               description="the read-only \"Ask TraceIQ\" chat. It only reads what each "
+                           "user can already see and needs a provider above"),
     # --- Storage (read at process start; UI shows a restart banner) ---
     SettingDef("MINIO_ENDPOINT", "storage", restart_required=True,
                label="S3/MinIO endpoint", description="host:port, backend-reachable"),
@@ -354,6 +357,26 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "changes have no human reviewer at any point, so a "
                            "regulated environment needs to be able to switch it off "
                            "and demonstrate that it is off"),
+    # WP14b — agent session budgets (decision W3). Per X-Agent-Session-Id;
+    # a workspace's Agents page overrides them. Empty / 0 = no limit.
+    SettingDef("AGENT_SESSION_MAX_RUNS", "policies", type="int",
+               label="Agent session: max runs",
+               description="default cap on runs one agent session may start; "
+                           "exceeding returns 429. 0 = no limit"),
+    SettingDef("AGENT_SESSION_MAX_LLM_TOKENS", "policies", type="int",
+               label="Agent session: max LLM tokens",
+               description="default cap on LLM tokens spent for one agent session. 0 = no limit"),
+    SettingDef("AGENT_SESSION_MAX_PROPOSALS", "policies", type="int",
+               label="Agent session: max proposals",
+               description="default cap on case proposals one agent session may file. 0 = no limit"),
+    SettingDef("AGENT_SESSION_MAX_MINUTES", "policies", type="int",
+               label="Agent session: max wall-clock minutes",
+               description="minutes from a session's first budgeted action after which it "
+                           "is refused. 0 = no limit"),
+    SettingDef("POLICY_DENY_RETENTION_DAYS", "policies", type="int",
+               label="Policy deny-log retention (days)",
+               description="how long refused actions stay on the Policies page; "
+                           "empty = 90, 0 = keep forever"),
     SettingDef("MFA_REQUIRED", "policies", type="bool",
                label="Require MFA for all users",
                description="password logins must enrol an authenticator app before "

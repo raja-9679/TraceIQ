@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     MINIO_SSE_ALGORITHM: str = ""
     MINIO_SSE_KMS_KEY_ID: str = ""
     OPENAI_API_KEY: str = ""
+    # In-app assistant (WP14a). On by default; it still needs an LLM provider
+    # and answers "AI is not configured" without one.
+    ASSISTANT_ENABLED: bool = True
     EXECUTION_ENGINE_URL: str = "http://execution-engine:3000/run"
     # Set in the environment as a JSON list, e.g.
     #   BACKEND_CORS_ORIGINS=["https://app.traceiq.io","https://admin.traceiq.io"]
