@@ -100,6 +100,9 @@ RETAINED_WITH_REASON: Dict[str, str] = {
     "tenant.owner_id": "a tenant must have an owner; erasing the account does not "
                        "dissolve the organisation. Transfer ownership first if the "
                        "tenant is to outlive the person.",
+    "workspace.demo_owner_id": "a demo workspace (WP13c) holds generated sample data only, "
+                               "nothing about the person; the link is what limits a user "
+                               "to one demo, and it goes when the demo is deleted (workspace purge).",
 }
 
 

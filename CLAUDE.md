@@ -1112,6 +1112,46 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `POST /workspaces/{id}/share-links` kind `poc_report` with `params` frozen
   on the link (editor projects only); public payload is `public_payload`'s
   allow-list (counts and names; no errors, URLs, emails, cluster titles).
+- **Sizing, demo workspace, test packs (WP13c, 2026-10)** — migration
+  `cf32b3c4d5f7` (`workspace.is_demo`, `workspace.demo_owner_id`,
+  `testcase.description`). **Sizing** (C6): `app/services/sizing.py` is pure
+  arithmetic over the documented figures (1 CPU / 1.5 GB per worker, one job
+  per worker, 70% target utilisation, capture-level kinds from
+  `data_policy._LEVEL_ALLOWS`); `POST /sizing/estimate` (any signed-in user)
+  returns results plus every formula row (`formula` + `substituted`) and the
+  assumptions with their source — the page renders those rows, so a new
+  number must be added through `_Sheet.add`. Workers = max(throughput at 70%,
+  burst wave: `ceil(burst / (floor(wait/duration)+1))`); KEDA `lagCount` =
+  `floor(wait/duration)`. Artifact sizes are DECLARED (nothing measures them)
+  and overridable via `artifact_sizes_kb`. **Demo workspace** (C5):
+  `GET/POST/DELETE /demo-workspace`, one per USER (users row locked for the
+  check, 409 otherwise; slowapi 5/hour). `app/services/demo_workspace.py`:
+  `build_demo_plan(seed, today)` is pure + deterministic; the writer inserts
+  2 projects, envs, encrypted todolite secrets, personas, requirements, a
+  PAUSED monitor (`is_active=False`, checks + `schedule:<id>` runs), 30 days of
+  runs/results, a failure cluster, a passive finding, flake records + daily
+  snapshots, deployments — no worker, no network; hosts only example.com /
+  httpbin.org / localhost:8080. Delete = `purge_workspace`. Every delivery
+  path refuses demo projects via `is_demo_project_sync` (run email/chat in
+  `get_notification_settings`, monitor alerts incl. per-monitor emails,
+  digests, `paging.page`, outbound webhooks) and the projects are also seeded
+  with notifications off. **Test packs** (C7): JSON in `backend/app/packs/`
+  (`format: traceiq-test-pack`, v1: id, version, variables{name, description,
+  required, secret, default}, suites→cases{name, description, tags, steps});
+  `validate_pack` (run over every pack in `tests/test_test_packs.py`) rejects
+  unknown step types (vs `/step-types`), undeclared/unused variables,
+  `{{env.X}}` for a secret (or the reverse), secret defaults, and templates in
+  assertion values (the worker compares those verbatim). `GET /test-packs`;
+  `POST /projects/{id}/test-packs/{pack}/import {variables, environment_id?}`
+  (editor) creates "<title> pack v<version>" (409 on clash), non-secret values
+  into the chosen/default environment (created "default" if none; a default
+  never overwrites an existing value), secrets into `ProjectSecret`
+  (encrypted; audit logs names only), reports `missing`; never contacts the
+  target. Suite export is format 2: per-case description/tags/priority and a
+  top-level `variables` block (pack declarations from `settings.test_pack`,
+  else names derived from templates; never secret values); import reads the
+  new case fields and ignores `variables`. wait-for-webhook cannot assert
+  headers, so the webhook pack does not check signatures (says so).
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

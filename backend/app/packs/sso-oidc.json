@@ -1,0 +1,122 @@
+{
+  "format": "traceiq-test-pack",
+  "format_version": 1,
+  "id": "sso-oidc",
+  "version": "1.0.0",
+  "title": "SSO (OpenID Connect)",
+  "category": "identity",
+  "description": "Checks an OpenID Connect identity provider and the app that signs in through it: the discovery document and JWKS are published and well-formed, the token endpoint issues client-credentials tokens and rejects a wrong secret, the sign-in page reaches the IdP, the session cookie carries Secure and HttpOnly, and the session is really dead after logout. The IdP form selectors default to Keycloak's; change them for Okta, Entra ID or Auth0.",
+  "variables": [
+    {"name": "OIDC_ISSUER", "description": "Issuer URL, without a trailing slash (e.g. https://idp.example.com/realms/acme).", "required": true, "secret": false},
+    {"name": "OIDC_TOKEN_ENDPOINT", "description": "Token endpoint from the discovery document.", "required": true, "secret": false},
+    {"name": "OIDC_CLIENT_ID", "description": "Client id of a confidential client allowed the client_credentials grant.", "required": true, "secret": false},
+    {"name": "OIDC_CLIENT_SECRET", "description": "That client's secret. Stored as a project secret.", "required": true, "secret": true},
+    {"name": "OIDC_SCOPE", "description": "Scope to request with client credentials.", "required": false, "secret": false, "default": "openid"},
+    {"name": "APP_LOGIN_URL", "description": "Your app's sign-in URL; it should redirect to the IdP.", "required": true, "secret": false},
+    {"name": "IDP_USERNAME", "description": "A test user that can sign in to the app.", "required": true, "secret": false},
+    {"name": "IDP_PASSWORD", "description": "That test user's password. Stored as a project secret.", "required": true, "secret": true},
+    {"name": "IDP_USERNAME_SELECTOR", "description": "Username field on the IdP sign-in form.", "required": false, "secret": false, "default": "#username"},
+    {"name": "IDP_PASSWORD_SELECTOR", "description": "Password field on the IdP sign-in form.", "required": false, "secret": false, "default": "#password"},
+    {"name": "IDP_SUBMIT_SELECTOR", "description": "Submit button on the IdP sign-in form.", "required": false, "secret": false, "default": "#kc-login"},
+    {"name": "APP_SESSION_COOKIE", "description": "Name of the app's session cookie after sign-in.", "required": false, "secret": false, "default": "session"},
+    {"name": "APP_PROTECTED_URL", "description": "A URL that needs a signed-in session (e.g. https://app.example.com/api/me).", "required": true, "secret": false},
+    {"name": "APP_LOGOUT_URL", "description": "The app's logout endpoint (called with POST; edit the step if yours is GET).", "required": true, "secret": false}
+  ],
+  "suites": [
+    {
+      "name": "SSO (OpenID Connect)",
+      "description": "OIDC provider contract and the relying party's session handling.",
+      "cases": [
+        {
+          "name": "Discovery document and JWKS are published",
+          "description": "/.well-known/openid-configuration answers 200 with the fields every client needs, and its jwks_uri serves at least one key.",
+          "tags": ["sso", "oidc", "contract"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.OIDC_ISSUER}}/.well-known/openid-configuration",
+             "params": {"method": "GET",
+                        "assertions": [{"type": "status", "value": 200}],
+                        "expect_schema": {"schema": {
+                          "type": "object",
+                          "required": ["issuer", "authorization_endpoint", "token_endpoint", "jwks_uri",
+                                       "response_types_supported", "subject_types_supported",
+                                       "id_token_signing_alg_values_supported"],
+                          "properties": {
+                            "issuer": {"type": "string", "format": "uri"},
+                            "authorization_endpoint": {"type": "string", "format": "uri"},
+                            "token_endpoint": {"type": "string", "format": "uri"},
+                            "jwks_uri": {"type": "string", "format": "uri"},
+                            "response_types_supported": {"type": "array", "items": {"type": "string"}},
+                            "subject_types_supported": {"type": "array", "items": {"type": "string"}},
+                            "id_token_signing_alg_values_supported": {"type": "array", "items": {"type": "string"}}
+                          }}},
+                        "extract": [{"path": "jwks_uri", "variable": "jwks_uri"}]}},
+            {"type": "http-request", "value": "{{jwks_uri}}",
+             "params": {"method": "GET",
+                        "assertions": [{"type": "status", "value": 200}],
+                        "expect_schema": {"schema": {
+                          "type": "object", "required": ["keys"],
+                          "properties": {"keys": {"type": "array", "minItems": 1,
+                                                  "items": {"type": "object", "required": ["kty", "kid"]}}}}}}}
+          ]
+        },
+        {
+          "name": "Token endpoint issues client-credentials tokens",
+          "description": "A confidential client gets an access token; the token is kept in a runtime variable and never logged.",
+          "tags": ["sso", "oidc", "token"],
+          "steps": [
+            {"type": "oauth2-token", "value": "{{env.OIDC_TOKEN_ENDPOINT}}",
+             "params": {"client_id": "{{env.OIDC_CLIENT_ID}}", "client_secret": "{{secret.OIDC_CLIENT_SECRET}}",
+                        "scope": "{{env.OIDC_SCOPE}}", "variable": "access_token"}}
+          ]
+        },
+        {
+          "name": "Token endpoint rejects a wrong client secret",
+          "description": "RFC 6749 section 5.2: a bad client secret yields error=invalid_client.",
+          "tags": ["sso", "oidc", "negative"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.OIDC_TOKEN_ENDPOINT}}",
+             "params": {"method": "POST",
+                        "headers": {"Content-Type": "application/x-www-form-urlencoded"},
+                        "body": "grant_type=client_credentials&client_id={{env.OIDC_CLIENT_ID}}&client_secret=traceiq-wrong-{{unique.secret}}",
+                        "assertions": [{"type": "json-path", "path": "error", "operator": "equals", "value": "invalid_client"}]}}
+          ]
+        },
+        {
+          "name": "Sign-in page reaches the identity provider",
+          "description": "Opening the app's sign-in URL lands on the IdP form.",
+          "tags": ["sso", "oidc", "ui"],
+          "steps": [
+            {"type": "goto", "value": "{{env.APP_LOGIN_URL}}"},
+            {"type": "expect-visible", "selector": "{{env.IDP_USERNAME_SELECTOR}}"},
+            {"type": "expect-visible", "selector": "{{env.IDP_PASSWORD_SELECTOR}}"}
+          ]
+        },
+        {
+          "name": "Session cookie is Secure and HttpOnly",
+          "description": "After signing in through the IdP the app's session cookie carries Secure and HttpOnly. Add a sameSite expectation to the step if your app pins one.",
+          "tags": ["sso", "session", "security"],
+          "steps": [
+            {"type": "goto", "value": "{{env.APP_LOGIN_URL}}"},
+            {"type": "fill", "selector": "{{env.IDP_USERNAME_SELECTOR}}", "value": "{{env.IDP_USERNAME}}"},
+            {"type": "fill", "selector": "{{env.IDP_PASSWORD_SELECTOR}}", "value": "{{secret.IDP_PASSWORD}}"},
+            {"type": "click", "selector": "{{env.IDP_SUBMIT_SELECTOR}}"},
+            {"type": "expect-cookie-flags", "params": {"name": "{{env.APP_SESSION_COOKIE}}", "secure": true, "httpOnly": true}}
+          ]
+        },
+        {
+          "name": "Session is dead after logout",
+          "description": "The pre-logout cookies are replayed against a protected URL after logging out; the server must refuse them (401/403/440 or a redirect to sign-in), not just clear the browser's cookie.",
+          "tags": ["sso", "session", "security"],
+          "steps": [
+            {"type": "goto", "value": "{{env.APP_LOGIN_URL}}"},
+            {"type": "fill", "selector": "{{env.IDP_USERNAME_SELECTOR}}", "value": "{{env.IDP_USERNAME}}"},
+            {"type": "fill", "selector": "{{env.IDP_PASSWORD_SELECTOR}}", "value": "{{secret.IDP_PASSWORD}}"},
+            {"type": "click", "selector": "{{env.IDP_SUBMIT_SELECTOR}}"},
+            {"type": "expect-session-dead", "value": "{{env.APP_PROTECTED_URL}}",
+             "params": {"logout_url": "{{env.APP_LOGOUT_URL}}", "logout_method": "POST"}}
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -142,6 +142,15 @@ class Workspace(SQLModel, table=True):
     finding_sla_days: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
 
+    # WP13c — seeded demo workspace (decision C5). Set only by
+    # app/services/demo_workspace.py, never by the create/update API. A demo
+    # workspace never delivers notifications (email, chat, paging, outbound
+    # webhooks — see is_demo_project_sync) and is removed with the ordinary
+    # workspace purge. demo_owner_id is who asked for it: one active demo per
+    # user is looked up on it.
+    is_demo: bool = Field(default=False)
+    demo_owner_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+
 
 class Project(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -372,6 +381,9 @@ class TestStep(BaseModel):
 
 class TestCaseBase(SQLModel):
     name: str
+    # What the case checks and why, in prose (integration test packs, WP13c;
+    # carried by suite export/import). Optional and display-only.
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
     steps: List[TestStep] = Field(
         default=[], sa_column=Column(JSON))  # List of TestSteps
     # Which kind of worker runs this case. Defaults to the original
@@ -462,6 +474,7 @@ class TestCaseRead(TestCaseBase):
 
 class TestCaseUpdate(SQLModel):
     name: Optional[str] = None
+    description: Optional[str] = None
     steps: Optional[List[TestStep]] = None
     test_suite_id: Optional[int] = None
     project_id: Optional[int] = None

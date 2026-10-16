@@ -43,6 +43,9 @@ from app.api import app_builds as app_builds_api
 from app.api import case_revisions as case_revisions_api
 from app.api import observability as observability_api
 from app.api import onboarding as onboarding_api
+from app.api import sizing as sizing_api
+from app.api import demo_workspace as demo_workspace_api
+from app.api import test_packs as test_packs_api
 from app.api import instance_settings as instance_settings_api
 from app.api import llm_providers as llm_providers_api
 from app.api import scim as scim_api
@@ -209,6 +212,9 @@ app.include_router(developer_api.router, prefix="/api", tags=["developer"])
 # /api/admin/queue-health) — no prefix here.
 app.include_router(observability_api.router, tags=["observability"])
 app.include_router(onboarding_api.router, prefix="/api", tags=["onboarding"])
+app.include_router(sizing_api.router, prefix="/api", tags=["sizing"])
+app.include_router(demo_workspace_api.router, prefix="/api", tags=["demo-workspace"])
+app.include_router(test_packs_api.router, prefix="/api", tags=["test-packs"])
 app.include_router(agent_ownership.router, prefix="/api", tags=["agent-ownership"])
 app.include_router(agent_reference.router, prefix="/api", tags=["agent-reference"])
 app.include_router(environments.router, prefix="/api", tags=["environments"])

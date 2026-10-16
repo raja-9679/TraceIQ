@@ -1,0 +1,79 @@
+{
+  "format": "traceiq-test-pack",
+  "format_version": 1,
+  "id": "outbound-webhooks",
+  "version": "1.0.0",
+  "title": "Outbound webhooks",
+  "category": "integration",
+  "description": "Checks that your app sends webhooks: each case registers this run's capture URL ({{webhook.url}}) as a subscriber, performs an action over your API, then waits for the delivery and asserts on its JSON body. The paths of the payload fields (event, id, data.id) are fixed in the steps; edit them if your payload is shaped differently. Not covered: signature headers (e.g. an HMAC X-Signature) — wait-for-webhook matches on method, path and JSON body only, and captured credential headers are redacted. The app must be able to reach TraceIQ's public URL.",
+  "variables": [
+    {"name": "APP_API_BASE", "description": "Base URL of your app's API, without a trailing slash.", "required": true, "secret": false},
+    {"name": "APP_API_TOKEN", "description": "Bearer token for your API. Stored as a project secret.", "required": true, "secret": true},
+    {"name": "WEBHOOK_REGISTER_PATH", "description": "Endpoint that registers a webhook subscriber (POST {url, events}).", "required": false, "secret": false, "default": "/webhooks"},
+    {"name": "WEBHOOK_EVENT", "description": "Event name the action should emit; matched against the payload's \"event\" field.", "required": false, "secret": false, "default": "order.created"},
+    {"name": "TRIGGER_PATH", "description": "Endpoint whose POST performs the action (its JSON response must carry the new object's \"id\").", "required": false, "secret": false, "default": "/orders"},
+    {"name": "TRIGGER_BODY", "description": "JSON body sent to the trigger endpoint.", "required": false, "secret": false, "default": "{\"item\": \"traceiq-webhook-test\"}"}
+  ],
+  "suites": [
+    {
+      "name": "Outbound webhooks",
+      "description": "Delivery, payload contents and subscriber-registration auth.",
+      "cases": [
+        {
+          "name": "Action triggers a webhook delivery",
+          "description": "After the trigger call, a POST arrives at the capture URL whose body has event = WEBHOOK_EVENT.",
+          "tags": ["webhooks", "delivery"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.APP_API_BASE}}{{env.WEBHOOK_REGISTER_PATH}}",
+             "params": {"method": "POST",
+                        "headers": {"Authorization": "Bearer {{secret.APP_API_TOKEN}}", "Content-Type": "application/json"},
+                        "body": {"url": "{{webhook.url}}", "events": ["{{env.WEBHOOK_EVENT}}"]},
+                        "expect_schema": {"schema": {"type": "object"}}}},
+            {"type": "http-request", "value": "{{env.APP_API_BASE}}{{env.TRIGGER_PATH}}",
+             "params": {"method": "POST",
+                        "headers": {"Authorization": "Bearer {{secret.APP_API_TOKEN}}", "Content-Type": "application/json"},
+                        "body": "{{env.TRIGGER_BODY}}"}},
+            {"type": "wait-for-webhook",
+             "params": {"url": "{{webhook.url}}", "method": "POST", "where": {"event": "{{env.WEBHOOK_EVENT}}"},
+                        "timeout": 60000}}
+          ]
+        },
+        {
+          "name": "Webhook payload identifies the object and the delivery",
+          "description": "The delivery's data.id equals the id the trigger call returned, and the payload carries its own delivery id.",
+          "tags": ["webhooks", "payload"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.APP_API_BASE}}{{env.WEBHOOK_REGISTER_PATH}}",
+             "params": {"method": "POST",
+                        "headers": {"Authorization": "Bearer {{secret.APP_API_TOKEN}}", "Content-Type": "application/json"},
+                        "body": {"url": "{{webhook.url}}", "events": ["{{env.WEBHOOK_EVENT}}"]}}},
+            {"type": "http-request", "value": "{{env.APP_API_BASE}}{{env.TRIGGER_PATH}}",
+             "params": {"method": "POST",
+                        "headers": {"Authorization": "Bearer {{secret.APP_API_TOKEN}}", "Content-Type": "application/json"},
+                        "body": "{{env.TRIGGER_BODY}}",
+                        "extract": [{"path": "id", "variable": "created_id"}]}},
+            {"type": "wait-for-webhook",
+             "params": {"url": "{{webhook.url}}", "method": "POST",
+                        "where": {"event": "{{env.WEBHOOK_EVENT}}", "data.id": "{{created_id}}"},
+                        "timeout": 60000}},
+            {"type": "wait-for-webhook",
+             "params": {"url": "{{webhook.url}}", "method": "POST",
+                        "where": {"event": "{{env.WEBHOOK_EVENT}}", "data.id": "{{created_id}}"},
+                        "extract": "id", "variableName": "delivery_id", "timeout": 10000}}
+          ]
+        },
+        {
+          "name": "Registering a subscriber requires authentication",
+          "description": "POST to the registration endpoint without a token answers 401, so nobody can point your webhooks elsewhere.",
+          "tags": ["webhooks", "auth", "negative"],
+          "steps": [
+            {"type": "http-request", "value": "{{env.APP_API_BASE}}{{env.WEBHOOK_REGISTER_PATH}}",
+             "params": {"method": "POST", "headers": {"Content-Type": "application/json"},
+                        "body": {"url": "{{webhook.url}}", "events": ["{{env.WEBHOOK_EVENT}}"]},
+                        "assertions": [{"type": "status", "value": 401}]}}
+          ]
+        }
+      ]
+    }
+  ]
+}

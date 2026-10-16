@@ -152,6 +152,10 @@ def _deliver(schedule: ReportSchedule, session: Session,
     if not insvc.effective('NOTIFICATIONS_ENABLED'):
         result["errors"].append("notifications are switched off for this instance")
         return result
+    from app.services.demo_workspace import is_demo_project_sync
+    if is_demo_project_sync(session, project.id):
+        result["errors"].append("demo workspace: digests are never delivered")
+        return result
     snap = snapshot if snapshot is not None else build_snapshot(project.id, schedule.window_days or 7)
     if snap is None:
         result["errors"].append("could not build the digest")

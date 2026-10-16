@@ -121,6 +121,9 @@ def dispatch_run_webhooks(self, run_id: int) -> Dict[str, Any]:
         workspace_id = project.workspace_id if project else None
         if not workspace_id:
             return {"dispatched": 0, "skipped": "no workspace"}
+        from app.services.demo_workspace import is_demo_workspace_sync
+        if is_demo_workspace_sync(session, workspace_id):
+            return {"dispatched": 0, "skipped": "demo workspace"}
 
         results_stmt = select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)
         results = list(session.exec(results_stmt))
