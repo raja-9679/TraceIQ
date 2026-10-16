@@ -90,9 +90,17 @@ docker compose -f docker-compose.community.yml --env-file .env --profile inbox u
 - Rebuild the worker image whenever step types change (workers hard-fail
   unknown steps). Rebuild the backend image when `requirements.txt` changes
   (google-re2 and dnspython were added on 2026-10-15).
-- First user: register, then grant instance admin
-  (`UPDATE users SET is_instance_admin = true WHERE email = '…'`) for the
-  admin pages (worker fleet, SIEM, instance settings).
+- First user: just register. The Tenant Admin of the FIRST tenant is treated
+  as the instance admin (`get_current_instance_admin`), so Settings →
+  Instance (admin), worker fleet, SIEM etc. work with no SQL. The separate
+  `is_instance_admin` flag is only needed as the break-glass password login
+  when `PASSWORD_LOGIN_DISABLED` is on (grant it from the instance-admins
+  page, not SQL).
+- Videos and Playwright traces need capture level `full`: both the instance
+  ceiling (`MAX_CAPTURE_LEVEL`, default `standard`) and the project's data
+  policy (Quality page → Data policy, default `standard`). Workers always
+  record video and discard it at upload when the level is lower — the worker
+  log says `video suppressed by capture level '…'`.
 - The LLM backend in the office is a shared Ollama server on the LAN; from
   home it won't be reachable — set an Anthropic/OpenAI provider in
   Settings → AI providers, or use the Null provider (heuristics only).
