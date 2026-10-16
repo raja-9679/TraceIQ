@@ -74,6 +74,10 @@ class RunCreateContext(BaseModel):
     reduced_motion: Optional[bool] = None
     # Screenshot after every step (default: on when >1 variant).
     sweep_step_screenshots: Optional[bool] = None
+    # A/B + feature-flag coverage (WP12c): the variant / flags this run
+    # exercises, {name: string | boolean}. Stored on the run, reported by
+    # GET /projects/{id}/flag-coverage, and available to steps as {{flag.NAME}}.
+    flags: Optional[Dict[str, Any]] = None
 
 
 def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContext]) -> Dict[str, Any]:
@@ -104,7 +108,13 @@ def _build_run_defaults(principal: AuthPrincipal, body: Optional[RunCreateContex
     if region and ctx.local_worker_id:
         raise HTTPException(status_code=400,
                             detail="region and local_worker_id cannot be combined")
+    from app.services.flag_coverage import FlagError, validate_flags
+    try:
+        flags = validate_flags(ctx.flags)
+    except FlagError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {
+        "flags": flags,
         "region": region,
         "git_commit": ctx.git_commit,
         "git_branch": ctx.git_branch,

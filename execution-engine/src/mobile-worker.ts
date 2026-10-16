@@ -326,6 +326,7 @@ class MobileWorker {
             // {{run.*}} / {{unique.*}} / seeded {{fake.*}}. Suite hooks are
             // not run by the mobile worker.
             scope: RunScope.forCase(job, testCase),
+            flags: job.settings?.flags,
         };
         const meta: StepExecMeta = {
             testCaseId: testCase.id,

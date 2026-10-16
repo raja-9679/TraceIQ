@@ -23,6 +23,7 @@ import { JobQueue, TestJob, JobResult, TestCase, TestCaseResult, getJobQueue } f
 import { BrowserManager } from './core/browser-manager';
 import { NetworkInterceptor } from './core/network-interceptor';
 import { TestExecutor } from './core/test-executor';
+import { isManualCase, manualJobResult, splitManualCases } from './core/manual-guard';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
 import { collectWebVitals, WebVitals } from './web-vitals';
@@ -562,6 +563,12 @@ class ExecutionWorker {
      * Execute a test job - routes to appropriate handler based on job type
      */
     private async executeJob(job: TestJob): Promise<JobResult> {
+        // Manual cases are run by people; never start a browser for one.
+        if (job.test_case && isManualCase(job.test_case)) {
+            console.warn(`[Worker] Job ${job.job_id} carries a manual case; not executing it`);
+            return manualJobResult(job);
+        }
+
         // Raw Playwright: run the uploaded spec verbatim, not the interpreter.
         if (job.test_case?.executor === 'raw_playwright') {
             console.log(`[Worker] Executing raw_playwright job ${job.job_id}`);
@@ -576,6 +583,16 @@ class ExecutionWorker {
 
         // Check if this is a multi-test continuous job
         if (job.execution_mode === 'continuous' && job.test_cases && job.test_cases.length > 0) {
+            const { automated, manual } = splitManualCases(job.test_cases);
+            if (manual.length) {
+                console.warn(`[Worker] Job ${job.job_id}: ${manual.length} manual case(s) not executed`);
+                if (!automated.length) {
+                    return { ...manualJobResult(job), test_case_id: undefined, test_results: manual };
+                }
+                const result = await this.executeContinuousJob({ ...job, test_cases: automated });
+                return { ...result, status: 'error',
+                    test_results: [...(result.test_results || []), ...manual] };
+            }
             console.log(`[Worker] Executing continuous job ${job.job_id} with ${job.test_cases.length} tests`);
             return this.executeContinuousJob(job);
         }

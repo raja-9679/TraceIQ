@@ -112,6 +112,16 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("caseproposal",
               f"DELETE FROM caseproposal WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("flakerecord", f"DELETE FROM flakerecord WHERE test_case_id IN ({_CASES})"),
+    # Reporting history (WP12b): flake trend snapshots, vendor roll-ups and
+    # deployment events are the project's own derived data.
+    PurgeStep("flakecasescoredaily",
+              f"DELETE FROM flakecasescoredaily WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_case_id IN ({_CASES})"),
+    PurgeStep("flakedailysnapshot",
+              f"DELETE FROM flakedailysnapshot WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("vendorhealthdaily",
+              f"DELETE FROM vendorhealthdaily WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("deployment", f"DELETE FROM deployment WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("testcaserevision",
               f"DELETE FROM testcaserevision WHERE test_case_id IN ({_CASES})"),
     PurgeStep("visualbaseline",
@@ -128,8 +138,24 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM projectapispec WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("projectnotificationpref",
               f"DELETE FROM projectnotificationpref WHERE project_id IN ({_PROJECTS})"),
+    # WP12d: release sign-offs and cost budgets / alert dedupe rows.
+    PurgeStep("releasesignoff",
+              f"DELETE FROM releasesignoff WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("projectcostbudget",
+              f"DELETE FROM projectcostbudget WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("costbudgetalert",
+              f"DELETE FROM costbudgetalert WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("requirement",
               f"DELETE FROM requirement WHERE project_id IN ({_PROJECTS})"),
+    # Reporting (WP12c): analytics imports, path rules, journeys, flag catalogue.
+    PurgeStep("journeyimport",
+              f"DELETE FROM journeyimport WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("journeyconfig",
+              f"DELETE FROM journeyconfig WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("businessjourney",
+              f"DELETE FROM businessjourney WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("flagcatalogentry",
+              f"DELETE FROM flagcatalogentry WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("incident",
               f"DELETE FROM incident WHERE project_id IN ({_PROJECTS}) "
               f"OR matched_case_id IN ({_CASES}) OR regression_case_id IN ({_CASES}) "
@@ -151,6 +177,10 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM testschedule WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("testrun", f"DELETE FROM testrun WHERE project_id IN ({_PROJECTS})",
               label="runs"),
+    # After its runs (testrun.benchmark_group_id), before suites (test_suite_id).
+    PurgeStep("benchmarkgroup",
+              f"DELETE FROM benchmarkgroup WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_suite_id IN ({_SUITES})"),
 
     # --- the case/suite tree. Suites are self-referential (parent_id), so the
     # whole set goes in one statement rather than leaf-first. ---
@@ -172,6 +202,9 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("reportschedule",
               f"DELETE FROM reportschedule WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("statuspage", f"DELETE FROM statuspage WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("sharelink",
+              f"DELETE FROM sharelink WHERE workspace_id = :workspace_id "
+              f"OR project_id IN ({_PROJECTS})"),
     PurgeStep("persona",
               f"DELETE FROM persona WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})"),

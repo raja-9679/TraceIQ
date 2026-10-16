@@ -70,6 +70,23 @@ async def import_playwright_case(
     await session.commit()
     return case
 
+def _check_manual(case: TestCase, step_types: set) -> None:
+    """manual-step steps make a manual case (like load-test / mobile-*), and a
+    manual case holds nothing else. Clearing every manual step from a manual
+    case leaves it manual: an empty manual case is a draft, not a browser
+    journey."""
+    from app.services.manual_testing import (
+        MANUAL_STEP, ManualTestingError, validate_manual_steps)
+    if MANUAL_STEP in step_types:
+        case.executor = ExecutorType.MANUAL
+    ex = getattr(case.executor, 'value', case.executor)
+    if ex == ExecutorType.MANUAL.value:
+        try:
+            validate_manual_steps(case.steps or [])
+        except ManualTestingError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.post("/suites/{suite_id}/cases", response_model=TestCaseRead)
 async def create_test_case(
     suite_id: int,
@@ -107,6 +124,7 @@ async def create_test_case(
         case.executor = ExecutorType.LOAD
     elif any(t and str(t).startswith('mobile-') for t in _step_types):
         case.executor = ExecutorType.MOBILE_APPIUM
+    _check_manual(case, _step_types)
     session.add(case)
     await session.commit()
     await session.refresh(case)
@@ -237,6 +255,7 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
             db_case.executor = ExecutorType.UI_PLAYWRIGHT
         elif not has_mobile_step and db_case.executor == ExecutorType.MOBILE_APPIUM:
             db_case.executor = ExecutorType.UI_PLAYWRIGHT
+        _check_manual(db_case, _step_types)
 
     # A person saving an AI-authored case in the builder is the human review
     # of it (generation no longer pre-stamps that). API-key callers never

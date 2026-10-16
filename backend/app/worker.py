@@ -81,6 +81,12 @@ def run_test_suite(run_id: int, tags: list = None):
             print(f"[Worker] Run {run_id} not found")
             return
 
+        # A manual run is worked through by a person on the manual-run screen;
+        # nothing here may touch it (it would be set RUNNING, then ERROR).
+        if getattr(run.executor, 'value', run.executor) == ExecutorType.MANUAL.value:
+            print(f"[Worker] Run {run_id} is a manual run; not dispatching")
+            return
+
         # Per-workspace concurrency cap: if the run's workspace is already at
         # its RUNNING limit, leave this run PENDING and retry shortly. This
         # bounds a single tenant's fan-out so it can't starve other tenants.
@@ -111,6 +117,18 @@ def run_test_suite(run_id: int, tags: list = None):
 
             if not cases_to_run:
                 raise Exception("No test cases found to execute")
+
+            # Manual cases are executed by people (manual runs), never by a
+            # worker: they carry no automation steps.
+            from app.services.manual_testing import exclude_manual
+            automated = exclude_manual(cases_to_run)
+            if len(automated) != len(cases_to_run):
+                print(f"[Worker] Run {run_id}: skipping "
+                      f"{len(cases_to_run) - len(automated)} manual case(s)")
+            if not automated:
+                raise Exception("Only manual test cases selected — start a manual run "
+                                "to execute them")
+            cases_to_run = automated
 
             # Phase B: drop quarantined test cases before dispatch so flaky
             # tests don't gate AI-agent regressions. The flake records live
@@ -185,6 +203,14 @@ def run_test_suite(run_id: int, tags: list = None):
             # Environment ({{env.X}}, base_url) + decrypted secrets
             # ({{secret.X}}) for worker-side interpolation.
             environment = _load_environment(run, auth_project_id, session)
+            # Comparison / benchmark runs (target_url): the target replaces the
+            # environment's base URL, so relative gotos hit that site. The URL
+            # was checked against net_guard and the project's egress allowlist
+            # when the run was created; being the base URL it is then allowed
+            # by the egress policy below like any environment base URL.
+            if getattr(run, 'target_url', None):
+                environment = {**(environment or {'name': 'target', 'variables': {}}),
+                               'base_url': run.target_url}
             if environment:
                 effective_settings['environment'] = environment
                 print(f"[Worker] Run {run_id}: environment '{environment['name']}'")
@@ -215,6 +241,10 @@ def run_test_suite(run_id: int, tags: list = None):
             # scheme this run emulates. Already validated at run creation.
             if getattr(run, 'emulation', None):
                 effective_settings['emulation'] = run.emulation
+            # Declared feature flags / variant ({{flag.NAME}}), validated at
+            # run creation. Older workers ignore the key.
+            if getattr(run, 'flags', None):
+                effective_settings['flags'] = run.flags
             print(f"[Worker] Run {run_id}: capture level "
                   f"'{data_policy['capture_level']}'")
 
@@ -369,9 +399,13 @@ def _case_payload(case, row_index=None, data_row=None, run_id=None, session=None
 def _expand_cases(cases: list) -> list:
     """Expand data-driven cases into (case, row_index, data_row) tuples.
 
-    Cases without a dataset yield a single (case, None, None) entry."""
+    Cases without a dataset yield a single (case, None, None) entry. Manual
+    cases yield nothing: every dispatcher expands through here, including
+    SEPARATE mode, whose execution units re-collect cases from the suite tree
+    after run_test_suite already filtered them."""
+    from app.services.manual_testing import exclude_manual
     expanded = []
-    for case in cases:
+    for case in exclude_manual(cases):
         rows = getattr(case, 'dataset', None) or []
         dict_rows = [r for r in rows if isinstance(r, dict)] if isinstance(rows, list) else []
         if dict_rows:
@@ -456,6 +490,8 @@ def _settings_payload(settings: dict) -> dict:
         payload['egress_policy'] = settings['egress_policy']
     if settings.get('emulation'):
         payload['emulation'] = settings['emulation']
+    if settings.get('flags'):
+        payload['flags'] = settings['flags']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).

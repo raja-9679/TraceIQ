@@ -17,11 +17,16 @@ from app.api import security as security_api
 from app.api import access_matrix as access_matrix_api
 from app.api import estates as estates_api
 from app.api import frontend_quality as frontend_quality_api
+from app.api import journey_reports as journey_reports_api
+from app.api import benchmarks as benchmarks_api
 from app.api import issue_trackers as issue_trackers_api
 from app.api import triage as triage_api
 from app.api import reports as reports_api
+from app.api import share_links as share_links_api
 from app.api import billing as billing_api
 from app.api import llm_usage as llm_usage_api
+from app.api import costs as costs_api
+from app.api import manual_testing as manual_testing_api
 from app.api import step_hooks as step_hooks_api
 from app.api import external_results as external_results_api
 from app.api import status_pages as status_pages_api
@@ -29,6 +34,8 @@ from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
 from app.api import requirements as requirements_api
 from app.api import incidents as incidents_api
+from app.api import dora as dora_api
+from app.api import reliability_reports as reliability_reports_api
 from app.api import app_builds as app_builds_api
 from app.api import case_revisions as case_revisions_api
 from app.api import observability as observability_api
@@ -170,11 +177,16 @@ app.include_router(security_api.router, prefix="/api", tags=["security"])
 app.include_router(access_matrix_api.router, prefix="/api", tags=["access-matrix"])
 app.include_router(estates_api.router, prefix="/api", tags=["estates"])
 app.include_router(frontend_quality_api.router, prefix="/api", tags=["frontend-quality"])
+app.include_router(journey_reports_api.router, prefix="/api", tags=["journey-reports"])
+app.include_router(benchmarks_api.router, prefix="/api", tags=["benchmarks"])
 app.include_router(issue_trackers_api.router, prefix="/api", tags=["issue-trackers"])
 app.include_router(triage_api.router, prefix="/api", tags=["triage"])
 app.include_router(reports_api.router, prefix="/api", tags=["reports"])
+app.include_router(share_links_api.router, prefix="/api", tags=["share-links"])
 app.include_router(billing_api.router, prefix="/api", tags=["billing"])
 app.include_router(llm_usage_api.router, prefix="/api", tags=["llm-usage"])
+app.include_router(manual_testing_api.router, prefix="/api", tags=["manual-testing"])
+app.include_router(costs_api.router, prefix="/api", tags=["costs"])
 app.include_router(step_hooks_api.router, prefix="/api", tags=["step-hooks"])
 app.include_router(external_results_api.router, prefix="/api", tags=["external-results"])
 app.include_router(status_pages_api.router, prefix="/api", tags=["status-pages"])
@@ -182,6 +194,8 @@ app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
 app.include_router(requirements_api.router, prefix="/api", tags=["requirements"])
 app.include_router(incidents_api.router, prefix="/api", tags=["incidents"])
+app.include_router(dora_api.router, prefix="/api", tags=["dora"])
+app.include_router(reliability_reports_api.router, prefix="/api", tags=["reliability-reports"])
 app.include_router(app_builds_api.router, prefix="/api", tags=["app-builds"])
 app.include_router(case_revisions_api.router, prefix="/api", tags=["case-revisions"])
 app.include_router(developer_api.router, prefix="/api", tags=["developer"])

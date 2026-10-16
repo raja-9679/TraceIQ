@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import (
@@ -269,6 +269,10 @@ class ExecutorType(str, Enum):
     LOAD = "load"                     # k6/Locust performance runs (time-series result)
     SECURITY = "security"             # ZAP/nuclei DAST scans (findings result)
     MOBILE_APPIUM = "mobile_appium"   # native Android/iOS journeys via Appium (mobile worker)
+    # A person follows written steps and records the outcome (WP12d). Never
+    # dispatched to a worker: run from the manual-run screen, see
+    # app/services/manual_testing.py.
+    MANUAL = "manual"
 
 
 class RunTrigger(str, Enum):
@@ -677,6 +681,14 @@ class TestRunBase(SQLModel):
     # side by side.
     emulation: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     sweep_group: Optional[str] = Field(default=None, index=True)
+    # A/B + feature-flag coverage (WP12c): the variant / flags this run
+    # exercised, declared by the caller ({name: str | bool}). Read by the flag
+    # coverage report and exposed to steps as {{flag.NAME}}. NULL = undeclared.
+    flags: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # Cross-site benchmarking (WP12c): one run per target of a BenchmarkGroup;
+    # the target's base URL is this run's `target_url`.
+    benchmark_group_id: Optional[int] = Field(
+        default=None, foreign_key="benchmarkgroup.id", index=True)
 
 
 class UserRead(SQLModel):
@@ -694,6 +706,9 @@ class UserReadDetailed(UserRead):
 
 
 class TestRun(TestRunBase, table=True):
+    # Reporting reads (trends, flake patterns, dependency roll-ups) all filter
+    # one project's runs by time.
+    __table_args__ = (Index("ix_testrun_project_created", "project_id", "created_at"),)
     id: Optional[int] = Field(default=None, primary_key=True)
     results: List["TestCaseResult"] = Relationship(
         back_populates="test_run", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
@@ -732,7 +747,8 @@ class TestRunRead(TestRunBase):
 
 class TestCaseResult(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    test_run_id: int = Field(foreign_key="testrun.id")
+    # Indexed (WP12b): every report joins results to their runs.
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
     test_name: str
     status: TestStatus
     duration_ms: float
@@ -906,6 +922,12 @@ class TestSchedule(TestScheduleBase, table=True):
     # {region: {"state", "last_alert_state", "last_checked_at"}}. The scalar
     # columns above then hold the aggregate (down if any region is down).
     region_states: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    # SLO targets (WP12b, decision R7). Set only through PUT
+    # /api/schedules/{id}/slo, so kept off the Base. NULL availability = the
+    # report uses the default target and says so; NULL window = 30 days.
+    slo_availability_target: Optional[float] = Field(default=None)
+    slo_latency_p95_ms: Optional[int] = Field(default=None)
+    slo_window_days: Optional[int] = Field(default=None)
 
     project: Optional["Project"] = Relationship()
     test_suite: Optional["TestSuite"] = Relationship()
@@ -1343,6 +1365,9 @@ class QualityGatePolicy(SQLModel):
     # Newest passing result of each critical case (all cases when none is
     # critical) must be at most this many days old. None = not enforced.
     max_evidence_age_days: Optional[int] = Field(default=None, ge=1)
+    # The newest release sign-off (for the commit when one is evaluated) must
+    # be an approval. Off by default; see release_readiness.signoff_check.
+    require_manual_signoff: bool = False
 
 
 class QualityGateCheck(SQLModel):
@@ -2375,10 +2400,16 @@ class ReportSchedule(SQLModel, table=True):
     cron_expression: str
     window_days: int = Field(default=7)
     channels: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # email|slack|teams
-    recipients: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # email addresses
+    # Extra plain addresses (distribution lists). Rows written before WP12a
+    # kept every address here, unchecked; they are still honoured, as extras.
+    recipients: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    # Picked project members; each is re-checked for project access at send.
+    recipient_user_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
     is_active: bool = Field(default=True)
     next_run_at: Optional[datetime] = Field(default=None)
     last_run_at: Optional[datetime] = Field(default=None)
+    # What the last delivery did: {"at", "channels_sent", "emailed", "skipped"}.
+    last_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -2389,6 +2420,7 @@ class ReportScheduleCreate(SQLModel):
     window_days: int = 7
     channels: Optional[List[str]] = None
     recipients: Optional[List[str]] = None
+    recipient_user_ids: Optional[List[int]] = None
     is_active: bool = True
 
 
@@ -2398,6 +2430,7 @@ class ReportScheduleUpdate(SQLModel):
     window_days: Optional[int] = None
     channels: Optional[List[str]] = None
     recipients: Optional[List[str]] = None
+    recipient_user_ids: Optional[List[int]] = None
     is_active: Optional[bool] = None
 
 
@@ -2409,9 +2442,36 @@ class ReportScheduleRead(SQLModel):
     window_days: int
     channels: Optional[List[str]] = None
     recipients: Optional[List[str]] = None
+    recipient_user_ids: Optional[List[int]] = None
     is_active: bool
     next_run_at: Optional[datetime] = None
     last_run_at: Optional[datetime] = None
+    last_result: Optional[dict] = None
+
+
+class ShareLink(SQLModel, table=True):
+    """A read-only, expiring, revocable public link to one report.
+
+    kind: run_report (target_id = run id) | project_summary | workspace_summary.
+    Only the SHA-256 of the token is stored; the token itself is shown once,
+    at creation. `target_id` is a plain id like Incident's pointers: a deleted
+    run makes the link 404 rather than cascade. `project_id` is NULL only for
+    workspace_summary. The public view is re-derived at every view from what
+    the creator can still see (app/services/share_links.py)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    kind: str
+    target_id: Optional[int] = Field(default=None)
+    window_days: int = Field(default=30)
+    label: Optional[str] = Field(default=None)
+    token_hash: str = Field(unique=True, index=True)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime
+    revoked_at: Optional[datetime] = Field(default=None)
+    last_viewed_at: Optional[datetime] = Field(default=None)
+    view_count: int = Field(default=0)
 
 
 # =============================================================================
@@ -3077,6 +3137,243 @@ class PageBudgetSample(SQLModel, table=True):
     seo: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
     passed: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# WP12b — delivery and reliability reporting (DORA, SLOs, flake trends,
+# third-party dependency health)
+# ---------------------------------------------------------------------------
+
+class Deployment(SQLModel, table=True):
+    """One deployment of the project, reported by CI (`POST
+    /api/projects/{id}/deployments`). The explicit event is the only DORA
+    source (decision R3): guessing deployments from runs would count every
+    nightly regression as a release.
+
+    `external_id` (the CI run id) makes a retried CI step idempotent; NULLs
+    don't collide in the unique constraint. `api_key_id` is a soft pointer like
+    TestRun.api_key_id."""
+    __table_args__ = (UniqueConstraint("project_id", "external_id",
+                                       name="uq_deployment_project_external"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    environment_id: Optional[int] = Field(default=None, foreign_key="projectenvironment.id")
+    git_commit: Optional[str] = Field(default=None, index=True)
+    git_branch: Optional[str] = None
+    git_repo: Optional[str] = None
+    version: Optional[str] = None
+    # success | failed — a deployment that itself failed counts as a change failure.
+    status: str = Field(default="success")
+    deployed_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # When the change was committed, if CI knows; else lead time starts at the
+    # first TestRun with this git_commit.
+    commit_at: Optional[datetime] = None
+    source: str = Field(default="api")
+    external_id: Optional[str] = None
+    url: Optional[str] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    api_key_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FlakeDailySnapshot(SQLModel, table=True):
+    """Per-project flake picture for one UTC day, written by the beat task
+    app.tasks.reliability_tasks.snapshot_flake_trends (re-runs that day
+    overwrite it). FlakeRecord only holds the current score; this is history."""
+    __table_args__ = (UniqueConstraint("project_id", "day", name="uq_flakesnapshot_project_day"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    day: date
+    flaky_cases: int = 0          # cases with a flake score >= FLAKY_SCORE
+    quarantined_cases: int = 0
+    avg_flake_score: Optional[float] = None
+    results_total: int = 0        # finished results of runs created that day
+    results_flaky: int = 0
+    results_failed: int = 0
+    computed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FlakeCaseScoreDaily(SQLModel, table=True):
+    """One case's flake score as of a UTC day (max over its FlakeRecords)."""
+    __table_args__ = (UniqueConstraint("test_case_id", "day", name="uq_flakecasescore_case_day"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    day: date
+    flake_score: float = 0.0
+    is_quarantined: bool = False
+    sample_count: int = 0
+
+
+class VendorHealthDaily(SQLModel, table=True):
+    """Third-party requests of one project's runs on one UTC day, grouped by
+    vendor (registrable domain). Built by
+    app.tasks.reliability_tasks.aggregate_vendor_health from
+    TestRun.network_events so reads never scan the JSON.
+
+    Only hosts are kept — never paths or query strings, which carry ids and
+    tokens. `latency_hist` counts requests per vendor_health.LATENCY_BUCKETS
+    bucket so percentiles over a multi-day window can be merged."""
+    __table_args__ = (UniqueConstraint("project_id", "day", "vendor",
+                                       name="uq_vendorhealth_project_day_vendor"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    day: date = Field(index=True)
+    vendor: str
+    requests: int = 0
+    errors: int = 0               # status >= 400 or no status
+    latency_hist: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    latency_p50_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    hosts: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    runs: int = 0                 # runs that called the vendor
+    runs_with_errors: int = 0
+    # Correlation inputs: finished results of runs that called the vendor,
+    # split by result outcome and by whether that run saw a vendor error.
+    failed_results: int = 0
+    failed_results_vendor_errors: int = 0
+    passed_results: int = 0
+    passed_results_vendor_errors: int = 0
+    computed_at: datetime = Field(default_factory=datetime.utcnow)
+# Reporting (WP12c): journey coverage from analytics imports, business
+# journeys, feature-flag catalogue, cross-site benchmarks.
+# ---------------------------------------------------------------------------
+
+class JourneyImport(SQLModel, table=True):
+    """One uploaded page-view / journey export (CSV or JSON), kept as a
+    version: the newest row is "latest", older ones are history (pruned to the
+    last few). `rows` holds the parsed data aggregated per (normalised path,
+    journey, step) — paths are normalised but NOT rule-mapped, so editing the
+    project's path rules re-applies without re-importing.
+    See app/services/journey_coverage.py."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    label: Optional[str] = Field(default=None)
+    filename: Optional[str] = Field(default=None)
+    source_format: str = Field(default="csv")          # csv | json
+    row_count: int = Field(default=0)                  # data rows read
+    skipped_rows: int = Field(default=0)
+    path_count: int = Field(default=0)                 # distinct stored rows
+    total_views: int = Field(default=0)
+    period_start: Optional[str] = Field(default=None)  # YYYY-MM-DD
+    period_end: Optional[str] = Field(default=None)
+    # [{path, views, journey?, step?}]
+    rows: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    warnings: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class JourneyConfig(SQLModel, table=True):
+    """Per-project path rules that fold concrete paths into one key
+    (/product/123 -> /product/{id}). Applied to traffic AND to the cases'
+    goto URLs. Matched with segment wildcards or RE2, never Python `re`."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True, unique=True)
+    # [{pattern, kind: "pattern"|"regex", name?}]
+    path_rules: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class ReleaseSignoff(SQLModel, table=True):
+    """A person's go / no-go for a release of one project (WP12d).
+
+    Scope is a set of runs (usually manual runs, automated ones are allowed)
+    and optionally a subset of their cases. run_ids / case_ids are plain JSON
+    on purpose: a sign-off is evidence of a decision and must not vanish, or
+    silently change meaning, when a run it covered is purged by retention.
+    When the workspace (or instance) requires a separate approver, the signer
+    may not be anyone who executed the covered manual runs — enforced in
+    app/api/manual_testing.py, rule in app/services/manual_testing.py.
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    release_label: str = Field(index=True)
+    git_commit: Optional[str] = Field(default=None, index=True)
+    run_ids: List[int] = Field(default=[], sa_column=Column(JSON))
+    case_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    verdict: str                              # "approve" | "reject"
+    note: Optional[str] = Field(default=None, sa_column=Column(Text))
+    signed_by_id: int = Field(foreign_key="users.id")
+    signed_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class ProjectCostBudget(SQLModel, table=True):
+    """Optional monthly spend budget for a project, in the instance currency
+    (COST_CURRENCY). Alerts at 80% / 100% go through the project's own
+    notification rules — see app/tasks/cost_tasks.py."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", unique=True, index=True)
+    monthly_amount: float
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BusinessJourney(SQLModel, table=True):
+    """A named business journey ("Checkout") grouping cases of one project.
+    `case_ids` is an ordered JSON list on purpose (order is the journey's
+    step order); ids are validated against the project on write and
+    re-filtered by project on read, so a deleted or moved case just drops out.
+    `traffic_journey` names the journey/funnel column value in the latest
+    analytics import whose traffic this journey reports."""
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_business_journey_name"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    description: Optional[str] = Field(default=None, sa_column=Column(Text))
+    owner_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    criticality: str = Field(default="medium")     # low | medium | high | critical
+    case_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    requirement_refs: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    traffic_journey: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FlagCatalogEntry(SQLModel, table=True):
+    """A feature flag / experiment the project expects runs to cover, with its
+    possible values; the flag coverage report lists values no run exercised."""
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_flag_catalog_name"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    values: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    description: Optional[str] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class BenchmarkGroup(SQLModel, table=True):
+    """One dispatch of a suite against N target base URLs. Each target gets
+    one suite-level TestRun with `target_url` = its base URL (the comparison
+    -run override: relative gotos resolve against it) and
+    `benchmark_group_id` = this row. Re-running makes a new group."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_suite_id: int = Field(foreign_key="testsuite.id", index=True)
+    name: str
+    # [{label, base_url}]
+    targets: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    browser: str = Field(default="chromium")
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+class CostBudgetAlert(SQLModel, table=True):
+    """One budget threshold crossed in one month. The unique key is the
+    "once per threshold per month" guarantee: a second beat tick (or a second
+    beat process) inserting the same row fails instead of re-alerting."""
+    __table_args__ = (UniqueConstraint("project_id", "period", "threshold",
+                                       name="uq_cost_budget_alert"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    period: str                     # "YYYY-MM" (UTC)
+    threshold: int                  # 80 | 100
+    spent: float
+    budget: float
+    currency: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

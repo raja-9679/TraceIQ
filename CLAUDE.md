@@ -407,6 +407,39 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Manual testing + release sign-off (WP12d, 2026-10)** — `executor="manual"`
+  cases hold only `manual-step` steps (`value`=instruction,
+  `params.expected`); the step type makes the case manual and mixing is a 400.
+  Manual cases are **never dispatched**: `run_test_suite` and `_expand_cases`
+  drop them (all-manual selection → run ERROR), a manual TestRun is ignored by
+  the Celery task, and the engine's `core/manual-guard.ts` reports one that
+  arrives anyway as not executed (no browser). A manual run is a normal
+  `TestRun(executor=manual)` + one `TestCaseResult(result_kind=manual)` per
+  case (steps snapshotted), so history/analytics/gate see it. It stays
+  **PENDING** while open (RUNNING would be swept as stale and count against
+  the concurrency cap). Outcomes passed/failed/blocked/skipped map to
+  PASSED/FAILED/ERROR/PENDING (TestStatus is a native enum); notes, per-step
+  results, `tester_id` (names looked up, never stored) and screenshot
+  attachments (magic-byte sniffed, 5 MB, under `runs/<id>/manual/`) live in
+  `result_payload`. API `app/api/manual_testing.py` (editor to record).
+  `ReleaseSignoff` (project, label, run_ids/case_ids as JSON, verdict, signer):
+  editor, never an API key; with `require_separate_approver` (workspace or
+  instance floor) the signer may not have started or recorded any covered
+  manual run. Gate check `require_manual_signoff` (off by default) = newest
+  sign-off (for the commit) is an approval. Migration `ce42b3c4d5f4`.
+- **Cost in money (WP12d, 2026-10)** — instance settings group `cost`:
+  `COST_CURRENCY`, `COST_LLM_PRICES` (new setting type `json`, validated on
+  save in `app/services/cost.py`), `COST_BROWSER_MINUTE_PRICE`. All empty by
+  default: no currency → no money anywhere; a model without a price is "not
+  priced" (amount null), never 0. Decimal math, rounded once half-up to the
+  currency's minor unit. Browser-minutes = summed `TestCaseResult.duration_ms`
+  of automated, non-local runs — an approximation and labelled so.
+  `GET /api/costs/workspaces/{id}` covers only projects the caller can read;
+  LLM use with no project only for workspace admins. `ProjectCostBudget`
+  (project admin) + hourly beat `check_project_budgets`: 80%/100% alerts via
+  the project's own recipients/webhooks, deduped by the
+  `CostBudgetAlert(project, month, threshold)` unique key (row committed
+  before sending; one message when both thresholds are crossed at once).
 - **Identity matrix + access-control matrix (WP4, 2026-10)** — migration
   `c4a2b3c4d5e4`. `POST /api/runs` body `persona_ids[]` (+ `include_anonymous`)
   repeats the selection once per identity, sharing `TestRun.matrix_group`;
@@ -876,6 +909,128 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   in worker.ts), 20k checks, robots 512 KB, 300 sweep screenshots/job; server
   side: 20 crawls/project, at most hourly, limits re-clamped in `snapshot()`,
   sweep view 200 runs, Storybook index streamed with `safe_get(max_bytes=)`.
+- **Reporting: digest, share links, executive summary, portfolio (WP12a,
+  2026-10)** — migration `ce12b3c4d5f1` (`sharelink`;
+  `reportschedule.recipient_user_ids`/`last_result`). One builder,
+  `app/services/reporting.py` (`project_snapshot`, `workspace_snapshot`,
+  `portfolio_rows`): pass rate = passed/finished runs (None, not 0, with no
+  runs), "failures" = failing results, trend = this window minus the previous
+  one of equal length, readiness verdict for the newest commit (None if it
+  can't be computed). **Digest** (`app/tasks/report_tasks.py`, beat
+  `send-scheduled-reports`): email to picked project members re-checked with
+  `has_project_access_sync` at send (project pref "off" skips them) + extra
+  addresses validated like project notifications — legacy `recipients` rows
+  are honoured as extras and re-validated at send; one message per recipient;
+  chat ONLY via the project's own webhook (`pn.webhook_url` + `post_webhook`),
+  never the instance SLACK/TEAMS_WEBHOOK_URL; SMTP via `instance_settings`;
+  send-now/edit need editor. The task builds the snapshot with `asyncio.run`
+  on a private NullPool engine (the app engine is loop-bound).
+  `GET /projects/{id}/digest-preview`. **Exec summary**
+  `GET /projects/{id}/executive-summary`, `GET /workspaces/{id}/executive-summary`
+  and **portfolio** `GET /workspaces/{id}/portfolio` cover only projects the
+  caller can access (`reports.accessible_projects`, honours project-scoped
+  keys). **Share links** (`app/api/share_links.py`, `app/services/share_links.py`):
+  kinds `run_report|project_summary` (project editor) and `workspace_summary`
+  (member; covers only projects where the CREATOR is an editor); token shown
+  once, stored as SHA-256; expiry default 7 / max 90 days; revoke =
+  `DELETE /share-links/{id}`. Public `GET /api/share/{token}` (30/min, every
+  view audited without the token) recomputes the view at every request from
+  what the creator can still see — creator deactivated/erased (erasure revokes
+  their links) or lost access → 404. Public payloads are WHITELISTS
+  (`public_run_report`, `public_summary`): names, statuses, counts, durations,
+  pass rates, dates; never artifact URLs, error text, cluster titles,
+  readiness reasons, URLs/selectors/headers, git details or emails — add a
+  field there only on purpose. UI: Analytics digest card, `/reports/summary`
+  (print CSS), `/reports/portfolio`, run page "Share", public `/share/:token`.
+
+- **Delivery + reliability reports (WP12b, 2026-10)** — migration
+  `ce22b3c4d5f2`: tables `deployment`, `flakedailysnapshot`,
+  `flakecasescoredaily`, `vendorhealthdaily`; `testschedule.slo_*` columns;
+  indexes `ix_testrun_project_created`, `ix_testcaseresult_test_run_id`
+  (CONCURRENTLY, IF NOT EXISTS — legacy DBs may have the latter).
+  **DORA** (`app/api/dora.py`, maths in `app/services/dora.py`): the only
+  source of "a deployment happened" is `POST /api/projects/{id}/deployments`
+  (editor, or an API key that `api_key_allows_project`; body `git_commit`,
+  `environment`|`environment_id`, `version`, `status` success|failed,
+  `deployed_at`, `commit_at`, `source`, `external_id` — same external id =
+  update, so CI retries don't double-count). `GET /projects/{id}/dora?days=&environment_id=`.
+  Lead time = deployed_at − commit_at, else − first TestRun with that
+  git_commit (exact match). Change failure = deployment status failed, an
+  incident within 24 h (attributed to ONE deployment: the one whose commit/
+  version it names, else the latest preceding; incidents have no environment,
+  so project-wide), or a failed run on the same environment (NULL = NULL)
+  within 24 h. MTTR = median resolved_at − started_at. Bands use the 2023
+  State of DevOps thresholds; every metric returns `missing` text when it has
+  no inputs. curl/GitHub Actions snippet:
+  ```bash
+  curl -fsS -X POST "$TRACEIQ_URL/api/projects/$PROJECT_ID/deployments" \
+    -H "X-API-Key: $TRACEIQ_API_KEY" -H "Content-Type: application/json" \
+    -d '{"git_commit":"'"$GITHUB_SHA"'","environment":"production","version":"v1.4.2",
+         "status":"success","source":"github-actions","external_id":"'"$GITHUB_RUN_ID"'"}'
+  ```
+  (full workflow step in `integrations/github-action/README.md`).
+  **SLOs** (`app/api/reliability_reports.py`, `app/services/slo.py`):
+  `GET|PUT /schedules/{id}/slo` (PUT editor, audited), `GET /projects/{id}/slo`;
+  window 7/30/90 (default 30, rolling); NULL target = 99.9 and
+  `target_is_default`. Budget remaining can go negative (overspent); burn rate
+  for the window and the last 24 h (status `at_risk` when 24 h burn > 1);
+  latency p95 from `MonitorCheck.run_id → TestRun.duration_ms` (nearest rank),
+  per region only when >1 region.
+  **Flake trends** — beat `snapshot-flake-trends` (6 h,
+  `reliability_tasks.snapshot_flake_trends`) replaces today's rows (idempotent;
+  refreshes yesterday's result counts); 180-day retention.
+  `GET /analytics/projects/{id}/flake-trend` and `/flake-patterns` (browser,
+  UTC hour, environment, failing step type — the step type is extracted in SQL
+  from `result_payload.step_evidence` so the JSON never leaves Postgres).
+  **Dependency health** — beat `aggregate-vendor-health` (hourly) rebuilds
+  today + yesterday per project from `TestRun.network_events` (responses only;
+  "errors" = status ≥ 400 or none); `aggregate_vendor_health(days_back=N)`
+  backfills. Vendor = `script_inventory.site_of` of hosts outside the run's own
+  sites (first document per case, target_url, environment base_url). Only
+  HOSTS are stored — never paths or queries. Latency is a bucketed histogram
+  (mergeable; percentiles are bucket upper bounds). Correlation = share of
+  failed vs passed results whose run saw an error from that vendor.
+  `GET /projects/{id}/dependency-health?days=`. All reads: project viewer.
+- **Journeys, flags, benchmarks (WP12c, 2026-10)** — migration `ce32b3c4d5f3`
+  (`journeyimport`, `journeyconfig`, `businessjourney`, `flagcatalogentry`,
+  `benchmarkgroup`, `testrun.flags`, `testrun.benchmark_group_id`). API in
+  `app/api/journey_reports.py` + `app/api/benchmarks.py`; logic in
+  `app/services/{journey_coverage,business_journeys,flag_coverage,benchmarks}.py`.
+  **Journey coverage**: `POST /projects/{id}/journey-imports` (multipart CSV or
+  JSON, generic columns path|url + views [+ journey/funnel, step, date]; 5 MB /
+  50k rows, read bounded, newest 20 kept). Rows are stored normalised (no
+  host/query/fragment/trailing slash) but NOT rule-mapped, so editing
+  `PUT /projects/{id}/journey-rules` re-applies without re-import. Rules:
+  `pattern` (`{id}`/`*` one segment, `**` any, `*` in a segment — hand-written
+  matchers) or `regex` (RE2 only). Covered = canonical keys of the project's
+  cases' top-level goto values (same source as `/apps/{id}/surface`
+  routes_covered); `GET /journey-coverage` = traffic-weighted %, top uncovered,
+  tested-but-low-traffic (<0.5% or absent), per-journey step coverage. When a
+  file has page rows, journey rows don't add to the total (funnel steps repeat
+  page views). **Business journeys**: `case_ids` is an ordered JSON list
+  (validated in-project on write, re-filtered on read — no FK, so deleted cases
+  drop out as `missing_case_ids`); health per case from the last 30 days of
+  results under THIS project's runs (failing > flaky [quarantined / is_flaky /
+  mixed recent] > passing > not_run); requirements = declared refs plus the
+  cases' RequirementLinks; traffic from the latest import's `traffic_journey`,
+  else the cases' pages. Owner must have project access. **Flags**: `POST /runs`
+  body `flags {name: str|bool}` (max 50, name `[A-Za-z0-9_.-]{1,64}`) →
+  `TestRun.flags`, job `settings.flags`, `{{flag.NAME}}` in
+  `core/interpolate.ts` (web + mobile; older workers ignore it).
+  `GET /projects/{id}/flag-coverage?days=` vs the catalogue (`/flag-catalog`):
+  runs/cases/last seen per value, never-tested values, uncatalogued flags;
+  values compared as strings ("true"/"false").
+  **Benchmarks**: `POST /projects/{id}/benchmark-groups {name, test_suite_id,
+  targets[2..10], browser}` → one suite-level run per target with
+  `target_url` = base URL. `target_url` (also comparison runs, where it was
+  previously stored but ignored) now overrides the environment `base_url` at
+  dispatch, so only RELATIVE gotos follow the target (the report lists cases
+  with absolute gotos). Targets pass net_guard and, when the project enforces
+  an egress allowlist, must be on it — the base URL is otherwise allowed
+  implicitly, so this check is what stops a retarget bypassing the policy;
+  comparison runs now get the same check. The matrix
+  (`GET /benchmark-groups/{id}`) only reads runs of the group's own project.
+  Worker image rebuild needed (flag interpolation).
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

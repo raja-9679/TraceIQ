@@ -523,6 +523,27 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "TLS probe: validates the chain and the expiry window. Pairs well with a monitor schedule for cert-expiry alerting.",
     },
     {
+        "type": "manual-step",
+        "category": "manual",
+        "params": {
+            "value": "Instruction for the tester (what to do)",
+            "params.expected": "Expected result the tester checks against",
+        },
+        "example": {
+            "id": "<uuid>",
+            "type": "manual-step",
+            "value": "Open the invoice PDF from the order confirmation email",
+            "params": {"expected": "The PDF shows the order number and the VAT breakdown"},
+        },
+        "notes": (
+            "A human-executed step. A case containing it gets executor='manual' automatically and MUST "
+            "contain only manual-step steps. Manual cases are never sent to workers — automated runs skip "
+            "them; a tester runs them from a manual run (POST /api/manual-runs) and records "
+            "passed / failed / blocked / skipped per case. Results appear in run history with "
+            "executor='manual'."
+        ),
+    },
+    {
         "type": "load-test",
         "category": "load",
         "params": {
@@ -848,7 +869,7 @@ async def list_step_types() -> Dict[str, Any]:
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
         "templates": _TEMPLATES,
-        "last_updated": "2026-10-15",
+        "last_updated": "2026-10-16",
     }
 
 

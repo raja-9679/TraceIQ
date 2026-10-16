@@ -21,6 +21,10 @@ off by default so an existing policy evaluates exactly as before):
   that never set priorities) is at most N days old. Any commit counts: this is
   "is our evidence fresh", not "did this commit pass".
 
+* `manual_signoff` (WP12d) — the newest release sign-off of the project (for
+  the evaluated commit, when there is one) is an approval. No sign-off is
+  missing data; a newer rejection overrides an older approval.
+
 A check that fails only because evidence is missing sets `missing_data`, and
 readiness reports such a gate as "insufficient data" instead of "not ready".
 """
@@ -162,6 +166,20 @@ def evidence_age_check(cases: Sequence[Tuple[int, str]], newest_pass: Dict[int, 
         missing_data=bool(never) and not stale)
 
 
+def signoff_check(latest: Optional[Tuple[str, str, Optional[str]]], scope_label: str) -> QualityGateCheck:
+    """latest = (verdict, release_label, signer name) of the newest sign-off."""
+    if latest is None:
+        return QualityGateCheck(
+            name="manual_signoff", passed=False, actual="no sign-off",
+            threshold="approved sign-off", missing_data=True,
+            detail=f"nobody has signed off a release {scope_label}")
+    verdict, label, signer = latest
+    return QualityGateCheck(
+        name="manual_signoff", passed=verdict == "approve",
+        actual=f"{'approved' if verdict == 'approve' else 'rejected'}: {label}",
+        threshold="approved sign-off", detail=f"by {signer}" if signer else None)
+
+
 def requirement_status(case_statuses: Sequence[str]) -> str:
     if any(s == FAILED for s in case_statuses):
         return "failing"
@@ -264,6 +282,19 @@ async def readiness_gate_checks(session: AsyncSession, project_id: int,
     if policy.max_flaky_cases is not None:
         checks.append(flaky_cases_check(
             await flaky_case_names(session, project_id, now), policy.max_flaky_cases))
+
+    if getattr(policy, "require_manual_signoff", False):
+        from app.models import ReleaseSignoff
+        q = (select(ReleaseSignoff.verdict, ReleaseSignoff.release_label, User.full_name, User.email)
+             .join(User, User.id == ReleaseSignoff.signed_by_id, isouter=True)
+             .where(ReleaseSignoff.project_id == project_id))
+        if git_commit:
+            q = q.where(ReleaseSignoff.git_commit == git_commit)
+        row = (await session.exec(q.order_by(ReleaseSignoff.signed_at.desc(),
+                                             ReleaseSignoff.id.desc()).limit(1))).first()
+        checks.append(signoff_check(
+            (row[0], row[1], row[2] or row[3]) if row else None,
+            f"for commit {git_commit[:12]}" if git_commit else "for this project"))
 
     if not policy.require_critical_passed and not policy.max_evidence_age_days:
         return checks

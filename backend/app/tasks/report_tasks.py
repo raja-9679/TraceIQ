@@ -1,126 +1,202 @@
-"""Scheduled quality reports (PLATFORM_VISION.md §5, item 4).
+"""Scheduled quality digests (WP12a; first version PLATFORM_VISION.md §5, item 4).
 
-A Celery-beat task fires due ReportSchedules on their cron, builds a compact
-quality summary (run health + open failure clusters + top failing tests) for the
-window, and pushes it to the configured channels (Slack/Teams webhooks, email).
-`send_report_now` powers the on-demand "send now" API.
+A Celery-beat task fires due ReportSchedules on their cron, builds the digest
+for the window (app/services/reporting.py: pass rate, runs and failures with
+the change from the previous window, top failing tests, open failure
+clusters, flaky count, release-readiness verdict, escaped defects) and sends
+it to the schedule's channels. `send_report_now` powers "send now".
+
+Who receives it (decision R1, fixing the first version, which posted to the
+instance-wide Slack/Teams webhook - every tenant's digest in one channel -
+and emailed whatever addresses were typed in):
+
+* email: the picked project members, each re-checked for access to the
+  project at send time (`has_project_access_sync`) and skipped if they set
+  this project to "off"; plus the schedule's extra addresses, validated when
+  saved (rows from before WP12a keep their addresses, as extras). One message
+  per recipient, so nobody sees the rest of the list.
+* Slack / Teams: only the project's own webhooks (Project settings ->
+  Notifications), posted through `post_webhook` (net_guard on every send).
+* The instance switches (NOTIFICATIONS_ENABLED, *_NOTIFICATIONS_ENABLED) stay
+  the master control; SMTP comes from instance settings.
 """
+import asyncio
 import logging
 import smtplib
-from datetime import datetime, timedelta
+from datetime import datetime
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from typing import Any, Dict, List, Optional, Tuple
 
-import requests
 from croniter import croniter
-from sqlmodel import Session, create_engine, select, func
+from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
-from app.models import (
-    ReportSchedule, TestRun, TestStatus, TestCaseResult, FailureCluster, Project,
-)
+from app.models import Project, ProjectNotificationPref, ReportSchedule, User
+from app.services import instance_settings as insvc
+from app.services import reporting
 
 logger = logging.getLogger(__name__)
 
 sync_engine = create_engine(db_url_for(settings.DATABASE_URL, sync=True), echo=False)
-_FINISHED = [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]
-_FAIL = [TestStatus.FAILED, TestStatus.ERROR]
 
 
-def _build_summary(session: Session, project_id: int, days: int) -> dict:
-    since = datetime.utcnow() - timedelta(days=days)
-    project = session.get(Project, project_id)
+def digest_recipients(session: Session, schedule: ReportSchedule,
+                      project: Project) -> Tuple[List[str], Dict[str, int]]:
+    """(addresses, skipped counts). Picked people must still have access to
+    THIS project; extra addresses are re-validated (old rows were never)."""
+    from app.services.project_notifications import has_project_access_sync
+    from app.settings_models import UserSettings, normalize_notification_email
+    out: List[str] = []
+    seen = set()
+    skipped = {"no_access": 0, "inactive": 0, "opted_out": 0, "invalid_address": 0}
 
-    rows = session.exec(
-        select(TestRun.status, func.count(TestRun.id))
-        .where(TestRun.project_id == project_id, TestRun.created_at >= since,
-               TestRun.status.in_(_FINISHED)).group_by(TestRun.status)).all()
-    counts = {str(s.value if hasattr(s, "value") else s): int(c) for s, c in rows}
-    total = sum(counts.values())
-    pass_rate = round(100.0 * counts.get("passed", 0) / total, 1) if total else 0.0
+    def add(addr: Optional[str]):
+        if addr and addr.lower() not in seen:
+            seen.add(addr.lower())
+            out.append(addr)
 
-    open_clusters = session.exec(
-        select(func.count()).select_from(FailureCluster)
-        .where(FailureCluster.project_id == project_id, FailureCluster.status == "open")).one()
-
-    top = session.exec(
-        select(TestCaseResult.test_name, func.count(TestCaseResult.id))
-        .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id == project_id, TestRun.created_at >= since,
-               TestCaseResult.status.in_(_FAIL))
-        .group_by(TestCaseResult.test_name)
-        .order_by(func.count(TestCaseResult.id).desc()).limit(5)).all()
-
-    return {
-        "project_name": project.name if project else f"project {project_id}",
-        "days": days, "total_runs": total, "pass_rate": pass_rate,
-        "open_clusters": int(open_clusters or 0),
-        "top_failing": [(n, int(c)) for n, c in top],
-    }
-
-
-def _report_lines(s: dict) -> list:
-    lines = [
-        f"TraceIQ quality report — {s['project_name']} (last {s['days']}d)",
-        f"Pass rate: {s['pass_rate']}%  |  Runs: {s['total_runs']}  |  Open failure clusters: {s['open_clusters']}",
-    ]
-    if s["top_failing"]:
-        lines.append("Top failing tests:")
-        lines += [f"  • {n} — {c} failures" for n, c in s["top_failing"]]
-    else:
-        lines.append("No failing tests in the window. 🎉")
-    return lines
-
-
-def _send_slack(text: str):
-    url = getattr(settings, "SLACK_WEBHOOK_URL", None)
-    if not url:
-        return
-    requests.post(url, json={"text": text}, timeout=10).raise_for_status()
-
-
-def _send_teams(text: str):
-    url = getattr(settings, "TEAMS_WEBHOOK_URL", None)
-    if not url:
-        return
-    requests.post(url, json={"@type": "MessageCard", "@context": "http://schema.org/extensions",
-                             "summary": "TraceIQ quality report", "text": text.replace("\n", "  \n")},
-                  timeout=10).raise_for_status()
-
-
-def _send_email(subject: str, body: str, recipients: list):
-    host = getattr(settings, "SMTP_HOST", None)
-    if not host or not recipients:
-        return
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = getattr(settings, "SMTP_FROM", "noreply@traceiq.io")
-    msg["To"] = ", ".join(recipients)
-    with smtplib.SMTP(host, getattr(settings, "SMTP_PORT", 587)) as srv:
-        user = getattr(settings, "SMTP_USER", None)
-        if user:
-            srv.starttls()
-            srv.login(user, getattr(settings, "SMTP_PASSWORD", ""))
-        srv.send_message(msg)
-
-
-def _deliver(schedule: ReportSchedule, session: Session) -> dict:
-    summary = _build_summary(session, schedule.project_id, schedule.window_days)
-    text = "\n".join(_report_lines(summary))
-    channels = schedule.channels or ["slack"]
-    sent = []
-    for ch in channels:
+    for uid in dict.fromkeys(schedule.recipient_user_ids or []):
+        user = session.get(User, uid)
+        if not user or not user.email or not getattr(user, "is_active", True):
+            skipped["inactive"] += 1
+            continue
+        if not has_project_access_sync(session, uid, project.id):
+            skipped["no_access"] += 1
+            continue
+        pref = session.exec(select(ProjectNotificationPref).where(
+            ProjectNotificationPref.user_id == uid,
+            ProjectNotificationPref.project_id == project.id)).first()
+        if pref and pref.mode == "off":
+            skipped["opted_out"] += 1
+            continue
+        us = session.exec(select(UserSettings).where(UserSettings.user_id == uid)).first()
+        add((getattr(us, "notification_email", None) or "").strip() or user.email)
+    for raw in schedule.recipients or []:
         try:
-            if ch == "slack":
-                _send_slack(text); sent.append("slack")
-            elif ch == "teams":
-                _send_teams(text); sent.append("teams")
-            elif ch == "email":
-                _send_email(f"TraceIQ report — {summary['project_name']}", text, schedule.recipients or [])
-                sent.append("email")
+            addr = normalize_notification_email(raw) if isinstance(raw, str) else None
+        except ValueError:
+            addr = None
+        if not addr:
+            skipped["invalid_address"] += 1
+            continue
+        add(addr)
+    return out, {k: v for k, v in skipped.items() if v}
+
+
+async def _snapshot_async(project_id: int, days: int) -> Optional[Dict[str, Any]]:
+    # A private engine per call: the app's pooled async engine is bound to the
+    # event loop it was first used on, and every asyncio.run is a new loop.
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+    from sqlalchemy.pool import NullPool
+    from sqlmodel.ext.asyncio.session import AsyncSession
+    engine = create_async_engine(db_url_for(settings.DATABASE_URL, sync=False), poolclass=NullPool)
+    try:
+        maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        async with maker() as s:
+            project = await s.get(Project, project_id)
+            if not project:
+                return None
+            return await reporting.project_snapshot(s, project, days)
+    finally:
+        await engine.dispose()
+
+
+def build_snapshot(project_id: int, days: int) -> Optional[Dict[str, Any]]:
+    return asyncio.run(_snapshot_async(project_id, days))
+
+
+def _send_emails(subject: str, text: str, html_body: str, recipients: List[str]) -> int:
+    host = insvc.effective('SMTP_HOST')
+    if not host:
+        logger.warning("[Digest] SMTP not configured; %d recipient(s) not emailed", len(recipients))
+        return 0
+    sender = insvc.effective('SMTP_FROM') or 'noreply@traceiq.io'
+    user, password = insvc.effective('SMTP_USER'), insvc.effective('SMTP_PASSWORD')
+    sent = 0
+    with smtplib.SMTP(host, insvc.effective('SMTP_PORT') or 587) as srv:
+        if user and password:
+            srv.starttls()
+            srv.login(user, password)
+        for to in recipients:
+            msg = MIMEMultipart('alternative')
+            msg['Subject'] = subject
+            msg['From'] = sender
+            msg['To'] = to
+            msg.attach(MIMEText(text, 'plain'))
+            msg.attach(MIMEText(html_body, 'html'))
+            try:
+                srv.sendmail(sender, [to], msg.as_string())
+                sent += 1
+            except smtplib.SMTPException as e:
+                logger.warning("[Digest] email to one recipient failed: %s", e)
+    return sent
+
+
+def _post(url: str, payload: Dict[str, Any]):
+    from app.tasks.notification_tasks import post_webhook
+    resp = post_webhook(url, payload)
+    resp.raise_for_status()
+
+
+def _deliver(schedule: ReportSchedule, session: Session,
+             snapshot: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    from app.services import project_notifications as pn
+    result: Dict[str, Any] = {"at": datetime.utcnow().isoformat(), "channels_sent": [],
+                              "emailed": 0, "skipped": {}, "errors": []}
+    project = session.get(Project, schedule.project_id)
+    if not project:
+        result["errors"].append("project not found")
+        return result
+    if not insvc.effective('NOTIFICATIONS_ENABLED'):
+        result["errors"].append("notifications are switched off for this instance")
+        return result
+    snap = snapshot if snapshot is not None else build_snapshot(project.id, schedule.window_days or 7)
+    if snap is None:
+        result["errors"].append("could not build the digest")
+        return result
+    base = (settings.FRONTEND_BASE_URL or "").rstrip("/")
+    link = f"{base}/reports/summary" if base else None
+    text = reporting.render_digest_text(snap, link)
+    subject = f"TraceIQ digest - {project.name}: " + (
+        f"{snap['current']['pass_rate']:g}% pass rate" if snap["current"]["pass_rate"] is not None
+        else "no finished runs")
+
+    for ch in schedule.channels or ["email"]:
+        try:
+            if ch == "email":
+                if not insvc.effective('EMAIL_NOTIFICATIONS_ENABLED'):
+                    result["errors"].append("email is switched off for this instance")
+                    continue
+                to, skipped = digest_recipients(session, schedule, project)
+                result["skipped"] = skipped
+                if to:
+                    result["emailed"] = _send_emails(
+                        subject, text, reporting.render_digest_html(snap, link), to)
+                    if result["emailed"]:
+                        result["channels_sent"].append("email")
+            elif ch in ("slack", "teams"):
+                if not insvc.effective(f'{ch.upper()}_NOTIFICATIONS_ENABLED'):
+                    result["errors"].append(f"{ch} is switched off for this instance")
+                    continue
+                url = pn.webhook_url(project, ch)
+                if not url:
+                    result["errors"].append(f"no {ch} webhook set for this project")
+                    continue
+                if ch == "slack":
+                    _post(url, {"text": text})
+                else:
+                    _post(url, {"@type": "MessageCard", "@context": "http://schema.org/extensions",
+                                "summary": "TraceIQ quality digest",
+                                "text": text.replace("\n", "  \n")})
+                result["channels_sent"].append(ch)
         except Exception as e:  # noqa: BLE001
-            logger.warning("[Report] channel %s failed for schedule %s: %s", ch, schedule.id, e)
-    return {"channels_sent": sent, "summary": summary, "text": text}
+            # Never the webhook URL: it is a secret. The channel name is enough.
+            logger.warning("[Digest] channel %s failed for schedule %s: %s",
+                           ch, schedule.id, type(e).__name__)
+            result["errors"].append(f"{ch} delivery failed")
+    return result
 
 
 @celery_app.task(name="app.tasks.report_tasks.send_scheduled_reports")
@@ -134,12 +210,15 @@ def send_scheduled_reports():
             ReportSchedule.next_run_at <= now)).all()
         for sch in due:
             try:
-                _deliver(sch, s)
-                sch.last_run_at = now
-                sch.next_run_at = croniter(sch.cron_expression, now).get_next(datetime)
-                s.add(sch)
+                sch.last_result = _deliver(sch, s)
             except Exception as e:  # noqa: BLE001
-                logger.error("[Report] schedule %s failed: %s", sch.id, e)
+                logger.error("[Digest] schedule %s failed: %s", sch.id, e)
+                sch.last_result = {"at": now.isoformat(), "errors": ["delivery failed"]}
+            # Advance even after a failure: retrying every 5 minutes would
+            # spam whichever channels did work.
+            sch.last_run_at = now
+            sch.next_run_at = croniter(sch.cron_expression, now).get_next(datetime)
+            s.add(sch)
         s.commit()
 
 
@@ -151,6 +230,7 @@ def send_report_now(schedule_id: int):
             return
         result = _deliver(sch, s)
         sch.last_run_at = datetime.utcnow()
+        sch.last_result = result
         s.add(sch)
         s.commit()
-        logger.info("[Report] sent schedule %s now: %s", schedule_id, result.get("channels_sent"))
+        logger.info("[Digest] sent schedule %s now: %s", schedule_id, result.get("channels_sent"))

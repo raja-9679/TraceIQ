@@ -118,6 +118,38 @@ marker). The comment contains:
 - **Failure analysis** — TraceIQ's AI failure analysis (summary and
   suggestions) when present on the run.
 
+## Recording deployments (DORA)
+
+TraceIQ's delivery report (DORA metrics) is built from explicit deployment
+events — it never guesses deployments from runs. Post one from the job that
+deploys, after the deploy step. The API key's user needs editor access on the
+project; a project-scoped key must be scoped to that project. `external_id`
+makes a re-run of the same CI job update the record instead of counting a
+second deployment.
+
+```yaml
+      - name: Record deployment in TraceIQ
+        if: always()   # a failed deploy is a change failure too
+        env:
+          TRACEIQ_URL: ${{ vars.TRACEIQ_URL }}
+          TRACEIQ_API_KEY: ${{ secrets.TRACEIQ_API_KEY }}
+          PROJECT_ID: ${{ vars.TRACEIQ_PROJECT_ID }}
+        run: |
+          STATUS=success; [ "${{ job.status }}" = "success" ] || STATUS=failed
+          curl -fsS -X POST "$TRACEIQ_URL/api/projects/$PROJECT_ID/deployments" \
+            -H "X-API-Key: $TRACEIQ_API_KEY" -H "Content-Type: application/json" \
+            -d "{\"git_commit\": \"${{ github.sha }}\", \"git_branch\": \"${{ github.ref_name }}\",
+                 \"git_repo\": \"${{ github.repository }}\", \"environment\": \"production\",
+                 \"version\": \"${{ github.ref_name }}-${{ github.run_number }}\", \"status\": \"$STATUS\",
+                 \"source\": \"github-actions\", \"external_id\": \"${{ github.run_id }}-${{ github.run_attempt }}\",
+                 \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}"
+```
+
+Optional fields: `deployed_at` and `commit_at` (ISO 8601; `commit_at` makes
+lead time exact — without it lead time starts at the first TraceIQ run with the
+same `git_commit`), `environment_id` instead of the environment's name. Use the
+same commit SHA form (full SHA) as your runs' `git_commit`.
+
 ## Build (for action authors)
 
 The action is self-contained: `dist/index.js` is the compiled bundle

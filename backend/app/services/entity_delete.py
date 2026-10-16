@@ -69,6 +69,11 @@ ON_DELETE: Dict[str, str] = {
     "projectapispec.project_id": DELETE,
     # A person's notification choice for a deleted project means nothing.
     "projectnotificationpref.project_id": DELETE,
+    # A sign-off is a decision about this project's release; budgets and their
+    # alert dedupe rows are project configuration (WP12d).
+    "releasesignoff.project_id": DELETE,
+    "projectcostbudget.project_id": DELETE,
+    "costbudgetalert.project_id": DELETE,
     "externaltestreport.project_id": DELETE,
     "failurecluster.project_id": DELETE,
     "mobileappbuild.project_id": DELETE,
@@ -77,12 +82,19 @@ ON_DELETE: Dict[str, str] = {
     "reportschedule.project_id": DELETE,
     "securityscan.project_id": DELETE,
     "statuspage.project_id": DELETE,
+    # A public link to a deleted project's report must stop working.
+    "sharelink.project_id": DELETE,
     "teamprojectaccess.project_id": DELETE,
     "userprojectaccess.project_id": DELETE,
     "securityfinding.project_id": DELETE,
     "requirementlink.project_id": DELETE,
     "requirement.project_id": DELETE,
     "incident.project_id": DELETE,
+    # Reporting data (WP12b): deployment events and roll-ups of the project.
+    "deployment.project_id": DELETE,
+    "flakedailysnapshot.project_id": DELETE,
+    "flakecasescoredaily.project_id": DELETE,
+    "vendorhealthdaily.project_id": DELETE,
     "incidentwebhook.project_id": DELETE,
     # The matrix is project configuration; its runs/cells are its history.
     "accessmatrix.project_id": DELETE,
@@ -98,6 +110,13 @@ ON_DELETE: Dict[str, str] = {
     "sitecrawl.project_id": DELETE,
     "sitecrawlrun.project_id": DELETE,
     "pagebudgetsample.project_id": DELETE,
+    # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
+    # benchmark groups are all project data.
+    "journeyimport.project_id": DELETE,
+    "journeyconfig.project_id": DELETE,
+    "businessjourney.project_id": DELETE,
+    "flagcatalogentry.project_id": DELETE,
+    "benchmarkgroup.project_id": DELETE,
     # Nullable, but NULL means "workspace-wide" for these three: clearing the
     # link would WIDEN a project-scoped API key / webhook / persona (with its
     # stored session) to every project in the workspace.
@@ -117,12 +136,16 @@ ON_DELETE: Dict[str, str] = {
     "testschedule.test_suite_id": DELETE,
     # The webhook keeps working; its proposals fall back to the first suite.
     "incidentwebhook.default_suite_id": NULLIFY,
+    # A benchmark of a deleted suite cannot be re-run; its runs go anyway
+    # (testrun.test_suite_id).
+    "benchmarkgroup.test_suite_id": DELETE,
 
     # --- into testcase ---------------------------------------------------------
     "testrun.test_case_id": DELETE,         # a single-case run of that case
     "testcaserevision.test_case_id": DELETE,
     "visualbaseline.test_case_id": DELETE,
     "flakerecord.test_case_id": DELETE,
+    "flakecasescoredaily.test_case_id": DELETE,  # that case's score history
     "selectorhealproposal.test_case_id": DELETE,  # a proposal to edit the case
     "caseproposal.target_case_id": DELETE,  # update/delete of a case that's gone
     "usertestcaseaccess.test_case_id": DELETE,
@@ -175,6 +198,8 @@ ON_DELETE: Dict[str, str] = {
     "sitecrawlrun.crawl_id": DELETE,        # a crawl's own executions
     "sitecrawlissue.crawl_run_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
+    "deployment.environment_id": NULLIFY,   # a deployment record outlives it too
+    "testrun.benchmark_group_id": NULLIFY,  # a run outlives its benchmark group
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
 

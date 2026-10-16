@@ -296,6 +296,24 @@ async def update_instance_settings(
         except UnsafeUrlError as exc:
             raise HTTPException(status_code=400, detail=f"PROMETHEUS_URL: {exc}")
 
+    # Cost price table (WP12d): validated and normalised here so the report
+    # never has to guess what a malformed price meant.
+    if any(k.startswith("COST_") for k in body.values):
+        from app.services import cost as cost_svc
+        validators = {"COST_CURRENCY": cost_svc.validate_currency,
+                      "COST_LLM_PRICES": cost_svc.validate_llm_prices,
+                      "COST_BROWSER_MINUTE_PRICE": cost_svc.validate_minute_price}
+        body.values = dict(body.values)
+        for key, check in validators.items():
+            if key in body.values and body.values[key] is not None:
+                try:
+                    body.values[key] = check(body.values[key])
+                except cost_svc.PriceTableError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc))
+                # Blank = "not set": store nothing rather than an empty override.
+                if body.values[key] in (None, {}):
+                    body.values[key] = None
+
     for key, value in body.values.items():
         d = insvc.REGISTRY[key]
         row = (await session.exec(
