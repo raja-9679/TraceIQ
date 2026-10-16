@@ -331,7 +331,9 @@ def test_failed_delivery_backs_off_and_keeps_the_events(db, monkeypatch):
     from app.services import instance_settings
     monkeypatch.setattr(instance_settings, "effective", lambda k: False)
     _queue(db, 3)
-    now = datetime(2026, 10, 15, 12, 0, 0)
+    # Relative to the real clock: new outbox rows are due from utcnow(), so a
+    # fixed date started failing the day after this test was written.
+    now = datetime.utcnow() + timedelta(seconds=1)
 
     def boom(cfg, events):
         raise siem.SiemDeliveryError("connection refused")
