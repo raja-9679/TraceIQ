@@ -91,6 +91,15 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("pagebudgetsample",
               f"DELETE FROM pagebudgetsample WHERE project_id IN ({_PROJECTS}) "
               f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES})"),
+    # Visual review (WP14e): comment threads, then the comparisons they hang off.
+    PurgeStep("visualreviewcomment",
+              f"DELETE FROM visualreviewcomment WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS}) OR comparison_id IN "
+              f"(SELECT id FROM visualcomparison WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES}))"),
+    PurgeStep("visualcomparison",
+              f"DELETE FROM visualcomparison WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES})"),
     PurgeStep("sitecrawlissue",
               f"DELETE FROM sitecrawlissue WHERE crawl_run_id IN "
               f"(SELECT id FROM sitecrawlrun WHERE project_id IN ({_PROJECTS}) "

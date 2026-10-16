@@ -8,7 +8,7 @@ from app.core.storage import minio_client
 from app.core.limiter import limiter
 from app.api import (
     api_keys, audit, auth, data_policy, project_notifications, settings, workspaces, projects, admin,
-    workspace_webhooks, visual_baselines, personas, heal_proposals,
+    workspace_webhooks, visual_baselines, visual_review, personas, heal_proposals,
     flake_records, case_generation, comparison_runs, agent_ownership,
     agent_reference, environments, analytics, inspect,
 )
@@ -177,6 +177,7 @@ app.include_router(data_policy.router, prefix="/api", tags=["data-policy"])
 app.include_router(project_notifications.router, prefix="/api", tags=["notifications"])
 app.include_router(workspace_webhooks.router, prefix="/api", tags=["webhooks"])
 app.include_router(visual_baselines.router, prefix="/api", tags=["visual-baselines"])
+app.include_router(visual_review.router, prefix="/api", tags=["visual-review"])
 app.include_router(personas.router, prefix="/api", tags=["personas"])
 app.include_router(heal_proposals.router, prefix="/api", tags=["heal-proposals"])
 app.include_router(flake_records.router, prefix="/api", tags=["flakes"])

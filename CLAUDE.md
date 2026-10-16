@@ -1260,6 +1260,49 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `/workspaces/{id}/agent-controls` (ws admin; PUT/DELETE humans-only,
   audited `agent_blocked|agent_unblocked|agent_controls_updated|removed`).
   Pages `/policies`, `/agents`.
+- **Visual review: element baselines, stored diffs, grouping, comments
+  (WP14e, 2026-10, decision W7)** — migration `d052b3c4d5fc`
+  (`visualbaseline.element_key` NOT NULL default '' + `selector`; tables
+  `visualcomparison`, `visualreviewcomment`). **Element baselines**:
+  `expect-visual-match` with a `selector` screenshots only that element
+  (`execution-engine/src/core/visual-step.ts`, locator.screenshot, same
+  capture-time masks/tolerance/pixel masks). The slot is (case, step, browser,
+  device, `element_key`); `element_key` = `el-` + 12 hex of sha256 of the
+  normalised selector (whitespace collapsed / dropped around `>` `,` outside
+  quotes; twins `visual-element-key.ts` and `services/visual_review.py` with
+  shared vectors), computed from the selector AS AUTHORED (pre-template). ''
+  = full page. Candidate file `visual-<step>-<key>.png` (full page unchanged:
+  `visual-<step>.png`). `/internal/visual-baselines/resolve` filters on
+  `element_key` (default '') so an old worker — which ignores `selector` and
+  sends no key — never compares a full page with an element baseline.
+  Promote takes `element_key` / `comparison_id`; with a comparison its
+  REPORTED slot wins over the request, the source object must end with that
+  slot's file name, and dest keys carry the element key. **Diff stats**:
+  `visual-diff.ts` returns `regions` (cell-clustered boxes of pixelmatch-red
+  pixels, max 20, each with a 64-bit dHash of candidate and baseline crop);
+  the step pushes an entry onto `ctx.visual_results` (worker ships it like
+  `page_budgets`; continuous jobs slice per case; candidates now go to the
+  job artifacts dir, not the video dir). The aggregator stores one
+  `VisualComparison` per entry (`persist_comparisons`: rebuilt field by field,
+  file name must match the claimed key, candidate/diff keys only from this
+  run's uploaded screenshots, selector redacted; replaced per (run, test),
+  rows with comments kept). **Grouping** (`group_comparisons`, within one
+  run): union-find over changed items; two are related when the dominant
+  region of one matches a region of the other — sizes within 25%+8px and
+  both crop hashes within Hamming 10 (flat crops / no hashes also need the
+  same position ±24px). Group key `g<lowest comparison id>`. **API**
+  (`app/api/visual_review.py`, viewer reads, editor writes, project-scoped
+  keys enforced): `GET /projects/{id}/visual-review/runs`, `GET
+  /projects/{id}/visual-review?run_id=` (items with presigned urls, current
+  slot baseline, this run's accept/keep decision from the audit log, groups,
+  comment counts), `POST .../groups/{key}/accept|keep {run_id}` — still ONE
+  `visual_baseline.accept|keep` audit row per baseline (with `group_key`),
+  `GET/POST .../comments` (item: `comparison_id`; group: `run_id`+`group_key`,
+  anchor must be in that run/project), `POST .../comments/{id}/resolve`.
+  Comment bodies are plain text (control chars stripped, ≤4000), rendered
+  escaped; the audit row records where/who/length, not the text. Mobile
+  `mobile-expect-visual-match` is unchanged (full screen, reports no
+  comparisons). Cross-run grouping is not built.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

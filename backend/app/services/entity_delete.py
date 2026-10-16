@@ -115,6 +115,9 @@ ON_DELETE: Dict[str, str] = {
     "sitecrawl.project_id": DELETE,
     "sitecrawlrun.project_id": DELETE,
     "pagebudgetsample.project_id": DELETE,
+    # Visual review (WP14e): a run's comparisons and the threads about them.
+    "visualcomparison.project_id": DELETE,
+    "visualreviewcomment.project_id": DELETE,
     # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
     # benchmark groups are all project data.
     "journeyimport.project_id": DELETE,
@@ -169,6 +172,9 @@ ON_DELETE: Dict[str, str] = {
     "authsession.captured_by_case_id": NULLIFY,
     # A page's budget trend is about the page, not the case that measured it.
     "pagebudgetsample.test_case_id": NULLIFY,
+    # A comparison is evidence about that case's baseline; it cannot be
+    # accepted once the case is gone.
+    "visualcomparison.test_case_id": DELETE,
 
     # --- into testrun ----------------------------------------------------------
     "testcaseresult.test_run_id": DELETE,   # NOT NULL; the run's own output
@@ -188,6 +194,9 @@ ON_DELETE: Dict[str, str] = {
     "accessmatrixcell.test_run_id": NULLIFY,
     # A budget sample is that run's measurement (NOT NULL).
     "pagebudgetsample.test_run_id": DELETE,
+    # The run's own comparisons, and comments on them / on its groups.
+    "visualcomparison.test_run_id": DELETE,
+    "visualreviewcomment.test_run_id": DELETE,
 
     # --- into tables only reachable through project ---------------------------
     "monitorcheck.schedule_id": DELETE,     # NOT NULL; history of that monitor
@@ -202,6 +211,7 @@ ON_DELETE: Dict[str, str] = {
     "pagechangeevent.page_id": DELETE,
     "sitecrawlrun.crawl_id": DELETE,        # a crawl's own executions
     "sitecrawlissue.crawl_run_id": DELETE,
+    "visualreviewcomment.comparison_id": DELETE,   # a thread about that item
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
     "deployment.environment_id": NULLIFY,   # a deployment record outlives it too
     "testrun.benchmark_group_id": NULLIFY,  # a run outlives its benchmark group

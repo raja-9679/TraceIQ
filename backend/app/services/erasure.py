@@ -62,6 +62,8 @@ RETAINED_AUTHORSHIP: List[str] = [
     "testsuite.updated_by_id", "testrun.user_id", "testcaserevision.changed_by_id",
     "caseproposal.created_by_id", "caseproposal.decided_by_id",
     "selectorhealproposal.decided_by_id", "visualbaseline.created_by_id",
+    # WP14e review comments: the thread is the project's review record.
+    "visualreviewcomment.author_id", "visualreviewcomment.resolved_by_id",
     "mobileappbuild.created_by_id", "securityscan.requested_by_id",
     "persona.created_by_id", "requirementlink.created_by_id",
     "reportschedule.created_by_id", "testschedule.created_by_id",

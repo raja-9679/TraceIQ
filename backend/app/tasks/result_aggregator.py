@@ -725,6 +725,20 @@ def _persist_page_budgets(session, run, test_case_id, test_name, res: Dict[str, 
         print(f"[Aggregator] Failed to store page budgets for run {getattr(run, 'id', None)}: {e}")
 
 
+def _persist_visual_results(session, run, test_case_id, test_name, res: Dict[str, Any],
+                            screenshot_keys):
+    """`expect-visual-match` outcomes -> VisualComparison rows (WP14e).
+    Older workers send none. Never raises, like the page budgets."""
+    if not res.get('visual_results'):
+        return
+    try:
+        from app.services.visual_review import persist_comparisons
+        persist_comparisons(session, run, test_case_id, test_name,
+                            res.get('visual_results'), screenshot_keys or [])
+    except Exception as e:  # noqa: BLE001
+        print(f"[Aggregator] Failed to store visual results for run {getattr(run, 'id', None)}: {e}")
+
+
 def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, Any], test_results: list):
     """Process a continuous job result with multiple test cases"""
     if not run_id:
@@ -818,6 +832,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                 )
                 session.add(test_result)
             _persist_page_budgets(session, run, test_res.get('test_case_id'), test_name, test_res)
+            _persist_visual_results(session, run, test_res.get('test_case_id'), test_name, test_res,
+                                    artifacts.get('screenshots'))
 
         # Update run with network events (tagged by test name already)
         if network_events:
@@ -958,6 +974,8 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             )
             session.add(test_result)
         _persist_page_budgets(session, run, test_case_id, test_name, result)
+        _persist_visual_results(session, run, test_case_id, test_name, result,
+                                artifacts.get('screenshots'))
 
         # Update run with network events (accumulate from all test results)
         if network_events:

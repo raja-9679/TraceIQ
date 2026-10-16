@@ -1823,6 +1823,12 @@ class VisualBaseline(SQLModel, table=True):
     image_url: str
     mask_regions: Optional[List[dict]] = Field(default=[], sa_column=Column(JSON))
     tolerance: float = Field(default=0.01)
+    # WP14e element baselines: '' = the full-page baseline of the step,
+    # `el-<12 hex>` = one element's (hash of the normalised selector, see
+    # app/services/visual_review.py:element_key). Part of the lookup key, so
+    # the two never collide.
+    element_key: str = Field(default="", sa_column_kwargs={"server_default": ""})
+    selector: Optional[str] = Field(default=None)
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -1838,6 +1844,8 @@ class VisualBaselineRead(SQLModel):
     image_url: str
     tolerance: float
     created_at: datetime
+    element_key: str = ""
+    selector: Optional[str] = None
 
 
 class MobileAppBuild(SQLModel, table=True):
@@ -3707,6 +3715,65 @@ class AgentSession(SQLModel, table=True):
     denials: int = Field(default=0)
     first_seen_at: datetime = Field(default_factory=datetime.utcnow)
     last_seen_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# WP14e — visual review: stored comparisons (diff stats, change regions) and
+# comment threads on review items and groups
+# ---------------------------------------------------------------------------
+
+class VisualComparison(SQLModel, table=True):
+    """One `expect-visual-match` outcome in a run, as the worker reported it.
+
+    Keyed like the baseline it was compared with — (case, step, browser,
+    device, element_key) — where `element_key` is what the worker says it
+    captured, never what the step definition asks for: an older worker
+    ignores `selector`, takes a full page and reports no element key.
+    `regions` are the changed areas ({x, y, width, height, pixels,
+    hash_candidate, hash_baseline}), which the review groups on.
+    `baseline_id` is a soft pointer (a baseline can be deleted; the record of
+    the comparison stays with its run)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id", index=True)
+    test_name: Optional[str] = Field(default=None)
+    step_id: str
+    browser: str = Field(default="chromium")
+    device: Optional[str] = Field(default=None)
+    element_key: str = Field(default="")
+    selector: Optional[str] = Field(default=None)
+    baseline_id: Optional[int] = Field(default=None)
+    # passed | failed | capture_only
+    status: str = Field(default="capture_only")
+    candidate_key: Optional[str] = Field(default=None)
+    diff_key: Optional[str] = Field(default=None)
+    diff_ratio: Optional[float] = Field(default=None)
+    diff_pixels: Optional[int] = Field(default=None)
+    total_pixels: Optional[int] = Field(default=None)
+    width: Optional[int] = Field(default=None)
+    height: Optional[int] = Field(default=None)
+    size_mismatch: bool = Field(default=False)
+    tolerance: Optional[float] = Field(default=None)
+    regions: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class VisualReviewComment(SQLModel, table=True):
+    """A comment on a visual review item (`comparison_id`) or on a group of
+    related changes in a run (`test_run_id` + `group_key`, e.g. 'g42' — the
+    group anchored on comparison 42). Plain text; rendered escaped."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id", index=True)
+    comparison_id: Optional[int] = Field(default=None, foreign_key="visualcomparison.id", index=True)
+    group_key: Optional[str] = Field(default=None)
+    author_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    body: str = Field(sa_column=Column(Text, nullable=False))
+    resolved: bool = Field(default=False)
+    resolved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    resolved_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

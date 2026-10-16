@@ -20,7 +20,9 @@ from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.config import settings
 from app.core.database import get_session
 from app.models import TestCase, VisualBaseline, VisualBaselineRead
+from app.api.jobs import api_key_allows_project
 from app.services.access_service import access_service
+from app.services.visual_review import element_key, valid_element_key
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -35,6 +37,8 @@ class VisualBaselineCreate(BaseModel):
     viewport: Optional[str] = None
     tolerance: float = 0.01
     mask_regions: Optional[List[dict]] = None
+    # An element baseline (WP14e): keyed by the normalised selector.
+    selector: Optional[str] = None
 
 
 def _resolve_image_url(image_url: str) -> str:
@@ -61,6 +65,8 @@ def _to_read(b: VisualBaseline) -> VisualBaselineRead:
         image_url=_resolve_image_url(b.image_url),
         tolerance=b.tolerance,
         created_at=b.created_at,
+        element_key=b.element_key or "",
+        selector=b.selector,
     )
 
 
@@ -98,6 +104,8 @@ async def create_baseline(
         viewport=body.viewport,
         tolerance=body.tolerance,
         mask_regions=body.mask_regions or [],
+        element_key=element_key(body.selector),
+        selector=(body.selector or "").strip()[:500] or None,
         created_by_id=principal.user.id,
     )
     session.add(baseline)
@@ -154,6 +162,18 @@ class PromoteBaselineRequest(BaseModel):
     device: Optional[str] = None
     tolerance: float = 0.01
     mask_regions: Optional[List[dict]] = None
+    # WP14e: '' = full page, `el-…` = an element baseline.
+    element_key: str = ""
+    # Promote exactly this stored comparison's candidate (the review page
+    # sends it). Its own slot — browser, device, element key, as the worker
+    # reported them — wins over the fields above.
+    comparison_id: Optional[int] = None
+
+
+def _check_key_scope(principal: AuthPrincipal, project_id: Optional[int]) -> None:
+    if (principal.api_key is not None and project_id is not None
+            and not api_key_allows_project(principal.api_key, project_id)):
+        raise HTTPException(status_code=403, detail="API key is not scoped to this project")
 
 
 @router.get("/internal/visual-baselines/resolve")
@@ -162,6 +182,7 @@ async def internal_resolve_baseline(
     step_id: str,
     browser: str = "chromium",
     device: Optional[str] = None,
+    element_key: str = "",
     x_worker_secret: str = Header(default=""),
     session: AsyncSession = Depends(get_session),
 ):
@@ -178,10 +199,15 @@ async def internal_resolve_baseline(
     if not x_worker_secret or not hmac.compare_digest(x_worker_secret, expected):
         raise HTTPException(status_code=403, detail="Invalid worker secret")
 
+    if not valid_element_key(element_key):
+        raise HTTPException(status_code=422, detail="Invalid element_key")
+    # The element key is part of the slot: an old worker sends none and so
+    # only ever sees the full-page baseline, never an element one.
     res = await session.exec(
         select(VisualBaseline).where(
             VisualBaseline.test_case_id == test_case_id,
             VisualBaseline.step_id == step_id,
+            VisualBaseline.element_key == element_key,
         )
     )
     baselines = list(res.all())
@@ -205,6 +231,7 @@ async def internal_resolve_baseline(
         "step_id": baseline.step_id,
         "browser": baseline.browser,
         "device": baseline.device,
+        "element_key": baseline.element_key or "",
         "image_url": image_url,
         "tolerance": baseline.tolerance,
         "mask_regions": baseline.mask_regions or [],
@@ -219,44 +246,87 @@ async def promote_baseline(
 ) -> VisualBaselineRead:
     """Promote a run's candidate screenshot into a durable baseline.
 
-    The worker writes the candidate at runs/{run_id}/screenshots/visual-{step_id}.png.
-    This copies it (server-side) to a stable baselines/ key so the baseline
-    survives artifact cleanup and presigned-URL expiry, then upserts the
-    VisualBaseline row for (test_case, step, browser, device)."""
-    from app.core.storage import minio_client
-
+    The worker writes the candidate at runs/{run_id}/screenshots/visual-{step_id}.png
+    (element captures: visual-{step_id}-{element_key}.png). This copies it
+    (server-side) to a stable baselines/ key so the baseline survives
+    artifact cleanup and presigned-URL expiry, then upserts the
+    VisualBaseline row for (test_case, step, browser, device, element_key)."""
     case = await session.get(TestCase, body.test_case_id)
     if not case:
         raise HTTPException(status_code=404, detail="Test case not found")
+    _check_key_scope(principal, case.project_id)
     if not await access_service.has_project_access(
         principal.user.id, case.project_id, session, min_role="editor"
     ):
         raise HTTPException(status_code=403, detail="Editor access required")
+    if not valid_element_key(body.element_key):
+        raise HTTPException(status_code=422, detail="Invalid element_key")
 
-    source_key = f"runs/{body.run_id}/screenshots/visual-{body.step_id}.png"
-    if not minio_client.object_exists(source_key):
-        # Workers prefix candidate uploads with the job id
-        # (runs/{run_id}/screenshots/{job_id}-visual-{step_id}.png).
-        source_key = minio_client.find_object(
-            f"runs/{body.run_id}/screenshots/", f"visual-{body.step_id}.png")
+    comparison = None
+    if body.comparison_id is not None:
+        from app.models import VisualComparison
+        comparison = await session.get(VisualComparison, body.comparison_id)
+        if (not comparison or comparison.test_case_id != body.test_case_id
+                or comparison.test_run_id != body.run_id
+                or comparison.step_id != body.step_id):
+            raise HTTPException(status_code=404, detail="Comparison not found for this case and run")
+    baseline = await promote_candidate(
+        session, principal, case, run_id=body.run_id, step_id=body.step_id,
+        browser=comparison.browser if comparison else body.browser,
+        device=comparison.device if comparison else body.device,
+        element_key=comparison.element_key if comparison else body.element_key,
+        selector=comparison.selector if comparison else None,
+        source_key=comparison.candidate_key if comparison else None,
+        tolerance=body.tolerance, mask_regions=body.mask_regions)
+    await session.commit()
+    await session.refresh(baseline)
+    return _to_read(baseline)
+
+
+async def promote_candidate(session, principal, case, *, run_id: int, step_id: str,
+                            browser: str, device: Optional[str], element_key: str = "",
+                            selector: Optional[str] = None, source_key: Optional[str] = None,
+                            tolerance: Optional[float] = None,
+                            mask_regions: Optional[List[dict]] = None,
+                            audit_extra: Optional[dict] = None) -> VisualBaseline:
+    """Copy a candidate to a versioned baseline key and upsert the row; one
+    `visual_baseline.accept` audit row. Caller has checked editor access and
+    commits. Shared by single and group accept."""
+    from app.core.storage import minio_client
+
+    file_name = f"visual-{step_id}-{element_key}.png" if element_key else f"visual-{step_id}.png"
+    run_prefix = f"runs/{run_id}/screenshots/"
+    if source_key is not None and not (
+            source_key.startswith(run_prefix) and source_key.endswith(file_name)):
+        source_key = None
+    if source_key is None:
+        source_key = run_prefix + file_name
+        if not minio_client.object_exists(source_key):
+            # Workers prefix candidate uploads with the job id
+            # (runs/{run_id}/screenshots/{job_id}-visual-{step_id}.png). The
+            # suffix includes the element key, so a full-page candidate is
+            # never taken for an element baseline or the other way round.
+            source_key = minio_client.find_object(run_prefix, file_name)
     if not source_key:
         raise HTTPException(
             status_code=404,
-            detail=f"No candidate screenshot for step {body.step_id} in run {body.run_id}; "
+            detail=f"No candidate screenshot for step {step_id}"
+                   f"{' (element ' + element_key + ')' if element_key else ''} in run {run_id}; "
                    "run the case with an expect-visual-match step first")
     # Versioned key: the previous baseline object is kept so the change can
     # be rolled back (it used to be overwritten in place).
     stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S%f")
-    dest_key = (f"baselines/{body.test_case_id}/{body.step_id}/"
-                f"{body.browser}-{body.device or 'default'}-{stamp}.png")
+    dest_key = (f"baselines/{case.id}/{step_id}/"
+                f"{browser}-{device or 'default'}-{element_key + '-' if element_key else ''}{stamp}.png")
     minio_client.copy_object(source_key, dest_key)
 
     res = await session.exec(
         select(VisualBaseline).where(
-            VisualBaseline.test_case_id == body.test_case_id,
-            VisualBaseline.step_id == body.step_id,
-            VisualBaseline.browser == body.browser,
-            VisualBaseline.device == body.device,
+            VisualBaseline.test_case_id == case.id,
+            VisualBaseline.step_id == step_id,
+            VisualBaseline.browser == browser,
+            VisualBaseline.device == device if device is not None else VisualBaseline.device.is_(None),
+            VisualBaseline.element_key == element_key,
         )
     )
     baseline = res.first()
@@ -264,29 +334,34 @@ async def promote_baseline(
     if baseline:
         baseline.image_url = dest_key
         baseline.updated_at = datetime.utcnow()
-        baseline.tolerance = body.tolerance
-        if body.mask_regions is not None:
-            baseline.mask_regions = body.mask_regions
+        if tolerance is not None:
+            baseline.tolerance = tolerance
+        if mask_regions is not None:
+            baseline.mask_regions = mask_regions
+        if selector:
+            baseline.selector = selector
     else:
         baseline = VisualBaseline(
-            test_case_id=body.test_case_id,
-            step_id=body.step_id,
+            test_case_id=case.id,
+            step_id=step_id,
             image_url=dest_key,
-            browser=body.browser,
-            device=body.device,
-            tolerance=body.tolerance,
-            mask_regions=body.mask_regions or [],
+            browser=browser,
+            device=device,
+            element_key=element_key,
+            selector=selector,
+            tolerance=tolerance if tolerance is not None else 0.01,
+            mask_regions=mask_regions or [],
             created_by_id=principal.user.id,
         )
     session.add(baseline)
     await session.flush()
     await _audit(session, case, baseline, "visual_baseline.accept", principal, {
         "image": dest_key, "previous_image": previous_image,
-        "run_id": body.run_id, "step_id": body.step_id,
+        "run_id": run_id, "step_id": step_id,
+        **({"element_key": element_key} if element_key else {}),
+        **(audit_extra or {}),
     })
-    await session.commit()
-    await session.refresh(baseline)
-    return _to_read(baseline)
+    return baseline
 
 
 class BaselineDecision(BaseModel):
@@ -334,6 +409,7 @@ async def keep_baseline(
     current baseline (i.e. judged the change a regression). Nothing about the
     baseline changes; the decision is what gets recorded."""
     baseline, case = await _baseline_for_editor(baseline_id, principal, session)
+    _check_key_scope(principal, case.project_id)
     await _audit(session, case, baseline, "visual_baseline.keep", principal, {
         "image": baseline.image_url, "run_id": body.run_id,
         "note": (body.note or "")[:500] or None,
