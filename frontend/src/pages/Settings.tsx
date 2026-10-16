@@ -2,8 +2,7 @@ import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle } from 'lucide-react';
-import InstanceSettingsSection from '@/components/settings/InstanceSettingsSection';
-import { DataPolicySection } from '@/components/settings/DataPolicySection';
+import { CaptureLevelPointer, ProjectChoicesCard } from '@/components/settings/personalCards';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { toast } from 'sonner';
 import {
@@ -100,7 +99,7 @@ const keyStatus = (key: ApiKeyRead): KeyStatus => {
     return 'active';
 };
 
-type SectionId = 'general' | 'execution' | 'notifications' | 'storage' | 'account' | 'security' | 'instance';
+type SectionId = 'general' | 'execution' | 'notifications' | 'account' | 'security';
 
 const BROWSER_OPTIONS: { id: string; name: string; hint: string }[] = [
     { id: 'chromium', name: 'Chromium', hint: 'Chrome, Edge, Brave' },
@@ -122,7 +121,6 @@ export default function Settings() {
     const queryClient = useQueryClient();
     const activeProjectId = useActiveProjectId();
     const [activeSection, setActiveSection] = useState<SectionId>('general');
-    const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
     // General Settings
     const [theme, setTheme] = useState('light');
@@ -137,25 +135,17 @@ export default function Settings() {
     // Test Execution Defaults
     const [defaultBrowser, setDefaultBrowser] = useState('chromium');
     const [defaultDevice, setDefaultDevice] = useState('Desktop');
-    const [defaultTimeout, setDefaultTimeout] = useState(30000);
-    const [autoRetry, setAutoRetry] = useState(false);
-    const [maxRetries, setMaxRetries] = useState(3);
-    const [parallelExecution, setParallelExecution] = useState(false);
-    const [maxParallelTests, setMaxParallelTests] = useState(3);
 
     // Notifications
     const [emailNotifications, setEmailNotifications] = useState(false);
     const [notifyOnCompletion, setNotifyOnCompletion] = useState(true);
     const [notifyOnFailure, setNotifyOnFailure] = useState(true);
-    const [dailySummary, setDailySummary] = useState(false);
     const [notificationEmail, setNotificationEmail] = useState('');
 
     // Storage & Retention
     const [videoRecording, setVideoRecording] = useState('on-failure');
     const [screenshotOnError, setScreenshotOnError] = useState(true);
     const [traceFiles, setTraceFiles] = useState(true);
-    const [retentionPeriod, setRetentionPeriod] = useState(30);
-    const [autoCleanup, setAutoCleanup] = useState(true);
 
     // Multi-Browser Testing
     const [multiBrowserEnabled, setMultiBrowserEnabled] = useState(false);
@@ -179,11 +169,6 @@ export default function Settings() {
             setDateFormat(settings.date_format);
             setDefaultBrowser(settings.default_browser);
             setDefaultDevice(settings.default_device);
-            setDefaultTimeout(settings.default_timeout);
-            setAutoRetry(settings.auto_retry);
-            setMaxRetries(settings.max_retries);
-            setParallelExecution(settings.parallel_execution);
-            setMaxParallelTests(settings.max_parallel_tests);
             setMultiBrowserEnabled(settings.multi_browser_enabled);
             setSelectedBrowsers(settings.selected_browsers);
             setMultiDeviceEnabled(settings.multi_device_enabled);
@@ -191,126 +176,85 @@ export default function Settings() {
             setEmailNotifications(settings.email_notifications);
             setNotifyOnCompletion(settings.notify_on_completion);
             setNotifyOnFailure(settings.notify_on_failure);
-            setDailySummary(settings.daily_summary);
             setNotificationEmail(settings.notification_email || '');
             setVideoRecording(settings.video_recording);
             setScreenshotOnError(settings.screenshot_on_error);
             setTraceFiles(settings.trace_files);
-            setRetentionPeriod(settings.retention_period);
-            setAutoCleanup(settings.auto_cleanup);
         }
     }, [settings]);
 
+    // Each card saves ONLY its own fields (the API is a partial update), so
+    // saving the notification card can never overwrite a recording choice.
     const saveMutation = useMutation({
         mutationFn: updateSettings,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['settings'] });
-            setHasUnsavedChanges(false);
-            toast.success('Settings saved successfully');
+            toast.success('Saved');
         },
         onError: (error: any) => {
             toast.error(error?.response?.data?.detail || 'Failed to save settings');
         }
     });
 
-    const handleSave = () => {
-        saveMutation.mutate({
-            theme,
-            timezone,
-            date_format: dateFormat,
-            default_browser: defaultBrowser,
-            default_device: defaultDevice,
-            default_timeout: defaultTimeout,
-            auto_retry: autoRetry,
-            max_retries: maxRetries,
-            parallel_execution: parallelExecution,
-            max_parallel_tests: maxParallelTests,
-            multi_browser_enabled: multiBrowserEnabled,
-            selected_browsers: selectedBrowsers,
-            multi_device_enabled: multiDeviceEnabled,
-            selected_devices: selectedDevices,
-            email_notifications: emailNotifications,
-            notify_on_completion: notifyOnCompletion,
-            notify_on_failure: notifyOnFailure,
-            daily_summary: dailySummary,
-            notification_email: notificationEmail || null,
-            video_recording: videoRecording,
-            screenshot_on_error: screenshotOnError,
-            trace_files: traceFiles,
-            retention_period: retentionPeriod,
-            auto_cleanup: autoCleanup,
-        });
+    const differs = (patch: Record<string, unknown>) => !!settings && Object.entries(patch).some(
+        ([k, v]) => JSON.stringify(v ?? null) !== JSON.stringify((settings as unknown as Record<string, unknown>)[k] ?? null));
+
+    const cardFooter = (patch: Record<string, unknown>, reset: () => void) => {
+        const changed = differs(patch);
+        return (
+            <>
+                <Button onClick={() => saveMutation.mutate(patch)} disabled={saveMutation.isPending || !changed}>
+                    {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                    {saveMutation.isPending ? 'Saving…' : 'Save'}
+                </Button>
+                {changed && (
+                    <Button variant="outline" onClick={reset} disabled={saveMutation.isPending}>Discard</Button>
+                )}
+                <span className="text-xs text-ink-soft" aria-live="polite">{changed ? 'Unsaved changes.' : 'Saved.'}</span>
+            </>
+        );
     };
 
-    const handleCancel = () => {
-        // Reload settings from server
+    const displayPatch = { theme, timezone, date_format: dateFormat };
+    const resetDisplay = () => { if (settings) { setTheme(settings.theme); setTimezone(settings.timezone); setDateFormat(settings.date_format); } };
+    const runDefaultsPatch = { default_browser: defaultBrowser, default_device: defaultDevice };
+    const resetRunDefaults = () => { if (settings) { setDefaultBrowser(settings.default_browser); setDefaultDevice(settings.default_device); } };
+    const browsersPatch = { multi_browser_enabled: multiBrowserEnabled, selected_browsers: selectedBrowsers };
+    const resetBrowsers = () => { if (settings) { setMultiBrowserEnabled(settings.multi_browser_enabled); setSelectedBrowsers(settings.selected_browsers); } };
+    const devicesPatch = { multi_device_enabled: multiDeviceEnabled, selected_devices: selectedDevices };
+    const resetDevices = () => { if (settings) { setMultiDeviceEnabled(settings.multi_device_enabled); setSelectedDevices(settings.selected_devices); } };
+    const notifyPatch = {
+        email_notifications: emailNotifications, notification_email: notificationEmail.trim() || null,
+        notify_on_completion: notifyOnCompletion, notify_on_failure: notifyOnFailure,
+    };
+    const resetNotify = () => {
         if (settings) {
-            setTheme(settings.theme);
-            setTimezone(settings.timezone);
-            setDateFormat(settings.date_format);
-            setDefaultBrowser(settings.default_browser);
-            setDefaultDevice(settings.default_device);
-            setDefaultTimeout(settings.default_timeout);
-            setAutoRetry(settings.auto_retry);
-            setMaxRetries(settings.max_retries);
-            setParallelExecution(settings.parallel_execution);
-            setMaxParallelTests(settings.max_parallel_tests);
-            setMultiBrowserEnabled(settings.multi_browser_enabled);
-            setSelectedBrowsers(settings.selected_browsers);
-            setEmailNotifications(settings.email_notifications);
-            setNotifyOnCompletion(settings.notify_on_completion);
-            setNotifyOnFailure(settings.notify_on_failure);
-            setDailySummary(settings.daily_summary);
-            setNotificationEmail(settings.notification_email || '');
-            setVideoRecording(settings.video_recording);
-            setScreenshotOnError(settings.screenshot_on_error);
-            setTraceFiles(settings.trace_files);
-            setRetentionPeriod(settings.retention_period);
-            setAutoCleanup(settings.auto_cleanup);
+            setEmailNotifications(settings.email_notifications); setNotificationEmail(settings.notification_email || '');
+            setNotifyOnCompletion(settings.notify_on_completion); setNotifyOnFailure(settings.notify_on_failure);
         }
-        setHasUnsavedChanges(false);
     };
+    const recordingsPatch = { video_recording: videoRecording, screenshot_on_error: screenshotOnError, trace_files: traceFiles };
+    const resetRecordings = () => { if (settings) { setVideoRecording(settings.video_recording); setScreenshotOnError(settings.screenshot_on_error); setTraceFiles(settings.trace_files); } };
 
-    // Small helper so every preference control marks the form dirty, as before.
-    const dirty = <T,>(setter: (v: T) => void) => (v: T) => { setter(v); setHasUnsavedChanges(true); };
+    // Controls write straight into their card's draft; each card works out its
+    // own "unsaved" state by comparing with what the server has.
+    const dirty = <T,>(setter: (v: T) => void) => setter;
 
     const toggleIn = (list: string[], id: string, on: boolean) =>
         on ? [...list, id] : list.filter((x) => x !== id);
 
     const sections: { id: SectionId; name: string }[] = [
         { id: 'general', name: 'General' },
-        { id: 'execution', name: 'Test execution' },
+        { id: 'execution', name: 'Runs and recordings' },
         { id: 'notifications', name: 'Notifications' },
-        { id: 'storage', name: 'Recordings and retention' },
         { id: 'account', name: 'Account and API keys' },
         { id: 'security', name: 'Two-factor sign-in' },
-        // Tenant-admin only; the section itself shows an access message to
-        // non-admins (the API 403s), matching the Tenant Admin page pattern.
-        { id: 'instance', name: 'Instance (admin)' },
     ];
 
-    // Every preference section saves through the same request, so each card's
-    // Save sends the whole preference set — exactly what the old sticky bar did.
-    const saveFooter = (
-        <>
-            <Button onClick={handleSave} disabled={saveMutation.isPending || !hasUnsavedChanges}>
-                {saveMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                {saveMutation.isPending ? 'Saving…' : 'Save changes'}
-            </Button>
-            {hasUnsavedChanges && (
-                <Button variant="outline" onClick={handleCancel} disabled={saveMutation.isPending}>
-                    Discard
-                </Button>
-            )}
-            <span className="text-xs text-ink-soft" aria-live="polite">
-                {hasUnsavedChanges ? 'You have unsaved changes.' : 'No unsaved changes.'}
-            </span>
-        </>
-    );
 
     return (
         <div className="flex flex-col gap-6">
-            <PageHeader title="Settings" subtitle="Your preferences, account, sign-in security and instance configuration." />
+            <PageHeader title="My settings" subtitle={<>Your own preferences, account and sign-in. Settings shared by a project are in <Link to="/project-settings" className="font-medium text-ink underline underline-offset-2">Project settings</Link>.</>} />
 
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
                 <aside className="lg:sticky lg:top-6 lg:w-60 lg:flex-none">
@@ -325,7 +269,7 @@ export default function Settings() {
                                 labelledBy="settings-display"
                                 title="Display"
                                 description="How TraceIQ looks and how it shows times and dates."
-                                footer={saveFooter}
+                                footer={cardFooter(displayPatch, resetDisplay)}
                             >
                                 <div className="flex flex-col">
                                     <FieldRow label="Theme" htmlFor="set-theme">
@@ -395,7 +339,7 @@ export default function Settings() {
                                 labelledBy="settings-exec-defaults"
                                 title="Run defaults"
                                 description="Fallback for runs you start yourself, when neither the test nor its suite picks a browser or device. Scheduled runs use the browser set on the schedule."
-                                footer={saveFooter}
+                                footer={cardFooter(runDefaultsPatch, resetRunDefaults)}
                             >
                                 <div className="flex flex-col">
                                     <FieldRow label="Default browser" htmlFor="set-default-browser">
@@ -437,10 +381,10 @@ export default function Settings() {
                                         <Link to="/suites" className="font-medium text-ink underline underline-offset-2">Suites</Link>. How many tests run at once depends on how many workers are running.
                                     </li>
                                     <li>
-                                        <strong className="text-ink">Automatic retries:</strong> a suite setting (inherited by its sub-suites). The suite page does not show it yet; it can be set through the suites API.
+                                        <strong className="text-ink">Automatic retries:</strong> the &quot;Retry failed tests&quot; card on each suite&apos;s page (inherited by its sub-modules).
                                     </li>
                                     <li>
-                                        <strong className="text-ink">Step timeout:</strong> set for all workers by the instance admin in Settings → Instance (admin).
+                                        <strong className="text-ink">Step timeout:</strong> set for all workers by the instance admin in{' '}<Link to="/instance-settings" className="font-medium text-ink underline underline-offset-2">Instance settings</Link>.
                                     </li>
                                 </ul>
                             </SettingsCard>
@@ -449,7 +393,7 @@ export default function Settings() {
                                 labelledBy="settings-exec-browsers"
                                 title="Several browsers"
                                 description="Run each test on every browser you tick below."
-                                footer={saveFooter}
+                                footer={cardFooter(browsersPatch, resetBrowsers)}
                             >
                                 <div className="flex flex-col">
                                     <CheckRow
@@ -480,7 +424,7 @@ export default function Settings() {
                                 labelledBy="settings-exec-devices"
                                 title="Several devices"
                                 description="Run each test on every device you tick below."
-                                footer={saveFooter}
+                                footer={cardFooter(devicesPatch, resetDevices)}
                             >
                                 <div className="flex flex-col">
                                     <CheckRow
@@ -511,11 +455,12 @@ export default function Settings() {
 
                     {/* Notifications */}
                     {activeSection === 'notifications' && (
+                        <>
                         <SettingsCard
                             labelledBy="settings-notifications"
                             title="Email notifications"
-                            description="Email about your runs: the ones you start, and those started by schedules you created. Your instance admin decides whether email is sent at all."
-                            footer={saveFooter}
+                            description="Your default for project emails: runs you start, schedules you created, and projects that add you as a recipient. Each project's own settings and your instance admin decide whether email is sent at all."
+                            footer={cardFooter(notifyPatch, resetNotify)}
                         >
                             <div className="flex flex-col">
                                 <CheckRow
@@ -557,30 +502,21 @@ export default function Settings() {
                                 )}
                             </div>
                         </SettingsCard>
+                        <ProjectChoicesCard />
+                        </>
                     )}
 
                     {/* Storage & Retention */}
-                    {activeSection === 'storage' && (
+                    {activeSection === 'execution' && (
                         <>
-                            {/* The project's capture level is the ceiling for everything
-                                below (video and traces need Full), so it sits here, where
-                                people look for recording options. Same component and API
-                                as the Quality gate page. */}
-                            {activeProjectId ? (
-                                <DataPolicySection projectId={activeProjectId} />
-                            ) : (
-                                <section className="rounded-3xl border border-border bg-white p-6">
-                                    <h2 className="text-base font-semibold text-ink">Data capture and redaction</h2>
-                                    <p className="mt-1 text-[13px] text-ink-soft">
-                                        Select a project at the top of the page to see and change what its runs may record.
-                                    </p>
-                                </section>
-                            )}
+                            {/* The project's capture level is the ceiling for the choices
+                                below; it is a project setting, so it lives in Project settings. */}
+                            <CaptureLevelPointer projectId={activeProjectId} />
                             <SettingsCard
                                 labelledBy="settings-artifacts"
                                 title="Recordings and screenshots"
-                                description="Your choices for runs you start and schedules you created. They apply within the project's capture level above: video and Playwright traces are only recorded when it is Full."
-                                footer={saveFooter}
+                                description="Your choices for runs you start and schedules you created. They apply within each project's capture level (above): video and Playwright traces are only recorded when it is Full."
+                                footer={cardFooter(recordingsPatch, resetRecordings)}
                             >
                                 <div className="flex flex-col">
                                     <FieldRow label="Video recording" htmlFor="set-video-recording" hint="Which runs keep their video: every run, only failed runs, or none.">
@@ -618,7 +554,8 @@ export default function Settings() {
                                 description="Runs are shared by the whole project, so how long they are kept is a project setting, not a personal one."
                             >
                                 <p className="text-[13px] leading-relaxed text-ink-soft">
-                                    Set <strong className="text-ink">Retention (days)</strong> in the project&apos;s Data capture card at the top of this page.
+                                    Set <strong className="text-ink">Retention (days)</strong> in{' '}
+                                    <Link to="/project-settings" className="font-medium text-ink underline underline-offset-2">Project settings → Data capture and retention</Link>.
                                     0 there falls back to the instance-wide setting your admin controls; whichever window is shorter wins.
                                     Expired runs are deleted automatically, files included.
                                 </p>
@@ -629,7 +566,6 @@ export default function Settings() {
                     {/* Account Settings */}
                     {activeSection === 'account' && <AccountSection />}
                     {activeSection === 'security' && <MfaSection />}
-                    {activeSection === 'instance' && <InstanceSettingsSection />}
                 </div>
             </div>
         </div>

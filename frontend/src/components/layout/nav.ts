@@ -101,7 +101,8 @@ export const places: Place[] = [
 ];
 
 export const setupLinks: SubLink[] = [
-    { name: 'Settings', href: '/settings' },
+    { name: 'My settings', href: '/settings' },
+    { name: 'Project settings', href: '/project-settings' },
     { name: 'Workspace', href: '/workspace' },
     { name: 'Users', href: '/users' },
     // Same check as backend/app/api/admin.py:get_current_tenant_admin.
@@ -109,6 +110,8 @@ export const setupLinks: SubLink[] = [
     // Backend guard is instance admin (stricter); the frontend has no flag for
     // that, so this hides it from non-admins and the page explains a 403.
     { name: 'Worker fleet', href: '/admin/workers', permission: 'tenant:manage_settings' },
+    // Server-wide configuration; same instance-admin story as Worker fleet.
+    { name: 'Instance settings', href: '/instance-settings', permission: 'tenant:manage_settings' },
     { name: 'API keys', href: '/api-keys' },
     { name: 'Webhooks', href: '/webhooks' },
     { name: 'Issue trackers', href: '/issue-trackers' },

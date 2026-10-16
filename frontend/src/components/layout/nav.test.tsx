@@ -24,8 +24,8 @@ describe('sidebar information architecture', () => {
         expect(names(place('Watch').children)).toEqual(['Monitors', 'On-call']);
         expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Analytics']);
         expect(names(setupLinks)).toEqual([
-            'Settings', 'Workspace', 'Users', 'Tenant admin', 'Worker fleet', 'API keys',
-            'Webhooks', 'Issue trackers', 'AI usage', 'Billing',
+            'My settings', 'Project settings', 'Workspace', 'Users', 'Tenant admin', 'Worker fleet',
+            'Instance settings', 'API keys', 'Webhooks', 'Issue trackers', 'AI usage', 'Billing',
         ]);
     });
 
@@ -35,13 +35,13 @@ describe('sidebar information architecture', () => {
         expect([place('Runs').href, place('Watch').href, place('Security').href]).toEqual(['/runs', '/monitors', '/security']);
     });
 
-    it('offers all 35 destinations exactly once', () => {
+    it('offers all 37 destinations exactly once', () => {
         const hrefs = [
             ...places.filter((p) => !isGroup(p)).map((p) => p.href),
             ...places.flatMap((p) => p.children.map((c) => c.href)),
             ...setupLinks.map((l) => l.href),
         ];
-        expect(hrefs).toHaveLength(35);
+        expect(hrefs).toHaveLength(37);
         expect(new Set(hrefs).size).toBe(hrefs.length);
     });
 
@@ -229,7 +229,9 @@ describe('collapsed rail', () => {
         renderAt('/runs', { collapsed: true });
         await user.click(desktopNav().getByRole('button', { name: 'Setup' }));
         const menu = await screen.findByRole('menu');
-        expect(within(menu).getAllByRole('menuitem')).toHaveLength(8);
+        expect(within(menu).getAllByRole('menuitem')).toHaveLength(9);
         expect(within(menu).queryByRole('menuitem', { name: 'Tenant admin' })).toBeNull();
+        expect(within(menu).queryByRole('menuitem', { name: 'Instance settings' })).toBeNull();
+        expect(within(menu).getByRole('menuitem', { name: 'Project settings' })).toBeTruthy();
     });
 });

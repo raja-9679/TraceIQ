@@ -42,6 +42,8 @@ import ResetPassword from "@/pages/ResetPassword";
 import VerifyEmail from "@/pages/VerifyEmail";
 import TestBuilder from "@/pages/TestBuilder";
 import Settings from "@/pages/Settings";
+import ProjectSettings from "@/pages/ProjectSettings";
+import InstanceSettings from "@/pages/InstanceSettings";
 import WorkspacePage from "@/pages/WorkspacePage";
 import UsersPage from "@/pages/UsersPage";
 import AdminUsersPage from "@/pages/AdminUsersPage";
@@ -111,6 +113,8 @@ function App() {
                 <Route path="admin/workers" element={<WorkerFleet />} />
                 <Route path="on-call" element={<OnCall />} />
                 <Route path="settings" element={<Settings />} />
+                <Route path="project-settings" element={<ProjectSettings />} />
+                <Route path="instance-settings" element={<InstanceSettings />} />
               </Route>
             </Route>
 
