@@ -10,10 +10,12 @@ import {
     ChevronsUpDown,
     ChevronDown,
     Plus,
+    Sparkles,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getProjects, getWorkspaces } from '@/lib/api';
 import DemoBadge from '@/components/demo/DemoBadge';
+import AssistantDrawer from '@/components/assistant/AssistantDrawer';
 import { usePermission } from '@/hooks/usePermission';
 import {
     DropdownMenu,
@@ -174,6 +176,10 @@ export default function DashboardLayout() {
         setMobileOpen(false);
     }
 
+    // "Ask TraceIQ" drawer (WP14a). Opened from the sidebar, the icon rail and
+    // the phone header.
+    const [assistantOpen, setAssistantOpen] = useState(false);
+
     const [selectedProjectId, setSelectedProjectId] = useState<number | null>(() => {
         const saved = localStorage.getItem('activeProjectId');
         return saved ? parseInt(saved) : null;
@@ -299,6 +305,15 @@ export default function DashboardLayout() {
                 </DropdownMenuContent>
             </DropdownMenu>
 
+            <button
+                type="button"
+                onClick={() => setAssistantOpen(true)}
+                className="flex min-h-10 items-center justify-center gap-2 rounded-full bg-ink px-4 text-sm font-semibold text-white transition-colors hover:bg-ink/85"
+            >
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                Ask TraceIQ
+            </button>
+
             <nav aria-label="Main" className="flex flex-col gap-0.5">
                 {places.map((place) => {
                     const active = isIn(location.pathname, place.match);
@@ -395,6 +410,10 @@ export default function DashboardLayout() {
                     {projectMenu}
                 </DropdownMenuContent>
             </DropdownMenu>
+
+            <RailButton label="Ask TraceIQ" onClick={() => setAssistantOpen(true)}>
+                <Sparkles className="h-[18px] w-[18px]" strokeWidth={1.9} />
+            </RailButton>
 
             <nav aria-label="Main" className="flex flex-col items-center gap-1">
                 {places.map((place) => {
@@ -511,12 +530,28 @@ export default function DashboardLayout() {
                     </button>
                     <span className="truncate text-sm font-semibold text-ink">{activeProject?.name || 'TraceIQ'}</span>
                     {isDemoProject(activeProject) && <DemoBadge />}
+                    <button
+                        type="button"
+                        onClick={() => setAssistantOpen(true)}
+                        className="ml-auto flex h-9 flex-none items-center gap-1.5 rounded-full bg-ink px-3.5 text-[13px] font-semibold text-white hover:bg-ink/85"
+                    >
+                        <Sparkles className="h-4 w-4" aria-hidden="true" />
+                        Ask TraceIQ
+                    </button>
                 </header>
 
                 <main className="p-4 sm:p-6 lg:p-8 print:p-0">
                     <Outlet />
                 </main>
             </div>
+
+            <AssistantDrawer
+                open={assistantOpen}
+                onOpenChange={setAssistantOpen}
+                workspaceId={activeProject?.workspace_id ?? null}
+                projectId={activeProject?.id ?? null}
+                onSelectProject={handleProjectSelect}
+            />
         </div>
     );
 }
