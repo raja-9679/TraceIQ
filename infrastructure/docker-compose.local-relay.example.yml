@@ -1,0 +1,48 @@
+# Local-laptop override — copy to your stack dir as docker-compose.local.yml
+# ONLY if this machine's firewall blocks host->container ports (see below).
+#
+# This laptop's host firewall drops host->container traffic to container
+# ports 80, 8000 and 8080 (verified 2026-10-16 with throwaway containers;
+# 8001/8025/9000/9080 pass). Container-to-container traffic is unaffected,
+# so a socat relay listens on unblocked ports and forwards over the internal
+# network. Host ports stay the usual 8080 (UI) and 8000 (API).
+#
+# Use:  docker compose -f docker-compose.community.yml -f docker-compose.local.yml \
+#         --env-file .env --profile inbox up -d
+services:
+  frontend:
+    ports: !reset []
+  backend:
+    ports: !reset []
+  # Browsers resolve localhost to ::1 first; bind IPv6 loopback too.
+  object-store:
+    # Local only: RustFS web console on http://localhost:9001 (off in the repo
+    # config). Log in with MINIO_ROOT_USER / MINIO_ROOT_PASSWORD from .env.
+    environment:
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+      RUSTFS_CONSOLE_CORS_ALLOWED_ORIGINS: "http://localhost:9001,http://127.0.0.1:9001"
+    ports:
+      - "[::1]:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:9001:9001"
+      - "[::1]:9001:9001"
+  mailpit:
+    ports:
+      - "[::1]:${MAILPIT_UI_PORT:-8025}:8025"
+
+  local-relay:
+    image: alpine/socat:1.8.0.3
+    restart: unless-stopped
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        socat TCP-LISTEN:18080,fork,reuseaddr TCP:frontend:80 &
+        socat TCP-LISTEN:18000,fork,reuseaddr TCP:backend:8000 &
+        wait
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8080}:18080"
+      - "[::1]:${FRONTEND_PORT:-8080}:18080"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:18000"
+      - "[::1]:${BACKEND_PORT:-8000}:18000"
+    depends_on: [frontend, backend]
+    networks: [traceiq_internal]

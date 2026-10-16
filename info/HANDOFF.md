@@ -346,7 +346,50 @@ any of it - several are counter-intuitive and expensive to rediscover.
 
 ## Setting up a fresh laptop
 
-Everything needed is in the repo. Two things are not obvious:
+### 0. Moving to another laptop — checklist (everything is pushed as of 2026-10-16)
+
+```bash
+git clone git@github.com:raja-9679/TraceIQ.git && cd TraceIQ
+git checkout -b feature/enterprise-auth-ai origin/feature/enterprise-auth-ai-2026-10
+git branch --set-upstream-to=origin/feature/enterprise-auth-ai-2026-10   # pushes go to -2026-10
+git branch feature/redesign-a origin/feature/redesign-a
+git branch --set-upstream-to=origin/feature/redesign-a feature/redesign-a
+# second folder for the redesign branch (same repo, a git worktree — not a clone)
+git worktree add ../TraceIQ-redesign feature/redesign-a
+(cd frontend && npm install); (cd execution-engine && npm install)
+(cd ../TraceIQ-redesign/frontend && npm install)
+```
+
+Push with an explicit refspec the first time:
+`git push origin feature/enterprise-auth-ai:feature/enterprise-auth-ai-2026-10`.
+Never touch `origin/feature/enterprise-auth-ai` (no suffix) or `origin/main` —
+old pre-rewrite history.
+
+Local stack (`~/traceiq-stack` on the old laptop — NOT in git, and its data does
+not move; a new laptop starts with an empty instance):
+
+```bash
+mkdir ~/traceiq-stack && cd ~/traceiq-stack
+cp <repo>/infrastructure/docker-compose.community.yml <repo>/infrastructure/env.community.example \
+   <repo>/infrastructure/traceiq-setup.sh .
+./traceiq-setup.sh                       # writes .env with fresh secrets (mode 600)
+sed -i 's/^TRACEIQ_VERSION=.*/TRACEIQ_VERSION=dev/' .env
+# build the three :dev images from TraceIQ-redesign (commands in WORKING_NOTES "Running it locally")
+docker compose -f docker-compose.community.yml --env-file .env --profile inbox up -d
+```
+
+Only if the host firewall blocks container ports 80/8000/8080 (the old home
+laptop did): copy `infrastructure/docker-compose.local-relay.example.yml` to
+`~/traceiq-stack/docker-compose.local.yml` and add `-f docker-compose.local.yml`.
+Old-laptop `.env` extras worth copying by hand: `MAX_CAPTURE_LEVEL=full`,
+`EXECUTION_WORKERS=2`, `STORAGE_BIND_ADDRESS=127.0.0.1`.
+
+Not carried over (on purpose): the local DB/runs/users, the assistant's session
+memory (`~/.claude/projects/…` — HANDOFF covers it), two ancient stashes on
+old-history branches, and leftover local `feat/wp12*`/`feat/wp13*`/`fix/*`
+branches whose commits are all in the pushed branches.
+
+Everything else needed is in the repo. Two more things are not obvious:
 
 ### 1. Backend tests need Python 3.11, which your host probably isn't
 
