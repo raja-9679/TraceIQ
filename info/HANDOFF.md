@@ -1,7 +1,7 @@
 # Handoff — resuming the regulated-readiness work
 
 Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-07, status corrected
-2026-09-08. Branch `feature/enterprise-auth-ai`.
+2026-09-08, latest resume section 2026-10-16 evening. Branch `feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
 machine. Assistant session memory does **not** — it sits in
@@ -10,69 +10,94 @@ it belongs here rather than in a chat history.
 
 ---
 
-## Resume here (2026-10-16, home laptop) — read this first
+## Resume here (2026-10-16 evening, home laptop) — read this first
 
-**State.** WP0–WP13 of the October roadmap are built, merged, tested and
-running on the local stack. **Next: WP14 (AI & platform)** — the owner asked
-for it to start in a fresh session. Nothing from 2026-10-16 is pushed yet:
-`feature/enterprise-auth-ai` (~32 ahead of `origin/feature/enterprise-auth-ai-2026-10`)
-and `feature/redesign-a` hold everything; push both before switching laptops.
+**State.** The October roadmap (`info/ROADMAP_EXECUTION_2026-10.md`) is
+**finished**: WP0–WP14 built, merged, tested, deployed on the local stack and
+**pushed** (`feature/enterprise-auth-ai` → `origin/feature/enterprise-auth-ai-2026-10`,
+`feature/redesign-a` → `origin/feature/redesign-a`, both fast-forwards). All
+WP worktrees and `feat/wp*` / `integrate/*` branches are deleted; only the two
+main checkouts remain (`TraceIQ` on enterprise, `TraceIQ-redesign` on redesign).
+Migration head **`d052b3c4d5fc`**. Note `origin/feature/enterprise-auth-ai`
+(without `-2026-10`) is OLD pre-rewrite history — never push or pull it.
 
-**Done on 2026-10-16 (besides WP12/WP13, see the tracker log):**
-- Object store MinIO → **RustFS** (`rustfs/rustfs:1.0.1@sha256:1803fa…`); MinIO images
-  and dl.min.io are gone. All compose files, Helm, AIO, CI. Migration path for
-  existing installs in SELF_HOSTING.md "Object storage" (`backend/scripts/migrate_object_store.py`).
-- Schedule timezones; video/trace uploads fixed (minio-js rejected `undefined`
-  metadata — every video upload had failed); Settings → video/trace/screenshot
-  prefs wired; JWT moved out of the WebSocket URL + log redaction; proxy keeps
-  the port in Host (settings save went to :80).
-- Settings split by owner: **My settings** (/settings, per-card saves),
-  **Project settings** (/project-settings: notifications, data capture, OpenAPI),
-  **Instance settings** (/instance-settings).
-- **Per-project notifications**: recipients picked from project members (re-checked
-  at send), extra addresses, per-person per-project all/failures/off, project's own
-  Slack/Teams webhooks (encrypted, net_guard on every post). The instance-wide
-  webhook is no longer used (upgrade note in SELF_HOSTING.md).
-- Suite "Retry failed tests" card; retry settings clamped 0..5 at dispatch.
-- Email prefs + default device wired; dead Settings controls removed.
-- First tenant's Tenant Admin == instance admin (no SQL needed; WORKING_NOTES fixed).
+**What is left — all needs an owner decision, nothing is queued:**
+- **Parked in SCOPE_NOTES.md:** WP14d (API authz / business-rule fuzzing +
+  abuse templates, C10/C13) and WP9 estate active probing. Both stopped a build
+  agent on a safety check. If the owner wants them, write the brief around the
+  defensive framing already in SCOPE_NOTES (opt-in, allowlisted own domains,
+  "authorized" attestation, observe-only verdicts) and keep attack payloads out
+  of the prompt; build by hand if an agent stops again.
+- **Skipped:** D19 plugin / custom-step SDK (decision 1).
+- **WP14 known gaps** (tracker log): legacy CONTINUOUS engine (`server.ts`)
+  ignores `ai_allowed`; the agent kill switch covers API-key writes and the
+  listed JWT write paths, not every write; agents that send no session header
+  are not session-budgeted; visual grouping is within one run only.
+- **Older open items:** SCOPE_NOTES "Settings follow-ups" (display prefs dead,
+  two access rules); enterprise branch's frontend lacks vitest devDeps (builds
+  from redesign are fine); C5 history-rewrite force-push still not done (see
+  "Still open" in CLAUDE.md).
+- Pixel-diff engine tests skip locally because `pixelmatch`/`pngjs` are not in
+  the shared `execution-engine/node_modules` (the worker image installs them) —
+  `npm install` there to run them.
 
-**How WP12/WP13 were run (repeat for WP14):** inventory with one Explore agent →
-product defaults recorded in `info/ROADMAP_EXECUTION_2026-10.md` (R1–R7, C1–C7;
-add W1… for WP14) → one git worktree per sub-package off `feature/redesign-a`
-(`git worktree add -b feat/wp14x ../TraceIQ-wp14x feature/redesign-a`, symlink
+**WP14 (2026-10-16), in one line each** — details in CLAUDE.md:
+14a "Ask TraceIQ" read-only assistant with cited answers (drawer in the header;
+gated by `ASSISTANT_ENABLED`, a non-Null provider AND the policy engine —
+workspace AI opt-out / token quota give friendly stored answers);
+14b policy engine (`app/services/policy/`), workspace AI opt-out carried to
+workers (`settings.ai_allowed`, `core/ai-gate.ts`), agent action log, per-session
+budgets and kill switch (pages `/policies`, `/agents` under Setup);
+14c ranked heal candidates, DOM redaction before any LLM call, uniqueness
+recheck on accept (Proposals → "Selector fixes");
+14e element baselines, stored diffs, change grouping, review comments
+(`/visual-review`). Migrations d012…f8 → d022…f9 → d032…fa → d052…fc.
+Verified: backend unit 2047 passed, live WP14 set 73 passed, `--migrations`
+ok, engine 334 pass / 0 fail, frontend 191 passed, Playwright click-check of
+every new page clean (it caught a Visual review crash on a project with no
+visual runs — fixed: Radix `Select.Item` refuses `value=""`).
+
+**Also done on 2026-10-16 (outside the WPs):** object store MinIO → RustFS
+(`rustfs/rustfs:1.0.1`, pinned by digest; upgrade path in SELF_HOSTING.md
+"Object storage"); schedule timezones; video/trace uploads fixed (minio-js
+rejected `undefined` metadata); JWT out of the WebSocket URL; proxy keeps the
+port in Host; Settings split into My settings / Project settings / Instance
+settings; per-project notifications (member recipients re-checked at send,
+project Slack/Teams webhooks — the instance-wide webhook is no longer used);
+suite "Retry failed tests" (clamped 0..5); first tenant's Tenant Admin ==
+instance admin; test_siem time bomb and sizing layout fixed.
+
+**How a WP was run (repeat for any future package):** inventory with one
+Explore agent → product defaults recorded in the tracker (R…, C…, W… ids) →
+one git worktree per sub-package off `feature/redesign-a`
+(`git worktree add -b feat/wpNx ../TraceIQ-wpNx feature/redesign-a`, symlink
 `frontend/node_modules` from TraceIQ-redesign and `execution-engine/node_modules`
 from TraceIQ) → one background agent each, briefed with `info/AGENT_BRIEF_ROADMAP.md`
-(+ its "Lessons from WP12/WP13" section) and a unique migration id with
-`down_revision` = current head (now **`cf32b3c4d5f7`**) and scratch DB names →
-integrate: cherry-pick each package's BACKEND commit onto `feature/enterprise-auth-ai`
-in order, re-chain migrations linearly (`Revises:` + `down_revision`), resolve
-conflicts by hand (for `backend/app/models.py` rebuild from parts and compare every
-class with its source — a blind "keep both" split a class twice), run unit +
-live (`run-tests-live.sh`, check the EXIT CODE, don't pipe it away) + `--migrations`
-+ engine tests; then merge into `feature/redesign-a`, cherry-pick the FRONTEND
-commits, add nav entries (`frontend/src/components/layout/nav.ts` + `nav.test.tsx`),
-`npm test`, rebuild images, deploy, click-check every page with Playwright from the
-worker image (token minted in the backend container), mark the tracker.
-
-**WP14 scope (on hold until 2026-10-16, now requested):** in-app assistant (E20 —
-read-only, RBAC-scoped to the caller, cites records; decision 3 = both MCP and
-in-app), agent action log + per-task budgets (E21), heal candidate ranking +
-uniqueness recheck on accept (A5), API authz / business-rule fuzzing + abuse
-templates (C10, C13 — opt-in, allowlisted domains + the existing "authorized"
-attestation, deny only on explicit 401/403/404; see decision 2), policy engine as
-a single evaluation point (E22), visual change grouping / comments / element
-baselines (D17). Gap details: `info/FEATURE_ROADMAP_2026-10.md` §4. Do an
-inventory first; LLM provider abstraction is `app/ai/providers.py` (Null provider
-when none set — the assistant must degrade gracefully).
+and a unique migration id with `down_revision` = current head + its own scratch
+DB name → integrate on a throwaway `integrate/wpN` branch off
+`feature/enterprise-auth-ai`: cherry-pick each package's BACKEND commit in order,
+re-chain migrations linearly (`Revises:` + `down_revision`), resolve conflicts
+by hand — `backend/app/models.py` rebuilt from parts and every class compared
+with its source (a blind "keep both" split classes twice), and check conflict
+TAILS (shared closing lines like `},` / `return total` get dropped) → unit +
+live (`TRACEIQ_SCRATCH_DB=… ./run-tests-live.sh …`, check the EXIT CODE) +
+`./run-tests-live.sh --migrations` + engine `tsc`/`npm test` → fast-forward
+`feature/enterprise-auth-ai`, merge it into `feature/redesign-a`, cherry-pick the
+FRONTEND commits, add nav entries (`frontend/src/components/layout/nav.ts` +
+the counts in `nav.test.tsx`), `tsc` + `npm test` → rebuild the three `:dev`
+images from TraceIQ-redesign, `up -d` in `~/traceiq-stack`, confirm
+`alembic current` → Playwright click-check from the worker image (token minted
+in the backend container with `create_access_token`) → tracker → push only when
+the owner asks.
 
 **Local stack on this laptop:** `~/traceiq-stack` (community compose copy +
-`docker-compose.local.yml` relay — host firewall blocks container ports 80/8000/8080;
-see the memory note). Images are built from `TraceIQ-redesign`. Workspaces: THG
-(projects CUE, test-p — test-p/"test" workspace were created by the owner).
-Known open items: SCOPE_NOTES "Settings follow-ups" (display prefs dead, two
-access rules), enterprise branch's frontend lacks vitest devDeps (builds from
-redesign are fine).
+`docker-compose.local.yml` relay — host firewall blocks container ports 80/8000/8080).
+Deploy: `docker compose -f docker-compose.community.yml -f docker-compose.local.yml
+--env-file .env --profile inbox up -d`. Images: `ghcr.io/raja-9679/traceiq-{backend,frontend,execution-worker}:dev`
+built from `TraceIQ-redesign` (`backend/Dockerfile`, `frontend/Dockerfile`,
+`execution-engine/Dockerfile.worker`). Workspaces: THG (projects CUE, test-p).
+No LLM provider is configured locally, so the assistant answers "AI is not
+configured" — expected.
 
 ## Resume here (2026-10-15 16:10)
 
