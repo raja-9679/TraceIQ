@@ -345,6 +345,25 @@ Migrations run automatically on backend start. Roll back by setting the previous
 version and re-running — but note that a schema migration is not always
 reversible, so restore from backup if a rollback misbehaves.
 
+**Upgrading past October 2026 — notification changes to check:**
+
+- **Slack/Teams moved to projects.** The instance-wide `SLACK_WEBHOOK_URL` /
+  `TEAMS_WEBHOOK_URL` used to receive every project's runs (and, on a shared
+  instance, every tenant's) in one channel. They are no longer used for run,
+  monitor or estate notifications. Set a webhook per project in **Project
+  settings → Notifications** (project admins; stored encrypted, vetted against
+  internal network targets on save and on every post). Until you do, nothing
+  is posted to chat.
+- **Who gets email** is now per project: the person who started the run
+  (or a schedule's creator), plus the people and addresses the project admin
+  adds. Each person can choose all runs / failed runs only / nothing, per
+  project, in **My settings → Notifications**. Nobody outside a project is
+  emailed about it. The instance switches (Settings → Instance settings) are
+  still the master control.
+- **Personal email switch.** It was saved but ignored before; it now works.
+  Existing users were set to "on" (what they effectively had), so nobody
+  stops receiving mail by surprise.
+
 ### Backups
 
 Nothing is backed up for you. At minimum, snapshot the database and the
