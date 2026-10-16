@@ -103,7 +103,7 @@ def _controls(f: Dict[str, Any]):
     good = int(c.get("passing", 0)) + int(c.get("excepted", 0))
     frameworks = ", ".join(c.get("frameworks") or [])
     value = f"{good} of {c['total']} passing" + (f" ({frameworks})" if frameworks else "")
-    return {"value": value, "state": "ok" if good == c["total"] else "warn"}
+    return {"value": value, "state": "good" if good == c["total"] else "attention"}
 
 
 @dataclass(frozen=True)
