@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, ExternalLink, History, ImageOff, RefreshCw, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
+import { Check, History, RefreshCw, ShieldCheck, Trash2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
@@ -11,8 +11,11 @@ import {
 import { getTestCaseInfo, TestCaseInfo } from '@/api/proposals';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import {
-    DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
+    DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, PanelTabs, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
+import { ImagePane } from '@/components/visual-review/ImagePane';
+import { RunReview } from '@/components/visual-review/RunReview';
+import { getProjects } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const formatDate = (dateString?: string | null) => {
@@ -35,34 +38,6 @@ interface ComparisonData {
     diffUrl: string | null;
 }
 
-function ImagePane({ label, hint, url }: { label: string; hint: string; url: string | null }) {
-    return (
-        <figure className="flex min-w-0 flex-col gap-2">
-            <figcaption className="flex flex-col">
-                <span className="text-sm font-semibold text-ink">{label}</span>
-                <span className="text-xs text-ink-soft">{hint}</span>
-            </figcaption>
-            {url ? (
-                <a href={url} target="_blank" rel="noreferrer" className="group relative block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`Open ${label.toLowerCase()} image in a new tab`}>
-                    <img
-                        src={url}
-                        alt={label}
-                        className="max-h-[420px] w-full rounded-2xl border border-border bg-white object-contain"
-                    />
-                    <span className="absolute right-2 top-2 rounded-full bg-white/95 p-1.5 opacity-0 shadow-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden="true">
-                        <ExternalLink className="h-3.5 w-3.5 text-ink" />
-                    </span>
-                </a>
-            ) : (
-                <div className="flex h-40 w-full flex-col items-center justify-center gap-1.5 rounded-2xl border border-dashed border-border bg-background text-ink-soft">
-                    <ImageOff className="h-5 w-5" aria-hidden="true" />
-                    <span className="text-xs">Not available</span>
-                </div>
-            )}
-        </figure>
-    );
-}
-
 function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; caseName: string }) {
     const queryClient = useQueryClient();
     const [kept, setKept] = useState(false);
@@ -71,7 +46,7 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
         queryKey: ['visual-comparison', baseline.id],
         queryFn: async () => {
             const [artifacts, baselineUrl] = await Promise.all([
-                findLatestComparison(baseline.test_case_id, baseline.step_id).catch(() => null),
+                findLatestComparison(baseline.test_case_id, baseline.step_id, 6, baseline.element_key || '').catch(() => null),
                 resolveImageUrl(baseline.image_url).catch(() => null),
             ]);
             const [candidateUrl, diffUrl] = await Promise.all([
@@ -95,6 +70,7 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
                 run_id: data.artifacts.runId,
                 browser: baseline.browser,
                 device: baseline.device,
+                element_key: baseline.element_key || '',
                 tolerance: baseline.tolerance,
             });
         },
@@ -283,13 +259,16 @@ function BaselineDetail({ baseline, caseInfo }: { baseline: VisualBaseline; case
         <DetailCard label="Selected visual baseline">
             <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-2">
+                    <Pill tone={baseline.element_key ? 'lavender' : 'neutral'}>{baseline.element_key ? 'Element' : 'Full page'}</Pill>
                     <Pill tone="neutral">{baseline.browser}</Pill>
                     {baseline.device && <Pill tone="neutral">{baseline.device}</Pill>}
                     <Pill tone="lavender">Tolerance {(baseline.tolerance * 100).toFixed(1)}%</Pill>
                 </div>
                 <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{caseName}</h2>
                 <span className="text-sm text-ink-soft">
-                    Step <span className="font-mono">{baseline.step_id}</span> · baseline pinned {formatDate(baseline.created_at)}
+                    Step <span className="font-mono">{baseline.step_id}</span>
+                    {baseline.selector && <> · element <span className="font-mono">{baseline.selector}</span></>}
+                    {' '}· baseline pinned {formatDate(baseline.created_at)}
                 </span>
             </div>
 
@@ -317,10 +296,10 @@ function BaselineDetail({ baseline, caseInfo }: { baseline: VisualBaseline; case
 }
 
 // ---------------------------------------------------------------------------
-// Page
+// Pinned baselines (the original view)
 // ---------------------------------------------------------------------------
 
-export default function VisualReview() {
+function BaselinesTab() {
     const projectId = useActiveProjectId();
     const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -373,14 +352,11 @@ export default function VisualReview() {
 
     return (
         <div className="flex flex-col gap-5">
-            <PageHeader
-                title="Visual review"
-                subtitle={
-                    !loading && !error && visibleBaselines.length > 0
-                        ? `${visibleBaselines.length} pinned screenshot${visibleBaselines.length === 1 ? '' : 's'}. Compare each with the latest run, then accept the change or keep the baseline.`
-                        : 'Compare pinned screenshots with the latest run, then accept intentional changes or keep the baseline.'
-                }
-            />
+            <p className="text-sm text-ink-soft">
+                {!loading && !error && visibleBaselines.length > 0
+                    ? `${visibleBaselines.length} pinned screenshot${visibleBaselines.length === 1 ? '' : 's'}. Compare each with the latest run that captured it, then accept the change or keep the baseline.`
+                    : 'Compare pinned screenshots with the latest run, then accept intentional changes or keep the baseline.'}
+            </p>
 
             {loading ? (
                 <div className="flex flex-col gap-2" aria-busy="true" aria-label="Loading">
@@ -403,7 +379,7 @@ export default function VisualReview() {
                                     onSelect={() => setSelectedId(b.id)}
                                     leading={<KindChip kind="visual" size="sm" />}
                                     title={<span className="line-clamp-2 break-words">{caseNameOf(b)}</span>}
-                                    meta={`Step ${b.step_id} · pinned ${formatDate(b.created_at)}`}
+                                    meta={`${b.element_key ? 'Element' : 'Full page'} · step ${b.step_id} · pinned ${formatDate(b.created_at)}`}
                                     trailing={<span className="font-mono text-xs tabular-nums text-ink-soft" title="Tolerance">{(b.tolerance * 100).toFixed(1)}%</span>}
                                 />
                             ))}
@@ -411,6 +387,45 @@ export default function VisualReview() {
                     ))}
                     detail={selected && <BaselineDetail key={selected.id} baseline={selected} caseInfo={casesById.get(selected.test_case_id)} />}
                 />
+            )}
+        </div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
+
+type TabId = 'runs' | 'baselines';
+
+export default function VisualReview() {
+    const projectId = useActiveProjectId();
+    const [tab, setTab] = useState<TabId>('runs');
+    const projects = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
+    const project = projects.data?.find((p) => p.id === projectId);
+    // The server enforces roles; this only decides which controls to offer.
+    const canEdit = project?.access_level === 'editor' || project?.access_level === 'admin';
+
+    return (
+        <div className="flex flex-col gap-5">
+            <PageHeader
+                title="Visual review"
+                subtitle="Screenshots that changed, grouped when the same change shows up in several cases. Accept intended changes, keep the baseline for regressions, and discuss either in the comments."
+                toolbar={(
+                    <PanelTabs<TabId>
+                        label="Visual review views"
+                        value={tab}
+                        onChange={setTab}
+                        tabs={[{ id: 'runs', label: 'Changes by run' }, { id: 'baselines', label: 'Pinned baselines' }]}
+                    />
+                )}
+            />
+            {tab === 'runs' ? (
+                projectId ? <RunReview projectId={projectId} canEdit={canEdit} /> : (
+                    <EmptyState title="Choose a project">Visual changes are reviewed per project. Pick one in the sidebar.</EmptyState>
+                )
+            ) : (
+                <BaselinesTab />
             )}
         </div>
     );

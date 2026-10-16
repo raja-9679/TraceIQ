@@ -438,8 +438,23 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 ← Choose an action from the dropdown to configure this step
                             </div>
                         ) : step.type === 'expect-visual-match' ? (
-                            <div className={`flex-1 min-w-0 h-12 rounded-xl shadow-sm bg-white px-4 flex items-center text-sm text-slate-500`}>
-                                Captures a full-page screenshot and compares it against the pinned baseline (manage in Visual Review). First run is capture-only.
+                            <div className="flex-1 min-w-0 flex flex-col gap-1">
+                                <label htmlFor={`visual-selector-${step.id}`} className="text-xs font-semibold text-slate-500">
+                                    Element to compare (optional)
+                                </label>
+                                <Input
+                                    id={`visual-selector-${step.id}`}
+                                    placeholder="e.g. header.site-nav — leave empty for the full page"
+                                    value={step.selector || ''}
+                                    onChange={(e) => updateStep(step.id, 'selector', e.target.value)}
+                                    className={`w-full h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono text-sm`}
+                                />
+                                <span className="text-xs text-slate-500">
+                                    {step.selector?.trim()
+                                        ? 'Screenshots only this element; it gets its own baseline, separate from the full page. Changing the selector starts a new baseline.'
+                                        : 'Captures a full-page screenshot.'}
+                                    {' '}Compared against the pinned baseline (manage in Visual Review); the first run is capture-only.
+                                </span>
                             </div>
                         ) : step.type.startsWith('mobile-') ? (
                             /* Mobile (Appium) steps — no web element picker; selectors use

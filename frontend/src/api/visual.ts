@@ -14,6 +14,9 @@ export interface VisualBaseline {
     image_url: string;
     tolerance: number;
     created_at: string;
+    /** '' = full-page baseline; `el-…` = one element's (WP14e). */
+    element_key?: string;
+    selector?: string | null;
 }
 
 export interface VisualBaselineCreate {
@@ -35,6 +38,9 @@ export interface PromoteBaselineRequest {
     device?: string | null;
     tolerance?: number;
     mask_regions?: Record<string, unknown>[] | null;
+    element_key?: string;
+    /** Promote exactly this stored comparison's candidate (its slot wins). */
+    comparison_id?: number;
 }
 
 export const visualBaselinesApi = {
@@ -157,7 +163,11 @@ export const findLatestComparison = async (
     caseId: number,
     stepId: string,
     maxRunsToInspect = 6,
+    elementKey = '',
 ): Promise<VisualComparisonArtifacts | null> => {
+    // Element captures are visual-{step}-{key}.png; the full-page name never
+    // matches them (nor they it).
+    const stem = elementKey ? `visual-${stepId}-${elementKey}` : `visual-${stepId}`;
     const history = await getCaseRunHistory(caseId, 15);
     const runIds = history.history.map((h) => h.run_id);
     // De-dup while preserving recency order.
@@ -180,8 +190,8 @@ export const findLatestComparison = async (
             ...(run.results || []).flatMap((r) => r.screenshots || []),
         ];
         const candidateKey =
-            allScreens.find((s) => s.includes(`visual-${stepId}.png`) && !s.includes('.diff.png')) || null;
-        const diffKey = allScreens.find((s) => s.includes(`visual-${stepId}.diff.png`)) || null;
+            allScreens.find((s) => s.endsWith(`${stem}.png`) && !s.includes('.diff.png')) || null;
+        const diffKey = allScreens.find((s) => s.endsWith(`${stem}.diff.png`)) || null;
         if (candidateKey || diffKey) {
             return {
                 runId,
@@ -204,4 +214,123 @@ export const resolveImageUrl = async (ref: string): Promise<string> => {
     if (/^https?:\/\//i.test(ref)) return ref;
     const response = await api.get(`/artifacts/${encodeURIComponent(ref)}`);
     return response.data.url;
+};
+
+// ---------------------------------------------------------------------------
+// Visual review (WP14e) — a run's stored comparisons, grouped by likely same
+// change, with comment threads. Mirrors backend/app/api/visual_review.py.
+// ---------------------------------------------------------------------------
+
+export interface DiffRegion {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    pixels: number;
+}
+
+export interface VisualReviewRunSummary {
+    run_id: number;
+    created_at: string | null;
+    status: string | null;
+    git_branch: string | null;
+    comparisons: number;
+    failed: number;
+    changed: number;
+}
+
+export interface VisualReviewItem {
+    id: number;
+    test_case_id: number | null;
+    test_name: string | null;
+    case_name: string | null;
+    step_id: string;
+    browser: string;
+    device: string | null;
+    element_key: string;
+    selector: string | null;
+    kind: 'element' | 'full_page';
+    status: 'passed' | 'failed' | 'capture_only' | string;
+    diff_ratio: number | null;
+    diff_pixels: number | null;
+    total_pixels: number | null;
+    width: number | null;
+    height: number | null;
+    size_mismatch: boolean;
+    tolerance: number | null;
+    regions: DiffRegion[];
+    baseline_id: number | null;
+    baseline_url: string | null;
+    candidate_url: string | null;
+    has_candidate: boolean;
+    diff_url: string | null;
+    decision: { action: 'accept' | 'keep' | string; at: string; actor_label: string | null } | null;
+    group_key: string | null;
+    is_change: boolean;
+    comment_count: number;
+    open_comment_count: number;
+}
+
+export interface VisualReviewGroup {
+    key: string;
+    item_ids: number[];
+    size: number;
+    case_count: number;
+    region: { x: number; y: number; width: number; height: number };
+    max_diff_ratio: number;
+    comment_count: number;
+    open_comment_count: number;
+}
+
+export interface VisualReviewRun {
+    run: { id: number; created_at: string; status: string; git_branch: string | null } | null;
+    items: VisualReviewItem[];
+    groups: VisualReviewGroup[];
+}
+
+export interface ReviewComment {
+    id: number;
+    comparison_id: number | null;
+    run_id: number | null;
+    group_key: string | null;
+    body: string;
+    resolved: boolean;
+    resolved_at: string | null;
+    created_at: string;
+    author: { id: number; name: string } | null;
+}
+
+export type CommentTarget = { comparisonId: number } | { runId: number; groupKey: string };
+
+export const visualReviewApi = {
+    runs: async (projectId: number): Promise<VisualReviewRunSummary[]> =>
+        (await api.get(`/projects/${projectId}/visual-review/runs`)).data,
+
+    review: async (projectId: number, runId?: number | null): Promise<VisualReviewRun> =>
+        (await api.get(`/projects/${projectId}/visual-review`, { params: runId ? { run_id: runId } : {} })).data,
+
+    acceptGroup: async (projectId: number, groupKey: string, runId: number) =>
+        (await api.post(`/projects/${projectId}/visual-review/groups/${groupKey}/accept`, { run_id: runId })).data as
+            { accepted: { id: number; baseline_id: number }[]; skipped: { id: number; reason: string }[] },
+
+    keepGroup: async (projectId: number, groupKey: string, runId: number, note?: string) =>
+        (await api.post(`/projects/${projectId}/visual-review/groups/${groupKey}/keep`, { run_id: runId, note })).data as
+            { kept: { id: number; baseline_id: number }[]; skipped: { id: number; reason: string }[] },
+
+    comments: async (projectId: number, target: CommentTarget): Promise<ReviewComment[]> => {
+        const params = 'comparisonId' in target
+            ? { comparison_id: target.comparisonId }
+            : { run_id: target.runId, group_key: target.groupKey };
+        return (await api.get(`/projects/${projectId}/visual-review/comments`, { params })).data;
+    },
+
+    addComment: async (projectId: number, target: CommentTarget, body: string): Promise<ReviewComment> => {
+        const payload = 'comparisonId' in target
+            ? { body, comparison_id: target.comparisonId }
+            : { body, run_id: target.runId, group_key: target.groupKey };
+        return (await api.post(`/projects/${projectId}/visual-review/comments`, payload)).data;
+    },
+
+    resolveComment: async (projectId: number, commentId: number, resolved: boolean): Promise<ReviewComment> =>
+        (await api.post(`/projects/${projectId}/visual-review/comments/${commentId}/resolve`, { resolved })).data,
 };
