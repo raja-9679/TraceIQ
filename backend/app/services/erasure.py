@@ -79,6 +79,10 @@ RETAINED_AUTHORSHIP: List[str] = [
     "controlevidence.created_by_id", "controlexception.requested_by_id",
     "controlexception.approved_by_id", "evidencepack.requested_by_id",
     "drillresult.reported_by_id",
+    # WP13b trust center. The person's trust_document links are revoked with
+    # the rest of their share links below.
+    "trustcenter.updated_by_id", "trustincidentpost.created_by_id",
+    "trustdocument.uploaded_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {

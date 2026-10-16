@@ -2452,7 +2452,10 @@ class ReportScheduleRead(SQLModel):
 class ShareLink(SQLModel, table=True):
     """A read-only, expiring, revocable public link to one report.
 
-    kind: run_report (target_id = run id) | project_summary | workspace_summary.
+    kind: run_report (target_id = run id) | project_summary | workspace_summary
+    | poc_report (params = range/projects/assumptions) | trust_document
+    (target_id = TrustDocument id; resolved only by the trust-center download
+    endpoint, never by /share/view).
     Only the SHA-256 of the token is stored; the token itself is shown once,
     at creation. `target_id` is a plain id like Incident's pointers: a deleted
     run makes the link 404 rather than cascade. `project_id` is NULL only for
@@ -2472,6 +2475,9 @@ class ShareLink(SQLModel, table=True):
     revoked_at: Optional[datetime] = Field(default=None)
     last_viewed_at: Optional[datetime] = Field(default=None)
     view_count: int = Field(default=0)
+    # Kind-specific inputs frozen at creation (WP13b): a poc_report link's date
+    # range, project selection and time-saved assumptions. NULL for the others.
+    params: Optional[dict] = Field(default=None, sa_column=Column(JSON))
 
 
 # =============================================================================
@@ -3471,6 +3477,83 @@ class DrillResult(SQLModel, table=True):
     checks: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
     reported_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     reporter_label: Optional[str] = Field(default=None)
+
+
+# =============================================================================
+# WP13b — trust center (E24, decision C3). One per workspace, off by default.
+# Public view: app/api/trust_center.py; what may be published:
+# app/services/trust_center.py. Document links are ShareLink rows of kind
+# trust_document (same hashing, expiry, revocation and audit).
+# =============================================================================
+
+
+class TrustCenter(SQLModel, table=True):
+    """A workspace's public trust page. `slug` is an unguessable identifier
+    (like StatusPage.slug), not a credential: the page only ever shows what an
+    admin chose to publish. `status_page_ids` are re-filtered to the
+    workspace's own enabled status pages on every view; `posture_items` are
+    keys of app/services/trust_center.POSTURE_ITEMS the admin opted in to."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", unique=True, index=True)
+    slug: str = Field(unique=True, index=True)
+    enabled: bool = Field(default=False)
+    title: str = Field(default="Trust center")
+    intro: Optional[str] = Field(default=None, sa_column=Column(Text))
+    contact_email: Optional[str] = Field(default=None)
+    status_page_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    posture_items: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    allow_access_requests: bool = Field(default=False)
+    # Result of the last "verify audit chain" an admin ran from the trust
+    # center config; a full-chain walk is too heavy for every public view.
+    audit_verified_at: Optional[datetime] = Field(default=None)
+    audit_verified_ok: Optional[bool] = Field(default=None)
+    # Public views are counted, not audited row by row: an anonymous page
+    # would otherwise let anyone grow the append-only audit table at will.
+    view_count: int = Field(default=0)
+    last_viewed_at: Optional[datetime] = Field(default=None)
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TrustIncidentPost(SQLModel, table=True):
+    """An admin-authored incident communication. Only `published` posts are
+    public. `updates` is an append-only JSON list of {at, status, body}; the
+    body is plain text with a tiny markdown subset, rendered escape-first
+    (app/services/trust_center.render_markdown_safe) - raw HTML never passes."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    title: str
+    status: str = Field(default="investigating")  # investigating | identified | monitoring | resolved
+    components: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    updates: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    published: bool = Field(default=False)
+    published_at: Optional[datetime] = Field(default=None)
+    resolved_at: Optional[datetime] = Field(default=None)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TrustDocument(SQLModel, table=True):
+    """A gated document (security whitepaper, pen-test letter, SOC 2 report).
+    The public page lists `listed` titles; the file itself is only reachable
+    through a trust_document ShareLink an admin issues per recipient. The
+    object key is always under trust/<workspace_id>/ (purge deletes that
+    prefix); `content_type` is what the bytes were sniffed as, not what the
+    uploader claimed."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    title: str
+    description: Optional[str] = Field(default=None)
+    filename: str
+    content_type: str
+    size_bytes: int
+    sha256: str
+    object_key: str
+    listed: bool = Field(default=True)
+    uploaded_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

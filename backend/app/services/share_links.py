@@ -24,7 +24,10 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Any, Dict, Iterable, Optional
 
-KINDS = ("run_report", "project_summary", "workspace_summary")
+KINDS = ("run_report", "project_summary", "workspace_summary",
+         # WP13b: a PoC report (app/services/poc_report.py) and a trust-center
+         # document download (app/api/trust_center.py; never via /share/view).
+         "poc_report", "trust_document")
 DEFAULT_DAYS = 7
 MAX_DAYS = 90
 TOKEN_BYTES = 32
@@ -67,6 +70,7 @@ def describe(link: Any, creator: Any = None, now: Optional[datetime] = None) -> 
         "created_at": link.created_at, "expires_at": link.expires_at,
         "revoked_at": link.revoked_at, "last_viewed_at": link.last_viewed_at,
         "view_count": link.view_count, "state": state(link, now),
+        "params": getattr(link, "params", None),
         "created_by": ({"id": creator.id, "full_name": creator.full_name}
                        if creator is not None else None),
     }

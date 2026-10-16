@@ -1076,6 +1076,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   must be a basename. Workspace views get check names + verdicts only (details
   hold instance-wide row counts). UI: `/compliance/controls`,
   `/compliance/evidence-packs`, `/audit-log`.
+- **Trust center + PoC report (WP13b, 2026-10, decisions C3/C4)** — migration
+  `cf22b3c4d5f6` (`trustcenter`, `trustincidentpost`, `trustdocument`,
+  `sharelink.params`). API `app/api/trust_center.py`, rules
+  `app/services/trust_center.py`. **Trust center**: one per workspace, OFF by
+  default, workspace admin only (project-scoped keys refused); public
+  `GET /api/trust/{slug}` (60/min) + page `/trust/:slug`; the slug is an
+  unguessable identifier (like status pages). Everything 404s while it is off.
+  Status = the workspace's own picked status pages, re-filtered per view
+  (enabled, still in the workspace), monitors reduced to name/state/uptime.
+  Incident posts: only `published` are public; updates are a JSON list
+  rendered by `render_markdown_safe` (escape FIRST, then p/br/ul/li/strong/em/
+  code only — no links). Posture: registry `POSTURE_ITEMS` (opt-in per item;
+  an item with no data is hidden, never shown as "no"); findings are a count
+  BAND, never titles; audit item = the last `POST .../verify-audit` result
+  (stored on the row; a full-chain walk per public view is too heavy); restore
+  drill has no data source yet. Adding WP13a's controls summary = one fact in
+  `collect_facts` + one `PostureItem`. Documents: multipart upload, 20 MB,
+  type SNIFFED from bytes (PDF/PNG/JPEG/Office/TXT; HTML/SVG refused), key
+  `trust/<ws>/<uuid>` (purge deletes the prefix). Downloads only via
+  ShareLink kind `trust_document` (`target_id` = doc) issued per recipient:
+  link `/trust/<slug>#<token>`, `POST /api/trust/{slug}/document {token}` →
+  60 s presigned URL forced to `attachment` with the sniffed type; resolves
+  only for the slug's workspace, a doc of that workspace, an issuer still a
+  workspace admin. `/share/view` never resolves that kind; the member-visible
+  workspace link list hides it. Another workspace's doc/post id → 404.
+  Request-access form (opt-in, 5/hour): emails ONLY this workspace's admins via
+  `send_account_email`; requester email is not written to the audit row. Page
+  views are counted on the row, downloads audited. **PoC report**:
+  `GET /api/workspaces/{id}/poc-report?start&end&project_ids&minutes_per_execution&hourly_rate&currency`
+  (`app/services/poc_report.py`) over the caller's viewer projects (others
+  silently dropped; `project_ids` says what was covered). Estimate = automated
+  (non-manual) case executions × minutes (default 5) / 60, money only with a
+  rate AND a typed 3-letter code — always labelled "Estimated". Shared via
+  `POST /workspaces/{id}/share-links` kind `poc_report` with `params` frozen
+  on the link (editor projects only); public payload is `public_payload`'s
+  allow-list (counts and names; no errors, URLs, emails, cluster titles).
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

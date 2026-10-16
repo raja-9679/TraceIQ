@@ -67,15 +67,11 @@ async def upsert_status_page(
     return page
 
 
-@router.get("/status/{slug}")
-async def public_status_page(slug: str, session: AsyncSession = Depends(get_session)):
-    """PUBLIC — no auth. Powers the shareable /status/{slug} page."""
-    page = (await session.exec(select(StatusPage).where(StatusPage.slug == slug))).first()
-    if not page or not page.enabled:
-        raise HTTPException(status_code=404, detail="Status page not found")
-
+async def monitor_entries(session: AsyncSession, project_id: int) -> list:
+    """The public fields of a project's active monitors. Shared with the
+    trust center (app/api/trust_center.py), which reduces them further."""
     monitors = (await session.exec(select(TestSchedule).where(
-        TestSchedule.project_id == page.project_id,
+        TestSchedule.project_id == project_id,
         TestSchedule.is_monitor == True,   # noqa: E712
         TestSchedule.is_active == True))).all()  # noqa: E712
 
@@ -90,6 +86,17 @@ async def public_status_page(slug: str, session: AsyncSession = Depends(get_sess
             "last_checked_at": m.last_checked_at.isoformat() if m.last_checked_at else None,
             # Public surface stops here — no URLs, run ids, or error text.
         })
+    return entries
+
+
+@router.get("/status/{slug}")
+async def public_status_page(slug: str, session: AsyncSession = Depends(get_session)):
+    """PUBLIC — no auth. Powers the shareable /status/{slug} page."""
+    page = (await session.exec(select(StatusPage).where(StatusPage.slug == slug))).first()
+    if not page or not page.enabled:
+        raise HTTPException(status_code=404, detail="Status page not found")
+
+    entries = await monitor_entries(session, page.project_id)
 
     overall = "operational"
     if any(e["state"] == "down" for e in entries):
