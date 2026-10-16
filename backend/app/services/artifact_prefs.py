@@ -14,6 +14,8 @@ users who never saved Settings, get the page's own defaults.
 from typing import Any, Dict, Optional
 
 VIDEO_CHOICES = ("off", "on-failure", "always")
+#: The Settings page stores "never" for "Never record"; the worker's word is "off".
+_VIDEO_ALIASES = {"never": "off"}
 
 #: Mirrors the UserSettings column defaults, i.e. what the Settings page shows
 #: a user who never changed anything.
@@ -24,6 +26,7 @@ def prefs_from_user_settings(user_settings: Optional[Any]) -> Dict[str, Any]:
     if user_settings is None:
         return dict(DEFAULT_PREFS)
     video = str(getattr(user_settings, "video_recording", "") or "").strip().lower()
+    video = _VIDEO_ALIASES.get(video, video)
     return {
         "video": video if video in VIDEO_CHOICES else DEFAULT_PREFS["video"],
         "trace": bool(getattr(user_settings, "trace_files", True)),

@@ -104,7 +104,8 @@ export const NO_PREFS: ArtifactPrefs = { video: 'always', trace: true, failureSc
 
 export function artifactPrefsFrom(raw: any): ArtifactPrefs {
     if (!raw || typeof raw !== 'object') return NO_PREFS;
-    const video = String(raw.video ?? '').trim().toLowerCase();
+    let video = String(raw.video ?? '').trim().toLowerCase();
+    if (video === 'never') video = 'off';  // the Settings page's word for off
     return {
         video: video === 'off' || video === 'on-failure' || video === 'always' ? video : NO_PREFS.video,
         trace: raw.trace !== false,

@@ -24,6 +24,7 @@ test('preferences are parsed and unknown video values fall back to always', () =
         { video: 'on-failure', trace: false, failureScreenshot: false });
     assert.equal(artifactPrefsFrom({ video: 'ON-FAILURE' }).video, 'on-failure');
     assert.equal(artifactPrefsFrom({ video: 'sometimes' }).video, 'always');
+    assert.equal(artifactPrefsFrom({ video: 'never' }).video, 'off');
     // Missing booleans mean "on", matching the Settings page defaults.
     assert.deepEqual(artifactPrefsFrom({ video: 'off' }),
         { video: 'off', trace: true, failureScreenshot: true });
