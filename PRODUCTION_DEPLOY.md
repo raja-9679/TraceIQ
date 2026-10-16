@@ -3,7 +3,7 @@
 > **Audience:** the operator running this deploy (SRE / devops / on-call).
 > **Goal:** safely roll new TraceIQ code into a production environment that
 > already has live data — workspaces, projects, test suites, runs, artifacts
-> in MinIO — without losing state or breaking active users.
+> in the object store — without losing state or breaking active users.
 >
 > Two scenarios are covered:
 > 1. **First-time upgrade** through Phase A–E (4 schema migrations, 8 commits).
@@ -52,7 +52,7 @@ most likely cause of a failed rollback.
 |---|---|---|
 | 1 | **Full Postgres backup**, restorable to a fresh DB | `pg_dump -U <user> -d quality_intelligence --format=custom --file=/var/backups/traceiq/pre-phase-a-e-$(date +%Y%m%d-%H%M).pgdump` |
 | 2 | **Backup is restorable** (smoke-test on a throwaway instance, even if just `pg_restore --list backup.pgdump | head`) | Don't skip this — corrupted backups have ended careers |
-| 3 | **MinIO bucket backup** if you have critical historic artifacts | `mc mirror <minio>/test-artifacts /var/backups/traceiq/minio-$(date +%Y%m%d)` — or rely on a snapshot at the storage layer |
+| 3 | **Artifact store backup** if you have critical historic artifacts | Stop `object-store` and tar its volume (`<project>_object_store_data`, see §3.8), or replicate the bucket with `backend/scripts/migrate_object_store.py` — or rely on a snapshot at the storage layer |
 | 4 | **Current alembic head** noted in the deploy log | `docker exec <backend> alembic current` — expect `b2c4e6f8a0d1` |
 | 5 | **Drain the job queue** (or accept that in-flight runs will retry) | `docker exec <redis> redis-cli XLEN jobs:pending` — wait until 0, or stop the celery worker to halt new dispatches |
 | 6 | **Confirm `infrastructure/.env`** has correct Postgres password matching the DB volume | `docker exec <backend> sh -c 'echo $DATABASE_URL'` and confirm it can connect: `docker exec <backend> python -c "import asyncio, asyncpg, os; print(asyncio.run(asyncpg.connect(os.environ['DATABASE_URL'].replace('+asyncpg','')).then(lambda c: c.close())))"` |
@@ -82,7 +82,7 @@ All optional with sensible defaults. Recommended starting values for a first dep
 | **Backend** (shared by backend + celery_worker + celery_aggregator + celery_beat) | `anthropic==0.39.0`, `PyYAML==6.0.1` | rebuild required |
 | **Execution-engine** + **execution-worker** | `pixelmatch`, `pngjs` | rebuild required |
 | **Frontend** | none | no rebuild needed |
-| **Postgres / Redis / MinIO** | none | not touched |
+| **Postgres / Redis / object store** | none | not touched |
 
 ## 1.5 Deploy sequence
 
@@ -468,7 +468,7 @@ and a sanity test before rolling out.
 
 Shipped on `feature/gap-roadmap` (merged 2026-07-26; commit SHAs may have
 been rewritten since — search `feat(mobile)` in the log). Ships the
-`mobile_appium` executor: APK/AAB/IPA upload (`MobileAppBuild` → MinIO), `app_build_id` on
+`mobile_appium` executor: APK/AAB/IPA upload (`MobileAppBuild` → object store), `app_build_id` on
 runs, a dedicated `jobs:mobile:pending` stream, the Appium mobile worker,
 11 `mobile-*` step types, and the App Builds frontend page.
 
@@ -565,7 +565,7 @@ on `jobs:mobile:pending` can be deleted: `redis-cli DEL jobs:mobile:pending`.
 | `frontend` | `./frontend` Dockerfile | 1+ | nginx + static SPA |
 | `postgres` | `postgres:15-alpine` | 1 | system of record |
 | `redis` | `redis:7-alpine` | 1 | broker + job queue + progress hashes |
-| `minio` | `minio/minio` | 1+ | artifact store |
+| `object-store` | `rustfs/rustfs:1.0.1@sha256:1803faef…` (RustFS; network alias `minio`) | 1 | artifact store (volume `object_store_data`) |
 
 ## 3.2 Migration history (newest first)
 
@@ -703,7 +703,19 @@ docker exec <postgres> psql -U <user> -d quality_intelligence_restore -c \
   "SELECT 'testrun' AS t, COUNT(*) FROM testrun
    UNION ALL SELECT 'testcase', COUNT(*) FROM testcase
    UNION ALL SELECT 'testsuite', COUNT(*) FROM testsuite;"
+
+# Artifacts: stop the store so the copy is consistent, tar the volume, restart
+docker compose -f <compose file> stop object-store
+docker run --rm -v <project>_object_store_data:/data:ro -v /var/backups/traceiq:/backup alpine \
+  tar czf /backup/traceiq-artifacts-$(date +%Y%m%d).tar.gz -C /data .
+docker compose -f <compose file> start object-store
 ```
+
+`scripts/restore_drill.sh --dump <file> --artifacts <tar.gz>` verifies both
+without touching the live stack. For a no-downtime copy, or to move artifacts
+off a pre-2026-10 MinIO volume, use `backend/scripts/migrate_object_store.py`
+(dry run by default, never modifies the source) — see `SELF_HOSTING.md` →
+"Object storage".
 
 ---
 

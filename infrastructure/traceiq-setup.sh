@@ -76,7 +76,7 @@ fi
 
 gen() { openssl rand -hex "${1:-32}"; }
 
-SECRETS="SECRET_KEY WEBHOOK_SECRET POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD"
+SECRETS="SECRET_KEY WEBHOOK_SECRET POSTGRES_PASSWORD REDIS_PASSWORD MINIO_ROOT_USER MINIO_ROOT_PASSWORD STORAGE_SSE_MASTER_KEY"
 TUNABLES="FRONTEND_PORT BACKEND_PORT MINIO_PORT MINIO_PUBLIC_URL ALLOW_PRIVATE_NETWORK_TARGETS EXECUTION_WORKERS"
 
 # Track provenance for the summary: user | prompt | generated | template
@@ -87,6 +87,7 @@ default_for() {
     SECRET_KEY|WEBHOOK_SECRET) gen 32 ;;
     POSTGRES_PASSWORD|REDIS_PASSWORD|MINIO_ROOT_PASSWORD) gen 24 ;;
     MINIO_ROOT_USER) echo "traceiq-$(gen 4)" ;;
+    STORAGE_SSE_MASTER_KEY) openssl rand -base64 32 ;;
     # Tunables: whatever the template currently says.
     *) grep -E "^$1=" "$TEMPLATE" | head -1 | cut -d= -f2- ;;
   esac
@@ -170,7 +171,7 @@ done
 # so the full charset above is too strict — but they ARE written into .env and
 # expanded by the shell/compose, where a literal '$', whitespace, or a newline
 # would corrupt the value (or splice extra lines into .env). Reject those.
-for key in SECRET_KEY WEBHOOK_SECRET MINIO_ROOT_USER MINIO_ROOT_PASSWORD; do
+for key in SECRET_KEY WEBHOOK_SECRET MINIO_ROOT_USER MINIO_ROOT_PASSWORD STORAGE_SSE_MASTER_KEY; do
   if [ "${SOURCE[$key]}" != "generated" ] \
      && { [[ "${VALUE[$key]}" =~ [[:space:]] ]] || [[ "${VALUE[$key]}" == *'$'* ]]; }; then
     echo "ERROR: $key must not contain '\$', whitespace, or newlines." >&2

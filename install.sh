@@ -129,7 +129,8 @@ EOF
   before exposing this instance to your network.
 
   Your secrets live in ${dir}/.env (mode 600). Back that file up: losing
-  SECRET_KEY logs everyone out; losing the Postgres/MinIO passwords loses
+  SECRET_KEY logs everyone out; losing the Postgres or object-store
+  passwords (or STORAGE_SSE_MASTER_KEY, once encryption is on) loses
   access to your data.
 
   Manage the stack from the ${dir}/ directory:

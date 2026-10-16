@@ -51,7 +51,7 @@ its own; it produces the evidence a CPA firm samples.
 
 | Control | Status | Implementation | Evidence |
 |---|---|---|---|
-| Reviewed, tested changes | Built | CI: 500+ unit tests, integration job on real Postgres/Redis/MinIO, migration round-trip, coverage gates on security modules, Helm lint/kubeconform | CI history; branch protection (**yours**) |
+| Reviewed, tested changes | Built | CI: 500+ unit tests, integration job on real Postgres/Redis/object store (the pinned RustFS image), migration round-trip, coverage gates on security modules, Helm lint/kubeconform | CI history; branch protection (**yours**) |
 | Schema change safety | Built | Migrations are the only path (squashed root, legacy bridge); replicas serialised by advisory lock; `downgrade base` verified | `scripts/verify_migrations.py` in CI |
 | Agent-made changes reviewed | Built | Case proposals queue; auto-apply threshold; `AUTO_APPLY_DISABLED` instance switch; suite-settings changes never auto-applied | proposal audit rows; instance settings |
 | Reproducible releases | Built | Pinned base images, pinned dependencies, published images by tag | release workflow; image digests |

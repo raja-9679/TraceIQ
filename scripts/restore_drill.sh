@@ -15,8 +15,9 @@
 #   scripts/restore_drill.sh --dump x.dump --compose          # own throwaway postgres
 #
 # Dump formats: plain (.sql), gzip'd plain (.sql.gz — what SELF_HOSTING.md's
-# backup recipe writes) and custom (.dump / pg_dump -Fc). Artifacts: the MinIO
-# data directory, or a .tar.gz of it (SELF_HOSTING.md recipe).
+# backup recipe writes) and custom (.dump / pg_dump -Fc). Artifacts: the object
+# store's data directory (RustFS, or MinIO before the switch), or a .tar.gz of
+# it (SELF_HOSTING.md recipe).
 #
 # Targets:
 #   default    a scratch database (DRILL_DB, default traceiq_restore_drill)
@@ -263,13 +264,16 @@ fi
 
 # --- artifacts ------------------------------------------------------------------
 if [ -n "$ARTIFACTS" ]; then
-  # MinIO stores one xl.meta per object; a plain copy of a bucket has files.
+  # RustFS and MinIO both store one <bucket>/<key>/xl.meta per object, plus
+  # their own bookkeeping under .rustfs.sys/.minio.sys, which is not counted.
+  # A plain copy of a bucket (e.g. an S3 export) just has files.
+  SYS_DIRS='/\.(rustfs|minio)\.sys/'
   if [ -d "$ARTIFACTS" ]; then
-    OBJ="$(find "$ARTIFACTS" -name xl.meta | wc -l)"
-    [ "$OBJ" -gt 0 ] || OBJ="$(find "$ARTIFACTS" -type f | wc -l)"
+    OBJ="$(find "$ARTIFACTS" -name xl.meta | grep -Evc "$SYS_DIRS" || true)"
+    [ "$OBJ" -gt 0 ] || OBJ="$(find "$ARTIFACTS" -type f | grep -Evc "$SYS_DIRS" || true)"
   elif [ -r "$ARTIFACTS" ]; then
-    OBJ="$(tar tzf "$ARTIFACTS" 2>/dev/null | grep -c 'xl.meta$' || true)"
-    [ "$OBJ" -gt 0 ] || OBJ="$(tar tzf "$ARTIFACTS" 2>/dev/null | grep -vc '/$' || true)"
+    OBJ="$(tar tzf "$ARTIFACTS" 2>/dev/null | grep 'xl.meta$' | grep -Evc "$SYS_DIRS" || true)"
+    [ "$OBJ" -gt 0 ] || OBJ="$(tar tzf "$ARTIFACTS" 2>/dev/null | grep -v '/$' | grep -Evc "$SYS_DIRS" || true)"
   else
     OBJ=""
   fi

@@ -1,9 +1,31 @@
-from typing import Any, Dict, Optional
+"""Object storage for run artifacts, over the plain S3 API.
+
+Nothing here is specific to one server: the bundled store is RustFS (it was
+MinIO until its images stopped being published), and any S3-compatible
+endpoint that supports the calls below works. The `MINIO_*` setting names and
+`minio_client` are historical and kept so existing deployments and callers
+don't break; new code can use the neutral `object_store` alias.
+
+Calls the app relies on (all verified against RustFS 1.0.1 — see
+SELF_HOSTING.md "Object storage" for the compatibility list): head/create
+bucket, put-bucket-CORS, put (incl. multipart), get, head, copy,
+list-objects-v2 with prefix/delimiter/pagination, delete, multi-object delete,
+presigned GET (SigV4, path-style).
+"""
+import logging
+from typing import Any, Dict, List, Optional
 
 import boto3
 from botocore.client import Config
+from botocore.exceptions import ClientError
 
-#: Algorithms boto3/MinIO accept for at-rest encryption.
+logger = logging.getLogger(__name__)
+
+#: Error codes meaning "the bucket is not there" (vs. auth/network failures,
+#: which must not be answered with a create attempt).
+_MISSING_BUCKET_CODES = {"404", "NoSuchBucket", "NotFound"}
+
+#: Algorithms boto3/S3 accept for at-rest encryption.
 _SSE_ALGORITHMS = {"AES256": "AES256", "AWS:KMS": "aws:kms"}
 
 
@@ -67,6 +89,10 @@ def _client_config() -> Config:
 
     Five seconds to connect, three attempts. A genuinely slow store still gets a
     30-second read window, which is generous for the object sizes here.
+
+    Addressing style stays botocore's "auto": path-style for a custom
+    endpoint (what self-hosted stores like RustFS need), virtual-hosted for
+    AWS's own endpoints.
     """
     return Config(
         signature_version="s3v4",
@@ -77,7 +103,7 @@ def _client_config() -> Config:
 
 
 class MinioClient:
-    """S3/MinIO access. Config is resolved lazily on FIRST USE (not import),
+    """S3 object-store access. Config is resolved lazily on FIRST USE (not import),
     through the effective instance settings (admin UI DB override, else env).
     Once built, the clients are frozen for the life of the process — storage
     settings are advertised as restart-required in the admin UI, because
@@ -155,12 +181,24 @@ class MinioClient:
         return self._bucket
 
     def ensure_bucket(self):
+        """Create the bucket if it is missing, then allow browser GETs.
+
+        Only a "no such bucket" answer leads to a create: an auth or network
+        failure used to be answered with a create attempt too, which turned a
+        wrong password into a misleading CreateBucket error.
+        """
         try:
             self.s3.head_bucket(Bucket=self.bucket)
-        except:
+        except ClientError as e:
+            code = str(e.response.get("Error", {}).get("Code", ""))
+            if code not in _MISSING_BUCKET_CODES:
+                raise
             self.s3.create_bucket(Bucket=self.bucket)
-        
-        # Set CORS to allow Playwright Trace Viewer
+            logger.info("Created object-store bucket %s", self.bucket)
+
+        # The trace timeline fetch()es trace zips cross-origin straight from
+        # the store, which needs CORS on GET. Stores without bucket CORS must
+        # provide it server-side instead; say so rather than hide it.
         try:
             self.s3.put_bucket_cors(
                 Bucket=self.bucket,
@@ -176,9 +214,11 @@ class MinioClient:
                     ]
                 }
             )
-        except Exception as e:
-            if "NotImplemented" not in str(e):
-                print(f"Failed to set CORS: {e}")
+        except Exception as e:  # noqa: BLE001 - startup must not fail on this
+            logger.warning(
+                "Could not set bucket CORS on %s (%s). Browser trace viewing needs "
+                "GET CORS from the object store; configure it on the server.",
+                self.bucket, e)
 
     def _extra_args(self, base: dict = None) -> dict:
         """Caller extras plus whatever server-side encryption is configured."""
@@ -193,7 +233,7 @@ class MinioClient:
 
     def upload_fileobj(self, fileobj, object_name: str, content_type: str = None):
         """Stream an open file-like object (e.g. FastAPI UploadFile.file)
-        straight to MinIO without buffering it on disk. Used for app-build
+        straight to the object store without buffering it on disk. Used for app-build
         binaries, which can be hundreds of MB."""
         extra = self._extra_args({"ContentType": content_type} if content_type else None)
         self.s3.upload_fileobj(
@@ -224,11 +264,53 @@ class MinioClient:
 
     def find_object(self, prefix: str, suffix: str):
         """Return the first object key under prefix ending with suffix, or None."""
-        resp = self.s3.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
-        for obj in resp.get("Contents", []):
-            if obj["Key"].endswith(suffix):
-                return obj["Key"]
+        for obj in self.list_objects(prefix):
+            if obj["key"].endswith(suffix):
+                return obj["key"]
         return None
+
+    def list_objects(self, prefix: str) -> List[Dict[str, Any]]:
+        """Every object under `prefix` as {"key", "size"}, across all pages."""
+        out: List[Dict[str, Any]] = []
+        token = None
+        while True:
+            kwargs = {"Bucket": self.bucket, "Prefix": prefix}
+            if token:
+                kwargs["ContinuationToken"] = token
+            listing = self.s3.list_objects_v2(**kwargs)
+            out.extend({"key": o["Key"], "size": int(o.get("Size") or 0)}
+                       for o in listing.get("Contents", []))
+            token = listing.get("NextContinuationToken") if listing.get("IsTruncated") else None
+            if not token:
+                return out
+
+    def object_size(self, object_name: str) -> Optional[int]:
+        """Size in bytes, or None when the object does not exist."""
+        try:
+            head = self.s3.head_object(Bucket=self.bucket, Key=object_name)
+        except ClientError as e:
+            if str(e.response.get("Error", {}).get("Code", "")) in {"404", "NoSuchKey", "NotFound"}:
+                return None
+            raise
+        return int(head.get("ContentLength") or 0)
+
+    def get_object_bytes(self, object_name: str, max_bytes: Optional[int] = None) -> bytes:
+        """Read a whole object into memory.
+
+        With `max_bytes`, refuses (ValueError) anything larger — checked on the
+        bytes actually read, not only the advertised size, so an object that
+        grows between a size check and the read cannot blow the budget.
+        """
+        body = self.s3.get_object(Bucket=self.bucket, Key=object_name)["Body"]
+        try:
+            if max_bytes is None:
+                return body.read()
+            data = body.read(max_bytes + 1)
+            if len(data) > max_bytes:
+                raise ValueError(f"object larger than {max_bytes} bytes")
+            return data
+        finally:
+            body.close()
 
     def object_exists(self, object_name: str) -> bool:
         try:
@@ -247,7 +329,7 @@ class MinioClient:
         return url
 
     def get_internal_presigned_url(self, object_name: str, expiration=3600):
-        """Presigned URL against the internal endpoint (minio:9000) — for
+        """Presigned URL against the internal endpoint (object-store:9000) — for
         consumers on the docker network (workers); the public URL's
         localhost host is unreachable from inside containers."""
         return self.s3.generate_presigned_url(
@@ -275,12 +357,19 @@ class MinioClient:
             listing = self.s3.list_objects_v2(**kwargs)
             keys = [{"Key": obj["Key"]} for obj in listing.get("Contents", [])]
             if keys:
-                # delete_objects also caps at 1000 per request.
+                # delete_objects also caps at 1000 per request. It answers 200
+                # even when individual keys fail, so read its Errors list —
+                # counting the whole chunk as deleted overstated the purge.
                 for chunk_start in range(0, len(keys), 1000):
                     chunk = keys[chunk_start:chunk_start + 1000]
-                    self.s3.delete_objects(Bucket=self.bucket,
-                                           Delete={"Objects": chunk})
-                    deleted += len(chunk)
+                    resp = self.s3.delete_objects(Bucket=self.bucket,
+                                                  Delete={"Objects": chunk})
+                    errors = resp.get("Errors") or []
+                    if errors:
+                        logger.warning("Object store refused %d of %d deletes under %s (first: %s %s)",
+                                       len(errors), len(chunk), prefix,
+                                       errors[0].get("Key"), errors[0].get("Code"))
+                    deleted += len(chunk) - len(errors)
             if not listing.get("IsTruncated"):
                 break
             token = listing.get("NextContinuationToken")
@@ -315,3 +404,5 @@ class MinioClient:
             print(f"Failed to delete artifacts for run {run_id}: {e}")
 
 minio_client = MinioClient()
+#: Provider-neutral name for the same client; prefer it in new code.
+object_store = minio_client

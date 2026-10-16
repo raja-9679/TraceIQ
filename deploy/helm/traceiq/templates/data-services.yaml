@@ -143,52 +143,59 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "traceiq.fullname" . }}-minio
+  name: {{ include "traceiq.fullname" . }}-object-store
   labels:
     {{- include "traceiq.labels" . | nindent 4 }}
-    app.kubernetes.io/component: minio
+    app.kubernetes.io/component: object-store
 spec:
   ports:
     - {name: s3, port: 9000, targetPort: s3}
-    - {name: console, port: 9001, targetPort: console}
   selector:
-    {{- include "traceiq.selectorLabels" (dict "root" . "component" "minio") | nindent 4 }}
+    {{- include "traceiq.selectorLabels" (dict "root" . "component" "object-store") | nindent 4 }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include "traceiq.fullname" . }}-minio
+  name: {{ include "traceiq.fullname" . }}-object-store
   labels:
     {{- include "traceiq.labels" . | nindent 4 }}
-    app.kubernetes.io/component: minio
+    app.kubernetes.io/component: object-store
 spec:
-  serviceName: {{ include "traceiq.fullname" . }}-minio
+  serviceName: {{ include "traceiq.fullname" . }}-object-store
   replicas: 1
   selector:
     matchLabels:
-      {{- include "traceiq.selectorLabels" (dict "root" . "component" "minio") | nindent 6 }}
+      {{- include "traceiq.selectorLabels" (dict "root" . "component" "object-store") | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "traceiq.selectorLabels" (dict "root" . "component" "minio") | nindent 8 }}
+        {{- include "traceiq.selectorLabels" (dict "root" . "component" "object-store") | nindent 8 }}
     spec:
+      # The RustFS image runs as uid/gid 10001.
       securityContext:
-        fsGroup: 1000
-        runAsUser: 1000
-        runAsGroup: 1000
+        fsGroup: 10001
+        runAsUser: 10001
+        runAsGroup: 10001
+      terminationGracePeriodSeconds: 30
       containers:
-        - name: minio
+        - name: object-store
           image: {{ .Values.minio.image }}
-          args: ["server", "/data", "--console-address", ":9001"]
           ports:
             - {name: s3, containerPort: 9000}
-            - {name: console, containerPort: 9001}
           env:
-            {{- include "traceiq.secretEnv" (dict "name" "MINIO_ROOT_USER" "secret" $secret "key" "MINIO_ROOT_USER") | nindent 12 }}
-            {{- include "traceiq.secretEnv" (dict "name" "MINIO_ROOT_PASSWORD" "secret" $secret "key" "MINIO_ROOT_PASSWORD") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "RUSTFS_ACCESS_KEY" "secret" $secret "key" "MINIO_ROOT_USER") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "RUSTFS_SECRET_KEY" "secret" $secret "key" "MINIO_ROOT_PASSWORD") | nindent 12 }}
+            {{- include "traceiq.secretEnv" (dict "name" "RUSTFS_SSE_S3_MASTER_KEY" "secret" $secret "key" "STORAGE_SSE_MASTER_KEY" "optional" true) | nindent 12 }}
+            - {name: RUSTFS_VOLUMES, value: /data}
+            - {name: RUSTFS_ADDRESS, value: ":9000"}
+            - {name: RUSTFS_CONSOLE_ENABLE, value: "false"}
           readinessProbe:
-            httpGet: {path: /minio/health/ready, port: s3}
+            httpGet: {path: /health/ready, port: s3}
             periodSeconds: 15
+          livenessProbe:
+            httpGet: {path: /health/live, port: s3}
+            periodSeconds: 30
+            failureThreshold: 5
           volumeMounts:
             - name: data
               mountPath: /data

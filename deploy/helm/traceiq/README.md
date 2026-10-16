@@ -3,7 +3,8 @@
 Deploys the same stack as `infrastructure/docker-compose.community.yml` onto
 Kubernetes: backend API, Celery worker/aggregator/beat, Playwright execution
 workers, frontend (nginx, proxies `/api/`), and — for evaluation — single-replica
-PostgreSQL, Redis and MinIO. Images are the published community images.
+PostgreSQL, Redis and an S3-compatible object store (RustFS). Images are the
+published community images.
 
 ## Install
 
@@ -30,7 +31,7 @@ number of replicas can start together and the schema migrates once.
 
 With your own Secret (keys: `SECRET_KEY`, `WEBHOOK_SECRET`, `POSTGRES_PASSWORD`,
 `REDIS_PASSWORD`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`; optional
-`SECRETS_KEY`, `SECRETS_KEY_PREVIOUS`, `METRICS_TOKEN`, `SENTRY_DSN`,
+`STORAGE_SSE_MASTER_KEY`, `SECRETS_KEY`, `SECRETS_KEY_PREVIOUS`, `METRICS_TOKEN`, `SENTRY_DSN`,
 `OTEL_EXPORTER_OTLP_HEADERS`, `ADMIN_PASSWORD`):
 
 ```bash
@@ -39,6 +40,30 @@ helm install traceiq deploy/helm/traceiq -n traceiq --set secrets.existingSecret
 
 Passwords are embedded in connection URLs verbatim — keep them to
 `[A-Za-z0-9._~-]`.
+
+## Object storage
+
+The bundled store is RustFS (`minio.image`, default
+`rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c`;
+mirror it by digest for production). The values keys are still `minio.*` and
+`secrets.minioRootUser` / `secrets.minioRootPassword`, so existing values files
+work; the server reads that pair as its root credentials. It runs as uid 10001
+in the StatefulSet `<release>-object-store`, with readiness/liveness probes on
+`/health/ready` and `/health/live`; the web console is disabled.
+
+- **Upgrading an install that ran the bundled MinIO** creates a NEW PVC for
+  `<release>-object-store`; the old MinIO PVC is kept and not reused, so runs
+  recorded before the upgrade show no artifacts until their objects are
+  copied. Copy them with `backend/scripts/migrate_object_store.py` (dry run by
+  default, never modifies the source) — see `SELF_HOSTING.md` → "Migrating
+  from MinIO".
+- `secrets.storageSseMasterKey` (optional, `openssl rand -base64 32`) gives the
+  bundled store the master key it needs for SSE-S3 (`AES256`) and turns
+  encryption on for new objects. With `secrets.existingSecret`, put
+  `STORAGE_SSE_MASTER_KEY` in that Secret and set `minio.encryptAtRest=true`.
+  Back the key up with the other secrets: losing it makes encrypted objects
+  unreadable. Execution-worker uploads are not encrypted (they send no SSE
+  headers).
 
 ## Production shape
 

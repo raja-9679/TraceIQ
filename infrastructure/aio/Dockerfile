@@ -4,7 +4,7 @@
 #     -p 8080:8080 -p 9000:9000 -v traceiq:/data \
 #     ghcr.io/raja-9679/traceiq-aio:latest
 #
-# One container bundling postgres + redis + minio + backend + celery ×3 +
+# One container bundling postgres + redis + object store (RustFS) + backend + celery ×3 +
 # execution worker + nginx under supervisord. Secrets are generated on FIRST
 # BOOT into the /data volume — nothing secret is baked into this image, which
 # keeps the "no shared defaults across deployments" invariant intact.
@@ -20,6 +20,13 @@
 # way — a root context would otherwise upload .git and dump.sql.
 #
 #   docker build -f infrastructure/aio/Dockerfile -t traceiq-aio .
+
+# Object store: the RustFS server binary comes from the SAME image reference
+# (version + digest) that docker-compose.community.yml and the Helm chart pin,
+# so every distribution ships an identical build. Builds from a private mirror
+# pass --build-arg STORAGE_IMAGE=<mirror>/rustfs@sha256:<same digest>.
+ARG STORAGE_IMAGE=rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+FROM ${STORAGE_IMAGE} AS object-store-bin
 
 # ---------------------------------------------------------------------------
 # Stage 1: frontend build. VITE_API_BASE_URL is deliberately NOT set, so the
@@ -79,22 +86,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && rm -f /etc/nginx/sites-enabled/default
 
-# MinIO server binary (no distro package). Pinned to the SAME release the
-# compose stack pins (minio/minio:RELEASE.2025-04-22T22-12-26Z) so the AIO and
-# compose distributions ship identical MinIO versions — an unpinned `.../minio`
-# floats to whatever "latest" is at build time. Verified against the checksum
-# MinIO publishes alongside each archive (per-arch; amd64/arm64 differ).
-ARG TARGETARCH=amd64
-ARG MINIO_RELEASE=RELEASE.2025-04-22T22-12-26Z
-RUN case "${TARGETARCH}" in \
-      amd64) MINIO_SHA256=53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c ;; \
-      arm64) MINIO_SHA256=6c2f3142c94240206123177f4ba1e360daa5d1e0a4962e90757ef4f92c3ab57c ;; \
-      *) echo "No pinned MinIO checksum for arch ${TARGETARCH}" >&2; exit 1 ;; \
-    esac \
-    && curl -fsSL "https://dl.min.io/server/minio/release/linux-${TARGETARCH}/archive/minio.${MINIO_RELEASE}" \
-        -o /usr/local/bin/minio \
-    && echo "${MINIO_SHA256}  /usr/local/bin/minio" | sha256sum -c - \
-    && chmod +x /usr/local/bin/minio
+# The binary is static-pie, so it runs on this Debian base; BuildKit resolves
+# the pinned digest's index to the platform being built (amd64/arm64).
+COPY --from=object-store-bin /usr/bin/rustfs /usr/local/bin/rustfs
 
 # k6 for the load-test executor (same source as Dockerfile.worker).
 COPY --from=grafana/k6:0.57.0 /usr/bin/k6 /usr/bin/k6
@@ -139,10 +133,10 @@ COPY infrastructure/aio/supervisord.conf /etc/traceiq/supervisord.conf
 COPY infrastructure/aio/run-service.sh infrastructure/aio/entrypoint.sh /opt/traceiq/bin/
 RUN chmod +x /opt/traceiq/bin/run-service.sh /opt/traceiq/bin/entrypoint.sh
 
-# All persistent state: postgres, redis AOF, minio objects, generated secrets.
+# All persistent state: postgres, redis AOF, object-store data, generated secrets.
 VOLUME /data
 
-# 8080 = UI + API (nginx). 9000 = MinIO; the browser fetches run artifacts
+# 8080 = UI + API (nginx). 9000 = object store; the browser fetches run artifacts
 # (traces, videos) via presigned URLs, so it must be host-published too.
 EXPOSE 8080 9000
 

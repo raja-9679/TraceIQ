@@ -26,7 +26,7 @@ x-backend-env: &backend-env
   # the password has to be embedded here.
   CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env (openssl rand -hex 24)}@redis:6379/0
   CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD}@redis:6379/0
-  MINIO_ENDPOINT: minio:9000
+  MINIO_ENDPOINT: object-store:9000
   MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env (must not be minioadmin)}
   MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (openssl rand -hex 24)}
   MINIO_PUBLIC_URL: ${MINIO_PUBLIC_URL:-http://localhost:9000}
@@ -137,25 +137,53 @@ services:
       REDISCLI_AUTH: ${REDIS_PASSWORD}
     networks: [traceiq_internal]
 
-  minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+  # S3-compatible object store for run artifacts (RustFS, Apache-2.0). Pinned
+  # by version AND digest: a tag can be re-pointed, a digest cannot. Offices
+  # that mirror images into a private registry override TRACEIQ_STORAGE_IMAGE
+  # with the mirrored reference (same digest). See SELF_HOSTING.md, "Object
+  # storage", for upgrades, rollback, backups and migrating from MinIO.
+  object-store:
+    image: ${TRACEIQ_STORAGE_IMAGE:-rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c}
     <<: *hardening
-    command: server /data --console-address ":9001"
+    # The server's root credentials are the same pair the apps use (the .env
+    # names predate the switch from MinIO and are kept so existing .env files
+    # keep working).
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env (must not be minioadmin)}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (openssl rand -hex 24)}
+      RUSTFS_ACCESS_KEY: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env (must not be minioadmin)}
+      RUSTFS_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env (openssl rand -hex 24)}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      # Web console stays off; nothing in TraceIQ needs it.
+      RUSTFS_CONSOLE_ENABLE: "false"
+      # Required for MINIO_SSE_ALGORITHM=AES256 (base64 of 32 random bytes;
+      # traceiq-setup.sh generates it). Losing it makes encrypted objects
+      # unreadable — back it up with the rest of .env.
+      RUSTFS_SSE_S3_MASTER_KEY: ${STORAGE_SSE_MASTER_KEY:-}
     ports:
-      # The browser fetches artifacts (traces, videos, screenshots) directly from
-      # MinIO via presigned URLs, so this port must be reachable by the browser.
-      - "${MINIO_PORT:-9000}:9000"
+      # The browser fetches artifacts (traces, videos, screenshots) directly
+      # via presigned URLs, so this port must be reachable by the browser.
+      # Single-host installs can set STORAGE_BIND_ADDRESS=127.0.0.1.
+      - "${STORAGE_BIND_ADDRESS:-0.0.0.0}:${MINIO_PORT:-9000}:9000"
     volumes:
-      - minio_data:/data
+      # A NEW volume: RustFS is not assumed to read a MinIO data directory.
+      # An existing minio_data volume is left untouched (no longer declared
+      # here, so nothing in this file can remove it); copy its objects over
+      # with scripts/migrate_object_store.py.
+      - object_store_data:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
-      interval: 15s
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9000/health/ready"]
+      interval: 10s
       timeout: 5s
-      retries: 10
-    networks: [traceiq_internal, traceiq_egress]
+      retries: 12
+      start_period: 10s
+    stop_grace_period: 30s
+    networks:
+      traceiq_internal:
+        # Endpoints saved before the rename (instance settings, overrides)
+        # still say minio:9000.
+        aliases: [minio]
+      traceiq_egress:
+        aliases: [minio]
 
   backend:
     image: ${TRACEIQ_REGISTRY:-ghcr.io/raja-9679}/traceiq-backend:${TRACEIQ_VERSION:-latest}
@@ -171,7 +199,7 @@ services:
     depends_on:
       postgres: {condition: service_healthy}
       redis: {condition: service_healthy}
-      minio: {condition: service_started}
+      object-store: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8000/health/ready || exit 1"]
       interval: 30s
@@ -241,12 +269,12 @@ services:
       REDIS_JOBS_STREAM: jobs:pending
       REDIS_RESULTS_STREAM: jobs:results
       REDIS_CONSUMER_GROUP: execution-workers
-      MINIO_ENDPOINT: minio
+      MINIO_ENDPOINT: object-store
       MINIO_PORT: 9000
-      # TODO(security): workers use the MinIO ROOT credentials. They only need
-      # read/write on the test-artifacts bucket. Mint a scoped MinIO service
-      # account (needs a `mc admin` init job on stack up) and hand the workers
-      # that instead, so a compromised worker can't administer object storage.
+      # TODO(security): workers use the object store's ROOT credentials. They
+      # only need read/write on the test-artifacts bucket. Mint a scoped access
+      # key (an init job on stack up) and hand the workers that instead, so a
+      # compromised worker can't administer object storage.
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_BUCKET_NAME: test-artifacts
@@ -265,7 +293,7 @@ services:
       RAW_PLAYWRIGHT_ENABLED: ${RAW_PLAYWRIGHT_ENABLED:-false}
     depends_on:
       redis: {condition: service_healthy}
-      minio: {condition: service_started}
+      object-store: {condition: service_healthy}
     shm_size: '1gb'
     networks: [traceiq_internal, traceiq_egress]
     deploy:
@@ -364,7 +392,7 @@ services:
       SAUCE_REGION: ${SAUCE_REGION:-us-west-1}
       LT_USERNAME: ${LT_USERNAME:-}
       LT_ACCESS_KEY: ${LT_ACCESS_KEY:-}
-      MINIO_ENDPOINT: minio
+      MINIO_ENDPOINT: object-store
       MINIO_PORT: 9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
@@ -384,7 +412,7 @@ services:
       RUNTIME_HEAL_ENABLED: ${RUNTIME_HEAL_ENABLED:-false}
     depends_on:
       redis: {condition: service_healthy}
-      minio: {condition: service_started}
+      object-store: {condition: service_healthy}
       appium: {condition: service_started}
     networks: [traceiq_internal, traceiq_egress]
 
@@ -423,4 +451,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
-  minio_data:
+  object_store_data:

@@ -16,6 +16,9 @@ data:
   {{- end }}
   {{- if and (not .Values.minio.enabled) .Values.minio.external.sseAlgorithm }}
   MINIO_SSE_ALGORITHM: {{ .Values.minio.external.sseAlgorithm | quote }}
+  {{- else if and .Values.minio.enabled (or .Values.minio.encryptAtRest .Values.secrets.storageSseMasterKey) }}
+  {{- /* Bundled store: SSE-S3 with the STORAGE_SSE_MASTER_KEY it was given. */}}
+  MINIO_SSE_ALGORITHM: "AES256"
   {{- end }}
   MAX_CAPTURE_LEVEL: {{ .Values.config.maxCaptureLevel | quote }}
   RUN_RETENTION_DAYS: {{ .Values.config.runRetentionDays | quote }}

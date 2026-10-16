@@ -13,7 +13,7 @@
 - Record Playwright browser test journeys (steps: click, fill, goto, expect, etc.)
 - Organise tests into hierarchical suites/modules with inherited settings
 - Execute tests in distributed, isolated workers across multiple browsers and devices
-- Capture artifacts (video, trace, screenshots) stored in MinIO object storage
+- Capture artifacts (video, trace, screenshots) stored in an S3-compatible object store (bundled: RustFS)
 - Get AI-powered failure analysis per test run
 - Manage access via multi-tenant RBAC (Workspace → Team → Project → TestCase)
 - Receive notifications via Email / Slack / Teams on failures
@@ -35,7 +35,7 @@ The platform is **fully Dockerized**. Infrastructure is defined in `infrastructu
 │  └──────────────┘        └──────┬───────┘                          │
 │                                 │ Celery tasks                      │
 │                          ┌──────▼───────┐       ┌───────────────┐  │
-│                          │    Redis     │       │    MinIO      │  │
+│                          │    Redis     │       │ Object store  │  │
 │                          │  (port 6379) │       │  (port 9000)  │  │
 │                          │  Broker +    │       │  Artifacts    │  │
 │                          │  Job Streams │       └───────────────┘  │
@@ -67,7 +67,7 @@ The platform is **fully Dockerized**. Infrastructure is defined in `infrastructu
 |---------|------------|-------|------|
 | `postgres` | `postgres:15-alpine` | 5432 | Primary relational DB |
 | `redis` | `redis:7-alpine` | 6379 | Celery broker + Redis Streams job queue |
-| `minio` | `minio/minio` | 9000 (API), 9001 (Console) | Artifact object storage (S3-compatible) |
+| `object-store` | `rustfs/rustfs:1.0.1` (pinned by digest; network alias `minio`) | 9000 (S3 API; console disabled) | Artifact object storage (S3-compatible) |
 | `backend` | `./backend` | 8000 | FastAPI REST API |
 | `celery_worker` | `./backend` | — | Celery worker (main-queue, 4 concurrency) |
 | `celery_aggregator` | `./backend` | — | Celery worker (aggregator-queue, 2 concurrency) |
@@ -134,7 +134,7 @@ TraceIQ/
 │   │   │   ├── auth.py       # JWT utilities, get_current_user
 │   │   │   ├── celery_app.py # Celery app config
 │   │   │   ├── redis.py      # Async Redis client
-│   │   │   ├── storage.py    # MinIO client wrapper
+│   │   │   ├── storage.py    # S3 object-store wrapper (`minio_client` / `object_store`)
 │   │   │   └── rbac_init.py  # Seed roles and permissions
 │   │   ├── services/
 │   │   │   ├── test_service.py       # Recursive case collection, settings inheritance
@@ -162,7 +162,7 @@ TraceIQ/
 │   │   ├── server.ts          # Express HTTP server (legacy endpoint POST /run)
 │   │   ├── ai.ts              # AI failure analysis
 │   │   ├── controller/        # Execution lifecycle controller
-│   │   ├── core/              # MinIO + Redis clients
+│   │   ├── core/              # Object store + Redis clients
 │   │   └── utils/
 │   ├── Dockerfile             # Prod image
 │   ├── Dockerfile.worker      # Distributed worker image (used by execution-worker service)
@@ -317,7 +317,7 @@ TestRun ──── (FK) TestSuite
 | GET | `/api/runs/{id}` | Get single run with results |
 | DELETE | `/api/runs/{id}` | Delete run + artifacts |
 | DELETE | `/api/runs?all=true` or `?run_ids=` | Bulk delete |
-| GET | `/api/artifacts/{path}` | Get presigned MinIO URL |
+| GET | `/api/artifacts/{path}` | Get presigned object-store URL |
 | POST | `/api/runs/{id}/webhook` | Execution engine result callback |
 | POST | `/api/runs/{id}/finalize` | Final result + AI analysis + notifications |
 | POST | `/api/runs/{id}/force-complete` | Manually complete a stuck run |
@@ -375,7 +375,7 @@ TestRun ──── (FK) TestSuite
    │  → Launches Playwright browser
    │  → Iterates steps (goto → click → fill → expect → ...)
    │  → Captures: video recording, Playwright trace, screenshots
-   │  → Uploads artifacts to MinIO bucket 'test-artifacts'
+   │  → Uploads artifacts to object-store bucket 'test-artifacts'
    │
    ▼
 7. execution-worker POSTs result back
@@ -410,10 +410,10 @@ Key variables used in `backend/app/core/config.py`:
 | `DATABASE_URL` | required | PostgreSQL async URL (`postgresql+asyncpg://...`) |
 | `CELERY_BROKER_URL` | required | Redis URL for Celery |
 | `CELERY_RESULT_BACKEND` | required | Redis URL for Celery results |
-| `MINIO_ENDPOINT` | required | MinIO host (e.g., `minio:9000`) |
+| `MINIO_ENDPOINT` | required | Object-store host (e.g., `object-store:9000`; `MINIO_*` names are historical) |
 | `MINIO_PUBLIC_URL` | `http://localhost:9000` | Public URL for presigned artifact URLs |
-| `MINIO_ACCESS_KEY` | required | MinIO access key |
-| `MINIO_SECRET_KEY` | required | MinIO secret key |
+| `MINIO_ACCESS_KEY` | required | Object-store access key |
+| `MINIO_SECRET_KEY` | required | Object-store secret key |
 | `MINIO_BUCKET_NAME` | `test-artifacts` | Artifact bucket name |
 | `SECRET_KEY` | required | JWT signing secret |
 | `ALGORITHM` | `HS256` | JWT algorithm |
@@ -558,7 +558,7 @@ cd frontend && npm run dev   # http://localhost:5173
 cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Start infrastructure services only
-cd infrastructure && docker compose --env-file env.local up -d postgres redis minio
+cd infrastructure && docker compose --env-file env.local up -d postgres redis object-store
 
 # Celery worker (separate terminal)
 cd backend && celery -A app.core.celery_app worker --loglevel=info -Q main-queue

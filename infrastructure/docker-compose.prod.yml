@@ -49,26 +49,34 @@ services:
       timeout: 5s
       retries: 5
 
-  minio:
-    image: minio/minio
+  # S3-compatible object store (RustFS), pinned by version and digest. See
+  # SELF_HOSTING.md "Object storage" for upgrades and migrating from MinIO.
+  object-store:
+    image: ${TRACEIQ_STORAGE_IMAGE:-rustfs/rustfs:1.0.1@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c}
     restart: always
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY}
-      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY}
-      MINIO_API_CORS_ALLOW_ORIGIN: "*"
+      RUSTFS_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${MINIO_SECRET_KEY}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "false"
+      RUSTFS_SSE_S3_MASTER_KEY: ${STORAGE_SSE_MASTER_KEY:-}
     ports:
-      # Expose MinIO API so frontend can download presigned artifact URLs
+      # Browsers download artifacts via presigned URLs on this port.
       - "9000:9000"
     volumes:
-      - minio_data:/data
+      # New volume; an existing minio_data volume is left untouched. Copy its
+      # objects with scripts/migrate_object_store.py.
+      - object_store_data:/data
     networks:
-      - qip_network
+      qip_network:
+        aliases: [minio]
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
-      interval: 30s
-      timeout: 20s
-      retries: 3
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9000/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   # --------------------------------------------------------------------------
   # Backend API
@@ -85,7 +93,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ENDPOINT=object-store:9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - MINIO_PUBLIC_URL=${MINIO_PUBLIC_URL:-http://localhost:9000}
@@ -107,7 +115,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      minio:
+      object-store:
         condition: service_healthy
     networks:
       - qip_network
@@ -125,7 +133,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ENDPOINT=object-store:9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -155,7 +163,7 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
-      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ENDPOINT=object-store:9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
       - SECRET_KEY=${SECRET_KEY}
@@ -204,7 +212,7 @@ services:
       - REDIS_JOBS_STREAM=jobs:pending
       - REDIS_RESULTS_STREAM=jobs:results
       - REDIS_CONSUMER_GROUP=execution-workers
-      - MINIO_ENDPOINT=minio
+      - MINIO_ENDPOINT=object-store
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
       - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
@@ -216,7 +224,7 @@ services:
       - ARTIFACTS_DIR=/tmp/artifacts
     depends_on:
       - redis
-      - minio
+      - object-store
     networks:
       - qip_network
     shm_size: '1gb'
@@ -250,7 +258,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  minio_data:
+  object_store_data:
 
 
 networks:

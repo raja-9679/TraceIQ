@@ -137,7 +137,7 @@ TraceIQ v2 introduces a **distributed execution architecture** that solves the f
            │                              6. Each worker:
            │                                 • Launches isolated browser
            │                                 • Executes single test
-           │                                 • Uploads artifacts to MinIO
+           │                                 • Uploads artifacts to the object store
            │                                 • Publishes result to jobs:results
            │                                              │
            │                                              ▼
@@ -223,7 +223,7 @@ class ExecutionWorker {
 Key features:
 
 - Complete browser isolation per test
-- Automatic artifact upload to MinIO
+- Automatic artifact upload to the object store
 - Graceful shutdown handling
 - Memory cleanup after N jobs
 
@@ -345,8 +345,8 @@ OPENAI_API_KEY=sk-...
 POSTGRES_USER=user
 POSTGRES_PASSWORD=secure-password
 
-# MinIO
-MINIO_ROOT_USER=minioadmin
+# Object store (RustFS; the MINIO_* names are historical)
+MINIO_ROOT_USER=traceiq
 MINIO_ROOT_PASSWORD=secure-password
 
 # Execution
@@ -738,7 +738,7 @@ No changes required to existing tests.
 │                    │                              │         │
 │   redis ◄──────────┼────────┬────────┬───────────┤         │
 │                    │        │        │           │         │
-│   minio ◄──────────┼────────┼────────┼───────────┤         │
+│   object-store ◄───┼────────┼────────┼───────────┤         │
 │                    │        │        │           │         │
 │                    ▼        ▼        ▼           ▼         │
 │               backend  celery_  celery_   execution-       │
