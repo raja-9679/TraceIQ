@@ -24,6 +24,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from 'sonner';
 import { usePermission } from "@/hooks/usePermission";
 import { motion, AnimatePresence, Variants } from 'framer-motion';
+import { RetryPolicyCard } from '@/components/suite-settings/RetryPolicyCard';
 import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicyCard';
 import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
 import { FrontendMatrixSettings, RunMatrixPicker } from '@/components/frontend-quality/MatrixFields';
@@ -817,6 +818,15 @@ export default function SuiteDetails() {
                                         </div>
                                     </div>
                                 </div>
+
+                                {/* ── Retry failed tests ── */}
+                                <RetryPolicyCard
+                                    settings={suite.settings}
+                                    effective={suite.effective_settings}
+                                    inherit={suite.inherit_settings}
+                                    executionMode={suite.execution_mode}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
 
                                 {/* ── Fail on JavaScript errors ── */}
                                 <ConsoleErrorPolicyCard
