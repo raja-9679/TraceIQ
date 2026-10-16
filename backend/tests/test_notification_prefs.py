@@ -4,11 +4,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from app.services.notification_prefs import owner_email
+from app.services.project_notifications import person_wants
 from app.settings_models import normalize_notification_email
-
-USER = NS(email="dev@corp.example.com")
-
 
 def prefs(**kw):
     base = dict(email_notifications=True, notify_on_completion=True,
@@ -17,12 +14,12 @@ def prefs(**kw):
     return NS(**base)
 
 
-def test_owner_without_saved_settings_keeps_the_old_behaviour():
-    assert owner_email(USER, None, run_failed=False) == "dev@corp.example.com"
+def test_no_saved_settings_and_no_project_choice_means_yes():
+    assert person_wants(None, None, run_failed=False) is True
 
 
-def test_opt_out():
-    assert owner_email(USER, prefs(email_notifications=False), run_failed=True) is None
+def test_personal_opt_out():
+    assert person_wants(None, prefs(email_notifications=False), run_failed=True) is False
 
 
 @pytest.mark.parametrize("completion,failure,failed,expected", [
@@ -32,21 +29,17 @@ def test_opt_out():
     (False, True, True, True),     # ... a failure is sent
     (False, False, True, False),   # neither
 ])
-def test_completion_and_failure_choices(completion, failure, failed, expected):
-    got = owner_email(USER, prefs(notify_on_completion=completion, notify_on_failure=failure),
-                      run_failed=failed)
-    assert (got is not None) == expected
+def test_personal_default_choices(completion, failure, failed, expected):
+    us = prefs(notify_on_completion=completion, notify_on_failure=failure)
+    assert person_wants(None, us, run_failed=failed) is expected
 
 
-def test_custom_address_replaces_the_account_address():
-    assert owner_email(USER, prefs(notification_email="alerts@corp.example.com"),
-                       run_failed=True) == "alerts@corp.example.com"
-    assert owner_email(USER, prefs(notification_email="  "), run_failed=True) == USER.email
-
-
-def test_no_user_or_address_means_nobody():
-    assert owner_email(None, None, run_failed=True) is None
-    assert owner_email(NS(email=""), prefs(), run_failed=True) is None
+@pytest.mark.parametrize("mode,failed,expected", [
+    ("off", True, False), ("failures", False, False), ("failures", True, True), ("all", False, True),
+])
+def test_project_choice_overrides_the_personal_default(mode, failed, expected):
+    # Even someone who turned email off globally can opt in for one project.
+    assert person_wants(mode, prefs(email_notifications=False), run_failed=failed) is expected
 
 
 @pytest.mark.parametrize("raw,expected", [

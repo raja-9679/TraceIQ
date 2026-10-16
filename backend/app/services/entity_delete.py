@@ -67,6 +67,8 @@ ON_DELETE: Dict[str, str] = {
     "caseproposal.project_id": DELETE,
     "authsession.project_id": DELETE,
     "projectapispec.project_id": DELETE,
+    # A person's notification choice for a deleted project means nothing.
+    "projectnotificationpref.project_id": DELETE,
     "externaltestreport.project_id": DELETE,
     "failurecluster.project_id": DELETE,
     "mobileappbuild.project_id": DELETE,

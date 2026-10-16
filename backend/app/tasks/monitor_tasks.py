@@ -29,7 +29,7 @@ from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
 from app.models import MonitorCheck, TestRun, TestSchedule, TestStatus, Project
-from app.tasks.notification_tasks import get_notification_settings
+from app.tasks.notification_tasks import get_notification_settings, post_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
 
     if cfg.get("slack_enabled") and cfg.get("slack_webhook_url"):
         try:
-            requests.post(cfg["slack_webhook_url"], timeout=10, json={
+            post_webhook(cfg["slack_webhook_url"], {
                 "attachments": [{
                     "color": color,
                     "blocks": [
@@ -224,7 +224,7 @@ def _send_monitor_alert(session: Session, schedule: TestSchedule, run: TestRun,
 
     if cfg.get("teams_enabled") and cfg.get("teams_webhook_url"):
         try:
-            requests.post(cfg["teams_webhook_url"], timeout=10, json={
+            post_webhook(cfg["teams_webhook_url"], {
                 "@type": "MessageCard",
                 "@context": "http://schema.org/extensions",
                 "themeColor": color.lstrip("#"),

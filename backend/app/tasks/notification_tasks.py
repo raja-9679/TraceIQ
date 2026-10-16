@@ -111,42 +111,46 @@ def send_run_notifications(self, run_id: int, payload: Dict[str, Any]):
 
 
 def get_notification_settings(project: Optional[Project], session: Session) -> Dict[str, Any]:
-    """
-    Get notification settings from project or global defaults.
+    """Effective notification settings for one project's events.
 
-    Priority: Project settings override global env vars.
+    The instance switches are the master control; the project decides who
+    is emailed and which chat webhooks get its runs (see
+    app/services/project_notifications.py). Chat goes ONLY to the project's
+    own webhooks: the instance-wide SLACK/TEAMS_WEBHOOK_URL used to receive
+    every project's runs, so it is no longer used here.
 
-    Returns dict with:
-        - enabled: Master switch (NOTIFICATIONS_ENABLED)
-        - email_enabled: Email channel (EMAIL_NOTIFICATIONS_ENABLED)
-        - slack_enabled: Slack channel (SLACK_NOTIFICATIONS_ENABLED)
-        - teams_enabled: Teams channel (TEAMS_NOTIFICATIONS_ENABLED)
-        - notify_on_failure_only: Skip passed runs (NOTIFY_ON_FAILURE_ONLY)
+    Also used by monitor and estate alerts (same keys).
     """
-    # Effective instance settings: admin UI (DB) override, else environment.
-    defaults = {
-        'enabled': insvc.effective('NOTIFICATIONS_ENABLED'),
-        'email_enabled': insvc.effective('EMAIL_NOTIFICATIONS_ENABLED'),
-        'slack_enabled': insvc.effective('SLACK_NOTIFICATIONS_ENABLED'),
-        'teams_enabled': insvc.effective('TEAMS_NOTIFICATIONS_ENABLED'),
-        'notify_on_failure_only': insvc.effective('NOTIFY_ON_FAILURE_ONLY'),
-        'slack_webhook_url': insvc.effective('SLACK_WEBHOOK_URL'),
-        'teams_webhook_url': insvc.effective('TEAMS_WEBHOOK_URL'),
+    from app.services import project_notifications as pn
+    inst_on = bool(insvc.effective('NOTIFICATIONS_ENABLED'))
+    cfg = pn.merged(project) if project else dict(pn.DEFAULTS)
+    slack_url = pn.webhook_url(project, 'slack') if project else None
+    teams_url = pn.webhook_url(project, 'teams') if project else None
+    out = {
+        'enabled': inst_on,
+        'email_enabled': bool(insvc.effective('EMAIL_NOTIFICATIONS_ENABLED')) and bool(cfg.get('email_enabled')),
+        'slack_enabled': bool(insvc.effective('SLACK_NOTIFICATIONS_ENABLED'))
+                         and bool(cfg.get('slack_enabled')) and bool(slack_url),
+        'teams_enabled': bool(insvc.effective('TEAMS_NOTIFICATIONS_ENABLED'))
+                         and bool(cfg.get('teams_enabled')) and bool(teams_url),
+        'notify_on_failure_only': bool(insvc.effective('NOTIFY_ON_FAILURE_ONLY')) or bool(cfg.get('failures_only')),
+        'slack_webhook_url': slack_url,
+        'teams_webhook_url': teams_url,
     }
+    logger.debug("[Notification] project %s: email=%s slack=%s teams=%s failures_only=%s",
+                 getattr(project, 'id', None), out['email_enabled'], out['slack_enabled'],
+                 out['teams_enabled'], out['notify_on_failure_only'])
+    return out
 
-    logger.debug(f"[Notification] Global settings: enabled={defaults['enabled']}, "
-                 f"email={defaults['email_enabled']}, slack={defaults['slack_enabled']}, "
-                 f"teams={defaults['teams_enabled']}")
 
-    if project and hasattr(project, 'notification_settings'):
-        # Override with project-specific settings (allows per-project customization)
-        project_settings = project.notification_settings or {}
-        if project_settings:
-            logger.debug(
-                f"[Notification] Project overrides: {project_settings}")
-        defaults.update(project_settings)
-
-    return defaults
+def post_webhook(url: str, payload: Dict[str, Any], timeout: int = 10):
+    """POST to a chat webhook a project admin entered: vetted by net_guard on
+    every delivery (DNS can change after saving; no metadata/link-local
+    targets; private ranges only when the instance allows them) and with
+    redirects off, so an allowed host cannot bounce the request elsewhere."""
+    from app.core.net_guard import validate_outbound_url_sync
+    validate_outbound_url_sync(url)
+    return requests.post(url, json=payload, timeout=timeout, allow_redirects=False)
 
 
 def build_notification_content(run: TestRun, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -245,28 +249,14 @@ def send_email_notification(
 
 
 def get_email_recipients(run: TestRun, settings_dict: Dict[str, Any], session: Session) -> List[str]:
-    """
-    Get email recipients based on run owner and project settings.
-    """
-    recipients = []
-
-    # Run owner — on their own terms (Settings → Notifications): they may opt
-    # out, limit it to failed runs, or name a different address.
-    if run.user_id:
-        from app.services.notification_prefs import owner_email
-        from app.settings_models import UserSettings
-        user = session.get(User, run.user_id)
-        prefs = session.exec(
-            select(UserSettings).where(UserSettings.user_id == run.user_id)).first()
-        address = owner_email(user, prefs, run_failed=run.status != TestStatus.PASSED)
-        if address:
-            recipients.append(address)
-
-    # Additional recipients from settings
-    extra_recipients = settings_dict.get('email_recipients', [])
-    recipients.extend(extra_recipients)
-
-    return list(set(recipients))  # Deduplicate
+    """Who is emailed about this run: the starter and the people the project
+    picked (each still a project member, each on their own terms), plus the
+    project's extra addresses. Never anyone outside the project."""
+    from app.services.project_notifications import email_recipients
+    project = session.get(Project, run.project_id) if run.project_id else None
+    if project is None:
+        return []
+    return email_recipients(session, project, run.user_id, run_failed=run.status != TestStatus.PASSED)
 
 
 def build_email_body(content: Dict[str, Any]) -> Dict[str, str]:
@@ -422,7 +412,7 @@ def send_slack_notification(run: TestRun, content: Dict[str, Any], settings_dict
     }
 
     try:
-        response = requests.post(webhook_url, json=payload, timeout=10)
+        response = post_webhook(webhook_url, payload)
         response.raise_for_status()
         logger.info(f"[Slack] Sent notification for run {run.id}")
     except Exception as e:
@@ -473,7 +463,7 @@ def send_teams_notification(run: TestRun, content: Dict[str, Any], settings_dict
         })
 
     try:
-        response = requests.post(webhook_url, json=payload, timeout=10)
+        response = post_webhook(webhook_url, payload)
         response.raise_for_status()
         logger.info(f"[Teams] Sent notification for run {run.id}")
     except Exception as e:

@@ -44,6 +44,7 @@ PERSONAL_TABLES: Dict[str, str] = {
     "accounttoken": "user_id",
     "mfarecoverycode": "user_id",
     "user_settings": "user_id",
+    "projectnotificationpref": "user_id",
     "refreshtoken": "user_id",
 }
 
