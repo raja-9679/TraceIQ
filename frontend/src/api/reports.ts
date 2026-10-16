@@ -151,7 +151,7 @@ export interface ShareLinkInput {
     label?: string;
 }
 
-/** GET /api/share/{token}: the reduced public view. */
+/** POST /api/share/view {token}: the reduced public view. */
 export interface PublicRunReport {
     kind: 'run_report';
     project_name: string | null;
@@ -223,7 +223,12 @@ export const shareLinksApi = {
 /** Public fetch: plain fetch with no auth header, so a signed-in viewer's
  *  token never rides along to a page anyone can open. */
 export async function fetchPublicShare(token: string): Promise<PublicShare> {
-    const r = await fetch(`${API_BASE_URL}/share/${encodeURIComponent(token)}`);
+    // The token goes in the body, never a URL: URLs land in access logs.
+    const r = await fetch(`${API_BASE_URL}/share/view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+    });
     if (!r.ok) throw new Error(String(r.status));
     return r.json();
 }

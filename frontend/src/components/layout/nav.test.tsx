@@ -14,12 +14,16 @@ const place = (name: string) => places.find((p) => p.name === name)!;
 
 describe('sidebar information architecture', () => {
     it('has the six places in order (Setup renders after them)', () => {
-        expect(names(places)).toEqual(['Today', 'Releases', 'Tests', 'Runs', 'Watch', 'Security']);
+        expect(names(places)).toEqual(['Today', 'Releases', 'Reports', 'Tests', 'Runs', 'Watch', 'Security']);
     });
 
     it('groups each former sidebar item under its place', () => {
         expect(names(place('Today').children)).toEqual(['Overview', 'Failure triage', 'Proposals', 'Flaky tests', 'Visual review']);
-        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Requirements', 'Traceability', 'Incidents']);
+        expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Release sign-off', 'Requirements', 'Traceability', 'Incidents']);
+        expect(names(place('Reports').children)).toEqual([
+            'Executive summary', 'Portfolio', 'Delivery (DORA)', 'SLOs', 'Flake trends', 'Dependencies',
+            'Journey coverage', 'Business journeys', 'Flag coverage', 'Benchmarks', 'Costs',
+        ]);
         expect(names(place('Security').children)).toEqual(['Scans & findings', 'Access matrix', 'Access reviews', 'Estate', 'Script inventory']);
         expect(names(place('Watch').children)).toEqual(['Monitors', 'On-call']);
         expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Analytics']);
@@ -31,17 +35,17 @@ describe('sidebar information architecture', () => {
 
     it('keeps Runs as a direct destination', () => {
         expect(isGroup(place('Runs'))).toBe(false);
-        for (const n of ['Today', 'Releases', 'Tests', 'Watch', 'Security']) expect(isGroup(place(n))).toBe(true);
+        for (const n of ['Today', 'Releases', 'Reports', 'Tests', 'Watch', 'Security']) expect(isGroup(place(n))).toBe(true);
         expect([place('Runs').href, place('Watch').href, place('Security').href]).toEqual(['/runs', '/monitors', '/security']);
     });
 
-    it('offers all 37 destinations exactly once', () => {
+    it('offers all 49 destinations exactly once', () => {
         const hrefs = [
             ...places.filter((p) => !isGroup(p)).map((p) => p.href),
             ...places.flatMap((p) => p.children.map((c) => c.href)),
             ...setupLinks.map((l) => l.href),
         ];
-        expect(hrefs).toHaveLength(37);
+        expect(hrefs).toHaveLength(49);
         expect(new Set(hrefs).size).toBe(hrefs.length);
     });
 
@@ -116,7 +120,7 @@ describe('expanded sidebar', () => {
         // Each child of the nav is a direct link or a group (whose first button is its row).
         const top = Array.from(nav.getByRole('navigation', { name: 'Main' }).children)
             .map((el) => (el.tagName === 'A' ? el : el.querySelector('button'))?.textContent);
-        expect(top).toEqual(['Today', 'Releases', 'Tests', 'Runs', 'Watch', 'Security']);
+        expect(top).toEqual(['Today', 'Releases', 'Reports', 'Tests', 'Runs', 'Watch', 'Security']);
         expect(nav.getByRole('button', { name: 'Setup' })).toBeTruthy();
     });
 

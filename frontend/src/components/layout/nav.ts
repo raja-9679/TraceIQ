@@ -1,5 +1,6 @@
 import { matchPath } from 'react-router-dom';
 import {
+    BarChart3,
     Inbox,
     Flag,
     FlaskConical,
@@ -48,13 +49,33 @@ export const places: Place[] = [
     {
         name: 'Releases', href: '/quality', icon: Flag,
         // Requirements → cases → incidents is the trace chain a release is judged on.
-        match: ['/quality', '/release-readiness', '/requirements', '/traceability', '/incidents'],
+        match: ['/quality', '/release-readiness', '/release-signoff', '/requirements', '/traceability', '/incidents'],
         children: [
             { name: 'Quality gate', href: '/quality' },
             { name: 'Release readiness', href: '/release-readiness' },
+            { name: 'Release sign-off', href: '/release-signoff' },
             { name: 'Requirements', href: '/requirements' },
             { name: 'Traceability', href: '/traceability' },
             { name: 'Incidents', href: '/incidents' },
+        ],
+    },
+    {
+        // WP12: summaries for people who read results rather than write tests
+        // (leadership, PM, CPO), plus delivery, reliability and coverage views.
+        name: 'Reports', href: '/reports/summary', icon: BarChart3,
+        match: ['/reports/*', '/journey-coverage', '/business-journeys', '/flag-coverage', '/benchmarks', '/costs'],
+        children: [
+            { name: 'Executive summary', href: '/reports/summary' },
+            { name: 'Portfolio', href: '/reports/portfolio' },
+            { name: 'Delivery (DORA)', href: '/reports/delivery' },
+            { name: 'SLOs', href: '/reports/slo' },
+            { name: 'Flake trends', href: '/reports/flake-trends' },
+            { name: 'Dependencies', href: '/reports/dependencies' },
+            { name: 'Journey coverage', href: '/journey-coverage' },
+            { name: 'Business journeys', href: '/business-journeys' },
+            { name: 'Flag coverage', href: '/flag-coverage' },
+            { name: 'Benchmarks', href: '/benchmarks' },
+            { name: 'Costs', href: '/costs' },
         ],
     },
     {

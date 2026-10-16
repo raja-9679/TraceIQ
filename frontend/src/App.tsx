@@ -81,7 +81,7 @@ function App() {
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/status/:slug" element={<PublicStatus />} />
-            <Route path="/share/:token" element={<PublicShare />} />
+            <Route path="/share" element={<PublicShare />} />
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>

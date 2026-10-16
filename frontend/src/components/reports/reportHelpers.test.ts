@@ -42,7 +42,7 @@ describe('report helpers', () => {
     });
 
     it('builds share URLs from the app origin', () => {
-        expect(shareUrl('/share/abc', 'https://tiq.example.com/')).toBe('https://tiq.example.com/share/abc');
+        expect(shareUrl('/share#abc', 'https://tiq.example.com/')).toBe('https://tiq.example.com/share#abc');
     });
 
     it('describes the last digest delivery', () => {

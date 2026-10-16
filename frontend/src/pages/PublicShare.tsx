@@ -1,5 +1,4 @@
 import { useQuery } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
 import { Printer, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Pill } from '@/components/redesign/primitives';
@@ -9,7 +8,9 @@ import { SummaryView } from '@/components/reports/SummaryView';
 import { fmtPct } from '@/components/reports/reportHelpers';
 
 // Public, unauthenticated read-only report, rendered outside the app shell.
-// Data: GET /api/share/{token} - a reduced view (names, statuses, counts).
+// Data: POST /api/share/view - a reduced view (names, statuses, counts).
+// The link is /share#<token>: the fragment never reaches a server, so the
+// token cannot end up in an access log; it is sent in the POST body instead.
 
 const fmtMs = (ms: number | null) => (ms == null ? '—' : ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`);
 const statusTone = (s: string) => (s === 'passed' ? 'mint' : s === 'failed' || s === 'error' ? 'peach' : 'neutral');
@@ -58,7 +59,7 @@ function RunReportView({ data }: { data: PublicRunReport }) {
 }
 
 export default function PublicShare() {
-    const { token } = useParams();
+    const token = decodeURIComponent(window.location.hash.replace(/^#/, '')) || undefined;
     // No retries: a 404 is the answer (expired, revoked, unknown), and the
     // public route is rate-limited.
     const q = useQuery({
