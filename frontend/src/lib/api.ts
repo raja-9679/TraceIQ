@@ -97,6 +97,8 @@ api.interceptors.response.use(
 
 export interface TestRun {
     id: number;
+    // ui_playwright | load | mobile_appium | manual | … (a manual run is recorded by a person).
+    executor?: string;
     // Frontend matrix variant (viewport/locale/scheme) and the sweep it belongs to (WP10).
     emulation?: { label?: string; viewport?: { name: string; width: number; height: number };
         locale?: { locale: string }; color_scheme?: string; reduced_motion?: boolean } | null;

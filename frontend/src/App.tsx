@@ -35,6 +35,10 @@ import Triage from "@/pages/Triage";
 import Analytics from "@/pages/Analytics";
 import Billing from "@/pages/Billing";
 import LLMUsage from "@/pages/LLMUsage";
+import Costs from "@/pages/Costs";
+import ManualCaseEditor from "@/pages/ManualCaseEditor";
+import ManualRun from "@/pages/ManualRun";
+import ReleaseSignoff from "@/pages/ReleaseSignoff";
 import PublicStatus from "@/pages/PublicStatus";
 import PublicShare from "@/pages/PublicShare";
 import ExecutiveSummary from "@/pages/ExecutiveSummary";
@@ -105,6 +109,11 @@ function App() {
                 <Route path="reports/portfolio" element={<Portfolio />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
+                <Route path="costs" element={<Costs />} />
+                <Route path="release-signoff" element={<ReleaseSignoff />} />
+                <Route path="manual-runs/:runId" element={<ManualRun />} />
+                <Route path="suites/:suiteId/manual/new" element={<ManualCaseEditor />} />
+                <Route path="suites/:suiteId/manual/:caseId/edit" element={<ManualCaseEditor />} />
                 <Route path="traceability" element={<Traceability />} />
                 <Route path="requirements" element={<Requirements />} />
                 <Route path="incidents" element={<Incidents />} />

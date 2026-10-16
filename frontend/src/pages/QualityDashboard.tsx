@@ -101,6 +101,8 @@ function PolicyForm({ projectId, initial }: { projectId: number; initial: Qualit
                     onChange={(v) => setPolicy({ ...policy, require_critical_passed: v })} />
                 <NumberRow label="Maximum evidence age, days (critical cases; all if none)" min={1} value={policy.max_evidence_age_days ?? ''}
                     onChange={(v) => setPolicy({ ...policy, max_evidence_age_days: v === '' ? null : Math.max(1, parseInt(v) || 1) })} />
+                <CheckRow label="Require an approved release sign-off (manual testing)" checked={policy.require_manual_signoff ?? false}
+                    onChange={(v) => setPolicy({ ...policy, require_manual_signoff: v })} />
             </div>
             <div className="mt-3 border-t border-border pt-3">
                 <Eyebrow>Performance budgets (0 = off)</Eyebrow>

@@ -29,6 +29,7 @@ import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicy
 import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
 import { FrontendMatrixSettings, RunMatrixPicker } from '@/components/frontend-quality/MatrixFields';
 import { EMPTY_MATRIX, MatrixChoice, matrixRunContext } from '@/components/frontend-quality/matrixHelpers';
+import { manualTestingApi } from '@/api/manualTesting';
 
 const tabVariants: Variants = {
     hidden: { opacity: 0, y: -5 },
@@ -383,7 +384,20 @@ export default function SuiteDetails() {
         });
     };
 
+    // Manual cases are run by a person, not dispatched: "Run" on one starts a
+    // manual run of just that case and opens the tester screen.
+    const startManualRun = useMutation({
+        mutationFn: (caseIds?: number[]) => manualTestingApi.start({ suite_id: Number(suiteId), case_ids: caseIds }),
+        onSuccess: (run) => { navigate(`/manual-runs/${run.id}`); },
+        onError: (error: any) => { toast.error(error.response?.data?.detail || 'Could not start a manual run'); },
+    });
+    const isManual = (tc: any) => tc?.executor === 'manual';
+    const editPath = (tc: any) => isManual(tc)
+        ? `/suites/${suiteId}/manual/${tc.id}/edit` : `/suites/${suiteId}/cases/${tc.id}/edit`;
+
     const handleRunTestCase = (caseId: number) => {
+        const tc = (suite?.test_cases || []).find((c: any) => c.id === caseId);
+        if (isManual(tc)) { startManualRun.mutate([caseId]); return; }
         runTestCaseMutation.mutate(caseId);
     };
 
@@ -573,6 +587,12 @@ export default function SuiteDetails() {
                                 {showCases && canCreateTest && (
                                     <DropdownMenuItem onClick={() => importCaseRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import a test (JSON)</DropdownMenuItem>
                                 )}
+                                {showCases && canCreateTest && (
+                                    <DropdownMenuItem onClick={() => navigate(`/suites/${suiteId}/manual/new`)}><FileText className="mr-2 h-4 w-4" /> New manual test</DropdownMenuItem>
+                                )}
+                                {canCreateTest && (
+                                    <DropdownMenuItem onClick={() => startManualRun.mutate(undefined)}><Play className="mr-2 h-4 w-4" /> Start manual run</DropdownMenuItem>
+                                )}
                                 {showCases && canCreateTest && aiGenerationEnabled && (
                                     <DropdownMenuItem onClick={() => setShowGenerateDialog(true)}><Sparkles className="mr-2 h-4 w-4" /> Generate tests with AI</DropdownMenuItem>
                                 )}
@@ -659,7 +679,7 @@ export default function SuiteDetails() {
                                                         <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-secondary text-ink-soft"><FileText className="h-4 w-4" /></span>
                                                         <div className="min-w-0 flex-1">
                                                             <h3 className="text-base font-semibold leading-snug text-ink">{tc.name}</h3>
-                                                            <p className="mt-0.5 text-xs text-ink-soft">{tc.steps?.length || 0} steps</p>
+                                                            <p className="mt-0.5 text-xs text-ink-soft">{tc.steps?.length || 0} steps{isManual(tc) ? ' · manual' : ''}</p>
                                                         </div>
                                                         {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
                                                     </div>
@@ -675,7 +695,7 @@ export default function SuiteDetails() {
                                                     )}
                                                     <div className="mt-auto flex items-center gap-1.5 border-t border-[#F0EEE8] pt-3">
                                                         <button type="button" aria-label={`Schedule ${tc.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>
-                                                        {canCreateTest && <button type="button" aria-label={`Edit ${tc.name}`} title="Edit" onClick={() => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Edit className="h-4 w-4" /></button>}
+                                                        {canCreateTest && <button type="button" aria-label={`Edit ${tc.name}`} title="Edit" onClick={() => navigate(editPath(tc))} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Edit className="h-4 w-4" /></button>}
                                                         <button type="button" aria-label={`Export ${tc.name}`} title="Export" onClick={() => handleExportCase(tc.id, tc.name)} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Download className="h-4 w-4" /></button>
                                                         {canCreateTest && <button type="button" aria-label={`Delete ${tc.name}`} title="Delete" onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-pastel-ink-peach"><Trash2 className="h-4 w-4" /></button>}
                                                         <Button size="sm" className="ml-auto" onClick={() => handleRunTestCase(tc.id)}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>

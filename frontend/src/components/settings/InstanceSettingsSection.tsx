@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
 import IdpQuickSetupCard from '@/components/settings/IdpQuickSetupCard';
 import SiemStatusPanel from '@/components/settings/SiemStatusPanel';
+import CostPricesEditor from '@/components/settings/CostPricesEditor';
 import { Pill } from '@/components/redesign/primitives';
 import {
     FieldRow, RowGroup, SettingsCard, checkboxClass, inputClass, warnCalloutClass,
@@ -17,14 +18,14 @@ import {
 interface InstanceSetting {
     key: string;
     group: string;
-    type: 'str' | 'int' | 'bool' | 'list';
+    type: 'str' | 'int' | 'bool' | 'list' | 'json';
     secret: boolean;
     restart_required: boolean;
     label: string;
     description: string;
     source: 'database' | 'environment';
-    value: string | number | boolean | string[] | null;
-    env_default: string | number | boolean | string[] | null;
+    value: string | number | boolean | string[] | Record<string, unknown> | null;
+    env_default: string | number | boolean | string[] | Record<string, unknown> | null;
     is_set: boolean;
 }
 
@@ -44,6 +45,7 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'worker', title: 'Execution workers', description: 'Runtime config every execution worker fetches from /api/internal/worker-config at start and every 60s (blank = the worker keeps its own environment value), plus the instance-wide egress allowlist. Redis, the worker secret, MinIO credentials and WORKER_REGION stay environment-only on the worker.' },
     { id: 'network', title: 'Network access control', description: 'Trusted reverse proxies (whose X-Forwarded-For is believed), the SCIM source allowlist, and optional mTLS for worker → backend calls. A wrong CIDR here can lock out your IdP — values are validated on save.' },
     { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results.' },
+    { id: 'cost', title: 'Cost', description: 'Your own prices, used to turn AI tokens and worker time into money on the Costs page and for project budgets. Nothing is priced until a currency is set; a model missing from the table shows as not priced. TraceIQ ships no vendor prices.' },
 ];
 
 // Subject DNs, region grants ("eu=12,15") and PromQL templates contain
@@ -62,6 +64,8 @@ export default function InstanceSettingsSection() {
     // Pending edits by key. Secrets hold the newly typed plaintext; '' = untouched.
     const [pending, setPending] = useState<Record<string, string | boolean>>({});
     const [testEmailTo, setTestEmailTo] = useState('');
+    // Structured editors (json settings) that currently hold an invalid value.
+    const [jsonErrors, setJsonErrors] = useState<Record<string, string>>({});
 
     const { data: settings, isLoading, error } = useQuery({
         queryKey: ['instance-settings'],
@@ -77,6 +81,7 @@ export default function InstanceSettingsSection() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['instance-settings'] });
             setPending({});
+            setJsonErrors({});
             toast.success('Instance settings saved. Changes apply within ~15 seconds (storage needs a restart).');
         },
         onError: (err: any) =>
@@ -148,6 +153,8 @@ export default function InstanceSettingsSection() {
     const hasPending = Object.keys(pending).length > 0;
 
     const save = () => {
+        const firstJsonError = Object.entries(jsonErrors)[0];
+        if (firstJsonError) { toast.error(`${firstJsonError[0]}: ${firstJsonError[1]}`); return; }
         const values: Record<string, unknown> = {};
         for (const [key, raw] of Object.entries(pending)) {
             const def = settings?.find((s) => s.key === key);
@@ -167,6 +174,8 @@ export default function InstanceSettingsSection() {
                 }
                 values[key] = n;
             }
+            // json: '' resets to unset (the server stores nothing).
+            else if (def.type === 'json') values[key] = String(raw).trim() === '' ? null : JSON.parse(String(raw));
             else if (def.type === 'list')
                 values[key] = String(raw)
                     .split(LINE_LIST_KEYS.has(key) ? '\n' : ',')
@@ -186,6 +195,18 @@ export default function InstanceSettingsSection() {
     const fieldId = (key: string) => `inst-${key}`;
 
     const renderField = (s: InstanceSetting) => {
+        if (s.type === 'json') {
+            return (
+                <CostPricesEditor
+                    key={`${s.key}-${JSON.stringify(s.value)}`}
+                    value={s.value}
+                    onChange={(json, err) => {
+                        setPending((p) => ({ ...p, [s.key]: json }));
+                        setJsonErrors((e) => { const rest = { ...e }; delete rest[s.key]; return err ? { ...rest, [s.key]: err } : rest; });
+                    }}
+                />
+            );
+        }
         if (s.type === 'bool') {
             const checked = s.key in pending ? pending[s.key] === true : s.value === true;
             return (

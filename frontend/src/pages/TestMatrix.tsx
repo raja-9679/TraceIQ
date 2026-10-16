@@ -237,13 +237,16 @@ export default function TestMatrix() {
                                         </span>
                                         <KindChip kind={look.kind} size="sm" />
                                         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                                            <Link
-                                                to={`/runs/${run.id}`}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="truncate text-sm font-semibold text-ink hover:underline"
-                                            >
-                                                {title || <span className="italic text-ink-soft">Unnamed execution</span>}
-                                            </Link>
+                                            <span className="flex min-w-0 items-center gap-2">
+                                                <Link
+                                                    to={run.executor === 'manual' ? `/manual-runs/${run.id}` : `/runs/${run.id}`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="truncate text-sm font-semibold text-ink hover:underline"
+                                                >
+                                                    {title || <span className="italic text-ink-soft">Unnamed execution</span>}
+                                                </Link>
+                                                {run.executor === 'manual' && <Pill tone="lavender">Manual</Pill>}
+                                            </span>
                                             <span className="truncate text-xs text-ink-soft" title={run.suite_name && run.test_case_name ? run.test_case_name : undefined}>
                                                 <span className="font-mono">#{run.id}</span>
                                                 {' · '}{formatDate(run.created_at)}

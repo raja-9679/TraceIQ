@@ -217,6 +217,9 @@ export default function TestRunDetails() {
                     (run as any).triggered_by ? `by ${(run as any).triggered_by}` : null,
                 ].filter(Boolean).join(' · ')}
                 actions={<>
+                    {run.executor === 'manual' && (
+                        <Button asChild><Link to={`/manual-runs/${run.id}`}>Open manual run</Link></Button>
+                    )}
                     {run.baseline_run_id && (
                         <Button asChild variant="outline"><Link to={`/runs/${run.id}/comparison`}><GitCompareArrows size={16} /> View comparison</Link></Button>
                     )}

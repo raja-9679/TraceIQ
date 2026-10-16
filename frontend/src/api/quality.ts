@@ -41,6 +41,8 @@ export interface QualityGatePolicy {
     max_flaky_cases: number | null;
     require_critical_passed: boolean;
     max_evidence_age_days: number | null;
+    // The newest release sign-off (for the commit) must be an approval.
+    require_manual_signoff?: boolean;
 }
 
 export interface ExternalTestReport {
