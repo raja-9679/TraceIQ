@@ -46,6 +46,10 @@ PERSONAL_TABLES: Dict[str, str] = {
     "user_settings": "user_id",
     "projectnotificationpref": "user_id",
     "refreshtoken": "user_id",
+    # WP14a: assistant chats are the person's own questions and the answers
+    # given to them. Messages before conversations (FK order).
+    "assistantmessage": "user_id",
+    "assistantconversation": "user_id",
 }
 
 # Authorship columns. Left pointing at the scrubbed row: these are the

@@ -234,6 +234,15 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("compliancecontrol",
               "DELETE FROM compliancecontrol WHERE workspace_id = :workspace_id"),
     PurgeStep("evidencepack", "DELETE FROM evidencepack WHERE workspace_id = :workspace_id"),
+    # WP14a assistant: messages first (they reference the conversation), both
+    # before projects (a conversation may name its focus project).
+    PurgeStep("assistantmessage",
+              "DELETE FROM assistantmessage WHERE workspace_id = :workspace_id "
+              "OR conversation_id IN (SELECT id FROM assistantconversation "
+              "WHERE workspace_id = :workspace_id)"),
+    PurgeStep("assistantconversation",
+              f"DELETE FROM assistantconversation WHERE workspace_id = :workspace_id "
+              f"OR project_id IN ({_PROJECTS})"),
     PurgeStep("apikey",
               f"DELETE FROM apikey WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})",

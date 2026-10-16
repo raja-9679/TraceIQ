@@ -73,6 +73,11 @@ ON_DELETE: Dict[str, str] = {
     # alert dedupe rows are project configuration (WP12d).
     "releasesignoff.project_id": DELETE,
     "projectcostbudget.project_id": DELETE,
+    # WP14a: the project was only the chat's focus; the conversation is the
+    # user's and survives. Answers that used the project's data become
+    # unreadable anyway (reading one requires access to every project it used)
+    # and age out with the 30-day retention.
+    "assistantconversation.project_id": NULLIFY,
     "costbudgetalert.project_id": DELETE,
     "externaltestreport.project_id": DELETE,
     "failurecluster.project_id": DELETE,

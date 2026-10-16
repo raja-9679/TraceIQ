@@ -82,6 +82,9 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     SettingDef("OLLAMA_BASE_URL", "ai", label="Ollama base URL"),
     SettingDef("LLM_BASE_URL", "ai", label="OpenAI-compatible base URL"),
     SettingDef("LLM_API_KEY", "ai", secret=True, label="OpenAI-compatible API key"),
+    SettingDef("ASSISTANT_ENABLED", "ai", type="bool", label="In-app assistant",
+               description="the read-only \"Ask TraceIQ\" chat. It only reads what each "
+                           "user can already see and needs a provider above"),
     # --- Storage (read at process start; UI shows a restart banner) ---
     SettingDef("MINIO_ENDPOINT", "storage", restart_required=True,
                label="S3/MinIO endpoint", description="host:port, backend-reachable"),

@@ -3569,6 +3569,54 @@ class TrustDocument(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+# =============================================================================
+# WP14a — in-app assistant (E20, decision W1). A read-only chat over the
+# caller's own data: app/services/assistant.py (orchestration, citations) and
+# app/services/assistant_tools.py (the read-only tool allow-list). Per user and
+# workspace, never visible to anyone else, kept 30 days
+# (cleanup_tasks.purge_assistant_conversations) and deletable by the user.
+# =============================================================================
+
+
+class AssistantConversation(SQLModel, table=True):
+    """One chat thread. `project_id` is only the focus the thread was opened
+    from; tools may read any project the caller can access at question time."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    title: str = Field(default="New conversation")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class AssistantMessage(SQLModel, table=True):
+    """A question or an answer. Stored content is what the user may see again:
+    the question after redaction, the answer the model gave. Raw prompts and
+    tool payloads are never stored — `tool_calls` keeps only the tool name,
+    its arguments and the refs it returned (the audit trail of what was read).
+    `project_ids` lists every project whose data reached the model for this
+    answer; reading the answer later requires access to all of them.
+    user_id / workspace_id are denormalised so erasure and the workspace purge
+    reach messages without a join."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    conversation_id: int = Field(foreign_key="assistantconversation.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    role: str                                   # user | assistant
+    content: str = Field(sa_column=Column(Text, nullable=False))
+    # assistant only: answered | step_limit | invalid | not_configured |
+    # disabled | quota | no_response
+    status: Optional[str] = Field(default=None)
+    citations: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    tool_calls: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    project_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    uncited: bool = Field(default=False)
+    dropped_citations: int = Field(default=0)
+    provider: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
 # Seal every AuditLog row as it is flushed, in whichever process created it —
 # the API, a Celery worker, a script. Installed here rather than in a startup
 # hook because models.py is imported by every path that can write an audit row,

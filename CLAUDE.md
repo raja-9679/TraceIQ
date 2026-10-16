@@ -1153,6 +1153,39 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   new case fields and ignores `variables`. wait-for-webhook cannot assert
   headers, so the webhook pack does not check signatures (says so).
 
+- **In-app assistant "Ask TraceIQ" (WP14a, 2026-10, decision W1)** — migration
+  `d012b3c4d5f8` (`assistantconversation`, `assistantmessage`). API
+  `app/api/assistant.py` (`/api/assistant/status`, `/conversations` CRUD,
+  `POST /conversations/{id}/messages {text, workspace_id, project_id?}`, 20/min);
+  loop + citations `app/services/assistant.py`; tools
+  `app/services/assistant_tools.py`. Uses only `provider.complete()`: a JSON
+  protocol (`{"tool","args"}` or `{"answer","citations"}`), max 4 tool calls,
+  one corrective retry, then prose → uncited answer / fixed apology. Tools are a
+  fixed READ-ONLY allow-list (runs, results, flaky, clusters, readiness,
+  findings, cases, project overview) — no writes, no dispatch, no artifact
+  URLs/headers/bodies. Scope = `accessible_projects` recomputed per message
+  (API key: own workspace + project only); a project/record id the model names
+  outside it gets "not found or not accessible" (no oracle), and `run_tool`
+  post-filters every item by `project_id` whatever the data layer returned.
+  Everything to the LLM goes through `redact_for_llm` (shared patterns minus
+  phone — it eats ISO dates — plus key=value secrets, bearer, `tiq_` keys,
+  URL query/opaque path tokens), results capped at 6000 chars, fenced by a
+  per-question random `<data-…>` tag declared untrusted. Refs `run:`/`result:`/
+  `cluster:`/`finding:`/`case:`/`project:`/`readiness:` — only refs a tool
+  returned in the conversation (and still in scope) survive; invented inline
+  refs become `[unverified]`, an answer citing nothing is `uncited`. Stored:
+  question redacted, answer, citations, tool calls (name/args/refs, never
+  payloads), `project_ids` — reading an answer later needs access to ALL of
+  them (lost access or a narrower key → hidden). Private per user (404 for
+  anyone else, admins included). 30 days: beat `purge_assistant_conversations`
+  (daily) + read path filters older rows. Gate `assistant_allowed(session,
+  workspace_id)` = instance setting `ASSISTANT_ENABLED` (ai group, default on)
+  + non-Null provider → friendly stored answers for not_configured / disabled
+  / quota; the W2 opt-out policy plugs in there. Metered as feature
+  `assistant`. Purge plan, erasure (`PERSONAL_TABLES`) and entity delete
+  (`assistantconversation.project_id` NULLIFY) cover the tables. UI: "Ask
+  TraceIQ" button in the DashboardLayout header opens a drawer.
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

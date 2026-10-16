@@ -420,3 +420,18 @@ def purge_webhook_captures(ttl_hours: int = WEBHOOK_CAPTURE_TTL_HOURS):
     if total:
         print(f"[Cleanup] Expired {total} webhook capture(s) older than {ttl_hours} h")
     return total
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_assistant_conversations")
+def purge_assistant_conversations():
+    """Delete assistant messages older than 30 days and conversations idle
+    that long (WP14a). A beat task rather than a purge on read: retention has
+    to hold for users who never open the assistant again. The read path also
+    hides anything older, so the gap between runs is never visible."""
+    from app.services.assistant import purge_expired_sync
+
+    with Session(sync_engine) as session:
+        total = purge_expired_sync(session)
+    if total:
+        print(f"[Cleanup] Expired {total} assistant message/conversation row(s)")
+    return total
