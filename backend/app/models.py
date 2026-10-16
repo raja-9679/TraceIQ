@@ -3272,6 +3272,10 @@ class JourneyConfig(SQLModel, table=True):
     project_id: int = Field(foreign_key="project.id", index=True, unique=True)
     # [{pattern, kind: "pattern"|"regex", name?}]
     path_rules: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
+    updated_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
 class ReleaseSignoff(SQLModel, table=True):
     """A person's go / no-go for a release of one project (WP12d).
 

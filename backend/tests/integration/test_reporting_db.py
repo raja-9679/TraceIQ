@@ -211,7 +211,7 @@ async def _share(session, scene, who=None, **body):
 
 
 async def _view(session, token):
-    return await share_api.public_share.__wrapped__(token, _req(), session=session)
+    return await share_api.public_share.__wrapped__(_req(), {"token": token}, session=session)
 
 
 async def test_share_link_lifecycle(session, scene):

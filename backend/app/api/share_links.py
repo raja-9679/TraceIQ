@@ -7,7 +7,11 @@
     GET    /api/workspaces/{id}/share-links     the workspace summary links (member)
     DELETE /api/share-links/{id}                revoke (editor on the project; for a
                                                 workspace link, its creator or a workspace admin)
-    GET    /api/share/{token}                   PUBLIC, rate-limited, every view audited
+    POST   /api/share/view  {"token": ...}     PUBLIC, rate-limited, every view audited
+
+The token never travels in a URL a server sees: links are /share#<token> (a
+fragment stays in the browser) and the page POSTs it in the body, so access
+logs (uvicorn, nginx, proxies) cannot capture it.
 
 Rules (tokens hashed, expiry, what the public payload may contain):
 app/services/share_links.py.
@@ -76,7 +80,7 @@ async def _issue(session: AsyncSession, request: Request, principal: AuthPrincip
     out = sl.describe(link, principal.user)
     # The only time the token leaves the server.
     out["token"] = token
-    out["path"] = f"/share/{token}"
+    out["path"] = f"/share#{token}"
     return out
 
 
@@ -208,12 +212,15 @@ async def build_public_payload(session: AsyncSession, link: ShareLink) -> Option
     return None
 
 
-@router.get("/share/{token}")
+@router.post("/share/view")
 @limiter.limit("30/minute")
-async def public_share(token: str, request: Request, session: AsyncSession = Depends(get_session)):
-    """PUBLIC - no auth. The token is the credential: it is hashed before the
-    lookup and never logged or audited."""
-    if not token or len(token) > 128:
+async def public_share(request: Request, body: Dict[str, Any] = Body(...),
+                       session: AsyncSession = Depends(get_session)):
+    """PUBLIC - no auth. The token is the credential: it arrives in the body
+    (never a URL, see module docstring), is hashed before the lookup and is
+    never logged or audited."""
+    token = body.get("token") if isinstance(body, dict) else None
+    if not isinstance(token, str) or not token or len(token) > 128:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
     link = (await session.exec(select(ShareLink).where(
         ShareLink.token_hash == sl.hash_token(token)))).first()
