@@ -32,6 +32,7 @@ import datetime as _dt
 import json
 import logging
 import os
+import re
 import sys
 import traceback
 import uuid
@@ -112,6 +113,38 @@ def _trace_context() -> tuple[Optional[str], Optional[str]]:
     if not ctx or not ctx.is_valid:
         return None, None
     return format(ctx.trace_id, "032x"), format(ctx.span_id, "016x")
+
+
+#: Query parameters whose values are credentials. A URL is logged by uvicorn's
+#: access log and its WebSocket "[accepted]" line; any of these in it would
+#: put a live credential in the logs (and in whatever ships them to a SIEM).
+_SECRET_QUERY_RE = re.compile(
+    r"([?&](?:token|access_token|refresh_token|id_token|api_key|apikey|password|secret)=)[^&\s\"']+",
+    re.IGNORECASE)
+
+
+def redact_secret_query(text: str) -> str:
+    """Mask credential-bearing query parameter values in a log message."""
+    return _SECRET_QUERY_RE.sub(r"\1[REDACTED]", text)
+
+
+class RedactSecretsFilter(logging.Filter):
+    """Rewrites each record's message with credential query values masked.
+
+    Formats the message once (msg % args) and stores the redacted result, so
+    every formatter — text or JSON — sees only the masked form.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            message = record.getMessage()
+        except Exception:  # noqa: BLE001 - a bad format string must not drop the line
+            return True
+        redacted = redact_secret_query(message)
+        if redacted != message:
+            record.msg = redacted
+            record.args = None
+        return True
 
 
 class ContextFilter(logging.Filter):
@@ -236,6 +269,7 @@ def configure_logging(service: str = "") -> str:
     _real_stdout = sys.stdout if _real_stdout is None else _real_stdout
     handler = logging.StreamHandler(_real_stdout)
     handler.addFilter(ContextFilter())
+    handler.addFilter(RedactSecretsFilter())
     if fmt == "json":
         handler.setFormatter(JsonFormatter(service=service))
     else:
