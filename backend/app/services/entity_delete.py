@@ -85,6 +85,11 @@ ON_DELETE: Dict[str, str] = {
     "requirementlink.project_id": DELETE,
     "requirement.project_id": DELETE,
     "incident.project_id": DELETE,
+    # Reporting data (WP12b): deployment events and roll-ups of the project.
+    "deployment.project_id": DELETE,
+    "flakedailysnapshot.project_id": DELETE,
+    "flakecasescoredaily.project_id": DELETE,
+    "vendorhealthdaily.project_id": DELETE,
     "incidentwebhook.project_id": DELETE,
     # The matrix is project configuration; its runs/cells are its history.
     "accessmatrix.project_id": DELETE,
@@ -125,6 +130,7 @@ ON_DELETE: Dict[str, str] = {
     "testcaserevision.test_case_id": DELETE,
     "visualbaseline.test_case_id": DELETE,
     "flakerecord.test_case_id": DELETE,
+    "flakecasescoredaily.test_case_id": DELETE,  # that case's score history
     "selectorhealproposal.test_case_id": DELETE,  # a proposal to edit the case
     "caseproposal.target_case_id": DELETE,  # update/delete of a case that's gone
     "usertestcaseaccess.test_case_id": DELETE,
@@ -177,6 +183,7 @@ ON_DELETE: Dict[str, str] = {
     "sitecrawlrun.crawl_id": DELETE,        # a crawl's own executions
     "sitecrawlissue.crawl_run_id": DELETE,
     "testrun.environment_id": NULLIFY,      # a run outlives an environment
+    "deployment.environment_id": NULLIFY,   # a deployment record outlives it too
     "testcaseresult.cluster_id": NULLIFY,   # a result outlives its cluster
 }
 

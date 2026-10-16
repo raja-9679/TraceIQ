@@ -30,6 +30,8 @@ from app.api import jobs as jobs_api
 from app.api import traceability as traceability_api
 from app.api import requirements as requirements_api
 from app.api import incidents as incidents_api
+from app.api import dora as dora_api
+from app.api import reliability_reports as reliability_reports_api
 from app.api import app_builds as app_builds_api
 from app.api import case_revisions as case_revisions_api
 from app.api import observability as observability_api
@@ -184,6 +186,8 @@ app.include_router(jobs_api.router, prefix="/api", tags=["local-worker-jobs"])
 app.include_router(traceability_api.router, prefix="/api", tags=["traceability"])
 app.include_router(requirements_api.router, prefix="/api", tags=["requirements"])
 app.include_router(incidents_api.router, prefix="/api", tags=["incidents"])
+app.include_router(dora_api.router, prefix="/api", tags=["dora"])
+app.include_router(reliability_reports_api.router, prefix="/api", tags=["reliability-reports"])
 app.include_router(app_builds_api.router, prefix="/api", tags=["app-builds"])
 app.include_router(case_revisions_api.router, prefix="/api", tags=["case-revisions"])
 app.include_router(developer_api.router, prefix="/api", tags=["developer"])

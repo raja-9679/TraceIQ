@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import (
@@ -694,6 +694,9 @@ class UserReadDetailed(UserRead):
 
 
 class TestRun(TestRunBase, table=True):
+    # Reporting reads (trends, flake patterns, dependency roll-ups) all filter
+    # one project's runs by time.
+    __table_args__ = (Index("ix_testrun_project_created", "project_id", "created_at"),)
     id: Optional[int] = Field(default=None, primary_key=True)
     results: List["TestCaseResult"] = Relationship(
         back_populates="test_run", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
@@ -732,7 +735,8 @@ class TestRunRead(TestRunBase):
 
 class TestCaseResult(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    test_run_id: int = Field(foreign_key="testrun.id")
+    # Indexed (WP12b): every report joins results to their runs.
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
     test_name: str
     status: TestStatus
     duration_ms: float
@@ -906,6 +910,12 @@ class TestSchedule(TestScheduleBase, table=True):
     # {region: {"state", "last_alert_state", "last_checked_at"}}. The scalar
     # columns above then hold the aggregate (down if any region is down).
     region_states: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    # SLO targets (WP12b, decision R7). Set only through PUT
+    # /api/schedules/{id}/slo, so kept off the Base. NULL availability = the
+    # report uses the default target and says so; NULL window = 30 days.
+    slo_availability_target: Optional[float] = Field(default=None)
+    slo_latency_p95_ms: Optional[int] = Field(default=None)
+    slo_window_days: Optional[int] = Field(default=None)
 
     project: Optional["Project"] = Relationship()
     test_suite: Optional["TestSuite"] = Relationship()
@@ -3112,6 +3122,104 @@ class PageBudgetSample(SQLModel, table=True):
     seo: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
     passed: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------------------
+# WP12b — delivery and reliability reporting (DORA, SLOs, flake trends,
+# third-party dependency health)
+# ---------------------------------------------------------------------------
+
+class Deployment(SQLModel, table=True):
+    """One deployment of the project, reported by CI (`POST
+    /api/projects/{id}/deployments`). The explicit event is the only DORA
+    source (decision R3): guessing deployments from runs would count every
+    nightly regression as a release.
+
+    `external_id` (the CI run id) makes a retried CI step idempotent; NULLs
+    don't collide in the unique constraint. `api_key_id` is a soft pointer like
+    TestRun.api_key_id."""
+    __table_args__ = (UniqueConstraint("project_id", "external_id",
+                                       name="uq_deployment_project_external"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    environment_id: Optional[int] = Field(default=None, foreign_key="projectenvironment.id")
+    git_commit: Optional[str] = Field(default=None, index=True)
+    git_branch: Optional[str] = None
+    git_repo: Optional[str] = None
+    version: Optional[str] = None
+    # success | failed — a deployment that itself failed counts as a change failure.
+    status: str = Field(default="success")
+    deployed_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    # When the change was committed, if CI knows; else lead time starts at the
+    # first TestRun with this git_commit.
+    commit_at: Optional[datetime] = None
+    source: str = Field(default="api")
+    external_id: Optional[str] = None
+    url: Optional[str] = None
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    api_key_id: Optional[int] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FlakeDailySnapshot(SQLModel, table=True):
+    """Per-project flake picture for one UTC day, written by the beat task
+    app.tasks.reliability_tasks.snapshot_flake_trends (re-runs that day
+    overwrite it). FlakeRecord only holds the current score; this is history."""
+    __table_args__ = (UniqueConstraint("project_id", "day", name="uq_flakesnapshot_project_day"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    day: date
+    flaky_cases: int = 0          # cases with a flake score >= FLAKY_SCORE
+    quarantined_cases: int = 0
+    avg_flake_score: Optional[float] = None
+    results_total: int = 0        # finished results of runs created that day
+    results_flaky: int = 0
+    results_failed: int = 0
+    computed_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class FlakeCaseScoreDaily(SQLModel, table=True):
+    """One case's flake score as of a UTC day (max over its FlakeRecords)."""
+    __table_args__ = (UniqueConstraint("test_case_id", "day", name="uq_flakecasescore_case_day"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    day: date
+    flake_score: float = 0.0
+    is_quarantined: bool = False
+    sample_count: int = 0
+
+
+class VendorHealthDaily(SQLModel, table=True):
+    """Third-party requests of one project's runs on one UTC day, grouped by
+    vendor (registrable domain). Built by
+    app.tasks.reliability_tasks.aggregate_vendor_health from
+    TestRun.network_events so reads never scan the JSON.
+
+    Only hosts are kept — never paths or query strings, which carry ids and
+    tokens. `latency_hist` counts requests per vendor_health.LATENCY_BUCKETS
+    bucket so percentiles over a multi-day window can be merged."""
+    __table_args__ = (UniqueConstraint("project_id", "day", "vendor",
+                                       name="uq_vendorhealth_project_day_vendor"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    day: date = Field(index=True)
+    vendor: str
+    requests: int = 0
+    errors: int = 0               # status >= 400 or no status
+    latency_hist: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
+    latency_p50_ms: Optional[float] = None
+    latency_p95_ms: Optional[float] = None
+    hosts: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    runs: int = 0                 # runs that called the vendor
+    runs_with_errors: int = 0
+    # Correlation inputs: finished results of runs that called the vendor,
+    # split by result outcome and by whether that run saw a vendor error.
+    failed_results: int = 0
+    failed_results_vendor_errors: int = 0
+    passed_results: int = 0
+    passed_results_vendor_errors: int = 0
+    computed_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

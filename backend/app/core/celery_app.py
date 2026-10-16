@@ -78,6 +78,7 @@ celery_app = Celery(
         "app.tasks.estate_tasks",       # Estate scans + monitored pages (WP9)
         "app.tasks.paging_tasks",       # PagerDuty / Opsgenie run-failure paging
         "app.tasks.frontend_quality_tasks",  # Site crawler dispatch/collect + schedules (WP10)
+        "app.tasks.reliability_tasks",  # Flake trend snapshots + vendor health roll-ups (WP12b)
     ]
 )
 
@@ -122,6 +123,8 @@ celery_app.conf.task_routes = {
     "app.tasks.frontend_quality_tasks.process_due_crawls": "main-queue",
     "app.tasks.frontend_quality_tasks.dispatch_site_crawl": "main-queue",
     "app.tasks.frontend_quality_tasks.collect_site_crawl": "main-queue",
+    "app.tasks.reliability_tasks.snapshot_flake_trends": "main-queue",
+    "app.tasks.reliability_tasks.aggregate_vendor_health": "main-queue",
 }
 
 # Configure Celery Beat schedule for periodic tasks
@@ -210,6 +213,16 @@ celery_app.conf.beat_schedule = {
     'dispatch-due-page-checks': {
         'task': 'app.tasks.estate_tasks.dispatch_due_page_checks',
         'schedule': 300.0,
+    },
+    # WP12b reporting roll-ups. Both rewrite whole days, so a missed or
+    # repeated tick changes nothing but freshness.
+    'snapshot-flake-trends': {
+        'task': 'app.tasks.reliability_tasks.snapshot_flake_trends',
+        'schedule': 21600.0,  # every 6 h; the day's last snapshot wins
+    },
+    'aggregate-vendor-health': {
+        'task': 'app.tasks.reliability_tasks.aggregate_vendor_health',
+        'schedule': 3600.0,   # hourly; rebuilds today + yesterday
     },
 }
 

@@ -112,6 +112,16 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("caseproposal",
               f"DELETE FROM caseproposal WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("flakerecord", f"DELETE FROM flakerecord WHERE test_case_id IN ({_CASES})"),
+    # Reporting history (WP12b): flake trend snapshots, vendor roll-ups and
+    # deployment events are the project's own derived data.
+    PurgeStep("flakecasescoredaily",
+              f"DELETE FROM flakecasescoredaily WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_case_id IN ({_CASES})"),
+    PurgeStep("flakedailysnapshot",
+              f"DELETE FROM flakedailysnapshot WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("vendorhealthdaily",
+              f"DELETE FROM vendorhealthdaily WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("deployment", f"DELETE FROM deployment WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("testcaserevision",
               f"DELETE FROM testcaserevision WHERE test_case_id IN ({_CASES})"),
     PurgeStep("visualbaseline",

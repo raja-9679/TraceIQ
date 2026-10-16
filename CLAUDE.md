@@ -909,6 +909,54 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   field there only on purpose. UI: Analytics digest card, `/reports/summary`
   (print CSS), `/reports/portfolio`, run page "Share", public `/share/:token`.
 
+- **Delivery + reliability reports (WP12b, 2026-10)** — migration
+  `ce22b3c4d5f2`: tables `deployment`, `flakedailysnapshot`,
+  `flakecasescoredaily`, `vendorhealthdaily`; `testschedule.slo_*` columns;
+  indexes `ix_testrun_project_created`, `ix_testcaseresult_test_run_id`
+  (CONCURRENTLY, IF NOT EXISTS — legacy DBs may have the latter).
+  **DORA** (`app/api/dora.py`, maths in `app/services/dora.py`): the only
+  source of "a deployment happened" is `POST /api/projects/{id}/deployments`
+  (editor, or an API key that `api_key_allows_project`; body `git_commit`,
+  `environment`|`environment_id`, `version`, `status` success|failed,
+  `deployed_at`, `commit_at`, `source`, `external_id` — same external id =
+  update, so CI retries don't double-count). `GET /projects/{id}/dora?days=&environment_id=`.
+  Lead time = deployed_at − commit_at, else − first TestRun with that
+  git_commit (exact match). Change failure = deployment status failed, an
+  incident within 24 h (attributed to ONE deployment: the one whose commit/
+  version it names, else the latest preceding; incidents have no environment,
+  so project-wide), or a failed run on the same environment (NULL = NULL)
+  within 24 h. MTTR = median resolved_at − started_at. Bands use the 2023
+  State of DevOps thresholds; every metric returns `missing` text when it has
+  no inputs. curl/GitHub Actions snippet:
+  ```bash
+  curl -fsS -X POST "$TRACEIQ_URL/api/projects/$PROJECT_ID/deployments" \
+    -H "X-API-Key: $TRACEIQ_API_KEY" -H "Content-Type: application/json" \
+    -d '{"git_commit":"'"$GITHUB_SHA"'","environment":"production","version":"v1.4.2",
+         "status":"success","source":"github-actions","external_id":"'"$GITHUB_RUN_ID"'"}'
+  ```
+  (full workflow step in `integrations/github-action/README.md`).
+  **SLOs** (`app/api/reliability_reports.py`, `app/services/slo.py`):
+  `GET|PUT /schedules/{id}/slo` (PUT editor, audited), `GET /projects/{id}/slo`;
+  window 7/30/90 (default 30, rolling); NULL target = 99.9 and
+  `target_is_default`. Budget remaining can go negative (overspent); burn rate
+  for the window and the last 24 h (status `at_risk` when 24 h burn > 1);
+  latency p95 from `MonitorCheck.run_id → TestRun.duration_ms` (nearest rank),
+  per region only when >1 region.
+  **Flake trends** — beat `snapshot-flake-trends` (6 h,
+  `reliability_tasks.snapshot_flake_trends`) replaces today's rows (idempotent;
+  refreshes yesterday's result counts); 180-day retention.
+  `GET /analytics/projects/{id}/flake-trend` and `/flake-patterns` (browser,
+  UTC hour, environment, failing step type — the step type is extracted in SQL
+  from `result_payload.step_evidence` so the JSON never leaves Postgres).
+  **Dependency health** — beat `aggregate-vendor-health` (hourly) rebuilds
+  today + yesterday per project from `TestRun.network_events` (responses only;
+  "errors" = status ≥ 400 or none); `aggregate_vendor_health(days_back=N)`
+  backfills. Vendor = `script_inventory.site_of` of hosts outside the run's own
+  sites (first document per case, target_url, environment base_url). Only
+  HOSTS are stored — never paths or queries. Latency is a bucketed histogram
+  (mergeable; percentiles are bucket upper bounds). Correlation = share of
+  failed vs passed results whose run saw an error from that vendor.
+  `GET /projects/{id}/dependency-health?days=`. All reads: project viewer.
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,
