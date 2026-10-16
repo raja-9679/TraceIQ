@@ -28,6 +28,9 @@ import ReleaseReadiness from "@/pages/ReleaseReadiness";
 import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
 import AccessReviews from "@/pages/AccessReviews";
+import ComplianceControls from "@/pages/ComplianceControls";
+import EvidencePacks from "@/pages/EvidencePacks";
+import AuditLog from "@/pages/AuditLog";
 import AccessMatrix from "@/pages/AccessMatrix";
 import Estate from "@/pages/Estate";
 import ScriptInventory from "@/pages/ScriptInventory";
@@ -100,6 +103,10 @@ function App() {
                 <Route path="monitors" element={<Monitors />} />
                 <Route path="security" element={<Security />} />
                 <Route path="access-reviews" element={<AccessReviews />} />
+                <Route path="compliance/controls" element={<ComplianceControls />} />
+                <Route path="compliance/controls/:controlId" element={<ComplianceControls />} />
+                <Route path="compliance/evidence-packs" element={<EvidencePacks />} />
+                <Route path="audit-log" element={<AuditLog />} />
                 <Route path="access-matrix" element={<AccessMatrix />} />
                 <Route path="estate" element={<Estate />} />
                 <Route path="script-inventory" element={<ScriptInventory />} />
