@@ -28,6 +28,18 @@ Items needing a real third-party account (Splunk/Elastic, PagerDuty/Opsgenie,
 Jira/Linear, a cloud region) are built against the documented API and tested
 with mocks/fakes; they are marked **mock-verified**.
 
+## WP12 product defaults (2026-10-16, owner may overrule)
+
+| # | Question | Decision |
+|---|---|---|
+| R1 | Digest recipients and channels | Reuse per-project notification rules: picked project members (access re-checked at send) + extra addresses; chat only to the project's own webhooks. Editing / send-now need editor. Fixes the existing report path, which posted to the instance webhook and emailed unchecked addresses. |
+| R2 | Share links | Signed, expiring (default 7 days, max 90), revocable, token stored hashed, rate-limited, every view audited; redacted view (no artifacts, URLs or error text). |
+| R3 | DORA source | Explicit deployment events (`POST` from CI with commit/env); change failure = deployment followed by an incident or failed post-deploy run within 24h; MTTR from incidents. |
+| R4 | Cost rates | Admin-editable price table (per LLM model per 1M tokens, per worker-minute) in instance settings; worker minutes from result durations. |
+| R5 | Manual testing | `manual` executor; tester records pass/fail/blocked per case per run; release sign-off honours `require_separate_approver`. |
+| R6 | Journey analytics | Generic CSV/JSON page-view import (decision 5), matched against routes the cases visit. |
+| R7 | SLOs | Per monitor: availability % and latency (p95 ms) targets over a rolling 30 days, error budget and burn rate. |
+
 ## Status legend
 `done` merged into base · `wip` in progress · `todo` · `skip` (decision above)
 
@@ -47,7 +59,7 @@ with mocks/fakes; they are marked **mock-verified**.
 | 9 | **Estate & perimeter scanning**: domain estate score, third-party script inventory + change alerts (PCI 6.4.3/11.6.1), defacement monitoring, SPF/DKIM/DMARC + subdomain takeover + cert calendar, WAF validation, origin bypass, TLS grade + port exposure | done (passive; active parked) | feat/wp9 |
 | 10 | **Frontend quality**: screen-size sweep, broken-link crawler, Lighthouse/SEO budgets, locale/RTL/theme matrix, selector-health report, component (Storybook) targets | done | feat/wp10 |
 | 11 | **Developer workflow**: reproduce-locally bundle + CLI replay (D15), git export of cases, PR comment with failing step + screenshot, API response-schema validation | done | feat/wp11 |
-| 12 | **Reporting**: weekly digest, manual cases + tester sign-off, shareable read-only report, journey coverage map (A4, analytics import), business journey board, DORA, exec summary, portfolio dashboard, SLO reports, third-party dependency health (B9), cost intelligence in money (E23), A/B + flag coverage, cross-site benchmarking, flake trend/patterns (A3 rest) | hold (owner) | - |
+| 12 | **Reporting**: weekly digest, manual cases + tester sign-off, shareable read-only report, journey coverage map (A4, analytics import), business journey board, DORA, exec summary, portfolio dashboard, SLO reports, third-party dependency health (B9), cost intelligence in money (E23), A/B + flag coverage, cross-site benchmarking, flake trend/patterns (A3 rest) | wip (started 2026-10-16) | feat/wp12a..d |
 | 13 | **Solution & compliance**: compliance evidence pack, control model with owners/freshness/exceptions (C14), sizing calculator + seeded demo workspace, one suite vs N URLs side by side, integration test packs (SSO/SCIM/webhooks), PoC report, trust center (E24) | hold (owner) | - |
 | 14 | **AI & platform**: in-app assistant (E20), agent action log + per-task budgets (E21), heal candidate ranking + uniqueness recheck (A5), API authz/business-rule fuzzing + abuse templates (C10, C13), policy engine single evaluation point (E22), visual change grouping/comments/element baselines (D17) | hold (owner) | - |
 | — | Plugin / custom-step SDK (D19) | skip | decision 1 |
@@ -59,3 +71,4 @@ with mocks/fakes; they are marked **mock-verified**.
 - 2026-10-15: WP9 agent was stopped by a safety check while writing active probing (ports, WAF strings, origin bypass, TLS cipher enumeration). Those parts were removed and parked in SCOPE_NOTES.md (feat/wp9) for the owner's decision; the passive half is being completed. WP4b merged.
 - 2026-10-15 13:15: owner put WP12-14 ON HOLD — do not start them. Deploying merged WP1-4,6,7 to the local stack for the owner to check.
 - 2026-10-15 15:45: WP5, 8, 9 (passive), 10, 11 merged with all review fixes; base head migration caa2b3c4d5eb; redesign merged (57a4ddf); local stack redeployed with everything. WP12-14 on hold.
+- 2026-10-16: owner restarted WP12 (reporting). Inventory first, then four sub-packages built in parallel worktrees off feature/redesign-a (backend commits cherry-picked to the base, UI to redesign). Also shipped today outside the WPs: RustFS object store, schedule timezones, per-project notifications, settings split, suite retry control, video upload fix.
