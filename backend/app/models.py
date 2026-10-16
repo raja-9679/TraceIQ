@@ -2375,10 +2375,16 @@ class ReportSchedule(SQLModel, table=True):
     cron_expression: str
     window_days: int = Field(default=7)
     channels: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # email|slack|teams
-    recipients: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))  # email addresses
+    # Extra plain addresses (distribution lists). Rows written before WP12a
+    # kept every address here, unchecked; they are still honoured, as extras.
+    recipients: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    # Picked project members; each is re-checked for project access at send.
+    recipient_user_ids: Optional[List[int]] = Field(default=None, sa_column=Column(JSON))
     is_active: bool = Field(default=True)
     next_run_at: Optional[datetime] = Field(default=None)
     last_run_at: Optional[datetime] = Field(default=None)
+    # What the last delivery did: {"at", "channels_sent", "emailed", "skipped"}.
+    last_result: Optional[dict] = Field(default=None, sa_column=Column(JSON))
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -2389,6 +2395,7 @@ class ReportScheduleCreate(SQLModel):
     window_days: int = 7
     channels: Optional[List[str]] = None
     recipients: Optional[List[str]] = None
+    recipient_user_ids: Optional[List[int]] = None
     is_active: bool = True
 
 
@@ -2398,6 +2405,7 @@ class ReportScheduleUpdate(SQLModel):
     window_days: Optional[int] = None
     channels: Optional[List[str]] = None
     recipients: Optional[List[str]] = None
+    recipient_user_ids: Optional[List[int]] = None
     is_active: Optional[bool] = None
 
 
@@ -2409,9 +2417,36 @@ class ReportScheduleRead(SQLModel):
     window_days: int
     channels: Optional[List[str]] = None
     recipients: Optional[List[str]] = None
+    recipient_user_ids: Optional[List[int]] = None
     is_active: bool
     next_run_at: Optional[datetime] = None
     last_run_at: Optional[datetime] = None
+    last_result: Optional[dict] = None
+
+
+class ShareLink(SQLModel, table=True):
+    """A read-only, expiring, revocable public link to one report.
+
+    kind: run_report (target_id = run id) | project_summary | workspace_summary.
+    Only the SHA-256 of the token is stored; the token itself is shown once,
+    at creation. `target_id` is a plain id like Incident's pointers: a deleted
+    run makes the link 404 rather than cascade. `project_id` is NULL only for
+    workspace_summary. The public view is re-derived at every view from what
+    the creator can still see (app/services/share_links.py)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    workspace_id: int = Field(foreign_key="workspace.id", index=True)
+    project_id: Optional[int] = Field(default=None, foreign_key="project.id", index=True)
+    kind: str
+    target_id: Optional[int] = Field(default=None)
+    window_days: int = Field(default=30)
+    label: Optional[str] = Field(default=None)
+    token_hash: str = Field(unique=True, index=True)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime
+    revoked_at: Optional[datetime] = Field(default=None)
+    last_viewed_at: Optional[datetime] = Field(default=None)
+    view_count: int = Field(default=0)
 
 
 # =============================================================================

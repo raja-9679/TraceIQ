@@ -68,7 +68,7 @@ RETAINED_AUTHORSHIP: List[str] = [
     "instance_settings.updated_by_id", "llm_provider_config.updated_by_id",
     "securityfinding.risk_approved_by_id", "accessreviewcampaign.created_by_id",
     "accessreviewcampaign.signed_off_by_id", "accessreviewcampaign.revocations_applied_by_id",
-    "accessreviewitem.decided_by_id",
+    "accessreviewitem.decided_by_id", "sharelink.created_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {
@@ -91,6 +91,7 @@ class ErasureReport:
     user_id: int
     erased: Dict[str, int] = field(default_factory=dict)
     api_keys_revoked: int = 0
+    share_links_revoked: int = 0
     retained_authorship: List[str] = field(default_factory=lambda: list(RETAINED_AUTHORSHIP))
     retained_with_reason: Dict[str, str] = field(
         default_factory=lambda: dict(RETAINED_WITH_REASON))
@@ -100,6 +101,7 @@ class ErasureReport:
             "user_id": self.user_id,
             "erased": self.erased,
             "api_keys_revoked": self.api_keys_revoked,
+            "share_links_revoked": self.share_links_revoked,
             "retained_authorship_columns": self.retained_authorship,
             "retained_with_reason": self.retained_with_reason,
         }
@@ -145,6 +147,14 @@ async def erase_user(session, user, *, request=None) -> ErasureReport:
             session.add(api_key)
             report.api_keys_revoked += 1
 
+    # Public report links they made. They would stop resolving anyway (a link
+    # resolves only while its creator is active), but a revoked row says so.
+    shared = await session.exec(
+        text("UPDATE sharelink SET revoked_at = :now WHERE created_by_id = :user_id "
+             "AND revoked_at IS NULL"),
+        params={"user_id": user.id, "now": now})
+    report.share_links_revoked = getattr(shared, "rowcount", 0) or 0
+
     # Scrub the row itself. The placeholder email stays unique per user so the
     # unique index holds and nothing collides on re-erasure.
     user.email = f"deleted+{user.id}@deleted.traceiq.local"
@@ -165,6 +175,7 @@ async def erase_user(session, user, *, request=None) -> ErasureReport:
         # address into the record of its own erasure would defeat the exercise.
         changes={"erased": report.erased,
                  "api_keys_revoked": report.api_keys_revoked,
+                 "share_links_revoked": report.share_links_revoked,
                  "note": "authorship references retained de-identified; "
                          "audit history retained under legal obligation"},
     )

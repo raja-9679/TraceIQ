@@ -20,6 +20,7 @@ from app.api import frontend_quality as frontend_quality_api
 from app.api import issue_trackers as issue_trackers_api
 from app.api import triage as triage_api
 from app.api import reports as reports_api
+from app.api import share_links as share_links_api
 from app.api import billing as billing_api
 from app.api import llm_usage as llm_usage_api
 from app.api import step_hooks as step_hooks_api
@@ -173,6 +174,7 @@ app.include_router(frontend_quality_api.router, prefix="/api", tags=["frontend-q
 app.include_router(issue_trackers_api.router, prefix="/api", tags=["issue-trackers"])
 app.include_router(triage_api.router, prefix="/api", tags=["triage"])
 app.include_router(reports_api.router, prefix="/api", tags=["reports"])
+app.include_router(share_links_api.router, prefix="/api", tags=["share-links"])
 app.include_router(billing_api.router, prefix="/api", tags=["billing"])
 app.include_router(llm_usage_api.router, prefix="/api", tags=["llm-usage"])
 app.include_router(step_hooks_api.router, prefix="/api", tags=["step-hooks"])

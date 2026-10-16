@@ -875,6 +875,39 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   in worker.ts), 20k checks, robots 512 KB, 300 sweep screenshots/job; server
   side: 20 crawls/project, at most hourly, limits re-clamped in `snapshot()`,
   sweep view 200 runs, Storybook index streamed with `safe_get(max_bytes=)`.
+- **Reporting: digest, share links, executive summary, portfolio (WP12a,
+  2026-10)** — migration `ce12b3c4d5f1` (`sharelink`;
+  `reportschedule.recipient_user_ids`/`last_result`). One builder,
+  `app/services/reporting.py` (`project_snapshot`, `workspace_snapshot`,
+  `portfolio_rows`): pass rate = passed/finished runs (None, not 0, with no
+  runs), "failures" = failing results, trend = this window minus the previous
+  one of equal length, readiness verdict for the newest commit (None if it
+  can't be computed). **Digest** (`app/tasks/report_tasks.py`, beat
+  `send-scheduled-reports`): email to picked project members re-checked with
+  `has_project_access_sync` at send (project pref "off" skips them) + extra
+  addresses validated like project notifications — legacy `recipients` rows
+  are honoured as extras and re-validated at send; one message per recipient;
+  chat ONLY via the project's own webhook (`pn.webhook_url` + `post_webhook`),
+  never the instance SLACK/TEAMS_WEBHOOK_URL; SMTP via `instance_settings`;
+  send-now/edit need editor. The task builds the snapshot with `asyncio.run`
+  on a private NullPool engine (the app engine is loop-bound).
+  `GET /projects/{id}/digest-preview`. **Exec summary**
+  `GET /projects/{id}/executive-summary`, `GET /workspaces/{id}/executive-summary`
+  and **portfolio** `GET /workspaces/{id}/portfolio` cover only projects the
+  caller can access (`reports.accessible_projects`, honours project-scoped
+  keys). **Share links** (`app/api/share_links.py`, `app/services/share_links.py`):
+  kinds `run_report|project_summary` (project editor) and `workspace_summary`
+  (member; covers only projects where the CREATOR is an editor); token shown
+  once, stored as SHA-256; expiry default 7 / max 90 days; revoke =
+  `DELETE /share-links/{id}`. Public `GET /api/share/{token}` (30/min, every
+  view audited without the token) recomputes the view at every request from
+  what the creator can still see — creator deactivated/erased (erasure revokes
+  their links) or lost access → 404. Public payloads are WHITELISTS
+  (`public_run_report`, `public_summary`): names, statuses, counts, durations,
+  pass rates, dates; never artifact URLs, error text, cluster titles,
+  readiness reasons, URLs/selectors/headers, git details or emails — add a
+  field there only on purpose. UI: Analytics digest card, `/reports/summary`
+  (print CSS), `/reports/portfolio`, run page "Share", public `/share/:token`.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

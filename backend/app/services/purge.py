@@ -172,6 +172,9 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("reportschedule",
               f"DELETE FROM reportschedule WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("statuspage", f"DELETE FROM statuspage WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("sharelink",
+              f"DELETE FROM sharelink WHERE workspace_id = :workspace_id "
+              f"OR project_id IN ({_PROJECTS})"),
     PurgeStep("persona",
               f"DELETE FROM persona WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})"),

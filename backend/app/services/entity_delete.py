@@ -77,6 +77,8 @@ ON_DELETE: Dict[str, str] = {
     "reportschedule.project_id": DELETE,
     "securityscan.project_id": DELETE,
     "statuspage.project_id": DELETE,
+    # A public link to a deleted project's report must stop working.
+    "sharelink.project_id": DELETE,
     "teamprojectaccess.project_id": DELETE,
     "userprojectaccess.project_id": DELETE,
     "securityfinding.project_id": DELETE,
