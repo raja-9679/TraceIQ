@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, KeyRound, Copy, Trash2, Plus, AlertTriangle } from 'lucide-react';
@@ -393,7 +394,7 @@ export default function Settings() {
                             <SettingsCard
                                 labelledBy="settings-exec-defaults"
                                 title="Run defaults"
-                                description="Used when a run does not choose its own browser, device or timeout."
+                                description="Fallback for runs you start yourself, when neither the test nor its suite picks a browser or device. Scheduled runs use the browser set on the schedule."
                                 footer={saveFooter}
                             >
                                 <div className="flex flex-col">
@@ -422,67 +423,26 @@ export default function Settings() {
                                             </SelectContent>
                                         </Select>
                                     </FieldRow>
-                                    <FieldRow label="Step timeout (ms)" htmlFor="set-default-timeout" hint="Timeout for each test step, 1 to 120 seconds.">
-                                        <Input
-                                            id="set-default-timeout"
-                                            type="number"
-                                            className={inputClass}
-                                            value={defaultTimeout}
-                                            onChange={(e) => dirty(setDefaultTimeout)(Number(e.target.value))}
-                                            min="1000"
-                                            max="120000"
-                                            step="1000"
-                                        />
-                                    </FieldRow>
                                 </div>
                             </SettingsCard>
 
                             <SettingsCard
                                 labelledBy="settings-exec-retries"
-                                title="Retries and parallel runs"
-                                description="Retry tests that fail, and run several tests at once."
-                                footer={saveFooter}
+                                title="Timeouts, retries and parallel runs"
+                                description="These belong to the suite and the workers, not to you, so every run of a suite behaves the same whoever starts it."
                             >
-                                <div className="flex flex-col">
-                                    <CheckRow
-                                        id="set-auto-retry"
-                                        label="Retry failed tests automatically"
-                                        checked={autoRetry}
-                                        onChange={dirty(setAutoRetry)}
-                                    />
-                                    {autoRetry && (
-                                        <FieldRow label="Maximum retry attempts" htmlFor="set-max-retries">
-                                            <Input
-                                                id="set-max-retries"
-                                                type="number"
-                                                className={inputClass}
-                                                value={maxRetries}
-                                                onChange={(e) => dirty(setMaxRetries)(Number(e.target.value))}
-                                                min="1"
-                                                max="5"
-                                            />
-                                        </FieldRow>
-                                    )}
-                                    <CheckRow
-                                        id="set-parallel"
-                                        label="Run tests in parallel"
-                                        checked={parallelExecution}
-                                        onChange={dirty(setParallelExecution)}
-                                    />
-                                    {parallelExecution && (
-                                        <FieldRow label="Maximum parallel tests" htmlFor="set-max-parallel">
-                                            <Input
-                                                id="set-max-parallel"
-                                                type="number"
-                                                className={inputClass}
-                                                value={maxParallelTests}
-                                                onChange={(e) => dirty(setMaxParallelTests)(Number(e.target.value))}
-                                                min="1"
-                                                max="10"
-                                            />
-                                        </FieldRow>
-                                    )}
-                                </div>
+                                <ul className="flex list-disc flex-col gap-2 pl-5 text-[13px] leading-relaxed text-ink-soft">
+                                    <li>
+                                        <strong className="text-ink">Parallel runs:</strong> choose a suite&apos;s execution mode on its page in{' '}
+                                        <Link to="/suites" className="font-medium text-ink underline underline-offset-2">Suites</Link>. How many tests run at once depends on how many workers are running.
+                                    </li>
+                                    <li>
+                                        <strong className="text-ink">Automatic retries:</strong> a suite setting (inherited by its sub-suites). The suite page does not show it yet; it can be set through the suites API.
+                                    </li>
+                                    <li>
+                                        <strong className="text-ink">Step timeout:</strong> set for all workers by the instance admin in Settings → Instance (admin).
+                                    </li>
+                                </ul>
                             </SettingsCard>
 
                             <SettingsCard
@@ -554,7 +514,7 @@ export default function Settings() {
                         <SettingsCard
                             labelledBy="settings-notifications"
                             title="Email notifications"
-                            description="Choose whether to get email about test runs, and which events trigger one."
+                            description="Email about your runs: the ones you start, and those started by schedules you created. Your instance admin decides whether email is sent at all."
                             footer={saveFooter}
                         >
                             <div className="flex flex-col">
@@ -566,7 +526,7 @@ export default function Settings() {
                                 />
                                 {emailNotifications && (
                                     <>
-                                        <FieldRow label="Notification email" htmlFor="set-notification-email" wide>
+                                        <FieldRow label="Notification email" htmlFor="set-notification-email" hint="Leave empty to use your account email." wide>
                                             <Input
                                                 id="set-notification-email"
                                                 type="email"
@@ -576,29 +536,23 @@ export default function Settings() {
                                                 placeholder="your@email.com"
                                             />
                                         </FieldRow>
-                                        <RowGroup title="Email me when">
-                                            <CheckRow
-                                                id="set-notify-completion"
-                                                label="A test run completes"
-                                                hint="Any run, pass or fail."
-                                                checked={notifyOnCompletion}
-                                                onChange={dirty(setNotifyOnCompletion)}
-                                            />
-                                            <CheckRow
-                                                id="set-notify-failure"
-                                                label="A test fails"
-                                                hint="Only when tests fail."
-                                                checked={notifyOnFailure}
-                                                onChange={dirty(setNotifyOnFailure)}
-                                            />
-                                            <CheckRow
-                                                id="set-daily-summary"
-                                                label="Daily summary"
-                                                hint="One report of all test activity each day."
-                                                checked={dailySummary}
-                                                onChange={dirty(setDailySummary)}
-                                            />
-                                        </RowGroup>
+                                        <FieldRow label="Email me about" htmlFor="set-notify-scope" hint="Failed runs only skips runs where every test passed.">
+                                            <Select
+                                                value={notifyOnCompletion ? 'all' : 'failures'}
+                                                onValueChange={(v) => {
+                                                    dirty(setNotifyOnCompletion)(v === 'all');
+                                                    setNotifyOnFailure(true);
+                                                }}
+                                            >
+                                                <SelectTrigger id="set-notify-scope" className={selectTriggerClass}>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="all">All runs</SelectItem>
+                                                    <SelectItem value="failures">Failed runs only</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </FieldRow>
                                     </>
                                 )}
                             </div>
@@ -661,28 +615,13 @@ export default function Settings() {
                             <SettingsCard
                                 labelledBy="settings-retention"
                                 title="Retention"
-                                description="How long test runs and their files are kept."
-                                footer={saveFooter}
+                                description="Runs are shared by the whole project, so how long they are kept is a project setting, not a personal one."
                             >
-                                <div className="flex flex-col">
-                                    <FieldRow label="Keep runs for (days)" htmlFor="set-retention" hint="How long to keep test runs and artifacts.">
-                                        <Input
-                                            id="set-retention"
-                                            type="number"
-                                            className={inputClass}
-                                            value={retentionPeriod}
-                                            onChange={(e) => dirty(setRetentionPeriod)(Number(e.target.value))}
-                                            min="1"
-                                            max="365"
-                                        />
-                                    </FieldRow>
-                                    <CheckRow
-                                        id="set-auto-cleanup"
-                                        label="Delete old runs automatically"
-                                        checked={autoCleanup}
-                                        onChange={dirty(setAutoCleanup)}
-                                    />
-                                </div>
+                                <p className="text-[13px] leading-relaxed text-ink-soft">
+                                    Set <strong className="text-ink">Retention (days)</strong> in the project&apos;s Data capture card at the top of this page.
+                                    0 there falls back to the instance-wide setting your admin controls; whichever window is shorter wins.
+                                    Expired runs are deleted automatically, files included.
+                                </p>
                             </SettingsCard>
                         </>
                     )}
