@@ -272,6 +272,11 @@ async def create_run(
     def _user_default_devices() -> Optional[List[str]]:
         if user_settings and user_settings.multi_device_enabled and user_settings.selected_devices:
             return user_settings.selected_devices
+        # Same fallback shape as the browser: the single default device, when
+        # it is anything other than plain desktop (None = desktop already).
+        default = (getattr(user_settings, "default_device", None) or "").strip() if user_settings else ""
+        if default and default.lower() != "desktop":
+            return [default]
         return None
 
     from app.services import frontend_matrix
