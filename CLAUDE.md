@@ -26,9 +26,16 @@ All services run via Docker Compose from the `infrastructure/` directory.
 | `execution-engine` | Node.js (legacy CONTINUOUS mode) | 3000 |
 | `postgres` | PostgreSQL 15 | 5432 |
 | `redis` | Redis 7 | 6379 |
-| `minio` | MinIO (S3-compatible) | 9000/9001 |
+| `object-store` | RustFS (S3-compatible; network alias `minio`) | 9000 |
 | `celery_worker` / `celery_aggregator` / `celery_beat` | Python Celery | — |
 | `pgadmin` | pgAdmin 4 | 8014 |
+
+The object store is RustFS (`rustfs/rustfs:1.0.1`, pinned by digest; console
+disabled; volume `object_store_data`). It replaced MinIO in 2026-10; app
+settings keep their `MINIO_*` names and the server reads `MINIO_ROOT_USER` /
+`MINIO_ROOT_PASSWORD`. Old MinIO data is copied with
+`backend/scripts/migrate_object_store.py` — see `SELF_HOSTING.md` → "Object
+storage".
 
 ---
 
@@ -60,7 +67,7 @@ docker compose logs -f execution-worker
 ### Backend (run from `backend/`)
 
 ```bash
-# Local dev without Docker (requires postgres/redis/minio running)
+# Local dev without Docker (requires postgres/redis/object-store running)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # Celery worker (main queue)
@@ -128,7 +135,7 @@ npm test             # node:test via ts-node; *.test.ts are excluded from the bu
 4. Jobs are pushed to Redis Stream `jobs:pending` via `JobDispatcher` (`backend/app/services/job_dispatcher.py`)
    - `SEPARATE` mode → 1 job per test case
    - `CONTINUOUS` mode → 1 job per suite (dispatched to legacy engine)
-5. `execution-worker` (Node.js) claims jobs via `XREADGROUP`, runs Playwright steps, uploads artifacts to MinIO
+5. `execution-worker` (Node.js) claims jobs via `XREADGROUP`, runs Playwright steps, uploads artifacts to the object store
 6. Worker POSTs results to `POST /api/runs/{id}/webhook` then `POST /api/runs/{id}/finalize`
 7. Backend writes `TestCaseResult` rows, triggers Celery notification tasks (email/Slack/Teams)
 8. Frontend polls `GET /api/runs/{id}` for live status updates
@@ -195,7 +202,7 @@ backend/app/
 │   ├── limiter.py        # Rate limiting (slowapi)
 │   ├── rbac_init.py      # Bootstraps default roles/permissions
 │   ├── redis.py
-│   └── storage.py        # MinIO client wrapper
+│   └── storage.py        # S3 object-store wrapper (`minio_client` / `object_store`)
 ├── services/
 │   ├── access_service.py # RBAC access checks
 │   ├── rbac_service.py   # Role/permission lookups
@@ -236,7 +243,7 @@ execution-engine/src/
 ├── server.ts      # Express server for legacy POST /run endpoint
 ├── ai.ts          # OpenAI failure analysis
 ├── controller/    # Run lifecycle management
-└── core/          # MinIO + Redis client setup
+└── core/          # Object store + Redis client setup
 ```
 
 Step execution switch lives in `runner.ts`. Supported step types: `goto`, `click`, `fill`, `check`, `expect`, `http-request`, `feed-check`, `hover`, `screenshot`.
@@ -255,7 +262,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
 - **LLM usage metering** — every provider call records tokens/latency to `LLMUsageEvent` (context via `app/services/llm_usage.py:llm_call_context`); workers report via `POST /api/internal/llm-usage` (X-Worker-Secret). Stats at `GET /api/workspaces/{id}/llm-usage`; monthly totals roll into `UsageRecord` (metric `llm_tokens`) and are capped by the `monthly_llm_tokens` plan-limit key (absent/0 = unlimited — over-cap calls are skipped and fall back to heuristics). Frontend: `/ai-usage` page.
 - **PARALLEL execution mode** — fully routed through `dispatch_parallel_jobs` in `app/worker.py`. Tune fan-out via `PARALLEL_MAX_CONCURRENCY`.
 - **Local dev worker** — `POST /api/runs` body `local_worker_id` pins a run to a developer's polling worker (`npm run worker:local` in `execution-engine/`, API-key auth via `GET /api/jobs/poll` + `POST /api/jobs/result`) so agents/CI can test `localhost` before deploy. v1: single-test jobs, no artifact upload.
-- **Mobile app testing (Phase MOB)** — cases with `executor=mobile_appium` run native Android/iOS journeys via Appium. Upload binaries at `POST /api/projects/{id}/app-builds` (MinIO-backed `MobileAppBuild` registry); pin a run via `app_build_id` in the `POST /api/runs` body. Mobile jobs ride a dedicated `jobs:mobile:pending` stream consumed by `execution-engine/src/mobile-worker.ts` (compose profile `mobile`; Appium at `APPIUM_URL`; needs an emulator/device attached). Step types are `mobile-*` in the `/api/step-types` catalog. Screenshots + screen recording upload to MinIO (video records at half resolution — emulator encoders fail at native size; `MOBILE_VIDEO_SIZE` overrides). iOS via device cloud only. Sample app: `todo-mobile/` (Express API + Flutter and Kotlin clients; its README documents the four Appium-testability rules).
+- **Mobile app testing (Phase MOB)** — cases with `executor=mobile_appium` run native Android/iOS journeys via Appium. Upload binaries at `POST /api/projects/{id}/app-builds` (object-store-backed `MobileAppBuild` registry); pin a run via `app_build_id` in the `POST /api/runs` body. Mobile jobs ride a dedicated `jobs:mobile:pending` stream consumed by `execution-engine/src/mobile-worker.ts` (compose profile `mobile`; Appium at `APPIUM_URL`; needs an emulator/device attached). Step types are `mobile-*` in the `/api/step-types` catalog. Screenshots + screen recording upload to the object store (video records at half resolution — emulator encoders fail at native size; `MOBILE_VIDEO_SIZE` overrides). iOS via device cloud only. Sample app: `todo-mobile/` (Express API + Flutter and Kotlin clients; its README documents the four Appium-testability rules).
 - **Instance settings (DB-over-env)** — admin-editable runtime config stored in
   the `instance_settings` table (secrets Fernet-encrypted), resolved by
   `app/services/instance_settings.py:effective()` with a ~15s TTL cache:
@@ -268,7 +275,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   guarded by `get_current_instance_admin` = admin of the FIRST tenant (plain
   tenant-admin is not enough — self-registration makes everyone admin of
   their own tenant). UI: Settings → "Instance (Admin)" tab. Execution workers
-  still read their own env (LLM keys, MinIO) — worker-side config is not
+  still read their own env (LLM keys, object store) — worker-side config is not
   DB-driven.
 - **Multi-provider AI registry** — `llm_provider_config` table: several saved
   LLM providers (Fernet-encrypted keys), multiple active at once, one default.
@@ -803,7 +810,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `execution-worker-region` (compose profile `region`, all five files),
   Helm `regionWorkers: []` + values-gated KEDA ScaledObjects on stream lag
   (HPA suppressed when on); `scripts/restore_drill.sh` restores a pg_dump (+
-  MinIO snapshot) into a throwaway DB and verifies migrations, row counts and
+  artifact snapshot) into a throwaway DB and verifies migrations, row counts and
   the audit chain (DB URL passed to `docker run` via env, never argv; report
   lines redacted; `umask 077`).
 
@@ -883,14 +890,14 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   record video/traces/HAR until opted back up.
   Redaction is two mirrored implementations —
   `execution-engine/src/core/redact.ts` (capture time: the only layer that keeps
-  secrets out of MinIO) and `app/services/redaction.py` (ingestion: the worker
+  secrets out of the object store) and `app/services/redaction.py` (ingestion: the worker
   image bakes code at build time and can be older than the backend). Their
   corpora (`redact.test.ts`, `tests/test_redaction.py`) are deliberate twins —
   change one, change both. Key denylist + checksum-validated patterns (Luhn for
   PAN, Verhoeff for Aadhaar, JWT); `email`/`phone` exist but are OFF by default
   because blanket-redacting them breaks stored assertions.
   All artifact uploads funnel through `core/artifact-store.ts` — there is no
-  other MinIO client in the engine; keep it that way or the policy gate is
+  other object-store client in the engine; keep it that way or the policy gate is
   bypassable. Object key shapes are asserted in tests because
   `GET /api/runs/{id}/artifact` parses `runs/{run_id}/…` to enforce access.
 
@@ -965,7 +972,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
 - **Deletion and retention (workstream G)** — `app/services/purge.py`,
   `app/services/retention.py`, `app/services/erasure.py`;
   operator-facing summary in `docs/DATA_RESIDENCY.md`.
-  `DELETE /api/workspaces/{id}` now cascades (39 tables + MinIO prefixes) behind
+  `DELETE /api/workspaces/{id}` now cascades (39 tables + object-store prefixes) behind
   `confirm=<workspace name>`, with `dry_run=true`. **The real guarantee is
   `tests/test_purge_plan.py`**: it walks the FK graph in `SQLModel.metadata` and
   fails if a table that can reach `workspace` is neither in `PURGE_PLAN` nor in
@@ -1022,7 +1029,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `deploy/helm/traceiq/` — same env contract as compose via a shared helper,
   `$(VAR)`-assembled URLs so passwords stay in the Secret, memory-backed
   `/dev/shm`, beat on `Recreate`, optional HPA/Ingress/ServiceMonitor and
-  eval-grade in-cluster Postgres/Redis/MinIO; `required` on every secret plus
+  eval-grade in-cluster Postgres/Redis/object store; `required` on every secret plus
   `fail` on `webhookSecret == secretKey`; lint/template/kubeconform in CI
   (`helm-chart` job); installed on kind 2026-09-07. Three traps found there,
   all fixed: kubelet refuses `runAsNonRoot` with a non-numeric image USER
@@ -1034,9 +1041,10 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   endpoint (chart omits it; `storage.py` falls back to the internal one).
 
 - **Proving it (workstream I)** — CI now has an `integration-tests` job with
-  Postgres + Redis + **`bitnami/minio`** service containers (the upstream
-  `minio/minio` image needs `server /data` and GitHub services cannot supply a
-  command; readiness is polled from the runner, not a container `health-cmd`).
+  Postgres + Redis service containers plus a `docker run` of the pinned RustFS
+  image (a step rather than a service container, so CI runs the exact
+  version + digest the compose stacks and Helm chart pin; readiness is polled
+  from the runner on `/health/ready`).
   It runs `tests/integration` and an `alembic downgrade -3 && upgrade head`
   round trip. `tests/integration/*` self-skip unless `TRACEIQ_LIVE_DB` is set.
   `tests/integration/test_tenant_isolation_db.py` is the important one: isolation
@@ -1221,7 +1229,7 @@ Users pull prebuilt images rather than building from source. See
   User-supplied `POSTGRES_PASSWORD`/`REDIS_PASSWORD` are restricted to
   `[A-Za-z0-9._~-]` because compose embeds them in connection URLs verbatim.
 - `infrastructure/aio/` is the all-in-one **evaluation** image
-  (`traceiq-aio`): postgres+redis+minio+backend+celery+worker+nginx under
+  (`traceiq-aio`): postgres+redis+object store (RustFS)+backend+celery+worker+nginx under
   supervisord, single `docker run`, secrets generated on first boot into the
   `/data` volume (never baked in). It builds from the **repo root** context;
   the root `.dockerignore` is deny-by-default and is the only thing keeping

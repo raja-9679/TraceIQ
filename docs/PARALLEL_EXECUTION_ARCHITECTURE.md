@@ -53,7 +53,7 @@ This document describes the new distributed architecture for parallel test execu
 │                             │                            │                       │
 │                             │                            ▼                       │
 │                             │             ┌────────────────────────────────────┐ │
-│                             │             │           MinIO                     │ │
+│                             │             │           Object store             │ │
 │                             ▼             │  (Videos, Traces, Screenshots)     │ │
 │                      ┌─────────────┐      └────────────────────────────────────┘ │
 │                      │ Aggregator  │                     │                       │
@@ -105,7 +105,7 @@ Stateless Node.js process that:
 
 1. Pulls ONE job from Redis stream
 2. Launches browser, executes test
-3. Uploads artifacts to MinIO
+3. Uploads artifacts to the object store
 4. Publishes result to results stream
 5. Acknowledges job completion
 

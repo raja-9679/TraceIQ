@@ -7,7 +7,7 @@ verification layer — so an AI coding agent can ask "did my change break
 anything?" and get a structured, actionable answer.
 
 Multi-tenant SaaS. Backend in FastAPI + Celery, distributed workers in
-Node.js + Playwright, storage in Postgres + Redis + MinIO. Everything runs
+Node.js + Playwright, storage in Postgres + Redis + an S3-compatible object store (RustFS). Everything runs
 via Docker Compose.
 
 ---
@@ -173,7 +173,7 @@ docker compose logs -f celery_worker
 docker compose logs -f execution-worker
 ```
 
-### Backend (without Docker — needs postgres/redis/minio running)
+### Backend (without Docker — needs postgres/redis/object-store running)
 ```bash
 cd backend
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

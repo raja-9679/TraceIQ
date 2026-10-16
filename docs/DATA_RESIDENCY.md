@@ -18,9 +18,9 @@ The supported answer is a **deployment topology**: run one self-hosted instance
 per jurisdiction.
 
 ```
-  eu.traceiq.yourco.com      →  Postgres (eu-west-1), MinIO (eu-west-1)
-  in.traceiq.yourco.com      →  Postgres (ap-south-1), MinIO (ap-south-1)
-  us.traceiq.yourco.com      →  Postgres (us-east-1), MinIO (us-east-1)
+  eu.traceiq.yourco.com      →  Postgres (eu-west-1), object store (eu-west-1)
+  in.traceiq.yourco.com      →  Postgres (ap-south-1), object store (ap-south-1)
+  us.traceiq.yourco.com      →  Postgres (us-east-1), object store (us-east-1)
 ```
 
 Each instance is a complete TraceIQ: its own database, object store, workers and
@@ -37,7 +37,7 @@ This is a deliberate architectural position, recorded in
 | Data | Store |
 |---|---|
 | Suites, cases, runs, results, audit log | Postgres |
-| Screenshots, video, traces, HAR, app binaries | Object storage (MinIO or S3) |
+| Screenshots, video, traces, HAR, app binaries | Object storage (bundled RustFS, or an external S3-compatible store) |
 | Job queue, live run state, rate limits | Redis |
 | Secrets (project secrets, provider keys, session state) | Postgres, encrypted (`app/core/secrets.py`) |
 

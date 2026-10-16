@@ -229,7 +229,7 @@ so an issue, its log lines and its trace can be joined.
 Celery worker/aggregator/beat, execution workers with a memory-backed
 `/dev/shm` and optional HPA (or KEDA, below), region worker pools
 (`regionWorkers`), frontend + Ingress, and single-replica PostgreSQL/
-Redis/MinIO StatefulSets for evaluation that you switch off in favour of
+Redis/object-store (RustFS) StatefulSets for evaluation that you switch off in favour of
 managed services for production. Same rule as compose: **no default secrets** —
 `required` on every one, plus refusals for `webhookSecret == secretKey` and
 `minioRootUser=minioadmin`. `helm lint`, `helm template` and kubeconform run in
@@ -523,7 +523,7 @@ backend image:
 | row counts / latest run | WARN when there are no users |
 | audit append-only trigger | missing |
 | audit chain | the hash chain breaks (WARN when old rows predate chaining) |
-| artifact snapshot | the MinIO snapshot is unreadable (objects counted by `xl.meta`) |
+| artifact snapshot | the object-store snapshot (RustFS, or a pre-switch MinIO one) is unreadable (objects counted by `xl.meta`, system dirs excluded) |
 
 It prints a PASS/FAIL table, drops what it created (`--keep` to inspect) and
 exits 1 on any FAIL — schedule it and alert on the exit code. Verified

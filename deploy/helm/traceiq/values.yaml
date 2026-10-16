@@ -285,6 +285,10 @@ minio:
   storage: 50Gi
   storageClass: ""
   bucket: test-artifacts
+  # Encrypt new objects at rest (SSE-S3, AES256). Implied by setting
+  # secrets.storageSseMasterKey; with secrets.existingSecret, put
+  # STORAGE_SSE_MASTER_KEY in that Secret and set this to true.
+  encryptAtRest: false
   resources:
     requests: {cpu: 100m, memory: 256Mi}
     limits: {cpu: "1", memory: 1Gi}

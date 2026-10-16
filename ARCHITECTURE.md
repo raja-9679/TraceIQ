@@ -8,7 +8,7 @@
 
 ## 1. What TraceIQ is, in one paragraph
 
-**TraceIQ is a multi-tenant SaaS that lets teams record user journeys through any web app, organize them into hierarchical test suites, execute them in distributed Playwright workers, and consume the results as an AI-friendly regression-safety net.** It is built specifically for an industry where AI agents author most code: the value proposition is *"every change — human or AI — gets a verdict on whether existing functionality still works."* The platform spans a FastAPI control plane, a Node.js distributed worker pool, Celery for orchestration, Postgres for state, Redis for the job queue, and MinIO for artifacts. It exposes itself to AI coding agents through API keys, an MCP server, and a GitHub Action.
+**TraceIQ is a multi-tenant SaaS that lets teams record user journeys through any web app, organize them into hierarchical test suites, execute them in distributed Playwright workers, and consume the results as an AI-friendly regression-safety net.** It is built specifically for an industry where AI agents author most code: the value proposition is *"every change — human or AI — gets a verdict on whether existing functionality still works."* The platform spans a FastAPI control plane, a Node.js distributed worker pool, Celery for orchestration, Postgres for state, Redis for the job queue, and an S3-compatible object store (RustFS) for artifacts. It exposes itself to AI coding agents through API keys, an MCP server, and a GitHub Action.
 
 ---
 
@@ -34,7 +34,7 @@
 │   FastAPI backend (8000)                                                       │
 │     • REST API     /api/auth   /api/runs   /api/cases   /api/workspaces…      │
 │     • AuthN/AuthZ  JWT + refresh + API keys → AuthPrincipal → RBAC checks      │
-│     • Lifespan     init_db, MinIO bucket bootstrap                             │
+│     • Lifespan     init_db, artifact bucket bootstrap                          │
 │                                                                                │
 │   PostgreSQL (5432) — multi-tenant ORM state (SQLModel)                        │
 │                                                                                │
@@ -60,14 +60,14 @@
 │     • Claims jobs from `jobs:pending` via XREADGROUP                           │
 │     • Runs steps (goto, click, fill, expect, http-request, …)                  │
 │     • Captures: video, trace.zip, network HAR, screenshots, execution log     │
-│     • Uploads artifacts to MinIO                                               │
+│     • Uploads artifacts to the object store                                    │
 │     • POSTs results to /api/runs/{id}/webhook + /api/runs/{id}/finalize        │
 │                                                                                │
 │   execution-engine (legacy, port 3000)                                         │
 │     • Continuous shared-browser mode dispatched via HTTP                       │
 │     • Also hosts the persona-refresh + AI failure analyzer modules             │
 │                                                                                │
-│   MinIO (9000)                                                                 │
+│   Object store — RustFS (9000)                                                 │
 │     • bucket: test-artifacts                                                   │
 │     • keys: runs/{run_id}/{traces|videos|screenshots}/...                      │
 └────────────────────────────────────────────────────────────────────────────────┘
@@ -99,7 +99,7 @@ All services are containerized — see `infrastructure/docker-compose.yml` and `
 | `execution-engine` (legacy) | Node.js + Express | 3000 | continuous shared-browser mode; persona refresh; failure analyzer |
 | `postgres` | PostgreSQL 15 | 5432 | system of record |
 | `redis` | Redis 7 | 6379 | Celery broker + job streams + progress hashes |
-| `minio` | MinIO | 9000/9001 | artifact object storage (S3-compatible) |
+| `object-store` | RustFS (network alias `minio`) | 9000 | artifact object storage (S3-compatible) |
 | `pgadmin` | pgAdmin 4 | 8014 | DB admin UI |
 
 ---
@@ -229,7 +229,7 @@ This is the single most important flow in the codebase.
 │     extract-value / carousel-find / expect-visual-match (Phase B) / …       │
 │  semantic-selector fallback: on selector miss, AIEngine.healSelector(...)   │
 │  captures trace.zip, video.webm, screenshots, network HAR                   │
-│  uploads to MinIO bucket `test-artifacts`                                   │
+│  uploads to object-store bucket `test-artifacts`                            │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 ┌─ 4. Worker reports back ────────────────────────────────────────────────────┐
@@ -352,7 +352,7 @@ Every test case produces, at minimum:
 - A network HAR-shaped JSON array on `TestRun.network_events` and `TestCaseResult.response_*`.
 - An execution log JSON (per-step timings + errors) on `TestRun.execution_log`.
 
-Artifact URLs in the DB are *MinIO object paths*. Resolve to presigned URLs via `GET /api/artifacts/{path}`.
+Artifact URLs in the DB are *object-store keys*. Resolve to presigned URLs via `GET /api/artifacts/{path}`.
 
 ---
 
@@ -448,7 +448,7 @@ proves upgrade == models, downgrade-to-empty, and the bridge.
 |---|---|---|
 | `DATABASE_URL` | Postgres DSN (`postgresql+asyncpg://…`) | — |
 | `CELERY_BROKER_URL` / `CELERY_RESULT_BACKEND` | Redis URLs | — |
-| `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Artifact storage | — |
+| `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | Artifact storage (any S3-compatible store; names are historical) | — |
 | `MINIO_PUBLIC_URL` | URL clients use to fetch artifacts | `http://localhost:9000` |
 | `SECRET_KEY` | JWT signing + internal webhook fallback | — |
 | `WEBHOOK_SECRET` | Internal service-to-service webhook secret | falls back to `SECRET_KEY` |

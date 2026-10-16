@@ -38,7 +38,7 @@ tenant isolation across workspaces (every boundary is a Python `if`); the
 proposal/auto-apply path (an agent-authored change reaching a test suite
 without human review); SSO/SAML response handling; the artifact URL
 authorization; refresh-token rotation and family revocation; the redaction
-guarantees (does a captured header ever reach MinIO unredacted?).
+guarantees (does a captured header ever reach the object store unredacted?).
 
 ## 2. Internal baseline — what was run
 
