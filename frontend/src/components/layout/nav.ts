@@ -148,6 +148,9 @@ export const setupLinks: SubLink[] = [
     { name: 'Webhooks', href: '/webhooks' },
     { name: 'Issue trackers', href: '/issue-trackers' },
     { name: 'AI usage', href: '/ai-usage' },
+    // WP14b: workspace-admin pages; they explain a 403 to everyone else.
+    { name: 'Policies', href: '/policies' },
+    { name: 'Agents', href: '/agents' },
     { name: 'Billing', href: '/billing' },
 ];
 
