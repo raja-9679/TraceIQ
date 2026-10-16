@@ -19,6 +19,10 @@ import SloReports from "@/pages/SloReports";
 import FlakeTrends from "@/pages/FlakeTrends";
 import DependencyHealth from "@/pages/DependencyHealth";
 import FrontendQuality from "@/pages/FrontendQuality";
+import JourneyCoverage from "@/pages/JourneyCoverage";
+import BusinessJourneys from "@/pages/BusinessJourneys";
+import FlagCoverage from "@/pages/FlagCoverage";
+import Benchmarks from "@/pages/Benchmarks";
 import QualityDashboard from "@/pages/QualityDashboard";
 import ReleaseReadiness from "@/pages/ReleaseReadiness";
 import Monitors from "@/pages/Monitors";
@@ -116,6 +120,10 @@ function App() {
                 <Route path="reports/flake-trends" element={<FlakeTrends />} />
                 <Route path="reports/dependencies" element={<DependencyHealth />} />
                 <Route path="frontend-quality" element={<FrontendQuality />} />
+                <Route path="journey-coverage" element={<JourneyCoverage />} />
+                <Route path="business-journeys" element={<BusinessJourneys />} />
+                <Route path="flag-coverage" element={<FlagCoverage />} />
+                <Route path="benchmarks" element={<Benchmarks />} />
                 <Route path="api-keys" element={<ApiKeys />} />
                 <Route path="webhooks" element={<Webhooks />} />
                 <Route path="issue-trackers" element={<IssueTrackers />} />
