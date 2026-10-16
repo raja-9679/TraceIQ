@@ -8,8 +8,11 @@ Pipeline:
 2. For each step that has an `intent` and a captured DOM, ask the LLM:
    "Given this DOM, does `selector` still uniquely identify the element
     described by `intent`? If not, what's the new selector?"
-3. If the LLM returns a different selector with confidence >= 0.7, insert a
-   pending SelectorHealProposal (deduplicated against pending ones).
+3. If the LLM returns a different selector with confidence >= 0.7, rank it
+   with the deterministic candidates (W5, app/services/heal_candidates.py)
+   on the same redacted DOM and insert a pending SelectorHealProposal for the
+   best candidate that matches exactly one element (deduplicated against
+   pending ones), with the ranked list and a stored snapshot.
 
 Gated by `PROACTIVE_HEAL_ENABLED=true`. Workers only record step DOMs when
 that flag is on AND the run's capture level is `full` (see
@@ -33,7 +36,10 @@ from app.models import (
     TestCaseResult,
     TestRun,
 )
+from app.services.data_policy import resolve_for_project
+from app.services.heal_candidates import choose_candidate, rank_candidates, store_snapshot
 from app.services.llm_usage import llm_call_context
+from app.services.redaction import RedactionPolicy, redact_dom
 
 _sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 _engine = create_engine(_sync_db_url, echo=False)
@@ -73,6 +79,12 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
             return {"status": "no_step_dom"}
 
         project = session.get(Project, run.project_id) if run.project_id else None
+        # The worker already redacted step_dom with the project's policy; this
+        # second pass guarantees an older worker's raw excerpt never reaches
+        # the LLM or the snapshot store.
+        blob = resolve_for_project(project) if project else {}
+        policy = RedactionPolicy.from_data_policy(blob)
+        masks = blob.get("mask_selectors") or []
         proposals_written = 0
         for case_id, doms in doms_by_case.items():
             case = session.get(TestCase, case_id)
@@ -84,12 +96,13 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
                 dom = doms.get(step_id) if step_id else None
                 if not (intent and selector and dom):
                     continue
+                safe_dom = redact_dom(dom, policy, masks)
 
                 prompt = (
                     f"You are auditing a UI test selector.\n"
                     f"Intent: {intent}\n"
                     f"Current selector: {selector}\n"
-                    f"DOM snapshot (truncated):\n{dom[:8000]}\n\n"
+                    f"DOM snapshot (truncated):\n{safe_dom[:8000]}\n\n"
                     "Question: does the current selector still uniquely identify "
                     "the element described by intent? Reply STRICTLY in JSON:\n"
                     '{"still_valid": true|false, "new_selector": "...", "confidence": 0.0-1.0, "rationale": "..."}'
@@ -108,10 +121,18 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
                 confidence = float(verdict.get("confidence") or 0.0)
                 if not new_selector or new_selector == selector or confidence < 0.7:
                     continue
+
+                # W5: rank the LLM's pick against the deterministic strategies
+                # on the same snapshot; propose the best candidate that matches
+                # exactly one element, or nothing.
+                ranked = rank_candidates(safe_dom, selector, intent, new_selector, confidence)
+                chosen = choose_candidate(ranked)
+                if chosen is None:
+                    continue
                 if session.exec(select(SelectorHealProposal).where(
                         SelectorHealProposal.test_case_id == case_id,
                         SelectorHealProposal.step_id == step_id,
-                        SelectorHealProposal.new_selector == new_selector,
+                        SelectorHealProposal.new_selector == chosen["selector"],
                         SelectorHealProposal.status == "pending")).first():
                     continue
 
@@ -119,13 +140,16 @@ def propose_selector_heals_for_run(run_id: int) -> Dict[str, Any]:
                     test_case_id=case_id,
                     step_id=step_id,
                     old_selector=selector,
-                    new_selector=new_selector,
+                    new_selector=chosen["selector"],
                     intent=intent,
-                    confidence=confidence,
+                    confidence=chosen["score"],
                     rationale=verdict.get("rationale"),
                     source_run_id=run_id,
                     status="pending",
                     created_at=datetime.utcnow(),
+                    candidates=ranked,
+                    chosen_selector=chosen["selector"],
+                    dom_snapshot_key=store_snapshot(run_id, case_id, step_id, safe_dom),
                 ))
                 proposals_written += 1
 

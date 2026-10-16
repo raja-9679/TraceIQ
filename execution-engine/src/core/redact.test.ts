@@ -27,6 +27,8 @@ import {
     redactHeaders,
     redactHookReport,
     queryNamesOnly,
+    redactDom,
+    redactPageSource,
     redactJobResult,
     redactMessageText,
     redactNetworkEvents,
@@ -700,4 +702,103 @@ test('crawl report: every URL incl. redirect hops is scrubbed; counts and status
     assert.equal(out.issues[0].status_code, 404);
     assert.equal(out.issues[0].redirect_chain[0].status, 302);
     assert.equal(out.links_checked, 3);
+});
+
+// --------------------------------------------------------------------------
+// DOM snapshots for selector heal (twin: test_redaction.py "redact_dom")
+// --------------------------------------------------------------------------
+
+const DOM_FIXTURE = `<!DOCTYPE html><html><head>
+<meta name="csrf-token" content="s3cr3t-csrf"><link rel="stylesheet" href="/a.css?v=1">
+<script>window.API_KEY = "sk_live_abc123";</script><style>.x{color:red}</style></head>
+<body><!-- build 4f2a debug token=xyz -->
+<form id="login" action="/session?next=/home&amp;sig=abcdef">
+  <input type="hidden" name="authenticity_token" value="tok-123">
+  <input id="email" name="email" type="email" value="jane@corp.example" placeholder="Email">
+  <input id="password" name="password" type="password" value="hunter2">
+  <input type="submit" value="Sign in" onclick="steal()">
+  <textarea name="notes">private notes</textarea>
+  <button data-testid="login-submit" class="btn primary" aria-label="Log in" style="color:red">Log in</button>
+  <img src="data:image/png;base64,AAAA" alt="logo">
+  <div class="api-token-display">ghp_abcdefghijklmnopqrstuvwxyz0123456789</div>
+  <span data-token="abc">Card 4111 1111 1111 1111</span>
+  <div style="display: none" title="${'x'.repeat(300)}">Hidden panel</div>
+  <div class="profile-card"><p>Jane Doe, 12 Main St</p></div>
+</form></body></html>`;
+
+test('redactDom strips scripts, styles, comments, meta and hidden inputs', () => {
+    const out = redactDom(DOM_FIXTURE);
+    for (const leaked of ['sk_live_abc123', 'color:red}', 'build 4f2a', 's3cr3t-csrf', 'tok-123', 'authenticity_token']) {
+        assert.ok(!out.includes(leaked), `leaked ${leaked}`);
+    }
+    assert.ok(out.includes('<script></script>'));
+});
+
+test('redactDom drops input values and textarea text but keeps button labels', () => {
+    const out = redactDom(DOM_FIXTURE);
+    assert.ok(!out.includes('jane@corp.example'));
+    assert.ok(!out.includes('hunter2'));
+    assert.ok(!out.includes('private notes'));
+    assert.ok(out.includes('value="Sign in"'));
+});
+
+test('redactDom removes text inside credential-looking elements and secret attributes', () => {
+    const out = redactDom(DOM_FIXTURE);
+    assert.ok(!out.includes('ghp_abcdefghijklmnopqrstuvwxyz0123456789'));
+    assert.ok(!out.includes('data-token'));
+    assert.ok(!out.includes('4111 1111 1111 1111'));
+});
+
+test('redactDom strips handlers, data URIs, URL queries and long attributes', () => {
+    const out = redactDom(DOM_FIXTURE);
+    assert.ok(!out.includes('onclick'));
+    assert.ok(!out.includes('base64,AAAA'));
+    assert.ok(out.includes('src="data:[REDACTED]"'));
+    assert.ok(out.includes('action="/session"'));
+    assert.ok(!out.includes('xxxxxxxxxx'));
+    assert.ok(out.includes('style="display:none"'));
+    assert.ok(!out.includes('color:red'));
+});
+
+test('redactDom keeps what selectors are built from', () => {
+    const out = redactDom(DOM_FIXTURE);
+    for (const kept of ['id="email"', 'name="email"', 'placeholder="Email"', 'data-testid="login-submit"',
+        'class="btn primary"', 'aria-label="Log in"', '>Log in</button>', 'id="password"', 'alt="logo"', 'Hidden panel']) {
+        assert.ok(out.includes(kept), `lost ${kept}`);
+    }
+});
+
+test('redactDom applies project mask selectors and body keys', () => {
+    const out = redactDom(DOM_FIXTURE, { maskSelectors: ['div.profile-card'], policy: { bodyKeys: ['notes'] } });
+    assert.ok(!out.includes('Jane Doe'));
+    assert.ok(out.includes('class="profile-card"'));
+    const plain = redactDom(DOM_FIXTURE);
+    assert.ok(plain.includes('Jane Doe'));
+});
+
+test('redactDom is idempotent and tolerates junk', () => {
+    const once = redactDom(DOM_FIXTURE);
+    assert.equal(redactDom(once), once);
+    assert.equal(redactDom(''), '');
+    assert.equal(redactDom(null as any), '');
+    assert.ok(redactDom('<div <p>broken < 3 </div>').length > 0);
+});
+
+test('redactPageSource blanks password fields and keeps resource ids', () => {
+    const xml = '<hierarchy><android.widget.EditText resource-id="com.app:id/password" password="true" text="hunter2"/>'
+        + '<android.widget.EditText resource-id="com.app:id/user" text="jane"/></hierarchy>';
+    const out = redactPageSource(xml);
+    assert.ok(!out.includes('hunter2'));
+    assert.ok(out.includes('resource-id="com.app:id/password"'));
+    assert.ok(out.includes('android.widget.EditText'));
+    assert.ok(out.includes('text="jane"'));
+});
+
+test('a job result carrying heal snapshots is redacted as a backstop', () => {
+    const out = redactJobResult({
+        heal_suggestions: [{ dom_snapshot: '<input type="password" value="hunter2">' }],
+        step_dom: { s1: '<script>secret()</script><input value="x1">' },
+    });
+    assert.ok(!JSON.stringify(out).includes('hunter2'));
+    assert.ok(!JSON.stringify(out).includes('secret()'));
 });

@@ -516,9 +516,15 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
         ]
     if isinstance(out.get("step_dom"), dict):
         out["step_dom"] = {
-            k: redact_text(v, policy) if isinstance(v, str) else v
+            k: redact_dom(v, policy) if isinstance(v, str) else v
             for k, v in out["step_dom"].items()
         }
+    if isinstance(out.get("heal_suggestions"), list):
+        out["heal_suggestions"] = [
+            {**h, "dom_snapshot": redact_dom(h["dom_snapshot"], policy)}
+            if isinstance(h, dict) and isinstance(h.get("dom_snapshot"), str) else h
+            for h in out["heal_suggestions"]
+        ]
     if isinstance(out.get("step_evidence"), list):
         out["step_evidence"] = redact_step_evidence(out["step_evidence"], policy)
     if isinstance(out.get("hook_report"), dict):
@@ -756,3 +762,258 @@ def _looks_like_secret_field(selector: str) -> bool:
     if "type=password" in selector.replace('"', "").replace("'", "").replace(" ", ""):
         return True
     return bool(_SECRET_SELECTOR_RE.search(selector))
+
+
+# --------------------------------------------------------------------------
+# DOM snapshots (selector heal) — twin of redact.ts:redactDom
+# --------------------------------------------------------------------------
+
+#: Cap on a redacted snapshot; the LLM prompt takes far less.
+MAX_DOM_SNAPSHOT_CHARS = 200_000
+_MAX_DOM_TEXT_CHARS = 200
+_MAX_DOM_ATTR_CHARS = 200
+_MAX_DOM_CLASSES = 12
+
+_SECRET_NAME_RE = re.compile(
+    r"passw(or)?d|passwd|\bpwd\b|secret|token|api[-_]?key|\botp\b|\bcvv\b|\bcvc\b|\bpin\b"
+    r"|card[-_]?number|\bssn\b|csrf|xsrf|credential|private[-_]?key",
+    re.IGNORECASE,
+)
+_SECRET_AUTOCOMPLETE_RE = re.compile(r"^(current-password|new-password|one-time-code|cc-.*)$", re.IGNORECASE)
+_VOID_ELEMENTS = frozenset({
+    "area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta",
+    "param", "source", "track", "wbr",
+})
+_DROPPED_DOM_ELEMENTS = frozenset({"meta", "link", "base"})
+_EMPTIED_DOM_ELEMENTS = frozenset({"script", "style", "noscript", "template", "textarea", "xmp"})
+_URL_ATTRS = frozenset({"href", "src", "action", "formaction", "poster", "cite", "background"})
+_DROPPED_ATTRS = frozenset({"srcdoc", "srcset", "nonce", "integrity", "content", "ping"})
+_LABEL_INPUT_TYPES = frozenset({"submit", "button", "reset"})
+_MASKED_KEEP_ATTRS = frozenset({
+    "id", "class", "role", "name", "type", "for",
+    "data-testid", "data-test", "data-test-id", "data-qa", "data-cy",
+})
+_HIDDEN_STYLE_RE = re.compile(r"display\s*:\s*none|visibility\s*:\s*hidden", re.IGNORECASE)
+
+
+def _secret_name(value: Optional[str], denied: frozenset) -> bool:
+    if not value:
+        return False
+    return bool(_SECRET_NAME_RE.search(value)) or _normalize_key(value) in denied
+
+
+def _is_sensitive_element(attrs: Dict[str, str], denied: frozenset) -> bool:
+    if (attrs.get("type") or "").lower() == "password":
+        return True
+    if _SECRET_AUTOCOMPLETE_RE.match(attrs.get("autocomplete") or ""):
+        return True
+    for name in ("id", "name", "autocomplete", "data-testid", "data-test", "data-qa", "aria-label"):
+        if _secret_name(attrs.get(name), denied):
+            return True
+    return any(c and _SECRET_NAME_RE.search(c) for c in (attrs.get("class") or "").split())
+
+
+def _parse_mask_selector(selector: str):
+    """Last compound of each comma part, pseudo-classes dropped — matches a
+    superset of the real selector, which is the safe direction for masking.
+    None when unreadable. Twin of html-lite.ts:parseMaskSelector."""
+    out = []
+    for part in selector.split(","):
+        segs = [s for s in re.split(r"\s*[\s>+~]\s*", part.strip()) if s]
+        if not segs:
+            continue
+        s = re.sub(r"::?[a-zA-Z-]+(\([^)]*\))?", "", segs[-1])
+        comp = {"tag": None, "ids": [], "classes": [], "attrs": []}
+        m = re.match(r"([a-zA-Z][a-zA-Z0-9-]*|\*)", s)
+        if m:
+            if m.group(1) != "*":
+                comp["tag"] = m.group(1).lower()
+            s = s[len(m.group(1)):]
+        pos = 0
+        rx = re.compile(r"#([\w-]+)|\.([\w-]+)|\[\s*([\w:-]+)\s*(?:([~|^$*]?=)\s*(?:\"([^\"]*)\"|'([^']*)'|([^\]\s]+))\s*[is]?)?\s*\]")
+        while pos < len(s):
+            m = rx.match(s, pos)
+            if not m:
+                return None
+            pos = m.end()
+            if m.group(1):
+                comp["ids"].append(m.group(1))
+            elif m.group(2):
+                comp["classes"].append(m.group(2))
+            else:
+                value = m.group(5) if m.group(5) is not None else (m.group(6) if m.group(6) is not None else (m.group(7) or ""))
+                comp["attrs"].append((m.group(3).lower(), m.group(4), value))
+        if not (comp["tag"] or comp["ids"] or comp["classes"] or comp["attrs"]):
+            return None
+        out.append(comp)
+    return out or None
+
+
+def _matches_compound(tag: str, attrs: Dict[str, str], comp) -> bool:
+    if comp["tag"] and comp["tag"] != tag:
+        return False
+    if any(attrs.get("id") != i for i in comp["ids"]):
+        return False
+    classes = set((attrs.get("class") or "").split())
+    if any(c not in classes for c in comp["classes"]):
+        return False
+    for name, op, value in comp["attrs"]:
+        v = attrs.get(name)
+        if v is None:
+            return False
+        if op is None:
+            continue
+        ok = {
+            "=": v == value,
+            "^=": v.startswith(value),
+            "$=": v.endswith(value),
+            "*=": value in v,
+            "~=": value in v.split(),
+            "|=": v == value or v.startswith(value + "-"),
+        }.get(op, False)
+        if not ok:
+            return False
+    return True
+
+
+def _escape_text(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _escape_attr(s: str) -> str:
+    return s.replace("&", "&amp;").replace('"', "&quot;")
+
+
+def redact_dom(
+    html: Optional[str],
+    policy: RedactionPolicy = DEFAULT_POLICY,
+    mask_selectors: Sequence[str] = (),
+    max_chars: int = MAX_DOM_SNAPSHOT_CHARS,
+) -> str:
+    """Redact a page's HTML before it reaches an LLM or the heal snapshot store.
+
+    Keeps what selectors are built from (tags, ids, classes, roles, aria-*,
+    data-testid, names, placeholders, short visible text) and drops comments,
+    <meta>/<link>/<base>, hidden inputs, script/style/noscript/template/
+    textarea contents, input values (bar submit/button labels), text inside
+    credential-looking elements and project mask selectors, event handlers,
+    inline styles (a hidden marker survives), data: URIs, URL queries and
+    attribute values over 200 chars; value patterns are scrubbed from the rest.
+    Twin of execution-engine/src/core/redact.ts:redactDom.
+    """
+    from html.parser import HTMLParser
+
+    if not isinstance(html, str) or not html:
+        return ""
+    denied = policy.body_key_set()
+    masks = []
+    for sel in mask_selectors or ():
+        parsed = _parse_mask_selector(sel) if isinstance(sel, str) else None
+        if parsed:
+            masks.extend(parsed)
+
+    out: list = []
+    size = [0]
+    # Open elements: (tag, suppress_text, inside_masked, emptied).
+    stack: list = []
+
+    def emit(s: str):
+        out.append(s)
+        size[0] += len(s)
+
+    def ends_with_space() -> bool:
+        return bool(out) and out[-1].endswith(" ")
+
+    class _P(HTMLParser):
+        def handle_decl(self, decl):
+            emit("<!DOCTYPE html>")
+
+        def handle_comment(self, data):
+            pass
+
+        def handle_data(self, data):
+            if stack and stack[-1][1]:
+                return
+            text = re.sub(r"[\s\u00a0]+", " ", data)
+            if not text.strip():
+                if text and not ends_with_space():
+                    emit(" ")
+                return
+            if len(text) > _MAX_DOM_TEXT_CHARS:
+                text = text[:_MAX_DOM_TEXT_CHARS] + "…"
+            emit(_escape_text(redact_text(text, policy)))
+
+        def handle_endtag(self, tag):
+            if stack and stack[-1][3] and stack[-1][0] != tag:
+                return
+            if tag in _DROPPED_DOM_ELEMENTS or tag in _VOID_ELEMENTS:
+                return
+            tags = [t[0] for t in stack]
+            if tag not in tags:
+                return
+            at = len(tags) - 1 - tags[::-1].index(tag)
+            del stack[at:]
+            emit(f"</{tag}>")
+
+        def handle_startendtag(self, tag, attrs):
+            self._start(tag, attrs, True)
+
+        def handle_starttag(self, tag, attrs):
+            self._start(tag, attrs, False)
+
+        def _start(self, tag, attr_list, self_closing):
+            if stack and stack[-1][3]:
+                return  # markup inside <noscript>/<template> is not rendered
+            attrs = {}
+            for k, v in attr_list:
+                attrs.setdefault(k, v if v is not None else "")
+            typ = (attrs.get("type") or "").lower()
+            if tag in _DROPPED_DOM_ELEMENTS or (tag == "input" and typ == "hidden"):
+                return
+            in_masked = bool(stack) and stack[-1][2]
+            masked = in_masked or any(_matches_compound(tag, attrs, c) for c in masks)
+            sensitive = _is_sensitive_element(attrs, denied)
+            parts = []
+            seen = set()
+            for name, raw in attr_list:
+                if name in seen:
+                    continue
+                seen.add(name)
+                value = raw if raw is not None else ""
+                if masked and name not in _MASKED_KEEP_ATTRS:
+                    continue
+                if name.startswith("on") or name in _DROPPED_ATTRS:
+                    continue
+                if name == "value" and not (tag == "input" and typ in _LABEL_INPUT_TYPES and not sensitive):
+                    continue
+                if name == "style":
+                    if not _HIDDEN_STYLE_RE.search(value):
+                        continue
+                    value = "display:none"
+                elif name != "type" and _secret_name(re.sub(r"^data-", "", name), denied):
+                    continue
+                elif re.match(r"^\s*data:", value, re.IGNORECASE):
+                    value = "data:[REDACTED]"
+                elif name in _URL_ATTRS:
+                    value = re.split(r"[?#]", value, maxsplit=1)[0]
+                elif name == "class":
+                    value = " ".join(value.split()[:_MAX_DOM_CLASSES])
+                if len(value) > _MAX_DOM_ATTR_CHARS:
+                    continue
+                value = redact_text(value, policy)
+                parts.append(name if raw is None and name != "value" else f'{name}="{_escape_attr(value)}"')
+            void = tag in _VOID_ELEMENTS
+            emit(f"<{tag}{(' ' + ' '.join(parts)) if parts else ''}{'/' if self_closing and not void else ''}>")
+            if void or self_closing:
+                return
+            suppress = (bool(stack) and stack[-1][1]) or masked or sensitive or tag in _EMPTIED_DOM_ELEMENTS
+            stack.append((tag, suppress, masked, tag in ("noscript", "template", "xmp")))
+
+    parser = _P(convert_charrefs=True)
+    try:
+        parser.feed(html)
+        parser.close()
+    except Exception:  # noqa: BLE001 — malformed markup: keep what was emitted
+        pass
+    text = "".join(out)
+    return text[:max_chars]

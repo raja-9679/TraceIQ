@@ -167,6 +167,12 @@ export interface JobResult {
         new_selector: string;
         matches: number;
         intent?: string | null;
+        // W5: every ranked candidate with its evidence, the redacted DOM
+        // they were derived from (stored by the backend in the object store)
+        // and whether the runtime heal applied the chosen one.
+        candidates?: Array<Record<string, any>>;
+        dom_snapshot?: string;
+        applied?: boolean;
     }>;
 
     // Artifacts at job level

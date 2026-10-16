@@ -56,7 +56,7 @@ import {
     ArtifactStore, CaptureLevel, artifactKeys, artifactPrefsFrom, keepByPrefs, normalizeCaptureLevel,
     shouldRecordVideo,
 } from './core/artifact-store';
-import { jobDataPolicy, policyFromDataPolicy } from './core/redact';
+import { jobDataPolicy, policyFromDataPolicy, redactPageSource } from './core/redact';
 import { AIEngine } from './ai';
 import { aiAllowedForRun, withAiGate } from './core/ai-gate';
 import { provider as llmProvider } from './llm-provider';
@@ -567,7 +567,10 @@ class MobileWorker {
             if (!step?.selector || !testCase.id) return false;
             if (!MOBILE_SELECTOR_FAILURE_RE.test(err.message || '')) return false;
 
-            const source = await this.driver.getPageSource(sessionId);
+            // Redacted with the project's policy before the LLM sees it: a
+            // password field's text/value never leaves the worker.
+            const source = redactPageSource(await this.driver.getPageSource(sessionId),
+                policyFromDataPolicy(jobDataPolicy(job)));
             const healed = (await this.aiEngine.healMobileLocator(step.selector, source, job.run_id) || '').trim();
             if (!healed || healed === step.selector) return false;
 

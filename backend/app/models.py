@@ -1957,6 +1957,16 @@ class SelectorHealProposal(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     decided_at: Optional[datetime] = Field(default=None)
     decided_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    # W5 — ranked candidates [{selector, strategy, source, matches, applicable,
+    # score, breakdown{stability, similarity, llm, uniqueness}}] (see
+    # app/services/heal_candidates.py); the candidate that is (or was) applied —
+    # the system's pick until a reviewer accepts another; the object-store key
+    # of the redacted DOM snapshot (under runs/{run}/heal/, never in this row);
+    # and the last accept-time uniqueness recheck.
+    candidates: Optional[List[Dict[str, Any]]] = Field(default=None, sa_column=Column(JSON))
+    chosen_selector: Optional[str] = None
+    dom_snapshot_key: Optional[str] = None
+    recheck: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
 
 
 class SelectorHealProposalRead(SQLModel):
@@ -1971,6 +1981,10 @@ class SelectorHealProposalRead(SQLModel):
     source_run_id: Optional[int]
     status: str
     created_at: datetime
+    candidates: List[Dict[str, Any]] = []
+    chosen_selector: Optional[str] = None
+    has_dom_snapshot: bool = False
+    recheck: Optional[Dict[str, Any]] = None
 
 
 class FlakeRecord(SQLModel, table=True):

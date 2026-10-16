@@ -26,6 +26,8 @@
  * (redact.test.ts and tests/test_redaction.py) mirror each other on purpose.
  */
 
+import { escapeAttr, escapeText, matchesCompound, parseMaskSelector, tokenize, VOID_ELEMENTS } from './html-lite';
+
 export const REDACTED = '[REDACTED]';
 
 const token = (name: string) => `[REDACTED:${name}]`;
@@ -400,6 +402,17 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
     if (Array.isArray(out.step_evidence)) out.step_evidence = redactStepEvidence(out.step_evidence, policy);
     if (out.hook_report && typeof out.hook_report === 'object') out.hook_report = redactHookReport(out.hook_report, policy);
     if (Array.isArray(out.page_budgets)) out.page_budgets = redactPageBudgets(out.page_budgets, policy);
+    // DOM captured for selector heal. The capture sites already redact; this
+    // is the backstop for any path that forgets to.
+    if (out.step_dom && typeof out.step_dom === 'object' && !Array.isArray(out.step_dom)) {
+        out.step_dom = Object.fromEntries(Object.entries(out.step_dom).map(
+            ([k, v]) => [k, typeof v === 'string' ? redactDom(v, { policy }) : v]));
+    }
+    if (Array.isArray(out.heal_suggestions)) {
+        out.heal_suggestions = out.heal_suggestions.map((h: any) =>
+            h && typeof h === 'object' && typeof h.dom_snapshot === 'string'
+                ? { ...h, dom_snapshot: redactDom(h.dom_snapshot, { policy }) } : h);
+    }
     return out;
 }
 
@@ -640,4 +653,186 @@ export function redactHar(har: any, policy?: RedactionPolicy): any {
     });
 
     return { ...har, log: { ...har.log, entries } };
+}
+
+// --------------------------------------------------------------------------
+// DOM snapshots (selector heal) — twin of redaction.py:redact_dom
+// --------------------------------------------------------------------------
+
+/** Cap on a redacted snapshot; the LLM sees far less (ai.ts truncates). */
+export const MAX_DOM_SNAPSHOT_CHARS = 200_000;
+const MAX_DOM_TEXT_CHARS = 200;
+const MAX_DOM_ATTR_CHARS = 200;
+const MAX_DOM_CLASSES = 12;
+
+/** Element/attribute names that mark a credential-bearing control. */
+const SECRET_NAME_RE = /passw(or)?d|passwd|\bpwd\b|secret|token|api[-_]?key|\botp\b|\bcvv\b|\bcvc\b|\bpin\b|card[-_]?number|\bssn\b|csrf|xsrf|credential|private[-_]?key/i;
+const SECRET_AUTOCOMPLETE_RE = /^(current-password|new-password|one-time-code|cc-.*)$/i;
+/** Elements dropped outright: their only content is configuration or a secret. */
+const DROPPED_DOM_ELEMENTS = new Set(['meta', 'link', 'base']);
+/** Elements whose content is code or not rendered: kept as empty shells. */
+const EMPTIED_DOM_ELEMENTS = new Set(['script', 'style', 'noscript', 'template', 'textarea', 'xmp']);
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction', 'poster', 'cite', 'background']);
+const DROPPED_ATTRS = new Set(['srcdoc', 'srcset', 'nonce', 'integrity', 'content', 'ping']);
+const LABEL_INPUT_TYPES = new Set(['submit', 'button', 'reset']);
+/** What survives on a masked element: enough to keep it addressable. */
+const MASKED_KEEP_ATTRS = new Set(['id', 'class', 'role', 'name', 'type', 'for', 'data-testid', 'data-test', 'data-test-id', 'data-qa', 'data-cy']);
+
+export interface DomRedactionOptions {
+    policy?: RedactionPolicy;
+    /** The project's screenshot mask selectors; matching elements lose their text. */
+    maskSelectors?: readonly string[];
+    maxChars?: number;
+}
+
+function secretName(value: string | undefined, denied: Set<string>): boolean {
+    if (!value) return false;
+    if (SECRET_NAME_RE.test(value)) return true;
+    return denied.has(normalizeKey(value));
+}
+
+/** True when an element is a credential-bearing control or container. */
+function isSensitiveElement(tag: string, attrs: Map<string, string>, denied: Set<string>): boolean {
+    if ((attrs.get('type') || '').toLowerCase() === 'password') return true;
+    if (SECRET_AUTOCOMPLETE_RE.test(attrs.get('autocomplete') || '')) return true;
+    for (const name of ['id', 'name', 'autocomplete', 'data-testid', 'data-test', 'data-qa', 'aria-label']) {
+        if (secretName(attrs.get(name), denied)) return true;
+    }
+    return (attrs.get('class') || '').split(/\s+/).some(c => c && SECRET_NAME_RE.test(c));
+}
+
+function stripUrl(value: string): string {
+    const cut = value.search(/[?#]/);
+    return cut < 0 ? value : value.slice(0, cut);
+}
+
+/**
+ * Redact a page's HTML before it is sent to an LLM or stored as a heal
+ * snapshot. Keeps what selectors are made of — tags, ids, classes, roles,
+ * aria-*, data-testid, names, placeholders, short visible text — and drops
+ * everything else that could carry a secret:
+ *
+ * - comments, <meta>/<link>/<base>, hidden inputs (CSRF tokens live there);
+ * - script/style/noscript/template/textarea contents (the tags stay);
+ * - every input `value` except a submit/button/reset label;
+ * - all text inside a credential-looking element (type=password, an id/name/
+ *   class like `api-token`, a policy body key) or a project mask selector;
+ * - event handlers, inline styles (a hidden marker is kept), srcdoc/srcset,
+ *   data: URIs, URL query strings/fragments, attribute values over 200 chars;
+ * - value patterns (cards, Aadhaar, JWTs, cloud keys …) in what remains.
+ */
+export function redactDom(html: string, options: DomRedactionOptions = {}): string {
+    if (typeof html !== 'string' || !html) return '';
+    const policy = options.policy;
+    const denied = bodyKeySet(policy);
+    const masks = (options.maskSelectors || [])
+        .map(s => parseMaskSelector(s))
+        .filter((c): c is NonNullable<ReturnType<typeof parseMaskSelector>> => !!c)
+        .flat();
+    const maxChars = options.maxChars ?? MAX_DOM_SNAPSHOT_CHARS;
+
+    // Open elements: [tag, suppressesText, insideMaskedElement].
+    const stack: Array<[string, boolean, boolean]> = [];
+    const suppressed = () => stack.length > 0 && stack[stack.length - 1][1];
+    const inMasked = () => stack.length > 0 && stack[stack.length - 1][2];
+    let out = '';
+
+    for (const tok of tokenize(html)) {
+        if (out.length > maxChars) break;
+        if (tok.kind === 'comment') continue;
+        if (tok.kind === 'doctype') { out += '<!DOCTYPE html>'; continue; }
+        if (tok.kind === 'text') {
+            if (suppressed()) continue;
+            let text = tok.text.replace(/[\s ]+/g, ' ');
+            if (!text.trim()) { if (text && !out.endsWith(' ')) out += ' '; continue; }
+            if (text.length > MAX_DOM_TEXT_CHARS) text = text.slice(0, MAX_DOM_TEXT_CHARS) + '…';
+            out += escapeText(redactText(text, policy));
+            continue;
+        }
+        if (tok.kind === 'end') {
+            if (DROPPED_DOM_ELEMENTS.has(tok.tag) || VOID_ELEMENTS.has(tok.tag)) continue;
+            const at = stack.map(s => s[0]).lastIndexOf(tok.tag);
+            if (at < 0) continue;
+            stack.length = at;
+            out += `</${tok.tag}>`;
+            continue;
+        }
+
+        const tag = tok.tag;
+        const attrs = new Map(tok.attrs.map(([k, v]) => [k, v ?? '']));
+        const type = (attrs.get('type') || '').toLowerCase();
+        if (DROPPED_DOM_ELEMENTS.has(tag)) continue;
+        if (tag === 'input' && type === 'hidden') continue;
+
+        const masked = inMasked() || masks.some(c => matchesCompound(tag, attrs, c));
+        const sensitive = isSensitiveElement(tag, attrs, denied);
+        const parts: string[] = [];
+        for (const [name, raw] of tok.attrs) {
+            let value = raw ?? '';
+            if (masked && !MASKED_KEEP_ATTRS.has(name)) continue;
+            if (name.startsWith('on') || DROPPED_ATTRS.has(name)) continue;
+            if (name === 'value' && !(tag === 'input' && LABEL_INPUT_TYPES.has(type) && !sensitive)) continue;
+            if (name === 'style') {
+                if (!/display\s*:\s*none|visibility\s*:\s*hidden/i.test(value)) continue;
+                value = 'display:none';
+            } else if (secretName(name.replace(/^data-/, ''), denied) && name !== 'type') {
+                continue;  // data-token="…", data-api-key="…"
+            } else if (/^\s*data:/i.test(value)) {
+                value = 'data:[REDACTED]';
+            } else if (URL_ATTRS.has(name)) {
+                value = stripUrl(value);
+            } else if (name === 'class') {
+                value = value.split(/\s+/).filter(Boolean).slice(0, MAX_DOM_CLASSES).join(' ');
+            }
+            if (value.length > MAX_DOM_ATTR_CHARS) continue;
+            value = redactText(value, policy);
+            parts.push(raw === null && name !== 'value' ? name : `${name}="${escapeAttr(value)}"`);
+        }
+        out += `<${tag}${parts.length ? ' ' + parts.join(' ') : ''}${tok.selfClosing && !VOID_ELEMENTS.has(tag) ? '/' : ''}>`;
+        if (VOID_ELEMENTS.has(tag) || tok.selfClosing) continue;
+        stack.push([tag, suppressed() || masked || sensitive || EMPTIED_DOM_ELEMENTS.has(tag), masked]);
+    }
+    return out.length > maxChars ? out.slice(0, maxChars) : out;
+}
+
+/** Appium attributes that hold what the user typed or sees. */
+const MOBILE_TEXT_ATTRS = new Set(['text', 'value', 'label', 'content-desc', 'hint']);
+
+/**
+ * Redact a native page source (Appium XML) before it reaches an LLM: a
+ * password field (`password="true"` or a secret-looking resource-id/name)
+ * loses its text/value, long attribute values are dropped and value patterns
+ * are scrubbed from the rest. Element names and resource ids — what locators
+ * are made of — survive.
+ */
+export function redactPageSource(xml: string, policy?: RedactionPolicy, maxChars = MAX_DOM_SNAPSHOT_CHARS): string {
+    if (typeof xml !== 'string' || !xml) return '';
+    const denied = bodyKeySet(policy);
+    let out = '';
+    const stack: boolean[] = [];
+    for (const tok of tokenize(xml, { xml: true })) {
+        if (out.length > maxChars) break;
+        if (tok.kind === 'comment' || tok.kind === 'doctype') continue;
+        if (tok.kind === 'text') {
+            if (stack[stack.length - 1]) continue;
+            const t = tok.text.trim();
+            if (t) out += escapeText(redactText(t.slice(0, MAX_DOM_TEXT_CHARS), policy));
+            continue;
+        }
+        if (tok.kind === 'end') { stack.pop(); out += `</${tok.tag}>`; continue; }
+        const attrs = new Map(tok.attrs.map(([k, v]) => [k, v ?? '']));
+        const secret = attrs.get('password') === 'true'
+            || ['resource-id', 'name', 'content-desc'].some(a => secretName((attrs.get(a) || '').split('/').pop(), denied));
+        const parts: string[] = [];
+        for (const [name, raw] of tok.attrs) {
+            const value = raw ?? '';
+            if (secret && MOBILE_TEXT_ATTRS.has(name)) continue;
+            if (value.length > MAX_DOM_ATTR_CHARS) continue;
+            parts.push(`${name}="${escapeAttr(redactText(value, policy))}"`);
+        }
+        // Appium tag names keep their case (XCUIElementTypeButton).
+        out += `<${tok.tag}${parts.length ? ' ' + parts.join(' ') : ''}${tok.selfClosing ? '/' : ''}>`;
+        if (!tok.selfClosing) stack.push((stack[stack.length - 1] ?? false) || secret);
+    }
+    return out.length > maxChars ? out.slice(0, maxChars) : out;
 }

@@ -361,7 +361,9 @@ async def test_heal_accept_applies_to_action_step_and_persists(monkeypatch):
 
     out = await hp.accept_proposal(
         proposal_id=1, principal=AuthPrincipal(user=MagicMock(id=1), api_key=None), session=S())
-    assert out == {"status": "accepted", "applied": True}
+    assert out["status"] == "accepted" and out["applied"] is True
+    # No stored snapshot (a pre-W5 proposal): accepted, recheck reported as unavailable.
+    assert out["recheck"]["status"] == "unavailable"
     assert case.steps[0]["selector"] == "#go-v2"
     assert case.steps is not original          # a new list, not an in-place edit
     assert flagged == ["steps"]

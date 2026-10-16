@@ -406,6 +406,30 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `PUT /flakes/{id}/owner`; `GET /flakes/owner-candidates` (editors only);
   all audited. Retried tests carry `result_payload.attempts` (worker
   `summariseAttempt`; redacted in both twins) — needs a worker rebuild.
+- **Heal candidates + DOM redaction (WP14c / W5, 2026-10)** — every heal
+  (runtime: `execution-engine/src/core/selector-heal.ts`; proactive:
+  `app/tasks/heal_tasks.py`) ranks several candidates: deterministic strategies
+  over the REDACTED DOM (test-id > id > role+name > aria-label/placeholder/name
+  > text > CSS path without nth-child) plus the LLM's pick, scored 0.35
+  stability + 0.35 similarity + 0.15 LLM + 0.15 uniqueness; only `matches == 1`
+  is applicable and only that is ever applied at run time. Twins:
+  `core/heal-candidates.ts` ↔ `app/services/heal_candidates.py` (keep weights,
+  strategy names and selector forms identical). **No DOM reaches an LLM
+  unredacted**: `redactDom`/`redact_dom` (twins in redact.ts/redaction.py —
+  strips scripts/styles/comments/meta, hidden inputs, input values, text in
+  password/token-ish elements and project `mask_selectors`, handlers, data:
+  URIs, URL queries, long attrs) and `redactPageSource` for mobile; ai.ts
+  re-redacts whatever it is given. `SelectorHealProposal` gains `candidates`,
+  `chosen_selector`, `dom_snapshot_key`, `recheck` (migration `d032b3c4d5fa`);
+  the snapshot is re-redacted with the project policy by the aggregator and
+  stored at `runs/{run}/heal/…html` (object store, deleted with the run; not
+  stored at capture level `none`). Accept takes `{selector}` (must be one of
+  the proposal's candidates, else 400) and re-matches it against the snapshot
+  with the lxml matcher in heal_candidates.py — 409 unless exactly one element
+  (unsupported selector forms are refused too; no snapshot → allowed,
+  `recheck.status=unavailable`). `POST /heal-proposals/{id}/recheck` is the dry
+  run. The list endpoint is now filtered by project access. Needs a worker
+  rebuild.
 - **Manual testing + release sign-off (WP12d, 2026-10)** — `executor="manual"`
   cases hold only `manual-step` steps (`value`=instruction,
   `params.expected`); the step type makes the case manual and mixing is a 400.

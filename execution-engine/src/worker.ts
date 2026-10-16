@@ -44,7 +44,8 @@ import {
     consoleErrorsFor, consoleFailureMessage, consoleFailurePolicy, levelAtLeast, resolveScreenshotKeys,
     summariseAttempt,
 } from './core/evidence';
-import { jobDataPolicy, maskSelectorsFrom } from './core/redact';
+import { jobDataPolicy, maskSelectorsFrom, redactDom } from './core/redact';
+import { healCandidatesFor, healSuggestion, LlmHeal, runtimeHeal } from './core/selector-heal';
 import { RunScope } from './core/run-scope';
 import {
     HOOK_TEARDOWN_BUDGET_MS, HookReport, HookRunner, caseUsesHooks, isEmptyReport, mergeReports,
@@ -59,12 +60,12 @@ import {
 const MAX_STEP_DOM_CHARS = 8000;
 
 /**
- * Compact DOM of the page body (scripts/styles/svg stripped, inputs' values
- * dropped) for the backend's proactive selector-heal audit. Only captured when
- * the dispatcher sets `capture_step_dom` — which it does only at capture level
- * `full`, because like a trace a DOM snapshot cannot be meaningfully redacted.
+ * Compact DOM of the page body for the backend's proactive selector-heal
+ * audit, passed through `redactDom` (W5) because the backend sends it to an
+ * LLM. Only captured when the dispatcher sets `capture_step_dom` — which it
+ * does only at capture level `full`.
  */
-async function captureStepDom(page: Page): Promise<string | null> {
+async function captureStepDom(page: Page, job: TestJob): Promise<string | null> {
     try {
         const html: string = await page.evaluate(() => {
             const clone = document.body ? document.body.cloneNode(true) as HTMLElement : null;
@@ -73,7 +74,14 @@ async function captureStepDom(page: Page): Promise<string | null> {
             clone.querySelectorAll('input,textarea').forEach(n => n.removeAttribute('value'));
             return clone.outerHTML.replace(/\s+/g, ' ');
         });
-        return html ? html.slice(0, MAX_STEP_DOM_CHARS) : null;
+        if (!html) return null;
+        // The same DOM redaction the runtime heal applies: this excerpt is
+        // sent to an LLM by the backend's proactive heal.
+        const dataPolicy = jobDataPolicy(job);
+        const redacted = redactDom(html, {
+            policy: policyFromDataPolicy(dataPolicy), maskSelectors: maskSelectorsFrom(dataPolicy),
+        });
+        return redacted ? redacted.slice(0, MAX_STEP_DOM_CHARS) : null;
     } catch {
         return null;
     }
@@ -125,11 +133,23 @@ class ExecutionWorker {
     private aiEngine: AIEngine = new AIEngine();
     private heartbeat: Heartbeat | null = null;
 
+    // Steps whose heal was already attempted (and recorded) by the runtime
+    // heal, so the end-of-case proposal does not ask the LLM a second time.
+    private healAttempted = new WeakSet<object>();
+
+    /** The LLM half of a heal, or null without a provider (deterministic candidates still run). */
+    private llmHealFor(runId: number): LlmHeal | null {
+        // No LLM when none is configured or the workspace switched AI off for
+        // this run (W2); the deterministic candidates still run either way.
+        if (llmProvider.name === 'null' || !aiAllowedForRun(runId)) return null;
+        return (broken, dom) => this.aiEngine.healSelector(broken, dom, runId);
+    }
+
     /**
-     * Reactive selector heal: on a selector-looking failure, ask the LLM for
-     * a replacement selector against the live DOM and record a suggestion.
-     * The backend persists it as a pending SelectorHealProposal — the test
-     * itself is never mutated here.
+     * Reactive selector heal: on a selector-looking failure, rank replacement
+     * candidates (W5: deterministic strategies over the redacted DOM + the
+     * LLM's suggestion) and record them. The backend persists them as a
+     * pending SelectorHealProposal — the test itself is never mutated here.
      */
     private async maybeProposeHeal(
         page: Page | null,
@@ -137,28 +157,21 @@ class ExecutionWorker {
         testCaseId: number | undefined,
         runId: number,
         errorMessage: string,
-        sink: any[]
+        sink: any[],
+        job: TestJob,
     ): Promise<void> {
         try {
-            if (llmProvider.name === 'null' || !aiAllowedForRun(runId)) return;
             if (!step?.selector || !testCaseId) return;
+            if (this.healAttempted.has(step)) return;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return;
             if (!page || page.isClosed()) return;
 
-            const dom = await page.content();
-            const healed = (await this.aiEngine.healSelector(step.selector, dom, runId) || '').trim();
-            if (!healed || healed === step.selector) return;
-
-            const matches = await page.locator(healed).count().catch(() => 0);
-            sink.push({
-                test_case_id: testCaseId,
-                step_id: step.id || '',
-                old_selector: step.selector,
-                new_selector: healed,
-                matches,
-                intent: step.intent || null,
-            });
-            console.log(`[Worker] Heal suggestion: "${step.selector}" -> "${healed}" (${matches} match(es) in current DOM)`);
+            const { ranked, dom } = await healCandidatesFor(page, step, job, this.llmHealFor(runId));
+            const suggestion = healSuggestion(step, testCaseId, ranked, dom, false);
+            if (!suggestion) return;
+            sink.push(suggestion);
+            console.log(`[Worker] Heal suggestion: "${step.selector}" -> "${suggestion.new_selector}" `
+                + `(${suggestion.matches} match(es); ${ranked.length} candidate(s) ranked)`);
         } catch (healErr: any) {
             console.warn(`[Worker] Heal attempt failed: ${healErr.message}`);
         }
@@ -166,9 +179,9 @@ class ExecutionWorker {
 
     /**
      * Runtime self-heal (opt-in via RUNTIME_HEAL_ENABLED): on a selector-looking
-     * failure, ask the LLM for a replacement selector and, when it UNIQUELY
+     * failure, rank replacement candidates and, when the best one UNIQUELY
      * matches the live DOM, retry the step with it so the run recovers instead
-     * of failing on a brittle selector. Always records the old→new suggestion
+     * of failing on a brittle selector. Always records the ranked candidates
      * (via `sink`) so the fix can be made durable by a human. Returns true iff
      * the step passed on retry.
      */
@@ -182,35 +195,26 @@ class ExecutionWorker {
         sink: any[],
         settings: any,
         contextData: any,
+        job: TestJob,
     ): Promise<boolean> {
         try {
             if (process.env.RUNTIME_HEAL_ENABLED !== 'true') return false;
-            if (llmProvider.name === 'null' || !aiAllowedForRun(runId)) return false;
             if (!step?.selector || !page || page.isClosed()) return false;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return false;
 
-            const dom = await page.content();
-            const healed = (await this.aiEngine.healSelector(step.selector, dom, runId) || '').trim();
-            if (!healed || healed === step.selector) return false;
-
-            const matches = await page.locator(healed).count().catch(() => 0);
-            const record = () => {
-                if (testCaseId) sink.push({
-                    test_case_id: testCaseId, step_id: step.id || '',
-                    old_selector: step.selector, new_selector: healed,
-                    matches, intent: step.intent || null,
-                });
-            };
-            // Only auto-apply an unambiguous match; otherwise just suggest.
-            if (matches !== 1) {
-                if (matches > 0) record();
-                return false;
+            this.healAttempted.add(step);
+            const { recovered, chosen, suggestion } = await runtimeHeal({
+                page, step, testCaseId, job, llm: this.llmHealFor(runId),
+                retry: async selector => {
+                    await TestExecutor.executeStep(page, currentContext, { ...step, selector }, settings, contextData);
+                },
+            });
+            if (suggestion) sink.push(suggestion);
+            if (recovered && chosen) {
+                console.log(`[Worker] Runtime heal APPLIED: "${step.selector}" -> "${chosen.selector}" `
+                    + `(${chosen.strategy}, score ${chosen.score}; step recovered)`);
             }
-
-            await TestExecutor.executeStep(page, currentContext, { ...step, selector: healed }, settings, contextData);
-            record();
-            console.log(`[Worker] Runtime heal APPLIED: "${step.selector}" -> "${healed}" (step recovered)`);
-            return true;
+            return recovered;
         } catch (e: any) {
             console.warn(`[Worker] Runtime heal retry failed: ${e.message}`);
             return false;
@@ -962,7 +966,7 @@ class ExecutionWorker {
                             ? await hookRunner.track(step, contextData, () => withinDeadline(deadline, runCaseStep))
                             : await runCaseStep();
                         if (job.settings?.capture_step_dom && step.id && step.selector && step.intent) {
-                            const dom = await captureStepDom(page);
+                            const dom = await captureStepDom(page, job);
                             if (dom) stepDom[step.id] = dom;
                         }
                         if (stepResponse?.__switchToPage) {
@@ -980,7 +984,7 @@ class ExecutionWorker {
                     // LLM-healed selector before failing the whole test.
                     const recovered = await this.tryRuntimeHeal(
                         page, currentContext!, step, testCaseId, job.run_id,
-                        stepErr.message, healSuggestions, job.settings, contextData);
+                        stepErr.message, healSuggestions, job.settings, contextData, job);
                     if (recovered) {
                         healedStepCount++;
                         recorder.end('healed');
@@ -1040,7 +1044,7 @@ class ExecutionWorker {
             console.error(`[Worker] Test failed: ${err.message}`);
 
             await this.maybeProposeHeal(
-                page, currentStep, testCaseId, job.run_id, err.message, healSuggestions);
+                page, currentStep, testCaseId, job.run_id, err.message, healSuggestions, job);
 
             // Capture response data from failed step if available
             if (err.stepResult) {
@@ -1444,7 +1448,7 @@ class ExecutionWorker {
                                     ? await hookRunner.track(step, sharedContextData, () => withinDeadline(deadline, runCaseStep))
                                     : await runCaseStep();
                                 if (job.settings?.capture_step_dom && step.id && step.selector && step.intent) {
-                                    const dom = await captureStepDom(page);
+                                    const dom = await captureStepDom(page, job);
                                     if (dom) stepDom[`${testCase.id}:${step.id}`] = dom;
                                 }
                                 if (stepResponse?.__switchToPage) {
@@ -1506,7 +1510,7 @@ class ExecutionWorker {
                     console.error(`[Worker] Test case failed: ${testCase.name} - ${err.message}`);
 
                     await this.maybeProposeHeal(
-                        page, currentStep, testCase.id, job.run_id, err.message, healSuggestions);
+                        page, currentStep, testCase.id, job.run_id, err.message, healSuggestions, job);
 
                     // Capture response data from failed step if available
                     if (err.stepResult) {
