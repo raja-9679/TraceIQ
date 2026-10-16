@@ -76,12 +76,13 @@ export const places: Place[] = [
             { name: 'Flag coverage', href: '/flag-coverage' },
             { name: 'Benchmarks', href: '/benchmarks' },
             { name: 'Costs', href: '/costs' },
+            { name: 'PoC report', href: '/reports/poc' },
         ],
     },
     {
         name: 'Tests', href: '/suites', icon: FlaskConical,
         // Analytics lives here: it reports per-project test effectiveness, not a release.
-        match: ['/suites', '/suites/*', '/import-playwright', '/environments', '/app-builds', '/schedules', '/analytics', '/frontend-quality'],
+        match: ['/suites', '/suites/*', '/import-playwright', '/test-packs', '/environments', '/app-builds', '/schedules', '/analytics', '/frontend-quality'],
         children: [
             { name: 'Suites', href: '/suites' },
             { name: 'Schedules', href: '/schedules' },
@@ -89,6 +90,7 @@ export const places: Place[] = [
             { name: 'App builds', href: '/app-builds' },
             { name: 'Frontend quality', href: '/frontend-quality' },
             { name: 'Import Playwright', href: '/import-playwright' },
+            { name: 'Test packs', href: '/test-packs' },
             { name: 'Analytics', href: '/analytics' },
         ],
     },
@@ -110,13 +112,20 @@ export const places: Place[] = [
         name: 'Security', href: '/security', icon: ShieldCheck,
         // Estate (domain/TLS/header sweeps) and Script inventory (third-party
         // scripts on payment pages) are posture checks, so they live here too.
-        match: ['/security', '/access-matrix', '/access-reviews', '/estate', '/script-inventory'],
+        // WP13: compliance (controls, evidence packs, audit log) and the public
+        // trust center are the security/compliance owner's tools too.
+        match: ['/security', '/access-matrix', '/access-reviews', '/estate', '/script-inventory',
+            '/compliance/*', '/audit-log', '/trust-center'],
         children: [
             { name: 'Scans & findings', href: '/security' },
             { name: 'Access matrix', href: '/access-matrix' },
             { name: 'Access reviews', href: '/access-reviews' },
             { name: 'Estate', href: '/estate' },
             { name: 'Script inventory', href: '/script-inventory' },
+            { name: 'Controls', href: '/compliance/controls' },
+            { name: 'Evidence packs', href: '/compliance/evidence-packs' },
+            { name: 'Audit log', href: '/audit-log' },
+            { name: 'Trust center', href: '/trust-center' },
         ],
     },
 ];
@@ -131,6 +140,8 @@ export const setupLinks: SubLink[] = [
     // Backend guard is instance admin (stricter); the frontend has no flag for
     // that, so this hides it from non-admins and the page explains a 403.
     { name: 'Worker fleet', href: '/admin/workers', permission: 'tenant:manage_settings' },
+    // Capacity planning; any signed-in user (pure calculator, no data).
+    { name: 'Sizing calculator', href: '/sizing' },
     // Server-wide configuration; same instance-admin story as Worker fleet.
     { name: 'Instance settings', href: '/instance-settings', permission: 'tenant:manage_settings' },
     { name: 'API keys', href: '/api-keys' },

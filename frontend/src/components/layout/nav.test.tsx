@@ -22,14 +22,14 @@ describe('sidebar information architecture', () => {
         expect(names(place('Releases').children)).toEqual(['Quality gate', 'Release readiness', 'Release sign-off', 'Requirements', 'Traceability', 'Incidents']);
         expect(names(place('Reports').children)).toEqual([
             'Executive summary', 'Portfolio', 'Delivery (DORA)', 'SLOs', 'Flake trends', 'Dependencies',
-            'Journey coverage', 'Business journeys', 'Flag coverage', 'Benchmarks', 'Costs',
+            'Journey coverage', 'Business journeys', 'Flag coverage', 'Benchmarks', 'Costs', 'PoC report',
         ]);
-        expect(names(place('Security').children)).toEqual(['Scans & findings', 'Access matrix', 'Access reviews', 'Estate', 'Script inventory']);
+        expect(names(place('Security').children)).toEqual(['Scans & findings', 'Access matrix', 'Access reviews', 'Estate', 'Script inventory', 'Controls', 'Evidence packs', 'Audit log', 'Trust center']);
         expect(names(place('Watch').children)).toEqual(['Monitors', 'On-call']);
-        expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Analytics']);
+        expect(names(place('Tests').children)).toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Test packs', 'Analytics']);
         expect(names(setupLinks)).toEqual([
             'My settings', 'Project settings', 'Workspace', 'Users', 'Tenant admin', 'Worker fleet',
-            'Instance settings', 'API keys', 'Webhooks', 'Issue trackers', 'AI usage', 'Billing',
+            'Sizing calculator', 'Instance settings', 'API keys', 'Webhooks', 'Issue trackers', 'AI usage', 'Billing',
         ]);
     });
 
@@ -39,13 +39,13 @@ describe('sidebar information architecture', () => {
         expect([place('Runs').href, place('Watch').href, place('Security').href]).toEqual(['/runs', '/monitors', '/security']);
     });
 
-    it('offers all 49 destinations exactly once', () => {
+    it('offers all 56 destinations exactly once', () => {
         const hrefs = [
             ...places.filter((p) => !isGroup(p)).map((p) => p.href),
             ...places.flatMap((p) => p.children.map((c) => c.href)),
             ...setupLinks.map((l) => l.href),
         ];
-        expect(hrefs).toHaveLength(49);
+        expect(hrefs).toHaveLength(56);
         expect(new Set(hrefs).size).toBe(hrefs.length);
     });
 
@@ -206,7 +206,7 @@ describe('collapsed rail', () => {
         await user.click(desktopNav().getByRole('button', { name: 'Tests' }));
         const menu = await screen.findByRole('menu');
         expect(within(menu).getAllByRole('menuitem').map((i) => i.textContent))
-            .toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Analytics']);
+            .toEqual(['Suites', 'Schedules', 'Environments', 'App builds', 'Frontend quality', 'Import Playwright', 'Test packs', 'Analytics']);
         await user.click(within(menu).getByRole('menuitem', { name: 'Schedules' }));
         expect(location()).toBe('/schedules');
         expect(desktopNav().getByRole('button', { name: 'Tests' }).hasAttribute('data-active')).toBe(true);
@@ -233,7 +233,7 @@ describe('collapsed rail', () => {
         renderAt('/runs', { collapsed: true });
         await user.click(desktopNav().getByRole('button', { name: 'Setup' }));
         const menu = await screen.findByRole('menu');
-        expect(within(menu).getAllByRole('menuitem')).toHaveLength(9);
+        expect(within(menu).getAllByRole('menuitem')).toHaveLength(10);
         expect(within(menu).queryByRole('menuitem', { name: 'Tenant admin' })).toBeNull();
         expect(within(menu).queryByRole('menuitem', { name: 'Instance settings' })).toBeNull();
         expect(within(menu).getByRole('menuitem', { name: 'Project settings' })).toBeTruthy();
