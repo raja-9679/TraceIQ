@@ -608,11 +608,11 @@ export default function Settings() {
                             <SettingsCard
                                 labelledBy="settings-artifacts"
                                 title="Recordings and screenshots"
-                                description="What is captured while tests run, to help debug failures."
+                                description="Applies to runs you start and schedules you created, within each project's capture level. Video and Playwright traces are only kept for projects whose Data policy (Quality page) is Full; on Standard they are never recorded, whatever you choose here."
                                 footer={saveFooter}
                             >
                                 <div className="flex flex-col">
-                                    <FieldRow label="Video recording" htmlFor="set-video-recording" hint="When to record video of a test run.">
+                                    <FieldRow label="Video recording" htmlFor="set-video-recording" hint="Which runs keep their video: every run, only failed runs, or none.">
                                         <Select value={videoRecording} onValueChange={dirty(setVideoRecording)}>
                                             <SelectTrigger id="set-video-recording" className={selectTriggerClass}>
                                                 <SelectValue placeholder="Select recording preference" />

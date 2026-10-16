@@ -206,6 +206,10 @@ def run_test_suite(run_id: int, tags: list = None):
             # cannot be talked into exceeding it by a crafted job.
             data_policy = _load_data_policy(auth_project_id, session)
             effective_settings['data_policy'] = data_policy
+            # The run starter's Settings → video/trace/screenshot choices. The
+            # worker applies them within the capture level above, never past it.
+            from app.services.artifact_prefs import load_for_user
+            effective_settings['artifact_prefs'] = load_for_user(getattr(run, 'user_id', None), session)
 
             # Frontend matrix variant (WP10): viewport / locale / colour
             # scheme this run emulates. Already validated at run creation.
@@ -417,6 +421,8 @@ def _settings_payload(settings: dict) -> dict:
     # and a run's policy should be decided here, not there.
     if settings.get('data_policy'):
         payload['data_policy'] = settings['data_policy']
+    if settings.get('artifact_prefs'):
+        payload['artifact_prefs'] = settings['artifact_prefs']
     if settings.get('egress_policy'):
         payload['egress_policy'] = settings['egress_policy']
     if settings.get('emulation'):

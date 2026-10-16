@@ -80,6 +80,51 @@ export function artifactAllowed(kind: ArtifactKind, level: CaptureLevel): boolea
 }
 
 // --------------------------------------------------------------------------
+// Artifact preferences (the run starter's Settings → Artifacts choices)
+// --------------------------------------------------------------------------
+
+export type VideoPref = 'off' | 'on-failure' | 'always';
+
+/**
+ * What the person who started the run asked to keep. Preferences only ever
+ * NARROW the capture level: a video is kept only when the level allows it
+ * AND the preference wants it.
+ */
+export interface ArtifactPrefs {
+    video: VideoPref;
+    trace: boolean;
+    failureScreenshot: boolean;
+}
+
+/**
+ * A job without preferences (sent by a backend older than this worker) keeps
+ * today's behaviour: everything the capture level allows.
+ */
+export const NO_PREFS: ArtifactPrefs = { video: 'always', trace: true, failureScreenshot: true };
+
+export function artifactPrefsFrom(raw: any): ArtifactPrefs {
+    if (!raw || typeof raw !== 'object') return NO_PREFS;
+    const video = String(raw.video ?? '').trim().toLowerCase();
+    return {
+        video: video === 'off' || video === 'on-failure' || video === 'always' ? video : NO_PREFS.video,
+        trace: raw.trace !== false,
+        failureScreenshot: raw.failure_screenshot !== false,
+    };
+}
+
+/** Record video at all? Skipping it saves the encoder's CPU and disk. */
+export function shouldRecordVideo(level: CaptureLevel, prefs: ArtifactPrefs): boolean {
+    return artifactAllowed('video', level) && prefs.video !== 'off';
+}
+
+/** Keep a recorded video/trace, given how the job ended? */
+export function keepByPrefs(kind: 'video' | 'trace', prefs: ArtifactPrefs, failed: boolean): boolean {
+    if (kind === 'trace') return prefs.trace;
+    if (prefs.video === 'off') return false;
+    return prefs.video === 'always' || failed;
+}
+
+// --------------------------------------------------------------------------
 // Key layout
 // --------------------------------------------------------------------------
 

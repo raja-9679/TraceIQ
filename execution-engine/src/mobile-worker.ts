@@ -52,7 +52,10 @@ import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-qu
 import { WebDriverClient } from './core/webdriver-client';
 import { resolveTemplates, TemplateContext } from './core/interpolate';
 import { RunScope } from './core/run-scope';
-import { ArtifactStore, CaptureLevel, artifactKeys, normalizeCaptureLevel } from './core/artifact-store';
+import {
+    ArtifactStore, CaptureLevel, artifactKeys, artifactPrefsFrom, keepByPrefs, normalizeCaptureLevel,
+    shouldRecordVideo,
+} from './core/artifact-store';
 import { jobDataPolicy, policyFromDataPolicy } from './core/redact';
 import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
@@ -237,10 +240,16 @@ class MobileWorker {
                     + `(${err.message}) — recording at native resolution.`);
             }
         }
+        // Don't record what could never be kept (capture level below `full`,
+        // or the run starter's video preference is off).
+        const wantsVideo = shouldRecordVideo(this.captureLevelFor(job), this.artifactPrefsFor(job));
+        if (!wantsVideo) console.log('[MobileWorker] Screen recording skipped (capture level / video preference)');
         try {
-            await this.driver.startScreenRecording(sessionId, videoSize);
-            recording = true;
-            console.log(`[MobileWorker] Screen recording started (${videoSize || 'native'})`);
+            if (wantsVideo) {
+                await this.driver.startScreenRecording(sessionId, videoSize);
+                recording = true;
+                console.log(`[MobileWorker] Screen recording started (${videoSize || 'native'})`);
+            }
         } catch (err: any) {
             console.log(`[MobileWorker] Screen recording unavailable: ${err.message}`);
         }
@@ -269,7 +278,8 @@ class MobileWorker {
         }
 
         base.artifacts.screenshots = await this.uploadScreenshots(job, shots);
-        const videoKey = await this.uploadVideo(job, videoBuf);
+        const videoKey = await this.uploadVideo(
+            job, videoBuf, testResults.some((r) => r.status !== 'passed'));
         if (videoKey) base.artifacts.video = videoKey;
 
         const failed = testResults.filter((r) => r.status !== 'passed').length;
@@ -581,6 +591,11 @@ class MobileWorker {
      * The capture level the backend attached to this job, defaulting safely
      * when a job predates the policy or names a level this build doesn't know.
      */
+    private artifactPrefsFor(job: TestJob) {
+        const j: any = job;
+        return artifactPrefsFrom(j?.artifact_prefs ?? j?.settings?.artifact_prefs);
+    }
+
     private captureLevelFor(job: TestJob): CaptureLevel {
         return normalizeCaptureLevel(jobDataPolicy(job)?.capture_level);
     }
@@ -609,8 +624,13 @@ class MobileWorker {
     }
 
     /** Upload the job's screen recording (MP4) — same key layout as web video. */
-    private async uploadVideo(job: TestJob, videoBuf: Buffer | null): Promise<string | null> {
+    private async uploadVideo(job: TestJob, videoBuf: Buffer | null, failed: boolean): Promise<string | null> {
         if (!videoBuf || videoBuf.length === 0) return null;
+        const prefs = this.artifactPrefsFor(job);
+        if (!keepByPrefs('video', prefs, failed)) {
+            console.log(`[MobileWorker] Video not kept: preference '${prefs.video}', job ${failed ? 'failed' : 'passed'}`);
+            return null;
+        }
         try {
             const store = new ArtifactStore(this.captureLevelFor(job));
             const key = artifactKeys.video(job.run_id, job.job_id, 'mp4');

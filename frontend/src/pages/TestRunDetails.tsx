@@ -54,15 +54,15 @@ export default function TestRunDetails() {
         // If run is already finished, no need to connect (unless you want to watch for potential post-run updates, but unlikely)
         if (run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error') return;
 
-        // The JWT goes as a query param because browsers can't set headers on a
-        // WebSocket; the server authorizes against the run's project before
-        // accepting.
+        // Browsers can't set headers on a WebSocket, so the JWT rides in the
+        // subprotocol list (Sec-WebSocket-Protocol), not the URL — a URL ends
+        // up in every access log. The server authorizes against the run's
+        // project before accepting and echoes "traceiq.bearer" back.
         const token = localStorage.getItem("token");
-        const wsUrl = apiWebSocketUrl(`/ws/runs/${runId}`)
-            + (token ? `?token=${encodeURIComponent(token)}` : '');
-
-        // Do not log wsUrl — it carries the JWT as a query param.
-        const ws = new WebSocket(wsUrl);
+        const ws = new WebSocket(
+            apiWebSocketUrl(`/ws/runs/${runId}`),
+            token ? ['traceiq.bearer', token] : undefined,
+        );
 
         ws.onopen = () => {
             console.log("WebSocket Connected");
