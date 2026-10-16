@@ -4,7 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { PageHeader, Pill } from '@/components/redesign/primitives';
-import { CheckRow, FieldRow, RowGroup, SettingsCard, inputClass, warnCalloutClass } from '@/components/redesign-local/groupD/settingsForm';
+import { CheckRow, RowGroup, SettingsCard, inputClass, warnCalloutClass } from '@/components/redesign-local/groupD/settingsForm';
 import { errorText, sizingApi, type CaptureLevel, type SizingInput } from '@/api/solution';
 
 const DEFAULTS: SizingInput = {
@@ -24,12 +24,19 @@ function NumberField({ id, label, hint, value, onChange, step = 1, min = 0, suff
     id: string; label: string; hint?: string; value: number; onChange: (v: number) => void;
     step?: number; min?: number; suffix?: string;
 }) {
+    // Stacked (label above a full-width input): the Workload card is a narrow
+    // column, and FieldRow's side-by-side layout squeezed the labels into a
+    // few characters per line.
     return (
-        <FieldRow label={label} htmlFor={id} hint={hint}>
-            <Input id={id} type="number" inputMode="decimal" className={inputClass} value={Number.isFinite(value) ? value : ''}
-                step={step} min={min} onChange={(e) => onChange(parseFloat(e.target.value))} />
-            {suffix && <span className="flex-none text-xs text-ink-soft">{suffix}</span>}
-        </FieldRow>
+        <div className="flex flex-col gap-1.5 py-1.5">
+            <label htmlFor={id} className="text-sm font-medium text-ink">{label}</label>
+            {hint && <p className="text-xs leading-relaxed text-ink-soft">{hint}</p>}
+            <div className="flex items-center gap-2">
+                <Input id={id} type="number" inputMode="decimal" className={`${inputClass} w-full`} value={Number.isFinite(value) ? value : ''}
+                    step={step} min={min} onChange={(e) => onChange(parseFloat(e.target.value))} />
+                {suffix && <span className="flex-none text-xs text-ink-soft">{suffix}</span>}
+            </div>
+        </div>
     );
 }
 
@@ -97,12 +104,14 @@ export default function SizingCalculator() {
                         </div>
                     </SettingsCard>
                     <SettingsCard title="Storage and options" labelledBy="sizing-storage">
-                        <FieldRow label="Capture level" htmlFor="sz-capture" hint="What each run may store (project data policy)." wide>
+                        <div className="flex flex-col gap-1.5 py-1.5">
+                            <label htmlFor="sz-capture" className="text-sm font-medium text-ink">Capture level</label>
+                            <p className="text-xs leading-relaxed text-ink-soft">What each run may store (project data policy).</p>
                             <select id="sz-capture" value={input.capture_level} onChange={(e) => set('capture_level')(e.target.value as CaptureLevel)}
                                 className="h-10 w-full rounded-full border border-input bg-white px-4 text-sm text-ink focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
                                 {LEVELS.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
                             </select>
-                        </FieldRow>
+                        </div>
                         <div className="flex flex-col">
                             <NumberField id="sz-fail" label="Failure rate" hint="0–1; videos are kept on failure only." step={0.01} value={input.failure_rate} onChange={set('failure_rate')} />
                             <NumberField id="sz-ret" label="Retention" hint="RUN_RETENTION_DAYS" value={input.retention_days} onChange={set('retention_days')} min={1} suffix="days" />
