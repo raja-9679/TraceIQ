@@ -52,6 +52,18 @@ with mocks/fakes; they are marked **mock-verified**.
 | C6 | Sizing calculator | Estimates with the formulas shown, derived from the documented per-worker and storage figures. |
 | C7 | Integration test packs | Versioned JSON packs shipped in the repo (SSO, SCIM, webhooks); import creates a suite with variables to fill; import never contacts a target. |
 
+## WP14 product defaults (2026-10-16, owner may overrule)
+
+| # | Question | Decision |
+|---|---|---|
+| W1 | Assistant | Read-only tools only; every tool result filtered by the caller's own access (same checks as the endpoints); answers cite record ids, invented ids are dropped and uncited claims marked; text sent to the LLM is redacted; conversations kept per user 30 days and deletable; with the Null provider it explains AI is not configured. |
+| W2 | AI opt-out | Workspace admins can switch off ALL LLM use for their workspace (heal, analysis, generation, assistant); default on (today's behaviour). Enforced server-side and on workers. |
+| W3 | Agent budgets | Per agent session/task: max runs, LLM tokens, proposals, wall time; none by default, instance-wide default caps configurable; exceeding returns 429 with the reason and is logged. Per-agent kill switch. |
+| W4 | Policy engine | One `evaluate(action, context)` entry point wrapping today's checks without changing outcomes (parity tests); every deny logged with the rule that fired. |
+| W5 | Heal | Several candidates (LLM + deterministic role/text/test-id strategies), scored; accept rechecks uniqueness against the stored DOM snapshot and refuses if not unique; DOM redacted before any LLM call. |
+| W6 | API fuzzing | Opt-in; allowlisted domains only; read-only (GET/HEAD) unless the scan carries the existing "authorized" attestation; rate-limited; a deny passes only on explicit 401/403/404; findings become SecurityFindings. Templates: ID swap/IDOR, mass assignment, missing auth, role escalation, negative/boundary payloads from the OpenAPI schema, replay. |
+| W7 | Visual | Element baselines via a selector screenshot; related changes grouped across cases in one run; comment threads on reviews. |
+
 ## Status legend
 `done` merged into base · `wip` in progress · `todo` · `skip` (decision above)
 
@@ -73,7 +85,7 @@ with mocks/fakes; they are marked **mock-verified**.
 | 11 | **Developer workflow**: reproduce-locally bundle + CLI replay (D15), git export of cases, PR comment with failing step + screenshot, API response-schema validation | done | feat/wp11 |
 | 12 | **Reporting**: weekly digest, manual cases + tester sign-off, shareable read-only report, journey coverage map (A4, analytics import), business journey board, DORA, exec summary, portfolio dashboard, SLO reports, third-party dependency health (B9), cost intelligence in money (E23), A/B + flag coverage, cross-site benchmarking, flake trend/patterns (A3 rest) | done | feat/wp12a..d |
 | 13 | **Solution & compliance**: compliance evidence pack, control model with owners/freshness/exceptions (C14), sizing calculator + seeded demo workspace, one suite vs N URLs side by side, integration test packs (SSO/SCIM/webhooks), PoC report, trust center (E24) | done ("one suite vs N URLs" delivered by WP12c benchmarks) | feat/wp13a..c |
-| 14 | **AI & platform**: in-app assistant (E20), agent action log + per-task budgets (E21), heal candidate ranking + uniqueness recheck (A5), API authz/business-rule fuzzing + abuse templates (C10, C13), policy engine single evaluation point (E22), visual change grouping/comments/element baselines (D17) | next (owner asked 2026-10-16; start in a fresh session — see HANDOFF "Resume here (2026-10-16)") | - |
+| 14 | **AI & platform**: in-app assistant (E20), agent action log + per-task budgets (E21), heal candidate ranking + uniqueness recheck (A5), API authz/business-rule fuzzing + abuse templates (C10, C13), policy engine single evaluation point (E22), visual change grouping/comments/element baselines (D17) | wip (started 2026-10-16) | feat/wp14a..e |
 | — | Plugin / custom-step SDK (D19) | skip | decision 1 |
 
 ## Log
@@ -88,4 +100,5 @@ with mocks/fakes; they are marked **mock-verified**.
 - 2026-10-16: owner started WP13 (solution & compliance). Inventory first; "one suite vs N URLs side by side" counted as done (WP12c Benchmarks).
 - 2026-10-16: WP13 merged. 13a controls (SOC 2 starter set on demand, automated evidence sources, freshness, four-eyes exceptions), signed evidence packs (HMAC manifest + verify), restore-drill results recorded (instance admin only), audit-log page; 13b trust center (off by default, opt-in aggregate posture incl. restore drill + controls count wired at merge, incident posts, gated documents via expiring links, request-access form) and PoC report (labelled time-saved estimate, shareable); 13c sizing calculator (formulas shown), one-click demo workspace (seeded history, no network, notifications blocked, one per user), SSO/SCIM/webhook test packs (validated against the step catalogue; secrets to the secrets store). Migrations cf12b3c4d5f5 → cf22b3c4d5f6 → cf32b3c4d5f7. Known cosmetic: sizing-calculator labels wrap in a narrow column.
 - 2026-10-16: fixed test_siem time bomb (suite now 0 failures besides 4 e2e), sizing calculator layout. WP14 queued for a fresh session.
+- 2026-10-16: WP14 started. Inventory found unredacted DOM sent to the LLM by runtime heal and no per-workspace AI opt-out; both fixed inside WP14 (c, b).
 
