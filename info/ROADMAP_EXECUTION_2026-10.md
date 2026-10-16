@@ -64,6 +64,32 @@ with mocks/fakes; they are marked **mock-verified**.
 | W6 | API fuzzing | Opt-in; allowlisted domains only; read-only (GET/HEAD) unless the scan carries the existing "authorized" attestation; rate-limited; a deny passes only on explicit 401/403/404; findings become SecurityFindings. Templates: ID swap/IDOR, mass assignment, missing auth, role escalation, negative/boundary payloads from the OpenAPI schema, replay. |
 | W7 | Visual | Element baselines via a selector screenshot; related changes grouped across cases in one run; comment threads on reviews. |
 
+## WP15 product defaults (proposed 2026-10-16, owner may overrule)
+
+Inventory 2026-10-16 (before proposing): ALREADY BUILT and therefore not in
+WP15 — `mock-response` (static stub via page.route) + `block-request` steps;
+`check-accessibility` step (axe-core, severity threshold, report-only mode)
+and Storybook a11y cases; MV3 Chrome recorder (`integrations/browser-recorder/`,
+dev-mode install). Per-job browser contexts exist; arbitrary code only runs via
+`raw_playwright`, which is off by default. CONFIRMED MISSING: RLS (isolation is
+Python-only, one shared bucket), image signing/SBOM, any browser E2E of
+TraceIQ in CI (CI only builds the frontend; 18 vitest files), Node worker
+tracing, stored a11y results (violations live only in step evidence — no
+register, waivers, trend or gate), HAR replay / sequenced mocks, generated API
+client, shared vector files for the redaction and heal twins (only the WP14e
+visual key has them).
+
+| # | Question | Decision |
+|---|---|---|
+| H1 | Tenant isolation in the DB (15a) | Postgres row-level security as a SECOND wall behind the Python checks, never instead of them. Policies on workspace/project-owned tables keyed on per-transaction settings (`SET LOCAL traceiq.workspace_ids`/`project_ids`) the session dependency sets from the principal; Celery/beat/migrations use a separate BYPASSRLS role. Rollout behind an instance setting: `off` → `log` (policy violations counted, nothing refused) → `enforce`. Start with the high-value tables (runs, results, cases, suites, project secrets, findings, artifacts index); `tests/test_rls_plan.py` fails for a new tenant-owned table without a policy, like the purge plan. Live tenant-isolation test re-run with the Python checks bypassed must still deny. |
+| H2 | Supply chain (15b) | Release workflow (still manual-dispatch) signs the three images with cosign keyless (GitHub OIDC) and attaches a CycloneDX SBOM per image; SELF_HOSTING.md shows `cosign verify`. FastAPI/Starlette major bump on its own commit with the full suite. |
+| H3 | Worker observability (15b) | OpenTelemetry in the Node worker on the same `OTEL_EXPORTER_OTLP_ENDPOINT`, trace id propagated from dispatch so one run is one trace across backend → Celery → worker. No-op when unset. |
+| H4 | Legacy CONTINUOUS engine (15b) | Plan + deprecation, not deletion: route CONTINUOUS jobs through the distributed worker (which already supports continuous sub-suite jobs), warn at boot when `server.ts` is used, remove one release later. Until then it is documented as not honouring ai_allowed / egress. |
+| H5 | TraceIQ's own E2E (15c) | Playwright suite in `e2e/` against the compose stack, CI job (CI stays manual-dispatch): login, create suite + case, run, result visible, every nav destination loads with no page error and no 5xx. Real-service checks (SAML, PagerDuty/Opsgenie, Jira/Linear, Splunk/Elastic) are a documented manual checklist with owner-supplied sandbox accounts; results recorded in the tracker, credentials never committed. |
+| H6 | Accessibility register (15d) | `check-accessibility` outcomes stored per run (rule id, impact, target selector redacted, count — never page text). Known-issue waivers per project (rule + selector, reason, owner, expiry ≤ 90 days, like flake quarantine). Trend page; opt-in gate check "no NEW violations at/above serious" (waived ones excluded). |
+| H7 | Mocks (15d) | `mock-response` gains `sequence` (nth call → nth response) and a `har-replay` step (`routeFromHAR`, HAR uploaded to the object store under the project, redacted on upload, not-found = fall through or abort per `params.not_found`). HAR recording stays capture-level `full` only. |
+| H8 | Developer (15e) | Frontend API types generated from the backend OpenAPI (`openapi-typescript`, types only, no runtime client), adopted file by file with a CI drift check. Shared JSON vector files consumed by BOTH twin test suites for redaction and heal ranking. VS Code extension and recorder fidelity stay in SCOPE_NOTES (not WP15). |
+
 ## Status legend
 `done` merged into base · `wip` in progress · `todo` · `skip` (decision above)
 
@@ -86,6 +112,7 @@ with mocks/fakes; they are marked **mock-verified**.
 | 12 | **Reporting**: weekly digest, manual cases + tester sign-off, shareable read-only report, journey coverage map (A4, analytics import), business journey board, DORA, exec summary, portfolio dashboard, SLO reports, third-party dependency health (B9), cost intelligence in money (E23), A/B + flag coverage, cross-site benchmarking, flake trend/patterns (A3 rest) | done | feat/wp12a..d |
 | 13 | **Solution & compliance**: compliance evidence pack, control model with owners/freshness/exceptions (C14), sizing calculator + seeded demo workspace, one suite vs N URLs side by side, integration test packs (SSO/SCIM/webhooks), PoC report, trust center (E24) | done ("one suite vs N URLs" delivered by WP12c benchmarks) | feat/wp13a..c |
 | 14 | **AI & platform**: in-app assistant (E20), agent action log + per-task budgets (E21), heal candidate ranking + uniqueness recheck (A5), API authz/business-rule fuzzing + abuse templates (C10, C13), policy engine single evaluation point (E22), visual change grouping/comments/element baselines (D17) | done (2026-10-16; C10/C13 parked — see SCOPE_NOTES) | feat/wp14a,b,c,e |
+| 15 | **Hardening + quality**: database-level tenant isolation (Postgres RLS), supply chain (signed images + SBOM, FastAPI/Starlette major bump, worker OpenTelemetry, legacy CONTINUOUS engine retirement plan), TraceIQ's own browser E2E suite in CI + real-sandbox verification of SAML/paging/trackers/SIEM, accessibility register (stored violations, known-issue waivers, trend, gate check), HAR record/replay + sequenced mocks, generated typed API client, shared twin test vectors | todo (proposed 2026-10-16; owner to confirm H1–H8) | feat/wp15a..e |
 | — | Plugin / custom-step SDK (D19) | skip | decision 1 |
 
 ## Log
@@ -103,4 +130,4 @@ with mocks/fakes; they are marked **mock-verified**.
 - 2026-10-16: WP14 started. Inventory found unredacted DOM sent to the LLM by runtime heal and no per-workspace AI opt-out; both fixed inside WP14 (c, b).
 - 2026-10-16: WP14d (API authz / business-rule fuzzing + abuse templates, C10/C13) parked for the owner's decision, like estate active probing; WP14a, b, c, e in progress.
 - 2026-10-16: WP14 merged (d parked). 14a read-only assistant with cited answers (honours the policy engine: workspace AI opt-out, token quota); 14b policy engine + Policies page, workspace AI opt-out carried to workers, agent action log, budgets and kill switch (Agents page); 14c ranked heal candidates, DOM redaction before any LLM call, uniqueness recheck on accept; 14e element baselines, stored diffs, change grouping, review comments. Migrations d012b3c4d5f8 → d022b3c4d5f9 → d032b3c4d5fa → d052b3c4d5fc. Known gaps: legacy server.ts ignores ai_allowed; kill switch not on every write for user-token callers; agents without a session header are not budgeted.
-
+- 2026-10-16: WP15 proposed (hardening + quality) after an inventory; mock-response, check-accessibility and the Chrome recorder already exist, so WP15 builds on them instead. Not started — owner to confirm H1–H8.
