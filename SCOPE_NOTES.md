@@ -65,6 +65,19 @@ For a full feature-coverage scorecard against a modern-platform checklist (and t
 
 ## Still deferred to future sessions
 
+### Settings follow-ups (noted 2026-10-16)
+- **Display preferences are still dead.** My settings → General (theme,
+  timezone, date format) are saved but unread: dates are formatted in
+  Asia/Kolkata with the en-IN locale for everyone (`frontend/src/lib/utils.ts`
+  formatDate, plus ~40 raw `toLocale*` calls), and nothing applies the `.dark`
+  class. Needs a shared preferences context; dark mode needs a visual pass.
+- **Two access rules.** `GET /api/projects` lists projects through tenant
+  owner/admin roles too, while `access_service.has_project_access` (used by
+  every project endpoint and by notification recipients) only knows workspace
+  admins, direct grants and team grants. A tenant admin can therefore see a
+  project whose endpoints answer 403. Pick one rule.
+- **Daily digest** (the removed "Daily summary" toggle) was never built.
+
 ### Estate: active probing (parked 2026-10-15, needs the owner's decision)
 WP9 built the passive estate checks only. These were designed but deliberately
 not built, because they actively probe hosts and should be a conscious product
