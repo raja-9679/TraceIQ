@@ -44,6 +44,9 @@ import ManualRun from "@/pages/ManualRun";
 import ReleaseSignoff from "@/pages/ReleaseSignoff";
 import PublicStatus from "@/pages/PublicStatus";
 import PublicShare from "@/pages/PublicShare";
+import PublicTrust from "@/pages/PublicTrust";
+import TrustCenterSettings from "@/pages/TrustCenterSettings";
+import PocReport from "@/pages/PocReport";
 import ExecutiveSummary from "@/pages/ExecutiveSummary";
 import Portfolio from "@/pages/Portfolio";
 import Traceability from "@/pages/Traceability";
@@ -85,6 +88,7 @@ function App() {
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/status/:slug" element={<PublicStatus />} />
             <Route path="/share" element={<PublicShare />} />
+            <Route path="/trust/:slug" element={<PublicTrust />} />
 
             <Route element={<PrivateRoute />}>
               <Route path="/" element={<DashboardLayout />}>
@@ -114,6 +118,8 @@ function App() {
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="reports/summary" element={<ExecutiveSummary />} />
                 <Route path="reports/portfolio" element={<Portfolio />} />
+                <Route path="reports/poc" element={<PocReport />} />
+                <Route path="trust-center" element={<TrustCenterSettings />} />
                 <Route path="billing" element={<Billing />} />
                 <Route path="ai-usage" element={<LLMUsage />} />
                 <Route path="costs" element={<Costs />} />

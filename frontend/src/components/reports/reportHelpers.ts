@@ -60,6 +60,8 @@ export const SHARE_KIND_LABELS: Record<ShareLink['kind'], string> = {
     run_report: 'Run report',
     project_summary: 'Project summary',
     workspace_summary: 'Workspace summary',
+    poc_report: 'PoC report',
+    trust_document: 'Trust document',
 };
 
 export const SHARE_STATE: Record<ShareLink['state'], { label: string; tone: Tone }> = {

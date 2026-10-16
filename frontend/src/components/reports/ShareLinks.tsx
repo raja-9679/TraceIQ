@@ -45,7 +45,7 @@ export function CreatedLink({ link }: { link: CreatedShareLink }) {
     );
 }
 
-function ExpirySelect({ id, value, onChange }: { id: string; value: number; onChange: (v: number) => void }) {
+export function ExpirySelect({ id, value, onChange }: { id: string; value: number; onChange: (v: number) => void }) {
     return (
         <select id={id} className={selectClass} value={value} onChange={(e) => onChange(parseInt(e.target.value))}>
             {EXPIRY_OPTIONS.map((d) => <option key={d} value={d}>{d === 1 ? '1 day' : `${d} days`}</option>)}
@@ -53,7 +53,7 @@ function ExpirySelect({ id, value, onChange }: { id: string; value: number; onCh
     );
 }
 
-function LinkRows({ links, onRevoke, pending }: { links: ShareLink[]; onRevoke: (id: number) => void; pending: boolean }) {
+export function LinkRows({ links, onRevoke, pending }: { links: ShareLink[]; onRevoke: (id: number) => void; pending: boolean }) {
     if (links.length === 0) return <p className="text-sm text-ink-soft">No links yet.</p>;
     return (
         <ul className="flex flex-col">
@@ -94,7 +94,7 @@ export function ShareLinksCard({ scope, projectId, workspaceId, windowDays }: {
     const enabled = scope === 'project' ? !!projectId : !!workspaceId;
     const links = useQuery({
         queryKey: key,
-        queryFn: () => (scope === 'project' ? shareLinksApi.listProject(projectId!) : shareLinksApi.listWorkspace(workspaceId!)),
+        queryFn: () => (scope === 'project' ? shareLinksApi.listProject(projectId!) : shareLinksApi.listWorkspace(workspaceId!, 'workspace_summary')),
         enabled,
     });
     const create = useMutation({

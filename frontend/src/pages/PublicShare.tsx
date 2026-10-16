@@ -6,6 +6,7 @@ import { LogoMark } from '@/components/redesign-local/groupF/AuthLayout';
 import { fetchPublicShare, type PublicRunReport } from '@/api/reports';
 import { SummaryView } from '@/components/reports/SummaryView';
 import { fmtPct } from '@/components/reports/reportHelpers';
+import { PocReportView } from '@/components/poc/PocReportView';
 
 // Public, unauthenticated read-only report, rendered outside the app shell.
 // Data: POST /api/share/view - a reduced view (names, statuses, counts).
@@ -90,7 +91,7 @@ export default function PublicShare() {
         );
     }
 
-    const title = data.kind === 'run_report' ? 'Test run report' : 'Quality summary';
+    const title = data.kind === 'run_report' ? 'Test run report' : data.kind === 'poc_report' ? 'Proof-of-concept report' : 'Quality summary';
     return (
         <div className="min-h-screen bg-background px-4 py-10 print:bg-white print:py-0 sm:py-14">
             <div className="mx-auto flex max-w-5xl flex-col gap-6">
@@ -103,7 +104,12 @@ export default function PublicShare() {
                 </header>
                 {data.kind === 'run_report'
                     ? <RunReportView data={data} />
-                    : <SummaryView data={{ ...data, name: data.name ?? '' }} />}
+                    : data.kind === 'poc_report'
+                        ? <>
+                            <p className="text-sm text-ink-soft">{data.workspace_name} · {data.start} to {data.end}</p>
+                            <PocReportView data={data} />
+                        </>
+                        : <SummaryView data={{ ...data, name: data.name ?? '' }} />}
                 <footer className="flex flex-col items-center gap-3 pt-2 text-center text-xs text-ink-soft">
                     <span>Names, statuses and counts only: screenshots, traces, error messages and URLs are never included.</span>
                     <LogoMark />

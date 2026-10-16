@@ -1,4 +1,5 @@
 import { api, API_BASE_URL } from '@/lib/api';
+import type { PublicPocReport } from '@/api/pocReport';
 
 // Mirrors backend/app/api/reports.py and backend/app/api/share_links.py
 
@@ -118,7 +119,7 @@ export interface Portfolio {
     projects: PortfolioRow[];
 }
 
-export type ShareKind = 'run_report' | 'project_summary' | 'workspace_summary';
+export type ShareKind = 'run_report' | 'project_summary' | 'workspace_summary' | 'poc_report' | 'trust_document';
 
 export interface ShareLink {
     id: number;
@@ -135,6 +136,8 @@ export interface ShareLink {
     view_count: number;
     state: 'active' | 'revoked' | 'expired';
     created_by: { id: number; full_name: string | null } | null;
+    /** poc_report links: the frozen range, selection and assumptions. */
+    params?: Record<string, unknown> | null;
 }
 
 /** Only the create response carries the token, once. */
@@ -149,6 +152,7 @@ export interface ShareLinkInput {
     expires_in_days: number;
     window_days?: number;
     label?: string;
+    params?: Record<string, unknown>;
 }
 
 /** POST /api/share/view {token}: the reduced public view. */
@@ -173,7 +177,7 @@ export interface PublicSummary extends Omit<ExecutiveSummary, 'scope' | 'workspa
     label: string | null;
 }
 
-export type PublicShare = PublicRunReport | PublicSummary;
+export type PublicShare = PublicRunReport | PublicSummary | (PublicPocReport & { expires_at: string; label: string | null });
 
 export const reportsApi = {
     list: async (projectId: number): Promise<ReportSchedule[]> => {
@@ -211,8 +215,8 @@ export const reportsApi = {
 export const shareLinksApi = {
     listProject: async (projectId: number): Promise<ShareLink[]> =>
         (await api.get(`/projects/${projectId}/share-links`)).data,
-    listWorkspace: async (workspaceId: number): Promise<ShareLink[]> =>
-        (await api.get(`/workspaces/${workspaceId}/share-links`)).data,
+    listWorkspace: async (workspaceId: number, kind?: ShareKind): Promise<ShareLink[]> =>
+        (await api.get(`/workspaces/${workspaceId}/share-links`, { params: kind ? { kind } : undefined })).data,
     createProject: async (projectId: number, body: ShareLinkInput): Promise<CreatedShareLink> =>
         (await api.post(`/projects/${projectId}/share-links`, body)).data,
     createWorkspace: async (workspaceId: number, body: ShareLinkInput): Promise<CreatedShareLink> =>
