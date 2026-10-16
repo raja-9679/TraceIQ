@@ -871,6 +871,12 @@ export default function Settings() {
                                     <CardDescription>Manage test artifacts and data retention policies</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-6">
+                                    <p className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                                        These choices apply to runs you start (and schedules you created), within each
+                                        project's capture level. Video and Playwright traces are only kept for projects
+                                        whose Data policy (Quality page) is set to <strong>Full</strong>; on Standard
+                                        they are never recorded, whatever you choose here.
+                                    </p>
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Video Recording</label>
                                         <Select
@@ -889,7 +895,7 @@ export default function Settings() {
                                                 <SelectItem value="never">Never Record</SelectItem>
                                             </SelectContent>
                                         </Select>
-                                        <p className="text-xs text-gray-500 mt-1">When to record video of test execution</p>
+                                        <p className="text-xs text-gray-500 mt-1">Which runs keep their video: every run, only failed runs, or none</p>
                                     </div>
 
                                     <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">

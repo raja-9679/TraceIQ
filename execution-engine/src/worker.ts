@@ -27,7 +27,8 @@ import { AIEngine } from './ai';
 import { provider as llmProvider } from './llm-provider';
 import { collectWebVitals, WebVitals } from './web-vitals';
 import {
-    ArtifactStore, CaptureLevel, PutResult, artifactKeys, normalizeCaptureLevel,
+    ArtifactPrefs, ArtifactStore, CaptureLevel, NO_PREFS, PutResult, artifactKeys,
+    artifactPrefsFrom, keepByPrefs, normalizeCaptureLevel, shouldRecordVideo,
 } from './core/artifact-store';
 import {
     RedactionPolicy, policyFromDataPolicy, redactCrawlReport, redactHar, redactNetworkEvents, redactText,
@@ -230,6 +231,12 @@ class ExecutionWorker {
 
     private redactionPolicyFor(job: TestJob): RedactionPolicy {
         return policyFromDataPolicy(jobDataPolicy(job));
+    }
+
+    /** The run starter's artifact preferences (absent from older backends). */
+    private artifactPrefsFor(job: TestJob): ArtifactPrefs {
+        const j: any = job;
+        return artifactPrefsFrom(j?.artifact_prefs ?? j?.settings?.artifact_prefs);
     }
 
     /**
@@ -737,6 +744,7 @@ class ExecutionWorker {
         const screenshots: string[] = [];
         const policy = this.redactionPolicyFor(job);
         const captureLevel = this.captureLevelFor(job);
+        const prefs = this.artifactPrefsFor(job);
         const recorder = new StepEvidenceRecorder(
             { consoleLogs, networkEvents, failedRequests }, testCase.name, captureLevel, policy);
         const consolePolicy = consoleFailurePolicy(job.settings, testCase);
@@ -764,12 +772,15 @@ class ExecutionWorker {
             browser = await this.browserManager.start(job.browser);
 
             // Prepare context options
-            const contextOptions: any = {
-                recordVideo: {
+            const contextOptions: any = {};
+            // Only record what may be kept: the capture level and the run
+            // starter's video preference both have to allow it.
+            if (shouldRecordVideo(captureLevel, prefs)) {
+                contextOptions.recordVideo = {
                     dir: artifactsDir,
                     size: { width: 1280, height: 720 }
-                }
-            };
+                };
+            }
 
             // Opt-in HAR capture: suite setting (dispatched per job) or a
             // worker-wide env default. Written on context.close(), picked up
@@ -1026,8 +1037,8 @@ class ExecutionWorker {
                 };
             }
 
-            // Take screenshot on failure
-            if (page && !page.isClosed()) {
+            // Take screenshot on failure (unless the run starter turned it off)
+            if (prefs.failureScreenshot && page && !page.isClosed()) {
                 try {
                     const screenshotPath = path.join(artifactsDir, 'failure.png');
                     await page.screenshot(TestExecutor.screenshotOptions(
@@ -1107,7 +1118,9 @@ class ExecutionWorker {
             consoleLogs,
             networkEvents,
             captureLevel,
-            policy
+            policy,
+            prefs,
+            status !== 'passed'
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
         const stepEvidence = recorder.list();
@@ -1158,6 +1171,7 @@ class ExecutionWorker {
         const testResults: TestCaseResult[] = [];
         const policy = this.redactionPolicyFor(job);
         const captureLevel = this.captureLevelFor(job);
+        const prefs = this.artifactPrefsFor(job);
         let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
         let overallError: string | undefined;
         let videoPath: string | null = null;
@@ -1179,13 +1193,16 @@ class ExecutionWorker {
             // Launch browser
             browser = await this.browserManager.start(job.browser);
 
-            // Prepare context options with video recording
-            const contextOptions: any = {
-                recordVideo: {
+            // Prepare context options
+            const contextOptions: any = {};
+            // Only record what may be kept: the capture level and the run
+            // starter's video preference both have to allow it.
+            if (shouldRecordVideo(captureLevel, prefs)) {
+                contextOptions.recordVideo = {
                     dir: artifactsDir,
                     size: { width: 1280, height: 720 }
-                }
-            };
+                };
+            }
 
             // Opt-in HAR capture (shared context — one archive for the job).
             if (job.settings?.har_capture || process.env.HAR_CAPTURE_ENABLED === 'true') {
@@ -1485,8 +1502,8 @@ class ExecutionWorker {
                         };
                     }
 
-                    // Take screenshot on failure
-                    if (page && !page.isClosed()) {
+                    // Take screenshot on failure (unless turned off)
+                    if (prefs.failureScreenshot && page && !page.isClosed()) {
                         try {
                             const screenshotPath = path.join(artifactsDir, `failure-${testCase.id}.png`);
                             await page.screenshot(TestExecutor.screenshotOptions(
@@ -1601,7 +1618,9 @@ class ExecutionWorker {
             consoleLogs,
             networkEvents,
             captureLevel,
-            policy
+            policy,
+            prefs,
+            overallStatus !== 'passed'
         );
         this.cleanupUploadedArtifacts(artifactsDir, artifacts.uploadedLocalPaths);
         for (const r of testResults) {
@@ -1756,7 +1775,9 @@ class ExecutionWorker {
         consoleLogs?: any[],
         networkEvents?: any[],
         captureLevel: CaptureLevel = 'full',
-        policy?: RedactionPolicy
+        policy?: RedactionPolicy,
+        prefs: ArtifactPrefs = NO_PREFS,
+        failed = false
     ): Promise<{ video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] }> {
         const result: { video?: string; trace?: string; har?: string; screenshots: string[]; console_log?: string; network_log?: string; uploadedLocalPaths: string[] } = {
             screenshots: [],
@@ -1780,14 +1801,26 @@ class ExecutionWorker {
         };
 
         try {
+            // The capture level decides what MAY be kept (inside putFile); the
+            // run starter's preferences can only narrow that further.
             if (videoPath) {
-                const put = await store.putFile('video', artifactKeys.video(runId, jobId), videoPath);
-                consumed(videoPath, put, key => { result.video = key; });
+                if (keepByPrefs('video', prefs, failed)) {
+                    const put = await store.putFile('video', artifactKeys.video(runId, jobId), videoPath);
+                    consumed(videoPath, put, key => { result.video = key; });
+                } else {
+                    console.log(`[Artifacts] video not kept: preference '${prefs.video}', job ${failed ? 'failed' : 'passed'}`);
+                    result.uploadedLocalPaths.push(videoPath);
+                }
             }
 
             if (tracePath) {
-                const put = await store.putFile('trace', artifactKeys.trace(runId, jobId), tracePath);
-                consumed(tracePath, put, key => { result.trace = key; });
+                if (keepByPrefs('trace', prefs, failed)) {
+                    const put = await store.putFile('trace', artifactKeys.trace(runId, jobId), tracePath);
+                    consumed(tracePath, put, key => { result.trace = key; });
+                } else {
+                    console.log('[Artifacts] trace not kept: trace files turned off');
+                    result.uploadedLocalPaths.push(tracePath);
+                }
             }
 
             if (fs.existsSync(artifactsDir)) {
