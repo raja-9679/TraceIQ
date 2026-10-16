@@ -1,3 +1,6 @@
+import re
+
+from pydantic import field_validator
 from sqlmodel import SQLModel, Field, Relationship, Column, JSON
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -32,7 +35,10 @@ class UserSettings(SQLModel, table=True):
     selected_devices: List[str] = Field(default=["Desktop"], sa_column=Column(JSON))
     
     # Notifications
-    email_notifications: bool = Field(default=False)
+    # True: until 2026-10 this switch was never read and the run owner was
+    # always emailed, so "on" is what every existing user actually had
+    # (migration cbc2b3c4d5ee sets existing rows to match).
+    email_notifications: bool = Field(default=True)
     notify_on_completion: bool = Field(default=True)
     notify_on_failure: bool = Field(default=True)
     daily_summary: bool = Field(default=False)
@@ -81,6 +87,23 @@ class UserSettingsRead(SQLModel):
     auto_cleanup: bool
 
 
+#: Deliberately strict: the address goes into an email's To: header, so no
+#: whitespace, newlines, commas or angle brackets (header injection).
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+'-]{1,64}@[A-Za-z0-9-]{1,63}(\.[A-Za-z0-9-]{1,63})+$")
+
+
+def normalize_notification_email(value: Optional[str]) -> Optional[str]:
+    """'' / None clear the override (fall back to the account email)."""
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if len(v) > 254 or not _EMAIL_RE.match(v):
+        raise ValueError("notification_email must be a single plain email address")
+    return v
+
+
 class UserSettingsUpdate(SQLModel):
     theme: Optional[str] = None
     timezone: Optional[str] = None
@@ -106,3 +129,8 @@ class UserSettingsUpdate(SQLModel):
     trace_files: Optional[bool] = None
     retention_period: Optional[int] = None
     auto_cleanup: Optional[bool] = None
+
+    @field_validator("notification_email")
+    @classmethod
+    def _notification_email(cls, v):
+        return normalize_notification_email(v)

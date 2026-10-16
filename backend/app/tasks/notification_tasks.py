@@ -250,11 +250,17 @@ def get_email_recipients(run: TestRun, settings_dict: Dict[str, Any], session: S
     """
     recipients = []
 
-    # Run owner
+    # Run owner — on their own terms (Settings → Notifications): they may opt
+    # out, limit it to failed runs, or name a different address.
     if run.user_id:
+        from app.services.notification_prefs import owner_email
+        from app.settings_models import UserSettings
         user = session.get(User, run.user_id)
-        if user and user.email:
-            recipients.append(user.email)
+        prefs = session.exec(
+            select(UserSettings).where(UserSettings.user_id == run.user_id)).first()
+        address = owner_email(user, prefs, run_failed=run.status != TestStatus.PASSED)
+        if address:
+            recipients.append(address)
 
     # Additional recipients from settings
     extra_recipients = settings_dict.get('email_recipients', [])
