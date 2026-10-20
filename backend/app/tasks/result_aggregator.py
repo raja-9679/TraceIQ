@@ -787,6 +787,19 @@ def _persist_visual_results(session, run, test_case_id, test_name, res: Dict[str
         print(f"[Aggregator] Failed to store visual results for run {getattr(run, 'id', None)}: {e}")
 
 
+def _persist_accessibility(session, run, test_case_id, test_name, res: Dict[str, Any]):
+    """`check-accessibility` outcomes -> AccessibilityCheck/Violation rows
+    (WP15d), replaced per (run, test). Older workers send none. Never raises,
+    like the page budgets."""
+    if not isinstance(res.get('accessibility_results'), list):
+        return
+    try:
+        from app.services.accessibility import persist_results
+        persist_results(session, run, test_case_id, test_name, res.get('accessibility_results'))
+    except Exception as e:  # noqa: BLE001
+        print(f"[Aggregator] Failed to store accessibility results for run {getattr(run, 'id', None)}: {e}")
+
+
 def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, Any], test_results: list):
     """Process a continuous job result with multiple test cases"""
     if not run_id:
@@ -878,6 +891,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
             _persist_page_budgets(session, run, test_res.get('test_case_id'), test_name, test_res)
             _persist_visual_results(session, run, test_res.get('test_case_id'), test_name, test_res,
                                     artifacts.get('screenshots'))
+            _persist_accessibility(session, run, test_res.get('test_case_id'), test_name, test_res)
 
         # Update run with network events (tagged by test name already)
         if network_events:
@@ -1017,6 +1031,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
         _persist_page_budgets(session, run, test_case_id, test_name, result)
         _persist_visual_results(session, run, test_case_id, test_name, result,
                                 artifacts.get('screenshots'))
+        _persist_accessibility(session, run, test_case_id, test_name, result)
 
         # Update run with network events (accumulate from all test results)
         if network_events:

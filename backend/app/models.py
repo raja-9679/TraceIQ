@@ -1413,6 +1413,10 @@ class QualityGatePolicy(SQLModel):
     # The newest release sign-off (for the commit when one is evaluated) must
     # be an approval. Off by default; see release_readiness.signoff_check.
     require_manual_signoff: bool = False
+    # WP15d: no NEW accessibility violation at impact serious or critical
+    # (waived ones excluded). Missing data when no evaluated run has
+    # accessibility evidence. See app/services/accessibility.py.
+    block_new_accessibility_violations: bool = False
 
 
 class QualityGateCheck(SQLModel):
@@ -3854,6 +3858,90 @@ class VisualReviewComment(SQLModel, table=True):
     resolved: bool = Field(default=False)
     resolved_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     resolved_at: Optional[datetime] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# WP15d — accessibility register (H6) and recorded traffic for HAR replay (H7)
+# ---------------------------------------------------------------------------
+
+class AccessibilityCheck(SQLModel, table=True):
+    """One `check-accessibility` step outcome in a run, violations or not.
+
+    The row is the EVIDENCE that a page was scanned: a clean scan has no
+    AccessibilityViolation rows, and without this one "no violations" would
+    be indistinguishable from "never checked" (the gate reports missing data
+    for the latter). Replaced per (run, test_name) on ingestion."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id", index=True)
+    test_name: Optional[str] = Field(default=None)
+    step_id: Optional[str] = Field(default=None)
+    # origin + path of the scanned page (query/fragment dropped, redacted).
+    page_key: Optional[str] = Field(default=None)
+    browser: str = Field(default="chromium")
+    device: Optional[str] = Field(default=None)
+    violation_count: int = Field(default=0)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+class AccessibilityViolation(SQLModel, table=True):
+    """One axe rule failing on one target in a run. Never page text: the
+    target is a redacted selector (attribute values beyond what a selector
+    needs are dropped), `help_url` is the rule's reference page.
+    `fingerprint` = rule + page + target — what "new" and "fixed" compare."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    test_case_id: Optional[int] = Field(default=None, foreign_key="testcase.id", index=True)
+    test_name: Optional[str] = Field(default=None)
+    step_id: Optional[str] = Field(default=None)
+    page_key: Optional[str] = Field(default=None)
+    rule_id: str = Field(index=True)
+    # minor | moderate | serious | critical
+    impact: str = Field(default="minor")
+    target: str = Field(default="")
+    fingerprint: str = Field(index=True)
+    node_count: int = Field(default=1)
+    help_url: Optional[str] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class AccessibilityWaiver(SQLModel, table=True):
+    """A known accessibility issue the project has accepted for a while.
+
+    Same rules as flake quarantine (app/services/accessibility.py): every
+    waiver expires (max 90 days); past expiry it stops excluding anything —
+    the violation counts again — and it is never renewed silently, only by
+    an explicit, audited PUT. `selector_pattern` is a `*` glob over the
+    stored (redacted) target; '*' waives the rule everywhere in the project."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    rule_id: str
+    selector_pattern: str = Field(default="*")
+    reason: str
+    owner_user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime
+
+
+class HarArchive(SQLModel, table=True):
+    """An uploaded HAR for the `har-replay` step. The stored object is the
+    REDACTED file (cookies, auth headers, secret-looking values scrubbed on
+    upload); key `har/{project_id}/{uuid}.har` is derived from the project
+    so the project/workspace purge can delete the prefix."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    name: str
+    object_key: str
+    size_bytes: int = Field(default=0)
+    entry_count: int = Field(default=0)
+    hosts: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
+    sha256: str
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

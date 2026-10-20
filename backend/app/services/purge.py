@@ -100,6 +100,16 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("visualcomparison",
               f"DELETE FROM visualcomparison WHERE project_id IN ({_PROJECTS}) "
               f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES})"),
+    # Accessibility register (WP15d).
+    PurgeStep("accessibilityviolation",
+              f"DELETE FROM accessibilityviolation WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES})"),
+    PurgeStep("accessibilitycheck",
+              f"DELETE FROM accessibilitycheck WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_run_id IN ({_RUNS}) OR test_case_id IN ({_CASES})"),
+    PurgeStep("accessibilitywaiver",
+              f"DELETE FROM accessibilitywaiver WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("hararchive", f"DELETE FROM hararchive WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("sitecrawlissue",
               f"DELETE FROM sitecrawlissue WHERE crawl_run_id IN "
               f"(SELECT id FROM sitecrawlrun WHERE project_id IN ({_PROJECTS}) "
@@ -388,6 +398,11 @@ async def collect_object_keys(session, workspace_id: int) -> List[str]:
     # Trust-center documents: the prefix is derived from the workspace id,
     # never from a stored key, for the same reason as baselines above.
     prefixes.append(f"trust/{int(workspace_id)}/")
+    # Uploaded HARs (WP15d): derived from each project id, never a stored key.
+    from app.services.har_files import project_prefix
+    projects = await session.exec(text(f"SELECT id FROM ({_PROJECTS}) p"),
+                                  params={"workspace_id": workspace_id})
+    prefixes.extend(project_prefix(pid) for (pid,) in projects.all())
     return prefixes
 
 

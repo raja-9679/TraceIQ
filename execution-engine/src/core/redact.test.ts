@@ -810,3 +810,55 @@ test('step evidence trace ids (WP16a) pass through redaction untouched', () => {
     const out = redactJobResult({ step_evidence: [{ id: 's0', index: 0, type: 'goto', status: 'passed', trace }] });
     assert.deepEqual(out.step_evidence[0].trace, trace);
 });
+
+// --- accessibility results (WP15d) — twin corpus in tests/test_redaction.py ---
+
+import { redactA11yTarget, a11yHelpUrl, redactAccessibilityResults } from './redact';
+
+const A11Y_TARGET_VECTORS: [string, string][] = [
+    ['a[href="/reset?token=abc"]', 'a[href]'],
+    ['input[type="text"][placeholder="Your card 4111111111111111"]', 'input[type="text"][placeholder]'],
+    ['#main > .nav li:nth-child(2) > a', '#main > .nav li:nth-child(2) > a'],
+    ['img[alt=x]', 'img[alt]'],
+    ['[data-testid="login-btn" i]', '[data-testid="login-btn" i]'],
+    ['iframe >>> button[aria-label="Close dialog"]', 'iframe >>> button[aria-label]'],
+    ['[name]', '[name]'],
+];
+
+test('accessibility targets keep only what addresses the element (shared vectors)', () => {
+    for (const [input, expected] of A11Y_TARGET_VECTORS) {
+        assert.equal(redactA11yTarget(input), expected, input);
+    }
+    assert.equal(redactA11yTarget(`[data-testid="${'x'.repeat(65)}"]`), '[data-testid]');
+    assert.equal(redactA11yTarget(42 as any), '');
+});
+
+test('accessibility help URLs are pinned to Deque and lose their query', () => {
+    assert.equal(a11yHelpUrl('https://dequeuniversity.com/rules/axe/4.8/label?application=axeAPI'),
+        'https://dequeuniversity.com/rules/axe/4.8/label');
+    assert.equal(a11yHelpUrl('https://evil.example/phish'), null);
+});
+
+test('accessibility results are rebuilt from a whitelist — page text never survives', () => {
+    const out = redactAccessibilityResults([{
+        step_id: 's1', url: 'https://app.example/x?jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abcdefghijk',
+        html: '<b>Jane Doe 4111111111111111</b>',
+        violations: [{
+            id: 'color-contrast', impact: 'serious', help_url: 'https://dequeuniversity.com/rules/axe/x?y=1',
+            node_count: 3, failureSummary: 'Fix: text "Jane Doe"', html: '<p>Jane</p>',
+            targets: [{ selector: 'p[title="Jane Doe"]', nodes: 3, html: '<p>Jane</p>' }],
+        }],
+    }]);
+    const text = JSON.stringify(out);
+    assert.ok(!text.includes('Jane'), text);
+    assert.ok(!text.includes('eyJzdWIiOiIxIn0'), text);
+    assert.deepEqual(out[0].violations[0], {
+        id: 'color-contrast', impact: 'serious', help_url: 'https://dequeuniversity.com/rules/axe/x',
+        node_count: 3, targets: [{ selector: 'p[title]', nodes: 3 }],
+    });
+});
+
+test('redactJobResult scrubs accessibility_results too', () => {
+    const out = redactJobResult({ accessibility_results: [{ violations: [{ id: 'label', targets: [{ selector: 'input[value="hunter2"]' }] }] }] });
+    assert.ok(!JSON.stringify(out).includes('hunter2'));
+});

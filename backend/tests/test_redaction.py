@@ -733,3 +733,84 @@ def test_step_evidence_trace_ids_are_untouched():
     out = redact_worker_result({"step_evidence": [
         {"id": "s0", "index": 0, "type": "goto", "status": "passed", "trace": trace}]})
     assert out["step_evidence"][0]["trace"] == trace
+
+
+# --- accessibility results (WP15d) — twin corpus in redact.test.ts ---
+
+from app.services.redaction import (  # noqa: E402
+    a11y_help_url, redact_a11y_target, redact_accessibility_results, redact_har,
+)
+
+A11Y_TARGET_VECTORS = [
+    ('a[href="/reset?token=abc"]', 'a[href]'),
+    ('input[type="text"][placeholder="Your card 4111111111111111"]', 'input[type="text"][placeholder]'),
+    ('#main > .nav li:nth-child(2) > a', '#main > .nav li:nth-child(2) > a'),
+    ('img[alt=x]', 'img[alt]'),
+    ('[data-testid="login-btn" i]', '[data-testid="login-btn" i]'),
+    ('iframe >>> button[aria-label="Close dialog"]', 'iframe >>> button[aria-label]'),
+    ('[name]', '[name]'),
+]
+
+
+def test_a11y_targets_keep_only_what_addresses_the_element():
+    for raw, expected in A11Y_TARGET_VECTORS:
+        assert redact_a11y_target(raw) == expected, raw
+    assert redact_a11y_target('[data-testid="' + "x" * 65 + '"]') == "[data-testid]"
+    assert redact_a11y_target(42) == ""
+
+
+def test_a11y_help_url_pinned_to_deque():
+    assert a11y_help_url("https://dequeuniversity.com/rules/axe/4.8/label?application=axeAPI") \
+        == "https://dequeuniversity.com/rules/axe/4.8/label"
+    assert a11y_help_url("https://evil.example/phish") is None
+
+
+def test_a11y_results_rebuilt_from_whitelist():
+    jwt = "eyJhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiIxIn0" + ".abcdefghijk"
+    out = redact_accessibility_results([{
+        "step_id": "s1", "url": "https://app.example/x?jwt=" + jwt,
+        "html": "<b>Jane Doe 4111111111111111</b>",
+        "violations": [{
+            "id": "color-contrast", "impact": "serious",
+            "help_url": "https://dequeuniversity.com/rules/axe/x?y=1",
+            "node_count": 3, "failureSummary": 'Fix: text "Jane Doe"', "html": "<p>Jane</p>",
+            "targets": [{"selector": 'p[title="Jane Doe"]', "nodes": 3, "html": "<p>Jane</p>"}],
+        }],
+    }])
+    text = json.dumps(out)
+    assert "Jane" not in text and "eyJzdWIiOiIxIn0" not in text
+    assert out[0]["violations"][0] == {
+        "id": "color-contrast", "impact": "serious",
+        "help_url": "https://dequeuniversity.com/rules/axe/x",
+        "node_count": 3, "targets": [{"selector": "p[title]", "nodes": 3}],
+    }
+
+
+def test_worker_result_scrubs_accessibility_results():
+    out = redact_worker_result({"accessibility_results": [
+        {"violations": [{"id": "label", "targets": [{"selector": 'input[value="hunter2"]'}]}]}]})
+    assert "hunter2" not in json.dumps(out)
+
+
+def test_redact_har_twin_scrubs_cookies_auth_and_bodies():
+    har = {"log": {"version": "1.2", "entries": [{
+        "request": {"method": "POST", "url": "https://app.example/login",
+                    "headers": [{"name": "Authorization", "value": "Bearer abc"},
+                                {"name": "Accept", "value": "application/json"}],
+                    "cookies": [{"name": "sid", "value": "s3cr3t"}],
+                    "queryString": [{"name": "token", "value": "qtok"}],
+                    "postData": {"mimeType": "application/json",
+                                 "text": '{"user":"jane","password":"hunter2"}'}},
+        "response": {"status": 200,
+                     "headers": [{"name": "Set-Cookie", "value": "sid=s3cr3t"}],
+                     "cookies": [{"name": "sid", "value": "s3cr3t"}],
+                     "content": {"mimeType": "application/json",
+                                 "text": '{"access_token":"atok","name":"Jane"}'}},
+    }]}}
+    out = redact_har(har)
+    text = json.dumps(out)
+    for secret in ("Bearer abc", "s3cr3t", "qtok", "hunter2", "atok"):
+        assert secret not in text, secret
+    assert "Jane" in text and "application/json" in text
+    assert out["log"]["version"] == "1.2"
+    assert redact_har({"log": {"version": "1.2"}}) == {"log": {"version": "1.2"}}

@@ -14,6 +14,8 @@ import { checkExpectSchema, formatViolations } from './schema-check';
 import { localiseUrl } from './frontend-quality/emulation';
 import { executeVisualMatch } from './visual-step';
 import { traceApiHeaders } from './trace-context';
+import { executeMockResponse, executeHarReplay } from './network-mocks';
+import { summariseAxe, reportAccessibility } from './accessibility';
 
 // jsonPath lives in ./json-path (shared with the wait-for-webhook step);
 // re-exported so existing imports keep working.
@@ -34,7 +36,7 @@ export class TestExecutor {
         'double-click', 'download-file', 'drag-and-drop', 'expect-hidden',
         'expect-not-text', 'expect-text', 'expect-title', 'expect-url',
         'expect-visible', 'expect-visual-match', 'extract-value', 'feed-check',
-        'fill', 'goto', 'graphql', 'handle-dialog', 'hover', 'http-request',
+        'fill', 'goto', 'graphql', 'handle-dialog', 'har-replay', 'hover', 'http-request',
         'mock-response', 'oauth2-token', 'press-key', 'right-click',
         'run-script', 'screenshot', 'scroll-to', 'select-option',
         'set-network-latency', 'switch-frame', 'switch-tab', 'totp', 'uncheck',
@@ -854,22 +856,16 @@ export class TestExecutor {
 
             case 'mock-response': {
                 // Stub matching network responses. selector = URL glob/pattern;
-                // params.status/body/content_type/headers shape the response.
-                const urlPattern = step.selector || '**/*';
-                const mockStatus = step.params?.status ?? 200;
-                const contentType = step.params?.content_type
-                    || (step.params?.json !== undefined ? 'application/json' : 'text/plain');
-                const bodyRaw = step.params?.json !== undefined
-                    ? JSON.stringify(step.params.json)
-                    : resolve(step.value ?? step.params?.body ?? '');
-                await page.route(urlPattern, route => route.fulfill({
-                    status: mockStatus,
-                    contentType,
-                    headers: step.params?.headers || {},
-                    body: bodyRaw,
-                }));
-                console.log(`  [Mock] ${urlPattern} -> ${mockStatus} (${contentType})`);
+                // params.status/body/content_type/headers shape the response,
+                // or params.sequence answers the nth call with the nth entry
+                // (./network-mocks.ts).
+                await executeMockResponse(page, step, resolve);
                 break;
+            }
+
+            case 'har-replay': {
+                // Answer requests from an uploaded (redacted) HAR — ./network-mocks.ts.
+                return executeHarReplay(page, step, testCaseContext, globalSettings);
             }
 
             case 'block-request': {
@@ -906,6 +902,11 @@ export class TestExecutor {
                     break;
                 }
                 const results = await new AxeBuilder({ page }).analyze();
+                // Every outcome goes to the accessibility register (WP15d),
+                // before the step decides whether to fail.
+                let scannedUrl: string | null = null;
+                try { scannedUrl = page.url(); } catch { /* closed page */ }
+                reportAccessibility(testCaseContext, summariseAxe(results, step.id, scannedUrl));
                 const order: Record<string, number> = { minor: 0, moderate: 1, serious: 2, critical: 3 };
                 const threshold = order[String(step.params?.impact || 'serious')] ?? 2;
                 const blocking = (results.violations || []).filter(

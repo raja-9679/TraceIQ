@@ -531,6 +531,9 @@ def _redact_case_result(result: Any, policy: RedactionPolicy) -> Any:
         out["hook_report"] = redact_hook_report(out["hook_report"], policy)
     if isinstance(out.get("page_budgets"), list):
         out["page_budgets"] = redact_page_budgets(out["page_budgets"], policy)
+    if isinstance(out.get("accessibility_results"), list):
+        out["accessibility_results"] = redact_accessibility_results(
+            out["accessibility_results"], policy)
     return out
 
 
@@ -615,6 +618,97 @@ def redact_page_budgets(items: Any, policy: RedactionPolicy = DEFAULT_POLICY) ->
                 for c in b["seo"]
             ]
         out.append(item)
+    return out
+
+
+# --------------------------------------------------------------------------
+# Accessibility results (WP15d) — twin of the block in redact.ts
+# --------------------------------------------------------------------------
+
+#: Attributes whose VALUE a selector may keep: they name or type an element
+#: rather than carry what it shows. href/src/alt/title/value/placeholder and
+#: aria-label are page content (or URLs with tokens) and lose their value.
+A11Y_SAFE_ATTRS = frozenset((
+    "id", "class", "type", "role", "name", "for", "lang", "dir",
+    "data-testid", "data-test", "data-test-id", "data-qa", "data-cy",
+))
+_A11Y_ATTR_VALUE_MAX = 64
+_A11Y_TARGET_MAX = 300
+_A11Y_TARGETS_PER_RULE = 25
+_A11Y_RULES_PER_CHECK = 100
+_A11Y_HELP_PREFIX = "https://dequeuniversity.com/"
+# One attribute selector: [name], [name=v], [name="v"], [name~='v' i]. Fixed
+# pattern over a capped string — no author-supplied regex runs here.
+_A11Y_ATTR_RE = re.compile(
+    r"""\[\s*([A-Za-z_][-A-Za-z0-9_:.]*)\s*(?:([~|^$*]?=)\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\]\s'"]+)\s*([iIsS])?\s*)?\]""")
+
+
+def _a11y_attr(match: "re.Match") -> str:
+    name, op, value = match.group(1), match.group(2), match.group(3)
+    if not op:
+        return match.group(0)
+    bare = value[1:-1] if value[:1] in ("'", '"') else value
+    if name.lower() in A11Y_SAFE_ATTRS and len(bare) <= _A11Y_ATTR_VALUE_MAX:
+        return match.group(0)
+    return f"[{name}]"
+
+
+def redact_a11y_target(selector: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> str:
+    """An axe target selector with nothing in it but what addresses the
+    element. Twin of `redactA11yTarget` in redact.ts."""
+    if not isinstance(selector, str):
+        return ""
+    out = _A11Y_ATTR_RE.sub(_a11y_attr, selector[:500])
+    return (redact_text(out, policy) or "")[:_A11Y_TARGET_MAX]
+
+
+def a11y_help_url(raw: Any) -> Optional[str]:
+    """The rule's reference page, only on Deque's site, query dropped."""
+    if not isinstance(raw, str) or not raw.startswith(_A11Y_HELP_PREFIX):
+        return None
+    return raw.split("?", 1)[0].split("#", 1)[0][:300]
+
+
+def _a11y_int(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return 0
+    return max(0, min(int(value), 1_000_000))
+
+
+def redact_accessibility_results(items: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """`check-accessibility` outcomes (WP15d), rebuilt from a whitelist: page
+    URL redacted, selectors reduced by `redact_a11y_target`, help URLs pinned
+    to Deque. Anything else axe reports (the element's HTML, the failure
+    summary — both page text) is dropped. Twin of `redactAccessibilityResults`."""
+    if not isinstance(items, list):
+        return items
+    out = []
+    for item in items[:50]:
+        if not isinstance(item, dict):
+            continue
+        violations = []
+        for v in (item.get("violations") or [])[:_A11Y_RULES_PER_CHECK] \
+                if isinstance(item.get("violations"), list) else []:
+            if not isinstance(v, dict):
+                continue
+            targets = []
+            for t in (v.get("targets") or [])[:_A11Y_TARGETS_PER_RULE] \
+                    if isinstance(v.get("targets"), list) else []:
+                if isinstance(t, dict):
+                    targets.append({"selector": redact_a11y_target(t.get("selector"), policy),
+                                    "nodes": _a11y_int(t.get("nodes")) or 1})
+            violations.append({
+                "id": str(v.get("id") or "")[:80],
+                "impact": str(v.get("impact") or "")[:20],
+                "help_url": a11y_help_url(v.get("help_url")),
+                "node_count": _a11y_int(v.get("node_count")),
+                "targets": targets,
+            })
+        out.append({
+            "step_id": str(item.get("step_id") or "")[:100] or None,
+            "url": _text_field(item.get("url"), policy) if isinstance(item.get("url"), str) else None,
+            "violations": violations,
+        })
     return out
 
 
@@ -729,6 +823,63 @@ def redact_access_observation(obs: Any, policy: RedactionPolicy = DEFAULT_POLICY
         if isinstance(out.get(field), str):
             out[field] = redact_text(out[field], policy)
     return out
+
+
+def _redact_name_value_list(items: Any, denied: frozenset, policy: RedactionPolicy,
+                            always_sensitive: bool = False) -> Any:
+    """A HAR `[{name, value}]` list. Cookie lists pass `always_sensitive`:
+    cookies are named whatever the app likes, yet every value is a session
+    credential. Twin of `redactNameValueList` in redact.ts."""
+    if not isinstance(items, list):
+        return items
+    headers = policy.header_set()
+    out = []
+    for item in items:
+        if not isinstance(item, dict):
+            out.append(item)
+            continue
+        name = str(item.get("name") or "").lower()
+        sensitive = always_sensitive or name in headers or _normalize_key(name) in denied
+        out.append({**item, "value": REDACTED if sensitive else redact_text(item.get("value"), policy)})
+    return out
+
+
+def redact_har(har: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
+    """Scrub a parsed HAR, keeping its structure (it still opens in any HAR
+    viewer and still replays). Request/response headers by name, every
+    cookie value, query values by name, URLs and bodies by pattern. Used on
+    upload for `har-replay` (WP15d). Twin of `redactHar` in redact.ts."""
+    if not isinstance(har, dict) or not isinstance(har.get("log"), dict) \
+            or not isinstance(har["log"].get("entries"), list):
+        return har
+    denied = policy.body_key_set()
+    entries = []
+    for entry in har["log"]["entries"]:
+        if not isinstance(entry, dict):
+            entries.append(entry)
+            continue
+        out = dict(entry)
+        if isinstance(out.get("request"), dict):
+            req = dict(out["request"])
+            req["headers"] = _redact_name_value_list(req.get("headers"), denied, policy)
+            req["cookies"] = _redact_name_value_list(req.get("cookies"), denied, policy, True)
+            req["queryString"] = _redact_name_value_list(req.get("queryString"), denied, policy)
+            if isinstance(req.get("url"), str):
+                req["url"] = redact_text(req["url"], policy)
+            post = req.get("postData")
+            if isinstance(post, dict) and isinstance(post.get("text"), str):
+                req["postData"] = {**post, "text": redact_body(post["text"], post.get("mimeType"), policy)}
+            out["request"] = req
+        if isinstance(out.get("response"), dict):
+            res = dict(out["response"])
+            res["headers"] = _redact_name_value_list(res.get("headers"), denied, policy)
+            res["cookies"] = _redact_name_value_list(res.get("cookies"), denied, policy, True)
+            content = res.get("content")
+            if isinstance(content, dict) and isinstance(content.get("text"), str):
+                res["content"] = {**content, "text": redact_body(content["text"], content.get("mimeType"), policy)}
+            out["response"] = res
+        entries.append(out)
+    return {**har, "log": {**har["log"], "entries": entries}}
 
 
 def redact_audit_changes(changes: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:

@@ -402,6 +402,9 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
     if (Array.isArray(out.step_evidence)) out.step_evidence = redactStepEvidence(out.step_evidence, policy);
     if (out.hook_report && typeof out.hook_report === 'object') out.hook_report = redactHookReport(out.hook_report, policy);
     if (Array.isArray(out.page_budgets)) out.page_budgets = redactPageBudgets(out.page_budgets, policy);
+    if (Array.isArray(out.accessibility_results)) {
+        out.accessibility_results = redactAccessibilityResults(out.accessibility_results, policy);
+    }
     // DOM captured for selector heal. The capture sites already redact; this
     // is the backstop for any path that forgets to.
     if (out.step_dom && typeof out.step_dom === 'object' && !Array.isArray(out.step_dom)) {
@@ -478,6 +481,84 @@ export function redactPageBudgets(items: any, policy?: RedactionPolicy): any {
         }
         return out;
     });
+}
+
+// --------------------------------------------------------------------------
+// Accessibility results (WP15d) — twin of the block in redaction.py
+// --------------------------------------------------------------------------
+
+/** Attributes whose VALUE a selector may keep: they name or type an element.
+ * href/src/alt/title/value/placeholder/aria-label are page content (or URLs
+ * with tokens) and lose their value. Twin: `A11Y_SAFE_ATTRS`. */
+export const A11Y_SAFE_ATTRS = new Set([
+    'id', 'class', 'type', 'role', 'name', 'for', 'lang', 'dir',
+    'data-testid', 'data-test', 'data-test-id', 'data-qa', 'data-cy',
+]);
+const A11Y_ATTR_VALUE_MAX = 64;
+const A11Y_TARGET_MAX = 300;
+const A11Y_TARGETS_PER_RULE = 25;
+const A11Y_RULES_PER_CHECK = 100;
+const A11Y_HELP_PREFIX = 'https://dequeuniversity.com/';
+// One attribute selector. Fixed pattern over a capped string.
+const A11Y_ATTR_RE = /\[\s*([A-Za-z_][-A-Za-z0-9_:.]*)\s*(?:([~|^$*]?=)\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\]\s'"]+)\s*([iIsS])?\s*)?\]/g;
+
+/** An axe target selector with nothing in it but what addresses the element.
+ * Twin: `redact_a11y_target`. */
+export function redactA11yTarget(selector: any, policy?: RedactionPolicy): string {
+    if (typeof selector !== 'string') return '';
+    const out = selector.slice(0, 500).replace(A11Y_ATTR_RE, (whole, name, op, value) => {
+        if (!op) return whole;
+        const bare = value[0] === '"' || value[0] === "'" ? value.slice(1, -1) : value;
+        if (A11Y_SAFE_ATTRS.has(String(name).toLowerCase()) && bare.length <= A11Y_ATTR_VALUE_MAX) return whole;
+        return `[${name}]`;
+    });
+    return String(redactText(out, policy) || '').slice(0, A11Y_TARGET_MAX);
+}
+
+/** The rule's reference page, only on Deque's site, query dropped. */
+export function a11yHelpUrl(raw: any): string | null {
+    if (typeof raw !== 'string' || !raw.startsWith(A11Y_HELP_PREFIX)) return null;
+    return raw.split('?')[0].split('#')[0].slice(0, 300);
+}
+
+const a11yInt = (v: any): number =>
+    typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.min(Math.trunc(v), 1_000_000)) : 0;
+
+/**
+ * `check-accessibility` outcomes, rebuilt from a whitelist: page URL redacted,
+ * selectors reduced by `redactA11yTarget`, help URLs pinned to Deque. Anything
+ * else (axe's `html` / `failureSummary` — page text) is dropped.
+ * Twin: `redact_accessibility_results`.
+ */
+export function redactAccessibilityResults(items: any, policy?: RedactionPolicy): any {
+    if (!Array.isArray(items)) return items;
+    const out: any[] = [];
+    for (const item of items.slice(0, 50)) {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+        const violations: any[] = [];
+        for (const v of (Array.isArray(item.violations) ? item.violations : []).slice(0, A11Y_RULES_PER_CHECK)) {
+            if (!v || typeof v !== 'object' || Array.isArray(v)) continue;
+            const targets: any[] = [];
+            for (const t of (Array.isArray(v.targets) ? v.targets : []).slice(0, A11Y_TARGETS_PER_RULE)) {
+                if (t && typeof t === 'object' && !Array.isArray(t)) {
+                    targets.push({ selector: redactA11yTarget(t.selector, policy), nodes: a11yInt(t.nodes) || 1 });
+                }
+            }
+            violations.push({
+                id: String(v.id || '').slice(0, 80),
+                impact: String(v.impact || '').slice(0, 20),
+                help_url: a11yHelpUrl(v.help_url),
+                node_count: a11yInt(v.node_count),
+                targets,
+            });
+        }
+        out.push({
+            step_id: String(item.step_id || '').slice(0, 100) || null,
+            url: typeof item.url === 'string' ? redactText(item.url, policy) : null,
+            violations,
+        });
+    }
+    return out;
 }
 
 /**
