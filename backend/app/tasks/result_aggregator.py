@@ -28,6 +28,7 @@ from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
 from app.models import TestRun, TestCaseResult, TestStatus, TestCase
+from app.services.run_completion import finalize_on_commit
 from app.services.redaction import redact_worker_result
 from app.core.secrets import decrypt_json, encrypt_json
 
@@ -280,6 +281,11 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
         # Update per-case flake scores now that the run is finalized.
         # Never allowed to break aggregation — fully guarded internally.
         _update_flake_scores(run, run_id, session)
+
+        # Notifications, outbound webhooks, monitor check, paging, scans,
+        # triage — once per run, queued after this transaction commits.
+        # This used to happen only via the legacy engine's /finalize call.
+        finalize_on_commit(session, run_id)
     else:
         run.status = TestStatus.RUNNING
 
@@ -1154,6 +1160,10 @@ def _mark_run_timeout(
         run.failed_tests = failed + max(0, total - completed)
 
     session.add(run)
+    # A timed-out run is finished as far as anyone watching it is concerned
+    # (monitors record DOWN, CI webhooks fire). Results that arrive later
+    # still update the run, but its side effects have already been sent.
+    finalize_on_commit(session, run.id)
     print(f"[Aggregator] Run {run.id} → ERROR: {reason} ({completed}/{total} completed)")
 
 

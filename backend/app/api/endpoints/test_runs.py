@@ -4,7 +4,6 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Header
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func, or_, and_, delete
-from sqlalchemy import update
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
@@ -978,99 +977,29 @@ async def finalize_test_run(
     if not run:
         raise HTTPException(status_code=404, detail="Test run not found")
 
-    # Idempotency guard. Workers retry finalize on network failure, and every
-    # task below has an externally-visible side effect (customer email, outbound
-    # webhook into customer CI, monitor uptime state). Claim the run atomically
-    # so a concurrent redelivery loses the race and returns without re-firing.
-    claim = await session.exec(
-        update(TestRun)
-        .where(TestRun.id == run_id, TestRun.finalized_at.is_(None))
-        .values(finalized_at=datetime.utcnow())
-    )
-    await session.commit()
-    if claim.rowcount == 0:
-        _logger.info(
-            "[Finalize] Run %s already finalized at %s — skipping side effects",
-            run_id, run.finalized_at,
-        )
-        return {"status": "already_finalized", "run_id": run_id}
+    from app.services.run_completion import claim_async, queue_side_effects
 
-    # Store AI analysis if provided
+    # The legacy engine's controller may have an AI analysis to store. Kept
+    # even when the run is already finalized: since WP15f the aggregator
+    # finalizes distributed runs itself, usually before this call arrives.
     ai_analysis = payload.get('aiAnalysis')
     if ai_analysis:
-        await session.refresh(run)
         run.ai_analysis = ai_analysis
         session.add(run)
         await session.commit()
         print(f"[Finalize] Stored AI analysis for run {run_id}")
 
-    # Trigger notifications based on user/project preferences
-    # This is done via Celery task for reliability
-    try:
-        from app.tasks.notification_tasks import send_run_notifications
-        send_run_notifications.delay(run_id, payload)
-        print(f"[Finalize] Queued notifications for run {run_id}")
-    except Exception as e:
-        print(
-            f"[Finalize] Failed to queue notifications for run {run_id}: {e}")
-        # Don't fail the request - notifications are best-effort
+    # Idempotency guard. Workers retry finalize on network failure, and every
+    # side effect is externally visible (customer email, outbound webhook into
+    # customer CI, monitor uptime state, paging). The claim is shared with the
+    # aggregator (app/services/run_completion.py), so whichever finalizes the
+    # run first fires them and the other returns without re-firing.
+    if not await claim_async(session, run_id):
+        _logger.info("[Finalize] Run %s already finalized — skipping side effects", run_id)
+        return {"status": "already_finalized", "run_id": run_id}
 
-    # Fan-out workspace-registered outbound webhooks (CI bots, agent callbacks).
-    # Best-effort; failures inside the task do not affect the run.
-    try:
-        from app.tasks.outbound_webhook_tasks import dispatch_run_webhooks
-        dispatch_run_webhooks.delay(run_id)
-        print(f"[Finalize] Queued outbound webhooks for run {run_id}")
-    except Exception as e:
-        print(f"[Finalize] Failed to queue outbound webhooks for run {run_id}: {e}")
-
-    # Phase B: proactive selector-heal pass. Best-effort; only fires when
-    # PROACTIVE_HEAL_ENABLED=true and an LLM provider is configured.
-    try:
-        from app.tasks.heal_tasks import propose_selector_heals_for_run
-        propose_selector_heals_for_run.delay(run_id)
-    except Exception as e:
-        print(f"[Finalize] Failed to queue heal proposals for run {run_id}: {e}")
-
-    # Synthetic monitoring: if this run belongs to a monitor schedule, record a
-    # health check and fire streak-based alerts. No-op for non-monitor runs.
-    try:
-        from app.tasks.monitor_tasks import evaluate_monitor_for_run
-        evaluate_monitor_for_run.delay(run_id)
-    except Exception as e:
-        print(f"[Finalize] Failed to queue monitor evaluation for run {run_id}: {e}")
-
-    # On-call paging for unattended runs (PagerDuty / Opsgenie channels with
-    # on_run_failure). No-op unless the project has such a channel.
-    try:
-        from app.tasks.paging_tasks import page_for_run
-        page_for_run.delay(run_id)
-    except Exception as e:
-        print(f"[Finalize] Failed to queue paging for run {run_id}: {e}")
-
-    # Passive security scan: analyse already-captured responses for missing
-    # security headers, insecure cookies, etc. Best-effort; read-only.
-    try:
-        from app.tasks.security_tasks import scan_run_passive
-        scan_run_passive.delay(run_id)
-    except Exception as e:
-        print(f"[Finalize] Failed to queue passive security scan for run {run_id}: {e}")
-
-    # Leak detection (WP7): credentials the application under test exposed in
-    # what this run stored. Best-effort; read-only.
-    try:
-        from app.tasks.security_tasks import scan_run_leaks
-        scan_run_leaks.delay(run_id)
-    except Exception as e:
-        print(f"[Finalize] Failed to queue leak detection for run {run_id}: {e}")
-
-    # Failure triage: fingerprint failing results into clusters so identical
-    # root causes de-duplicate across runs. Best-effort.
-    try:
-        from app.tasks.triage_tasks import cluster_run_failures
-        cluster_run_failures.delay(run_id)
-    except Exception as e:
-        print(f"[Finalize] Failed to queue failure clustering for run {run_id}: {e}")
+    queued = queue_side_effects(run_id, payload)
+    print(f"[Finalize] Queued {len(queued)} side-effect task(s) for run {run_id}")
 
     return {"status": "finalized", "run_id": run_id}
 
@@ -1130,6 +1059,13 @@ async def force_complete_test_run(
     session.add(audit_log)
 
     await session.commit()
+
+    # A force-completed run is finished: fire its side effects once, like any
+    # other terminal transition (shared claim — see run_completion.py).
+    from app.services.run_completion import claim_async, queue_side_effects
+    if await claim_async(session, run_id):
+        queue_side_effects(run_id, {})
+
     await session.refresh(run)
 
     return {

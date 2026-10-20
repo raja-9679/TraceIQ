@@ -354,6 +354,10 @@ def run_test_suite(run_id: int, tags: list = None):
             run.status = TestStatus.ERROR
             run.error_message = str(e)
             session.add(run)
+            # Nothing was dispatched, so no result will ever finalize this
+            # run: do it here (CI webhooks and notifications learn it errored).
+            from app.services.run_completion import finalize_on_commit
+            finalize_on_commit(session, run.id)
             session.commit()
 
 
