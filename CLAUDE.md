@@ -1367,6 +1367,43 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `.../quality-gate/policy/versions[/{n}]`. Worker + backend + frontend
   rebuild needed.
 
+- **Trace correlation (WP16a, 2026-10, decision V1)** — migration
+  `e112b3c4d611` (`project.trace_settings` JSON, NULL = off). Opt-in per
+  project (`GET/PUT /api/projects/{id}/trace-settings`, admin, audited;
+  `{enabled, cross_origin}`). Dispatch (`trace_correlation.for_dispatch`)
+  ships `settings.trace_correlation = {hosts, cross_origin}` — the project's
+  OWN hosts (`site_crawl.known_hosts_from`: env base URLs ∪ suites'
+  `allowed_domains` ∪ security allowlist; a benchmark `target_url` is NOT
+  added) — and nothing at capture level `none` or with no hosts. Worker
+  `core/trace-context.ts`: one trace id per case attempt (continuous jobs:
+  per case), one span id per step, `traceparent 00-<trace>-<span>-01` (no
+  `tracestate`); nothing outside a step, an existing traceparent is never
+  overwritten. Browser side rides the header-injection route in
+  `network-interceptor.ts` (egress guard still runs first); it injects only on
+  navigations or same-origin requests unless `cross_origin` (a custom header
+  on a cross-origin fetch can force a CORS preflight the app may refuse).
+  API steps (http-request/graphql/feed-check — Playwright's request context
+  is not routed) inject for own hosts directly. Step evidence gains
+  `trace: {trace_id, span_id, requests}` (hex-validated in
+  `normalise_step_evidence`; redaction twins leave it alone — corpus tests in
+  both). Reading back: `app/services/trace_backends.py`, instance settings
+  `TRACE_BACKEND` (jaeger|tempo), `TRACE_BACKEND_URL` (net_guard, own host as
+  private exemption, no redirects, 5 s, 5 MB), `TRACE_BACKEND_TOKEN` (Bearer,
+  or verbatim `Basic …`), `TRACE_BACKEND_TENANT` (Tempo X-Scope-OrgID).
+  `GET /api/runs/{run}/results/{result}/traces` (viewer; scoped keys) maps
+  spans to a step ONLY by parent-span ancestry from the step's span id —
+  otherwise `no_telemetry` + reason (no ids / no backend / no own-host
+  request / trace missing / no descendants / query failed); never by time.
+  Attributes are an allow-list redacted with the project policy (no URLs, no
+  statements). Caps: 1000 spans/trace, 50/step, 5 traces/result; 60 s
+  in-process cache per result, read only after the access check.
+  Local-worker results are never looked up (their evidence is API-key
+  writable and a trace backend has no tenancy). Failure analysis fetches the
+  same payload (`analysis_tasks.backend_error_spans`) and adds `sN.trace`
+  for steps with ERROR spans → an app_bug hypothesis; uncited ids still drop.
+  Jaeger/Tempo are mock-verified only. Not in local/mobile/legacy workers.
+  Worker + backend + frontend rebuild needed.
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

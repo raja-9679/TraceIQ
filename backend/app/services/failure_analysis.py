@@ -138,12 +138,13 @@ def analyze_case_failure(
     history: Optional[FailureHistory] = None,
     changed_since_last_pass: Optional[ChangeRange] = None,
     result_id: Optional[int] = None,
+    step_traces: Optional[Dict[int, dict]] = None,
 ) -> FailureReport:
     failing_idx, failing_step = _find_failing_step(steps, error_message)
     index = inv.build_evidence_index(
         step_evidence=step_evidence, error_message=error_message,
         console_errors=console_errors, network_failures=network_failures,
-        failing_step_guess=failing_idx)
+        failing_step_guess=failing_idx, step_traces=step_traces)
     # Per-step evidence knows exactly which step failed; the selector match
     # in the error message is only a guess.
     if index.has_steps and index.failing is not None:

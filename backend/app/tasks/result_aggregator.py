@@ -580,8 +580,28 @@ def normalise_step_evidence(raw: Any, run_id: Optional[int] = None) -> List[Dict
         if dom:
             entry['dom'] = dom
             entry['dom_scope'] = 'target' if item.get('dom_scope') == 'target' else 'page'
+        trace = _trace_ids(item.get('trace'))
+        if trace:
+            entry['trace'] = trace
         out.append(entry)
     out.sort(key=lambda e: e['index'])
+    return out
+
+
+def _trace_ids(raw: Any) -> Optional[Dict[str, Any]]:
+    """WP16a: the trace id / span id this step propagated, plus how many
+    requests carried them. Strict hex only — the backend later queries the
+    trace backend with exactly these values."""
+    from app.services.trace_backends import valid_span_id, valid_trace_id
+    if not isinstance(raw, dict):
+        return None
+    tid, sid = raw.get('trace_id'), raw.get('span_id')
+    if not (valid_trace_id(tid) and valid_span_id(sid)):
+        return None
+    out: Dict[str, Any] = {'trace_id': tid, 'span_id': sid}
+    n = raw.get('requests')
+    if isinstance(n, int) and not isinstance(n, bool):
+        out['requests'] = max(0, min(n, 100000))
     return out
 
 

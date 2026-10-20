@@ -724,3 +724,12 @@ def test_worker_result_heal_snapshots_are_redacted_as_a_backstop():
     blob = str(out)
     assert "hunter2" not in blob
     assert "secret()" not in blob
+
+
+def test_step_evidence_trace_ids_are_untouched():
+    # Twin of the WP16a case in redact.test.ts: all-digit ids are the worst
+    # case for the PAN / Aadhaar patterns.
+    trace = {"trace_id": "4111111111111111" * 2, "span_id": "4111111111111111", "requests": 3}
+    out = redact_worker_result({"step_evidence": [
+        {"id": "s0", "index": 0, "type": "goto", "status": "passed", "trace": trace}]})
+    assert out["step_evidence"][0]["trace"] == trace

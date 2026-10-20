@@ -89,7 +89,12 @@ def build_evidence_index(
     console_errors: Optional[List[dict]] = None,
     network_failures: Optional[List[dict]] = None,
     failing_step_guess: Optional[int] = None,
+    step_traces: Optional[Dict[int, dict]] = None,
 ) -> EvidenceIndex:
+    """`step_traces` (WP16a): {step index: {count, first}} of backend ERROR
+    spans found under that step's span (trace_backends.error_spans_by_step).
+    Only steps the stored evidence lists get a `sN.trace` item, so the
+    citation-drop rule covers it like every other id."""
     idx = EvidenceIndex()
     if error_message:
         idx.add(EvidenceItem(id="error", kind="error", label=_short(error_message, 300)))
@@ -116,6 +121,14 @@ def build_evidence_index(
         if e.get("screenshot"):
             idx.add(EvidenceItem(id=f"{sid}.shot", kind="screenshot", step_index=e["index"],
                                  label=f"Screenshot at step {e['index'] + 1}"))
+        trace = (step_traces or {}).get(e["index"])
+        if trace and trace.get("count"):
+            first = trace.get("first") or {}
+            msg = f": {_short(first.get('status_message'), 160)}" if first.get("status_message") else ""
+            idx.add(EvidenceItem(
+                id=f"{sid}.trace", kind="trace", step_index=e["index"],
+                label=(f"{trace['count']} backend error span(s) at step {e['index'] + 1}; first "
+                       f"{first.get('service', '?')} {first.get('operation', '?')}{msg}")))
     failing = [e for e in idx.steps if e.get("status") == "failed"]
     if failing:
         idx.failing = failing[-1]
@@ -254,6 +267,9 @@ def observe(idx: EvidenceIndex, history: Optional[FailureHistory],
         if f"{f['id']}.shot" in idx.items:
             facts.append(ObservedFact(text="A screenshot was captured at the failing step.",
                                       evidence_refs=[f"{f['id']}.shot"]))
+    for item in [i for i in idx.items.values() if i.kind == "trace"][:3]:
+        facts.append(ObservedFact(text=f"The application's tracing recorded {item.label}.",
+                                  evidence_refs=[item.id]))
 
     if history and history.runs_considered:
         fail_refs = [f"run:{e.run_id}" for e in history.entries if e.status in ("failed", "error")][:5]
@@ -333,6 +349,20 @@ def heuristic_hypotheses(
                     f"unreachable from the worker.",
             confidence=0.55 if hard else 0.35, evidence_refs=[x[0] for x in neterr[:3]]))
 
+    # Backend error spans under a step's own span (WP16a): the application
+    # itself reported failing while serving this step — direct evidence, not
+    # a guess from timing.
+    traces = [i for i in idx.items.values() if i.kind == "trace"]
+    if traces:
+        t = next((i for i in traces if in_failing(i.step_index)), traces[0])
+        here = "in the failing step" if in_failing(t.step_index) else "before the failure"
+        out.append(Hypothesis(
+            category="app_bug", fix_target="app",
+            summary=f"The application recorded an error while serving a request {here} — {t.label}.",
+            confidence=0.7 if in_failing(t.step_index) else 0.5,
+            evidence_refs=[i.id for i in traces[:3]] + anchor[:1]))
+    backend_failed = bool(server) or bool(traces)
+
     cons = _console(idx)
     page_errors = [(cid, c, s) for cid, c, s in cons if c.get("type") == "pageerror"]
     errors = [(cid, c, s) for cid, c, s in cons if c.get("type") == "error"]
@@ -353,7 +383,7 @@ def heuristic_hypotheses(
         # A server or JS error before a missing element usually IS why the
         # element is missing (error page, half-rendered component), so the
         # "selector is wrong" readings yield to it.
-        upstream = 0.15 if (server or page_errors) else 0.0
+        upstream = 0.15 if (backend_failed or page_errors) else 0.0
         dom_ref = f"{fid}.dom"
         if dom_ref in idx.items and f.get("dom_scope") == "target":
             out.append(Hypothesis(
@@ -388,7 +418,7 @@ def heuristic_hypotheses(
 
     # Same reasoning for the error-pattern reading: "a wait timed out" is a
     # symptom when the server or the page had already failed.
-    if (server or page_errors) and out[0].category == "test_bug":
+    if (backend_failed or page_errors) and out[0].category == "test_bug":
         out[0].confidence = max(0.1, out[0].confidence - 0.15)
 
     return rank(out)

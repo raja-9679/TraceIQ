@@ -7,6 +7,7 @@ import * as vm from 'vm';
 import type { FrameLocator, Page } from 'playwright';
 import type { CaptureLevel } from './artifact-store';
 import { RedactionPolicy, redactText } from './redact';
+import type { StepTrace, TraceCorrelation } from './trace-context';
 
 // Evidence handed to backend failure analysis alongside each result. Kept
 // small on purpose: the full console log is a separate (policy-gated) artifact.
@@ -110,6 +111,10 @@ export interface StepEvidence {
     screenshot_file?: string; // local file name; replaced by `screenshot` before sending
     dom?: string;
     dom_scope?: 'target' | 'page';
+    // WP16a: the trace id / span id this step propagated in `traceparent`
+    // and how many requests carried them. Ids, not content: the redaction
+    // twins leave them alone.
+    trace?: StepTrace;
 }
 
 const LEVEL_RANK: Record<CaptureLevel, number> = { none: 0, minimal: 1, standard: 2, full: 3 };
@@ -161,6 +166,7 @@ export class StepEvidenceRecorder {
     private mark = { console: 0, net: 0, failed: 0, t: 0 };
     private current: { index: number; step: any } | null = null;
     private itemBudget = MAX_EVIDENCE_ITEMS_PER_TEST;
+    private trace: TraceCorrelation | null = null;
 
     constructor(
         private readonly sources: EvidenceSources,
@@ -169,7 +175,13 @@ export class StepEvidenceRecorder {
         private readonly policy?: RedactionPolicy,
     ) {}
 
+    /** Trace correlation for this case (WP16a); a span opens with each step. */
+    setTrace(trace: TraceCorrelation | null): void {
+        this.trace = trace;
+    }
+
     begin(step: any, index: number): void {
+        this.trace?.beginStep();
         this.mark = {
             console: this.sources.consoleLogs.length,
             net: this.sources.networkEvents.length,
@@ -184,6 +196,7 @@ export class StepEvidenceRecorder {
         if (!this.current) return null;
         const { index, step } = this.current;
         this.current = null;
+        const stepTrace = this.trace?.endStep() || null;
         if (this.entries.length >= MAX_EVIDENCE_STEPS) return null;
         const id = `s${index}`;
         const entry: StepEvidence = {
@@ -193,6 +206,7 @@ export class StepEvidenceRecorder {
         if (step?.id) entry.step_id = String(step.id);
         if (step?.selector) entry.selector = redactText(clip(step.selector, MAX_SELECTOR_CHARS), this.policy);
         if (error) entry.error = redactText(clip(error, 1000), this.policy);
+        if (stepTrace) entry.trace = stepTrace;
 
         if (levelAtLeast(this.level, 'minimal')) {
             const consoleItems = this.sources.consoleLogs.slice(this.mark.console)

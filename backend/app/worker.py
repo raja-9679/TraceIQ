@@ -274,6 +274,17 @@ def run_test_suite(run_id: int, tags: list = None):
                 effective_settings['flags'] = run.flags
             print(f"[Worker] Run {run_id}: capture level "
                   f"'{data_policy['capture_level']}'")
+            # Trace correlation (WP16a): the project's own hosts get a W3C
+            # traceparent from the worker. Resolved here so the host set is
+            # never the worker's own choice; None = inject nothing.
+            from app.services.trace_correlation import for_dispatch as _trace_for_dispatch
+            try:
+                trace_cfg = _trace_for_dispatch(_cfg_project, session, data_policy.get('capture_level'))
+            except Exception as exc:  # noqa: BLE001 — correlation is evidence, never a gate
+                print(f"[Worker] Run {run_id}: trace correlation lookup failed: {exc}")
+                trace_cfg = None
+            if trace_cfg:
+                effective_settings['trace_correlation'] = trace_cfg
 
             # Run-scoped template values ({{run.*}}) and the effective
             # {{fake.*}} seed: the run's own seed wins over the suite chain's.
@@ -525,6 +536,8 @@ def _settings_payload(settings: dict) -> dict:
         payload['emulation'] = settings['emulation']
     if settings.get('flags'):
         payload['flags'] = settings['flags']
+    if settings.get('trace_correlation'):
+        payload['trace_correlation'] = settings['trace_correlation']
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).

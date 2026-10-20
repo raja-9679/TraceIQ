@@ -482,6 +482,26 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "member who can author a load test can then read ANY "
                            "series this Prometheus holds — single-tenant instances "
                            "or a label-enforcing proxy only"),
+    # --- Trace correlation (WP16a) ---
+    SettingDef("TRACE_BACKEND", "observability", label="Trace backend",
+               description="jaeger | tempo (blank = off). Projects that turn on trace "
+                           "correlation get a W3C traceparent on requests to their own "
+                           "hosts; the run page then shows the spans the application "
+                           "recorded under each step, read from this backend"),
+    SettingDef("TRACE_BACKEND_URL", "observability", label="Trace backend URL",
+               description="base URL the BACKEND can reach: the Jaeger query service "
+                           "(e.g. http://jaeger:16686) or Tempo's HTTP API (e.g. "
+                           "http://tempo:3200). Fetched through the outbound URL guard "
+                           "with this host as its own private-network exemption; "
+                           "redirects are not followed"),
+    SettingDef("TRACE_BACKEND_TOKEN", "observability", secret=True,
+               label="Trace backend token (optional)",
+               description="sent as 'Authorization: Bearer <token>', or as written when "
+                           "it starts with 'Bearer ' or 'Basic ' (Grafana Cloud Tempo "
+                           "uses basic auth: 'Basic <base64 user:token>')"),
+    SettingDef("TRACE_BACKEND_TENANT", "observability",
+               label="Tempo tenant (optional)",
+               description="X-Scope-OrgID for a multi-tenant Tempo; ignored for Jaeger"),
     # --- Network access control (WP8) ---
     SettingDef("TRUSTED_PROXY_CIDRS", "network", type="list",
                label="Trusted reverse proxies",

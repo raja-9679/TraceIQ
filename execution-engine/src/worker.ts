@@ -39,6 +39,7 @@ import {
     RedactionPolicy, policyFromDataPolicy, redactCrawlReport, redactHar, redactNetworkEvents, redactText,
 } from './core/redact';
 import { installEgressGuard } from './core/egress-guard';
+import { TraceCorrelation } from './core/trace-context';
 import { Heartbeat } from './core/heartbeat';
 import { workerRegion } from './core/job-queue';
 import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
@@ -836,6 +837,9 @@ class ExecutionWorker {
         const prefs = this.artifactPrefsFor(job);
         const recorder = new StepEvidenceRecorder(
             { consoleLogs, networkEvents, failedRequests }, testCase.name, captureLevel, policy);
+        // Trace correlation (WP16a): this call is one attempt, so one trace id.
+        const trace = TraceCorrelation.from(job.settings);
+        recorder.setTrace(trace);
         const consolePolicy = consoleFailurePolicy(job.settings, testCase);
         let failedStepIndex = -1;
         let currentContext: Page | FrameLocator | null = null;
@@ -943,6 +947,8 @@ class ExecutionWorker {
                 scope: RunScope.forCase(job, testCase, this.jobQueue.workerId, attempt),
                 // {{setup.*}}: filled once the suite setup hooks have run.
                 setup: {} as Record<string, any>,
+                // API steps read it for their own-host traceparent (WP16a).
+                trace,
             };
             const sourceDomain = { value: null as string | null };
 
@@ -957,7 +963,8 @@ class ExecutionWorker {
             await NetworkInterceptor.setupRouteInterception(
                 context,
                 job.settings,
-                sourceDomain
+                sourceDomain,
+                trace
             );
             // Egress allowlist (WP8). Registered after the header-injection
             // route so it runs first; blocked requests land in networkEvents.
@@ -1375,6 +1382,7 @@ class ExecutionWorker {
 
             // Setup shared network listeners
             const sharedRequestStartTimes = new Map<string, number>();
+            const sharedTrace = TraceCorrelation.from(job.settings);
             const sharedContextData = {
                 id: job.unit_id || 0,
                 name: job.unit_name || 'continuous-job',
@@ -1394,6 +1402,8 @@ class ExecutionWorker {
                 // expect-visual-match outcomes (WP14e); sliced per case too.
                 visual_results: [] as any[],
                 artifacts_dir: artifactsDir,
+                // One correlation per shared context; a new trace id per case.
+                trace: sharedTrace,
             };
             const sourceDomain = { value: null as string | null };
 
@@ -1408,7 +1418,8 @@ class ExecutionWorker {
             await NetworkInterceptor.setupRouteInterception(
                 sharedContext,
                 job.settings,
-                sourceDomain
+                sourceDomain,
+                sharedTrace
             );
             await installEgressGuard(sharedContext, job.settings?.egress_policy, networkEvents, {
                 testCaseName: () => sharedContextData.name, redact: (u: string) => redactText(u, policy),
@@ -1473,6 +1484,8 @@ class ExecutionWorker {
                 sharedContextData.data = (testCase as any).data_row || {};
                 const recorder = new StepEvidenceRecorder(
                     { consoleLogs, networkEvents, failedRequests }, testCase.name, captureLevel, policy);
+                sharedTrace?.startAttempt();
+                recorder.setTrace(sharedTrace);
                 const consolePolicy = consoleFailurePolicy(job.settings, testCase);
                 let failedStepIndex = -1;
                 let currentContext: Page | FrameLocator = page;

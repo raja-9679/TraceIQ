@@ -802,3 +802,11 @@ test('a job result carrying heal snapshots is redacted as a backstop', () => {
     assert.ok(!JSON.stringify(out).includes('hunter2'));
     assert.ok(!JSON.stringify(out).includes('secret()'));
 });
+
+test('step evidence trace ids (WP16a) pass through redaction untouched', () => {
+    // All-digit ids are the worst case for the PAN / Aadhaar patterns. Twin:
+    // test_step_evidence_trace_ids_are_untouched in test_redaction.py.
+    const trace = { trace_id: '4111111111111111'.repeat(2), span_id: '4111111111111111', requests: 3 };
+    const out = redactJobResult({ step_evidence: [{ id: 's0', index: 0, type: 'goto', status: 'passed', trace }] });
+    assert.deepEqual(out.step_evidence[0].trace, trace);
+});
