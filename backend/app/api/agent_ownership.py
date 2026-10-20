@@ -424,6 +424,8 @@ async def crawl_app_surface(
     except _redis.ResponseError as e:
         if "BUSYGROUP" not in str(e):
             raise
+    from app.core.telemetry import stamp_trace
+    stamp_trace(job)  # WP15b H3: continue this trace in the worker
     rc.xadd("jobs:pending", {"job_id": discovery_id, "run_id": "0", "payload": json.dumps(job)})
 
     # Long-poll for the worker result (cap ~90s).

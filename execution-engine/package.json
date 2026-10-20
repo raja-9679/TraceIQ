@@ -19,6 +19,10 @@
   "license": "ISC",
   "dependencies": {
     "@axe-core/playwright": "^4.12.1",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/exporter-trace-otlp-http": "0.222.0",
+    "@opentelemetry/resources": "2.11.0",
+    "@opentelemetry/sdk-trace-base": "2.11.0",
     "@playwright/test": "^1.40.1",
     "@xmldom/xmldom": "^0.8.10",
     "ajv": "^8.17.1",

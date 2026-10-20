@@ -378,8 +378,12 @@ def _instrument_libraries(sqlalchemy_engine=None) -> None:
         SQLAlchemyInstrumentor().instrument(**kwargs)
     except Exception as exc:  # pragma: no cover
         log.warning("SQLAlchemy instrumentation failed: %s", exc)
+    # Celery is instrumented in EVERY process, not only the workers: the API
+    # side is the producer, and without its before_task_publish hook the
+    # request's trace stops at .delay() (WP15b H3: one run = one trace).
     for modpath, cls in (("opentelemetry.instrumentation.httpx", "HTTPXClientInstrumentor"),
-                         ("opentelemetry.instrumentation.redis", "RedisInstrumentor")):
+                         ("opentelemetry.instrumentation.redis", "RedisInstrumentor"),
+                         ("opentelemetry.instrumentation.celery", "CeleryInstrumentor")):
         try:
             module = __import__(modpath, fromlist=[cls])
             getattr(module, cls)().instrument()
@@ -390,13 +394,36 @@ def _instrument_libraries(sqlalchemy_engine=None) -> None:
 def instrument_celery() -> None:
     """Called from Celery's worker_process_init: the instrumentor must run in
     the worker process, after the fork, or spans never leave the child."""
-    if not configure_tracing(service_name=os.environ.get("OTEL_SERVICE_NAME", "traceiq-celery")):
-        return
+    # configure_tracing instruments Celery along with the other libraries.
+    configure_tracing(service_name=os.environ.get("OTEL_SERVICE_NAME", "traceiq-celery"))
+
+
+_TRACEPARENT_RE = re.compile(r"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$")
+
+
+def current_traceparent() -> Optional[str]:
+    """W3C traceparent of the active span, or None when tracing is off or no
+    span is active. Only the traceparent — baggage is never forwarded."""
+    if not _tracing_enabled:
+        return None
     try:
-        from opentelemetry.instrumentation.celery import CeleryInstrumentor
-        CeleryInstrumentor().instrument()
-    except Exception as exc:  # pragma: no cover
-        logging.getLogger(__name__).warning("Celery instrumentation failed: %s", exc)
+        from opentelemetry.propagate import inject
+        carrier: dict = {}
+        inject(carrier)
+        value = carrier.get("traceparent")
+        return value if isinstance(value, str) and _TRACEPARENT_RE.match(value) else None
+    except Exception:  # pragma: no cover - propagation must never break dispatch
+        return None
+
+
+def stamp_trace(job: dict) -> dict:
+    """Put the dispatcher's traceparent on a worker job (WP15b H3) so the
+    Node worker continues this trace. A job that already carries one (a
+    dead-letter replay) keeps its original trace."""
+    tp = current_traceparent()
+    if tp and "traceparent" not in job:
+        job["traceparent"] = tp
+    return job
 
 
 # --------------------------------------------------------------------------

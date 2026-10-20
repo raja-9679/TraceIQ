@@ -81,6 +81,8 @@ def refresh_persona_session(self, persona_id: int) -> Dict[str, Any]:
     except redis.ResponseError as e:
         if "BUSYGROUP" not in str(e):
             raise
+    from app.core.telemetry import stamp_trace
+    stamp_trace(job)  # WP15b H3: continue this trace in the worker
     rc.xadd(JOBS_STREAM, {"job_id": job["job_id"], "run_id": "0",
                           "payload": json.dumps(job)})
 

@@ -291,6 +291,13 @@ services:
       # execution inside the worker. Leave false unless you trust every user of
       # this instance.
       RAW_PLAYWRIGHT_ENABLED: ${RAW_PLAYWRIGHT_ENABLED:-false}
+      # OpenTelemetry (WP15b H3): off unless the endpoint is set; continues
+      # the backend's trace (one run = one trace).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+      OTEL_SERVICE_NAME: traceiq-execution-worker
     depends_on:
       redis: {condition: service_healthy}
       object-store: {condition: service_healthy}
@@ -410,6 +417,13 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
       RUNTIME_HEAL_ENABLED: ${RUNTIME_HEAL_ENABLED:-false}
+      # OpenTelemetry (WP15b H3): off unless the endpoint is set; continues
+      # the backend's trace (one run = one trace).
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+      OTEL_TRACES_SAMPLER: ${OTEL_TRACES_SAMPLER:-parentbased_always_on}
+      OTEL_TRACES_SAMPLER_ARG: ${OTEL_TRACES_SAMPLER_ARG:-1.0}
+      OTEL_SERVICE_NAME: traceiq-mobile-worker
     depends_on:
       redis: {condition: service_healthy}
       object-store: {condition: service_healthy}

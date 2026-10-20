@@ -8,6 +8,7 @@ Architecture:
 from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
+from app.core import telemetry
 from app.core.config import db_url_for, settings
 from app.core.secrets import decrypt_json, encrypt_json
 from app.models import TestRun, TestStatus, ExecutionMode, ExecutorType
@@ -782,6 +783,8 @@ def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job
     put it back on the same stream."""
     if region and not local_key:
         job['region'] = region
+    # One run = one trace (WP15b H3): no-op unless OTel is configured.
+    telemetry.stamp_trace(job)
     if local_key:
         pipe.rpush(local_key, json.dumps(job))
         # Local queues are polled over HTTP; expire abandoned ones after a day.

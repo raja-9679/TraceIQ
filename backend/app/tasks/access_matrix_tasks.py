@@ -124,6 +124,8 @@ def dispatch_access_matrix_run(matrix_run_id: int) -> Dict[str, Any]:
             if "BUSYGROUP" not in str(e):
                 raise
         for job in jobs:
+            from app.core.telemetry import stamp_trace
+            stamp_trace(job)  # WP15b H3: continue this trace in the worker
             rc.xadd(JOBS_STREAM, {"job_id": job["job_id"], "run_id": "0",
                                   "payload": json.dumps(job)})
     collect_access_matrix_run.apply_async((matrix_run_id,), countdown=POLL_COUNTDOWN)

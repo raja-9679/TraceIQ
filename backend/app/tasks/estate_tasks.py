@@ -283,6 +283,8 @@ def check_monitored_page(page_id: int) -> Dict[str, Any]:
     except _r.ResponseError as e:
         if "BUSYGROUP" not in str(e):
             raise
+    from app.core.telemetry import stamp_trace
+    stamp_trace(job)  # WP15b H3: continue this trace in the worker
     rc.xadd(JOBS_STREAM, {"job_id": job["job_id"], "run_id": "0", "payload": json.dumps(job)})
     collect_page_check.apply_async((page_id, datetime.utcnow().isoformat()), countdown=POLL_COUNTDOWN)
     return {"status": "dispatched", "job_id": job["job_id"]}

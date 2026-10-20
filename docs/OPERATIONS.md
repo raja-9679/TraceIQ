@@ -212,8 +212,28 @@ shows `traceiq-backend → traceiq-celery-worker` as separate services. The
 the kill switch. The monitoring overlay ships Jaeger all-in-one (UI :16686) as
 somewhere to look. Verified 2026-09-07 against Jaeger: request, `SELECT`,
 `PING` and outbound spans arrive under the configured service name, and the
-`trace_id` in the JSON log line matches the trace. The Node execution worker
-is **not** instrumented — its jobs appear as Celery/HTTP edges only.
+`trace_id` in the JSON log line matches the trace.
+
+**One run = one trace (WP15b).** Celery is instrumented in the API process
+too (the producer side), so `POST /api/runs` → `run_test_suite` is one trace,
+and the dispatcher stamps a W3C `traceparent` on every worker job
+(`telemetry.stamp_trace`, in `_enqueue_job` and the side-job senders). The
+web and mobile workers (`execution-engine/src/core/tracing.ts`) continue it:
+one `job <type>` span per job, then one `case` span per case and one
+`step <type>` span per step, rebuilt from the result's step evidence after the
+job (marked `traceiq.timing=reconstructed`; capped at 100 cases / 300 steps
+per job). Same switch as the backend — `OTEL_EXPORTER_OTLP_ENDPOINT` (or
+`_TRACES_ENDPOINT` / `OTEL_ENABLED`), `OTEL_SDK_DISABLED=true` wins — and with
+it unset the SDK is never loaded. Span attributes are an allow-list: run/job/
+case ids, job/step type, status, error kind, counts, durations; never step
+values, URLs, selectors, headers, bodies or error text. The worker exports
+OTLP/HTTP **JSON** (`/v1/traces`); collectors and Jaeger accept it on the same
+port as the backend's protobuf. The community compose and Helm pass the OTEL
+variables to the workers; `docker-compose.prod.yml` wires OTEL for no service
+— add it to the worker with the backend if you use that file. Results flow
+back through `jobs:results` into the aggregator as a separate trace (not
+linked). Not verified against a live collector in CI; checked with a local
+OTLP receiver.
 
 **Error tracking.** `SENTRY_DSN` turns on Sentry (or a compatible receiver).
 PII is off, request bodies are never sent, cookies and the query string are

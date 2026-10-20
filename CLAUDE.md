@@ -1365,6 +1365,26 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `GET .../quality-gate?policy_version=&run_ids=`; history at
   `.../quality-gate/policy/versions[/{n}]`. Worker + backend + frontend
   rebuild needed.
+- **Supply chain + worker tracing (WP15b, 2026-10-20)** — **H2:**
+  `release-images.yml` (still dispatch-only) cosign-signs every pushed image
+  by digest (keyless, GitHub OIDC; `id-token: write` on the build job only) in
+  every repo it went to, and attaches a CycloneDX SBOM (anchore/sbom-action)
+  as a `cosign attest --type cyclonedx`; every action pinned to a commit SHA
+  (trivy-action's old `0.28.0` tag no longer exists). Verify commands in
+  SELF_HOSTING.md. FastAPI 0.153 / Starlette 1.9 / OTel 1.45 — FastAPI now
+  depends on `opentelemetry-api` and ships native telemetry that records
+  `url.query`: it is OFF in `main.py` (FastAPIInstrumentor is ours);
+  `strict_content_type` is on (body without Content-Type ≠ JSON). **H3:**
+  `core/tracing.ts` — jobs carry `traceparent` (stamped by
+  `telemetry.stamp_trace` in `_enqueue_job` + the side-job senders; a replayed
+  job keeps its original); Celery instrumented in the API process too, so a
+  run is one trace API → Celery → worker. One `job` span per job, `case`/
+  `step` children reconstructed from step evidence after the job (capped
+  100/300). Attributes are an ALLOW-LIST (`safeAttributes`: ids, types,
+  statuses, counts, durations — never values/URLs/selectors/errors). SDK
+  loaded by a variable-specifier `import()` only when the endpoint is set,
+  typed locally (no @types needed); missing packages → off with one warning.
+  Worker image rebuild needed (new deps).
 
 - **Trace correlation (WP16a, 2026-10, decision V1)** — migration
   `e112b3c4d611` (`project.trace_settings` JSON, NULL = off). Opt-in per
