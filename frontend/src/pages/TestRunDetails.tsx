@@ -20,6 +20,7 @@ import { twMerge } from "tailwind-merge";
 import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
 import { InvestigationReport } from '@/components/evidence/InvestigationReport';
+import { HypothesisRating } from '@/components/value/HypothesisRating';
 import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
 import { BackendTracesPanel } from '@/components/traces/BackendTracesPanel';
 import { hasTraceIds } from '@/components/traces/waterfall';
@@ -435,6 +436,9 @@ export default function TestRunDetails() {
                                                             <div className="pt-2 mt-1 border-t border-indigo-100">
                                                                 <InvestigationReport
                                                                     report={r}
+                                                                    hypothesisActions={typeof r.result_id === 'number'
+                                                                        ? (hi) => <HypothesisRating runId={run.id} resultId={r.result_id} index={hi} />
+                                                                        : undefined}
                                                                     onSelectEvidence={(ref) => {
                                                                         if (typeof r.result_id !== 'number') return;
                                                                         setTestSearchTerm('');

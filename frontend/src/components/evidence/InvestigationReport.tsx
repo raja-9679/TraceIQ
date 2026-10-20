@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Eye, GitCommitHorizontal, History, Lightbulb } from 'lucide-react';
 import {
@@ -45,9 +46,11 @@ function Refs({ report, refs, onSelect }: {
     );
 }
 
-export function InvestigationReport({ report, onSelectEvidence }: {
+export function InvestigationReport({ report, onSelectEvidence, hypothesisActions }: {
     report: FailureReportV2;
     onSelectEvidence: (ref: string) => void;
+    /** Extra controls under each hypothesis (the run page's 👍/👎 rating). */
+    hypothesisActions?: (index: number) => ReactNode;
 }) {
     const observed = report.observed ?? [];
     const hypotheses = report.hypotheses ?? [];
@@ -93,6 +96,7 @@ export function InvestigationReport({ report, onSelectEvidence }: {
                                     {h.summary}
                                     <Refs report={report} refs={h.evidence_refs} onSelect={onSelectEvidence} />
                                 </p>
+                                {hypothesisActions?.(i)}
                             </li>
                         ))}
                     </ol>

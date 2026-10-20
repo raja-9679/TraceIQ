@@ -51,6 +51,7 @@ import TrustCenterSettings from "@/pages/TrustCenterSettings";
 import Policies from "@/pages/Policies";
 import Agents from "@/pages/Agents";
 import PocReport from "@/pages/PocReport";
+import ValueReport from "@/pages/ValueReport";
 import ExecutiveSummary from "@/pages/ExecutiveSummary";
 import Portfolio from "@/pages/Portfolio";
 import Traceability from "@/pages/Traceability";
@@ -126,6 +127,7 @@ function App() {
                 <Route path="reports/summary" element={<ExecutiveSummary />} />
                 <Route path="reports/portfolio" element={<Portfolio />} />
                 <Route path="reports/poc" element={<PocReport />} />
+                <Route path="reports/value" element={<ValueReport />} />
                 <Route path="trust-center" element={<TrustCenterSettings />} />
                 <Route path="policies" element={<Policies />} />
                 <Route path="agents" element={<Agents />} />
