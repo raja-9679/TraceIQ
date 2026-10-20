@@ -3535,6 +3535,37 @@
         "title": "HealSelectorChoice",
         "type": "object"
       },
+      "HypothesisVoteIn": {
+        "properties": {
+          "hypothesis_key": {
+            "maxLength": 64,
+            "minLength": 8,
+            "title": "Hypothesis Key",
+            "type": "string"
+          },
+          "index": {
+            "maximum": 50.0,
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "verdict": {
+            "enum": [
+              "correct",
+              "incorrect"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "hypothesis_key",
+          "verdict"
+        ],
+        "title": "HypothesisVoteIn",
+        "type": "object"
+      },
       "ImpactAnalysisRequest": {
         "description": "Input for POST /api/runs/impact-analysis.\n\nGiven a set of file paths that changed in a PR, return the subset of\ntest cases that exercise those paths (per their `code_paths` field).",
         "properties": {
@@ -32749,6 +32780,83 @@
         ]
       }
     },
+    "/api/projects/{project_id}/value-report": {
+      "get": {
+        "operationId": "project_value_report_api_projects__project_id__value_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "title": "Project Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Project Value Report",
+        "tags": [
+          "value-report"
+        ]
+      }
+    },
     "/api/projects/{project_id}/visual-review": {
       "get": {
         "description": "One run's comparisons with groups of related changes. Defaults to the\nproject's latest run that has comparisons.",
@@ -34570,6 +34678,51 @@
         ]
       }
     },
+    "/api/runs/{run_id}/hypothesis-feedback": {
+      "get": {
+        "operationId": "run_hypothesis_feedback_api_runs__run_id__hypothesis_feedback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Run Hypothesis Feedback",
+        "tags": [
+          "value-report"
+        ]
+      }
+    },
     "/api/runs/{run_id}/report": {
       "get": {
         "description": "CI-/VCS-agnostic consolidated report for one run: results, security\nfindings, quality-gate verdict (per the project's policy), optional git\ncontext, and a ready-to-paste markdown block. Keyed by run_id, so git is\noptional. Principal auth so CI/agents (API key) can call it.",
@@ -34680,6 +34833,139 @@
         "summary": "Download Repro Bundle",
         "tags": [
           "developer"
+        ]
+      }
+    },
+    "/api/runs/{run_id}/results/{result_id}/hypothesis-feedback": {
+      "delete": {
+        "operationId": "clear_hypothesis_rating_api_runs__run_id__results__result_id__hypothesis_feedback_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "maximum": 50,
+              "minimum": 0,
+              "title": "Index",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hypothesis_key",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "title": "Hypothesis Key",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Clear Hypothesis Rating",
+        "tags": [
+          "value-report"
+        ]
+      },
+      "put": {
+        "operationId": "rate_hypothesis_api_runs__run_id__results__result_id__hypothesis_feedback_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "result_id",
+            "required": true,
+            "schema": {
+              "title": "Result Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HypothesisVoteIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Rate Hypothesis",
+        "tags": [
+          "value-report"
         ]
       }
     },
@@ -43000,6 +43286,99 @@
         "summary": "Remove User From Workspace",
         "tags": [
           "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/value-report": {
+      "get": {
+        "operationId": "workspace_value_report_api_workspaces__workspace_id__value_report_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "project_ids",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Ids"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Workspace Value Report",
+        "tags": [
+          "value-report"
         ]
       }
     },

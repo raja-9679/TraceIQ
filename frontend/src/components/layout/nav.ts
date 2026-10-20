@@ -77,6 +77,8 @@ export const places: Place[] = [
             { name: 'Benchmarks', href: '/benchmarks' },
             { name: 'Costs', href: '/costs' },
             { name: 'PoC report', href: '/reports/poc' },
+            // WP16d: measured / estimated value for pilots.
+            { name: 'Value report', href: '/reports/value' },
         ],
     },
     {

@@ -5066,6 +5066,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/projects/{project_id}/value-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Project Value Report */
+        get: operations["project_value_report_api_projects__project_id__value_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/projects/{project_id}/visual-review": {
         parameters: {
             query?: never;
@@ -5535,6 +5552,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/runs/{run_id}/hypothesis-feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Run Hypothesis Feedback */
+        get: operations["run_hypothesis_feedback_api_runs__run_id__hypothesis_feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/runs/{run_id}/report": {
         parameters: {
             query?: never;
@@ -5575,6 +5609,24 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/runs/{run_id}/results/{result_id}/hypothesis-feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Rate Hypothesis */
+        put: operations["rate_hypothesis_api_runs__run_id__results__result_id__hypothesis_feedback_put"];
+        post?: never;
+        /** Clear Hypothesis Rating */
+        delete: operations["clear_hypothesis_rating_api_runs__run_id__results__result_id__hypothesis_feedback_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -7656,6 +7708,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/value-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Workspace Value Report */
+        get: operations["workspace_value_report_api_workspaces__workspace_id__value_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/workspaces/{workspace_id}/webhooks": {
         parameters: {
             query?: never;
@@ -9025,6 +9094,18 @@ export interface components {
         HealSelectorChoice: {
             /** Selector */
             selector?: string | null;
+        };
+        /** HypothesisVoteIn */
+        HypothesisVoteIn: {
+            /** Hypothesis Key */
+            hypothesis_key: string;
+            /** Index */
+            index: number;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "correct" | "incorrect";
         };
         /**
          * ImpactAnalysisRequest
@@ -23967,6 +24048,40 @@ export interface operations {
             };
         };
     };
+    project_value_report_api_projects__project_id__value_report_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+            };
+            header?: never;
+            path: {
+                project_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     review_run_api_projects__project_id__visual_review_get: {
         parameters: {
             query?: {
@@ -24932,6 +25047,37 @@ export interface operations {
             };
         };
     };
+    run_hypothesis_feedback_api_runs__run_id__hypothesis_feedback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     run_report_api_runs__run_id__report_get: {
         parameters: {
             query?: never;
@@ -24985,6 +25131,75 @@ export interface operations {
                 content: {
                     "application/json": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rate_hypothesis_api_runs__run_id__results__result_id__hypothesis_feedback_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HypothesisVoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_hypothesis_rating_api_runs__run_id__results__result_id__hypothesis_feedback_delete: {
+        parameters: {
+            query: {
+                index: number;
+                hypothesis_key: string;
+            };
+            header?: never;
+            path: {
+                run_id: number;
+                result_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -29960,6 +30175,41 @@ export interface operations {
             path: {
                 workspace_id: number;
                 user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    workspace_value_report_api_workspaces__workspace_id__value_report_get: {
+        parameters: {
+            query?: {
+                start?: string | null;
+                end?: string | null;
+                project_ids?: string | null;
+            };
+            header?: never;
+            path: {
+                workspace_id: number;
             };
             cookie?: never;
         };
