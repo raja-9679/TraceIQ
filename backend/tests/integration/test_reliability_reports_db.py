@@ -31,6 +31,7 @@ from app.tasks import reliability_tasks                           # noqa: E402
 from tests.integration.test_targeted_runs_db import (             # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 def _me(scene):
@@ -81,7 +82,7 @@ async def test_deployment_ingest_access_control(session, scene):
     key = ApiKey(name="ci", workspace_id=1, project_id=scene.other_project_id, prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await _post(session, scene, AuthPrincipal(user=editor.user, api_key=key), git_commit="abc1234")
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
     # ...and a key scoped to this project is accepted.
     from app.models import Project
@@ -324,4 +325,4 @@ async def test_vendor_rollup_is_idempotent_and_strips_urls(session, scene):
     with pytest.raises(HTTPException) as exc:
         await rr.dependency_health(scene.project_id, days=30,
                                    principal=AuthPrincipal(user=scene.user, api_key=key), session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED

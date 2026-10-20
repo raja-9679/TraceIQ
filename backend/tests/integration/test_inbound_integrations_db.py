@@ -34,6 +34,7 @@ from app.services import tracker_import                          # noqa: E402
 from app.services.entity_delete import cascade_delete             # noqa: E402
 
 from tests.integration.test_targeted_runs_db import scene, session  # noqa: E402,F401
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 DESC = """As a shopper I want guest checkout.
@@ -202,7 +203,7 @@ async def test_viewer_reads_but_cannot_import_and_outsider_sees_nothing(session,
     ):
         with pytest.raises(HTTPException) as exc:
             await call(AuthPrincipal(user=outsider, api_key=None))
-        assert exc.value.status_code == 403
+        assert exc.value.status_code in DENIED
 
 
 async def test_project_scoped_key_cannot_reach_another_project(session, scene, jira):
@@ -210,7 +211,7 @@ async def test_project_scoped_key_cannot_reach_another_project(session, scene, j
                  prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await requirements.list_imported(scene.project_id, principal=me(scene, key), session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     with pytest.raises(HTTPException) as exc:
         await incidents.create_incident(scene.project_id, incidents.IncidentCreate(title="x"),
                                         principal=me(scene, key), session=session)

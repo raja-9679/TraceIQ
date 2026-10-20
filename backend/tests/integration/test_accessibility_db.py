@@ -35,6 +35,7 @@ from app.services.entity_delete import cascade_delete            # noqa: E402
 from tests.integration.test_targeted_runs_db import (            # noqa: E402,F401
     scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 def _me(scene):
@@ -176,7 +177,7 @@ async def test_access_and_validation(session, scene):
     nobody = AuthPrincipal(user=outsider, api_key=None)
     with pytest.raises(HTTPException) as exc:
         await a11y_api.accessibility_trend(scene.project_id, days=30, principal=nobody, session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     with pytest.raises(HTTPException) as exc:
         await har_api.list_hars(scene.project_id, principal=nobody, session=session)
     assert exc.value.status_code == 403

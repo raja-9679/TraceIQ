@@ -1,3 +1,14 @@
+"""Backend e2e tests: they drive a RUNNING API over HTTP (plus its database).
+
+They used to run unconditionally against a hard-coded 127.0.0.1:8000 and
+fail in every suite run without a server — four permanent errors everyone
+learned to ignore, which is how real failures hide. They now skip unless
+TRACEIQ_E2E_API_URL is set (e.g. http://127.0.0.1:8000/api), the same
+opt-in shape as tests/integration's TRACEIQ_LIVE_DB. TraceIQ's browser E2E
+suite is e2e/ at the repo root (e2e/run-e2e.sh).
+"""
+import os
+
 import pytest
 import asyncio
 from sqlmodel import select
@@ -8,9 +19,21 @@ import httpx
 import time
 
 
+E2E_API_URL = os.getenv("TRACEIQ_E2E_API_URL", "")
+
+
+def pytest_collection_modifyitems(config, items):
+    if E2E_API_URL:
+        return
+    skip = pytest.mark.skip(reason="needs a running API; set TRACEIQ_E2E_API_URL")
+    for item in items:
+        if "/tests/e2e/" in str(item.fspath).replace(os.sep, "/"):
+            item.add_marker(skip)
+
+
 @pytest.fixture(scope="session")
 async def api_client():
-    async with httpx.AsyncClient(base_url="http://127.0.0.1:8000/api", timeout=30.0) as client:
+    async with httpx.AsyncClient(base_url=E2E_API_URL, timeout=30.0) as client:
         yield client
 
 @pytest.fixture(scope="session")

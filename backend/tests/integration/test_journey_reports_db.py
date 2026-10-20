@@ -30,6 +30,7 @@ from app.models import (                                        # noqa: E402
 from tests.integration.test_targeted_runs_db import (           # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 def me(scene, key=None):
@@ -132,7 +133,7 @@ async def test_access_control_on_imports_rules_and_cross_project_ids(session, sc
         for p in (viewer, outsider):
             with pytest.raises(HTTPException) as exc:
                 await call(p)
-            assert exc.value.status_code == 403
+            assert exc.value.status_code in DENIED
     # Viewers can read; outsiders cannot.
     await jr.journey_coverage(scene.project_id, import_id=None, top=5, session=session, principal=viewer)
     with pytest.raises(HTTPException) as exc:

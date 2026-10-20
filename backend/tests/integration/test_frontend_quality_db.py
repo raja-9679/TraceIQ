@@ -32,6 +32,7 @@ from app.models import (                                        # noqa: E402
 from tests.integration.test_targeted_runs_db import (           # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 def me(scene, key=None):
@@ -118,7 +119,7 @@ async def test_sweep_view_groups_variants_and_stays_inside_the_project(session, 
     assert all(v["label"] != "foreign" for v in out["variants"])
     with pytest.raises(HTTPException) as exc:
         await fq.run_sweep(runs[0].id, session=session, principal=await outsider(session))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 # --- site crawler -------------------------------------------------------------------
@@ -143,7 +144,7 @@ async def test_crawl_needs_a_project_host_and_editor_access(session, scene):
     with pytest.raises(HTTPException) as exc:
         await fq.create_crawl(scene.project_id, _crawl_body(), None, session=session,
                               principal=await outsider(session))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     key = ApiKey(name="ci", workspace_id=1, project_id=scene.other_project_id, prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await fq.list_crawls(scene.project_id, session=session, principal=me(scene, key))
@@ -254,7 +255,7 @@ async def test_crawl_run_results_are_stored_filtered_and_access_checked(session,
                                       limit=10, offset=0, session=session, principal=stranger)):
         with pytest.raises(HTTPException) as exc:
             await call
-        assert exc.value.status_code == 403
+        assert exc.value.status_code in DENIED
     # Deleting the crawl removes its runs and issues.
     await fq.delete_crawl(crawl["id"], None, session=session, principal=me(scene))
     assert (await session.exec(select(SiteCrawlIssue))).all() == []

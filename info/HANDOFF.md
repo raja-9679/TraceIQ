@@ -28,6 +28,23 @@ run: `TRACEIQ_RLS_MODE=enforce ./run-tests-live.sh -q` — expected failures are
 the 20 cross-tenant tests that get 404 instead of 403. TraceIQ's own browser
 suite: `e2e/run-e2e.sh --build` (isolated `traceiq-e2e` stack, no host ports).
 
+**Unfinished, small (2026-10-21, laptop shut down mid-task):**
+- RLS enforce run: the 20 first-level refusal asserts use `in DENIED` now,
+  but ~10 tests have a SECOND `status_code == 403` further down (e.g.
+  test_estates_db.py:164, test_frontend_quality_db.py:151,
+  test_inbound_integrations_db.py:218, test_journey_reports_db.py:141,
+  test_release_readiness_db.py:235, test_reliability_reports_db.py:110).
+  Run `TRACEIQ_RLS_MODE=enforce ./run-tests-live.sh <those files> -q`, change
+  each reported line to `in DENIED`, repeat until clean. Mode-off results are
+  unaffected.
+- `POST /schedules` accepts client-set `created_at` / `last_run_at` (found by
+  WP15e's typed-client work) — strip them server-side.
+- pip-audit: `requests` 2.32.4 is flagged; upgrade if a fixed release exists
+  (python-jose has none yet).
+- Redesign `frontend/scripts/gen-api-types.sh` still defaults to
+  `TRACEIQ_TEST_IMAGE=traceiq-backend-test:local`; point it at
+  `backend/scripts/test-image.sh` like the backend scripts.
+
 **Open, needs the owner:** the real-service checklist
 (`docs/REAL_SERVICE_CHECKLIST.md` — SAML, PagerDuty/Opsgenie, Jira/Linear,
 Splunk/Elastic, Jaeger/Tempo need sandbox accounts); the release workflow's
@@ -371,7 +388,7 @@ any of it - several are counter-intuitive and expensive to rediscover.
 
 ## Setting up a fresh laptop
 
-### 0. Moving to another laptop — checklist (everything is pushed as of 2026-10-16)
+### 0. Moving to another laptop — checklist (everything is pushed as of 2026-10-21)
 
 ```bash
 git clone git@github.com:raja-9679/TraceIQ.git && cd TraceIQ
@@ -381,9 +398,21 @@ git branch feature/redesign-a origin/feature/redesign-a
 git branch --set-upstream-to=origin/feature/redesign-a feature/redesign-a
 # second folder for the redesign branch (same repo, a git worktree — not a clone)
 git worktree add ../TraceIQ-redesign feature/redesign-a
-(cd frontend && npm install); (cd execution-engine && npm install)
-(cd ../TraceIQ-redesign/frontend && npm install)
+# npm ci, not npm install: the lockfiles pin the OpenTelemetry packages
+# (worker tracing) and openapi-typescript (generated API types) added 2026-10-21.
+(cd frontend && npm ci); (cd execution-engine && npm ci)
+(cd ../TraceIQ-redesign/frontend && npm ci)
+(cd e2e && npm ci)            # only if you will run TraceIQ's own browser suite
 ```
+
+First test run on the new laptop: `cd backend && ./run-tests.sh -q` builds
+the test image from the checkout (a few minutes, once — see WORKING_NOTES
+"Testing"); live tests need the local stack's Postgres running first (below).
+Expected: unit suite all green with no errors; `./run-tests-live.sh -q` all
+green (~40 min); `./run-tests-live.sh --migrations` "all migration checks
+passed"; `(cd execution-engine && npm test)` 0 failures; frontend
+`npx vitest run --maxWorkers=2` all green (default parallelism can time out
+an unrelated test or two on a slow machine).
 
 Push with an explicit refspec the first time:
 `git push origin feature/enterprise-auth-ai:feature/enterprise-auth-ai-2026-10`.
@@ -408,6 +437,19 @@ laptop did): copy `infrastructure/docker-compose.local-relay.example.yml` to
 `~/traceiq-stack/docker-compose.local.yml` and add `-f docker-compose.local.yml`.
 Old-laptop `.env` extras worth copying by hand: `MAX_CAPTURE_LEVEL=full`,
 `EXECUTION_WORKERS=2`, `STORAGE_BIND_ADDRESS=127.0.0.1`.
+
+The first `up -d` runs every migration, including WP15a's: it creates a
+NOLOGIN role `<db>_rls` (the community compose DB user is a superuser, so this
+works; if a managed Postgres refuses, the migration logs a NOTICE and enforce
+mode falls back to FORCE RLS). RLS_MODE stays `off` until you change it in
+Settings → Instance (Admin) → Tenant isolation.
+
+Continuing the work with an assistant: tell it to read `info/HANDOFF.md`
+("Resume here", then this checklist), `info/WORKING_NOTES.md`, `CLAUDE.md` and
+the tracker. Big packages were built by parallel agents in git worktrees
+briefed with `info/AGENT_BRIEF_ROADMAP.md`; the integration steps (re-chain
+migrations, class-by-class models.py check, RLS + validation-run checks) are
+in WORKING_NOTES "Traps" and the "How a WP was run" paragraph above.
 
 Not carried over (on purpose): the local DB/runs/users, the assistant's session
 memory (`~/.claude/projects/…` — HANDOFF covers it), two ancient stashes on

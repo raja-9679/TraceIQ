@@ -6,25 +6,17 @@
 # borrows the backend image (which already has every runtime dep at the right
 # version), adds pytest, and mounts the working tree over it.
 #
-# Build the helper image once:
-#   docker build -t traceiq-backend-test:local -f - . <<'EOF'
-#   FROM ghcr.io/raja-9679/traceiq-backend:latest
-#   RUN pip install --no-cache-dir pytest==8.3.4 pytest-asyncio==0.25.2 pytest-cov==6.0.0
-#   EOF
+# The helper image is built automatically, once per requirements.txt version
+# (scripts/test-image.sh).
 #
 # Usage: ./run-tests.sh [pytest args...]   (defaults to the unit suite)
 set -euo pipefail
 
-IMAGE="${TRACEIQ_TEST_IMAGE:-traceiq-backend-test:local}"
 REPO_BACKEND="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  echo "Building $IMAGE ..."
-  docker build -q -t "$IMAGE" -f - "$REPO_BACKEND" <<'DOCKERFILE'
-FROM ghcr.io/raja-9679/traceiq-backend:latest
-RUN pip install --no-cache-dir pytest==8.3.4 pytest-asyncio==0.25.2 pytest-cov==6.0.0
-DOCKERFILE
-fi
+# Sets $IMAGE: traceiq-backend-test:req-<hash of requirements.txt>, built on
+# first use (scripts/test-image.sh); TRACEIQ_TEST_IMAGE overrides.
+# shellcheck source=scripts/test-image.sh
+source "$REPO_BACKEND/scripts/test-image.sh"
 
 # Default target: everything at tests/ root except the ad-hoc verify_* scripts,
 # which are manual tools rather than pytest modules. tests/e2e and
