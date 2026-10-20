@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { EmptyState, KindChip, PageHeader, Pill } from "@/components/redesign/primitives";
 import { Segmented, SkeletonRows, Tile } from "@/components/redesign-local/groupB/bits";
 import { statusLook } from "@/components/redesign-local/groupB/look";
+import { hasVerdict } from '@/lib/runStatus';
 
 const browserLabel: Record<string, string> = { chromium: 'Chrome', firefox: 'Firefox', webkit: 'Safari' };
 
@@ -99,7 +100,9 @@ export default function TestMatrix() {
 
     // Calculate generic stats for the health header based on ALL runs returned from the API if possible,
     // or specifically the current page to give a snapshot. (We'll use current page as proxy for recent health).
-    const validRuns = runs.filter(r => r.status && r.status !== 'pending' && r.status !== 'running');
+    // Only runs with a verdict: a cancelled or timed-out run is neither a
+    // pass nor a failure (lib/runStatus.ts).
+    const validRuns = runs.filter(r => hasVerdict(r.status));
     const passedCount = validRuns.filter(r => r.status === 'passed').length;
     const avgDuration = validRuns.length > 0 ? (validRuns.reduce((acc, r) => acc + (r.duration_ms || 0), 0) / validRuns.length) : 0;
     const passRate = validRuns.length > 0 ? Math.round((passedCount / validRuns.length) * 100) : 0;
@@ -161,6 +164,8 @@ export default function TestMatrix() {
                                     { id: 'passed', label: 'Passed' },
                                     { id: 'failed', label: 'Failed' },
                                     { id: 'running', label: 'Active' },
+                                    { id: 'cancelled', label: 'Cancelled' },
+                                    { id: 'timed_out', label: 'Timed out' },
                                 ]}
                             />
                             <Segmented

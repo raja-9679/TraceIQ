@@ -79,6 +79,19 @@ export interface QualityGateResult {
     git_branch?: string | null;
     evaluated_run_ids: number[];
     checks: QualityGateCheck[];
+    // Which stored policy judged this (WP15f) — replay with gateReplay().
+    policy_version?: number | null;
+    policy_sha256?: string | null;
+    // Cancelled / timed-out runs in scope: shown, never counted.
+    ignored_run_ids?: number[];
+}
+
+export interface GatePolicyVersion {
+    version: number;
+    sha256: string;
+    created_at: string | null;
+    created_by_id: number | null;
+    policy?: Record<string, unknown>;
 }
 
 export type ReadinessVerdict = 'ready' | 'not_ready' | 'insufficient_data';
@@ -171,6 +184,21 @@ export const qualityApi = {
         if (gitBranch) params.set('git_branch', gitBranch);
         const qs = params.toString();
         const r = await api.get(`/projects/${projectId}/release-readiness${qs ? `?${qs}` : ''}`);
+        return r.data;
+    },
+    // Re-judge an earlier verdict with the policy and runs it reported.
+    gateReplay: async (projectId: number, policyVersion: number, runIds: number[]): Promise<QualityGateResult> => {
+        const params = new URLSearchParams({ policy_version: String(policyVersion) });
+        runIds.forEach((id) => params.append('run_ids', String(id)));
+        const r = await api.get(`/projects/${projectId}/quality-gate?${params.toString()}`);
+        return r.data;
+    },
+    policyVersions: async (projectId: number): Promise<{ project_id: number; versions: GatePolicyVersion[] }> => {
+        const r = await api.get(`/projects/${projectId}/quality-gate/policy/versions`);
+        return r.data;
+    },
+    policyVersion: async (projectId: number, version: number): Promise<GatePolicyVersion> => {
+        const r = await api.get(`/projects/${projectId}/quality-gate/policy/versions/${version}`);
         return r.data;
     },
     getPolicy: async (projectId: number): Promise<QualityGatePolicy> => {
