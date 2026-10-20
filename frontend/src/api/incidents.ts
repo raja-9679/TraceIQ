@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import type { Schema } from './schemaTypes';
 
 // Mirrors backend/app/api/incidents.py
 
@@ -39,20 +40,9 @@ export interface Incident {
     created_at: string;
 }
 
-export interface IncidentCreate {
-    title: string;
-    description?: string;
-    severity?: string;
-    status?: string;
-    service?: string;
-    url?: string;
-    affected_url?: string;
-    git_commit?: string;
-    git_branch?: string;
-    release?: string;
-    test_suite_id?: number;
-    propose_regression?: boolean;
-}
+/** Generated (IncidentCreate). Adds `started_at` / `resolved_at`, which the
+ *  backend accepts for back-dating a manually recorded incident. */
+export type IncidentCreate = Schema<'IncidentCreate'>;
 
 export interface WebhookConfig {
     configured: boolean;

@@ -1,37 +1,17 @@
 import { api } from '@/lib/api';
+import type { Out } from './schemaTypes';
 
-// Mirrors the monitor endpoints in backend/app/api/endpoints/schedules.py
+// Mirrors the monitor endpoints in backend/app/api/endpoints/schedules.py;
+// shapes generated from their response_models. `state` is a plain str there.
+type MonitorState = 'up' | 'down' | 'unknown';
 
-export interface MonitorCheck {
-    id: number;
-    run_id: number | null;
-    status: string;
-    is_up: boolean;
-    checked_at: string;
-    region?: string | null;
-}
-
-export interface MonitorRegionStatus {
-    region: string;
-    state: 'up' | 'down' | 'unknown';
-    consecutive_failures: number;
-    last_checked_at: string | null;
-}
-
-export interface MonitorStatus {
-    schedule_id: number;
-    name: string;
-    is_active: boolean;
-    state: 'up' | 'down' | 'unknown';
-    consecutive_failures: number;
-    total_checks: number;
-    uptime_24h: number | null;
-    uptime_7d: number | null;
-    last_checked_at: string | null;
-    recent_checks: MonitorCheck[];
-    // Multi-region monitors (WP8); empty for unlabelled monitors.
-    regions?: MonitorRegionStatus[];
-}
+export type MonitorCheck = Out<'MonitorCheckRead'>;
+export type MonitorRegionStatus = Omit<Out<'MonitorRegionStatus'>, 'state'> & { state: MonitorState };
+/** `regions`: multi-region monitors (WP8); empty for unlabelled monitors. */
+export type MonitorStatus = Omit<Out<'MonitorStatusRead'>, 'state' | 'regions'> & {
+    state: MonitorState;
+    regions: MonitorRegionStatus[];
+};
 
 export const monitorsApi = {
     list: async (projectId?: number): Promise<MonitorStatus[]> => {

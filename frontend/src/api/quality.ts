@@ -1,52 +1,15 @@
 import { api } from '@/lib/api';
+import type { Out } from './schemaTypes';
 
-// Mirrors backend/app/api/endpoints/quality.py
+// Request/response shapes come from the backend's OpenAPI document
+// (generated/schema.ts). Fields the backend types as plain `str` but documents
+// as a fixed set are narrowed here (verdict, scope, case outcome).
 
-export interface QualityTrendPoint {
-    date: string;
-    runs: number;
-    passed_runs: number;
-    pass_rate: number;
-}
-
-export interface QualitySnapshot {
-    project_id: number;
-    window_days: number;
-    total_runs: number;
-    finished_runs: number;
-    passed_runs: number;
-    failed_runs: number;
-    pass_rate: number;
-    trend: QualityTrendPoint[];
-    flaky_tests: number;
-    quarantined_tests: number;
-    monitors_total: number;
-    monitors_up: number;
-    monitors_down: number;
-    down_monitor_names: string[];
-    security_findings: Record<string, number>;
-}
-
-export interface QualityGatePolicy {
-    min_pass_rate: number;
-    max_high_severity_findings: number;
-    max_medium_severity_findings: number | null;
-    require_monitors_up: boolean;
-    // Performance budgets (0 = not enforced)
-    max_lcp_ms: number;
-    max_cls: number;
-    max_ttfb_ms: number;
-    require_external_tests_pass: boolean;
-    // Release readiness (null / false = off)
-    max_flaky_cases: number | null;
-    require_critical_passed: boolean;
-    max_evidence_age_days: number | null;
-    // The newest release sign-off (for the commit) must be an approval.
-    require_manual_signoff?: boolean;
-    // WP15d: no NEW accessibility violation at serious/critical (waived excluded).
-    block_new_accessibility_violations?: boolean;
-}
-
+export type QualityTrendPoint = Out<'QualityTrendPoint'>;
+export type QualitySnapshot = Out<'QualitySnapshot'>;
+/** Includes the WP16b API-contract fields (api_baseline, api_baseline_version,
+ *  require_no_breaking_api_changes) the hand-written interface had lost. */
+export type QualityGatePolicy = Out<'QualityGatePolicy'>;
 export interface ExternalTestReport {
     id: number;
     project_id: number;
@@ -64,29 +27,8 @@ export interface ExternalTestReport {
     created_at: string;
 }
 
-export interface QualityGateCheck {
-    name: string;
-    passed: boolean;
-    actual: string;
-    threshold: string;
-    detail?: string | null;
-    // Failed because evidence is absent, not because something failed.
-    missing_data?: boolean;
-}
-
-export interface QualityGateResult {
-    project_id: number;
-    passed: boolean;
-    git_commit?: string | null;
-    git_branch?: string | null;
-    evaluated_run_ids: number[];
-    checks: QualityGateCheck[];
-    // Which stored policy judged this (WP15f) — replay with gateReplay().
-    policy_version?: number | null;
-    policy_sha256?: string | null;
-    // Cancelled / timed-out runs in scope: shown, never counted.
-    ignored_run_ids?: number[];
-}
+export type QualityGateCheck = Out<'QualityGateCheck'>;
+export type QualityGateResult = Out<'QualityGateResult'>;
 
 export interface GatePolicyVersion {
     version: number;
@@ -99,73 +41,21 @@ export interface GatePolicyVersion {
 export type ReadinessVerdict = 'ready' | 'not_ready' | 'insufficient_data';
 export type CaseOutcome = 'passed' | 'failed' | 'not_run';
 
-export interface ReadinessRun {
-    id: number;
-    status: string;
-    created_at: string;
-    suite_name: string | null;
-    browser: string | null;
-    git_commit: string | null;
-    git_branch: string | null;
-    selection_mode: string | null;
-    total_tests: number;
-    passed_tests: number;
-    failed_tests: number;
-}
-
-export interface ReadinessCriticalCase {
-    case_id: number;
-    name: string;
-    status: CaseOutcome;
-    run_id: number | null;
-    detail: string | null;
-    last_status: string | null;
-    last_at: string | null;
-    last_commit: string | null;
-    last_passed_at: string | null;
-}
-
-export interface ReadinessQuarantine {
-    flake_record_id: number;
-    case_id: number;
-    case_name: string;
-    flake_score: number;
-    source: string | null;
-    reason: string | null;
-    quarantined_at: string | null;
-    expires_at: string | null;
-    owner: { id: number; email: string; full_name: string | null } | null;
-}
-
-export interface ReadinessRequirement {
-    ref: string;
-    source: string;
-    title: string | null;
-    url: string | null;
+export type ReadinessRun = Out<'ReadinessRun'>;
+export type ReadinessCriticalCase = Omit<Out<'ReadinessCriticalCase'>, 'status'> & { status: CaseOutcome };
+export type ReadinessQuarantine = Out<'ReadinessQuarantine'>;
+export type ReadinessRequirement = Omit<Out<'ReadinessRequirement'>, 'status' | 'cases'> & {
     status: 'passing' | 'failing' | 'partial' | 'untested';
-    cases: { case_id: number; name: string; status: CaseOutcome }[];
-}
-
-export interface ReleaseReadiness {
-    project_id: number;
+    cases: (Omit<Out<'ReadinessRequirementCase'>, 'status'> & { status: CaseOutcome })[];
+};
+export type ReleaseReadiness = Omit<Out<'ReleaseReadiness'>, 'verdict' | 'scope' | 'critical_cases' | 'requirements'> & {
     verdict: ReadinessVerdict;
-    reasons: string[];
     scope: 'commit' | 'branch' | 'latest_run' | 'none';
-    git_commit: string | null;
-    git_branch: string | null;
-    gate: QualityGateResult;
-    runs: ReadinessRun[];
     critical_cases: ReadinessCriticalCase[];
-    quarantines: ReadinessQuarantine[];
     requirements: ReadinessRequirement[];
-    recent_commits: { git_commit: string; git_branch: string | null; last_run_at: string; runs: number }[];
-}
+};
 
-export interface CiSettings {
-    enabled: boolean;
-    enforce_gate: boolean;
-    post_pr_comment: boolean;
-}
+export type CiSettings = Out<'CiSettings'>;
 
 export const qualityApi = {
     dashboard: async (projectId: number, days = 7): Promise<QualitySnapshot> => {

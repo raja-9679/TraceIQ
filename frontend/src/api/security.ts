@@ -1,49 +1,24 @@
 import { api } from '@/lib/api';
+import type { Out, Schema } from './schemaTypes';
 
-// Mirrors backend/app/api/security.py + the passive endpoints on test_runs.py
+// Mirrors backend/app/api/security.py + the passive endpoints on test_runs.py.
+// Shapes with a response_model come from the generated OpenAPI types.
 
-export interface SecurityFinding {
-    id: number;
-    run_id?: number | null;
-    scan_id?: number | null;
-    scan_type: string;
-    category: string;
+/** SecurityFindingRead plus what the untyped register/PATCH endpoints add
+ *  (`_finding_out` → overdue; PATCH → retest). */
+export type SecurityFinding = Omit<Out<'SecurityFindingRead'>, 'severity' | 'status' | 'location'> & {
     severity: 'high' | 'medium' | 'low' | 'info';
-    title: string;
-    description?: string | null;
-    evidence?: string | null;
-    target_url?: string | null;
-    created_at: string;
-    status?: FindingStatus;
-    assignee_id?: number | null;   // the finding's owner
-    resolved_at?: string | null;
-    fingerprint?: string | null;
-    project_id?: number | null;
-    due_at?: string | null;
-    risk_justification?: string | null;
-    risk_expires_at?: string | null;
-    risk_approved_by_id?: number | null;
-    risk_approved_at?: string | null;
-    verified_at?: string | null;
-    superseded_by_id?: number | null;
-    retest_scan_id?: number | null;
-    location?: { run_id?: number; result_id?: number; case_id?: number; url?: string; field?: string } | null;
+    status: FindingStatus;
+    location: { run_id?: number; result_id?: number; case_id?: number; url?: string; field?: string } | null;
     overdue?: boolean;
     retest?: { queued: boolean; scan_id?: number; reused?: boolean; reason?: string };
-}
+};
 
 export type FindingStatus =
     | 'open' | 'in_progress' | 'fixed_pending_verification' | 'verified_fixed'
     | 'accepted_risk' | 'false_positive';
 
-export interface FindingUpdate {
-    status?: FindingStatus;
-    owner_id?: number | null;
-    due_at?: string | null;
-    risk_justification?: string;
-    risk_expires_at?: string;
-    note?: string;
-}
+export type FindingUpdate = Omit<Schema<'FindingUpdate'>, 'status'> & { status?: FindingStatus };
 
 export interface FindingsRegister {
     project_id: number;
@@ -72,35 +47,14 @@ export interface ScanDiff {
     persisting_count: number;
 }
 
-export interface SecurityScanResult {
-    run_id: number;
-    scan_type: string;
-    counts: Record<string, number>;
-    findings: SecurityFinding[];
-}
+export type SecurityScanResult = Omit<Out<'SecurityScanResult'>, 'findings'> & { findings: SecurityFinding[] };
 
-export interface SecurityScan {
-    id: number;
-    project_id: number;
-    target_url: string;
-    scan_type: string;
-    authenticated: boolean;
+export type SecurityScan = Omit<Out<'SecurityScanRead'>, 'status' | 'findings'> & {
     status: 'pending' | 'running' | 'completed' | 'error';
-    created_at: string;
-    started_at?: string | null;
-    finished_at?: string | null;
-    counts?: Record<string, number> | null;
-    error?: string | null;
-    openapi_url?: string | null;
-    auth_header_name?: string | null;   // secret value is never returned
-    findings: SecurityFinding[];
-}
+    findings: SecurityFinding[];   // auth_header_name only — the secret value is never returned
+};
 
-export interface SecuritySettings {
-    enabled: boolean;
-    allowed_domains: string[];
-    allow_active_scan: boolean;
-}
+export type SecuritySettings = Out<'SecuritySettings'>;
 
 export const securityApi = {
     // Passive (per-run) findings — item 2.

@@ -128,7 +128,7 @@ function NewIncidentForm({ projectId, onDone }: { projectId: number; onDone: () 
             <div className="grid sm:grid-cols-3 gap-3">
                 <div>
                     <label htmlFor="inc-sev" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Severity</label>
-                    <Select value={f.severity} onValueChange={(v) => setF({ ...f, severity: v })}>
+                    <Select value={f.severity ?? undefined} onValueChange={(v) => setF({ ...f, severity: v })}>
                         <SelectTrigger id="inc-sev" className="h-9 mt-1"><SelectValue /></SelectTrigger>
                         <SelectContent>{['critical', 'high', 'medium', 'low'].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
                     </Select>

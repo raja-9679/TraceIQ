@@ -1,47 +1,17 @@
 import { api } from '@/lib/api';
+import type { Out, Schema } from './schemaTypes';
 
 // ---------------------------------------------------------------------------
-// Types — mirror backend/app/models.py VisualBaselineRead
+// Types — generated from the backend's OpenAPI document (VisualBaselineRead,
+// VisualBaselineCreate, PromoteBaselineRequest). `element_key` = '' for a
+// full-page baseline, `el-…` for one element's (WP14e); the create body's
+// `selector` (element baselines) was missing from the hand-written type.
 // ---------------------------------------------------------------------------
 
-export interface VisualBaseline {
-    id: number;
-    test_case_id: number;
-    step_id: string;
-    browser: string;
-    device: string | null;
-    viewport: string | null;
-    image_url: string;
-    tolerance: number;
-    created_at: string;
-    /** '' = full-page baseline; `el-…` = one element's (WP14e). */
-    element_key?: string;
-    selector?: string | null;
-}
-
-export interface VisualBaselineCreate {
-    test_case_id: number;
-    step_id: string;
-    image_url: string;
-    browser?: string;
-    device?: string | null;
-    viewport?: string | null;
-    tolerance?: number;
-    mask_regions?: Array<{ x: number; y: number; width: number; height: number }>;
-}
-
-export interface PromoteBaselineRequest {
-    test_case_id: number;
-    step_id: string;
-    run_id: number;
-    browser?: string;
-    device?: string | null;
-    tolerance?: number;
-    mask_regions?: Record<string, unknown>[] | null;
-    element_key?: string;
-    /** Promote exactly this stored comparison's candidate (its slot wins). */
-    comparison_id?: number;
-}
+export type VisualBaseline = Out<'VisualBaselineRead'>;
+export type VisualBaselineCreate = Schema<'VisualBaselineCreate'>;
+/** `comparison_id`: promote exactly this stored comparison's candidate (its slot wins). */
+export type PromoteBaselineRequest = Schema<'PromoteBaselineRequest'>;
 
 export const visualBaselinesApi = {
     list: async (opts?: { testCaseId?: number; stepId?: string; projectId?: number }): Promise<VisualBaseline[]> => {

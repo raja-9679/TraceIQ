@@ -1,34 +1,12 @@
 import { api } from '@/lib/api';
+import type { Out } from './schemaTypes';
 
-// Mirrors backend/app/api/triage.py
+// Mirrors backend/app/api/triage.py; shapes generated from its response_models.
+type ClusterStatus = 'open' | 'investigating' | 'resolved' | 'ignored';
 
-export interface FailureCluster {
-    id: number;
-    project_id: number;
-    signature: string;
-    title: string;
-    category: string;
-    status: 'open' | 'investigating' | 'resolved' | 'ignored';
-    occurrence_count: number;
-    first_seen_at: string;
-    last_seen_at: string;
-    last_run_id?: number | null;
-    sample_error?: string | null;
-    assignee_id?: number | null;
-    resolution_note?: string | null;
-}
-
-export interface FailureOccurrence {
-    result_id: number;
-    run_id: number;
-    test_name: string;
-    status: string;
-    created_at: string;
-}
-
-export interface FailureClusterDetail extends FailureCluster {
-    occurrences: FailureOccurrence[];
-}
+export type FailureCluster = Omit<Out<'FailureClusterRead'>, 'status'> & { status: ClusterStatus };
+export type FailureOccurrence = Out<'FailureOccurrenceRead'>;
+export type FailureClusterDetail = Omit<Out<'FailureClusterDetail'>, 'status'> & { status: ClusterStatus };
 
 export const triageApi = {
     list: async (projectId: number, status?: string, category?: string): Promise<FailureCluster[]> => {

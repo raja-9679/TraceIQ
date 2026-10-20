@@ -1,36 +1,13 @@
 import { api } from '@/lib/api';
+import type { Out, Schema } from './schemaTypes';
 
-// ---------------------------------------------------------------------------
-// Types — mirror backend/app/models.py ApiKeyRead / ApiKeyCreateResponse
-// ---------------------------------------------------------------------------
-
-export interface ApiKey {
-    id: number;
-    workspace_id: number;
-    project_id: number | null;
-    name: string;
-    prefix: string;
-    created_at: string;
-    last_used_at: string | null;
-    expires_at: string | null;
-    revoked_at: string | null;
-    // Source-IP allowlist (WP8); null/empty = any address.
-    allowed_cidrs?: string[] | null;
-}
-
-// Plaintext secret is returned exactly once, at creation time.
-export interface ApiKeyCreateResponse extends ApiKey {
-    secret: string;
-}
-
-export interface ApiKeyCreatePayload {
-    name: string;
-    workspace_id: number;
-    project_id?: number | null;
-    role_id?: number | null;
-    expires_in_days?: number | null;
-    allowed_cidrs?: string[] | null;
-}
+// Types generated from the backend's OpenAPI document (ApiKeyRead,
+// ApiKeyCreateResponse, ApiKeyCreate). `allowed_cidrs`: source-IP allowlist
+// (WP8); null/empty = any address.
+export type ApiKey = Out<'ApiKeyRead'>;
+/** The plaintext secret is returned exactly once, at creation time. */
+export type ApiKeyCreateResponse = Out<'ApiKeyCreateResponse'>;
+export type ApiKeyCreatePayload = Schema<'ApiKeyCreate'>;
 
 export const apiKeysApi = {
     list: async (workspaceId: number): Promise<ApiKey[]> => {

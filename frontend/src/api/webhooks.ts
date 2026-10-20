@@ -1,45 +1,16 @@
 import { api } from '@/lib/api';
+import type { Out, Schema } from './schemaTypes';
 
-// ---------------------------------------------------------------------------
-// Types — mirror backend/app/models.py WorkspaceWebhookRead and the
-// WebhookCreateResponse / WebhookPatch schemas in api/workspace_webhooks.py
-// ---------------------------------------------------------------------------
-
-export interface WorkspaceWebhook {
-    id: number;
-    workspace_id: number;
-    project_id: number | null;
-    name: string;
-    url: string;
-    // Comma-separated event names (see WEBHOOK_EVENTS); null or empty
-    // matches all events. "run.completed" also receives cancelled and
-    // timed-out runs (they were "completed" before WP15f).
-    event_filter: string | null;
-    is_active: boolean;
-    created_at: string;
-    last_delivery_at: string | null;
-    last_delivery_status: number | null;
-    failure_count: number;
-}
-
-// The signing secret is returned exactly once, at creation time.
-export interface WebhookCreateResponse extends WorkspaceWebhook {
-    secret: string;
-}
-
-export interface WebhookCreatePayload {
-    name: string;
-    url: string;
-    workspace_id: number;
-    project_id?: number | null;
-    event_filter?: string | null;
-}
-
-export interface WebhookPatchPayload {
-    is_active?: boolean;
-    event_filter?: string;
-    name?: string;
-}
+// Types generated from the backend's OpenAPI document (WorkspaceWebhookRead,
+// WebhookCreateResponse, WorkspaceWebhookCreate, WebhookPatch).
+// `event_filter`: comma-separated event names (see WEBHOOK_EVENTS); null or
+// empty matches all events. "run.completed" also receives cancelled and
+// timed-out runs (they were "completed" before WP15f).
+export type WorkspaceWebhook = Out<'WorkspaceWebhookRead'>;
+/** The signing secret is returned exactly once, at creation time. */
+export type WebhookCreateResponse = Out<'WebhookCreateResponse'>;
+export type WebhookCreatePayload = Schema<'WorkspaceWebhookCreate'>;
+export type WebhookPatchPayload = Schema<'WebhookPatch'>;
 
 export const WEBHOOK_EVENTS = ['run.passed', 'run.failed', 'run.cancelled', 'run.timed_out', 'run.completed'] as const;
 
