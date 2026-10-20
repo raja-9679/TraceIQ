@@ -285,6 +285,9 @@ export default function DashboardLayout() {
                 <DropdownMenuTrigger asChild>
                     <button
                         type="button"
+                        // Same name as the collapsed rail's switcher; without it the
+                        // button's name was its initials + name + count run together.
+                        aria-label={`Project: ${activeProject?.name || 'Select project'}`}
                         className="flex min-h-12 items-center gap-2.5 rounded-2xl border border-white/90 bg-white/55 px-3 text-left text-sm text-ink transition-colors hover:bg-white/75"
                     >
                         <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-xs font-bold">

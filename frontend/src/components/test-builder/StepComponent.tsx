@@ -203,7 +203,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                             value={step.type}
                             onValueChange={(value) => updateStep(step.id, 'type', value)}
                         >
-                            <SelectTrigger className={`w-full h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm flex items-center px-4 hover:bg-slate-50 transition-colors`}>
+                            <SelectTrigger aria-label={`Step action: ${meta.label}`} className={`w-full h-12 rounded-xl focus:ring-${meta.hue}-500/20 bg-white border-none shadow-sm flex items-center px-4 hover:bg-slate-50 transition-colors`}>
                                 <div className={`w-8 h-8 rounded-lg ${meta.bg} flex items-center justify-center mr-3 shrink-0`}>
                                     {meta.icon}
                                 </div>

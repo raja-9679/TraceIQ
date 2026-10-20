@@ -383,8 +383,9 @@ export default function Signup() {
                                     </AnimatePresence>
 
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Full Name</label>
+                                        <label htmlFor="signup-fullName" className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Full Name</label>
                                         <input
+                                            id="signup-fullName"
                                             {...register("fullName", { required: "Required" })}
                                             className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                             placeholder="Name"
@@ -394,16 +395,18 @@ export default function Signup() {
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Org Name (Optional)</label>
+                                            <label htmlFor="signup-orgName" className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Org Name (Optional)</label>
                                             <input
+                                                id="signup-orgName"
                                                 {...register("orgName")}
                                                 className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                                 placeholder="My Company"
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Name (Optional)</label>
+                                            <label htmlFor="signup-projectName" className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Project Name (Optional)</label>
                                             <input
+                                                id="signup-projectName"
                                                 {...register("projectName")}
                                                 className="w-full px-3 py-2.5 rounded-lg bg-white border border-zinc-200 text-zinc-900 text-sm placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900/5 focus:border-zinc-400 transition-all shadow-sm"
                                                 placeholder="Alpha"
@@ -412,8 +415,9 @@ export default function Signup() {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Work Email</label>
+                                        <label htmlFor="signup-email" className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Work Email</label>
                                         <input
+                                            id="signup-email"
                                             {...register("email", {
                                                 required: "Required",
                                                 pattern: { value: /^\S+@\S+$/i, message: "Invalid email" }
@@ -427,8 +431,9 @@ export default function Signup() {
 
                                     <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
+                                            <label htmlFor="signup-password" className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Password</label>
                                             <input
+                                                id="signup-password"
                                                 {...register("password", {
                                                     required: "Required",
                                                     minLength: { value: 6, message: "Min 6 chars" }
@@ -439,8 +444,9 @@ export default function Signup() {
                                             {errors.password && <span className="text-xs text-red-500">{errors.password.message as string}</span>}
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Confirm</label>
+                                            <label htmlFor="signup-confirmPassword" className="text-[10px] font-semibold text-zinc-500 uppercase tracking-widest">Confirm</label>
                                             <input
+                                                id="signup-confirmPassword"
                                                 {...register("confirmPassword", {
                                                     required: "Required",
                                                     validate: (val: string) => val === password || "Mismatch"
