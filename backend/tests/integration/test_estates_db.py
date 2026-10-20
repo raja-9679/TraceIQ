@@ -32,6 +32,7 @@ from app.tasks import estate_tasks as tasks                     # noqa: E402
 from tests.integration.test_targeted_runs_db import (           # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 REQ = SimpleNamespace(headers={}, client=None)
 NOW = datetime(2026, 10, 15, 12, 0)
@@ -156,7 +157,7 @@ async def test_outsider_and_wrong_scope_key_are_refused(session, scene):
                      api.list_changes(page["id"], limit=100, session=session, principal=who)):
             with pytest.raises(HTTPException) as exc:
                 await call
-            assert exc.value.status_code == 403
+            assert exc.value.status_code in DENIED
     ws = (await session.get(Project, scene.project_id)).workspace_id
     with pytest.raises(HTTPException) as exc:
         await api.certificate_calendar(ws, session=session, principal=them)

@@ -30,6 +30,7 @@ from app.services import cost as cost_svc                          # noqa: E402
 from tests.integration.test_targeted_runs_db import (              # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 MANUAL_STEPS = [
     {"id": "s1", "type": "manual-step", "value": "Open the invoice", "params": {"expected": "VAT shown"}},
@@ -183,7 +184,7 @@ async def test_signoff_needs_editor_on_this_project(session, scene):
     with pytest.raises(HTTPException) as exc:
         await mtapi.create_signoff(scene.project_id, _signoff([run_id]), None, session=session,
                                    principal=AuthPrincipal(user=tester, api_key=NS(id=1, project_id=None)))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
     out = await mtapi.create_signoff(scene.project_id, _signoff([run_id]), None,
                                      session=session, principal=_p(tester))

@@ -26,6 +26,7 @@ from app.models import (                                        # noqa: E402
 from tests.integration.test_targeted_runs_db import (           # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 P, F = TestStatus.PASSED, TestStatus.FAILED
 
@@ -226,7 +227,7 @@ async def test_access_is_enforced(session, scene):
                  prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await _ready(session, scene, principal=AuthPrincipal(user=scene.user, api_key=key))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     with pytest.raises(HTTPException) as exc:
         await quality.evaluate_quality_gate(
             scene.project_id, git_commit=None, git_branch=None, session=session,

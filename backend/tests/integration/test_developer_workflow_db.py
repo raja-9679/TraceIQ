@@ -29,6 +29,7 @@ from app.models import (                                             # noqa: E40
 from tests.integration.test_targeted_runs_db import (               # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 SECRET_VALUE = "sk_live_DO_NOT_LEAK_7731"
 LITERAL_BEARER = "Bearer literal-token-in-settings"
@@ -166,7 +167,7 @@ async def test_bundle_cross_project_access_is_refused(session, scene, artifacts)
     with pytest.raises(HTTPException) as exc:
         await developer.download_repro_bundle(run.id, result.id, principal=AuthPrincipal(user=outsider),
                                               session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
     key = ApiKey(name="ci", workspace_id=1, project_id=scene.other_project_id, prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
@@ -301,7 +302,7 @@ async def test_sync_access_control(session, scene):
                                              session=session)):
         with pytest.raises(HTTPException) as exc:
             await call
-        assert exc.value.status_code == 403
+        assert exc.value.status_code in DENIED
 
 
 async def test_accepting_a_stale_sync_proposal_is_refused(session, scene):
@@ -341,7 +342,7 @@ async def test_openapi_spec_round_trip_and_editor_gate(session, scene):
     await session.commit()
     with pytest.raises(HTTPException) as exc:
         await developer.get_openapi_spec(scene.project_id, principal=AuthPrincipal(user=outsider), session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 # ---------------------------------------------------------------------------

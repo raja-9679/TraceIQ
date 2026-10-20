@@ -49,7 +49,7 @@ top) → `info/ROADMAP_EXECUTION_2026-10.md` (tracker) → this file → `CLAUDE
   owner's permission. For API tests, probe the real response first, then
   write assertions.
 
-## Branches (as of 2026-10-16)
+## Branches (as of 2026-10-21)
 
 | Local | GitHub | Notes |
 |---|---|---|
@@ -109,14 +109,32 @@ docker compose -f docker-compose.community.yml --env-file .env --profile inbox u
 
 ## Testing
 
-- Backend unit: `cd backend && ./run-tests.sh -q`. It borrows the image
-  `traceiq-backend-test:local`; build it FROM the `:dev` backend image:
-  `printf 'FROM ghcr.io/raja-9679/traceiq-backend:dev\nRUN pip install --no-cache-dir pytest==8.3.4 pytest-asyncio==0.25.2 pytest-cov==6.0.0\n' | docker build -t traceiq-backend-test:local -f - backend`
-  (`:latest` from ghcr 403s). Baseline: 4 errors in `tests/e2e/*` (need a
-  live server) are expected.
-- Real Postgres: `./run-tests-live.sh tests/integration -q` (needs the stack's
-  postgres container running); migrations: `./run-tests-live.sh --migrations`.
-  Set `TRACEIQ_SCRATCH_DB=<name>` when running more than one at a time.
+- Backend unit: `cd backend && ./run-tests.sh -q`. The test image builds
+  itself on first use from THIS checkout's `backend/Dockerfile` +
+  `requirements.txt`, tagged `traceiq-backend-test:req-<hash of
+  requirements.txt>` (`backend/scripts/test-image.sh`) — the first run on a
+  new laptop takes a few minutes, and a dependency change rebuilds it
+  automatically. No manual image step, no GHCR pull (anonymous pulls 403).
+  `TRACEIQ_TEST_IMAGE=<tag>` still overrides. Baseline: NO failures and no
+  errors (`tests/e2e` skips unless `TRACEIQ_E2E_API_URL` points at a running
+  API).
+- Real Postgres: `./run-tests-live.sh -q` (whole suite incl. integration, ~40
+  min) or `./run-tests-live.sh tests/integration/<file>.py -q`. Needs a
+  running Postgres container named `traceiq-postgres-1` (the local stack's; or
+  set `TRACEIQ_PG_CONTAINER`); it creates and drops its own scratch database.
+  Migrations: `./run-tests-live.sh --migrations`. Set
+  `TRACEIQ_SCRATCH_DB=<name>` when running more than one at a time.
+- RLS: `TRACEIQ_RLS_MODE=enforce ./run-tests-live.sh -q` runs everything with
+  row-level security enforcing; refusal asserts use
+  `tests/integration/denied.py:DENIED` (403, or 404 under enforce).
+- TraceIQ's own browser suite: `e2e/run-e2e.sh --build` — builds `:e2e`
+  images, starts an isolated `traceiq-e2e` compose project with no host
+  ports, runs Playwright from a container on its network (~3 min after the
+  build), tears down. Pins: `@playwright/test` and the
+  `mcr.microsoft.com/playwright:v1.61.1-noble` runner image move together.
+- Generated API types (redesign branch): `cd frontend && npm run gen:api`
+  after a backend API change; CI fails on drift. Needs `openapi-typescript`
+  from `npm ci` (it is a pinned devDependency).
 - Engine: `cd execution-engine && npm test && npx tsc --noEmit -p .`
 - Frontend: `cd frontend && npx tsc --noEmit -p tsconfig.app.json && npm test`
 - `backend/.env` must stay mode 644 or `run-tests.sh` fails on `.env`.
@@ -125,6 +143,18 @@ docker compose -f docker-compose.community.yml --env-file .env --profile inbox u
 - zsh trap: never name a shell variable `path` — it is tied to `PATH`.
 
 ## Traps from the 2026-10 build
+
+- Conflict "keep both" resolutions: the `=======` separator must be matched
+  as a WHOLE line — a `# ====…` divider in models.py ends with the same
+  characters and splits the file in the wrong place. After any models.py
+  merge, compare every class against both parents (an AST class-by-class
+  diff caught two dropped HarArchive fields that the unit suite did not).
+- A new table also needs an RLS decision (`app/services/rls.py` +
+  `tests/test_rls_plan.py`), and any aggregate over runs must exclude
+  validation runs (`app/services/run_scope.py`).
+- Live tests mount `backend/` — don't edit backend files while a long live run
+  is in progress (it imports the tree at start, and a second run picks up
+  half-made edits).
 
 - Merging branches that both add redaction twin tests easily loses a closing
   `});` (TS) or `)` where two test blocks meet — always run `tsc`/pytest

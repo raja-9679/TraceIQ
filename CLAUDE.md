@@ -80,8 +80,11 @@ celery -A app.core.celery_app worker --loglevel=info -Q aggregator-queue
 celery -A app.core.celery_app beat --loglevel=info
 
 # Run tests. The host may have Python >3.11, for which psycopg2-binary ships
-# no wheel; ./run-tests.sh borrows the backend image (3.11 + every runtime dep)
-# and mounts the tree over it. Plain `pytest` works if your venv is 3.11.
+# no wheel; ./run-tests.sh builds a test image from THIS checkout's Dockerfile
+# + requirements.txt on first use (tag keyed by the requirements hash, so a
+# dependency bump rebuilds it — scripts/test-image.sh) and mounts the tree
+# over it. Plain `pytest` works if your venv is 3.11. tests/e2e skips unless
+# TRACEIQ_E2E_API_URL points at a running API.
 ./run-tests.sh                      # whole unit suite (what CI runs)
 ./run-tests.sh tests/test_redaction.py -q
 pytest

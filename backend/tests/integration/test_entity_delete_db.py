@@ -44,6 +44,7 @@ from app.models import (                                     # noqa: E402
     UserSystemRole, UserWorkspace, VisualBaseline, Workspace,
 )
 from app.services.rbac_service import rbac_service           # noqa: E402
+from tests.integration.denied import DENIED  # noqa: E402
 
 _WIPE = "TRUNCATE users, tenant, workspace CASCADE"
 
@@ -408,7 +409,7 @@ async def test_run_delete_still_requires_editor(session, scene):
     with pytest.raises(HTTPException) as exc:
         await delete_run(run_id=scene.doomed.run_id, session=session,
                          current_user=outsider)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 async def test_retention_purges_a_run_with_a_heal_proposal(session, scene):

@@ -5,21 +5,26 @@ in the TraceIQ repo. Read `CLAUDE.md` (repo root) first — it is long but it is
 the map of the codebase and lists the traps. `info/CODEBASE.md` has the data model.
 
 ## Where you work
-- You are given a git worktree path and a branch name. Work ONLY there.
-- Never touch: `/home/raja/Work/repos/TraceIQ` (main clone, redesign branch),
-  `/home/raja/Work/repos/TraceIQ-base`, other worktrees, `/home/raja/traceiq-test`
-  (the running local stack), docker images/containers other than what the test
-  scripts start. Never `git push`, `git pull`, `git merge` from origin, rebase
-  onto origin, or change git config. Never edit `.claude/` or settings.
-- Node deps: if `execution-engine/node_modules` or `frontend/node_modules` is
-  missing in your worktree, symlink it:
-  `ln -s /home/raja/Work/repos/TraceIQ-base/execution-engine/node_modules execution-engine/node_modules`
-  `ln -s /home/raja/Work/repos/TraceIQ/frontend/node_modules frontend/node_modules`
-  Never commit these symlinks (`git add` specific paths, not `-A` at the root).
+- You are given a git worktree path and a branch name (made by the integrator
+  with `git worktree add -b feat/<wp> ../TraceIQ-<wp> <base>`). Work ONLY there.
+- Never touch: the main checkouts (`TraceIQ` on `feature/enterprise-auth-ai`,
+  `TraceIQ-redesign` on `feature/redesign-a`, both siblings of your worktree),
+  other `TraceIQ-wp*` worktrees, the owner's running stack (`~/traceiq-stack`,
+  containers `traceiq-*`) beyond what the test scripts do. Never `git push`,
+  `pull`, `merge` from origin, rebase onto origin, or change git config. Never
+  edit `.claude/` or settings, `info/HANDOFF.md` or the tracker (the
+  integrator does those).
+- Node deps: the integrator symlinks `frontend/node_modules` and
+  `execution-engine/node_modules` from the main checkouts. Never commit them
+  (`git add` explicit paths). Don't `npm install` into them (shared); install
+  into a scratch copy if you need a new package, and update the lockfile
+  there (`--package-lock-only`).
 
 ## How to test
+- Backend tests build their own image from the checkout on first use
+  (`backend/scripts/test-image.sh`, tag keyed by requirements.txt) — no setup.
 - Backend unit: `cd backend && ./run-tests.sh -q` (whole suite) or a file.
-  Baseline: 4 errors in `tests/e2e/*` are expected (need a live server).
+  Baseline: no failures, no errors (`tests/e2e` skips unless `TRACEIQ_E2E_API_URL` is set).
 - Backend with real Postgres: `cd backend && TRACEIQ_SCRATCH_DB=<unique_name> ./run-tests-live.sh tests/integration/<file>.py -q`
   ALWAYS set `TRACEIQ_SCRATCH_DB` to a name unique to your WP (e.g. `traceiq_wp3`)
   — other agents run in parallel. New integration tests go in
@@ -110,5 +115,25 @@ the map of the codebase and lists the traps. `info/CODEBASE.md` has the data mod
 - Redesign UI look; reuse `components/redesign/primitives.tsx` and
   `components/redesign-local/groupD/settingsForm.tsx`; narrow cards → stack labels
   above inputs (FieldRow is side-by-side).
-- Baseline: backend unit suite has NO failures except 4 `tests/e2e` errors.
+- Baseline: backend unit and live suites have NO failures and no errors (since 2026-10-21 `tests/e2e` skips without a running API).
 
+## Lessons from WP15/WP16 (2026-10-21) — apply to every new package
+- Run statuses: CANCELLED / TIMED_OUT are terminal WITHOUT a verdict — use
+  `app/services/run_status.py` (`TERMINAL` vs `VERDICT`), frontend
+  `src/lib/runStatus.ts`. Once-per-finished-run work goes in
+  `app/services/run_completion.py` SIDE_EFFECT_TASKS.
+- Validation runs (WP16c) must be excluded from every aggregate over runs or
+  results: `app/services/run_scope.py` (`counted()` / `counted_result()`).
+- RLS (WP15a): a new table with a path to a workspace/project needs an entry
+  in `app/services/rls.py` RLS_POLICIES (+ a migration with the policy text
+  frozen, matching `rls.policy_sql`) or RLS_EXEMPT with a reason —
+  `tests/test_rls_plan.py`. Never add to RLS_DEFERRED (it only shrinks).
+  Refusal asserts in live tests: `status_code in DENIED`
+  (`tests/integration/denied.py`), so they hold under RLS enforce too.
+- Redaction twins also share vector files (`tests/vectors/*.json`, read by
+  both test suites): a rule change needs a vector, and the twins must agree.
+- Frontend API types: after a backend API change, `npm run gen:api` in
+  `frontend/` (CI fails on drift); new clients use `src/api/schemaTypes.ts`.
+- Gate checks: add in `evaluate_gate_for_runs`, set `missing_data=True` when
+  evidence is absent; the policy is versioned (`gate_policy_versions.py`).
+- Workflows stay `workflow_dispatch`-only; pin actions by full commit SHA.

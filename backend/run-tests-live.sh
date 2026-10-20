@@ -21,7 +21,6 @@
 #     get_current_principal would — see that file)
 set -euo pipefail
 
-IMAGE="${TRACEIQ_TEST_IMAGE:-traceiq-backend-test:local}"
 PGC="${TRACEIQ_PG_CONTAINER:-traceiq-postgres-1}"
 SCRATCH="${TRACEIQ_SCRATCH_DB:-traceiq_scratch_tests}"
 REPO_BACKEND="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,10 +30,9 @@ if ! docker inspect "$PGC" >/dev/null 2>&1; then
   echo "  cd infrastructure && docker compose -f docker-compose.yml up -d postgres" >&2
   exit 1
 fi
-if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
-  echo "Test image '$IMAGE' missing — run ./run-tests.sh once to build it." >&2
-  exit 1
-fi
+# Sets $IMAGE (built on first use, keyed by requirements.txt).
+# shellcheck source=scripts/test-image.sh
+source "$REPO_BACKEND/scripts/test-image.sh"
 
 PGUSER_="$(docker exec "$PGC" printenv POSTGRES_USER)"
 PGPASS_="$(docker exec "$PGC" printenv POSTGRES_PASSWORD)"

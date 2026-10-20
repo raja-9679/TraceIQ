@@ -28,6 +28,7 @@ from app.models import (                                     # noqa: E402
 )
 from app.services import run_completion                      # noqa: E402
 from app.services.rbac_service import rbac_service           # noqa: E402
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 class FakeRedis:
@@ -168,7 +169,7 @@ async def test_viewer_and_outsider_cannot_cancel(session, scene, plumbing, who):
     rid = scene.runs["running"]
     with pytest.raises(HTTPException) as exc:
         await _cancel(session, rid, getattr(scene, who))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     run = await session.get(TestRun, rid)
     await session.refresh(run)
     assert run.status == TestStatus.RUNNING
@@ -178,7 +179,7 @@ async def test_project_scoped_key_for_another_project_is_refused(session, scene,
     key = SimpleNamespace(id=1, project_id=scene.project_id + 999, workspace_id=scene.ws_id)
     with pytest.raises(HTTPException) as exc:
         await _cancel(session, scene.runs["running"], scene.admin, api_key=key)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 async def test_redis_down_still_cancels(session, scene, monkeypatch, plumbing):

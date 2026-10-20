@@ -29,6 +29,7 @@ from tests.integration.test_targeted_runs_db import (          # noqa: E402,F401
     no_queue, scene, session,
 )
 from app.api.endpoints import test_runs                        # noqa: E402
+from tests.integration.denied import DENIED  # noqa: E402
 
 REQ = SimpleNamespace(headers={}, client=None)
 
@@ -178,7 +179,7 @@ async def test_outsider_and_wrong_scope_key_are_refused(session, scene):
     await session.commit()
     with pytest.raises(HTTPException) as exc:
         await api.get_matrix(m["id"], session=session, principal=AuthPrincipal(user=outsider, api_key=None))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     key = SimpleNamespace(id=1, project_id=scene.other_project_id)
     with pytest.raises(HTTPException) as exc:
         await api.get_matrix(m["id"], session=session, principal=AuthPrincipal(user=scene.user, api_key=key))

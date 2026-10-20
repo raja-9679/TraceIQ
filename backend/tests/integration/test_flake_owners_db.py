@@ -25,6 +25,7 @@ from app.services.flake_policy import active_quarantine_clause  # noqa: E402
 from tests.integration.test_targeted_runs_db import (           # noqa: E402,F401
     _create, no_queue, scene, session,
 )
+from tests.integration.denied import DENIED  # noqa: E402
 
 
 def _me(scene):
@@ -147,7 +148,7 @@ async def test_project_scoped_key_cannot_act_on_another_project(session, scene):
     scoped = AuthPrincipal(user=scene.user, api_key=key)
     with pytest.raises(HTTPException) as exc:
         await flake_records.release(rec.id, None, principal=scoped, session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     with pytest.raises(HTTPException):
         await flake_records.owner_candidates(
             project_id=scene.project_id, principal=scoped, session=session)
