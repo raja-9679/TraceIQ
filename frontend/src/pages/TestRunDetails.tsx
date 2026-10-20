@@ -959,7 +959,7 @@ function ResultsSplit({ runId, results, networkEvents, search, onSearch, focus =
                             onSelect={() => setSelectedId(r.id)}
                             leading={<KindChip kind={r.status === 'passed' ? 'pass' : (r.status === 'failed' || r.status === 'error') ? 'failure' : 'skip'} size="sm" />}
                             title={r.test_name}
-                            meta={[statusLabel(r.status), errorKindLook(r.error_kind)?.label, `${Math.round(r.duration_ms)}ms`]
+                            meta={[statusLabel(r.status), !isNoVerdict(r.status) ? errorKindLook(r.error_kind)?.label : null, `${Math.round(r.duration_ms)}ms`]
                                 .filter(Boolean).join(' · ')}
                         />
                     ))}
@@ -1058,7 +1058,7 @@ function TestCaseResultItem({ result, runId, networkEvents = [], variant = 'acco
                     )}>
                         {statusLabel(result.status)}
                     </span>
-                    {errorKindLook(result.error_kind) && result.status !== 'passed' && (
+                    {errorKindLook(result.error_kind) && result.status !== 'passed' && !isNoVerdict(result.status) && (
                         <span title={errorKindLook(result.error_kind)!.hint}
                             className="rounded-full border border-border bg-white px-3 py-1 text-[11px] font-medium text-ink-soft">
                             {errorKindLook(result.error_kind)!.label}
