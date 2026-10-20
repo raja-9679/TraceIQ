@@ -130,6 +130,7 @@ ON_DELETE: Dict[str, str] = {
     "accessibilitywaiver.project_id": DELETE,
     "hararchive.project_id": DELETE,
     "repairoutcome.project_id": DELETE,     # WP16c repair history
+    "hypothesisfeedback.project_id": DELETE,  # WP16d analysis ratings
     # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
     # benchmark groups are all project data.
     "journeyimport.project_id": DELETE,

@@ -1548,6 +1548,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   heal proposals for them. Deliberately NOT excluded: run lists, cost/quota,
   ops metrics, the concurrency cap. Worker + backend + frontend rebuild needed.
 
+- **Pilot value report (WP16d, 2026-10, decision V6)** — migration
+  `e152b3c4d616` (`hypothesisfeedback`, `failurecluster.first_triaged_at`).
+  `GET /api/projects/{id}/value-report?start=&end=` (viewer, scoped keys) and
+  `GET /api/workspaces/{id}/value-report` (roll-up over
+  `reports.accessible_projects`; a key from another workspace 403s); maths in
+  `app/services/value_report.py` (pure functions + loaders), API
+  `app/api/value_report.py`, UI `/reports/value`. Every metric is a dict with
+  `kind` measured|estimated, `definition`, `data_source`, `sample_size`/
+  `sample_label`; no inputs → `value: null` + `missing` text, never 0. **Time
+  to diagnosis**: per failure cluster first seen in the window, first counted
+  failing run → earliest of `first_triaged_at` (set once by PATCH
+  failure-clusters on the first move to investigating/resolved; legacy
+  resolved clusters fall back to `resolved_at`), a non-error IssueTicket for
+  the cluster or one of its results, a quarantine of one of its cases, or a
+  pass on a DIFFERENT git commit; median/p90 nearest rank, undiagnosed counted
+  separately. **Accuracy**: 👍/👎 per hypothesis (`PUT|DELETE
+  /runs/{run}/results/{result}/hypothesis-feedback`, editor, humans only,
+  audited `hypothesis_feedback`; `GET /runs/{id}/hypothesis-feedback`). A
+  hypothesis has no id, so `hypothesis_key` = sha256(category|summary|source);
+  the client echoes the key it was shown and a regenerated analysis gets 409.
+  Unique (result, key, user). Report = majority verdict per rated TOP
+  hypothesis, ties `split`; withheld below `MIN_RATED`=5. Soft run/result refs
+  (the sample outlives retention); validation runs are refused at write AND
+  filtered at read. **Targeted saving (estimate)**: runs carry no request id,
+  so batches are rebuilt (same mode/selection_total/user/key/commit, ≤120 s
+  apart); baseline = newest earlier full batch ≤30 days with the same
+  selection_total and browsers covering every case; saved = baseline browser
+  time × (1 − ran/total), wall clock shown alongside. Manual runs excluded.
+  **Proposals**: case + heal by status (auto-applied case = accepted with no
+  decider and an "auto-applied" note); revert = the revision written ≤2 min
+  of decided_at is later undone by a revision with the earlier steps (UPDATE +
+  heal only, else `not_measurable`); repair validation from `RepairOutcome`.
+  Flake trend / escaped defects / DORA are LINKED, not recomputed. Not in the
+  executive summary or share links (their public payloads are whitelists;
+  adding four metric shapes there is not trivial). Backend + frontend rebuild.
+
 - **Tenant isolation in Postgres (WP15a, H1, 2026-10-20)** — migration
   `e012b3c4d601`; `app/services/rls.py`; operator steps in `docs/OPERATIONS.md`
   → "Tenant isolation". RLS is a SECOND wall; Python checks stay. One policy
