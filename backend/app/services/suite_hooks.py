@@ -91,6 +91,16 @@ def validate_suite_settings(settings: Any) -> Any:
                 out[key] = steps
             else:
                 out.pop(key)
+    if "review_interval_days" in out:
+        from app.services.ownership_review import OwnershipError, normalize_interval
+        try:
+            interval = normalize_interval(out["review_interval_days"])
+        except OwnershipError as exc:
+            raise SuiteHookError(str(exc))
+        if interval is None:
+            out.pop("review_interval_days")
+        else:
+            out["review_interval_days"] = interval
     if "data_seed" in out:
         seed = normalize_seed(out["data_seed"])
         if seed is None:

@@ -42,6 +42,8 @@ SIDE_EFFECT_TASKS: Tuple[Tuple[str, str, bool], ...] = (
     ("app.tasks.security_tasks", "scan_run_passive", False),
     ("app.tasks.security_tasks", "scan_run_leaks", False),
     ("app.tasks.triage_tasks", "cluster_run_failures", False),
+    # WP16b: owner email on a case's first failure after a pass.
+    ("app.tasks.notification_tasks", "notify_case_owners_for_run", False),
 )
 
 

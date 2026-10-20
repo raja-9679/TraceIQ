@@ -13,7 +13,7 @@ import os
 import posixpath
 import tempfile
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -322,25 +322,41 @@ class ApiSpecUpdate(BaseModel):
     url: Optional[str] = None
 
 
-async def store_project_spec(session: AsyncSession, project_id: int, spec: Dict[str, Any],
-                             user_id: Optional[int], source_url: Optional[str] = None) -> ProjectApiSpec:
-    """Upsert the project's spec. Caller validates, audits and commits."""
+async def store_project_spec_versioned(session: AsyncSession, project_id: int, spec: Dict[str, Any],
+                                       user_id: Optional[int], source_url: Optional[str] = None,
+                                       via: str = "put") -> Tuple[ProjectApiSpec, int]:
+    """Upsert the project's spec and append it to the version history
+    (WP16b). Returns (current row, history version number). Caller
+    validates, audits and commits."""
+    from app.services import spec_versions
     if len(json.dumps(spec, default=str)) > MAX_SPEC_BYTES:
         raise HTTPException(status_code=413, detail="OpenAPI spec exceeds 5 MB")
     summary = api_specs.spec_summary(spec)
+    project = await session.get(Project, project_id)
+    version, _created = await spec_versions.append_version(
+        session, project, spec, user_id=user_id, source_url=source_url, via=via)
     row = (await session.exec(select(ProjectApiSpec).where(ProjectApiSpec.project_id == project_id))).first()
     row = row or ProjectApiSpec(project_id=project_id)
     row.spec, row.source_url = spec, source_url
     row.title, row.spec_version = summary["title"], summary["version"]
     row.updated_by_id, row.updated_at = user_id, datetime.utcnow()
     session.add(row)
+    return row, version.version
+
+
+async def store_project_spec(session: AsyncSession, project_id: int, spec: Dict[str, Any],
+                             user_id: Optional[int], source_url: Optional[str] = None,
+                             via: str = "put") -> ProjectApiSpec:
+    row, _ = await store_project_spec_versioned(session, project_id, spec, user_id, source_url, via)
     return row
 
 
 def _spec_read(row: ProjectApiSpec, include_spec: bool) -> Dict[str, Any]:
+    from app.services.spec_versions import sha256_of
     summary = api_specs.spec_summary(row.spec or {})
     out = {"exists": True, "title": row.title, "version": row.spec_version, "source_url": row.source_url,
-           "updated_at": row.updated_at, "operations": summary["operations"]}
+           "updated_at": row.updated_at, "operations": summary["operations"],
+           "sha256": sha256_of(row.spec or {})}
     if include_spec:
         out["spec"] = row.spec
     return out
@@ -378,14 +394,15 @@ async def put_openapi_spec(project_id: int, body: ApiSpecUpdate,
         api_specs.validate_spec(spec)
     except api_specs.SchemaRefError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    row = await store_project_spec(session, project_id, spec, principal.user.id,
-                                   source_url=body.url if body.spec is None else None)
+    row, history_version = await store_project_spec_versioned(
+        session, project_id, spec, principal.user.id, source_url=body.url if body.spec is None else None)
     await audit_record(session, entity_type="project", entity_id=project_id, action="openapi_spec_set",
                        user_id=principal.user.id, workspace_id=project.workspace_id, principal=principal,
-                       changes={"title": row.title, "version": row.spec_version, "source_url": row.source_url})
+                       changes={"title": row.title, "version": row.spec_version, "source_url": row.source_url,
+                                "history_version": history_version})
     await session.commit()
     await session.refresh(row)
-    return _spec_read(row, False)
+    return {**_spec_read(row, False), "history_version": history_version}
 
 
 @router.delete("/projects/{project_id}/openapi-spec")
@@ -400,6 +417,88 @@ async def delete_openapi_spec(project_id: int, principal: AuthPrincipal = Depend
                        user_id=principal.user.id, workspace_id=project.workspace_id, principal=principal)
     await session.commit()
     return {"deleted": True}
+
+
+# ---------------------------------------------------------------------------
+# Spec history + breaking-change diff (WP16b, V2)
+# ---------------------------------------------------------------------------
+
+@router.get("/projects/{project_id}/openapi-spec/versions")
+async def list_openapi_spec_versions(project_id: int,
+                                     principal: AuthPrincipal = Depends(get_current_principal),
+                                     session: AsyncSession = Depends(get_session)):
+    from app.services import spec_versions
+    project = await _require_project(principal, project_id, session)
+    current = (await session.exec(select(ProjectApiSpec).where(ProjectApiSpec.project_id == project_id))).first()
+    current_sha = spec_versions.sha256_of(current.spec or {}) if current else None
+    rows = await spec_versions.list_versions(session, project_id)
+    return {"versions": [spec_versions.version_read(r, current_sha=current_sha) for r in rows],
+            "max_versions": spec_versions.MAX_SPEC_VERSIONS,
+            "pinned_baseline": spec_versions.pinned_version(project)}
+
+
+@router.get("/projects/{project_id}/openapi-spec/versions/{version}")
+async def get_openapi_spec_version(project_id: int, version: int, include_spec: bool = False,
+                                   principal: AuthPrincipal = Depends(get_current_principal),
+                                   session: AsyncSession = Depends(get_session)):
+    from app.services import spec_versions
+    await _require_project(principal, project_id, session)
+    row = await spec_versions.get_version(session, project_id, version)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Spec version not found")
+    return spec_versions.version_read(row, include_spec=include_spec)
+
+
+async def _diff_pair(project_id: int, from_v: Optional[int], to_v: Optional[int], session: AsyncSession):
+    """Default: newest version vs the one before it."""
+    from app.models import ProjectApiSpecVersion as V
+    from app.services import spec_versions
+    to_row = (await spec_versions.get_version(session, project_id, to_v) if to_v is not None
+              else await spec_versions.latest(session, project_id))
+    if to_row is None:
+        raise HTTPException(status_code=404, detail="Spec version not found")
+    if from_v is not None:
+        from_row = await spec_versions.get_version(session, project_id, from_v)
+    else:
+        from_row = (await session.exec(select(V).where(V.project_id == project_id, V.version < to_row.version)
+                                       .order_by(V.version.desc()).limit(1))).first()
+    if from_row is None:
+        raise HTTPException(status_code=404, detail="No earlier spec version to compare with"
+                            if from_v is None else "Spec version not found")
+    return from_row, to_row
+
+
+@router.get("/projects/{project_id}/openapi-spec/diff")
+async def diff_openapi_spec_versions(project_id: int,
+                                     from_: Annotated[Optional[int], Query(alias="from", ge=1)] = None,
+                                     to: Annotated[Optional[int], Query(ge=1)] = None,
+                                     principal: AuthPrincipal = Depends(get_current_principal),
+                                     session: AsyncSession = Depends(get_session)):
+    """Breaking / non-breaking changes between two stored versions (any
+    order: from > to diffs backwards), each with the project's tests whose
+    expect_schema references the changed operation."""
+    from app.services import spec_versions
+    await _require_project(principal, project_id, session)
+    from_row, to_row = await _diff_pair(project_id, from_, to, session)
+    return await spec_versions.diff_versions(session, project_id, from_row, to_row)
+
+
+@router.get("/projects/{project_id}/openapi-spec/diff/sarif")
+async def diff_openapi_spec_versions_sarif(project_id: int,
+                                           from_: Annotated[Optional[int], Query(alias="from", ge=1)] = None,
+                                           to: Annotated[Optional[int], Query(ge=1)] = None,
+                                           principal: AuthPrincipal = Depends(get_current_principal),
+                                           session: AsyncSession = Depends(get_session)):
+    from fastapi.responses import JSONResponse
+    from app.services import spec_versions
+    from app.services.sarif import build_spec_diff_sarif
+    await _require_project(principal, project_id, session)
+    from_row, to_row = await _diff_pair(project_id, from_, to, session)
+    diff = await spec_versions.diff_versions(session, project_id, from_row, to_row)
+    log = build_spec_diff_sarif(diff, artifact_uri=f"openapi-v{to_row.version}.json",
+                                from_version=from_row.version, to_version=to_row.version)
+    return JSONResponse(log, media_type="application/sarif+json", headers={
+        "Content-Disposition": f'attachment; filename="openapi-diff-v{from_row.version}-v{to_row.version}.sarif"'})
 
 
 # ---------------------------------------------------------------------------

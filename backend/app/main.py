@@ -183,6 +183,8 @@ app.include_router(visual_review.router, prefix="/api", tags=["visual-review"])
 from app.api import accessibility as accessibility_api, har_files as har_files_api  # noqa: E402
 app.include_router(accessibility_api.router, prefix="/api", tags=["accessibility"])
 app.include_router(har_files_api.router, prefix="/api", tags=["har-files"])
+from app.api import case_ownership as case_ownership_api  # noqa: E402
+app.include_router(case_ownership_api.router, prefix="/api", tags=["test-ownership"])
 app.include_router(personas.router, prefix="/api", tags=["personas"])
 app.include_router(heal_proposals.router, prefix="/api", tags=["heal-proposals"])
 app.include_router(flake_records.router, prefix="/api", tags=["flakes"])

@@ -484,6 +484,123 @@ def send_teams_notification(run: TestRun, content: Dict[str, Any], settings_dict
         raise
 
 
+@celery_app.task(name="app.tasks.notification_tasks.notify_case_owners_for_run")
+def notify_case_owners_for_run(run_id: int):
+    """Email each failing case's owner when this run is the case's first
+    failure after a pass (WP16b, V5). Queued once per finished run
+    (run_completion.SIDE_EFFECT_TASKS); see owner_notices_for_run."""
+    try:
+        with Session(sync_engine) as session:
+            sent = owner_notices_for_run(session, run_id)
+        if sent:
+            logger.info("[OwnerNotice] run %s: notified owners of %s case(s)", run_id, sent)
+    except Exception as e:  # noqa: BLE001 — best effort, never retried into duplicates
+        logger.error("[OwnerNotice] run %s: %s", run_id, e)
+
+
+def owner_notices_for_run(session: Session, run_id: int, send=None) -> int:
+    """Returns how many cases produced a notice.
+
+    Rules: project opted in (`notify_case_owners`) and notifications/email
+    on at instance level (demo projects never notify); the run is not
+    cancelled; a case result failed for a test reason (not infrastructure /
+    cancelled / timeout / not executed; manual results excluded); the case's
+    newest verdict BEFORE this run was a pass. The recipient is the owner,
+    or the backup when the owner can't be reached — each must be active,
+    still on the project and not have muted the project ("off").
+
+    Dedupe: a CaseOwnerNotice row keyed (case, last passing result) is
+    committed BEFORE sending, so a retried task, a second finalizer or two
+    concurrent failing runs produce one email per pass->fail transition."""
+    from sqlalchemy.exc import IntegrityError
+    from app.models import CaseOwnerNotice, ProjectNotificationPref, TestCase, TestCaseResult
+    from app.services import project_notifications as pn
+    from app.services.ownership_review import is_test_failure
+    from app.settings_models import UserSettings
+    send = send or send_account_email
+
+    run = session.get(TestRun, run_id)
+    if not run or not run.project_id or run.status == TestStatus.CANCELLED:
+        return 0
+    project = session.get(Project, run.project_id)
+    if project is None or not pn.merged(project).get("notify_case_owners"):
+        return 0
+    ns = get_notification_settings(project, session)
+    if not ns.get("enabled") or not ns.get("email_enabled"):
+        return 0
+
+    failing: Dict[int, TestCaseResult] = {}
+    for r in session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run.id,
+                                                       TestCaseResult.test_case_id.is_not(None))).all():
+        if r.result_kind == "manual" or not is_test_failure(r.status, r.error_kind):
+            continue
+        failing.setdefault(r.test_case_id, r)
+    verdicts = (TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR)
+    notified = 0
+    for case_id, result in failing.items():
+        case = session.get(TestCase, case_id)
+        if case is None or case.project_id != project.id or not (case.owner_user_id or case.backup_owner_user_id):
+            continue
+        prev = session.exec(
+            select(TestCaseResult).join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+            .where(TestCaseResult.test_case_id == case_id, TestRun.project_id == project.id,
+                   TestRun.id != run.id, TestRun.created_at <= run.created_at,
+                   TestCaseResult.status.in_(verdicts),
+                   (TestCaseResult.result_kind.is_(None)) | (TestCaseResult.result_kind != "manual"))
+            .order_by(TestRun.created_at.desc(), TestCaseResult.id.desc()).limit(1)).first()
+        if prev is None or prev.status != TestStatus.PASSED:
+            continue  # never ran before, or already failing: not a NEW failure
+
+        def reachable(uid):
+            if not uid:
+                return None
+            user = session.get(User, uid)
+            if not user or not user.email or not getattr(user, "is_active", True):
+                return None
+            if not pn.has_project_access_sync(session, uid, project.id):
+                return None
+            pref = session.exec(select(ProjectNotificationPref).where(
+                ProjectNotificationPref.user_id == uid,
+                ProjectNotificationPref.project_id == project.id)).first()
+            if pref and pref.mode == "off":
+                return None
+            us = session.exec(select(UserSettings).where(UserSettings.user_id == uid)).first()
+            return (getattr(us, "notification_email", None) or "").strip() or user.email
+        to = reachable(case.owner_user_id) or reachable(case.backup_owner_user_id)
+        if not to:
+            continue
+        notice = CaseOwnerNotice(project_id=project.id, test_case_id=case_id, test_run_id=run.id,
+                                 after_result_id=prev.id, recipients=1)
+        session.add(notice)
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            continue
+        subject, html, text = _owner_notice_body(project, case, run, result)
+        send(to, subject, html, text)
+        notified += 1
+    return notified
+
+
+def _owner_notice_body(project, case, run, result):
+    import html as _html
+    base = (getattr(settings, 'FRONTEND_BASE_URL', '') or '').rstrip('/')
+    link = f"{base}/runs/{run.id}" if base else f"run #{run.id}"
+    # Case names are user text: no control characters in a mail header.
+    clean_name = "".join(ch for ch in (case.name or "") if ch.isprintable())
+    subject = f"[TraceIQ] Your test started failing: {clean_name}"[:200]
+    text = (f"The test \"{case.name}\" in project \"{project.name}\" failed in run #{run.id} "
+            f"after passing previously.\n\nOpen the run: {link}\n\n"
+            "You get this because you own (or back up) this test. Project admins can turn these "
+            "emails off in the project's notification settings.")
+    html_body = (f"<p>The test <strong>{_html.escape(case.name)}</strong> in project "
+                 f"<strong>{_html.escape(project.name or '')}</strong> failed in run #{run.id} after "
+                 f"passing previously.</p><p><a href=\"{_html.escape(link)}\">Open the run</a></p>"
+                 "<p style=\"color:#666\">You get this because you own (or back up) this test.</p>")
+    return subject, html_body, text
+
+
 @celery_app.task(name="app.tasks.notification_tasks.send_account_email")
 def send_account_email(to_email: str, subject: str, html_body: str, text_body: str = None):
     """Send a transactional account email (password reset / verification).

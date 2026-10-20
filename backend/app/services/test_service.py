@@ -55,6 +55,9 @@ INHERITED_EXECUTION_FLAGS = (
     "data_seed",
     # Frontend matrix axes (WP10): a child's list replaces the parent's.
     "viewports", "locales", "color_schemes", "reduced_motion", "sweep_step_screenshots",
+    # Test ownership (WP16b): how often cases in this subtree must be
+    # reviewed; 0 = never. Read by app/services/ownership_review.py.
+    "review_interval_days",
 )
 
 

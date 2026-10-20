@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import date, datetime
 from pydantic import BaseModel
 from sqlmodel import SQLModel, Field, Relationship
@@ -473,6 +473,15 @@ class TestCaseBase(SQLModel):
 
 class TestCase(TestCaseBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
+    # Ownership (WP16b, V5). Not part of TestCaseBase on purpose: create and
+    # PUT /cases/{id} do not take them — PUT /cases/{id}/ownership validates
+    # that both people have access to the project, and POST
+    # /cases/{id}/reviewed stamps the review. Metadata, not test content:
+    # not in revisions, the git-sync hash or proposals.
+    owner_user_id: Optional[int] = Field(default=None, foreign_key="users.id", index=True)
+    backup_owner_user_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    last_reviewed_at: Optional[datetime] = Field(default=None)
+    last_reviewed_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
     test_suite: Optional[TestSuite] = Relationship(back_populates="test_cases")
     project: Optional["Project"] = Relationship()
     created_by: Optional["User"] = Relationship(
@@ -487,6 +496,10 @@ class TestCase(TestCaseBase, table=True):
 
 class TestCaseRead(TestCaseBase):
     id: int
+    owner_user_id: Optional[int] = None
+    backup_owner_user_id: Optional[int] = None
+    last_reviewed_at: Optional[datetime] = None
+    last_reviewed_by_id: Optional[int] = None
 
 
 class TestCaseUpdate(SQLModel):
@@ -1417,6 +1430,13 @@ class QualityGatePolicy(SQLModel):
     # (waived ones excluded). Missing data when no evaluated run has
     # accessibility evidence. See app/services/accessibility.py.
     block_new_accessibility_violations: bool = False
+    # WP16b: the newest stored OpenAPI spec version must have no breaking
+    # change against a baseline — the version before it ("previous") or a
+    # pinned version number ("pinned" + api_baseline_version). Fewer than two
+    # versions / a missing pinned version = missing data, never a pass.
+    require_no_breaking_api_changes: bool = False
+    api_baseline: Literal["previous", "pinned"] = "previous"
+    api_baseline_version: Optional[int] = Field(default=None, ge=1)
 
 
 class QualityGateCheck(SQLModel):
@@ -3942,6 +3962,54 @@ class HarArchive(SQLModel, table=True):
     hosts: Optional[List[str]] = Field(default=None, sa_column=Column(JSON))
     sha256: str
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# WP16b — OpenAPI spec history (V2) and test ownership notices (V5)
+# =============================================================================
+
+
+class ProjectApiSpecVersion(SQLModel, table=True):
+    """One stored revision of a project's OpenAPI document (WP16b, V2).
+
+    Every store (PUT /projects/{id}/openapi-spec, cases/from-openapi) appends
+    version N+1 unless the document is byte-identical (canonical JSON SHA-256)
+    to the newest one. `ProjectApiSpec` stays the CURRENT document that
+    dispatch resolves `expect_schema` against; versions are what the diff and
+    the "no breaking API change" gate compare. The newest MAX_SPEC_VERSIONS
+    are kept, plus a version pinned as the gate baseline."""
+    __table_args__ = (UniqueConstraint("project_id", "version", name="uq_projectapispecversion_project_version"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    version: int
+    sha256: str
+    spec: Dict[str, Any] = Field(default={}, sa_column=Column(JSON, nullable=False))
+    title: Optional[str] = None
+    spec_version: Optional[str] = None
+    source_url: Optional[str] = None
+    operation_count: int = Field(default=0)
+    # put | from-openapi | backfill
+    via: str = Field(default="put")
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class CaseOwnerNotice(SQLModel, table=True):
+    """Dedupe row for "your test started failing" owner emails (WP16b, V5).
+
+    The unique key is (case, the last PASSING result before the failure): one
+    notice per pass->fail transition, whichever run (or concurrent runs, or a
+    retried task) observes it first. Committed before anything is sent."""
+    __table_args__ = (UniqueConstraint("test_case_id", "after_result_id",
+                                       name="uq_caseownernotice_case_after"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    test_case_id: int = Field(foreign_key="testcase.id", index=True)
+    test_run_id: int = Field(foreign_key="testrun.id", index=True)
+    # Soft reference (results are swept by retention independently).
+    after_result_id: int
+    recipients: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 

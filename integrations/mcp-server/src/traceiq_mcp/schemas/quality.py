@@ -276,3 +276,45 @@ class ExternalReport(TQModel):
 
 class ExternalReportList(TQModel):
     items: List[ExternalReport] = []
+
+
+class SpecChangeCase(TQModel):
+    case_id: Optional[int] = None
+    name: Optional[str] = None
+    test_suite_id: Optional[int] = None
+
+
+class SpecChange(TQModel):
+    """One classified difference between two stored OpenAPI versions."""
+    id: str
+    severity: str  # breaking | non_breaking
+    rule: str
+    method: str = ""
+    path: str = ""
+    operation_id: Optional[str] = None
+    location: str = ""
+    message: str = ""
+    status: Optional[str] = None
+    old: Any = None
+    new: Any = None
+    affected_cases: List[SpecChangeCase] = []
+    promoted_reason: Optional[str] = None
+
+
+class SpecAffectedTest(TQModel):
+    case_id: Optional[int] = None
+    name: Optional[str] = None
+    test_suite_id: Optional[int] = None
+    operations: List[str] = []
+    change_ids: List[str] = []
+
+
+class SpecDiff(TQModel):
+    """Breaking-change diff between two versions of a project's OpenAPI spec."""
+    from_version: int
+    to_version: int
+    breaking_count: int
+    non_breaking_count: int
+    truncated: bool = False
+    changes: List[SpecChange] = []
+    affected_tests: List[SpecAffectedTest] = []

@@ -31,11 +31,12 @@ def _loader(calls, broken=()):
 
 
 def test_every_side_effect_the_endpoint_used_to_queue_is_still_queued():
-    # The eight tasks POST /finalize queued before the refactor.
+    # The eight tasks POST /finalize queued before the refactor, plus the
+    # WP16b owner notice.
     assert [t for _, t, _ in SIDE_EFFECT_TASKS] == [
         "send_run_notifications", "dispatch_run_webhooks", "propose_selector_heals_for_run",
         "evaluate_monitor_for_run", "page_for_run", "scan_run_passive", "scan_run_leaks",
-        "cluster_run_failures",
+        "cluster_run_failures", "notify_case_owners_for_run",
     ]
 
 
