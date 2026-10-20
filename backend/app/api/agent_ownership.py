@@ -48,6 +48,7 @@ from app.models import (
 )
 from app.services.access_service import access_service
 from app.core.secrets import decrypt_json, encrypt_json
+from app.services.run_scope import counted
 
 router = APIRouter()
 
@@ -148,7 +149,7 @@ async def _enrich_impacted_case(
     row = (await session.exec(
         select(TestCaseResult, TestRun)
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestCaseResult.test_case_id == case.id)
+        .where(TestCaseResult.test_case_id == case.id, counted())
         .order_by(TestCaseResult.id.desc())
         .limit(1)
     )).first()
@@ -160,6 +161,7 @@ async def _enrich_impacted_case(
             .where(
                 TestCaseResult.test_name == case.name,
                 TestRun.project_id == case.project_id,
+                counted(),
             )
             .order_by(TestCaseResult.id.desc())
             .limit(1)
@@ -471,7 +473,7 @@ async def case_run_history(
     id_rows = await session.exec(
         select(TestCaseResult, TestRun)
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestCaseResult.test_case_id == case_id)
+        .where(TestCaseResult.test_case_id == case_id, counted())
         .order_by(TestCaseResult.id.desc())
         .limit(limit)
     )
@@ -495,7 +497,8 @@ async def case_run_history(
             select(TestRun)
             .where(
                 (TestRun.test_case_id == case_id)
-                | (TestRun.project_id == case.project_id)
+                | (TestRun.project_id == case.project_id),
+                counted(),
             )
             .order_by(TestRun.created_at.desc())
             .limit(200)
@@ -682,9 +685,14 @@ async def list_proposals(
         query = query.where(CaseProposal.status == status)
     res = await session.exec(query.order_by(CaseProposal.created_at.desc()).limit(limit))
     rows = res.all()
+    from app.services import repair_validation
+
+    async def _reads(items):
+        return [await repair_validation.annotate(session, repair_validation.CASE, p, _proposal_read(p))
+                for p in items]
     if project_id is not None:
         # Access to the single requested project was already verified above.
-        return [_proposal_read(p) for p in rows]
+        return await _reads(rows)
     # No project filter: never return proposals for projects the caller can't
     # access. Filter each row by access, caching the per-project decision so a
     # long result set doesn't fan out into a query per row.
@@ -698,7 +706,7 @@ async def list_proposals(
             access_cache[p.project_id] = allowed
         if allowed:
             visible.append(p)
-    return [_proposal_read(p) for p in visible]
+    return await _reads(visible)
 
 
 @router.post("/case-proposals/{proposal_id}/accept", response_model=CaseProposalRead)
@@ -732,9 +740,37 @@ async def accept_proposal(
     proposal.decided_by_id = principal.user.id
     proposal.decision_note = note
     session.add(proposal)
+    from app.services import repair_validation
+    await repair_validation.record_decision(session, repair_validation.CASE, proposal, "accepted",
+                                            proposal.project_id, principal.user.id)
     await session.commit()
     await session.refresh(proposal)
     return _proposal_read(proposal)
+
+
+@router.post("/case-proposals/{proposal_id}/validate")
+async def validate_proposal(
+    proposal_id: int,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """WP16c: run the target case once with this UPDATE's steps applied to
+    that run only (same conditions as the proposal's source run). The stored
+    case is untouched. Editors and project-scoped API keys may start one —
+    it is a run, not a decision."""
+    proposal = await session.get(CaseProposal, proposal_id)
+    if not proposal:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if principal.api_key is not None:
+        from app.api.jobs import api_key_allows_project
+        if not api_key_allows_project(principal.api_key, proposal.project_id):
+            raise HTTPException(status_code=403, detail="API key is not scoped to this project")
+    if not await access_service.has_project_access(
+        principal.user.id, proposal.project_id, session, min_role="editor"
+    ):
+        raise HTTPException(status_code=403, detail="Editor access required")
+    from app.services import repair_validation
+    return await repair_validation.launch(session, principal, repair_validation.CASE, proposal)
 
 
 @router.post("/case-proposals/{proposal_id}/reject", response_model=CaseProposalRead)
@@ -761,6 +797,9 @@ async def reject_proposal(
     proposal.decided_by_id = principal.user.id
     proposal.decision_note = note
     session.add(proposal)
+    from app.services import repair_validation
+    await repair_validation.record_decision(session, repair_validation.CASE, proposal, "rejected",
+                                            proposal.project_id, principal.user.id)
     await session.commit()
     await session.refresh(proposal)
     return _proposal_read(proposal)
@@ -774,15 +813,11 @@ async def _enforce_separation(proposal: CaseProposal, approver_id: int,
     clear them."""
     # The check itself is the policy engine's proposal.separation_of_duties
     # rule (wrapping app/services/proposal_policy.py), so a refusal is logged.
-    from app.models import Project
-    from app.services.policy import PolicyContext, evaluate
-    project = await session.get(Project, proposal.project_id)
-    decision = await evaluate("proposal.approve", PolicyContext(
-        workspace_id=getattr(project, "workspace_id", None), project_id=proposal.project_id,
-        user_id=approver_id, session=session,
-        facts={"proposal": proposal, "approver_id": approver_id}))
-    if not decision.allowed:
-        raise decision.http_exception()
+    # Evaluated together with proposal.validation_required (WP16c): a case
+    # edit may also need a passing validation run first.
+    from app.services import repair_validation
+    await repair_validation.enforce_accept(session, repair_validation.CASE, proposal, approver_id,
+                                           include_separation=True)
 
 
 async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncSession) -> bool:
@@ -812,11 +847,15 @@ async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncS
         # is an instance setting rather than an environment variable. Asked of
         # the policy engine only once the threshold would apply, so the deny
         # log records proposals the switch actually held back.
+        # WP16c: a protected suite never auto-applies, and a required
+        # validation run (which cannot exist yet) holds it for review.
+        from app.services import repair_validation
         from app.services.policy import PolicyContext, evaluate
+        guard = await repair_validation.repair_guard(session, repair_validation.CASE, proposal)
         verdict = await evaluate("proposal.auto_apply", PolicyContext(
             workspace_id=project.workspace_id, project_id=project.id, user_id=user_id,
             agent_id=proposal.created_by_agent_id, agent_session_id=proposal.agent_session_id,
-            session=session, facts={"proposal": proposal}))
+            session=session, facts={"proposal": proposal, "repair": guard}))
         if not verdict.allowed:
             return False
 
@@ -828,6 +867,8 @@ async def maybe_auto_apply(proposal: CaseProposal, user_id: int, session: AsyncS
             f"auto-applied: confidence {proposal.ai_confidence:.2f} >= "
             f"workspace threshold {threshold:.2f}")
         session.add(proposal)
+        await repair_validation.record_decision(session, repair_validation.CASE, proposal,
+                                                "auto_applied", proposal.project_id, None)
         print(f"[AutoApply] proposal {proposal.id} ({proposal.action}) auto-applied "
               f"(confidence {proposal.ai_confidence:.2f} >= {threshold:.2f})")
         return True
@@ -843,6 +884,26 @@ class ProposalPolicyBody(BaseModel):
     # F4: the proposer may not accept their own proposal. Optional so a caller
     # that only wants to change the threshold does not silently reset it.
     require_separate_approver: Optional[bool] = None
+    # WP16c: heal / case-edit proposals need a passing validation run first.
+    require_validation_before_accept: Optional[bool] = None
+
+
+def _policy_view(workspace_id: int, workspace) -> dict:
+    from app.services.proposal_policy import (
+        auto_apply_disabled, separation_required, validation_required)
+    workspace_flag = bool(workspace.require_separate_approver)
+    validation_flag = bool(getattr(workspace, "require_validation_before_accept", False))
+    return {"workspace_id": workspace_id,
+            "auto_apply_threshold": workspace.auto_apply_threshold,
+            "require_separate_approver": workspace_flag,
+            # Both instance policies are floors this workspace cannot lower, so
+            # the UI has to be able to show that the effective answer differs
+            # from the stored one.
+            "separation_enforced": separation_required(workspace_flag=workspace_flag),
+            "auto_apply_disabled_by_instance": auto_apply_disabled(),
+            "require_validation_before_accept": validation_flag,
+            "validation_enforced": validation_required(workspace_flag=validation_flag,
+                                                       suite_protected=False)}
 
 
 @router.get("/workspaces/{workspace_id}/proposal-policy")
@@ -862,16 +923,7 @@ async def get_proposal_policy(
     workspace = await session.get(Workspace, workspace_id)
     if not workspace:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    from app.services.proposal_policy import auto_apply_disabled, separation_required
-    workspace_flag = bool(workspace.require_separate_approver)
-    return {"workspace_id": workspace_id,
-            "auto_apply_threshold": workspace.auto_apply_threshold,
-            "require_separate_approver": workspace_flag,
-            # Both instance policies are floors this workspace cannot lower, so
-            # the UI has to be able to show that the effective answer differs
-            # from the stored one.
-            "separation_enforced": separation_required(workspace_flag=workspace_flag),
-            "auto_apply_disabled_by_instance": auto_apply_disabled()}
+    return _policy_view(workspace_id, workspace)
 
 
 @router.put("/workspaces/{workspace_id}/proposal-policy")
@@ -904,16 +956,18 @@ async def set_proposal_policy(
     workspace.auto_apply_threshold = threshold or None
     if body.require_separate_approver is not None:
         workspace.require_separate_approver = bool(body.require_separate_approver)
+    if body.require_validation_before_accept is not None:
+        new = bool(body.require_validation_before_accept)
+        if new != bool(workspace.require_validation_before_accept):
+            from app.services.audit import record as audit_record
+            await audit_record(session, entity_type="workspace", entity_id=workspace_id,
+                               action="require_validation_before_accept", workspace_id=workspace_id,
+                               principal=principal,
+                               changes={"old": not new, "new": new})
+        workspace.require_validation_before_accept = new
     session.add(workspace)
     await session.commit()
-
-    from app.services.proposal_policy import auto_apply_disabled, separation_required
-    workspace_flag = bool(workspace.require_separate_approver)
-    return {"workspace_id": workspace_id,
-            "auto_apply_threshold": workspace.auto_apply_threshold,
-            "require_separate_approver": workspace_flag,
-            "separation_enforced": separation_required(workspace_flag=workspace_flag),
-            "auto_apply_disabled_by_instance": auto_apply_disabled()}
+    return _policy_view(workspace_id, workspace)
 
 
 def _validated_executor(payload: dict) -> str:
@@ -1088,4 +1142,9 @@ def _proposal_read(p: CaseProposal) -> CaseProposalRead:
         payload=p.payload, rationale=p.rationale, ai_confidence=p.ai_confidence,
         agent_id=p.agent_id, source_run_id=p.source_run_id, status=p.status,
         created_at=p.created_at, decided_at=p.decided_at,
+        validation_status=getattr(p, "validation_status", None),
+        validation_run_id=getattr(p, "validation_run_id", None),
+        validation_conditions=getattr(p, "validation_conditions", None),
+        validation_detail=getattr(p, "validation_detail", None),
+        validated_at=getattr(p, "validated_at", None),
     )

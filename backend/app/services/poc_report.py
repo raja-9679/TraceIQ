@@ -124,6 +124,7 @@ async def build(session, workspace: Any, projects: Sequence[Any], start: date, e
         TestRun, TestSchedule, TestStatus, TestSuite, WorkspaceWebhook,
     )
     from app.services.release_readiness import flaky_case_names
+    from app.services.run_scope import counted
 
     ids = [p.id for p in projects]
     since = datetime.combine(start, datetime.min.time())
@@ -174,7 +175,9 @@ async def build(session, workspace: Any, projects: Sequence[Any], start: date, e
     }
 
     # --- activity ---
-    in_range = (TestRun.project_id.in_(ids), TestRun.created_at >= since, TestRun.created_at < until)
+    # counted(): validation runs (WP16c) are not activity a PoC can claim.
+    in_range = (TestRun.project_id.in_(ids), TestRun.created_at >= since, TestRun.created_at < until,
+                counted())
     runs_total = passed_runs = 0
     if ids:
         for st, n in (await session.exec(select(TestRun.status, func.count(TestRun.id)).where(

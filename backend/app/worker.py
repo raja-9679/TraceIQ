@@ -108,7 +108,10 @@ def run_test_suite(run_id: int, tags: list = None):
         admit = evaluate_sync("run.dispatch", PolicyContext(
             project_id=run.project_id, stage="admit", session=session, facts={"run": run}))
         if not admit.allowed:
-            print(f"[Worker] Run {run_id} deferred: workspace at concurrency cap")
+            # Deferrals: the concurrency cap, or an exclusive environment
+            # another run holds (environment.exclusive_lock, WP16c). Either
+            # way the run stays PENDING and is retried — never failed.
+            print(f"[Worker] Run {run_id} deferred ({admit.rule}): {admit.reason}")
             run_test_suite.apply_async((run_id,), {'tags': tags},
                                        countdown=admit.data.get('retry_seconds', 30))
             return
@@ -136,6 +139,14 @@ def run_test_suite(run_id: int, tags: list = None):
             if not cases_to_run:
                 raise Exception("No test cases found to execute")
 
+            # Validation run (WP16c): the proposed heal / case edit is applied
+            # to this run's copy of the case only — an overlay object, never
+            # an assignment to the ORM row (this session commits below).
+            validation = getattr(run, 'is_validation', False) is True
+            if validation:
+                from app.services.repair_validation import apply_overlay
+                cases_to_run = apply_overlay(run, cases_to_run, session)
+
             # Manual cases are executed by people (manual runs), never by a
             # worker: they carry no automation steps.
             from app.services.manual_testing import exclude_manual
@@ -151,7 +162,10 @@ def run_test_suite(run_id: int, tags: list = None):
             # Phase B: drop quarantined test cases before dispatch so flaky
             # tests don't gate AI-agent regressions. The flake records live
             # at the test_case level; sub-step granularity is informational.
-            cases_to_run = _filter_quarantined(cases_to_run, session)
+            # A validation run tests exactly the case it names, quarantined
+            # or not.
+            if not validation:
+                cases_to_run = _filter_quarantined(cases_to_run, session)
 
             # Tag-based run selection: keep only cases carrying a requested tag.
             if tags:
@@ -167,6 +181,9 @@ def run_test_suite(run_id: int, tags: list = None):
             # Get effective settings
             effective_settings = test_service.get_effective_settings_sync(
                 run.test_suite_id, session)
+            if validation:
+                from app.services.repair_validation import harden_settings
+                harden_settings(effective_settings)
 
             # Inject the project's stored auth session (Playwright
             # storageState) so cases start already logged in. Workers skip
@@ -382,6 +399,11 @@ def run_test_suite(run_id: int, tags: list = None):
             run.status = TestStatus.ERROR
             run.error_message = str(e)
             session.add(run)
+            # The exclusive-environment lease (if any) goes now, not when the
+            # finalize claim's side effects run: that claim may already be
+            # taken, and a lease must never outlive its run.
+            from app.services.environment_lock import release_for_run
+            release_for_run(run.id)
             # Nothing was dispatched, so no result will ever finalize this
             # run: do it here (CI webhooks and notifications learn it errored).
             from app.services.run_completion import finalize_on_commit
@@ -555,6 +577,12 @@ def _settings_payload(settings: dict) -> dict:
         payload['flags'] = settings['flags']
     if settings.get('trace_correlation'):
         payload['trace_correlation'] = settings['trace_correlation']
+    # Validation run (WP16c): the worker must not self-heal or propose heals —
+    # a validation that only passed because a selector was re-pointed at run
+    # time validated nothing. Older workers ignore it (the aggregator then
+    # notices the runtime heal and fails the validation).
+    if settings.get('validation_run'):
+        payload['validation_run'] = True
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).
@@ -665,18 +693,10 @@ def _load_mobile_app(run, session) -> dict | None:
 
 def _load_environment(run, project_id, session):
     """The run's pinned environment, or the project default, as a payload dict."""
-    from sqlmodel import select
-    from app.models import ProjectEnvironment
-
-    env = None
-    if getattr(run, 'environment_id', None):
-        env = session.get(ProjectEnvironment, run.environment_id)
-    elif project_id:
-        env = session.exec(
-            select(ProjectEnvironment).where(
-                ProjectEnvironment.project_id == project_id,
-                ProjectEnvironment.is_default == True)  # noqa: E712
-        ).first()
+    # One resolution rule for the payload and the exclusive-environment lease
+    # (WP16c), so the lock is always on the environment the job really uses.
+    from app.services.environment_lock import environment_for_run
+    env = environment_for_run(run, project_id, session)
     if not env:
         return None
     return {

@@ -44,7 +44,26 @@ SIDE_EFFECT_TASKS: Tuple[Tuple[str, str, bool], ...] = (
     ("app.tasks.triage_tasks", "cluster_run_failures", False),
     # WP16b: owner email on a case's first failure after a pass.
     ("app.tasks.notification_tasks", "notify_case_owners_for_run", False),
+    # WP16c: settle the repair proposal a validation run was testing (no-op
+    # for every other run).
+    ("app.tasks.repair_validation_tasks", "record_validation_outcome", False),
 )
+
+VALIDATION_RUN_TASKS = frozenset({"record_validation_outcome"})
+
+
+def _is_validation_run(run_id: int) -> bool:
+    """One primary-key read. Errors read as "not a validation run" — the
+    worst case is a notification for a validation run, never a lost one."""
+    try:
+        from sqlmodel import Session
+        from app.services.llm_usage import _engine
+        with Session(_engine) as s:
+            run = s.get(TestRun, run_id)
+            return getattr(run, "is_validation", False) is True
+    except Exception as e:  # noqa: BLE001
+        logger.warning("[Finalize] validation lookup failed for run %s: %s", run_id, e)
+        return False
 
 
 def _claim_statement(run_id: int):
@@ -74,13 +93,31 @@ async def claim_async(session, run_id: int) -> bool:
 
 
 def queue_side_effects(run_id: int, payload: Optional[Dict[str, Any]] = None,
-                       *, loader: Callable[[str], Any] = importlib.import_module) -> List[str]:
+                       *, loader: Callable[[str], Any] = importlib.import_module,
+                       is_validation: Optional[bool] = None) -> List[str]:
     """Queue every side-effect task; returns the names that were queued.
 
     One failing import or broker hiccup never stops the others.
+
+    Also drops the run's exclusive-environment lease (WP16c) first, inline
+    rather than as a task: every terminal path (aggregator completion, stale
+    timeout, dispatch error, cancel, force-complete, legacy finalize) arrives
+    here exactly once, and the next run waiting on that environment should not
+    wait for a Celery round trip.
+
+    Validation runs (WP16c, decision V4 — a proposed repair applied to one run
+    only) get only the tasks in VALIDATION_RUN_TASKS: they must not notify,
+    fire CI webhooks, page, update a monitor, propose heals, cluster failures
+    or touch the security-finding lifecycle, since what ran is not the stored
+    test.
     """
+    from app.services.environment_lock import release_for_run
+    release_for_run(run_id)
+    validation = _is_validation_run(run_id) if is_validation is None else is_validation
     queued: List[str] = []
     for module_name, task_name, takes_payload in SIDE_EFFECT_TASKS:
+        if validation and task_name not in VALIDATION_RUN_TASKS:
+            continue
         try:
             task = getattr(loader(module_name), task_name)
             if takes_payload:
@@ -109,12 +146,17 @@ def finalize_on_commit(session, run_id: int,
     if not won:
         return False
     try:
+        validation = getattr(session.get(TestRun, run_id), "is_validation", False) is True
+    except Exception:  # noqa: BLE001 — fall back to the lookup after commit
+        validation = None
+    try:
         from sqlalchemy import event
         event.listen(session, "after_commit",
-                     lambda _s: queue_side_effects(run_id, payload), once=True)
+                     lambda _s: queue_side_effects(run_id, payload, is_validation=validation),
+                     once=True)
     except Exception as e:
         # Should not happen with a real Session; never lose the side effects
         # silently if it does.
         logger.warning("[Finalize] after_commit hook failed for run %s (%s); queueing now", run_id, e)
-        queue_side_effects(run_id, payload)
+        queue_side_effects(run_id, payload, is_validation=validation)
     return True

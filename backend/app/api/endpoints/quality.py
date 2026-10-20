@@ -28,6 +28,7 @@ from app.core.auth import get_current_user, get_current_principal, AuthPrincipal
 from app.services.access_service import access_service
 from app.services.flake_policy import active_quarantine_clause
 from app.services import gate_policy_versions, release_readiness, run_status
+from app.services.run_scope import counted, is_counted
 from app.services.audit import record as audit_record
 from app.api.jobs import api_key_allows_project
 from app.models import (
@@ -83,7 +84,7 @@ async def project_quality(
     runs = (await session.exec(
         select(TestRun).where(
             TestRun.project_id == project_id,
-            TestRun.created_at >= start))).all()
+            TestRun.created_at >= start, counted()))).all()
     finished = [r for r in runs if r.status in FINISHED]
     passed = [r for r in finished if r.status == TestStatus.PASSED]
     failed = [r for r in finished if r.status in (TestStatus.FAILED, TestStatus.ERROR)]
@@ -248,6 +249,8 @@ async def evaluate_gate_for_runs(
         policy_version = await gate_policy_versions.ensure_current(session, project)
     policy = gate_policy_versions.policy_of(policy_version)
     # Anything else in finished_runs that has no verdict is left out loudly.
+    # Validation runs (WP16c) are never evidence, whoever passed them in.
+    finished_runs = [r for r in finished_runs if is_counted(r)]
     ignored = list(ignored_run_ids or []) + [r.id for r in finished_runs if r.status not in FINISHED]
     finished_runs = [r for r in finished_runs if r.status in FINISHED]
     run_ids = [r.id for r in finished_runs]
@@ -421,6 +424,9 @@ async def evaluate_quality_gate(
     if run_ids and len({r.id for r in runs}) != len(set(run_ids)):
         # Another project's run id must not be distinguishable from a missing one.
         raise HTTPException(status_code=404, detail="Run not found in this project")
+    # Validation runs (WP16c) ran a proposed, unaccepted change: never gate
+    # evidence, even when named explicitly in run_ids.
+    runs = [r for r in runs if is_counted(r)]
 
     finished = [r for r in runs if r.status in FINISHED]
     if not run_ids and not git_commit and not git_branch:

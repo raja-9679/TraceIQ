@@ -18,6 +18,7 @@ from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
 from app.models import FailureCluster, Project, TestCase, TestCaseResult, TestRun, TestStatus
 from app.services.llm_usage import llm_call_context
+from app.services.run_scope import counted
 
 _sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 _engine = create_engine(_sync_db_url, echo=False)
@@ -178,6 +179,7 @@ def case_history(session: Session, run: TestRun, result: TestCaseResult, case_id
             TestCaseResult.test_name == result.test_name,
             TestCaseResult.test_run_id < run.id,
             TestRun.project_id == run.project_id,
+            counted(),
             TestCaseResult.status.in_([TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]),  # type: ignore[attr-defined]
         )
         .order_by(TestCaseResult.test_run_id.desc(), TestCaseResult.id.desc())  # type: ignore[attr-defined]

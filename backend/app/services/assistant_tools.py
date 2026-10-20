@@ -228,8 +228,11 @@ class AssistantData:
                    since: datetime, suite_contains: Optional[str],
                    branch: Optional[str], limit: int) -> List[Any]:
         from app.models import TestRun
+        from app.services.run_scope import counted
+        # Validation runs (WP16c) ran an unaccepted change; the assistant's
+        # "what failed?" must describe the real suite.
         stmt = select(TestRun).where(TestRun.project_id.in_(list(project_ids)),
-                                     TestRun.created_at >= since)
+                                     TestRun.created_at >= since, counted())
         if status:
             stmt = stmt.where(TestRun.status == status)
         if suite_contains:
@@ -255,9 +258,11 @@ class AssistantData:
                       status: str, since: datetime, limit: int) -> List[tuple]:
         """(TestCaseResult, TestRun) newest first."""
         from app.models import TestCaseResult, TestRun, TestStatus
+        from app.services.run_scope import counted
         stmt = (select(TestCaseResult, TestRun)
                 .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-                .where(TestRun.project_id.in_(list(project_ids)), TestRun.created_at >= since))
+                .where(TestRun.project_id.in_(list(project_ids)), TestRun.created_at >= since,
+                       counted()))
         if status == "failed":
             stmt = stmt.where(TestCaseResult.status.in_((TestStatus.FAILED, TestStatus.ERROR)))
         elif status == "passed":

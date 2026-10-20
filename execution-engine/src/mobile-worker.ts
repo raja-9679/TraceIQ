@@ -61,6 +61,7 @@ import {
 import { jobDataPolicy, policyFromDataPolicy, redactPageSource } from './core/redact';
 import { AIEngine } from './ai';
 import { aiAllowedForRun, withAiGate } from './core/ai-gate';
+import { isValidationJob } from './core/validation-run';
 import { provider as llmProvider } from './llm-provider';
 import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
 import * as fs from 'fs';
@@ -611,6 +612,7 @@ export class MobileWorker {
     ): Promise<boolean> {
         try {
             if (llmProvider.name === 'null' || !aiAllowedForRun(job.run_id)) return false;
+            if (isValidationJob(job)) return false;   // WP16c: never heal a validation run
             if (!step?.selector || !testCase.id) return false;
             if (!MOBILE_SELECTOR_FAILURE_RE.test(err.message || '')) return false;
 

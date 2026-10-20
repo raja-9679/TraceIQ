@@ -37,7 +37,27 @@ def test_every_side_effect_the_endpoint_used_to_queue_is_still_queued():
         "send_run_notifications", "dispatch_run_webhooks", "propose_selector_heals_for_run",
         "evaluate_monitor_for_run", "page_for_run", "scan_run_passive", "scan_run_leaks",
         "cluster_run_failures", "notify_case_owners_for_run",
+        # WP16c: settles a validation run's proposal (no-op for other runs).
+        "record_validation_outcome",
     ]
+
+
+def test_validation_runs_only_settle_their_proposal(monkeypatch):
+    released = []
+    from app.services import environment_lock
+    monkeypatch.setattr(environment_lock, "release_for_run", lambda rid, **k: released.append(rid))
+    calls = []
+    queued = queue_side_effects(9, None, loader=_loader(calls), is_validation=True)
+    assert queued == ["record_validation_outcome"]
+    assert released == [9]          # the environment lease goes on every terminal path
+
+
+def test_every_finished_run_releases_its_environment_lease(monkeypatch):
+    released = []
+    from app.services import environment_lock
+    monkeypatch.setattr(environment_lock, "release_for_run", lambda rid, **k: released.append(rid))
+    queue_side_effects(4, None, loader=_loader([]), is_validation=False)
+    assert released == [4]
 
 
 def test_queue_side_effects_passes_payload_only_to_notifications():

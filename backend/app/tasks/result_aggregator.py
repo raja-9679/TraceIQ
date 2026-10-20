@@ -338,6 +338,8 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
             select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)
         ).all()
 
+        from app.services.run_scope import counted, is_counted
+        validation = not is_counted(run)
         scored_case_ids = set()
         case_of_result: Dict[int, int] = {}
         score_of_case: Dict[int, float] = {}
@@ -380,6 +382,12 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                 res.test_case_id = test_case.id
                 session.add(res)
 
+            # A validation run (WP16c) ran a PROPOSED version of the case: it
+            # must not validate the stored case at a commit, nor move its
+            # flake score or quarantine. Linking the result is still right.
+            if validation:
+                continue
+
             # A pass on a run that carries git context validates the case at
             # that commit — the "does this case still match the code?" stamp.
             # Don't let it move BACKWARDS: runs finish out of order (retries,
@@ -410,6 +418,7 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                         [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]),
                     or_(TestCaseResult.error_kind.is_(None),
                         TestCaseResult.error_kind != "infrastructure"),
+                    counted(),
                 )
                 .order_by(TestCaseResult.id.desc())
                 .limit(FLAKE_WINDOW)
@@ -456,7 +465,7 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
 
             session.add(record)
 
-        for res in results:
+        for res in results if not validation else ():
             score = score_of_case.get(case_of_result.get(res.id))
             is_flaky, confidence = flake_verdict(
                 res.status, res.retry_count or 0, score)
@@ -701,6 +710,15 @@ def _persist_heal_suggestions(result: Dict[str, Any]):
     try:
         with Session(sync_engine) as session:
             run_id = result.get('run_id')
+            # Validation runs (WP16c) propose nothing: the selector under test
+            # IS a proposal. A runtime heal there means the proposed selector
+            # did not work on its own — remember it so the validation fails.
+            run = session.get(TestRun, run_id) if run_id else None
+            if run is not None and getattr(run, 'is_validation', False) is True:
+                if any(s.get('applied') for s in suggestions if isinstance(s, dict)):
+                    from app.services.repair_validation import note_runtime_heal
+                    note_runtime_heal(run_id)
+                return
             policy = None
             created = 0
             for s in suggestions[:10]:
@@ -764,7 +782,9 @@ def _persist_page_budgets(session, run, test_case_id, test_name, res: Dict[str, 
     """`check-page-budget` outcomes -> PageBudgetSample rows (WP10). Older
     workers send none. Never raises: a bad sample must not leave the job's
     result un-acked."""
-    if not res.get('page_budgets'):
+    # Validation runs (WP16c) feed no trend: the page was produced by a
+    # proposed version of the test.
+    if not res.get('page_budgets') or getattr(run, 'is_validation', False) is True:
         return
     try:
         from app.services.page_budgets import persist_samples
@@ -777,7 +797,9 @@ def _persist_visual_results(session, run, test_case_id, test_name, res: Dict[str
                             screenshot_keys):
     """`expect-visual-match` outcomes -> VisualComparison rows (WP14e).
     Older workers send none. Never raises, like the page budgets."""
-    if not res.get('visual_results'):
+    # Nor do they create review items (a reviewer could otherwise promote a
+    # baseline captured by an unaccepted change).
+    if not res.get('visual_results') or getattr(run, 'is_validation', False) is True:
         return
     try:
         from app.services.visual_review import persist_comparisons

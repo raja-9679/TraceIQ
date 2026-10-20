@@ -81,6 +81,7 @@ celery_app = Celery(
         "app.tasks.reliability_tasks",  # Flake trend snapshots + vendor health roll-ups (WP12b)
         "app.tasks.cost_tasks",         # Project budget alerts (WP12d)
         "app.tasks.compliance_tasks",   # Evidence-pack generation (WP13a)
+        "app.tasks.repair_validation_tasks",  # Env lease heartbeat + validation outcomes (WP16c)
     ]
 )
 
@@ -150,6 +151,12 @@ celery_app.conf.beat_schedule = {
     'process-job-results': {
         'task': 'app.tasks.result_aggregator.process_job_results',
         'schedule': 2.0,  # Every 2 seconds
+    },
+    # WP16c: keep exclusive-environment leases alive while their run is
+    # RUNNING; the 180 s TTL frees them if this stops.
+    'refresh-environment-leases': {
+        'task': 'app.tasks.repair_validation_tasks.refresh_environment_leases',
+        'schedule': 30.0,
     },
     'check-stale-runs': {
         'task': 'app.tasks.result_aggregator.check_stale_runs',

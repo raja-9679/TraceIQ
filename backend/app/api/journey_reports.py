@@ -36,6 +36,7 @@ from app.services import flag_coverage as fc
 from app.services import journey_coverage as jc
 from app.services.access_service import access_service
 from app.services.audit import record as audit_record
+from app.services.run_scope import counted
 
 router = APIRouter()
 
@@ -305,7 +306,7 @@ async def journey_board(project_id: int, session: AsyncSession = Depends(get_ses
                        TestRun.id, TestRun.created_at)
                 .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
                 .where(TestCaseResult.test_case_id.in_(cases.keys()),
-                       TestRun.project_id == project_id,
+                       TestRun.project_id == project_id, counted(),
                        TestRun.created_at >= now - timedelta(days=HEALTH_WINDOW_DAYS))
                 .order_by(TestRun.created_at.desc(), TestCaseResult.id.desc())
                 .limit(MAX_HEALTH_RESULTS))).all()
@@ -578,7 +579,7 @@ async def flag_coverage(project_id: int, days: int = Query(30, ge=1, le=365),
     since = datetime.utcnow() - timedelta(days=days)
     runs = (await session.exec(
         select(TestRun.id, TestRun.flags, TestRun.status, TestRun.created_at, TestRun.test_case_id)
-        .where(TestRun.project_id == project_id, TestRun.created_at >= since,
+        .where(TestRun.project_id == project_id, TestRun.created_at >= since, counted(),
                TestRun.flags.isnot(None), cast(TestRun.flags, String) != "null")
         .order_by(TestRun.created_at.desc()).limit(MAX_FLAG_RUNS + 1))).all()
     truncated = len(runs) > MAX_FLAG_RUNS

@@ -348,6 +348,10 @@ async def test_heal_accept_applies_to_action_step_and_persists(monkeypatch):
     async def no_revision(*a, **kw):
         return None
     monkeypatch.setattr("app.services.case_revisions.record_revision", no_revision)
+    # WP16c validation gate + repair outcome log: covered in test_repair_validation.py.
+    from app.services import repair_validation
+    monkeypatch.setattr(repair_validation, "enforce_accept", no_revision)
+    monkeypatch.setattr(repair_validation, "record_decision", no_revision)
 
     class S:
         async def get(self, model, pk):

@@ -51,6 +51,7 @@ import {
 } from './core/evidence';
 import { jobDataPolicy, maskSelectorsFrom, redactDom } from './core/redact';
 import { healCandidatesFor, healSuggestion, LlmHeal, runtimeHeal } from './core/selector-heal';
+import { isValidationJob } from './core/validation-run';
 import { RunScope } from './core/run-scope';
 import {
     HOOK_TEARDOWN_BUDGET_MS, HookReport, HookRunner, caseUsesHooks, isEmptyReport, mergeReports,
@@ -170,6 +171,7 @@ class ExecutionWorker {
     ): Promise<void> {
         try {
             if (!step?.selector || !testCaseId) return;
+            if (isValidationJob(job)) return;   // WP16c: the selector under test IS a proposal
             if (this.healAttempted.has(step)) return;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return;
             if (!page || page.isClosed()) return;
@@ -207,6 +209,7 @@ class ExecutionWorker {
     ): Promise<boolean> {
         try {
             if (process.env.RUNTIME_HEAL_ENABLED !== 'true') return false;
+            if (isValidationJob(job)) return false;   // WP16c: never heal a validation run
             if (!step?.selector || !page || page.isClosed()) return false;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return false;
 

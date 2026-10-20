@@ -123,6 +123,10 @@ class Workspace(SQLModel, table=True):
     # a floor above this: an instance admin can force it on and a workspace
     # cannot opt back out.
     require_separate_approver: bool = Field(default=False)
+    # WP16c (decision V4): heal / case-edit proposals cannot be accepted until a
+    # validation run (the change applied to one run only) has passed. Off by
+    # default; REQUIRE_REPAIR_VALIDATION is the instance floor above it.
+    require_validation_before_accept: bool = Field(default=False)
 
     # Max number of runs that may be RUNNING concurrently across this
     # workspace's projects. Enforced at dispatch — runs over the cap stay
@@ -320,6 +324,10 @@ class TestSuiteBase(SQLModel):
     settings: Optional[Dict[str, Any]] = Field(
         default={"headers": {}, "params": {}}, sa_column=Column(JSON))
     inherit_settings: bool = Field(default=True)
+    # WP16c (decision V4): proposals touching this suite (or a suite below it)
+    # are never auto-applied and need a passing validation run before accept.
+    # Changed only through PUT /suites/{id}/protected (editor, audited).
+    protected: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
@@ -568,6 +576,9 @@ class ProjectEnvironment(SQLModel, table=True):
     base_url: Optional[str] = Field(default=None)
     variables: dict = Field(default={}, sa_column=Column(JSON))
     is_default: bool = Field(default=False)
+    # WP16c (decision V3): one run at a time. Dispatch takes a Redis lease
+    # (app/services/environment_lock.py); other runs wait PENDING.
+    exclusive: bool = Field(default=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -735,6 +746,13 @@ class TestRunBase(SQLModel):
     # exercised, declared by the caller ({name: str | bool}). Read by the flag
     # coverage report and exposed to steps as {{flag.NAME}}. NULL = undeclared.
     flags: Optional[dict] = Field(default=None, sa_column=Column(JSON))
+    # WP16c (decision V4): a validation run — one case run once with a pending
+    # heal / case proposal applied to THIS RUN ONLY (the stored case is
+    # untouched). Excluded from every statistic via app/services/run_scope.py.
+    # kind: "heal" (SelectorHealProposal) | "case" (CaseProposal); soft ref.
+    is_validation: bool = Field(default=False, index=True)
+    validation_proposal_kind: Optional[str] = Field(default=None)
+    validation_proposal_id: Optional[int] = Field(default=None)
     # Cross-site benchmarking (WP12c): one run per target of a BenchmarkGroup;
     # the target's base URL is this run's `target_url`.
     benchmark_group_id: Optional[int] = Field(
@@ -2080,6 +2098,15 @@ class SelectorHealProposal(SQLModel, table=True):
     chosen_selector: Optional[str] = None
     dom_snapshot_key: Optional[str] = None
     recheck: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    # WP16c (decision V4) — validation run state: None (never validated) |
+    # validating | validated | validation_failed. Separate from `status` so
+    # the pending queue keeps working; conditions = {browser, device,
+    # environment_id, source_run_id, matches_source, selector?}.
+    validation_status: Optional[str] = Field(default=None)
+    validation_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id", index=True)
+    validation_conditions: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    validation_detail: Optional[str] = Field(default=None)
+    validated_at: Optional[datetime] = Field(default=None)
 
 
 class SelectorHealProposalRead(SQLModel):
@@ -2098,6 +2125,15 @@ class SelectorHealProposalRead(SQLModel):
     chosen_selector: Optional[str] = None
     has_dom_snapshot: bool = False
     recheck: Optional[Dict[str, Any]] = None
+    validation_status: Optional[str] = None
+    validation_run_id: Optional[int] = None
+    validation_conditions: Optional[Dict[str, Any]] = None
+    validation_detail: Optional[str] = None
+    validated_at: Optional[datetime] = None
+    # Computed on read for pending proposals: must it pass a validation run
+    # before accept (workspace / instance / protected suite)?
+    validation_required: Optional[bool] = None
+    protected_suite_id: Optional[int] = None
 
 
 class FlakeRecord(SQLModel, table=True):
@@ -2239,6 +2275,15 @@ class CaseProposal(SQLModel, table=True):
     # entity the same agent created in the same session.
     created_by_agent_id: Optional[str] = Field(default=None)
     agent_session_id: Optional[str] = Field(default=None, index=True)
+    # WP16c (decision V4) — validation run state: None (never validated) |
+    # validating | validated | validation_failed. Separate from `status` so
+    # the pending queue keeps working; conditions = {browser, device,
+    # environment_id, source_run_id, matches_source, selector?}.
+    validation_status: Optional[str] = Field(default=None)
+    validation_run_id: Optional[int] = Field(default=None, foreign_key="testrun.id", index=True)
+    validation_conditions: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    validation_detail: Optional[str] = Field(default=None)
+    validated_at: Optional[datetime] = Field(default=None)
 
 
 class CaseProposalRead(SQLModel):
@@ -2255,6 +2300,15 @@ class CaseProposalRead(SQLModel):
     status: str
     created_at: datetime
     decided_at: Optional[datetime]
+    validation_status: Optional[str] = None
+    validation_run_id: Optional[int] = None
+    validation_conditions: Optional[Dict[str, Any]] = None
+    validation_detail: Optional[str] = None
+    validated_at: Optional[datetime] = None
+    # Computed on read for pending proposals: must it pass a validation run
+    # before accept (workspace / instance / protected suite)?
+    validation_required: Optional[bool] = None
+    protected_suite_id: Optional[int] = None
 
 
 class CaseProposalCreate(SQLModel):
@@ -4011,6 +4065,32 @@ class CaseOwnerNotice(SQLModel, table=True):
     after_result_id: int
     recipients: int = Field(default=0)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+# =============================================================================
+# WP16c — validated repairs (decision V4)
+# =============================================================================
+
+
+class RepairOutcome(SQLModel, table=True):
+    """One event in a repair proposal's life, for repair success rates (WP16d).
+
+    event: validation_passed | validation_failed | accepted | rejected |
+    auto_applied. A repair counts as successful only on validation_passed
+    with conditions_matched (same browser / device / environment as the run
+    that failed). Proposal and run ids are soft refs: the history outlives
+    both (a proposal's case may be deleted; runs are swept by retention)."""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    proposal_kind: str                      # heal | case
+    proposal_id: int = Field(index=True)
+    event: str
+    run_id: Optional[int] = Field(default=None)
+    validated: Optional[bool] = Field(default=None)   # at accept: was it validated?
+    conditions_matched: Optional[bool] = Field(default=None)
+    conditions: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    user_id: Optional[int] = Field(default=None)
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

@@ -25,6 +25,7 @@ from app.models import (
     FailureCluster,
 )
 from app.services.access_service import access_service
+from app.services.run_scope import counted
 
 router = APIRouter()
 
@@ -56,7 +57,7 @@ async def _daily_trends(session: AsyncSession, filters: list, days: int) -> List
             failed_expr.label("failed"),
             func.avg(TestRun.duration_ms).label("avg_duration_ms"),
         )
-        .where(TestRun.created_at >= start_day, *filters)
+        .where(TestRun.created_at >= start_day, counted(), *filters)
         .group_by(day_col)
         .order_by(day_col)
     )
@@ -147,6 +148,7 @@ async def project_flakiness(
             TestRun.project_id == project_id,
             TestRun.created_at >= since,
             TestCaseResult.status.in_(_COMPLETED_FAIL_STATUSES),
+            counted(),
         )
         .group_by(TestCaseResult.test_name)
     )
@@ -226,7 +228,7 @@ async def test_effectiveness(
             func.count(func.distinct(TestCaseResult.cluster_id)).label("clusters"),
         )
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id == project_id, TestRun.created_at >= since)
+        .where(TestRun.project_id == project_id, TestRun.created_at >= since, counted())
         .group_by(TestCaseResult.test_name)
     )
     rows = (await session.exec(stmt)).all()
@@ -264,7 +266,7 @@ async def effectiveness_summary(
     run_rows = (await session.exec(
         select(TestRun.status, func.count(TestRun.id))
         .where(TestRun.project_id == project_id, TestRun.created_at >= since,
-               TestRun.status.in_(finished))
+               TestRun.status.in_(finished), counted())
         .group_by(TestRun.status))).all()
     run_counts = {str(s.value if hasattr(s, "value") else s): int(c) for s, c in run_rows}
     total_finished = sum(run_counts.values())
@@ -298,7 +300,7 @@ async def effectiveness_summary(
                func.sum(fail_case),
                func.avg(TestCaseResult.duration_ms))
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id == project_id, TestRun.created_at >= since)
+        .where(TestRun.project_id == project_id, TestRun.created_at >= since, counted())
         .group_by(TestCaseResult.test_name))).all()
     eff_list = [{"test_name": n, "runs": int(r or 0), "failures": int(f or 0),
                  "avg_duration_ms": round(float(a), 1) if a is not None else None}

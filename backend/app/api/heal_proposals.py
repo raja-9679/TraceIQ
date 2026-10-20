@@ -12,6 +12,8 @@ Surface:
     POST   /api/heal-proposals/{id}/recheck   {"selector": "..."}  (dry run)
     POST   /api/heal-proposals/{id}/accept    {"selector": "..."}  (optional)
     POST   /api/heal-proposals/{id}/reject
+    POST   /api/heal-proposals/{id}/validate  {"selector": "..."}  (WP16c: a
+           validation run of the case with this selector, that run only)
 """
 import asyncio
 from datetime import datetime
@@ -51,6 +53,11 @@ def _to_read(p: SelectorHealProposal) -> SelectorHealProposalRead:
         chosen_selector=getattr(p, "chosen_selector", None) or p.new_selector,
         has_dom_snapshot=bool(getattr(p, "dom_snapshot_key", None)),
         recheck=getattr(p, "recheck", None),
+        validation_status=getattr(p, "validation_status", None),
+        validation_run_id=getattr(p, "validation_run_id", None),
+        validation_conditions=getattr(p, "validation_conditions", None),
+        validation_detail=getattr(p, "validation_detail", None),
+        validated_at=getattr(p, "validated_at", None),
     )
 
 
@@ -87,11 +94,12 @@ async def list_proposals(
     # the same rule that gates the case itself).
     allowed: Dict[int, bool] = {}
     out = []
+    from app.services import repair_validation
     for p, pid in res.all():
         if pid not in allowed:
             allowed[pid] = await _may_see_project(principal, pid, session)
         if allowed[pid]:
-            out.append(_to_read(p))
+            out.append(await repair_validation.annotate(session, repair_validation.HEAL, p, _to_read(p)))
     return out
 
 
@@ -187,6 +195,13 @@ async def accept_proposal(
     if check["status"] in _BLOCKING_RECHECK:
         raise HTTPException(status_code=409, detail=f"Recheck failed for {selector}: {check['detail']}")
 
+    # WP16c: when the workspace / instance / a protected suite requires it, a
+    # passing validation run of THIS selector (policy engine,
+    # proposal.validation_required).
+    from app.services import repair_validation
+    await repair_validation.enforce_accept(session, repair_validation.HEAL, p, principal.user.id,
+                                           selector)
+
     steps[idx] = {**steps[idx], "selector": selector}
     updated = True
     # A new list object: mutating the stored JSON in place is not reliably
@@ -205,6 +220,8 @@ async def accept_proposal(
         from app.services.case_revisions import record_revision
         await record_revision(session, case, "heal", user_id=principal.user.id,
                               agent_id=principal.agent_id)
+    await repair_validation.record_decision(session, repair_validation.HEAL, p, "accepted",
+                                            case.project_id, principal.user.id)
     await session.commit()
     return {"status": "accepted", "applied": updated, "selector": selector, "recheck": check}
 
@@ -218,13 +235,41 @@ async def reject_proposal(
     p = await session.get(SelectorHealProposal, proposal_id)
     if not p:
         raise HTTPException(status_code=404, detail="Proposal not found")
-    await _check_editor_on_case(p.test_case_id, principal.user.id, session, principal)
+    case = await _check_editor_on_case(p.test_case_id, principal.user.id, session, principal)
     p.status = "rejected"
     p.decided_at = datetime.utcnow()
     p.decided_by_id = principal.user.id
     session.add(p)
+    from app.services import repair_validation
+    await repair_validation.record_decision(session, repair_validation.HEAL, p, "rejected",
+                                            case.project_id, principal.user.id)
     await session.commit()
     return {"status": "rejected"}
+
+
+@router.post("/heal-proposals/{proposal_id}/validate")
+async def validate_proposal(
+    proposal_id: int,
+    choice: Optional[HealSelectorChoice] = Body(default=None),
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """Run the case once with this heal applied to that run only (WP16c).
+    Same conditions as the failing run; the stored case is untouched."""
+    p = await session.get(SelectorHealProposal, proposal_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    case = await _check_editor_on_case(p.test_case_id, principal.user.id, session, principal)
+    if p.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Proposal is already {p.status}")
+    selector = _pick_selector(p, choice)
+    steps = [s if isinstance(s, dict) else s.dict() for s in (case.steps or [])]
+    step = next((s for s in steps if s.get("id") == p.step_id), None)
+    refusal = heal_refusal(step, p.old_selector)
+    if refusal:
+        raise HTTPException(status_code=409, detail=refusal)
+    from app.services import repair_validation
+    return await repair_validation.launch(session, principal, repair_validation.HEAL, p, selector)
 
 
 # Steps whose selector IS the assertion. Re-pointing one at "whatever matches

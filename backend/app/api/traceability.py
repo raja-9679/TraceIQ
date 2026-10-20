@@ -20,6 +20,7 @@ from app.models import (
     User, TestCase, TestCaseResult, TestRun, TestStatus, RequirementLink,
     RequirementLinkCreate, RequirementLinkRead, RequirementCoverage,
 )
+from app.services.run_scope import counted
 
 router = APIRouter()
 _FAIL = (TestStatus.FAILED, TestStatus.ERROR)
@@ -32,7 +33,8 @@ async def _latest_status_by_name(session: AsyncSession, project_id: int, names: 
     rows = (await session.exec(
         select(TestCaseResult.test_name, TestCaseResult.status, TestCaseResult.id)
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id == project_id, TestCaseResult.test_name.in_(list(names)))
+        .where(TestRun.project_id == project_id, counted(),
+               TestCaseResult.test_name.in_(list(names)))
         .order_by(TestCaseResult.id.desc()))).all()
     latest = {}
     for name, status, _rid in rows:

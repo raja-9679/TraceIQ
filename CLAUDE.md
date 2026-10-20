@@ -1504,6 +1504,50 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `app/services/ownership_review.py` / `app/api/case_ownership.py` (not
   `test_*` — pytest would collect them). Backend + frontend rebuild.
 
+- **Environment locks + validated repairs (WP16c, 2026-10, V3/V4)** —
+  migration `e132b3c4d613`. **Locks:** `ProjectEnvironment.exclusive`; rule
+  `environment.exclusive_lock` (run.dispatch/admit, after the concurrency cap)
+  wraps `environment_lock.try_acquire` — Redis lease `envlock:env:<id>` = run
+  id (+ meta/reverse/wait keys), TTL 180 s, renewed by beat
+  `refresh-environment-leases` (30 s) only while the holder is RUNNING (a
+  PENDING holder gets 10 min grace). Losers DEFER (PENDING, retry 20 s), never
+  fail; fail open on Redis errors; `target_url` runs exempt. Released
+  compare-and-delete in `run_completion.queue_side_effects` (every terminal
+  path funnels there) and in `run_test_suite`'s exception path. UI data:
+  environment list `lock`, `GET /runs/{id}/environment-lock`,
+  `DELETE /environments/{id}/lock` (editor, audited). **Validated repairs:**
+  `POST /heal-proposals/{id}/validate {selector?}` and
+  `/case-proposals/{id}/validate` (UPDATE with steps/executor only) create a
+  `TestRun(is_validation, validation_proposal_kind/_id)` copying the source
+  run's browser/device/environment/persona/emulation. The change is an
+  `OverlayCase` built at dispatch (`repair_validation.overlay_for_run`) —
+  never assigned to the ORM row; retries and runtime heal are off
+  (`settings.validation_run`, worker `core/validation-run.ts`; an older
+  worker's applied runtime heal is noticed by the aggregator and fails the
+  validation). Proposals carry `validation_status`
+  (validating|validated|validation_failed, separate from `status`),
+  `validation_run_id` (NULLIFY on run delete), conditions, detail; settled by
+  `record_validation_outcome` (in SIDE_EFFECT_TASKS — the ONLY side effect a
+  validation run gets). A heal validation counts only for the selector it ran.
+  Rules `proposal.validation_required` (approve + auto_apply; facts from
+  `repair_validation.repair_guard`) and `proposal.protected_suite`
+  (auto_apply) wrap `proposal_policy.validation_block` / `protected_block`.
+  Required when `workspace.require_validation_before_accept` (proposal-policy
+  endpoint), `REQUIRE_REPAIR_VALIDATION` (instance floor) or the proposal
+  touches a `TestSuite.protected` suite or its subtree
+  (`PUT /suites/{id}/protected`, editor, humans only, audited). `RepairOutcome`
+  logs validation_passed/failed (+ `conditions_matched`) and
+  accepted/rejected/auto_applied for WP16d. **Exclusion:** every aggregate
+  filters with `app/services/run_scope.py` (`counted()`, `NOT t.is_validation`
+  in raw SQL): analytics, quality dashboard + gate (also inside
+  `evaluate_gate_for_runs`, even explicit run_ids), release readiness, DORA,
+  reporting/digests/portfolio, PoC, flake snapshots + patterns, vendor health,
+  requirements/traceability/journeys/flags, selector health, failure history,
+  impact analysis + case history, assistant tools; the aggregator skips
+  last_validated stamping, flake scoring, page budgets, visual comparisons and
+  heal proposals for them. Deliberately NOT excluded: run lists, cost/quota,
+  ops metrics, the concurrency cap. Worker + backend + frontend rebuild needed.
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

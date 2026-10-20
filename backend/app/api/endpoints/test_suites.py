@@ -33,6 +33,9 @@ async def create_test_suite(
     principal: AuthPrincipal = Depends(get_current_principal),
 ):
     current_user = principal.user
+    # Protection is switched on through PUT /suites/{id}/protected (editor,
+    # audited) — never as a side effect of a create body (WP16c).
+    suite.protected = False
     # If no project_id provided, try to find a default project for the user
     if not suite.project_id:
         org_stmt = select(Project.id).join(UserWorkspace, UserWorkspace.workspace_id == Project.workspace_id).where(UserWorkspace.user_id == current_user.id)
@@ -542,3 +545,46 @@ async def import_child_suite(suite_id: int, suite_data: Dict[str, Any], session:
     session.add(audit)
     await session.commit()
     return {"status": "success", "id": new_suite.id}
+
+
+from pydantic import BaseModel as _BaseModel  # noqa: E402
+
+
+class SuiteProtection(_BaseModel):
+    protected: bool
+
+
+@router.put("/suites/{suite_id}/protected")
+async def set_suite_protected(
+    suite_id: int,
+    body: SuiteProtection,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """WP16c (decision V4): protect a suite. Proposals touching it (or a suite
+    below it) are never auto-applied and need a passing validation run before
+    a human accepts them. Editor; humans only — an agent must not be able to
+    lower the bar its own proposals are judged by. Audited."""
+    if principal.is_api_caller:
+        raise HTTPException(status_code=403, detail="API keys cannot change suite protection")
+    suite = await session.get(TestSuite, suite_id)
+    if not suite:
+        raise HTTPException(status_code=404, detail="Suite not found")
+    if not await access_service.has_project_access(principal.user.id, suite.project_id, session,
+                                                   min_role="editor"):
+        raise HTTPException(status_code=403, detail="Editor access required")
+    old = bool(suite.protected)
+    if old != body.protected:
+        suite.protected = body.protected
+        suite.updated_at = datetime.utcnow()
+        suite.updated_by_id = principal.user.id
+        session.add(suite)
+        project = await session.get(Project, suite.project_id)
+        from app.services.audit import record as audit_record
+        await audit_record(session, entity_type="suite", entity_id=suite_id,
+                           action="protected" if body.protected else "unprotected",
+                           workspace_id=getattr(project, "workspace_id", None),
+                           principal=principal,
+                           changes={"protected": {"old": old, "new": body.protected}})
+        await session.commit()
+    return {"suite_id": suite_id, "protected": bool(suite.protected)}

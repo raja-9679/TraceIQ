@@ -26,6 +26,7 @@ from app.models import (
     TestCase, TestCaseResult, TestRun, TestStatus, VendorHealthDaily,
 )
 from app.services import flake_patterns, vendor_health
+from app.services.run_scope import counted
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +63,7 @@ def _result_counts(session: Session, project_id: int, day: date) -> Dict[str, in
         )
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
         .where(TestRun.project_id == project_id, TestRun.created_at >= start,
-               TestRun.created_at < end, TestCaseResult.status.in_(_FINISHED))
+               TestRun.created_at < end, TestCaseResult.status.in_(_FINISHED), counted())
     ).one()
     return {"results_total": int(row[0] or 0), "results_flaky": int(row[1] or 0),
             "results_failed": int(row[2] or 0)}
@@ -139,7 +140,7 @@ def aggregate_day(session: Session, day: date) -> int:
                    TestRun.target_url, TestRun.environment_id)
             .where(TestRun.created_at >= start, TestRun.created_at < end,
                    TestRun.project_id.is_not(None), TestRun.status.in_(_FINISHED),
-                   TestRun.id > last_id)
+                   counted(), TestRun.id > last_id)
             .order_by(TestRun.id).limit(_RUN_BATCH)).all()
         if not runs:
             break

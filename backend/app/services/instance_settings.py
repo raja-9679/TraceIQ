@@ -357,6 +357,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "changes have no human reviewer at any point, so a "
                            "regulated environment needs to be able to switch it off "
                            "and demonstrate that it is off"),
+    SettingDef("REQUIRE_REPAIR_VALIDATION", "policies", type="bool",
+               label="Repairs need a passing validation run",
+               description="heal and case-edit proposals cannot be accepted (or auto-applied) "
+                           "until a validation run — the change applied to one run only — has "
+                           "passed. Turning this on here forces it for EVERY workspace; a "
+                           "workspace can still opt in on its own"),
     # WP14b — agent session budgets (decision W3). Per X-Agent-Session-Id;
     # a workspace's Agents page overrides them. Empty / 0 = no limit.
     SettingDef("AGENT_SESSION_MAX_RUNS", "policies", type="int",

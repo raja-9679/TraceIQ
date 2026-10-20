@@ -42,6 +42,7 @@ from app.models import (
 from app.services import acceptance_criteria, generation_proposals, tracker_import
 from app.services.access_service import access_service
 from app.services.audit import record as audit_record
+from app.services.run_scope import counted
 
 router = APIRouter()
 
@@ -323,7 +324,7 @@ async def coverage_for(session: AsyncSession, project_id: int,
         rows = (await session.exec(
             select(TestCaseResult.test_case_id, TestCaseResult.test_name, TestCaseResult.status)
             .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-            .where(TestRun.project_id == project_id,
+            .where(TestRun.project_id == project_id, counted(),
                    (TestCaseResult.test_case_id.in_(list(case_ids)))
                    | (TestCaseResult.test_name.in_(list(names))))
             .order_by(TestCaseResult.id.desc()))).all()

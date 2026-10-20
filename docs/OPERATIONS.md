@@ -360,6 +360,44 @@ What still starts it: `docker-compose.yml` (local dev), and the legacy
 only under `--profile legacy`. The community and prod compose files, the AIO
 image and the Helm chart never ran it. To remove it from a host that ran it:
 `docker compose rm -sf execution-engine`.
+## Exclusive environments (WP16c)
+
+Mark an environment **exclusive** (Environments page → Exclusive use) when two
+runs against it would interfere — one shared test account, a staging database
+a suite resets, a sandbox with one merchant. Dispatch then takes a Redis lease
+on the environment (policy rule `environment.exclusive_lock`, stage `admit`):
+
+- Other runs on that environment stay **PENDING** and are retried every 20 s.
+  They never fail for waiting. Their run page says *Waiting for environment X,
+  held by run #N*; the environment shows *In use by run #N since …*.
+- **Several runs from one request queue behind each other.** A browser /
+  device / persona / viewport matrix started with one `POST /api/runs` on an
+  exclusive environment runs one variant at a time — expect it to take N times
+  as long. A run uses one environment, so runs cannot deadlock.
+- The lease is released on every terminal status (pass, fail, error, cancel,
+  time-out, force-complete) and when dispatch itself fails. Its TTL is 180 s,
+  renewed every 30 s by the beat task `refresh-environment-leases` while the
+  holder is RUNNING; a crashed worker holds it only until `check_stale_runs`
+  times the run out. If beat stops, leases expire on their own.
+- **Force release** (editor, audited as `lock_force_released`) drops the lease
+  without stopping the holder run — the next waiting run then shares the
+  environment with it. Use it for a lease you know is stale.
+- Comparison / benchmark runs (`target_url`) do not take the lease: they do not
+  use the environment's deployment. Redis errors admit the run (fail open,
+  like the concurrency cap).
+
+## Validation runs (WP16c)
+
+A heal or case-edit proposal can be **validated** before it is accepted: the
+case runs once with the proposed change applied to that run only (the stored
+case, its revisions, git-sync export and repro bundles never see it), under
+the failing run's browser, device, environment and persona, with retries and
+runtime self-heal switched off. Validation runs are excluded from every
+statistic (`app/services/run_scope.py`) and send no notifications, CI
+webhooks, pages or monitor checks. Workspaces can require a passing
+validation before accept (Proposals → policy); `REQUIRE_REPAIR_VALIDATION` is
+the instance floor; a **protected** suite forces it and never auto-applies.
+They do count as runs for plan quota and browser-minute cost.
 
 ## Outbound webhook deliveries
 
