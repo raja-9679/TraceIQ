@@ -43,6 +43,8 @@ export interface QualityGatePolicy {
     max_evidence_age_days: number | null;
     // The newest release sign-off (for the commit) must be an approval.
     require_manual_signoff?: boolean;
+    // WP15d: no NEW accessibility violation at serious/critical (waived excluded).
+    block_new_accessibility_violations?: boolean;
 }
 
 export interface ExternalTestReport {

@@ -11,6 +11,7 @@ import Proposals from "@/pages/Proposals";
 import Environments from "@/pages/Environments";
 import AppBuilds from "@/pages/AppBuilds";
 import VisualReview from "@/pages/VisualReview";
+import Accessibility from "@/pages/Accessibility";
 import ApiKeys from "@/pages/ApiKeys";
 import Webhooks from "@/pages/Webhooks";
 import FlakyTests from "@/pages/FlakyTests";
@@ -142,6 +143,7 @@ function App() {
                 <Route path="environments" element={<Environments />} />
                 <Route path="app-builds" element={<AppBuilds />} />
                 <Route path="visual-review" element={<VisualReview />} />
+                <Route path="accessibility" element={<Accessibility />} />
                 <Route path="flaky-tests" element={<FlakyTests />} />
                 <Route path="reports/delivery" element={<DeliveryReport />} />
                 <Route path="reports/slo" element={<SloReports />} />

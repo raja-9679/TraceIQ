@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Globe, Plus, Trash2, PenLine, Star, X, Check, KeyRound, ChevronRight,
+  Globe, Plus, Trash2, PenLine, Star, X, Check, KeyRound, ChevronRight, Network,
 } from 'lucide-react';
+import { HarFilesDetail } from '@/components/har/HarFilesDetail';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
@@ -552,7 +553,7 @@ function SecretsDetail({ projectId, secrets, isLoading, error }: {
 // Split view
 // ---------------------------------------------------------------------------
 
-type Selection = { type: 'env'; id: number } | { type: 'secrets' } | { type: 'new' } | null;
+type Selection = { type: 'env'; id: number } | { type: 'secrets' } | { type: 'hars' } | { type: 'new' } | null;
 
 function EnvironmentsView({ projectId, selection, setSelection }: {
   projectId: number;
@@ -575,8 +576,9 @@ function EnvironmentsView({ projectId, selection, setSelection }: {
   // Nothing picked yet (or the picked one was deleted): fall back to the
   // default environment, then the first, then secrets.
   const fallbackEnv = envs.find((e) => e.is_default) ?? envs[0] ?? null;
-  const showSecrets = selection?.type === 'secrets' || (!selectedEnv && selection?.type !== 'new' && !fallbackEnv && !isLoading);
-  const activeEnv = selection?.type === 'new' || selection?.type === 'secrets' ? null : selectedEnv ?? fallbackEnv;
+  const showHars = selection?.type === 'hars';
+  const showSecrets = selection?.type === 'secrets' || (!selectedEnv && !showHars && selection?.type !== 'new' && !fallbackEnv && !isLoading);
+  const activeEnv = selection?.type === 'new' || selection?.type === 'secrets' || showHars ? null : selectedEnv ?? fallbackEnv;
 
   const secretCount = secretsQuery.data?.length;
 
@@ -617,6 +619,14 @@ function EnvironmentsView({ projectId, selection, setSelection }: {
               meta={secretCount === undefined ? 'Write-only values' : `${secretCount} stored · write-only`}
               trailing={<ChevronRight className="h-4 w-4 text-ink-soft" aria-hidden="true" />}
             />
+            <ListRow
+              selected={showHars}
+              onSelect={() => setSelection({ type: 'hars' })}
+              leading={<IconChip icon={Network} tone="neutral" />}
+              title="Recorded traffic (HAR)"
+              meta="Replayed by har-replay steps"
+              trailing={<ChevronRight className="h-4 w-4 text-ink-soft" aria-hidden="true" />}
+            />
           </ListGroup>
 
           <Panel title="Using environments">
@@ -635,6 +645,8 @@ function EnvironmentsView({ projectId, selection, setSelection }: {
             onDone={() => setSelection(null)}
             onCreated={(id) => setSelection({ type: 'env', id })}
           />
+        ) : showHars ? (
+          <HarFilesDetail projectId={projectId} />
         ) : showSecrets ? (
           <SecretsDetail
             projectId={projectId}

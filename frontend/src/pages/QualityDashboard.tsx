@@ -104,6 +104,9 @@ function PolicyForm({ projectId, initial }: { projectId: number; initial: Qualit
                     onChange={(v) => setPolicy({ ...policy, max_evidence_age_days: v === '' ? null : Math.max(1, parseInt(v) || 1) })} />
                 <CheckRow label="Require an approved release sign-off (manual testing)" checked={policy.require_manual_signoff ?? false}
                     onChange={(v) => setPolicy({ ...policy, require_manual_signoff: v })} />
+                <CheckRow label="No new accessibility violations at serious or above (waived ones excluded)"
+                    checked={policy.block_new_accessibility_violations ?? false}
+                    onChange={(v) => setPolicy({ ...policy, block_new_accessibility_violations: v })} />
             </div>
             <div className="mt-3 border-t border-border pt-3">
                 <Eyebrow>Performance budgets (0 = off)</Eyebrow>
