@@ -1583,6 +1583,28 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   ./run-tests-live.sh` scopes every directly-called endpoint via
   `tests/integration/conftest.py`. New tenant table → policy + migration, or
   `RLS_EXEMPT` with a reason.
+- **TraceIQ's own E2E suite (WP15c, H5, 2026-10-20)** — `e2e/` (own
+  package, `@playwright/test` pinned EXACTLY to the runner image
+  `mcr.microsoft.com/playwright:v<same>-noble` — bump both together).
+  `e2e/run-e2e.sh [--build] [--keep] [-- <playwright args>]` builds the three
+  images as `:e2e`, generates a `.env` with the real `traceiq-setup.sh` in a
+  temp dir, starts the community compose file + `e2e/docker-compose.e2e.yml`
+  as project `traceiq-e2e` (host ports `!reset` — nothing published; adds
+  `e2e-target`, a static nginx page the cases browse, never the internet) and
+  runs Playwright from the `e2e` service ON the stack network
+  (`http://frontend`). Plain http on a non-localhost name on purpose: that is
+  a LAN self-hoster, and it caught `crypto.randomUUID` (secure-context only)
+  crashing the builder — use `lib/ids.ts:newId()`. Covers signup + login
+  (first user = instance admin), project/suite/case via the UI, run → Passed
+  with step evidence, cancel → Cancelled, and EVERY sidebar destination parsed
+  from `nav.ts` as text (count guard > 40): no pageerror, no app
+  console.error, no 5xx, an h1. Console allow-list in `tests/support/health.ts`
+  (each entry has a reason; 4xx are attached to the report, not failures).
+  Waits are conditions (`settle()` = no same-origin request for 750 ms), never
+  sleeps. CI: `.github/workflows/e2e.yml`, dispatch-only. Real-vendor checks
+  (SAML, PagerDuty/Opsgenie, Jira/Linear, Splunk/Elastic, Jaeger/Tempo) are
+  the manual `docs/REAL_SERVICE_CHECKLIST.md`; results go in the tracker,
+  never credentials.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

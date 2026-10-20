@@ -1,0 +1,64 @@
+# Overlay for TraceIQ's own E2E suite (WP15c). Layered on the community file:
+#
+#   docker compose -p traceiq-e2e --env-file <env> \
+#     -f infrastructure/docker-compose.community.yml -f e2e/docker-compose.e2e.yml ...
+#
+# Relative paths below resolve against the FIRST -f file's directory
+# (infrastructure/), which is why the repo root is "..".
+#
+# Nothing is published to the host: the Playwright runner joins the stack's
+# network instead, so the suite works the same on a laptop whose firewall
+# blocks host->container ports and on a CI runner, and cannot collide with
+# another TraceIQ stack on the same machine.
+
+services:
+  backend:
+    ports: !reset []
+  frontend:
+    ports: !reset []
+  object-store:
+    ports: !reset []
+
+  # The site the E2E test cases browse. Served by the stack itself so the suite
+  # never depends on (or hammers) an internet site.
+  e2e-target:
+    image: nginx:1.27-alpine
+    configs:
+      - source: e2e_target_index
+        target: /usr/share/nginx/html/index.html
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # Workers reach sites under test over traceiq_egress.
+    networks: [traceiq_internal, traceiq_egress]
+
+  # The Playwright runner. Only started by `docker compose run e2e`.
+  e2e:
+    image: mcr.microsoft.com/playwright:v1.61.1-noble
+    profiles: ["e2e"]
+    working_dir: /work/e2e
+    # Run as the invoking user so test-results/ and the report on the bind
+    # mount are not root-owned (run-e2e.sh exports these).
+    user: "${E2E_UID:-1000}:${E2E_GID:-1000}"
+    environment:
+      HOME: /tmp
+      CI: ${CI:-}
+      TRACEIQ_E2E_BASE_URL: http://frontend
+      TRACEIQ_E2E_TARGET_URL: http://e2e-target/
+      TRACEIQ_E2E_TARGET_TITLE: TraceIQ E2E target
+    volumes:
+      - ..:/work
+    ipc: host
+    command: ["sh", "-c", "npm ci --no-audit --no-fund && npx playwright test"]
+    networks: [traceiq_internal]
+
+configs:
+  e2e_target_index:
+    content: |
+      <!doctype html>
+      <html lang="en">
+        <head><meta charset="utf-8"><title>TraceIQ E2E target</title></head>
+        <body><h1>TraceIQ E2E target</h1><p>Static page the E2E suite's test cases visit.</p></body>
+      </html>

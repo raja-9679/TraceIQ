@@ -1,0 +1,105 @@
+name: E2E
+
+# TraceIQ's own browser end-to-end suite (WP15c): builds the three images from
+# this commit, brings up the community compose stack with a freshly generated
+# .env, runs e2e/ (Playwright) from a container on the stack's network, and
+# uploads the report. Manual only, like every workflow in this repo (owner's
+# request, 2026-10-14) — start it from the Actions tab. Do not add push/PR
+# triggers.
+on:
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: "Only run tests whose title matches (playwright --grep); empty = all"
+        required: false
+        default: ""
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TRACEIQ_VERSION: e2e
+      TRACEIQ_REGISTRY: ghcr.io/raja-9679
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Built locally (load: true), never pushed. The GHA cache keeps reruns of
+      # an unchanged tree fast.
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          tags: ghcr.io/raja-9679/traceiq-backend:e2e
+          load: true
+          cache-from: type=gha,scope=e2e-backend
+          cache-to: type=gha,mode=max,scope=e2e-backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile
+          tags: ghcr.io/raja-9679/traceiq-frontend:e2e
+          load: true
+          cache-from: type=gha,scope=e2e-frontend
+          cache-to: type=gha,mode=max,scope=e2e-frontend
+
+      - name: Build execution-worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./execution-engine
+          file: ./execution-engine/Dockerfile.worker
+          tags: ghcr.io/raja-9679/traceiq-execution-worker:e2e
+          load: true
+          cache-from: type=gha,scope=e2e-worker
+          cache-to: type=gha,mode=max,scope=e2e-worker
+
+      # Same guarantee the security job checks: no secret has a default, so
+      # the stack below can only start with the generated .env.
+      - name: Community compose refuses to render without secrets
+        working-directory: infrastructure
+        run: |
+          if docker compose -f docker-compose.community.yml config >/dev/null 2>&1; then
+            echo "::error::compose rendered with no secrets set — a default has crept back in"
+            exit 1
+          fi
+
+      - name: Run the E2E suite
+        env:
+          GREP: ${{ inputs.grep }}
+        run: |
+          if [ -n "$GREP" ]; then
+            e2e/run-e2e.sh -- --grep "$GREP"
+          else
+            e2e/run-e2e.sh
+          fi
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-playwright-report
+          path: e2e/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      # Traces, failure screenshots, junit.xml and (on failure) stack logs.
+      # Stack logs are application logs from a throwaway stack with generated
+      # secrets that are discarded with it.
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-test-results
+          path: e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
