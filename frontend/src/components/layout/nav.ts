@@ -82,13 +82,17 @@ export const places: Place[] = [
     {
         name: 'Tests', href: '/suites', icon: FlaskConical,
         // Analytics lives here: it reports per-project test effectiveness, not a release.
-        match: ['/suites', '/suites/*', '/import-playwright', '/test-packs', '/environments', '/app-builds', '/schedules', '/analytics', '/frontend-quality'],
+        match: ['/suites', '/suites/*', '/tests/review', '/import-playwright', '/test-packs', '/environments', '/app-builds', '/schedules', '/analytics', '/frontend-quality', '/accessibility'],
         children: [
             { name: 'Suites', href: '/suites' },
+            // WP16b: owners and overdue reviews.
+            { name: 'Test review', href: '/tests/review' },
             { name: 'Schedules', href: '/schedules' },
             { name: 'Environments', href: '/environments' },
             { name: 'App builds', href: '/app-builds' },
             { name: 'Frontend quality', href: '/frontend-quality' },
+            // WP15d: stored violations, waivers, trend.
+            { name: 'Accessibility', href: '/accessibility' },
             { name: 'Import Playwright', href: '/import-playwright' },
             { name: 'Test packs', href: '/test-packs' },
             { name: 'Analytics', href: '/analytics' },
