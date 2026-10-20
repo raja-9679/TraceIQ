@@ -26,6 +26,7 @@ import FlagCoverage from "@/pages/FlagCoverage";
 import Benchmarks from "@/pages/Benchmarks";
 import QualityDashboard from "@/pages/QualityDashboard";
 import ReleaseReadiness from "@/pages/ReleaseReadiness";
+import TestReview from "@/pages/TestReview";
 import Monitors from "@/pages/Monitors";
 import Security from "@/pages/Security";
 import AccessReviews from "@/pages/AccessReviews";
@@ -109,6 +110,7 @@ function App() {
                 <Route path="suites/:suiteId" element={<SuiteDetails />} />
                 <Route path="quality" element={<QualityDashboard />} />
                 <Route path="release-readiness" element={<ReleaseReadiness />} />
+                <Route path="tests/review" element={<TestReview />} />
                 <Route path="monitors" element={<Monitors />} />
                 <Route path="security" element={<Security />} />
                 <Route path="access-reviews" element={<AccessReviews />} />

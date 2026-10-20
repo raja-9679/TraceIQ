@@ -144,6 +144,9 @@ function EmailCard({ projectId, saved, canEdit }: { projectId: number; saved: Pr
                     disabled={!canEdit} onChange={(v) => set({ email_enabled: v })} />
                 <CheckRow id="pn-failures" label="Only for failed runs" hint="Skip runs where every test passed."
                     checked={draft.failures_only} disabled={!canEdit} onChange={(v) => set({ failures_only: v })} />
+                <CheckRow id="pn-case-owners" label="Tell a test's owner when it starts failing"
+                    hint="One email to the owner (or the backup owner) the first time a test fails after passing."
+                    checked={draft.notify_case_owners} disabled={!canEdit} onChange={(v) => set({ notify_case_owners: v })} />
                 <RowGroup title="People">
                     <p className="mb-1 text-xs leading-relaxed text-ink-soft">
                         The person who started a run is always included. Tick anyone else who should hear about every run;

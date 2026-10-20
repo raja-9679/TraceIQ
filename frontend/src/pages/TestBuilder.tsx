@@ -5,6 +5,7 @@ import { Plus, Save, Loader2, ArrowLeft, Link2, MousePointerClick, TextCursorInp
 import { toast } from 'sonner';
 import { StepComponent, TestStep } from "@/components/test-builder/StepComponent";
 import { CaseHistoryDialog } from "@/components/test-builder/CaseHistoryDialog";
+import { CaseOwnershipPanel } from "@/components/ownership/CaseOwnershipPanel";
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -398,6 +399,9 @@ export default function TestBuilder() {
             </div>
 
             <div className="max-w-4xl mx-auto pb-24">
+                {isEditing && caseId && serverData?.project_id && (
+                    <CaseOwnershipPanel caseId={parseInt(caseId)} projectId={serverData.project_id} />
+                )}
                 {/* ── Per-case execution matrix panel ── */}
                 {showMatrix && (
                     <div className="mb-8 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-5">

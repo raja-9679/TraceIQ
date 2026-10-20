@@ -14,6 +14,11 @@ describe('project notification helpers', () => {
         expect(emailsFromText(' a@x.com\nb@x.com, A@x.com;c@x.com \n\n')).toEqual(['a@x.com', 'b@x.com', 'c@x.com']);
     });
 
+    it('the owner-notification switch is sent only when changed (absent on old servers = off)', () => {
+        expect(isEmpty(emailPatch(saved, emailDraftFrom(saved)))).toBe(true);
+        expect(emailPatch(saved, { ...emailDraftFrom(saved), notify_case_owners: true })).toEqual({ notify_case_owners: true });
+    });
+
     it('an untouched email card sends nothing', () => {
         expect(isEmpty(emailPatch(saved, emailDraftFrom(saved)))).toBe(true);
         // Same recipients in a different order is not a change.

@@ -9,6 +9,8 @@ export interface ProjectNotificationSettings {
     failures_only: boolean;
     slack_enabled: boolean;
     teams_enabled: boolean;
+    /** Email a test's owner on its first failure after a pass (WP16b). */
+    notify_case_owners?: boolean;
     /** Webhook URLs never come back from the server: only whether one is set and a short hint. */
     slack_webhook_set: boolean;
     slack_webhook_hint: string | null;
@@ -18,7 +20,8 @@ export interface ProjectNotificationSettings {
 
 /** A partial update. A webhook is sent as a URL to set it, '' to clear it, or left out to keep it. */
 export type ProjectNotificationPatch = Partial<Pick<ProjectNotificationSettings,
-    'email_enabled' | 'recipient_user_ids' | 'extra_emails' | 'failures_only' | 'slack_enabled' | 'teams_enabled'>> & {
+    'email_enabled' | 'recipient_user_ids' | 'extra_emails' | 'failures_only' | 'slack_enabled' | 'teams_enabled'
+    | 'notify_case_owners'>> & {
     slack_webhook?: string;
     teams_webhook?: string;
 };

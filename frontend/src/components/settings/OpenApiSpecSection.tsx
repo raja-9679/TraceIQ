@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import {
     deleteOpenApiSpec, getOpenApiSpec, parseSpecFile, putOpenApiSpec,
 } from '@/api/openapiSpec';
+import { OpenApiSpecHistory } from './OpenApiSpecHistory';
 
 /**
  * The project's OpenAPI document. API steps reference it with
@@ -36,6 +37,7 @@ export function OpenApiSpecSection({ projectId }: { projectId: number }) {
         mutationFn: (body: { spec?: Record<string, unknown>; url?: string }) => putOpenApiSpec(projectId, body),
         onSuccess: (view) => {
             queryClient.setQueryData(key, view);
+            queryClient.invalidateQueries({ queryKey: ['openapi-spec-versions', projectId] });
             setUrl('');
             toast.success(`Spec saved: ${view.operations.length} operations`);
         },
@@ -143,6 +145,8 @@ export function OpenApiSpecSection({ projectId }: { projectId: number }) {
                     </Button>
                 )}
             </div>
+
+            <OpenApiSpecHistory projectId={projectId} />
         </section>
     );
 }

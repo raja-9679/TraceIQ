@@ -17,6 +17,7 @@ export function emailsFromText(text: string): string[] {
 export interface EmailDraft {
     email_enabled: boolean;
     failures_only: boolean;
+    notify_case_owners: boolean;
     recipient_user_ids: number[];
     extraText: string;
 }
@@ -24,6 +25,7 @@ export interface EmailDraft {
 export const emailDraftFrom = (s: ProjectNotificationSettings): EmailDraft => ({
     email_enabled: s.email_enabled,
     failures_only: s.failures_only,
+    notify_case_owners: !!s.notify_case_owners,
     recipient_user_ids: [...s.recipient_user_ids],
     extraText: s.extra_emails.join('\n'),
 });
@@ -36,6 +38,7 @@ export function emailPatch(saved: ProjectNotificationSettings, draft: EmailDraft
     const patch: ProjectNotificationPatch = {};
     if (draft.email_enabled !== saved.email_enabled) patch.email_enabled = draft.email_enabled;
     if (draft.failures_only !== saved.failures_only) patch.failures_only = draft.failures_only;
+    if (draft.notify_case_owners !== !!saved.notify_case_owners) patch.notify_case_owners = draft.notify_case_owners;
     if (!sameSet(draft.recipient_user_ids, saved.recipient_user_ids)) patch.recipient_user_ids = draft.recipient_user_ids;
     const extras = emailsFromText(draft.extraText);
     if (!sameList(extras, saved.extra_emails)) patch.extra_emails = extras;

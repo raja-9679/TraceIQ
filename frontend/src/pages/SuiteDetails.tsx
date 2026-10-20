@@ -27,6 +27,9 @@ import { motion, AnimatePresence, Variants } from 'framer-motion';
 import { RetryPolicyCard } from '@/components/suite-settings/RetryPolicyCard';
 import { ConsoleErrorPolicyCard } from '@/components/evidence/ConsoleErrorPolicyCard';
 import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
+import { ReviewIntervalCard } from '@/components/ownership/ReviewIntervalCard';
+import { getTestReview, type CaseOwnership } from '@/api/caseOwnership';
+import { personLabel, reviewSummary } from '@/components/ownership/ownershipHelpers';
 import { FrontendMatrixSettings, RunMatrixPicker } from '@/components/frontend-quality/MatrixFields';
 import { EMPTY_MATRIX, MatrixChoice, matrixRunContext } from '@/components/frontend-quality/matrixHelpers';
 import { manualTestingApi } from '@/api/manualTesting';
@@ -161,6 +164,19 @@ export default function SuiteDetails() {
         enabled: !!flakinessProjectId,
         staleTime: 60000,
     });
+
+    // Owner + review status per case (one project-wide query).
+    const { data: reviewData } = useQuery({
+        queryKey: ['test-review', flakinessProjectId, 'all', undefined],
+        queryFn: () => getTestReview(flakinessProjectId!, 'all'),
+        enabled: !!flakinessProjectId,
+        staleTime: 60000,
+    });
+    const ownershipByCaseId = useMemo(() => {
+        const map = new Map<number, CaseOwnership>();
+        (reviewData?.items || []).forEach((c) => map.set(c.case_id, c));
+        return map;
+    }, [reviewData]);
 
     const flakeByCaseId = useMemo(() => {
         const map = new Map<number, FlakinessEntry>();
@@ -680,6 +696,11 @@ export default function SuiteDetails() {
                                                         <div className="min-w-0 flex-1">
                                                             <h3 className="text-base font-semibold leading-snug text-ink">{tc.name}</h3>
                                                             <p className="mt-0.5 text-xs text-ink-soft">{tc.steps?.length || 0} steps{isManual(tc) ? ' · manual' : ''}</p>
+                                                            {ownershipByCaseId.has(tc.id) && (
+                                                                <p className="mt-0.5 text-xs text-ink-soft">
+                                                                    Owner: {personLabel(ownershipByCaseId.get(tc.id)!.owner)} · {reviewSummary(ownershipByCaseId.get(tc.id)!)}
+                                                                </p>
+                                                            )}
                                                         </div>
                                                         {flakeByCaseId.has(tc.id) && <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} />}
                                                     </div>
@@ -862,6 +883,15 @@ export default function SuiteDetails() {
                                     key={`hooks-${suite.id}`}
                                     settings={suite.settings}
                                     effectiveSeed={suite.effective_settings?.data_seed}
+                                    inherit={suite.inherit_settings}
+                                    onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
+                                />
+
+                                {/* ── Periodic test review (WP16b) ── */}
+                                <ReviewIntervalCard
+                                    key={`review-${suite.id}`}
+                                    settings={suite.settings}
+                                    effective={suite.effective_settings}
                                     inherit={suite.inherit_settings}
                                     onSave={(next, msg) => handleUpdateSettings(next, suite.inherit_settings, msg)}
                                 />
