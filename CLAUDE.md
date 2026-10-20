@@ -1307,7 +1307,8 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
 
 - **Run lifecycle (WP15f, 2026-10-20)** — migrations `d062b3c4d5fd`
   (statuses, `testcaseresult.error_kind`, `testrun.cancelled_at`),
-  `d072b3c4d5fe` (`webhookdelivery`), `d082b3c4d5ff` (`gatepolicyversion`).
+  `d072b3c4d5fe` (`webhookdelivery`), `d082b3c4d5ff` (`gatepolicyversion`),
+  `d092b3c4d600` (webhook secrets encrypted).
   **Finalize (L0, bug fix):** a finished distributed run's side effects
   (notifications, outbound webhooks, monitor check, paging, passive + leak
   scans, triage, proactive heal) used to fire ONLY from
@@ -1344,8 +1345,8 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `run:cancelled:<id>` (72 h TTL) before every step: queued jobs report
   `cancelled` without a browser, a running case stops before its next step and
   still runs suite teardown/cleanups; `run_test_suite` skips a run cancelled
-  while queued/deferred; local-worker poll drops its jobs; mobile checks at
-  claim only. A cancelled run is never reopened by late results. MCP
+  while queued/deferred; local-worker poll drops its jobs; the mobile worker
+  checks at claim and before every step. A cancelled run is never reopened by late results. MCP
   `cancel_run`, CLI `traceiq cancel`. CLI/MCP/Action treat the two statuses as
   terminal and never as a pass. **Webhook deliveries (L3):** one
   `WebhookDelivery` row per attempt (no response body, no URL — errors are
@@ -1355,8 +1356,9 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   redeliver` (audited), 30-day sweep. Fixed: any workspace member could
   create/list/edit/delete webhooks (now workspace admin, project-scoped keys
   refused, audited); project-scoped webhooks received every project's runs;
-  send-time net_guard + no redirects. Webhook secrets are still stored in
-  plaintext (open). **Gate versions (L4):** `app/services/gate_policy_versions.py`
+  send-time net_guard + no redirects. Signing secrets are stored as a `v1:`
+  envelope (migration `d092b3c4d600` encrypts old rows; read them only via
+  `webhook_delivery.signing_secret`; `scripts/rotate_secrets.py` covers them). **Gate versions (L4):** `app/services/gate_policy_versions.py`
   — every evaluation pins the effective policy as an immutable numbered
   version (new one when the SHA-256 differs: PUT, first use, or a changed
   built-in default). `QualityGateResult` carries `policy_version`,

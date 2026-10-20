@@ -137,3 +137,21 @@ def test_api_shape_has_no_payload_or_url():
     out = wd.to_read(row)
     assert "payload" not in out and "url" not in out
     assert out["delivery_id"] == row.delivery_id
+
+
+def test_encrypted_secret_signs_with_the_clear_value():
+    from app.core.secrets import encrypt_secret
+    hook = _hook()
+    hook.secret = encrypt_secret("s3cret")
+    assert hook.secret.startswith("v1:") and "s3cret" not in hook.secret
+    assert wd.signing_secret(hook) == "s3cret"
+    post = Poster(200)
+    wd.attempt(_row(hook), hook, post=post, guard=_ok_guard)
+    _, kw = post.calls[0]
+    expected = "sha256=" + hmac.new(b"s3cret", kw["data"], hashlib.sha256).hexdigest()
+    assert kw["headers"]["X-TraceIQ-Signature"] == expected
+
+
+def test_legacy_plaintext_secret_still_signs():
+    hook = _hook()          # plaintext, as rows were before the migration
+    assert wd.signing_secret(hook) == "s3cret"

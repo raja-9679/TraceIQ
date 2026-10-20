@@ -14,7 +14,7 @@ error text, artifact links), and its URL is often itself a credential
 to add one and read them all.
 
 Webhook secrets are generated server-side and returned once at create time
-(same model as API keys). They are used to HMAC-SHA256 sign outbound
+(same model as API keys), and stored encrypted (v1 envelope, WP15f). They are used to HMAC-SHA256 sign outbound
 payloads — recipients verify the signature in `X-TraceIQ-Signature`.
 """
 import secrets
@@ -27,6 +27,7 @@ from sqlmodel import select
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
+from app.core.secrets import encrypt_secret
 from app.services import webhook_delivery as wd
 from app.services.audit import record as audit_record
 from app.api.policies import require_workspace_admin
@@ -101,7 +102,8 @@ async def create_webhook(
         project_id=body.project_id,
         name=body.name,
         url=body.url,
-        secret=secret,
+        # Encrypted at rest (WP15f); the clear value is returned once, below.
+        secret=encrypt_secret(secret),
         event_filter=body.event_filter,
         created_by_id=principal.user.id,
     )

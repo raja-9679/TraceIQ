@@ -26,6 +26,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
 
+from app.core.secrets import ENVELOPE_PREFIX, decrypt_secret
 from app.models import WebhookDelivery, WorkspaceWebhook
 
 MAX_ATTEMPTS = 4
@@ -34,6 +35,20 @@ BACKOFF_SECONDS = (60, 300, 1800)
 TIMEOUT_SECONDS = 10
 MAX_STORED_PAYLOAD_BYTES = 256 * 1024
 USER_AGENT = "TraceIQ-Webhook/1.1"
+
+
+def signing_secret(webhook: WorkspaceWebhook) -> str:
+    """The webhook's signing secret in clear, for HMAC only.
+
+    Stored as a `v1:` envelope (app.core.secrets) since WP15f. A value
+    without the prefix is a row written before that and not yet migrated
+    (migration d092b3c4d600 encrypts them): used as is. A secret minted by
+    `secrets.token_urlsafe` never contains ':', so the prefix is
+    unambiguous."""
+    raw = webhook.secret or ""
+    if raw.startswith(ENVELOPE_PREFIX):
+        return decrypt_secret(raw)
+    return raw
 
 
 def sign(body: bytes, secret: str) -> str:
@@ -111,7 +126,7 @@ def attempt(row: WebhookDelivery, webhook: WorkspaceWebhook, *,
                 "X-TraceIQ-Event": row.event,
                 "X-TraceIQ-Event-Id": row.event_id,
                 "X-TraceIQ-Delivery": row.delivery_id,
-                "X-TraceIQ-Signature": sign(body, webhook.secret),
+                "X-TraceIQ-Signature": sign(body, signing_secret(webhook)),
                 "User-Agent": USER_AGENT,
             },
         )
