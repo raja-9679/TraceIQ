@@ -180,8 +180,14 @@ def verhoeff_valid(digits: str) -> bool:
 # Value patterns
 # --------------------------------------------------------------------------
 
-_PAN_RE = re.compile(r"(?<![\d.])(?:\d[ -]?){12,18}\d(?![\d.])")
-_AADHAAR_RE = re.compile(r"(?<![\d.])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\d.])")
+# re.ASCII: `\d` means [0-9], as in the JS twin. Without it Python's `\d`
+# matched every Unicode digit, the checksums (ord(c) - 48) then read garbage,
+# and a non-ASCII Aadhaar-shaped run raised IndexError inside redact_text —
+# which runs on every worker result at ingestion. Fullwidth digits are still
+# caught: they are folded to ASCII for matching (_replace_folded), twin of
+# replaceFolded in redact.ts.
+_PAN_RE = re.compile(r"(?<![\d.])(?:\d[ -]?){12,18}\d(?![\d.])", re.ASCII)
+_AADHAAR_RE = re.compile(r"(?<![\d.])\d{4}[ -]?\d{4}[ -]?\d{4}(?![\d.])", re.ASCII)
 _JWT_RE = re.compile(r"eyJ[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}\.[A-Za-z0-9_-]{4,}")
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
@@ -209,25 +215,44 @@ def _sub_cloud_keys(text: str) -> str:
     for name, pattern in CLOUD_KEY_PATTERNS:
         text = pattern.sub(_token(name), text)
     return text
-_PHONE_RE = re.compile(r"(?<![\d.])\+?\d[\d ()-]{8,16}\d(?![\d.])")
+_PHONE_RE = re.compile(r"(?<![\d.])\+?\d[\d ()-]{8,16}\d(?![\d.])", re.ASCII)
+
+
+_FULLWIDTH_FOLD = {c: c - 0xFF10 + 0x30 for c in range(0xFF10, 0xFF1A)}
+
+
+def _replace_folded(text: str, pattern: "re.Pattern[str]", redact) -> str:
+    """Match on a copy with fullwidth digits folded to ASCII (same length, so
+    offsets line up); untouched text keeps its original characters."""
+    folded = text.translate(_FULLWIDTH_FOLD)
+    out, last = [], 0
+    for m in pattern.finditer(folded):
+        replacement = redact(m.group(0))
+        if replacement is None:
+            continue
+        out.append(text[last:m.start()])
+        out.append(replacement)
+        last = m.end()
+    out.append(text[last:])
+    return "".join(out)
 
 
 def _sub_pan(text: str) -> str:
-    def replace(match: re.Match) -> str:
-        digits = re.sub(r"[ -]", "", match.group(0))
+    def replace(match: str) -> Optional[str]:
+        digits = re.sub(r"[ -]", "", match)
         if 13 <= len(digits) <= 19 and luhn_valid(digits):
             return _token("pan")
-        return match.group(0)
-    return _PAN_RE.sub(replace, text)
+        return None
+    return _replace_folded(text, _PAN_RE, replace)
 
 
 def _sub_aadhaar(text: str) -> str:
-    def replace(match: re.Match) -> str:
-        digits = re.sub(r"[ -]", "", match.group(0))
+    def replace(match: str) -> Optional[str]:
+        digits = re.sub(r"[ -]", "", match)
         if len(digits) == 12 and verhoeff_valid(digits):
             return _token("aadhaar")
-        return match.group(0)
-    return _AADHAAR_RE.sub(replace, text)
+        return None
+    return _replace_folded(text, _AADHAAR_RE, replace)
 
 
 _PATTERN_FUNCS = {

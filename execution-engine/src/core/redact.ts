@@ -193,16 +193,42 @@ export const CLOUD_KEY_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
     ['azure_storage_key', /(?<=AccountKey=)[A-Za-z0-9+/]{86}==/g],
 ];
 
+// Fullwidth digits (U+FF10..U+FF19) fold to ASCII for MATCHING only. Python's
+// `\d` (the ingestion twin) matches them and redacts a fullwidth card number;
+// JS `\d` is ASCII-only, so without this the worker would keep one the
+// backend later removes. One UTF-16 unit each, so offsets line up; text that
+// is not redacted keeps its original characters.
+const FULLWIDTH_DIGIT = /[\uFF10-\uFF19]/g;
+
+function foldDigits(text: string): string {
+    return text.replace(FULLWIDTH_DIGIT, c => String.fromCharCode(c.charCodeAt(0) - 0xFF10 + 0x30));
+}
+
+function replaceFolded(text: string, re: RegExp, redact: (folded: string) => string | null): string {
+    const folded = foldDigits(text);
+    if (folded === text) return text.replace(re, m => redact(m) ?? m);
+    let out = '';
+    let last = 0;
+    for (const m of folded.matchAll(re)) {
+        const at = m.index ?? 0;
+        const replacement = redact(m[0]);
+        if (replacement === null) continue;
+        out += text.slice(last, at) + replacement;
+        last = at + m[0].length;
+    }
+    return out + text.slice(last);
+}
+
 const PATTERN_FUNCS: Record<string, (text: string) => string> = {
     cloud_keys: text => CLOUD_KEY_PATTERNS.reduce(
         (out, [name, re]) => out.replace(re, token(name)), text),
-    pan: text => text.replace(PAN_RE, match => {
+    pan: text => replaceFolded(text, PAN_RE, match => {
         const digits = match.replace(/[ -]/g, '');
-        return digits.length >= 13 && digits.length <= 19 && luhnValid(digits) ? token('pan') : match;
+        return digits.length >= 13 && digits.length <= 19 && luhnValid(digits) ? token('pan') : null;
     }),
-    aadhaar: text => text.replace(AADHAAR_RE, match => {
+    aadhaar: text => replaceFolded(text, AADHAAR_RE, match => {
         const digits = match.replace(/[ -]/g, '');
-        return digits.length === 12 && verhoeffValid(digits) ? token('aadhaar') : match;
+        return digits.length === 12 && verhoeffValid(digits) ? token('aadhaar') : null;
     }),
     jwt: text => text.replace(JWT_RE, token('jwt')),
     email: text => text.replace(EMAIL_RE, token('email')),

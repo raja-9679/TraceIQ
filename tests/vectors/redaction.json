@@ -480,11 +480,31 @@
       "args": {
         "text": "card ４１１１１１１１１１１１１１１１"
       },
-      "known_divergence": "Python's re `\\d` matches any Unicode digit and int() reads fullwidth digits, so Python redacts a fullwidth (U+FF10..) card number; JS `\\d` is ASCII-only, so the worker keeps it. Arabic-Indic digits are kept by both. Which is intended is an owner call: making Python ASCII-only weakens redaction, making the worker Unicode-aware changes its regexes and Luhn.",
-      "expected_by_twin": {
-        "python": "card [REDACTED:pan]",
-        "typescript": "card ４１１１１１１１１１１１１１１１"
-      }
+      "expected": "card [REDACTED:pan]"
+    },
+    {
+      "id": "pan.fullwidth_keeps_surrounding_text",
+      "fn": "redact_text",
+      "args": {
+        "text": "x ４１１１ １１１１ １１１１ １１１１ y １２"
+      },
+      "expected": "x [REDACTED:pan] y １２"
+    },
+    {
+      "id": "aadhaar.fullwidth",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid ２３４１ ２３４１ ２３４６ ok"
+      },
+      "expected": "uid [REDACTED:aadhaar] ok"
+    },
+    {
+      "id": "aadhaar.arabic_indic_no_crash",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid ٢٣٤١ ٢٣٤١ ٢٣٤٦ ok"
+      },
+      "expected": "uid ٢٣٤١ ٢٣٤١ ٢٣٤٦ ok"
     },
     {
       "id": "pan.off_when_patterns_empty",
