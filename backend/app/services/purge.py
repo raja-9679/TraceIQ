@@ -222,6 +222,13 @@ PURGE_PLAN: List[PurgeStep] = [
     PurgeStep("teamprojectaccess",
               f"DELETE FROM teamprojectaccess WHERE project_id IN ({_PROJECTS}) "
               f"OR team_id IN ({_TEAMS})"),
+    PurgeStep("gatepolicyversion",
+              f"DELETE FROM gatepolicyversion WHERE project_id IN ({_PROJECTS})"),
+    # The delivery log (WP15f) goes with its webhooks.
+    PurgeStep("webhookdelivery",
+              f"DELETE FROM webhookdelivery WHERE workspace_id = :workspace_id "
+              f"OR webhook_id IN (SELECT id FROM workspacewebhook WHERE workspace_id = :workspace_id "
+              f"OR project_id IN ({_PROJECTS}))"),
     PurgeStep("workspacewebhook",
               f"DELETE FROM workspacewebhook WHERE workspace_id = :workspace_id "
               f"OR project_id IN ({_PROJECTS})"),

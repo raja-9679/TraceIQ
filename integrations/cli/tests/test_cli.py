@@ -167,10 +167,32 @@ def test_run_wait_times_out():
     assert code == EXIT_TIMEOUT and "still running" in err
 
 
-@pytest.mark.parametrize("status,expected", [("passed", EXIT_OK), ("error", EXIT_FAILED), ("running", EXIT_PENDING)])
+@pytest.mark.parametrize("status,expected", [
+    ("passed", EXIT_OK), ("error", EXIT_FAILED), ("running", EXIT_PENDING),
+    ("cancelled", EXIT_FAILED), ("timed_out", EXIT_FAILED)])   # over, never a pass
 def test_status_exit_codes(status, expected):
     server = FakeServer({("GET", "/runs/8"): _run(8, status)})
     assert run_cli(["status", "8"], server)[0] == expected
+
+
+def test_run_wait_stops_on_a_cancelled_run_and_fails():
+    server = FakeServer({("POST", "/runs"): _run(11, "pending"), ("GET", "/runs/11"): _run(11, "cancelled")})
+    code, _, _ = run_cli(["run", "--suite", "3", "--wait", "--no-gate"], server)
+    assert code == EXIT_FAILED
+
+
+def test_cancel_posts_and_reports():
+    server = FakeServer({("POST", "/runs/8/cancel"): {"run_id": 8, "status": "cancelled",
+                                                      "workers_notified": False}})
+    code, out, err = run_cli(["cancel", "8"], server)
+    assert code == EXIT_OK and "run 8: cancelled" in out and "could not reach" in err
+    assert [c.method for c in server.calls] == ["POST"]
+
+
+def test_cancel_of_a_finished_run_is_an_error():
+    server = FakeServer({("POST", "/runs/8/cancel"): (409, {"detail": {"message": "Run 8 already finished (passed)."}})})
+    code, _, err = run_cli(["cancel", "8"], server)
+    assert code == EXIT_ERROR and ("409" in err or "already finished" in err)
 
 
 def test_api_errors_exit_5():

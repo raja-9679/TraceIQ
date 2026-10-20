@@ -82,6 +82,9 @@ class Client:
     def get_run(self, run_id: int) -> Dict[str, Any]:
         return self.request("GET", f"/runs/{run_id}")
 
+    def cancel_run(self, run_id: int) -> Dict[str, Any]:
+        return self.request("POST", f"/runs/{run_id}/cancel")
+
     def quality_gate(self, project_id: int, commit: Optional[str] = None,
                      branch: Optional[str] = None) -> Dict[str, Any]:
         params = {"git_commit": commit} if commit else ({"git_branch": branch} if branch else None)

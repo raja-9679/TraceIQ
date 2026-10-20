@@ -369,7 +369,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   TraceIQ principal; recording it as `system` makes "who removed this person's
   access" unanswerable).
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
-  0.2.0, FastMCP, `mcp>=1.10,<2`): 52 tools, each with Pydantic input/output
+  0.2.0, FastMCP, `mcp>=1.10,<2`): 53 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio
   (`traceiq-mcp`) + streamable HTTP (`traceiq-mcp-http`, POST /mcp on 8088,
   per-request `X-API-Key`/Bearer). Add a tool = output model in
@@ -529,7 +529,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `missing_data`; a gate failing ONLY on missing data reads "insufficient
   data", never pass. No commit given → the newest finished run (on the
   branch) picks the commit. Policy PUT is now audited. UI `/release-readiness`;
-  MCP `get_release_readiness` (52 tools); the Action's PR comment shows
+  MCP `get_release_readiness`; the Action's PR comment shows
   check `detail` (dist rebuilt).
 - **Per-step evidence + failure investigation v2 (2026-10, WP3)** — workers
   send `step_evidence` per result (`core/evidence.ts:StepEvidenceRecorder`),
@@ -1304,6 +1304,66 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   escaped; the audit row records where/who/length, not the text. Mobile
   `mobile-expect-visual-match` is unchanged (full screen, reports no
   comparisons). Cross-run grouping is not built.
+
+- **Run lifecycle (WP15f, 2026-10-20)** — migrations `d062b3c4d5fd`
+  (statuses, `testcaseresult.error_kind`, `testrun.cancelled_at`),
+  `d072b3c4d5fe` (`webhookdelivery`), `d082b3c4d5ff` (`gatepolicyversion`).
+  **Finalize (L0, bug fix):** a finished distributed run's side effects
+  (notifications, outbound webhooks, monitor check, paging, passive + leak
+  scans, triage, proactive heal) used to fire ONLY from
+  `POST /runs/{id}/finalize`, which only the legacy engine's controller
+  (`server.ts`, `run:<id>:complete` pub/sub) calls — and no shipped deployment
+  runs it, so they never fired. `app/services/run_completion.py`: the
+  aggregator claims `finalized_at` (conditional UPDATE) in the transaction that
+  sets the terminal status and queues `SIDE_EFFECT_TASKS` after commit; stale
+  timeout, dispatch error, force-complete and cancel do the same; the endpoint
+  shares the claim. **Statuses (L2):** `TestStatus` gains `CANCELLED` /
+  `TIMED_OUT` — terminal WITHOUT a verdict. `app/services/run_status.py`
+  separates `TERMINAL` (is it over? waits, purges, "already final") from
+  `VERDICT` (rates, gates, readiness, flake scores) — use the right one; most
+  old `(PASSED, FAILED, ERROR)` lists mean VERDICT and were left alone.
+  TIMED_OUT = the platform's limit (job wall clock `MAX_JOB_DURATION_MS`, the
+  stale sweep, the hook deadline); a step timing out on the page is still
+  FAILED. `error_kind` (`test|setup|infrastructure|timeout|cancelled|
+  not_executed`) is sent by the worker and derived for old workers
+  (`normalise_result` also turns an old worker's platform timeout into
+  TIMED_OUT). The run outcome comes from the stored results (FAILING >
+  TIMED_OUT > CANCELLED > PASSED), not the Redis counter alone. Monitors count
+  TIMED_OUT as down and skip CANCELLED; paging pages timeouts, never cancels;
+  notifications skip CANCELLED; outbound events `run.cancelled` /
+  `run.timed_out` (a `run.completed` filter still receives both); flake
+  history ignores infrastructure errors. Worker: a job past
+  `MAX_JOB_DURATION_MS` used to stay unacked with a zombie still running (and
+  ran again on redelivery) — it now reports `timed_out`, the zombie stops at
+  its next step boundary (`core/run-control.ts`) and the loop waits for it
+  (`TIMED_OUT_JOB_GRACE_MS`, default 60s) because its finally stops the SHARED
+  browser manager. `cleanup_stuck_tests` is retired (it filtered on a
+  `TestRun.updated_at` that never existed). **Cancel (L1):**
+  `POST /api/runs/{id}/cancel` (editor; project-scoped keys; agent kill
+  switch; 409 when finished; audited in the same transaction). Workers read
+  `run:cancelled:<id>` (72 h TTL) before every step: queued jobs report
+  `cancelled` without a browser, a running case stops before its next step and
+  still runs suite teardown/cleanups; `run_test_suite` skips a run cancelled
+  while queued/deferred; local-worker poll drops its jobs; mobile checks at
+  claim only. A cancelled run is never reopened by late results. MCP
+  `cancel_run`, CLI `traceiq cancel`. CLI/MCP/Action treat the two statuses as
+  terminal and never as a pass. **Webhook deliveries (L3):** one
+  `WebhookDelivery` row per attempt (no response body, no URL — errors are
+  reduced to a class/reason), retries at 1/5/30 min (4 attempts; not for 410
+  or a net_guard refusal), `X-TraceIQ-Delivery` stable across retries and
+  redelivery, `GET .../webhooks/{id}/deliveries`, `POST .../deliveries/{d}/
+  redeliver` (audited), 30-day sweep. Fixed: any workspace member could
+  create/list/edit/delete webhooks (now workspace admin, project-scoped keys
+  refused, audited); project-scoped webhooks received every project's runs;
+  send-time net_guard + no redirects. Webhook secrets are still stored in
+  plaintext (open). **Gate versions (L4):** `app/services/gate_policy_versions.py`
+  — every evaluation pins the effective policy as an immutable numbered
+  version (new one when the SHA-256 differs: PUT, first use, or a changed
+  built-in default). `QualityGateResult` carries `policy_version`,
+  `policy_sha256`, `ignored_run_ids` (no-verdict runs in scope); replay with
+  `GET .../quality-gate?policy_version=&run_ids=`; history at
+  `.../quality-gate/policy/versions[/{n}]`. Worker + backend + frontend
+  rebuild needed.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)

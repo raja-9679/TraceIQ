@@ -10,6 +10,7 @@ from traceiq_mcp.app import mcp
 from traceiq_mcp.client import new_client
 from traceiq_mcp.schemas.common import AcceptedResult, ArtifactUrl
 from traceiq_mcp.schemas.runs import (
+    CancelResult,
     CaseFailureReport,
     CaseResult,
     FailureAnalysis,
@@ -18,7 +19,8 @@ from traceiq_mcp.schemas.runs import (
     RunResults,
 )
 
-TERMINAL_STATUSES = {"passed", "failed", "error"}
+# cancelled / timed_out (server WP15f): over, but no verdict on the code.
+TERMINAL_STATUSES = {"passed", "failed", "error", "cancelled", "timed_out"}
 
 
 @mcp.tool()
@@ -79,8 +81,9 @@ async def get_run(run_id: int) -> RunDetail:
 @mcp.tool()
 async def wait_for_run(run_id: int, timeout_seconds: int = 600,
                        poll_interval_seconds: int = 5) -> RunDetail:
-    """Poll a run until it reaches a terminal status (passed/failed/error) or
-    the timeout elapses. Returns the final run either way — check `status`."""
+    """Poll a run until it reaches a terminal status (passed/failed/error, or
+    cancelled/timed_out — over but with no verdict on the code) or the timeout
+    elapses. Returns the final run either way — check `status`."""
     client = new_client()
     interval = max(1, poll_interval_seconds)
     elapsed = 0
@@ -150,6 +153,17 @@ async def analyze_run(run_id: int,
     acknowledgement — poll get_failure_analysis for the result."""
     data = await new_client().analyze_run(run_id, provider_id)
     return AcceptedResult.model_validate(data)
+
+
+@mcp.tool()
+async def cancel_run(run_id: int) -> CancelResult:
+    """Cancel a pending or running run you started (editor on its project).
+    It becomes `cancelled` — over, with no verdict: it counts neither as a
+    pass nor a failure. Queued cases are skipped; a running case stops
+    before its next step and still runs its suite teardown/cleanups.
+    Errors with 409 if the run already finished."""
+    data = await new_client().cancel_run(run_id)
+    return CancelResult.model_validate(data)
 
 
 @mcp.tool()

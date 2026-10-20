@@ -25,7 +25,7 @@ EXPECTED_TOOLS = {
     "list_cases", "get_case",
     # runs
     "run_suite", "get_run", "wait_for_run", "get_run_results",
-    "get_failure_analysis", "analyze_run", "get_artifact_url",
+    "get_failure_analysis", "analyze_run", "cancel_run", "get_artifact_url",
     # impact / discovery
     "select_tests_for_diff", "discover_app_surface", "crawl_app_surface",
     "get_run_history", "set_code_paths", "bulk_set_code_paths",

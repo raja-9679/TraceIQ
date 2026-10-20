@@ -37,8 +37,11 @@ logger = logging.getLogger(__name__)
 sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
-# Terminal statuses that count as a completed check.
-_TERMINAL = {TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR}
+# Terminal statuses that count as a completed check. TIMED_OUT counts (and
+# is DOWN): a check that hangs past the platform's limit is what an outage
+# looks like from outside, and it was ERROR — down — before WP15f.
+# CANCELLED does not: someone stopped the check, so there is nothing to say.
+_TERMINAL = {TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR, TestStatus.TIMED_OUT}
 
 
 def _schedule_id_from_run(run: TestRun) -> Optional[int]:
@@ -114,7 +117,8 @@ def evaluate_monitor_for_run(self, run_id: int):
                 return  # schedule gone or not a monitor
 
             if run.status not in _TERMINAL:
-                # Finalize fired before a terminal status was written; skip.
+                # Cancelled, or finalize fired before a terminal status was
+                # written; record no check either way.
                 return
 
             is_up = run.status == TestStatus.PASSED

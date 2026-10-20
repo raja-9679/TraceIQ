@@ -24,7 +24,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
-from app.models import ApiKey, Project, TestRun
+from app.models import ApiKey, Project, TestRun, TestStatus
 from app.services.access_service import AccessService
 
 router = APIRouter()
@@ -102,6 +102,11 @@ async def poll_local_job(
         principal.user.id, project_id, session, min_role="editor"
     ):
         await _refuse("Executing jobs requires at least the editor role on the project")
+
+    # Cancelled while queued (WP15f): drop the job. The run's status is
+    # already final, so nothing waits for its result.
+    if run is not None and run.status == TestStatus.CANCELLED:
+        return Response(status_code=204)
 
     return job
 

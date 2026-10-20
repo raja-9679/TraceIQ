@@ -10,8 +10,11 @@ const { decideSelection, reviewNotes } = require('./selection');
 const { mdCell, gateSection, failuresSection } = require('./markdown');
 const github = require('@actions/github');
 
-const TERMINAL = new Set(['passed', 'failed', 'error']);
+// cancelled / timed_out (server WP15f) are over but carry no verdict: the
+// poll stops, and the job never treats them as a pass.
+const TERMINAL = new Set(['passed', 'failed', 'error', 'cancelled', 'timed_out']);
 const FAILING = new Set(['failed', 'error']);
+const NO_VERDICT = new Set(['cancelled', 'timed_out']);
 // Hidden marker that makes the PR comment idempotent: we find and update the
 // existing comment instead of stacking a new one per push.
 const COMMENT_MARKER = '<!-- traceiq-github-action -->';
@@ -154,6 +157,8 @@ function statusIcon(status) {
     if (s === 'passed') return ':white_check_mark:';
     if (s === 'failed') return ':x:';
     if (s === 'error') return ':exclamation:';
+    if (s === 'cancelled') return ':no_entry_sign:';
+    if (s === 'timed_out') return ':stopwatch:';
     return ':hourglass:';
 }
 
@@ -419,7 +424,10 @@ async function main() {
         const passed = finalRuns.reduce((acc, r) => acc + (r?.passed_tests || 0), 0);
         const failed = finalRuns.reduce((acc, r) => acc + (r?.failed_tests || 0), 0);
         const runsBad = timedOut ||
-            finalRuns.some((r) => FAILING.has((r?.status || '').toLowerCase()));
+            finalRuns.some((r) => {
+                const st = (r?.status || '').toLowerCase();
+                return FAILING.has(st) || NO_VERDICT.has(st);
+            });
 
         // --- Server-side quality gate + CI settings (both optional) --------
         // Configurable per project and git-agnostic: the gate falls back to the
@@ -489,7 +497,10 @@ async function main() {
         // --- Fail the job on regressions / gate failure --------------------
         if (overall === 'failed') {
             let msg;
+            const noVerdict = finalRuns.filter((r) => NO_VERDICT.has((r?.status || '').toLowerCase()));
             if (timedOut) msg = `TraceIQ run did not finish within ${timeout}s.`;
+            else if (noVerdict.length && !finalRuns.some((r) => FAILING.has((r?.status || '').toLowerCase())))
+                msg = `TraceIQ run ${noVerdict.map((r) => `#${r.id} was ${r.status.replace('_', ' ')}`).join(', ')} — no verdict on this commit.`;
             else if (runsBad) msg = `TraceIQ regression failed: ${failed} test case(s) did not pass.`;
             else msg = 'TraceIQ quality gate failed.';
             if (failOnNone) {

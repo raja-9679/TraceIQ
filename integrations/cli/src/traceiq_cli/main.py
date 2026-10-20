@@ -25,7 +25,9 @@ from .client import ApiError, Client
 from .config import config_path, credentials, load_config, save_config
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_TIMEOUT, EXIT_PENDING, EXIT_ERROR = 0, 1, 2, 3, 4, 5
-TERMINAL = {"passed", "failed", "error"}
+# cancelled / timed_out (server WP15f) are over but carry no verdict: waiting
+# stops, and they never count as a pass.
+TERMINAL = {"passed", "failed", "error", "cancelled", "timed_out"}
 FAILING = {"failed", "error"}
 
 
@@ -65,6 +67,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--interval", type=int, default=10, help="poll interval seconds (default 10)")
 
     s = sub.add_parser("status", help="show a run")
+    s.add_argument("run", type=int)
+
+    s = sub.add_parser("cancel", help="cancel a pending or running run")
     s.add_argument("run", type=int)
 
     s = sub.add_parser("replay", help="download a failure's reproduce-locally bundle and run it")
@@ -234,7 +239,17 @@ def cmd_status(ctx: Ctx) -> int:
     st = _status(run)
     if st == "passed":
         return EXIT_OK
-    return EXIT_FAILED if st in FAILING else EXIT_PENDING
+    # cancelled / timed_out: over, but never a pass.
+    return EXIT_FAILED if st in FAILING or st in TERMINAL else EXIT_PENDING
+
+
+def cmd_cancel(ctx: Ctx) -> int:
+    out = ctx.client().cancel_run(ctx.args.run)
+    ctx.say(f"run {out.get('run_id', ctx.args.run)}: {out.get('status', 'cancelled')}")
+    if out.get("workers_notified") is False:
+        ctx.warn("traceiq: the server could not reach its workers; queued jobs may still run "
+                 "(the run stays cancelled)")
+    return EXIT_OK
 
 
 def safe_extract(data: bytes, dest: Path) -> Path:
@@ -367,7 +382,7 @@ def cmd_push(ctx: Ctx) -> int:
 
 
 COMMANDS = {"login": cmd_login, "version": cmd_version, "run": cmd_run, "status": cmd_status,
-            "replay": cmd_replay, "pull": cmd_pull, "push": cmd_push}
+            "cancel": cmd_cancel, "replay": cmd_replay, "pull": cmd_pull, "push": cmd_push}
 
 
 def main(argv: Optional[Sequence[str]] = None, **ctx_kwargs: Any) -> int:

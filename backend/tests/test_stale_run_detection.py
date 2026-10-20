@@ -55,7 +55,7 @@ def _make_progress(
 # ──────────────────────────────────────────────────────────────────────────────
 
 class TestMarkRunTimeout:
-    def test_sets_error_status(self):
+    def test_sets_timed_out_status(self):
         from app.tasks.result_aggregator import _mark_run_timeout
         from app.models import TestStatus
 
@@ -65,7 +65,7 @@ class TestMarkRunTimeout:
 
         _mark_run_timeout(run, progress, session, reason="test reason")
 
-        assert run.status == TestStatus.ERROR
+        assert run.status == TestStatus.TIMED_OUT
         assert "test reason" in run.error_message
         assert "14/48" in run.error_message
 
@@ -94,7 +94,7 @@ class TestMarkRunTimeout:
 
         _mark_run_timeout(run, None, session, reason="no progress")
 
-        assert run.status == TestStatus.ERROR
+        assert run.status == TestStatus.TIMED_OUT
 
 
 # ──────────────────────────────────────────────────────────────────────────────

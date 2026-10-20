@@ -257,6 +257,13 @@ class TestStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     ERROR = "error"
+    # WP15f. Terminal but WITHOUT a verdict: neither counts as a pass or a
+    # failure in any rate, gate or flake score (app/services/run_status.py).
+    # CANCELLED = someone stopped it; TIMED_OUT = the PLATFORM's time limit
+    # (job wall clock or stale-run sweep) — a step that times out waiting for
+    # the page is still an ordinary FAILED test.
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class ExecutionMode(str, Enum):
@@ -609,15 +616,18 @@ class TestRunBase(SQLModel):
         sa_column=Column(String, nullable=False,
                          server_default=ExecutorType.UI_PLAYWRIGHT.value))
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    # Set the first time POST /runs/{id}/finalize succeeds. Guards the six
-    # side-effecting tasks that endpoint dispatches (notifications, outbound
-    # webhooks, heal, monitor, security scan, triage) against redelivery — a
-    # retried webhook would otherwise re-send customer emails and re-fire CI
-    # callbacks.
+    # Claimed once when the run reaches a terminal state — by the aggregator,
+    # the stale sweep, a dispatch error, force-complete, cancel, or the legacy
+    # POST /runs/{id}/finalize (app/services/run_completion.py). Guards the
+    # side-effecting tasks (notifications, outbound webhooks, heal, monitor,
+    # paging, scans, triage) against redelivery — a retried result would
+    # otherwise re-send customer emails and re-fire CI callbacks.
     # index=True keeps create_all() (bootstrap_db.py) in sync with migration
     # a2f4c6d8e0b1, which creates ix_testrun_finalized_at — otherwise fresh
     # installs and migrated installs diverge on this index.
     finalized_at: Optional[datetime] = Field(default=None, index=True)
+    # WP15f: when POST /runs/{id}/cancel was accepted (who: the audit row).
+    cancelled_at: Optional[datetime] = Field(default=None)
     status: TestStatus = Field(default=TestStatus.PENDING)
     total_tests: int = 0
     passed_tests: int = 0
@@ -759,6 +769,8 @@ class TestCaseResultRead(SQLModel):
     result_kind: Optional[str] = None
     result_payload: Optional[dict] = None
     test_case_id: Optional[int] = None
+    # WP15f: why a non-passing result did not pass (run_status.ERROR_KINDS).
+    error_kind: Optional[str] = None
 
 
 class TestRunRead(TestRunBase):
@@ -791,6 +803,12 @@ class TestCaseResult(SQLModel, table=True):
     request_method: Optional[str] = Field(default=None)
     request_params: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     ai_analysis: Optional[str] = None
+
+    # WP15f: why a non-passing result did not pass — test | setup |
+    # infrastructure | timeout | cancelled | not_executed. NULL on passes and
+    # on rows from before WP15f; old workers send none, so the aggregator
+    # derives it (run_status.derive_error_kind).
+    error_kind: Optional[str] = Field(default=None)
 
     # Phase B: smart retry + flake separation.
     retry_count: int = Field(default=0)
@@ -1411,6 +1429,31 @@ class QualityGateResult(SQLModel):
     git_branch: Optional[str] = None
     evaluated_run_ids: List[int] = []
     checks: List[QualityGateCheck] = []
+    # WP15f: which stored policy judged this, so the verdict can be
+    # reproduced (GET .../quality-gate?policy_version=&run_ids=).
+    policy_version: Optional[int] = None
+    policy_sha256: Optional[str] = None
+    # Runs in scope that were left out because they carry no verdict
+    # (cancelled / timed out) — shown, never silently dropped.
+    ignored_run_ids: List[int] = []
+
+
+class GatePolicyVersion(SQLModel, table=True):
+    """An immutable snapshot of a project's EFFECTIVE gate policy (WP15f L4).
+
+    Written whenever the policy a gate evaluation would use differs from the
+    newest stored version: by PUT .../quality-gate/policy, and lazily by an
+    evaluation (first use, or a changed built-in default) — so every verdict
+    names a version that existed when it was made. Never updated.
+    """
+    __table_args__ = (UniqueConstraint("project_id", "version", name="uq_gatepolicyversion_project_version"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    version: int
+    policy: Dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    sha256: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 DEFAULT_QUALITY_GATE = QualityGatePolicy()
@@ -1784,6 +1827,37 @@ class WorkspaceWebhook(SQLModel, table=True):
     last_delivery_at: Optional[datetime] = Field(default=None)
     last_delivery_status: Optional[int] = Field(default=None)
     failure_count: int = Field(default=0)
+
+
+class WebhookDelivery(SQLModel, table=True):
+    """One delivery ATTEMPT of one event to one webhook (WP15f L3).
+
+    `delivery_id` is stable across automatic retries and manual redelivery
+    of the same (event, webhook) — it is sent as `X-TraceIQ-Delivery`, so a
+    receiver that already processed it can drop the duplicate. `payload` is
+    the body as first built (re-signed on every attempt) so a redelivery
+    sends what the event said even after the run is gone. Never stored: the
+    response body, or the URL (it may carry a token). `run_id` is a soft
+    reference — the log outlives a deleted run. Swept after
+    WEBHOOK_DELIVERY_RETENTION_DAYS (30).
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    webhook_id: int = Field(foreign_key="workspacewebhook.id", index=True)
+    workspace_id: int = Field(index=True)
+    run_id: Optional[int] = Field(default=None, index=True)
+    event: str
+    event_id: str
+    delivery_id: str = Field(index=True)
+    attempt: int = Field(default=1)
+    manual: bool = Field(default=False)      # a person pressed "redeliver"
+    status: str = Field(default="pending")   # pending | ok | failed | skipped
+    status_code: Optional[int] = Field(default=None)
+    duration_ms: Optional[int] = Field(default=None)
+    error: Optional[str] = Field(default=None)
+    next_retry_at: Optional[datetime] = Field(default=None)
+    payload: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
 
 
 class WorkspaceWebhookCreate(SQLModel):

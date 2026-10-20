@@ -1,3 +1,4 @@
+import type { ErrorKind } from './run-control';
 import Redis from 'ioredis';
 import { v4 as uuidv4 } from 'uuid';
 import { RedactionPolicy, redactJobResult } from './redact';
@@ -102,10 +103,15 @@ export interface TestJob {
 }
 
 // Result for a single test case within a job
+// cancelled / timed_out (WP15f) are terminal without a verdict; an older
+// backend maps them to 'error', which is what they were before.
+export type ResultStatus = 'passed' | 'failed' | 'error' | 'cancelled' | 'timed_out';
+
 export interface TestCaseResult {
     test_case_id: number;
     test_name: string;
-    status: 'passed' | 'failed' | 'error';
+    status: ResultStatus;
+    error_kind?: ErrorKind;
     duration_ms: number;
     error?: string;
     response_data?: {
@@ -130,7 +136,9 @@ export interface JobResult {
     // For single test case jobs (backward compatibility)
     test_case_id?: number;
     test_name?: string;
-    status: 'passed' | 'failed' | 'error';
+    status: ResultStatus;
+    // Why it did not pass (WP15f) — absent on passes and from older workers.
+    error_kind?: ErrorKind;
     duration_ms: number;
     error?: string;
 

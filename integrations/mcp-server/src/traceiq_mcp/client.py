@@ -247,6 +247,9 @@ class TraceIQClient:
             "POST", f"/api/runs/{run_id}/analyze",
             json=self._clean({"provider_id": provider_id}))
 
+    async def cancel_run(self, run_id: int) -> Dict[str, Any]:
+        return await self._request("POST", f"/api/runs/{run_id}/cancel")
+
     async def get_run_report(self, run_id: int) -> Dict[str, Any]:
         return await self._request("GET", f"/api/runs/{run_id}/report")
 

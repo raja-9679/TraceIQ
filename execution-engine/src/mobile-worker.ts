@@ -46,6 +46,7 @@ process.env.REDIS_CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'mobile-w
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { JobQueue, workerRegion } = require('./core/job-queue') as typeof import('./core/job-queue');
+import { abortedJobResult, CANCELLED_MESSAGE, RunControl } from './core/run-control';
 import { Heartbeat } from './core/heartbeat';
 import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
@@ -107,9 +108,14 @@ class MobileWorker {
     private running = true;
 
     private heartbeat: Heartbeat | null = null;
+    // WP15f: a run cancelled while its job queued is reported without
+    // opening a device session. (Mobile cases are not stopped mid-case.)
+    private runControl: RunControl = new RunControl(async () => null);
 
     async start(): Promise<void> {
         await this.queue.initialize();
+        const controlRedis = this.queue.duplicateRedis() as any;
+        this.runControl = new RunControl((key) => controlRedis.get(key));
         // Runtime config + fleet heartbeat (WP8), same as the web worker.
         await startWorkerConfigPolling();
         this.heartbeat = new Heartbeat(this.queue.duplicateRedis() as any, {
@@ -149,6 +155,11 @@ class MobileWorker {
                 this.heartbeat?.jobStarted(claimed.job);
                 let result: any = null;
                 try {
+                    if (await this.runControl.isRunCancelled(claimed.job.run_id)) {
+                        result = abortedJobResult(claimed.job, 'cancelled', CANCELLED_MESSAGE);
+                        await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy(jobDataPolicy(claimed.job)));
+                        continue;
+                    }
                     result = await this.runJob(claimed.job);
                     await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy(jobDataPolicy(claimed.job)));
                 } finally {

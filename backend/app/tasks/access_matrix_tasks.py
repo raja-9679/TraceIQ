@@ -30,6 +30,9 @@ POLL_COUNTDOWN = 3
 # Case rows run full journeys and may queue behind other runs.
 DEADLINE = timedelta(minutes=45)
 _TERMINAL = {"passed", "failed", "error"}
+# Over, but no verdict (WP15f): the cell is inconclusive at once instead of
+# waiting out the 45-minute deadline.
+_NO_VERDICT = {"cancelled", "timed_out"}
 
 
 def _redis():
@@ -170,6 +173,12 @@ def collect_once(session, rc, matrix_run_id: int, now: Optional[datetime] = None
                 cell.verdict, cell.reason = judge_case(cell.expect, status, error, deny)
                 cell.observed = {"run_id": run.id, "run_status": status,
                                  "error": redact_text((error or "")[:500]) or None}
+                cell.completed_at = now
+            elif status in _NO_VERDICT:
+                cell.verdict = "inconclusive"
+                cell.reason = ("the case run was cancelled" if status == "cancelled"
+                               else "the case run hit the platform's time limit")
+                cell.observed = {"run_id": run.id, "run_status": status}
                 cell.completed_at = now
             elif expired or run is None:
                 cell.verdict, cell.reason = "inconclusive", "the case run did not finish in time"
