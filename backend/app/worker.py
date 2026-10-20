@@ -412,6 +412,12 @@ def _case_payload(case, row_index=None, data_row=None, run_id=None, session=None
     if has_openapi_refs(payload['steps']):
         payload['steps'] = resolve_step_schemas(
             payload['steps'], getattr(case, 'project_id', None), load_spec_sync)
+    # har-replay (WP15d): the HAR must be this project's. The worker's fetch
+    # re-checks; this makes a wrong id a clear step failure at once.
+    from app.services.har_files import har_ids, lookup_sync, resolve_steps
+    if har_ids(payload['steps']):
+        payload['steps'] = resolve_steps(
+            payload['steps'], getattr(case, 'project_id', None), lookup_sync)
     # Per-case override of the suite's fail_on_console_errors (None = inherit).
     fail_on_console = getattr(case, 'fail_on_console_errors', None)
     if isinstance(fail_on_console, bool):

@@ -344,10 +344,31 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.body": "Raw string body (when not JSON)",
             "params.content_type": "Override content-type",
             "params.headers": "Response headers object",
+            "params.sequence": "List of responses ({status, json|body, content_type, headers}); "
+                               "the nth matching request gets the nth entry",
+            "params.after_sequence": "When the list is used up: 'repeat_last' (default) keeps "
+                                     "answering with the last entry, 'fallthrough' lets further "
+                                     "requests go to the network (egress policy still applies)",
         },
         "example": {"id": "<uuid>", "type": "mock-response", "selector": "**/api/me",
                     "params": {"status": 200, "json": {"name": "Test User"}}},
-        "notes": "Register BEFORE the goto/action that triggers the request.",
+        "notes": "Register BEFORE the goto/action that triggers the request. With `sequence`, "
+                 "status/json/body are ignored; counting is per step, across the whole case.",
+    },
+    {
+        "type": "har-replay",
+        "category": "network",
+        "params": {
+            "params.har_id": "Id of a HAR uploaded to this project (POST /api/projects/{id}/har-files)",
+            "selector": "Optional URL glob: only matching requests are served from the HAR",
+            "params.not_found": "'abort' (default) fails requests the HAR has no entry for; "
+                                "'fallback' sends them to the network (egress policy still applies)",
+        },
+        "example": {"id": "<uuid>", "type": "har-replay", "selector": "**/api/**",
+                    "params": {"har_id": 12, "not_found": "fallback"}},
+        "notes": "Answers matching requests from a recorded HAR (Playwright routeFromHAR). The HAR "
+                 "is redacted on upload, so replayed cookies/auth headers read [REDACTED]. Register "
+                 "BEFORE the navigation. Web workers only. Recording a HAR stays capture-level full.",
     },
     {
         "type": "block-request",
@@ -369,7 +390,9 @@ _STEP_TYPES: List[Dict[str, Any]] = [
             "params.fail": "false = report-only (never throws)",
         },
         "example": {"id": "<uuid>", "type": "check-accessibility", "params": {"impact": "serious"}},
-        "notes": "Runs axe-core against the current page; returns a violations summary.",
+        "notes": "Runs axe-core against the current page. Every outcome is stored in the project's "
+                 "accessibility register (rule, impact, redacted selector, node count — never page "
+                 "text); /accessibility shows the trend and waivers.",
     },
     # ------------------------------------------------------------------
     # Frontend quality (WP10). Layout checks run in the page; budgets store a

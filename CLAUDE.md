@@ -1402,6 +1402,43 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   same payload (`analysis_tasks.backend_error_spans`) and adds `sN.trace`
   for steps with ERROR spans → an app_bug hypothesis; uncited ids still drop.
   Jaeger/Tempo are mock-verified only. Not in local/mobile/legacy workers.
+- **Accessibility register + HAR replay (WP15d, 2026-10-20)** — migration
+  `e042b3c4d604`. **H6**: `check-accessibility` pushes every outcome (all
+  impacts, before deciding to fail) onto the case context's
+  `accessibility_results` (`core/accessibility.ts`); the worker ships it like
+  `page_budgets` (continuous jobs slice per case) and the aggregator stores
+  `AccessibilityCheck` (one per scanned step — the EVIDENCE; a clean scan has
+  no violation rows) + `AccessibilityViolation` (rule, impact, redacted target,
+  node count, Deque help URL) replace-per-(run, test_name). Never page text:
+  the twins `redactAccessibilityResults`/`redact_accessibility_results`
+  REBUILD the list from a whitelist (axe `html`/`failureSummary` dropped) and
+  `redactA11yTarget` keeps attribute VALUES only for `A11Y_SAFE_ATTRS`
+  (id/class/type/role/name/data-testid…, ≤64 chars) — `[href="…"]` → `[href]`.
+  Fingerprint = rule|page_key|target. **New** = not in the previous comparable
+  run (latest earlier run with a check for the same case id — else test name —
+  browser and device); no previous run → everything is new (fail closed; waive
+  known issues). Waivers (`AccessibilityWaiver`, rule + `*`-glob over the
+  stored target, hand-written linear matcher) follow flake-quarantine rules:
+  1-90 days, expired ones exclude nothing, renewal only by explicit PUT `days`;
+  all writes audited (`accessibility_waiver`). Gate: policy
+  `block_new_accessibility_violations` → check `accessibility_new_violations`
+  (serious+ new, unwaived); no check rows in the evaluated runs →
+  `missing_data`. API `app/api/accessibility.py`; UI `/accessibility`, rule on
+  the Quality page. **H7**: `mock-response` `params.sequence` (nth call → nth
+  entry; `after_sequence` `repeat_last` default | `fallthrough`). Step
+  `har-replay` (`core/network-mocks.ts`, Playwright `routeFromHAR`,
+  `params.har_id`, optional URL glob in `selector`, `not_found`
+  `abort` default | `fallback`). Both are PAGE routes, so anything handed on
+  (`fallback`) still passes the context-level egress guard. HARs: `POST
+  /api/projects/{id}/har-files` (editor, 20 MB, sniffed as HAR JSON, REDACTED
+  with the project policy via the new `redact_har` twin BEFORE storage — the
+  only copy is redacted) → `har/{project_id}/{uuid}.har` (purge + project
+  delete sweep the prefix). The worker gets no URL: `GET
+  /api/internal/har-files/{id}?run_id=&test_case_id=` (worker secret) serves
+  it only for a live run whose project owns both the case and the HAR;
+  `_case_payload` checks the same at dispatch and sets `params.har`/`har_error`
+  (caller-written values are overwritten). Not for local/mobile workers. UI:
+  Environments → "Recorded traffic (HAR)"; step editor "Network mocks".
   Worker + backend + frontend rebuild needed.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —

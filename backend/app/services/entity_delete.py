@@ -118,6 +118,11 @@ ON_DELETE: Dict[str, str] = {
     # Visual review (WP14e): a run's comparisons and the threads about them.
     "visualcomparison.project_id": DELETE,
     "visualreviewcomment.project_id": DELETE,
+    # Accessibility register and uploaded HARs (WP15d) are project data.
+    "accessibilitycheck.project_id": DELETE,
+    "accessibilityviolation.project_id": DELETE,
+    "accessibilitywaiver.project_id": DELETE,
+    "hararchive.project_id": DELETE,
     # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
     # benchmark groups are all project data.
     "journeyimport.project_id": DELETE,
@@ -179,6 +184,9 @@ ON_DELETE: Dict[str, str] = {
     # A comparison is evidence about that case's baseline; it cannot be
     # accepted once the case is gone.
     "visualcomparison.test_case_id": DELETE,
+    # A page's accessibility history is about the page, like budget samples.
+    "accessibilitycheck.test_case_id": NULLIFY,
+    "accessibilityviolation.test_case_id": NULLIFY,
 
     # --- into testrun ----------------------------------------------------------
     "testcaseresult.test_run_id": DELETE,   # NOT NULL; the run's own output
@@ -201,6 +209,10 @@ ON_DELETE: Dict[str, str] = {
     # The run's own comparisons, and comments on them / on its groups.
     "visualcomparison.test_run_id": DELETE,
     "visualreviewcomment.test_run_id": DELETE,
+    # A run's accessibility scan is that run's evidence (NOT NULL) — so run
+    # retention sweeps it with the run.
+    "accessibilitycheck.test_run_id": DELETE,
+    "accessibilityviolation.test_run_id": DELETE,
 
     # --- into tables only reachable through project ---------------------------
     "monitorcheck.schedule_id": DELETE,     # NOT NULL; history of that monitor
@@ -536,6 +548,9 @@ async def cascade_delete(session, root: str, ids: Iterable[int]) -> DeleteReport
         # mobileappbuild is a leaf (nothing references it), so its rows are not
         # id-tracked; its file keys must be read before the rows go.
         build_keys = await _collect_build_keys(conn, set(ids))
+        # Uploaded HARs (WP15d): the prefix is derived from the project id.
+        from app.services.har_files import project_prefix
+        build_keys.extend(project_prefix(pid) for pid in sorted(set(ids)))
     report = await _drive_async(_cascade(root, ids), conn)
     report.object_keys.extend(build_keys)
     logger.info("[delete] %s %s: %d rows, %d nullified, %d object keys",

@@ -866,6 +866,8 @@ class ExecutionWorker {
         const pageBudgets: any[] = [];
         // expect-visual-match outcomes (WP14e), shipped as `visual_results`.
         const visualResults: any[] = [];
+        // check-accessibility outcomes (WP15d), shipped as `accessibility_results`.
+        const accessibilityResults: any[] = [];
 
         try {
             // Launch browser
@@ -935,6 +937,9 @@ class ExecutionWorker {
                 variables: {},
                 page_budgets: pageBudgets,
                 visual_results: visualResults,
+                accessibility_results: accessibilityResults,
+                // har-replay fetches its HAR naming the run and case (WP15d).
+                run_id: job.run_id,
                 // Visual candidates land here so they are uploaded even when
                 // video (whose folder they used to share) is off.
                 artifacts_dir: artifactsDir,
@@ -1278,6 +1283,7 @@ class ExecutionWorker {
             ...(hookReport && !isEmptyReport(hookReport) ? { hook_report: hookReport } : {}),
             ...(pageBudgets.length ? { page_budgets: pageBudgets } : {}),
             ...(visualResults.length ? { visual_results: visualResults } : {}),
+            ...(accessibilityResults.length ? { accessibility_results: accessibilityResults } : {}),
             completed_at: new Date().toISOString()
         };
     }
@@ -1401,6 +1407,9 @@ class ExecutionWorker {
                 page_budgets: [] as any[],
                 // expect-visual-match outcomes (WP14e); sliced per case too.
                 visual_results: [] as any[],
+                // check-accessibility outcomes (WP15d); sliced per case too.
+                accessibility_results: [] as any[],
+                run_id: job.run_id,
                 artifacts_dir: artifactsDir,
                 // One correlation per shared context; a new trace id per case.
                 trace: sharedTrace,
@@ -1498,6 +1507,7 @@ class ExecutionWorker {
                 const netStartIdx = networkEvents.length;
                 const budgetStartIdx = sharedContextData.page_budgets.length;
                 const visualStartIdx = sharedContextData.visual_results.length;
+                const a11yStartIdx = sharedContextData.accessibility_results.length;
 
                 // Update context data for this test case
                 sharedContextData.id = testCase.id;
@@ -1738,6 +1748,8 @@ class ExecutionWorker {
                         ? { page_budgets: sharedContextData.page_budgets.slice(budgetStartIdx) } : {}),
                     ...(sharedContextData.visual_results.length > visualStartIdx
                         ? { visual_results: sharedContextData.visual_results.slice(visualStartIdx) } : {}),
+                    ...(sharedContextData.accessibility_results.length > a11yStartIdx
+                        ? { accessibility_results: sharedContextData.accessibility_results.slice(a11yStartIdx) } : {}),
                 });
 
                 console.log(`[Worker] Completed test case: ${testCase.name} (${caseStatus}, ${caseDuration}ms)`);

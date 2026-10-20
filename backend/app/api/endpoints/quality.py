@@ -351,6 +351,11 @@ async def evaluate_gate_for_runs(
     checks.extend(await release_readiness.readiness_gate_checks(
         session, project.id, policy, run_ids, git_commit))
 
+    # WP15d: opt-in. Missing data (fails) when no evaluated run scanned a page.
+    if getattr(policy, "block_new_accessibility_violations", False):
+        from app.services.accessibility import gate_check as a11y_gate_check
+        checks.append(await a11y_gate_check(session, project.id, run_ids))
+
     passed_gate = bool(finished_runs) and all(c.passed for c in checks)
     return QualityGateResult(
         project_id=project.id, passed=passed_gate,
