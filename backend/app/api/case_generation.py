@@ -352,7 +352,8 @@ async def cases_from_openapi(
         try:
             validate_spec(schema)
             row = await store_project_spec(session, suite.project_id, schema, principal.user.id,
-                                           source_url=body.schema_url if not body.schema_inline else None)
+                                           source_url=body.schema_url if not body.schema_inline else None,
+                                           via="from-openapi")
             # Same audit row as PUT /projects/{id}/openapi-spec: the stored
             # spec decides what every `expect_schema: {openapi: ...}` step
             # asserts, so replacing it here is the same change made elsewhere.

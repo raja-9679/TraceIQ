@@ -67,6 +67,12 @@ ON_DELETE: Dict[str, str] = {
     "caseproposal.project_id": DELETE,
     "authsession.project_id": DELETE,
     "projectapispec.project_id": DELETE,
+    # WP16b: spec history is project configuration; owner-notice rows are
+    # dedupe keys for a case/run that no longer exists.
+    "projectapispecversion.project_id": DELETE,
+    "caseownernotice.project_id": DELETE,
+    "caseownernotice.test_case_id": DELETE,
+    "caseownernotice.test_run_id": DELETE,
     # A person's notification choice for a deleted project means nothing.
     "projectnotificationpref.project_id": DELETE,
     # A sign-off is a decision about this project's release; budgets and their

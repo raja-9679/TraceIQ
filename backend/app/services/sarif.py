@@ -140,3 +140,67 @@ def build_sarif(findings: Iterable[Any], *, tool_version: str = "1.0",
     if automation_id:
         run["automationDetails"] = {"id": automation_id}
     return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": [run]}
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI breaking-change diff (WP16b)
+# ---------------------------------------------------------------------------
+
+def build_spec_diff_sarif(diff: Dict[str, Any], *, artifact_uri: str = "openapi.json",
+                          from_version: Optional[int] = None, to_version: Optional[int] = None,
+                          tool_version: str = "1.0",
+                          information_uri: str = "https://github.com/raja-9679/TraceIQ") -> Dict[str, Any]:
+    """SARIF for an OpenAPI diff (`openapi_diff.to_json` output).
+
+    ruleId = `openapi/<rule>`; breaking changes are `error`, the rest `note`.
+    The location is the spec file plus a logical location naming the
+    operation (`GET /pets/{id}`) and the place inside it — an API change has
+    no line number. partialFingerprints carries the change id, which is
+    stable for the same rule at the same place, so a consumer tracks a
+    breaking change across uploads."""
+    from app.services.openapi_diff import RULES
+    rules: List[Dict[str, Any]] = []
+    index: Dict[str, int] = {}
+    results: List[Dict[str, Any]] = []
+    for c in diff.get("changes") or []:
+        rid = f"openapi/{c['rule']}"
+        breaking = c.get("severity") == "breaking"
+        if rid not in index:
+            index[rid] = len(rules)
+            rules.append({
+                "id": rid, "name": c["rule"],
+                "shortDescription": {"text": RULES.get(c["rule"], c["rule"])},
+                "defaultConfiguration": {"level": "error" if breaking else "note"},
+                "properties": {"tags": ["api", "openapi", "breaking-change" if breaking else "compatible"]},
+            })
+        op = f"{c.get('method') or ''} {c.get('path') or ''}".strip() or "spec"
+        msg = f"{op}: {c.get('message')}"
+        if c.get("promoted_reason"):
+            msg += f" — breaking because {c['promoted_reason']}"
+        results.append({
+            "ruleId": rid, "ruleIndex": index[rid],
+            "level": "error" if breaking else "note",
+            "message": {"text": msg[:1000]},
+            "locations": [{
+                "physicalLocation": {"artifactLocation": {"uri": artifact_uri}},
+                "logicalLocations": [{"name": op, "fullyQualifiedName": f"{op} {c.get('location')}",
+                                      "kind": "function"}],
+            }],
+            "partialFingerprints": {"traceiqApiChange/v1": c.get("id")},
+            "properties": {
+                "severity": c.get("severity"), "operation_id": c.get("operation_id"),
+                "location": c.get("location"), "status": c.get("status"),
+                "affected_case_ids": [a.get("case_id") for a in c.get("affected_cases") or []],
+            },
+        })
+    run: Dict[str, Any] = {
+        "tool": {"driver": {"name": "TraceIQ", "informationUri": information_uri,
+                            "version": tool_version, "rules": rules}},
+        "results": results,
+        "columnKind": "unicodeCodePoints",
+        "properties": {"truncated": bool(diff.get("truncated")),
+                       "breaking_count": diff.get("breaking_count", 0)},
+    }
+    if from_version is not None and to_version is not None:
+        run["automationDetails"] = {"id": f"openapi-diff/v{from_version}..v{to_version}"}
+    return {"$schema": SARIF_SCHEMA, "version": SARIF_VERSION, "runs": [run]}

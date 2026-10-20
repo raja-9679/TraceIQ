@@ -19,6 +19,7 @@ from traceiq_mcp.schemas.quality import (
     QualitySnapshot,
     ReleaseReadiness,
     RunReport,
+    SpecDiff,
 )
 from traceiq_mcp.schemas.runs import RunRef
 
@@ -57,6 +58,18 @@ async def get_release_readiness(project_id: int,
     the missing cases rather than treating it as a pass."""
     data = await new_client().release_readiness(project_id, git_commit, git_branch)
     return ReleaseReadiness.model_validate(data)
+
+
+@mcp.tool()
+async def get_spec_diff(project_id: int, from_version: Optional[int] = None,
+                        to_version: Optional[int] = None) -> SpecDiff:
+    """Breaking vs non-breaking changes between two stored versions of the
+    project's OpenAPI spec (default: the newest version vs the one before),
+    breaking first, each naming the tests whose expect_schema references the
+    changed operation (`affected_tests`). Use it after changing an API to
+    see which TraceIQ tests the change breaks."""
+    data = await new_client().spec_diff(project_id, from_version, to_version)
+    return SpecDiff.model_validate(data)
 
 
 @mcp.tool()

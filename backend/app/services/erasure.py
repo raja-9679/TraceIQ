@@ -94,6 +94,11 @@ RETAINED_AUTHORSHIP: List[str] = [
     # WP14b: who last changed an agent's controls; whose credentials an agent
     # session ran under. Workspace governance / usage records.
     "agentcontrol.updated_by_id", "agentsession.user_id",
+    # WP16b: who owns / backs up / last reviewed a test, who stored a spec
+    # version. The owner then shows as "no longer has access" (the scrubbed
+    # row is deactivated) rather than the case silently losing its owner.
+    "testcase.owner_user_id", "testcase.backup_owner_user_id",
+    "testcase.last_reviewed_by_id", "projectapispecversion.created_by_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {

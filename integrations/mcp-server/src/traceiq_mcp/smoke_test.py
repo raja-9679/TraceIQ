@@ -36,7 +36,7 @@ EXPECTED_TOOLS = {
     "bulk_propose_cases", "list_case_proposals", "generate_case_proposal",
     # quality & results
     "get_quality_snapshot", "evaluate_quality_gate", "get_release_readiness",
-    "get_run_report",
+    "get_spec_diff", "get_run_report",
     "get_test_effectiveness", "list_failure_clusters", "get_failure_cluster",
     "list_flakes", "list_heal_proposals",
     "create_comparison_run", "get_comparison",

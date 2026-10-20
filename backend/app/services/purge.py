@@ -155,6 +155,12 @@ PURGE_PLAN: List[PurgeStep] = [
               f"OR captured_by_case_id IN ({_CASES})"),
     PurgeStep("projectapispec",
               f"DELETE FROM projectapispec WHERE project_id IN ({_PROJECTS})"),
+    # WP16b: spec history and owner-notice dedupe rows.
+    PurgeStep("projectapispecversion",
+              f"DELETE FROM projectapispecversion WHERE project_id IN ({_PROJECTS})"),
+    PurgeStep("caseownernotice",
+              f"DELETE FROM caseownernotice WHERE project_id IN ({_PROJECTS}) "
+              f"OR test_case_id IN ({_CASES}) OR test_run_id IN ({_RUNS})"),
     PurgeStep("projectnotificationpref",
               f"DELETE FROM projectnotificationpref WHERE project_id IN ({_PROJECTS})"),
     # WP12d: release sign-offs and cost budgets / alert dedupe rows.

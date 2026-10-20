@@ -11,6 +11,8 @@ Now, per project (`Project.notification_settings`):
                                 access to the project (re-checked at send time)
     extra_emails         [str]  plain addresses (distribution lists etc.)
     failures_only        bool   skip runs where every test passed
+    notify_case_owners   bool   email a case's owner on its first failure
+                                after a pass (WP16b; default false)
     slack_enabled / teams_enabled             bool
     slack_webhook_enc / teams_webhook_enc     encrypted URL (never returned)
 
@@ -36,9 +38,12 @@ DEFAULTS: Dict[str, Any] = {
     "failures_only": False,
     "slack_enabled": False,
     "teams_enabled": False,
+    # WP16b: email a case's owner (backup if the owner can't be reached) on
+    # the case's first failure after a pass. Opt-in.
+    "notify_case_owners": False,
 }
 
-_BOOL_KEYS = ("email_enabled", "failures_only", "slack_enabled", "teams_enabled")
+_BOOL_KEYS = ("email_enabled", "failures_only", "slack_enabled", "teams_enabled", "notify_case_owners")
 _WEBHOOKS = {"slack_webhook": "slack_webhook_enc", "teams_webhook": "teams_webhook_enc"}
 
 

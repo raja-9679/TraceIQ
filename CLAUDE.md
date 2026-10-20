@@ -1440,6 +1440,44 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   (caller-written values are overwritten). Not for local/mobile workers. UI:
   Environments → "Recorded traffic (HAR)"; step editor "Network mocks".
   Worker + backend + frontend rebuild needed.
+- **API spec history + test ownership (WP16b, 2026-10, V2/V5)** — migration
+  `e122b3c4d612`. **Spec history:** every store of the project OpenAPI doc
+  (PUT `.../openapi-spec`, `cases/from-openapi`) appends a numbered
+  `projectapispecversion` (canonical-JSON SHA-256; identical upload = no new
+  version; newest 50 kept + the gate's pinned baseline; DELETE of the current
+  spec keeps history; old rows backfilled as v1). `ProjectApiSpec` is still
+  what dispatch resolves. `GET .../openapi-spec/versions[/{n}]`,
+  `.../diff?from=&to=` (default newest vs previous), `.../diff/sarif`.
+  Diff = pure `app/services/openapi_diff.py`, direction-aware (request
+  narrowing / response widening breaks). Local `$ref`s only, resolved before
+  comparing (a renamed component with the same shape is no change), allOf
+  folded, oneOf/anyOf matched by shape, 3.0 `nullable` == 3.1 `type` arrays,
+  path params matched by position, readOnly/writeOnly honoured, bounded
+  (nodes/depth/2000 changes → `truncated`). Deliberate calls: response enum
+  value ADDED = non-breaking (with a closed-enum caveat); response
+  nullable→non-null is safe (non-null→nullable breaks); removed 4xx/5xx is
+  non-breaking unless a test pins that status, and an operationId rename
+  breaks tests using the old id — both promoted in `link_cases`, which names
+  the project's own cases whose `expect_schema` references each operation.
+  Gate: `require_no_breaking_api_changes` + `api_baseline`
+  (`previous`|`pinned`) + `api_baseline_version`; < 2 versions / missing pin
+  = `missing_data`. MCP `get_spec_diff`. **Ownership:** `testcase.owner_user_id`,
+  `backup_owner_user_id`, `last_reviewed_at/_by_id` — NOT on TestCaseBase (create
+  /PUT can't set them), not in revisions, git-sync hash or proposals (metadata,
+  not test content; a reassignment must not turn into sync conflicts). `PUT
+  /cases/{id}/ownership` (editor; both must be active with project access;
+  audited `ownership_set`), `POST /cases/{id}/reviewed` (editor, humans only,
+  audited `reviewed`), `GET /projects/{id}/test-review?status=&owner=`. An
+  owner who loses access is never cleared — shown `state: no_access`.
+  Interval = suite setting `review_interval_days` (inherited execution flag,
+  validated in `suite_hooks.validate_suite_settings`; default 90, 0 = no
+  review). Owner email (`notify_case_owners` project notification setting,
+  off by default) on a case's first test-kind failure after a pass:
+  `notification_tasks.notify_case_owners_for_run` in `SIDE_EFFECT_TASKS`;
+  owner, else backup; dedupe row `caseownernotice` unique on (case, last
+  passing result) committed before sending. Logic in
+  `app/services/ownership_review.py` / `app/api/case_ownership.py` (not
+  `test_*` — pytest would collect them). Backend + frontend rebuild.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
