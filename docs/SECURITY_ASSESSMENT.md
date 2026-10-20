@@ -86,12 +86,14 @@ stack (`http://localhost:8080`, nginx → backend), 2026-09-07.
   integrity hash. Fix is to self-host Inter; deferred.
 - **COEP** — `require-corp` would block artifact images unless the object store
   also sends CORP headers. Deliberately not set.
-- **Starlette / FastAPI advisories** — the remaining pip-audit entries
-  (Starlette 0.35.1, fixed in 0.40–1.3; FastAPI 0.109.0) need a FastAPI major
-  bump; the framework is used across ~230 routes and the change deserves its
-  own tested branch, not a slot in a hygiene pass. `protobuf` 4.25 is held by
-  `opentelemetry-proto` (<5). `pip`/`setuptools`/`ecdsa` in the image are
-  build-time or transitive with no reachable path.
+- **Starlette / FastAPI advisories** — FIXED 2026-10-20 (WP15b): FastAPI
+  0.109.0 → 0.153.0, Starlette 0.35.1 → 1.9.0, python-multipart 0.0.20 →
+  0.0.32, and (because FastAPI now requires `opentelemetry-api>=1.44`) the OTel
+  pins 1.27/0.48b0 → 1.45.1/0.66b1, which also lifts `protobuf` to 7.x. Full
+  unit + live suites pass. `pip-audit -r requirements.txt --no-deps` after the
+  bump: 2 left — `requests` 2.32.4 (fix 2.33.0) and `python-jose` 3.4.0 (no
+  fixed release). `pip`/`setuptools`/`ecdsa` in the image are build-time or
+  transitive with no reachable path.
 - **Base-image CVEs with no fix** (Debian `perl-base`, `libsqlite3`, `glib`;
   Playwright/Jammy Go binaries) — tracked by rebuilding; the worker image's Go
   findings live in the Microsoft Playwright base and go away with the next

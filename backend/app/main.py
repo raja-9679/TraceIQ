@@ -95,7 +95,17 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete")
 
 
-app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
+# FastAPI >= 0.15x ships its own OpenTelemetry spans/metrics/logs, on by
+# default against the GLOBAL providers. It steps aside for FastAPIInstrumentor
+# only when that wraps the stack, and on its own it records `url.query` (query
+# strings can carry tokens), traces /health and /metrics, and logs validation
+# failures. app.core.telemetry's FastAPIInstrumentor stays the one source of
+# request spans, with our exclusions.
+app = FastAPI(
+    title="Quality Intelligence Platform",
+    lifespan=lifespan,
+    telemetry={"tracing": False, "metrics": False, "logs": False},
+)
 
 # X-Request-ID in, contextvar for the logs, X-Request-ID out. Added before the
 # tracer so the span and the log lines for one request can be joined.
