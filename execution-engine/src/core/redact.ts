@@ -193,16 +193,42 @@ export const CLOUD_KEY_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
     ['azure_storage_key', /(?<=AccountKey=)[A-Za-z0-9+/]{86}==/g],
 ];
 
+// Fullwidth digits (U+FF10..U+FF19) fold to ASCII for MATCHING only. Python's
+// `\d` (the ingestion twin) matches them and redacts a fullwidth card number;
+// JS `\d` is ASCII-only, so without this the worker would keep one the
+// backend later removes. One UTF-16 unit each, so offsets line up; text that
+// is not redacted keeps its original characters.
+const FULLWIDTH_DIGIT = /[\uFF10-\uFF19]/g;
+
+function foldDigits(text: string): string {
+    return text.replace(FULLWIDTH_DIGIT, c => String.fromCharCode(c.charCodeAt(0) - 0xFF10 + 0x30));
+}
+
+function replaceFolded(text: string, re: RegExp, redact: (folded: string) => string | null): string {
+    const folded = foldDigits(text);
+    if (folded === text) return text.replace(re, m => redact(m) ?? m);
+    let out = '';
+    let last = 0;
+    for (const m of folded.matchAll(re)) {
+        const at = m.index ?? 0;
+        const replacement = redact(m[0]);
+        if (replacement === null) continue;
+        out += text.slice(last, at) + replacement;
+        last = at + m[0].length;
+    }
+    return out + text.slice(last);
+}
+
 const PATTERN_FUNCS: Record<string, (text: string) => string> = {
     cloud_keys: text => CLOUD_KEY_PATTERNS.reduce(
         (out, [name, re]) => out.replace(re, token(name)), text),
-    pan: text => text.replace(PAN_RE, match => {
+    pan: text => replaceFolded(text, PAN_RE, match => {
         const digits = match.replace(/[ -]/g, '');
-        return digits.length >= 13 && digits.length <= 19 && luhnValid(digits) ? token('pan') : match;
+        return digits.length >= 13 && digits.length <= 19 && luhnValid(digits) ? token('pan') : null;
     }),
-    aadhaar: text => text.replace(AADHAAR_RE, match => {
+    aadhaar: text => replaceFolded(text, AADHAAR_RE, match => {
         const digits = match.replace(/[ -]/g, '');
-        return digits.length === 12 && verhoeffValid(digits) ? token('aadhaar') : match;
+        return digits.length === 12 && verhoeffValid(digits) ? token('aadhaar') : null;
     }),
     jwt: text => text.replace(JWT_RE, token('jwt')),
     email: text => text.replace(EMAIL_RE, token('email')),
@@ -364,6 +390,37 @@ export function redactNetworkEvents(events: any, policy?: RedactionPolicy): any 
 // Job result
 // --------------------------------------------------------------------------
 
+const SECRET_SELECTOR_RE = /pass(word|wd)?|secret|token|api[-_]?key|otp|cvv|cvc|pin\b|card[-_]?number/i;
+
+/** `input[type=password]`, `#password`, `[name="cvv"]` and friends. Twin: `_looks_like_secret_field`. */
+function looksLikeSecretField(selector: string): boolean {
+    if (!selector) return false;
+    if (selector.replace(/["' ]/g, '').includes('type=password')) return true;
+    return SECRET_SELECTOR_RE.test(selector);
+}
+
+/**
+ * Step definitions: a value typed into a password-ish field (or a step whose
+ * `name` is a denied key) is a credential whatever it looks like; `{{…}}`
+ * templates are safe by construction. Twin of `redact_steps` — the backstop
+ * used to sweep steps with the JSON walker only, so a literal password typed
+ * into `#password` reached the results stream.
+ */
+function redactSteps(steps: any[], policy?: RedactionPolicy): any[] {
+    const denied = bodyKeySet(policy);
+    return steps.map(step => {
+        if (!step || typeof step !== 'object' || Array.isArray(step)) return step;
+        const out = { ...step };
+        const value = out.value;
+        if (typeof value === 'string' && value && !value.includes('{{')) {
+            out.value = looksLikeSecretField(String(out.selector || '')) || denied.has(normalizeKey(String(out.name || '')))
+                ? REDACTED : redactText(value, policy);
+        }
+        if (out.params && typeof out.params === 'object') out.params = redactJson(out.params, denied, policy);
+        return out;
+    });
+}
+
 /** The `response_data` blob attached to an API step's result. */
 function redactResponseData(data: any, policy?: RedactionPolicy): any {
     if (!data || typeof data !== 'object') return data;
@@ -388,11 +445,16 @@ function redactCaseResult(result: any, policy?: RedactionPolicy): any {
     if ('network_events' in out) out.network_events = redactNetworkEvents(out.network_events, policy);
     if (typeof out.error === 'string') out.error = redactText(out.error, policy);
     if (typeof out.error_message === 'string') out.error_message = redactText(out.error_message, policy);
+    // Legacy-engine shape (runner.ts) — scrubbed here as well as at ingestion.
+    for (const f of ['request_headers', 'response_headers']) if (f in out) out[f] = redactHeaders(out[f], policy);
+    for (const f of ['request_body', 'response_body']) if (f in out) out[f] = redactBody(out[f], undefined, policy);
     if (Array.isArray(out.execution_log)) {
         out.execution_log = redactJson(out.execution_log, bodyKeySet(policy), policy);
     }
-    if (Array.isArray(out.steps)) {
-        out.steps = redactJson(out.steps, bodyKeySet(policy), policy);
+    if (Array.isArray(out.steps)) out.steps = redactSteps(out.steps, policy);
+    if (Array.isArray(out.console_errors)) {
+        out.console_errors = out.console_errors.map((e: any) =>
+            e && typeof e === 'object' && typeof e.text === 'string' ? { ...e, text: redactText(e.text, policy) } : e);
     }
     if (Array.isArray(out.attempts)) {
         out.attempts = out.attempts.map((a: any) =>
@@ -629,8 +691,9 @@ export function redactStepEvidence(entries: any, policy?: RedactionPolicy): any 
 export function redactJobResult(result: any, policy?: RedactionPolicy): any {
     if (!result || typeof result !== 'object') return result;
     const out = redactCaseResult(result, policy);
-    if (Array.isArray(out.test_results)) {
-        out.test_results = out.test_results.map((r: any) => redactCaseResult(r, policy));
+    // `results` is the legacy engine's key; the backend twin handles both.
+    for (const key of ['test_results', 'results']) {
+        if (Array.isArray(out[key])) out[key] = out[key].map((r: any) => redactCaseResult(r, policy));
     }
     return out;
 }
@@ -812,10 +875,13 @@ export function redactDom(html: string, options: DomRedactionOptions = {}): stri
         .flat();
     const maxChars = options.maxChars ?? MAX_DOM_SNAPSHOT_CHARS;
 
-    // Open elements: [tag, suppressesText, insideMaskedElement].
-    const stack: Array<[string, boolean, boolean]> = [];
+    // Open elements: [tag, suppressesText, insideMaskedElement, dropsMarkup].
+    // dropsMarkup: markup inside <template>/<noscript>/<xmp> is not rendered,
+    // so none of it is emitted (twin: the 4th stack field in redaction.py).
+    const stack: Array<[string, boolean, boolean, boolean]> = [];
     const suppressed = () => stack.length > 0 && stack[stack.length - 1][1];
     const inMasked = () => stack.length > 0 && stack[stack.length - 1][2];
+    const dropsMarkup = () => stack.length > 0 && stack[stack.length - 1][3];
     let out = '';
 
     for (const tok of tokenize(html)) {
@@ -831,6 +897,7 @@ export function redactDom(html: string, options: DomRedactionOptions = {}): stri
             continue;
         }
         if (tok.kind === 'end') {
+            if (dropsMarkup() && stack[stack.length - 1][0] !== tok.tag) continue;
             if (DROPPED_DOM_ELEMENTS.has(tok.tag) || VOID_ELEMENTS.has(tok.tag)) continue;
             const at = stack.map(s => s[0]).lastIndexOf(tok.tag);
             if (at < 0) continue;
@@ -839,6 +906,7 @@ export function redactDom(html: string, options: DomRedactionOptions = {}): stri
             continue;
         }
 
+        if (dropsMarkup()) continue;
         const tag = tok.tag;
         const attrs = new Map(tok.attrs.map(([k, v]) => [k, v ?? '']));
         const type = (attrs.get('type') || '').toLowerCase();
@@ -871,7 +939,8 @@ export function redactDom(html: string, options: DomRedactionOptions = {}): stri
         }
         out += `<${tag}${parts.length ? ' ' + parts.join(' ') : ''}${tok.selfClosing && !VOID_ELEMENTS.has(tag) ? '/' : ''}>`;
         if (VOID_ELEMENTS.has(tag) || tok.selfClosing) continue;
-        stack.push([tag, suppressed() || masked || sensitive || EMPTIED_DOM_ELEMENTS.has(tag), masked]);
+        stack.push([tag, suppressed() || masked || sensitive || EMPTIED_DOM_ELEMENTS.has(tag), masked,
+            tag === 'noscript' || tag === 'template' || tag === 'xmp']);
     }
     return out.length > maxChars ? out.slice(0, maxChars) : out;
 }

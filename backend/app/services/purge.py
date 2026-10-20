@@ -132,6 +132,9 @@ PURGE_PLAN: List[PurgeStep] = [
               f"DELETE FROM caseproposal WHERE project_id IN ({_PROJECTS})"),
     # WP16c: repair accept/reject/validation history (soft refs only).
     PurgeStep("repairoutcome", f"DELETE FROM repairoutcome WHERE project_id IN ({_PROJECTS})"),
+    # WP16d: votes on failure-analysis hypotheses (soft run/result refs).
+    PurgeStep("hypothesisfeedback",
+              f"DELETE FROM hypothesisfeedback WHERE project_id IN ({_PROJECTS})"),
     PurgeStep("flakerecord", f"DELETE FROM flakerecord WHERE test_case_id IN ({_CASES})"),
     # Reporting history (WP12b): flake trend snapshots, vendor roll-ups and
     # deployment events are the project's own derived data.

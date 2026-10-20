@@ -99,6 +99,9 @@ RETAINED_AUTHORSHIP: List[str] = [
     # row is deactivated) rather than the case silently losing its owner.
     "testcase.owner_user_id", "testcase.backup_owner_user_id",
     "testcase.last_reviewed_by_id", "projectapispecversion.created_by_id",
+    # WP16d: a rating of an AI hypothesis is part of the project's reviewed
+    # sample (the accuracy figure); it holds a verdict, no text about anyone.
+    "hypothesisfeedback.user_id",
 ]
 
 RETAINED_WITH_REASON: Dict[str, str] = {

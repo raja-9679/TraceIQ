@@ -93,6 +93,7 @@ run() {
   # --entrypoint bypasses the image's wait-for-database entrypoint.
   docker run --rm --entrypoint "$1" --network "$NET" \
     -v "$REPO_BACKEND":/src -w /src \
+    -v "$(cd "$REPO_BACKEND/.." && pwd)/tests/vectors":/tests/vectors:ro \
     -e PYTHONPATH=/src -e PYTHONDONTWRITEBYTECODE=1 \
     -e DATABASE_URL="$URL" \
     -e CELERY_BROKER_URL=redis://localhost:6379/0 \

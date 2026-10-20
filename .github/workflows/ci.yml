@@ -40,6 +40,16 @@ jobs:
       # This used to run two files out of the suite. Everything else was written
       # and then never executed by CI, which is how tests/test_stale_run_detection.py
       # and friends could have rotted unnoticed.
+      # WP15e (H8): the frontend's generated API types are built from this
+      # document. Dumped by importing the app (no server); a diff means a
+      # backend API change landed without `npm run gen:api` in frontend/.
+      - name: OpenAPI document is up to date
+        working-directory: backend
+        run: |
+          python scripts/dump_openapi.py ../frontend/src/api/generated/openapi.json
+          git diff --exit-code -- ../frontend/src/api/generated/openapi.json \
+            || { echo "::error::frontend/src/api/generated/openapi.json is stale. Run 'npm run gen:api' in frontend/ and commit the result."; exit 1; }
+
       - name: Run unit tests
         working-directory: backend
         run: |
@@ -329,6 +339,15 @@ jobs:
 
       - working-directory: frontend
         run: npm ci
+
+      # WP15e (H8): schema.ts must be exactly what the pinned openapi-typescript
+      # makes of the committed openapi.json (the backend job checks the JSON).
+      - name: Generated API types are up to date
+        working-directory: frontend
+        run: |
+          npm run gen:api -- --types
+          git diff --exit-code -- src/api/generated/schema.ts \
+            || { echo "::error::frontend/src/api/generated/schema.ts is stale. Run 'npm run gen:api -- --types' and commit the result."; exit 1; }
 
       # tsc -b is part of `npm run build`, so this type-checks as well as builds.
       - working-directory: frontend

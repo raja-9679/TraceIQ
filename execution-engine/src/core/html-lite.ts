@@ -76,8 +76,13 @@ export function tokenize(html: string, opts: { xml?: boolean } = {}): Token[] {
         if (html[i + 1] === '!' || html[i + 1] === '?') {
             flushText();
             const end = html.indexOf('>', i + 2);
+            // Only a real <!DOCTYPE> is a doctype; <![CDATA[…]]>, <?xml …?> and
+            // other declarations are dropped like comments (Python's
+            // HTMLParser twin does the same — redactDom used to emit a
+            // <!DOCTYPE html> for each of them).
+            const doctype = /^<!doctype/i.test(html.slice(i, i + 9));
             i = end < 0 ? n : end + 1;
-            out.push({ kind: 'doctype' });
+            out.push(doctype ? { kind: 'doctype' } : { kind: 'comment' });
             continue;
         }
         if (html[i + 1] === '/' && isNameStart(html[i + 2] || '')) {

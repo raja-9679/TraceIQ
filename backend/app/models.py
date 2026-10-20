@@ -2552,6 +2552,10 @@ class FailureCluster(SQLModel, table=True):
     assignee_id: Optional[int] = Field(default=None, foreign_key="users.id")
     resolution_note: Optional[str] = Field(default=None)
     resolved_at: Optional[datetime] = Field(default=None)  # set when status→resolved (MTTR)
+    # WP16d: the first time a person moved the cluster to investigating or
+    # resolved — a "diagnosed" signal for time to diagnosis. Set once, never
+    # cleared (reopening does not undo the diagnosis having happened).
+    first_triaged_at: Optional[datetime] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -4091,6 +4095,41 @@ class RepairOutcome(SQLModel, table=True):
     conditions: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
     user_id: Optional[int] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+
+
+
+# =============================================================================
+# WP16d — pilot value report (decision V6)
+# =============================================================================
+
+
+class HypothesisFeedback(SQLModel, table=True):
+    """One person's verdict on one failure-investigation hypothesis (WP16d, V6).
+
+    The value report's "AI failure-analysis accuracy" is the share of RATED top
+    hypotheses that reviewers marked correct — a reviewed sample, never all
+    runs. One vote per (result, hypothesis, user), changeable. A hypothesis has
+    no id of its own, so `hypothesis_key` hashes what identifies it (category,
+    summary, source); a re-analysis that produces a different hypothesis gets a
+    different key and never inherits votes. Run / result ids are soft refs so
+    the sample outlives run retention; no hypothesis text is stored."""
+    __table_args__ = (UniqueConstraint("result_id", "hypothesis_key", "user_id",
+                                       name="uq_hypothesisfeedback_result_key_user"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    run_id: int = Field(index=True)
+    result_id: int = Field(index=True)
+    # When the rated run was created: the report window filters on this, so a
+    # vote counts for the period whose analysis it judged.
+    run_created_at: datetime = Field(index=True)
+    hypothesis_index: int                   # 0 = the top-ranked hypothesis
+    hypothesis_key: str
+    category: str
+    source: str = Field(default="heuristic")  # "heuristic" | "llm:<provider>"
+    verdict: str                            # correct | incorrect
+    user_id: int = Field(foreign_key="users.id", index=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 # Seal every AuditLog row as it is flushed, in whichever process created it —

@@ -80,6 +80,9 @@ async def update_cluster(cluster_id: int, body: FailureClusterUpdate,
                 cluster.resolved_at = _dt.utcnow()
         else:
             cluster.resolved_at = None
+        # Time to diagnosis (WP16d): the first move to investigating/resolved.
+        if data["status"] in ("investigating", "resolved") and not cluster.first_triaged_at:
+            cluster.first_triaged_at = _dt.utcnow()
     session.add(cluster)
     await session.commit()
     await session.refresh(cluster)

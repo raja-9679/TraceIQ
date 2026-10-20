@@ -1,0 +1,2904 @@
+{
+  "format": "traceiq-twin-vectors",
+  "version": 1,
+  "description": "Shared vectors for the redaction twins: execution-engine/src/core/redact.ts and backend/app/services/redaction.py. Consumed by execution-engine/src/core/twin-vectors.test.ts and backend/tests/test_twin_vectors.py. See README.md.",
+  "fixtures": {
+    "DOM_FIXTURE": {
+      "$concat": [
+        "<!DOCTYPE html><html><head>\n<meta name=\"csrf-token\" content=\"s3cr3t-csrf\"><link rel=\"stylesheet\" href=\"/a.css?v=1\">\n<script>window.API_KEY = \"sk_live_abc123\";</script><style>.x{color:red}</style></head>\n<body><!-- build 4f2a debug token=xyz -->\n<form id=\"login\" action=\"/session?next=/home&amp;sig=abcdef\">\n  <input type=\"hidden\" name=\"authenticity_token\" value=\"tok-123\">\n  <input id=\"email\" name=\"email\" type=\"email\" value=\"jane@corp.example\" placeholder=\"Email\">\n  <input id=\"password\" name=\"password\" type=\"password\" value=\"hunter2\">\n  <input type=\"submit\" value=\"Sign in\" onclick=\"steal()\">\n  <textarea name=\"notes\">private notes</textarea>\n  <button data-testid=\"login-submit\" class=\"btn primary\" aria-label=\"Log in\" style=\"color:red\">Log in</button>\n  <img src=\"data:image/png;base64,AAAA\" alt=\"logo\">\n  <div class=\"api-token-display\">",
+        "ghp_abcdefghijklmnop",
+        "qrstuvwxyz0123456789",
+        "</div>\n  <span data-token=\"abc\">Card 4111 1111 1111 1111</span>\n  <div style=\"display: none\" title=\"",
+        {
+          "$repeat": [
+            "x",
+            300
+          ]
+        },
+        "\">Hidden panel</div>\n  <div class=\"profile-card\"><p>Jane Doe, 12 Main St</p></div>\n</form></body></html>"
+      ]
+    }
+  },
+  "vectors": [
+    {
+      "id": "luhn.visa_test_number",
+      "fn": "luhn_valid",
+      "args": {
+        "digits": "4111111111111111"
+      },
+      "expected": true
+    },
+    {
+      "id": "luhn.amex_test_number",
+      "fn": "luhn_valid",
+      "args": {
+        "digits": "378282246310005"
+      },
+      "expected": true
+    },
+    {
+      "id": "luhn.order_id_fails",
+      "fn": "luhn_valid",
+      "args": {
+        "digits": "1234567890123456"
+      },
+      "expected": false
+    },
+    {
+      "id": "verhoeff.valid_aadhaar",
+      "fn": "verhoeff_valid",
+      "args": {
+        "digits": "234123412346"
+      },
+      "expected": true
+    },
+    {
+      "id": "verhoeff.lookalike_fails",
+      "fn": "verhoeff_valid",
+      "args": {
+        "digits": "234123412341"
+      },
+      "expected": false
+    },
+    {
+      "id": "cloud_keys.aws_access_key.akia",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "AKIAIOSFOD",
+            "NN7EXAMPLE",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:aws_access_key] ok"
+    },
+    {
+      "id": "cloud_keys.aws_access_key.asia",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "ASIAIOSFOD",
+            "NN7EXAMPL2",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:aws_access_key] ok"
+    },
+    {
+      "id": "cloud_keys.github_token.ghp_",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "ghp_a1B2c3D4e5F6g7H8",
+            "i9J0k1L2m3N4o5P6q7R8",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:github_token] ok"
+    },
+    {
+      "id": "cloud_keys.github_token.gith",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "github_pat_11ABCDEFG012",
+            "3456789_abcdefghijKLMNOP",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:github_token] ok"
+    },
+    {
+      "id": "cloud_keys.slack_token.xoxb",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "xoxb-1234567890",
+            "12-abcdefghijkl",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:slack_token] ok"
+    },
+    {
+      "id": "cloud_keys.slack_token.xoxp",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "xoxp-1234567890",
+            "12-abcdefghijkl",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:slack_token] ok"
+    },
+    {
+      "id": "cloud_keys.stripe_key.sk_l",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "sk_live_4eC39HqL",
+            "yjWDarjtT1zdp7dc",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:stripe_key] ok"
+    },
+    {
+      "id": "cloud_keys.stripe_key.rk_l",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "rk_live_4eC39HqL",
+            "yjWDarjtT1zdp7dc",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:stripe_key] ok"
+    },
+    {
+      "id": "cloud_keys.google_api_key.aiza",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "key is ",
+            "AIzaSyA1234567890ab",
+            "cdefghijklmnopqrstuv",
+            " ok"
+          ]
+        }
+      },
+      "expected": "key is [REDACTED:google_api_key] ok"
+    },
+    {
+      "id": "cloud_keys.azure_storage_key.connection_string",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "DefaultEndpointsProtocol=https;AccountName=x;AccountKey=",
+            {
+              "$repeat": [
+                "A",
+                86
+              ]
+            },
+            "==;"
+          ]
+        }
+      },
+      "expected": "DefaultEndpointsProtocol=https;AccountName=x;AccountKey=[REDACTED:azure_storage_key];"
+    },
+    {
+      "id": "cloud_keys.private_key.whole_block",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "cfg -----BEGIN RSA ",
+            "PRIVATE ",
+            "KEY-----",
+            "\nMIIEowIBAAKCAQEA7\n-----END RSA ",
+            "PRIVATE ",
+            "KEY-----",
+            " tail"
+          ]
+        }
+      },
+      "expected": "cfg [REDACTED:private_key] tail"
+    },
+    {
+      "id": "cloud_keys.private_key.truncated_runs_to_end",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "-----BEGIN ",
+            "PRIVATE ",
+            "KEY-----",
+            "\nMIIEvQIBADANBgkq"
+          ]
+        }
+      },
+      "expected": "[REDACTED:private_key]"
+    },
+    {
+      "id": "cloud_keys.private_key.truncated_with_trailing_newline",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "-----BEGIN ",
+            "PRIVATE ",
+            "KEY-----",
+            "\nMIIEvQIBADANBgkq\n"
+          ]
+        }
+      },
+      "expected": "[REDACTED:private_key]"
+    },
+    {
+      "id": "cloud_keys.private_key.block_then_newline",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "-----BEGIN RSA ",
+            "PRIVATE ",
+            "KEY-----",
+            "\nMIIEowIBAAKCAQEA7\n-----END RSA ",
+            "PRIVATE ",
+            "KEY-----",
+            "\n"
+          ]
+        }
+      },
+      "expected": "[REDACTED:private_key]\n"
+    },
+    {
+      "id": "cloud_keys.runs_before_pan",
+      "fn": "redact_text",
+      "args": {
+        "text": "AKIA4111111111111111"
+      },
+      "expected": "[REDACTED:aws_access_key]"
+    },
+    {
+      "id": "cloud_keys.lookalike_kept.0",
+      "fn": "redact_text",
+      "args": {
+        "text": "AKIA-not-a-key"
+      },
+      "expected": "AKIA-not-a-key"
+    },
+    {
+      "id": "cloud_keys.lookalike_kept.1",
+      "fn": "redact_text",
+      "args": {
+        "text": "ghp_short"
+      },
+      "expected": "ghp_short"
+    },
+    {
+      "id": "cloud_keys.lookalike_kept.2",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "sk_test_4eC39HqL",
+            "yjWDarjtT1zdp7dc"
+          ]
+        }
+      },
+      "expected": {
+        "$concat": [
+          "sk_test_4eC39HqL",
+          "yjWDarjtT1zdp7dc"
+        ]
+      }
+    },
+    {
+      "id": "cloud_keys.lookalike_kept.3",
+      "fn": "redact_text",
+      "args": {
+        "text": "xoxb-short"
+      },
+      "expected": "xoxb-short"
+    },
+    {
+      "id": "cloud_keys.lookalike_kept.4",
+      "fn": "redact_text",
+      "args": {
+        "text": "AIzaShort"
+      },
+      "expected": "AIzaShort"
+    },
+    {
+      "id": "cloud_keys.lookalike_kept.5",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "X",
+            "AKIAIOSFOD",
+            "NN7EXAMPLE",
+            "X"
+          ]
+        }
+      },
+      "expected": {
+        "$concat": [
+          "X",
+          "AKIAIOSFOD",
+          "NN7EXAMPLE",
+          "X"
+        ]
+      }
+    },
+    {
+      "id": "cloud_keys.off_by_policy",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "AKIAIOSFOD",
+            "NN7EXAMPLE"
+          ]
+        }
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "jwt"
+        ]
+      },
+      "expected": {
+        "$concat": [
+          "AKIAIOSFOD",
+          "NN7EXAMPLE"
+        ]
+      }
+    },
+    {
+      "id": "cloud_keys.on_when_policy_lists_it",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": [
+            "AKIAIOSFOD",
+            "NN7EXAMPLE",
+            " 4111111111111111"
+          ]
+        }
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "cloud_keys"
+        ]
+      },
+      "expected": "[REDACTED:aws_access_key] 4111111111111111"
+    },
+    {
+      "id": "pan.plain",
+      "fn": "redact_text",
+      "args": {
+        "text": "card 4111111111111111 declined"
+      },
+      "expected": "card [REDACTED:pan] declined"
+    },
+    {
+      "id": "pan.spaces",
+      "fn": "redact_text",
+      "args": {
+        "text": "card 4111 1111 1111 1111 declined"
+      },
+      "expected": "card [REDACTED:pan] declined"
+    },
+    {
+      "id": "pan.dashes",
+      "fn": "redact_text",
+      "args": {
+        "text": "card 4111-1111-1111-1111 declined"
+      },
+      "expected": "card [REDACTED:pan] declined"
+    },
+    {
+      "id": "pan.thirteen_digit_visa",
+      "fn": "redact_text",
+      "args": {
+        "text": "card 4222222222222 ok"
+      },
+      "expected": "card [REDACTED:pan] ok"
+    },
+    {
+      "id": "pan.fails_luhn_kept",
+      "fn": "redact_text",
+      "args": {
+        "text": "order 1234567890123456 shipped"
+      },
+      "expected": "order 1234567890123456 shipped"
+    },
+    {
+      "id": "pan.twelve_digits_not_a_pan",
+      "fn": "redact_text",
+      "args": {
+        "text": "id 411111111111 x"
+      },
+      "expected": "id 411111111111 x"
+    },
+    {
+      "id": "pan.twenty_digits_kept",
+      "fn": "redact_text",
+      "args": {
+        "text": "id 41111111111111111111 x"
+      },
+      "expected": "id 41111111111111111111 x"
+    },
+    {
+      "id": "pan.decimal_neighbour_kept",
+      "fn": "redact_text",
+      "args": {
+        "text": "value 1.4111111111111111 and 4111111111111111.5"
+      },
+      "expected": "value 1.4111111111111111 and 4111111111111111.5"
+    },
+    {
+      "id": "pan.arabic_indic_digits_kept",
+      "fn": "redact_text",
+      "args": {
+        "text": "card ٤١١١١١١١١١١١١١١١"
+      },
+      "expected": "card ٤١١١١١١١١١١١١١١١"
+    },
+    {
+      "id": "pan.fullwidth_digits",
+      "fn": "redact_text",
+      "args": {
+        "text": "card ４１１１１１１１１１１１１１１１"
+      },
+      "expected": "card [REDACTED:pan]"
+    },
+    {
+      "id": "pan.fullwidth_keeps_surrounding_text",
+      "fn": "redact_text",
+      "args": {
+        "text": "x ４１１１ １１１１ １１１１ １１１１ y １２"
+      },
+      "expected": "x [REDACTED:pan] y １２"
+    },
+    {
+      "id": "aadhaar.fullwidth",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid ２３４１ ２３４１ ２３４６ ok"
+      },
+      "expected": "uid [REDACTED:aadhaar] ok"
+    },
+    {
+      "id": "aadhaar.arabic_indic_no_crash",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid ٢٣٤١ ٢٣٤١ ٢٣٤٦ ok"
+      },
+      "expected": "uid ٢٣٤١ ٢٣٤١ ٢٣٤٦ ok"
+    },
+    {
+      "id": "pan.off_when_patterns_empty",
+      "fn": "redact_text",
+      "args": {
+        "text": "card 4111111111111111"
+      },
+      "data_policy": {
+        "redact_patterns": []
+      },
+      "expected": "card 4111111111111111"
+    },
+    {
+      "id": "aadhaar.plain",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid 234123412346 ok"
+      },
+      "expected": "uid [REDACTED:aadhaar] ok"
+    },
+    {
+      "id": "aadhaar.spaced",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid 2341 2341 2346 ok"
+      },
+      "expected": "uid [REDACTED:aadhaar] ok"
+    },
+    {
+      "id": "aadhaar.fails_verhoeff_kept",
+      "fn": "redact_text",
+      "args": {
+        "text": "uid 234123412341 ok"
+      },
+      "expected": "uid 234123412341 ok"
+    },
+    {
+      "id": "jwt.in_prose",
+      "fn": "redact_text",
+      "args": {
+        "text": "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk expired"
+      },
+      "expected": "Bearer [REDACTED:jwt] expired"
+    },
+    {
+      "id": "jwt.in_url",
+      "fn": "redact_text",
+      "args": {
+        "text": "https://app.example/cb?id_token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk&x=1"
+      },
+      "expected": "https://app.example/cb?id_token=[REDACTED:jwt]&x=1"
+    },
+    {
+      "id": "jwt.digits_gone_before_pan",
+      "fn": "redact_text",
+      "args": {
+        "text": "eyJ4111111111111111.eyJ4111111111111111.sig4111111111111111"
+      },
+      "expected": "[REDACTED:jwt]"
+    },
+    {
+      "id": "email.kept_by_default",
+      "fn": "redact_text",
+      "args": {
+        "text": "mail jane@corp.example now"
+      },
+      "expected": "mail jane@corp.example now"
+    },
+    {
+      "id": "email.on_by_policy",
+      "fn": "redact_text",
+      "args": {
+        "text": "mail jane@corp.example now"
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "email"
+        ]
+      },
+      "expected": "mail [REDACTED:email] now"
+    },
+    {
+      "id": "phone.kept_by_default",
+      "fn": "redact_text",
+      "args": {
+        "text": "call +91 98765 43210 now"
+      },
+      "expected": "call +91 98765 43210 now"
+    },
+    {
+      "id": "phone.on_by_policy",
+      "fn": "redact_text",
+      "args": {
+        "text": "call +91 98765 43210 now"
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "phone"
+        ]
+      },
+      "expected": "call [REDACTED:phone] now"
+    },
+    {
+      "id": "phone.on_by_policy_eats_iso_dates",
+      "fn": "redact_text",
+      "args": {
+        "text": "on 2026-10-20 at 10:30"
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "phone"
+        ]
+      },
+      "note": "Known false positive of the opt-in phone rule (why it is off by default, and why the assistant's redact_for_llm leaves it out): both twins agree on it.",
+      "expected": "on [REDACTED:phone] at 10:30"
+    },
+    {
+      "id": "patterns.policy_extra_list_replaces_defaults",
+      "fn": "redact_text",
+      "args": {
+        "text": "4111111111111111 jane@corp.example"
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "email"
+        ]
+      },
+      "expected": "4111111111111111 [REDACTED:email]"
+    },
+    {
+      "id": "text.ordinary_error_intact",
+      "fn": "redact_text",
+      "args": {
+        "text": "Timeout 30000ms exceeded waiting for selector #login at 2026-10-20T10:00:00Z"
+      },
+      "expected": "Timeout 30000ms exceeded waiting for selector #login at 2026-10-20T10:00:00Z"
+    },
+    {
+      "id": "text.already_redacted_is_stable",
+      "fn": "redact_text",
+      "args": {
+        "text": "card [REDACTED:pan] jwt [REDACTED:jwt]"
+      },
+      "expected": "card [REDACTED:pan] jwt [REDACTED:jwt]"
+    },
+    {
+      "id": "text.null_passes_through",
+      "fn": "redact_text",
+      "args": {
+        "text": null
+      },
+      "expected": null
+    },
+    {
+      "id": "text.empty_passes_through",
+      "fn": "redact_text",
+      "args": {
+        "text": {
+          "$concat": []
+        }
+      },
+      "expected": {
+        "$concat": []
+      }
+    },
+    {
+      "id": "message.reset_link_query_and_path_token",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "Reset: https://shop.example.com/reset/9f8a7b6c5d4e3f2a1b0c9d8e?token=abc&x=1 now"
+      },
+      "expected": "Reset: https://shop.example.com/reset/[REDACTED:link]?[REDACTED:link] now"
+    },
+    {
+      "id": "message.fragment_dropped",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "go https://x.io/cb#access=abc"
+      },
+      "expected": "go https://x.io/cb#[REDACTED:link]"
+    },
+    {
+      "id": "message.readable_path_survives",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "See https://shop.example.com/blog/announcing-the-new-dashboard today"
+      },
+      "expected": "See https://shop.example.com/blog/announcing-the-new-dashboard today"
+    },
+    {
+      "id": "message.code_before_full_stop",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "Your code is 482913."
+      },
+      "expected": "Your code is [REDACTED:code]."
+    },
+    {
+      "id": "message.eight_digit_code",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "PIN 12345678 expires"
+      },
+      "expected": "PIN [REDACTED:code] expires"
+    },
+    {
+      "id": "message.years_decimals_ids_kept",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "In 2026 the total was 1234567.89 for order A1234567"
+      },
+      "expected": "In 2026 the total was 1234567.89 for order A1234567"
+    },
+    {
+      "id": "message.value_patterns_still_apply",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "card 4111111111111111 jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      },
+      "expected": "card [REDACTED:pan] jwt [REDACTED:jwt]"
+    },
+    {
+      "id": "message.link_in_html_attribute",
+      "fn": "redact_message_text",
+      "args": {
+        "text": "<a href=\"https://x.io/r/abcdefghij0123456789xyz?t=1\">here</a>"
+      },
+      "expected": "<a href=\"https://x.io/r/[REDACTED:link]?[REDACTED:link]\">here</a>"
+    },
+    {
+      "id": "message.null",
+      "fn": "redact_message_text",
+      "args": {
+        "text": null
+      },
+      "expected": null
+    },
+    {
+      "id": "headers.authorization",
+      "fn": "redact_headers",
+      "args": {
+        "headers": {
+          "Authorization": "Bearer abc.def.ghi"
+        }
+      },
+      "expected": {
+        "Authorization": "[REDACTED]"
+      }
+    },
+    {
+      "id": "headers.case_insensitive",
+      "fn": "redact_headers",
+      "args": {
+        "headers": {
+          "COOKIE": "sid=1",
+          "set-Cookie": "a=b",
+          "X-Api-Key": "k"
+        }
+      },
+      "expected": {
+        "COOKIE": "[REDACTED]",
+        "set-Cookie": "[REDACTED]",
+        "X-Api-Key": "[REDACTED]"
+      }
+    },
+    {
+      "id": "headers.benign_survive",
+      "fn": "redact_headers",
+      "args": {
+        "headers": {
+          "Content-Type": "application/json",
+          "Accept": "*/*",
+          "X-Request-ID": "r-1"
+        }
+      },
+      "expected": {
+        "Content-Type": "application/json",
+        "Accept": "*/*",
+        "X-Request-ID": "r-1"
+      }
+    },
+    {
+      "id": "headers.every_default_name",
+      "fn": "redact_headers",
+      "args": {
+        "headers": {
+          "authorization": "v",
+          "proxy-authorization": "v",
+          "cookie": "v",
+          "set-cookie": "v",
+          "x-api-key": "v",
+          "x-auth-token": "v",
+          "x-access-token": "v",
+          "x-csrf-token": "v",
+          "x-xsrf-token": "v",
+          "x-session-token": "v",
+          "x-traceiq-secret": "v",
+          "x-worker-secret": "v"
+        }
+      },
+      "expected": {
+        "authorization": "[REDACTED]",
+        "proxy-authorization": "[REDACTED]",
+        "cookie": "[REDACTED]",
+        "set-cookie": "[REDACTED]",
+        "x-api-key": "[REDACTED]",
+        "x-auth-token": "[REDACTED]",
+        "x-access-token": "[REDACTED]",
+        "x-csrf-token": "[REDACTED]",
+        "x-xsrf-token": "[REDACTED]",
+        "x-session-token": "[REDACTED]",
+        "x-traceiq-secret": "[REDACTED]",
+        "x-worker-secret": "[REDACTED]"
+      }
+    },
+    {
+      "id": "headers.policy_extra_name",
+      "fn": "redact_headers",
+      "args": {
+        "headers": {
+          "X-Tenant-Key": "t",
+          "X-Other": "o"
+        }
+      },
+      "data_policy": {
+        "redact_headers": [
+          "x-tenant-key"
+        ]
+      },
+      "expected": {
+        "X-Tenant-Key": "[REDACTED]",
+        "X-Other": "o"
+      }
+    },
+    {
+      "id": "headers.value_pattern_swept",
+      "fn": "redact_headers",
+      "args": {
+        "headers": {
+          "X-Debug": "card 4111111111111111"
+        }
+      },
+      "expected": {
+        "X-Debug": "card [REDACTED:pan]"
+      }
+    },
+    {
+      "id": "headers.list_passes_through",
+      "fn": "redact_headers",
+      "args": {
+        "headers": [
+          [
+            "Authorization",
+            "x"
+          ]
+        ]
+      },
+      "expected": [
+        [
+          "Authorization",
+          "x"
+        ]
+      ]
+    },
+    {
+      "id": "headers.null_passes_through",
+      "fn": "redact_headers",
+      "args": {
+        "headers": null
+      },
+      "expected": null
+    },
+    {
+      "id": "body.password_key",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"user\": \"jane\", \"password\": \"hunter2\"}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"user\":\"jane\",\"password\":\"[REDACTED]\"}"
+    },
+    {
+      "id": "body.key_separator_insensitive",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"api_key\": \"a\", \"apiKey\": \"b\", \"API-KEY\": \"c\", \"Client_Secret\": \"d\"}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"api_key\":\"[REDACTED]\",\"apiKey\":\"[REDACTED]\",\"API-KEY\":\"[REDACTED]\",\"Client_Secret\":\"[REDACTED]\"}"
+    },
+    {
+      "id": "body.nested",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"auth\": {\"x\": 1}, \"data\": {\"user\": {\"token\": \"t\", \"name\": \"n\"}}}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"auth\":\"[REDACTED]\",\"data\":{\"user\":{\"token\":\"[REDACTED]\",\"name\":\"n\"}}}"
+    },
+    {
+      "id": "body.arrays",
+      "fn": "redact_body",
+      "args": {
+        "body": "[{\"otp\": \"123456\"}, {\"name\": \"ok\"}]",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "[{\"otp\":\"[REDACTED]\"},{\"name\":\"ok\"}]"
+    },
+    {
+      "id": "body.types_preserved",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"n\": 1, \"f\": 1.5, \"b\": true, \"z\": null, \"s\": \"x\", \"l\": [1, \"a\"]}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"n\":1,\"f\":1.5,\"b\":true,\"z\":null,\"s\":\"x\",\"l\":[1,\"a\"]}"
+    },
+    {
+      "id": "body.pan_under_innocuous_key",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"note\": \"card 4111111111111111\"}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"note\":\"card [REDACTED:pan]\"}"
+    },
+    {
+      "id": "body.cloud_key_in_json",
+      "fn": "redact_body",
+      "args": {
+        "body": {
+          "$concat": [
+            "{\"note\": \"key is ",
+            "sk_live_4eC39HqL",
+            "yjWDarjtT1zdp7dc",
+            " ok\"}"
+          ]
+        },
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"note\":\"key is [REDACTED:stripe_key] ok\"}"
+    },
+    {
+      "id": "body.email_kept_by_default",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"to\": \"a@b.com\"}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"to\":\"a@b.com\"}"
+    },
+    {
+      "id": "body.email_on_by_policy",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"to\": \"a@b.com\"}",
+        "content_type": null
+      },
+      "data_policy": {
+        "redact_patterns": [
+          "email"
+        ]
+      },
+      "compare": "json",
+      "expected": "{\"to\":\"[REDACTED:email]\"}"
+    },
+    {
+      "id": "body.policy_extra_body_field",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"dob\": \"1990-01-01\", \"name\": \"x\"}",
+        "content_type": null
+      },
+      "data_policy": {
+        "redact_body_fields": [
+          "date_of_birth",
+          "DOB"
+        ]
+      },
+      "compare": "json",
+      "expected": "{\"dob\":\"[REDACTED]\",\"name\":\"x\"}"
+    },
+    {
+      "id": "body.json_by_content_type",
+      "fn": "redact_body",
+      "args": {
+        "body": "  {\"secret\": \"s\"}",
+        "content_type": "application/json; charset=utf-8"
+      },
+      "compare": "json",
+      "expected": "{\"secret\":\"[REDACTED]\"}"
+    },
+    {
+      "id": "body.non_ascii_json",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"name\": \"Jos\\u00e9\", \"pin\": \"1234\"}",
+        "content_type": null
+      },
+      "compare": "json",
+      "expected": "{\"name\":\"José\",\"pin\":\"[REDACTED]\"}"
+    },
+    {
+      "id": "body.json_compact_serialisation",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"a\": 1, \"token\": \"t\"}",
+        "content_type": null
+      },
+      "note": "Exact string: both twins should serialise a re-encoded JSON body the same way.",
+      "expected": "{\"a\":1,\"token\":\"[REDACTED]\"}"
+    },
+    {
+      "id": "body.form_by_key",
+      "fn": "redact_body",
+      "args": {
+        "body": "user=jane&password=hunter2&next=%2Fhome",
+        "content_type": "application/x-www-form-urlencoded"
+      },
+      "expected": "user=jane&password=%5BREDACTED%5D&next=%2Fhome"
+    },
+    {
+      "id": "body.form_special_chars",
+      "fn": "redact_body",
+      "args": {
+        "body": "q=a b*c~d&token=x",
+        "content_type": "application/x-www-form-urlencoded"
+      },
+      "known_divergence": "Cosmetic: both re-encode a form body and decode to the same pairs, but Python's urlencode (quote_plus) escapes '*' and keeps '~' where WHATWG URLSearchParams keeps '*' and escapes '~'.",
+      "expected_by_twin": {
+        "python": "q=a+b%2Ac~d&token=%5BREDACTED%5D",
+        "typescript": "q=a+b*c%7Ed&token=%5BREDACTED%5D"
+      }
+    },
+    {
+      "id": "body.form_no_pairs",
+      "fn": "redact_body",
+      "args": {
+        "body": {
+          "$concat": []
+        },
+        "content_type": "application/x-www-form-urlencoded"
+      },
+      "expected": {
+        "$concat": []
+      }
+    },
+    {
+      "id": "body.plain_text_sweep",
+      "fn": "redact_body",
+      "args": {
+        "body": "error for card 4111111111111111",
+        "content_type": "text/plain"
+      },
+      "expected": "error for card [REDACTED:pan]"
+    },
+    {
+      "id": "body.malformed_json_text_sweep",
+      "fn": "redact_body",
+      "args": {
+        "body": "{\"note\": \"4111111111111111\", \"x\": [1, 2",
+        "content_type": "application/json"
+      },
+      "expected": "{\"note\": \"[REDACTED:pan]\", \"x\": [1, 2"
+    },
+    {
+      "id": "body.html_not_mangled",
+      "fn": "redact_body",
+      "args": {
+        "body": "<html><body><p>Hello, world</p></body></html>",
+        "content_type": "text/html"
+      },
+      "expected": "<html><body><p>Hello, world</p></body></html>"
+    },
+    {
+      "id": "body.null",
+      "fn": "redact_body",
+      "args": {
+        "body": null,
+        "content_type": null
+      },
+      "expected": null
+    },
+    {
+      "id": "body.empty",
+      "fn": "redact_body",
+      "args": {
+        "body": {
+          "$concat": []
+        },
+        "content_type": null
+      },
+      "expected": {
+        "$concat": []
+      }
+    },
+    {
+      "id": "body.parsed_dict",
+      "fn": "redact_body",
+      "args": {
+        "body": {
+          "password": "x",
+          "keep": [
+            1,
+            {
+              "cvv": "123"
+            }
+          ]
+        },
+        "content_type": null
+      },
+      "expected": {
+        "password": "[REDACTED]",
+        "keep": [
+          1,
+          {
+            "cvv": "[REDACTED]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "body.number_passes_through",
+      "fn": "redact_body",
+      "args": {
+        "body": 42,
+        "content_type": null
+      },
+      "expected": 42
+    },
+    {
+      "id": "network.headers_both_directions",
+      "fn": "redact_network_events",
+      "args": {
+        "events": [
+          {
+            "url": "https://api.test/me",
+            "method": "GET",
+            "status": 200,
+            "requestHeaders": {
+              "Authorization": "Bearer x",
+              "Accept": "*/*"
+            },
+            "responseHeaders": {
+              "Set-Cookie": "sid=1",
+              "Content-Type": "application/json"
+            },
+            "request_headers": {
+              "cookie": "a=b"
+            },
+            "response_headers": {
+              "x-api-key": "k"
+            }
+          }
+        ]
+      },
+      "expected": [
+        {
+          "url": "https://api.test/me",
+          "method": "GET",
+          "status": 200,
+          "requestHeaders": {
+            "Authorization": "[REDACTED]",
+            "Accept": "*/*"
+          },
+          "responseHeaders": {
+            "Set-Cookie": "[REDACTED]",
+            "Content-Type": "application/json"
+          },
+          "request_headers": {
+            "cookie": "[REDACTED]"
+          },
+          "response_headers": {
+            "x-api-key": "[REDACTED]"
+          }
+        }
+      ]
+    },
+    {
+      "id": "network.token_in_url",
+      "fn": "redact_network_events",
+      "args": {
+        "events": [
+          {
+            "url": "https://api.test/cb?t=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+          }
+        ]
+      },
+      "expected": [
+        {
+          "url": "https://api.test/cb?t=[REDACTED:jwt]"
+        }
+      ]
+    },
+    {
+      "id": "network.bodies_swept_timings_kept",
+      "fn": "redact_network_events",
+      "args": {
+        "events": [
+          {
+            "url": "https://api.test/x",
+            "status": 500,
+            "duration_ms": 123,
+            "timestamp": 1700000000000,
+            "requestBody": "card=4111111111111111",
+            "responseBody": "err eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+            "request_body": null,
+            "response_body": 7
+          }
+        ]
+      },
+      "expected": [
+        {
+          "url": "https://api.test/x",
+          "status": 500,
+          "duration_ms": 123,
+          "timestamp": 1700000000000,
+          "requestBody": "card=[REDACTED:pan]",
+          "responseBody": "err [REDACTED:jwt]",
+          "request_body": null,
+          "response_body": 7
+        }
+      ]
+    },
+    {
+      "id": "network.odd_entries",
+      "fn": "redact_network_events",
+      "args": {
+        "events": [
+          "x",
+          null,
+          3,
+          {
+            "status": 1
+          }
+        ]
+      },
+      "expected": [
+        "x",
+        null,
+        3,
+        {
+          "status": 1
+        }
+      ]
+    },
+    {
+      "id": "network.not_a_list",
+      "fn": "redact_network_events",
+      "args": {
+        "events": {
+          "url": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        }
+      },
+      "expected": {
+        "url": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      }
+    },
+    {
+      "id": "hook_report.cleanup_url_and_errors",
+      "fn": "redact_hook_report",
+      "args": {
+        "report": {
+          "setup": [
+            {
+              "suite_id": 1,
+              "phase": "setup",
+              "status": "failed",
+              "error": "401 for token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+              "steps": [
+                {
+                  "index": 0,
+                  "type": "http-request",
+                  "status": "failed",
+                  "error": "bad eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+                },
+                "junk"
+              ]
+            }
+          ],
+          "teardown": [],
+          "cleanup": [
+            {
+              "method": "DELETE",
+              "url": "https://api.test/items/9?token=s3cret&x=1&x=2",
+              "status": "failed",
+              "error": "card 4111 1111 1111 1111 rejected",
+              "origin": "case"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "setup": [
+          {
+            "suite_id": 1,
+            "phase": "setup",
+            "status": "failed",
+            "error": "401 for token [REDACTED:jwt]",
+            "steps": [
+              {
+                "index": 0,
+                "type": "http-request",
+                "status": "failed",
+                "error": "bad [REDACTED:jwt]"
+              },
+              "junk"
+            ]
+          }
+        ],
+        "teardown": [],
+        "cleanup": [
+          {
+            "method": "DELETE",
+            "url": "https://api.test/items/9?token=…&x=…",
+            "status": "failed",
+            "error": "card [REDACTED:pan] rejected",
+            "origin": "case"
+          }
+        ]
+      }
+    },
+    {
+      "id": "hook_report.fragment_and_template",
+      "fn": "redact_hook_report",
+      "args": {
+        "report": {
+          "cleanup": [
+            {
+              "url": "/x?a=1#frag"
+            },
+            {
+              "url": "{{api}}/items/{{id}}"
+            },
+            {
+              "url": "/y?"
+            },
+            5
+          ]
+        }
+      },
+      "expected": {
+        "cleanup": [
+          {
+            "url": "/x?a=…"
+          },
+          {
+            "url": "{{api}}/items/{{id}}"
+          },
+          {
+            "url": "/y"
+          },
+          5
+        ]
+      }
+    },
+    {
+      "id": "hook_report.not_a_dict",
+      "fn": "redact_hook_report",
+      "args": {
+        "report": [
+          "x"
+        ]
+      },
+      "expected": [
+        "x"
+      ]
+    },
+    {
+      "id": "hook_report.phase_not_a_list",
+      "fn": "redact_hook_report",
+      "args": {
+        "report": {
+          "setup": "x",
+          "teardown": null
+        }
+      },
+      "expected": {
+        "setup": "x",
+        "teardown": null
+      }
+    },
+    {
+      "id": "query_names_only.0",
+      "fn": "query_names_only",
+      "args": {
+        "raw": "https://a.test/p?token=1&b=2#f"
+      },
+      "expected": "https://a.test/p?token=…&b=…"
+    },
+    {
+      "id": "query_names_only.1",
+      "fn": "query_names_only",
+      "args": {
+        "raw": "/p?=1&a&a=2"
+      },
+      "expected": "/p?a=…"
+    },
+    {
+      "id": "query_names_only.2",
+      "fn": "query_names_only",
+      "args": {
+        "raw": "/p"
+      },
+      "expected": "/p"
+    },
+    {
+      "id": "query_names_only.3",
+      "fn": "query_names_only",
+      "args": {
+        "raw": "/p?"
+      },
+      "expected": "/p"
+    },
+    {
+      "id": "query_names_only.4",
+      "fn": "query_names_only",
+      "args": {
+        "raw": "/p#x?y=1"
+      },
+      "expected": "/p"
+    },
+    {
+      "id": "page_budgets.urls_failure_seo",
+      "fn": "redact_page_budgets",
+      "args": {
+        "items": [
+          {
+            "step_id": "b1",
+            "url": "https://shop.example.com/reset/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+            "passed": false,
+            "failure": "Page budget exceeded on https://shop.example.com/reset/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk: lcp_ms 3000 > 2500",
+            "metrics": {
+              "lcp_ms": 3000
+            },
+            "checks": [
+              {
+                "metric": "lcp_ms",
+                "value": 3000,
+                "budget": 2500,
+                "passed": false
+              }
+            ],
+            "seo": [
+              {
+                "check": "canonical",
+                "passed": true,
+                "value": "https://shop.example.com/reset/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+                "detail": "ok"
+              },
+              "junk"
+            ]
+          },
+          "junk",
+          {
+            "url": 5
+          }
+        ]
+      },
+      "expected": [
+        {
+          "step_id": "b1",
+          "url": "https://shop.example.com/reset/[REDACTED:jwt]",
+          "passed": false,
+          "failure": "Page budget exceeded on https://shop.example.com/reset/[REDACTED:jwt]: lcp_ms 3000 > 2500",
+          "metrics": {
+            "lcp_ms": 3000
+          },
+          "checks": [
+            {
+              "metric": "lcp_ms",
+              "value": 3000,
+              "budget": 2500,
+              "passed": false
+            }
+          ],
+          "seo": [
+            {
+              "check": "canonical",
+              "passed": true,
+              "value": "https://shop.example.com/reset/[REDACTED:jwt]",
+              "detail": "ok"
+            },
+            "junk"
+          ]
+        },
+        "junk",
+        {
+          "url": 5
+        }
+      ]
+    },
+    {
+      "id": "page_budgets.not_a_list",
+      "fn": "redact_page_budgets",
+      "args": {
+        "items": {
+          "url": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        }
+      },
+      "expected": {
+        "url": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+      }
+    },
+    {
+      "id": "crawl_report.urls_and_redirect_hops",
+      "fn": "redact_crawl_report",
+      "args": {
+        "report": {
+          "status": "ok",
+          "links_checked": 3,
+          "error": null,
+          "pages": [
+            {
+              "url": "https://s.example/p?card=4111111111111111",
+              "status": 200,
+              "error": "x eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+            },
+            1
+          ],
+          "issues": [
+            {
+              "page_url": "https://s.example/",
+              "target_url": "https://s.example/reset/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+              "category": "broken",
+              "status_code": 404,
+              "detail": "see eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+              "redirect_chain": [
+                {
+                  "url": "https://s.example/r?token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+                  "status": 302
+                },
+                "x"
+              ]
+            },
+            null
+          ]
+        }
+      },
+      "expected": {
+        "status": "ok",
+        "links_checked": 3,
+        "error": null,
+        "pages": [
+          {
+            "url": "https://s.example/p?card=[REDACTED:pan]",
+            "status": 200,
+            "error": "x [REDACTED:jwt]"
+          },
+          1
+        ],
+        "issues": [
+          {
+            "page_url": "https://s.example/",
+            "target_url": "https://s.example/reset/[REDACTED:jwt]",
+            "category": "broken",
+            "status_code": 404,
+            "detail": "see [REDACTED:jwt]",
+            "redirect_chain": [
+              {
+                "url": "https://s.example/r?token=[REDACTED:jwt]",
+                "status": 302
+              },
+              "x"
+            ]
+          },
+          null
+        ]
+      }
+    },
+    {
+      "id": "crawl_report.not_a_dict",
+      "fn": "redact_crawl_report",
+      "args": {
+        "report": "x"
+      },
+      "expected": "x"
+    },
+    {
+      "id": "step_evidence.text_console_requests",
+      "fn": "redact_step_evidence",
+      "args": {
+        "entries": [
+          {
+            "id": "s3",
+            "index": 3,
+            "type": "click",
+            "status": "failed",
+            "error": "card 4111111111111111",
+            "selector": "#u-eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+            "dom": "<b>234123412346</b>",
+            "console": [
+              {
+                "type": "error",
+                "text": "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+              },
+              "junk"
+            ],
+            "requests": [
+              {
+                "url": "https://api.test/x?card=4111111111111111",
+                "status": 500
+              },
+              3
+            ],
+            "screenshot_key": "runs/1/screenshots/s3.png"
+          },
+          "junk"
+        ]
+      },
+      "expected": [
+        {
+          "id": "s3",
+          "index": 3,
+          "type": "click",
+          "status": "failed",
+          "error": "card [REDACTED:pan]",
+          "selector": "#u-[REDACTED:jwt]",
+          "dom": "<b>[REDACTED:aadhaar]</b>",
+          "console": [
+            {
+              "type": "error",
+              "text": "jwt [REDACTED:jwt]"
+            },
+            "junk"
+          ],
+          "requests": [
+            {
+              "url": "https://api.test/x?card=[REDACTED:pan]",
+              "status": 500
+            },
+            3
+          ],
+          "screenshot_key": "runs/1/screenshots/s3.png"
+        },
+        "junk"
+      ]
+    },
+    {
+      "id": "step_evidence.trace_ids_untouched",
+      "fn": "redact_step_evidence",
+      "args": {
+        "entries": [
+          {
+            "id": "s0",
+            "index": 0,
+            "type": "goto",
+            "status": "passed",
+            "trace": {
+              "trace_id": "41111111111111114111111111111111",
+              "span_id": "4111111111111111",
+              "requests": 3
+            }
+          }
+        ]
+      },
+      "expected": [
+        {
+          "id": "s0",
+          "index": 0,
+          "type": "goto",
+          "status": "passed",
+          "trace": {
+            "trace_id": "41111111111111114111111111111111",
+            "span_id": "4111111111111111",
+            "requests": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "a11y_target.0",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "a[href=\"/reset?token=abc\"]"
+      },
+      "expected": "a[href]"
+    },
+    {
+      "id": "a11y_target.1",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "input[type=\"text\"][placeholder=\"Your card 4111111111111111\"]"
+      },
+      "expected": "input[type=\"text\"][placeholder]"
+    },
+    {
+      "id": "a11y_target.2",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "#main > .nav li:nth-child(2) > a"
+      },
+      "expected": "#main > .nav li:nth-child(2) > a"
+    },
+    {
+      "id": "a11y_target.3",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "img[alt=x]"
+      },
+      "expected": "img[alt]"
+    },
+    {
+      "id": "a11y_target.4",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "[data-testid=\"login-btn\" i]"
+      },
+      "expected": "[data-testid=\"login-btn\" i]"
+    },
+    {
+      "id": "a11y_target.5",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "iframe >>> button[aria-label=\"Close dialog\"]"
+      },
+      "expected": "iframe >>> button[aria-label]"
+    },
+    {
+      "id": "a11y_target.6",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "[name]"
+      },
+      "expected": "[name]"
+    },
+    {
+      "id": "a11y_target.7",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": {
+          "$concat": [
+            "[data-testid=\"",
+            {
+              "$repeat": [
+                "x",
+                65
+              ]
+            },
+            "\"]"
+          ]
+        }
+      },
+      "expected": "[data-testid]"
+    },
+    {
+      "id": "a11y_target.8",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": "#id-4111111111111111"
+      },
+      "expected": "#id-[REDACTED:pan]"
+    },
+    {
+      "id": "a11y_target.9",
+      "fn": "redact_a11y_target",
+      "args": {
+        "selector": 42
+      },
+      "expected": {
+        "$concat": []
+      }
+    },
+    {
+      "id": "a11y_help_url.0",
+      "fn": "a11y_help_url",
+      "args": {
+        "raw": "https://dequeuniversity.com/rules/axe/4.9/label?application=axe#x"
+      },
+      "expected": "https://dequeuniversity.com/rules/axe/4.9/label"
+    },
+    {
+      "id": "a11y_help_url.1",
+      "fn": "a11y_help_url",
+      "args": {
+        "raw": "https://evil.example/rules"
+      },
+      "expected": null
+    },
+    {
+      "id": "a11y_help_url.2",
+      "fn": "a11y_help_url",
+      "args": {
+        "raw": null
+      },
+      "expected": null
+    },
+    {
+      "id": "a11y_help_url.3",
+      "fn": "a11y_help_url",
+      "args": {
+        "raw": "http://dequeuniversity.com/x"
+      },
+      "expected": null
+    },
+    {
+      "id": "a11y_results.whitelist_rebuild",
+      "fn": "redact_accessibility_results",
+      "args": {
+        "items": [
+          {
+            "step_id": "s1",
+            "url": "https://app.example/x?jwt=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+            "html": "<b>Jane Doe 4111111111111111</b>",
+            "violations": [
+              {
+                "id": "color-contrast",
+                "impact": "serious",
+                "help_url": "https://dequeuniversity.com/rules/axe/x?y=1",
+                "node_count": 3,
+                "failureSummary": "Fix: text \"Jane Doe\"",
+                "html": "<p>Jane</p>",
+                "targets": [
+                  {
+                    "selector": "p[title=\"Jane Doe\"]",
+                    "nodes": 3,
+                    "html": "<p>Jane</p>"
+                  },
+                  {
+                    "selector": "b",
+                    "nodes": 0
+                  },
+                  "junk"
+                ]
+              },
+              "junk"
+            ]
+          },
+          "junk",
+          {
+            "violations": "x",
+            "url": 5
+          }
+        ]
+      },
+      "expected": [
+        {
+          "step_id": "s1",
+          "url": "https://app.example/x?jwt=[REDACTED:jwt]",
+          "violations": [
+            {
+              "id": "color-contrast",
+              "impact": "serious",
+              "help_url": "https://dequeuniversity.com/rules/axe/x",
+              "node_count": 3,
+              "targets": [
+                {
+                  "selector": "p[title]",
+                  "nodes": 3
+                },
+                {
+                  "selector": "b",
+                  "nodes": 1
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "step_id": null,
+          "url": null,
+          "violations": []
+        }
+      ]
+    },
+    {
+      "id": "a11y_results.counts_clamped",
+      "fn": "redact_accessibility_results",
+      "args": {
+        "items": [
+          {
+            "violations": [
+              {
+                "id": 7,
+                "impact": null,
+                "node_count": 2.9,
+                "targets": [
+                  {
+                    "selector": "a",
+                    "nodes": -4
+                  }
+                ]
+              },
+              {
+                "id": "x",
+                "node_count": 1000000000,
+                "targets": []
+              },
+              {
+                "id": "b",
+                "node_count": true
+              }
+            ]
+          }
+        ]
+      },
+      "expected": [
+        {
+          "step_id": null,
+          "url": null,
+          "violations": [
+            {
+              "id": "7",
+              "impact": {
+                "$concat": []
+              },
+              "help_url": null,
+              "node_count": 2,
+              "targets": [
+                {
+                  "selector": "a",
+                  "nodes": 1
+                }
+              ]
+            },
+            {
+              "id": "x",
+              "impact": {
+                "$concat": []
+              },
+              "help_url": null,
+              "node_count": 1000000,
+              "targets": []
+            },
+            {
+              "id": "b",
+              "impact": {
+                "$concat": []
+              },
+              "help_url": null,
+              "node_count": 0,
+              "targets": []
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "access_observation.headers_body_urls",
+      "fn": "redact_access_observation",
+      "args": {
+        "obs": {
+          "status": 200,
+          "element_present": null,
+          "headers": {
+            "set-cookie": "sid=abc",
+            "content-type": "application/json"
+          },
+          "owner_headers": {
+            "Authorization": "Bearer o"
+          },
+          "body_excerpt": "{\"token\": \"abc\", \"id\": 7}",
+          "content_type": "application/json",
+          "url": "https://shop.example.com/pay?card=4111111111111111",
+          "final_url": "https://x.test/?t=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+          "owner_url": "https://x.test/own/eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+          "error": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+          "swapped_id": "101"
+        }
+      },
+      "expected": {
+        "status": 200,
+        "element_present": null,
+        "headers": {
+          "set-cookie": "[REDACTED]",
+          "content-type": "application/json"
+        },
+        "owner_headers": {
+          "Authorization": "[REDACTED]"
+        },
+        "body_excerpt": "{\"token\":\"[REDACTED]\",\"id\":7}",
+        "content_type": "application/json",
+        "url": "https://shop.example.com/pay?card=[REDACTED:pan]",
+        "final_url": "https://x.test/?t=[REDACTED:jwt]",
+        "owner_url": "https://x.test/own/[REDACTED:jwt]",
+        "error": "[REDACTED:jwt]",
+        "swapped_id": "101"
+      }
+    },
+    {
+      "id": "access_observation.truncated_excerpt",
+      "fn": "redact_access_observation",
+      "args": {
+        "obs": {
+          "body_excerpt": "{\"note\": \"4111111111111111\", \"x\": [1, 2"
+        }
+      },
+      "expected": {
+        "body_excerpt": "{\"note\": \"[REDACTED:pan]\", \"x\": [1, 2"
+      }
+    },
+    {
+      "id": "access_observation.not_a_dict",
+      "fn": "redact_access_observation",
+      "args": {
+        "obs": [
+          1
+        ]
+      },
+      "expected": [
+        1
+      ]
+    },
+    {
+      "id": "har.cookies_auth_bodies",
+      "fn": "redact_har",
+      "args": {
+        "har": {
+          "log": {
+            "version": "1.2",
+            "entries": [
+              {
+                "request": {
+                  "method": "POST",
+                  "url": "https://app.example/login?t=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+                  "headers": [
+                    {
+                      "name": "Authorization",
+                      "value": "Bearer abc"
+                    },
+                    {
+                      "name": "Accept",
+                      "value": "application/json"
+                    },
+                    {
+                      "name": "X-Tenant",
+                      "value": "t1"
+                    }
+                  ],
+                  "cookies": [
+                    {
+                      "name": "sid",
+                      "value": "s3cr3t"
+                    }
+                  ],
+                  "queryString": [
+                    {
+                      "name": "token",
+                      "value": "qtok"
+                    },
+                    {
+                      "name": "page",
+                      "value": "2"
+                    }
+                  ],
+                  "postData": {
+                    "mimeType": "application/json",
+                    "text": "{\"user\":\"jane\",\"password\":\"hunter2\"}"
+                  }
+                },
+                "response": {
+                  "status": 200,
+                  "headers": [
+                    {
+                      "name": "Set-Cookie",
+                      "value": "sid=s3cr3t"
+                    }
+                  ],
+                  "cookies": [
+                    {
+                      "name": "sid",
+                      "value": "s3cr3t"
+                    }
+                  ],
+                  "content": {
+                    "mimeType": "application/json",
+                    "text": "{\"access_token\":\"atok\",\"name\":\"Jane\"}"
+                  }
+                }
+              },
+              "junk"
+            ]
+          }
+        }
+      },
+      "data_policy": {
+        "redact_headers": [
+          "x-tenant"
+        ]
+      },
+      "expected": {
+        "log": {
+          "version": "1.2",
+          "entries": [
+            {
+              "request": {
+                "method": "POST",
+                "url": "https://app.example/login?t=[REDACTED:jwt]",
+                "headers": [
+                  {
+                    "name": "Authorization",
+                    "value": "[REDACTED]"
+                  },
+                  {
+                    "name": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "name": "X-Tenant",
+                    "value": "[REDACTED]"
+                  }
+                ],
+                "cookies": [
+                  {
+                    "name": "sid",
+                    "value": "[REDACTED]"
+                  }
+                ],
+                "queryString": [
+                  {
+                    "name": "token",
+                    "value": "[REDACTED]"
+                  },
+                  {
+                    "name": "page",
+                    "value": "2"
+                  }
+                ],
+                "postData": {
+                  "mimeType": "application/json",
+                  "text": "{\"user\":\"jane\",\"password\":\"[REDACTED]\"}"
+                }
+              },
+              "response": {
+                "status": 200,
+                "headers": [
+                  {
+                    "name": "Set-Cookie",
+                    "value": "[REDACTED]"
+                  }
+                ],
+                "cookies": [
+                  {
+                    "name": "sid",
+                    "value": "[REDACTED]"
+                  }
+                ],
+                "content": {
+                  "mimeType": "application/json",
+                  "text": "{\"access_token\":\"[REDACTED]\",\"name\":\"Jane\"}"
+                }
+              }
+            },
+            "junk"
+          ]
+        }
+      }
+    },
+    {
+      "id": "har.form_post_data",
+      "fn": "redact_har",
+      "args": {
+        "har": {
+          "log": {
+            "entries": [
+              {
+                "request": {
+                  "url": "https://a.test/",
+                  "postData": {
+                    "mimeType": "application/x-www-form-urlencoded",
+                    "text": "user=jane&pwd=hunter2"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "expected": {
+        "log": {
+          "entries": [
+            {
+              "request": {
+                "url": "https://a.test/",
+                "postData": {
+                  "mimeType": "application/x-www-form-urlencoded",
+                  "text": "user=jane&pwd=%5BREDACTED%5D"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "har.no_entries",
+      "fn": "redact_har",
+      "args": {
+        "har": {
+          "log": {
+            "version": "1.2"
+          }
+        }
+      },
+      "expected": {
+        "log": {
+          "version": "1.2"
+        }
+      }
+    },
+    {
+      "id": "dom.fixture_default",
+      "fn": "redact_dom",
+      "args": {
+        "html": {
+          "$fixture": "DOM_FIXTURE"
+        }
+      },
+      "expected": "<!DOCTYPE html><html><head> <script></script><style></style></head> <body> <form id=\"login\" action=\"/session\"> <input id=\"email\" name=\"email\" type=\"email\" placeholder=\"Email\"> <input id=\"password\" name=\"password\" type=\"password\"> <input type=\"submit\" value=\"Sign in\"> <textarea name=\"notes\"></textarea> <button data-testid=\"login-submit\" class=\"btn primary\" aria-label=\"Log in\">Log in</button> <img src=\"data:[REDACTED]\" alt=\"logo\"> <div class=\"api-token-display\"></div> <span>Card [REDACTED:pan]</span> <div style=\"display:none\">Hidden panel</div> <div class=\"profile-card\"><p>Jane Doe, 12 Main St</p></div> </form></body></html>"
+    },
+    {
+      "id": "dom.fixture_masks_and_body_keys",
+      "fn": "redact_dom",
+      "args": {
+        "html": {
+          "$fixture": "DOM_FIXTURE"
+        },
+        "mask_selectors": [
+          "div.profile-card"
+        ]
+      },
+      "data_policy": {
+        "redact_body_fields": [
+          "notes"
+        ]
+      },
+      "expected": "<!DOCTYPE html><html><head> <script></script><style></style></head> <body> <form id=\"login\" action=\"/session\"> <input id=\"email\" name=\"email\" type=\"email\" placeholder=\"Email\"> <input id=\"password\" name=\"password\" type=\"password\"> <input type=\"submit\" value=\"Sign in\"> <textarea name=\"notes\"></textarea> <button data-testid=\"login-submit\" class=\"btn primary\" aria-label=\"Log in\">Log in</button> <img src=\"data:[REDACTED]\" alt=\"logo\"> <div class=\"api-token-display\"></div> <span>Card [REDACTED:pan]</span> <div style=\"display:none\">Hidden panel</div> <div class=\"profile-card\"><p></p></div> </form></body></html>"
+    },
+    {
+      "id": "dom.entities_reescaped",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<p title=\"a &amp; b\">1 &lt; 2 &amp; 3 &gt; 2</p>"
+      },
+      "expected": "<p title=\"a &amp; b\">1 &lt; 2 &amp; 3 &gt; 2</p>"
+    },
+    {
+      "id": "dom.noscript_and_template_markup",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<noscript><img src=\"/t?x=1\" alt=\"t\">hi</noscript><template><b id=\"x\">t</b></template><p>ok</p>"
+      },
+      "expected": "<noscript></noscript><template></template><p>ok</p>"
+    },
+    {
+      "id": "dom.textarea_text_dropped",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<textarea id=\"bio\">my secret bio</textarea>"
+      },
+      "expected": "<textarea id=\"bio\"></textarea>"
+    },
+    {
+      "id": "dom.boolean_attributes",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<input id=\"c\" type=\"checkbox\" checked disabled><button disabled>Go</button>"
+      },
+      "expected": "<input id=\"c\" type=\"checkbox\" checked disabled><button disabled>Go</button>"
+    },
+    {
+      "id": "dom.uppercase_tags_and_attrs",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<DIV ID=\"Main\" CLASS=\"A b\"><SPAN>Hi</SPAN></DIV>"
+      },
+      "expected": "<div id=\"Main\" class=\"A b\"><span>Hi</span></div>"
+    },
+    {
+      "id": "dom.self_closing_non_void",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<div id=\"a\"/><p>x</p>"
+      },
+      "expected": "<div id=\"a\"/><p>x</p>"
+    },
+    {
+      "id": "dom.duplicate_attributes",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<a id=\"one\" id=\"two\" href=\"/x?y=1\">l</a>"
+      },
+      "expected": "<a id=\"one\" href=\"/x\">l</a>"
+    },
+    {
+      "id": "dom.unclosed_and_stray_end_tags",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<div><p>one<p>two</span></div></b>"
+      },
+      "expected": "<div><p>one<p>two</div>"
+    },
+    {
+      "id": "dom.whitespace_collapsed",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<p>  a\n\n\tb  </p>   <p> c</p>"
+      },
+      "expected": "<p> a b </p> <p> c</p>"
+    },
+    {
+      "id": "dom.long_text_truncated",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<p>w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w </p>"
+      },
+      "expected": "<p>w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w …</p>"
+    },
+    {
+      "id": "dom.class_list_capped",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<div class=\"c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11 c12 c13 c14 c15 c16 c17 c18 c19\">x</div>"
+      },
+      "expected": "<div class=\"c0 c1 c2 c3 c4 c5 c6 c7 c8 c9 c10 c11\">x</div>"
+    },
+    {
+      "id": "dom.autocomplete_and_aria_secret",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<input autocomplete=\"one-time-code\" value=\"1\"><div aria-label=\"API key\">sk-123</div><label class=\"pin-field\">1234</label>"
+      },
+      "expected": "<input autocomplete=\"one-time-code\"><div aria-label=\"API key\"></div><label class=\"pin-field\"></label>"
+    },
+    {
+      "id": "dom.sensitive_submit_value_dropped",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<input type=\"submit\" name=\"api_token\" value=\"Use token\">"
+      },
+      "expected": "<input type=\"submit\" name=\"api_token\">"
+    },
+    {
+      "id": "dom.url_attr_query_and_hash",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<a href=\"/p?q=1#h\">a</a><img src=\"/i.png#z\"><form action=\"https://x.test/s?sig=1\"></form>"
+      },
+      "expected": "<a href=\"/p\">a</a><img src=\"/i.png\"><form action=\"https://x.test/s\"></form>"
+    },
+    {
+      "id": "dom.data_attr_secret_and_safe",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<div data-api-key=\"k\" data-user=\"u\" data-testid=\"t\">x</div>"
+      },
+      "expected": "<div data-user=\"u\" data-testid=\"t\">x</div>"
+    },
+    {
+      "id": "dom.style_visibility_hidden",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<div style=\"color: red; VISIBILITY: hidden\">h</div><div style=\"color:red\">v</div>"
+      },
+      "expected": "<div style=\"display:none\">h</div><div>v</div>"
+    },
+    {
+      "id": "dom.mask_selector_attr_and_descendants",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<section data-pii=\"1\"><p id=\"n\" title=\"Jane\">Jane <b>Doe</b></p></section><p>ok</p>",
+        "mask_selectors": [
+          "[data-pii]",
+          "p:hover",
+          "bad[selector"
+        ]
+      },
+      "expected": "<section><p id=\"n\"><b></b></p></section><p></p>"
+    },
+    {
+      "id": "dom.mask_selector_compound_list",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<ul><li class=\"a b\">x</li><li class=\"a\">y</li></ul>",
+        "mask_selectors": [
+          "li.a.b, .zz"
+        ]
+      },
+      "expected": "<ul><li class=\"a b\"></li><li class=\"a\">y</li></ul>"
+    },
+    {
+      "id": "dom.max_chars",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<p>abcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghijabcdefghij</p>",
+        "max_chars": 40
+      },
+      "expected": "<p>abcdefghijabcdefghijabcdefghijabcdefg"
+    },
+    {
+      "id": "dom.empty",
+      "fn": "redact_dom",
+      "args": {
+        "html": {
+          "$concat": []
+        }
+      },
+      "expected": {
+        "$concat": []
+      }
+    },
+    {
+      "id": "dom.junk",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<div <p>broken < 3 </div>"
+      },
+      "expected": "<div <p>broken &lt; 3 </div>"
+    },
+    {
+      "id": "dom.script_only_entity_text",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<script>if (a < b && c) {}</script><style>a>b{}</style>"
+      },
+      "expected": "<script></script><style></style>"
+    },
+    {
+      "id": "dom.comment_in_text_and_cdata",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<p>a<!-- x -->b</p><![CDATA[ secret ]]>"
+      },
+      "expected": "<p>ab</p>"
+    },
+    {
+      "id": "dom.idempotent_input",
+      "fn": "redact_dom",
+      "args": {
+        "html": "<form id=\"login\" action=\"/session\"><input id=\"email\" name=\"email\" type=\"email\" placeholder=\"Email\"><input type=\"submit\" value=\"Sign in\"><textarea name=\"notes\"></textarea><button data-testid=\"login-submit\" class=\"btn primary\" aria-label=\"Log in\">Log in</button><img src=\"data:[REDACTED]\" alt=\"logo\"><div style=\"display:none\">Hidden panel</div></form>"
+      },
+      "expected": "<form id=\"login\" action=\"/session\"><input id=\"email\" name=\"email\" type=\"email\" placeholder=\"Email\"><input type=\"submit\" value=\"Sign in\"><textarea name=\"notes\"></textarea><button data-testid=\"login-submit\" class=\"btn primary\" aria-label=\"Log in\">Log in</button><img src=\"data:[REDACTED]\" alt=\"logo\"><div style=\"display:none\">Hidden panel</div></form>"
+    },
+    {
+      "id": "job_result.response_data",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "job_id": "j1",
+          "run_id": 7,
+          "status": "failed",
+          "duration_ms": 12,
+          "response_data": {
+            "headers": {
+              "Set-Cookie": "sid=1"
+            },
+            "body": "{\"token\": \"t\", \"ok\": 1}",
+            "mimeType": "application/json",
+            "url": "https://a.test/?t=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+            "request": {
+              "headers": {
+                "Authorization": "Bearer x"
+              },
+              "body": {
+                "password": "p"
+              },
+              "url": "https://a.test/?card=4111111111111111"
+            }
+          }
+        }
+      },
+      "expected": {
+        "job_id": "j1",
+        "run_id": 7,
+        "status": "failed",
+        "duration_ms": 12,
+        "response_data": {
+          "headers": {
+            "Set-Cookie": "[REDACTED]"
+          },
+          "body": "{\"token\":\"[REDACTED]\",\"ok\":1}",
+          "mimeType": "application/json",
+          "url": "https://a.test/?t=[REDACTED:jwt]",
+          "request": {
+            "headers": {
+              "Authorization": "[REDACTED]"
+            },
+            "body": {
+              "password": "[REDACTED]"
+            },
+            "url": "https://a.test/?card=[REDACTED:pan]"
+          }
+        }
+      }
+    },
+    {
+      "id": "job_result.network_log_error_attempts",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "network_events": [
+            {
+              "requestHeaders": {
+                "cookie": "c"
+              }
+            }
+          ],
+          "error": "card 4111111111111111",
+          "error_message": "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+          "execution_log": [
+            {
+              "msg": "login",
+              "password": "p"
+            },
+            "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+          ],
+          "attempts": [
+            {
+              "attempt": 1,
+              "error": "card 4111111111111111"
+            },
+            {
+              "attempt": 2
+            },
+            "x"
+          ]
+        }
+      },
+      "expected": {
+        "network_events": [
+          {
+            "requestHeaders": {
+              "cookie": "[REDACTED]"
+            }
+          }
+        ],
+        "error": "card [REDACTED:pan]",
+        "error_message": "jwt [REDACTED:jwt]",
+        "execution_log": [
+          {
+            "msg": "login",
+            "password": "[REDACTED]"
+          },
+          "jwt [REDACTED:jwt]"
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "error": "card [REDACTED:pan]"
+          },
+          {
+            "attempt": 2
+          },
+          "x"
+        ]
+      }
+    },
+    {
+      "id": "job_result.step_evidence_and_trace_ids",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "step_evidence": [
+            {
+              "id": "s0",
+              "error": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+              "trace": {
+                "trace_id": "41111111111111114111111111111111",
+                "span_id": "4111111111111111"
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "step_evidence": [
+          {
+            "id": "s0",
+            "error": "[REDACTED:jwt]",
+            "trace": {
+              "trace_id": "41111111111111114111111111111111",
+              "span_id": "4111111111111111"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "job_result.hook_budgets_a11y",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "hook_report": {
+            "cleanup": [
+              {
+                "url": "/x?a=1"
+              }
+            ]
+          },
+          "page_budgets": [
+            {
+              "url": "https://x.test/?t=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+            }
+          ],
+          "accessibility_results": [
+            {
+              "violations": [
+                {
+                  "id": "label",
+                  "targets": [
+                    {
+                      "selector": "input[value=\"hunter2\"]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "expected": {
+        "hook_report": {
+          "cleanup": [
+            {
+              "url": "/x?a=…"
+            }
+          ]
+        },
+        "page_budgets": [
+          {
+            "url": "https://x.test/?t=[REDACTED:jwt]"
+          }
+        ],
+        "accessibility_results": [
+          {
+            "step_id": null,
+            "url": null,
+            "violations": [
+              {
+                "id": "label",
+                "impact": {
+                  "$concat": []
+                },
+                "help_url": null,
+                "node_count": 0,
+                "targets": [
+                  {
+                    "selector": "input[value]",
+                    "nodes": 1
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "job_result.heal_snapshots_backstop",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "heal_suggestions": [
+            {
+              "dom_snapshot": "<input type=\"password\" value=\"hunter2\">"
+            },
+            "x"
+          ],
+          "step_dom": {
+            "s1": "<script>secret()</script><input value=\"x1\">",
+            "s2": 3
+          }
+        }
+      },
+      "expected": {
+        "heal_suggestions": [
+          {
+            "dom_snapshot": "<input type=\"password\">"
+          },
+          "x"
+        ],
+        "step_dom": {
+          "s1": "<script></script><input>",
+          "s2": 3
+        }
+      }
+    },
+    {
+      "id": "job_result.continuous_test_results",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "test_results": [
+            {
+              "name": "a",
+              "status": "passed",
+              "error": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+              "step_evidence": [
+                {
+                  "id": "s0",
+                  "console": [
+                    {
+                      "text": "4111111111111111"
+                    }
+                  ]
+                }
+              ]
+            },
+            "junk"
+          ]
+        }
+      },
+      "expected": {
+        "test_results": [
+          {
+            "name": "a",
+            "status": "passed",
+            "error": "[REDACTED:jwt]",
+            "step_evidence": [
+              {
+                "id": "s0",
+                "console": [
+                  {
+                    "text": "[REDACTED:pan]"
+                  }
+                ]
+              }
+            ]
+          },
+          "junk"
+        ]
+      }
+    },
+    {
+      "id": "job_result.console_errors",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "console_errors": [
+            {
+              "type": "error",
+              "text": "jwt eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk",
+              "url": "https://a.test/"
+            },
+            "x"
+          ]
+        }
+      },
+      "expected": {
+        "console_errors": [
+          {
+            "type": "error",
+            "text": "jwt [REDACTED:jwt]",
+            "url": "https://a.test/"
+          },
+          "x"
+        ]
+      }
+    },
+    {
+      "id": "job_result.top_level_request_response",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "request_headers": {
+            "Authorization": "Bearer x"
+          },
+          "response_headers": {
+            "set-cookie": "a"
+          },
+          "request_body": "{\"password\": \"p\"}",
+          "response_body": "card 4111111111111111"
+        }
+      },
+      "expected": {
+        "request_headers": {
+          "Authorization": "[REDACTED]"
+        },
+        "response_headers": {
+          "set-cookie": "[REDACTED]"
+        },
+        "request_body": "{\"password\":\"[REDACTED]\"}",
+        "response_body": "card [REDACTED:pan]"
+      }
+    },
+    {
+      "id": "job_result.legacy_results_key",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "results": [
+            {
+              "error": "card 4111111111111111"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "results": [
+          {
+            "error": "card [REDACTED:pan]"
+          }
+        ]
+      }
+    },
+    {
+      "id": "job_result.steps_password_field",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "steps": [
+            {
+              "type": "fill",
+              "selector": "#password",
+              "value": "hunter2"
+            },
+            {
+              "type": "fill",
+              "selector": "#email",
+              "value": "card 4111111111111111"
+            },
+            {
+              "type": "fill",
+              "selector": "#password",
+              "value": "{{secret.PW}}"
+            },
+            {
+              "type": "http-request",
+              "params": {
+                "headers": {
+                  "token": "t"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "expected": {
+        "steps": [
+          {
+            "type": "fill",
+            "selector": "#password",
+            "value": "[REDACTED]"
+          },
+          {
+            "type": "fill",
+            "selector": "#email",
+            "value": "card [REDACTED:pan]"
+          },
+          {
+            "type": "fill",
+            "selector": "#password",
+            "value": "{{secret.PW}}"
+          },
+          {
+            "type": "http-request",
+            "params": {
+              "headers": {
+                "token": "[REDACTED]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "job_result.routing_untouched",
+      "fn": "redact_job_result",
+      "args": {
+        "result": {
+          "job_id": "4111111111111111",
+          "run_id": 4111111111111111,
+          "status": "passed",
+          "artifacts": [
+            "runs/1/x.png"
+          ],
+          "duration_ms": 5
+        }
+      },
+      "expected": {
+        "job_id": "4111111111111111",
+        "run_id": 4111111111111111,
+        "status": "passed",
+        "artifacts": [
+          "runs/1/x.png"
+        ],
+        "duration_ms": 5
+      }
+    },
+    {
+      "id": "job_result.not_a_dict",
+      "fn": "redact_job_result",
+      "args": {
+        "result": "x"
+      },
+      "expected": "x"
+    }
+  ]
+}

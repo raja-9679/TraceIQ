@@ -102,8 +102,11 @@ async def test_viewer_reads_outsider_and_wrong_key_refused(session, scene, fake_
         await api.result_traces(run.id, res.id, principal=AuthPrincipal(user=outsider, api_key=None),
                                 session=session)
     # A project-scoped key for the right project is fine.
+    # A real key always carries its workspace (RLS scopes keys by it).
+    from app.models import Project
+    ws_id = (await session.get(Project, scene.project_id)).workspace_id
     ok = await api.result_traces(run.id, res.id, session=session, principal=AuthPrincipal(
-        user=scene.user, api_key=SimpleNamespace(id=2, project_id=scene.project_id)))
+        user=scene.user, api_key=SimpleNamespace(id=2, project_id=scene.project_id, workspace_id=ws_id)))
     assert ok["status"] == "ok"
 
 

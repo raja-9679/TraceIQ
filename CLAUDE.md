@@ -1549,6 +1549,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   heal proposals for them. Deliberately NOT excluded: run lists, cost/quota,
   ops metrics, the concurrency cap. Worker + backend + frontend rebuild needed.
 
+- **Pilot value report (WP16d, 2026-10, decision V6)** — migration
+  `e152b3c4d616` (`hypothesisfeedback`, `failurecluster.first_triaged_at`).
+  `GET /api/projects/{id}/value-report?start=&end=` (viewer, scoped keys) and
+  `GET /api/workspaces/{id}/value-report` (roll-up over
+  `reports.accessible_projects`; a key from another workspace 403s); maths in
+  `app/services/value_report.py` (pure functions + loaders), API
+  `app/api/value_report.py`, UI `/reports/value`. Every metric is a dict with
+  `kind` measured|estimated, `definition`, `data_source`, `sample_size`/
+  `sample_label`; no inputs → `value: null` + `missing` text, never 0. **Time
+  to diagnosis**: per failure cluster first seen in the window, first counted
+  failing run → earliest of `first_triaged_at` (set once by PATCH
+  failure-clusters on the first move to investigating/resolved; legacy
+  resolved clusters fall back to `resolved_at`), a non-error IssueTicket for
+  the cluster or one of its results, a quarantine of one of its cases, or a
+  pass on a DIFFERENT git commit; median/p90 nearest rank, undiagnosed counted
+  separately. **Accuracy**: 👍/👎 per hypothesis (`PUT|DELETE
+  /runs/{run}/results/{result}/hypothesis-feedback`, editor, humans only,
+  audited `hypothesis_feedback`; `GET /runs/{id}/hypothesis-feedback`). A
+  hypothesis has no id, so `hypothesis_key` = sha256(category|summary|source);
+  the client echoes the key it was shown and a regenerated analysis gets 409.
+  Unique (result, key, user). Report = majority verdict per rated TOP
+  hypothesis, ties `split`; withheld below `MIN_RATED`=5. Soft run/result refs
+  (the sample outlives retention); validation runs are refused at write AND
+  filtered at read. **Targeted saving (estimate)**: runs carry no request id,
+  so batches are rebuilt (same mode/selection_total/user/key/commit, ≤120 s
+  apart); baseline = newest earlier full batch ≤30 days with the same
+  selection_total and browsers covering every case; saved = baseline browser
+  time × (1 − ran/total), wall clock shown alongside. Manual runs excluded.
+  **Proposals**: case + heal by status (auto-applied case = accepted with no
+  decider and an "auto-applied" note); revert = the revision written ≤2 min
+  of decided_at is later undone by a revision with the earlier steps (UPDATE +
+  heal only, else `not_measurable`); repair validation from `RepairOutcome`.
+  Flake trend / escaped defects / DORA are LINKED, not recomputed. Not in the
+  executive summary or share links (their public payloads are whitelists;
+  adding four metric shapes there is not trivial). Backend + frontend rebuild.
+
 - **Tenant isolation in Postgres (WP15a, H1, 2026-10-20)** — migration
   `e012b3c4d601`; `app/services/rls.py`; operator steps in `docs/OPERATIONS.md`
   → "Tenant isolation". RLS is a SECOND wall; Python checks stay. One policy
@@ -1584,7 +1620,55 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   ./run-tests-live.sh` scopes every directly-called endpoint via
   `tests/integration/conftest.py`. New tenant table → policy + migration, or
   `RLS_EXEMPT` with a reason.
+- **TraceIQ's own E2E suite (WP15c, H5, 2026-10-20)** — `e2e/` (own
+  package, `@playwright/test` pinned EXACTLY to the runner image
+  `mcr.microsoft.com/playwright:v<same>-noble` — bump both together).
+  `e2e/run-e2e.sh [--build] [--keep] [-- <playwright args>]` builds the three
+  images as `:e2e`, generates a `.env` with the real `traceiq-setup.sh` in a
+  temp dir, starts the community compose file + `e2e/docker-compose.e2e.yml`
+  as project `traceiq-e2e` (host ports `!reset` — nothing published; adds
+  `e2e-target`, a static nginx page the cases browse, never the internet) and
+  runs Playwright from the `e2e` service ON the stack network
+  (`http://frontend`). Plain http on a non-localhost name on purpose: that is
+  a LAN self-hoster, and it caught `crypto.randomUUID` (secure-context only)
+  crashing the builder — use `lib/ids.ts:newId()`. Covers signup + login
+  (first user = instance admin), project/suite/case via the UI, run → Passed
+  with step evidence, cancel → Cancelled, and EVERY sidebar destination parsed
+  from `nav.ts` as text (count guard > 40): no pageerror, no app
+  console.error, no 5xx, an h1. Console allow-list in `tests/support/health.ts`
+  (each entry has a reason; 4xx are attached to the report, not failures).
+  Waits are conditions (`settle()` = no same-origin request for 750 ms), never
+  sleeps. CI: `.github/workflows/e2e.yml`, dispatch-only. Real-vendor checks
+  (SAML, PagerDuty/Opsgenie, Jira/Linear, Splunk/Elastic, Jaeger/Tempo) are
+  the manual `docs/REAL_SERVICE_CHECKLIST.md`; results go in the tracker,
+  never credentials.
 
+- **Typed API + shared twin vectors (WP15e, H8, 2026-10-20)** — no migration.
+  **Types:** `frontend/src/api/generated/{openapi.json,schema.ts}` come from
+  `npm run gen:api` (`backend/scripts/dump_openapi.py` imports the app in the
+  test image — no server — then `openapi-typescript` pinned 7.13.0, types
+  only). Commit both with any API change; CI diffs both (backend job: JSON;
+  frontend job: schema.ts). Adopt per client via `src/api/schemaTypes.ts`
+  (`Schema<N>` request bodies, `Out<N>` responses), keeping exported names.
+  428/548 operations return bare dicts and generate `unknown` — add a
+  `response_model` before converting such a client. operationIds must be
+  unique: a multi-method `add_api_route` breaks the generated file.
+  **Vectors:** `tests/vectors/{redaction,heal_ranking}.json` (repo root,
+  README there) are run by BOTH `twin-vectors.test.ts` and
+  `tests/test_twin_vectors.py`; `run-tests*.sh` mount the dir at
+  `/tests/vectors`; a missing file FAILS. Credential formats are stored as
+  `$concat` pieces (scanners). A disagreement is fixed in the wrong twin, or
+  recorded as `known_divergence` + `expected_by_twin` (each twin pins its own
+  output). Fixed on the way: Python PEM `$`→`\Z`; Python `redact_body`
+  re-serialises JSON compactly like `JSON.stringify`; Python page-budget/
+  crawl/HAR redaction no longer adds absent keys as null; heal scores round
+  half-up like `Math.round` (`_round3`); TS heal `textOf` (input buttons by
+  value, as Playwright); TS `redactDom` drops markup inside template/noscript
+  and no longer emits a DOCTYPE for CDATA/`<?xml`; TS `redactJobResult` now
+  also scrubs `console_errors`, top-level request/response headers+bodies,
+  `results`, and steps typed into password fields (`redactSteps`). Open:
+  fullwidth-digit PANs (Python redacts, TS keeps) and form-encoding of `*`/`~`.
+  Worker image rebuild needed.
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

@@ -15,5 +15,6 @@ paths = [
   '''backend/tests/test_saml_auth\.py''',
   '''backend/tests/test_leak_detection\.py''',
   '''execution-engine/src/core/redact\.test\.ts''',
+  '''tests/vectors/.*\.json''',
   '''.*\.example$''',
 ]

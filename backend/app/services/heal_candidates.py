@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -67,6 +68,14 @@ _STOP_TOKENS = frozenset({
 })
 
 
+def _round3(x: float) -> float:
+    """Round half UP to 3 places, exactly as the TS twin's
+    `Math.round(x * 1000) / 1000`. Python's `round()` works on the binary
+    value (0.5175 -> 0.517) where JS gives 0.518, which made the two twins
+    score — and so rank — the same candidates differently (tests/vectors)."""
+    return math.floor(x * 1000 + 0.5) / 1000
+
+
 def tokens(s: Optional[str]) -> List[str]:
     if not s:
         return []
@@ -88,7 +97,7 @@ def similarity(query: Iterable[str], features: List[str]) -> float:
     if not q or not features:
         return 0.0
     total = sum(max(_token_score(t, f) for f in features) for t in q)
-    return round(total / len(q), 3)
+    return _round3(total / len(q))
 
 
 # ---------------------------------------------------------------------------
@@ -398,7 +407,7 @@ def deterministic_candidates(root, old_selector: str, intent: Optional[str]) -> 
 # ---------------------------------------------------------------------------
 
 def score_candidate(b: Dict[str, float]) -> float:
-    return round(sum(WEIGHTS[k] * b[k] for k in WEIGHTS), 3)
+    return _round3(sum(WEIGHTS[k] * b[k] for k in WEIGHTS))
 
 
 def _rank_key(c: Dict[str, Any]):
@@ -452,8 +461,8 @@ def rank_candidates(
             llm = conf
         else:
             llm = 0.0
-        breakdown = {"stability": round(e["stability"], 3), "similarity": round(e["similarity"], 3),
-                     "llm": round(llm, 3), "uniqueness": 1 if n == 1 else 0}
+        breakdown = {"stability": _round3(e["stability"]), "similarity": _round3(e["similarity"]),
+                     "llm": _round3(llm), "uniqueness": 1 if n == 1 else 0}
         out.append({
             "selector": e["selector"],
             "strategy": e["strategy"],
@@ -483,8 +492,8 @@ def sanitize_candidates(raw: Any) -> List[Dict[str, Any]]:
 
         def num(v, lo=0.0, hi=1.0):
             try:
-                return max(lo, min(hi, round(float(v), 3)))
-            except (TypeError, ValueError):
+                return max(lo, min(hi, _round3(float(v))))
+            except (TypeError, ValueError, OverflowError):  # NaN / inf from json.loads
                 return 0.0
         try:
             matches = max(0, int(c.get("matches") or 0))
