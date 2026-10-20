@@ -242,7 +242,10 @@ export default function WorkspacePage() {
     const projectMutation = useMutation({
         mutationFn: (data: { name: string, description?: string }) => createProject({ ...data, workspace_id: selectedWorkspaceId! }),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['projects', selectedWorkspaceId] });
+            // ['projects'] (prefix) also refreshes the sidebar's project switcher,
+            // which caches the list under ['projects'] — invalidating only this
+            // workspace's key left a new project out of the switcher until reload.
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
             setShowCreateProject(false);
             setNewName('');
             setNewDesc('');
@@ -253,7 +256,8 @@ export default function WorkspacePage() {
     const deleteProjectMutation = useMutation({
         mutationFn: deleteProject,
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['projects', selectedWorkspaceId] });
+            // Prefix key, as above: the switcher must drop a deleted project.
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
             setDeleteTarget(null);
             toast.success('Project deleted');
         }

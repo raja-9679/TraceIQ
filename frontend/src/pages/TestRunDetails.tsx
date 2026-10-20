@@ -54,13 +54,17 @@ export default function TestRunDetails() {
         enabled: isValidRunId,
     });
 
-    // WebSocket for Real-time Updates
+    // WebSocket for Real-time Updates. Keyed on "is it over?" rather than the
+    // status itself: keying on the status tore the socket down and reopened it
+    // on every pending -> running change, closing one that was still
+    // connecting (a console error, and a reconnect for nothing).
+    const runFinished = isTerminal(run?.status);
     useEffect(() => {
         if (!isValidRunId) return;
         // If run is already finished, no need to connect. Includes cancelled /
         // timed out (WP15f) — the old passed/failed/error check kept a
         // cancelled run's page connected forever.
-        if (isTerminal(run?.status)) return;
+        if (runFinished) return;
 
         // Browsers can't set headers on a WebSocket, so the JWT rides in the
         // subprotocol list (Sec-WebSocket-Protocol), not the URL — a URL ends
@@ -90,9 +94,12 @@ export default function TestRunDetails() {
         ws.onerror = (e) => console.error("WebSocket Error:", e);
 
         return () => {
+            // Closing a socket that is still connecting fires onerror; that is
+            // us leaving the page, not a failure worth logging.
+            ws.onerror = null;
             ws.close();
         };
-    }, [runId, isValidRunId, run?.status, queryClient]);
+    }, [runId, isValidRunId, runFinished, queryClient]);
 
     const { data: traceUrl } = useQuery({
         queryKey: ["trace", run?.trace_url],

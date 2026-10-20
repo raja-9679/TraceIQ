@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, getTestCase, updateTestCase } from '@/lib/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { newId } from '@/lib/ids';
 
 // Helper to get draft key for localStorage
 const getDraftKey = (suiteId: string | undefined, caseId: string | undefined) => {
@@ -214,7 +215,7 @@ export default function TestBuilder() {
 
     const addStep = (type: TestStep['type'] = 'goto') => {
         const newStep: TestStep = {
-            id: crypto.randomUUID(),
+            id: newId(),
             type,
             selector: '',
             value: ''
@@ -244,7 +245,7 @@ export default function TestBuilder() {
 
     const insertStep = (index: number) => {
         const newStep: TestStep = {
-            id: crypto.randomUUID(),
+            id: newId(),
             type: '' as TestStep['type'],  // blank — user picks the action from the dropdown
             selector: '',
             value: ''
@@ -324,7 +325,7 @@ export default function TestBuilder() {
             {/* ── Sticky Frosted Header ── */}
             <div className="sticky top-0 z-40 bg-white/80 backdrop-blur-xl border-b border-slate-200 shadow-sm mb-8 -mx-6 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all">
                 <div className="flex items-center gap-4 flex-1">
-                    <Button variant="ghost" size="icon" onClick={handleCancel} className="shrink-0 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full h-10 w-10">
+                    <Button variant="ghost" size="icon" onClick={handleCancel} aria-label="Back" title="Back" className="shrink-0 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-full h-10 w-10">
                         <ArrowLeft className="h-5 w-5" />
                     </Button>
                     <div className="flex-1 max-w-2xl">

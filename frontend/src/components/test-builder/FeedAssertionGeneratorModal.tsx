@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Wand2, ArrowRight, Check, X, ChevronRight, ChevronDown } from "lucide-react";
+import { newId } from "@/lib/ids";
 
 interface AssertionRequest {
     type: 'xpath';
@@ -71,7 +72,7 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
     };
 
     const buildNodeTree = (element: Element, parentPath: string, parentStrictPath: string): XmlNode => {
-        const id = crypto.randomUUID();
+        const id = newId();
         const tagName = element.tagName;
         const localName = element.localName || tagName.split(':').pop() || tagName;
         const namespaceURI = element.namespaceURI;
@@ -165,7 +166,7 @@ export const FeedAssertionGeneratorModal: React.FC<FeedAssertionGeneratorModalPr
     const addManualAssertion = () => {
         setManualAssertions(prev => [
             ...prev,
-            { id: crypto.randomUUID(), path: '', operator: 'equals', value: '' }
+            { id: newId(), path: '', operator: 'equals', value: '' }
         ]);
     };
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Wand2, ArrowRight, Check, X } from "lucide-react";
+import { newId } from "@/lib/ids";
 
 interface SchemaField {
     id: string;
@@ -37,7 +38,7 @@ export const SchemaGeneratorModal: React.FC<SchemaGeneratorModalProps> = ({ onGe
     };
 
     const generateFields = (obj: any, path: string, key: string = 'root', parentType?: 'object' | 'array'): SchemaField[] => {
-        const id = crypto.randomUUID();
+        const id = newId();
         let type: SchemaField['type'] = 'string';
         if (obj === null) type = 'null';
         else if (Array.isArray(obj)) type = 'array';
