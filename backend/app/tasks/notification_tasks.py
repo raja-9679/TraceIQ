@@ -63,6 +63,11 @@ def send_run_notifications(self, run_id: int, payload: Dict[str, Any]):
             if not run:
                 logger.error(f"[Notification] Run {run_id} not found")
                 return
+            # WP15f: whoever cancelled a run knows; nobody else is told. (A
+            # TIMED_OUT run is still notified, like the ERROR it used to be.)
+            if run.status == TestStatus.CANCELLED:
+                logger.info(f"[Notification] Run {run_id} was cancelled; not notifying")
+                return
 
             # Get project notification settings
             project = session.get(
@@ -167,7 +172,8 @@ def build_notification_content(run: TestRun, payload: Dict[str, Any]) -> Dict[st
     run_summary = payload.get('run_summary', {})
     ai_analysis = payload.get('ai_analysis')
 
-    status_emoji = "✅" if run.status == TestStatus.PASSED else "❌"
+    status_emoji = ("✅" if run.status == TestStatus.PASSED
+                    else "⏱️" if run.status == TestStatus.TIMED_OUT else "❌")
 
     content = {
         'title': f"{status_emoji} Test Run {run.status.value.upper()}: {run.suite_name or 'Unknown Suite'}",

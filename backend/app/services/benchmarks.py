@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 from urllib.parse import urlsplit, urlunsplit
+from app.services.run_status import TERMINAL_VALUES
 
 MIN_TARGETS = 2
 MAX_TARGETS = 10
@@ -188,6 +189,6 @@ def build_matrix(targets: Sequence[Dict[str, str]], runs: Sequence[Dict[str, Any
             "worst_pass_rate": min(rated, key=lambda s: s["pass_rate"])["label"] if rated else None,
             "fastest": min(timed, key=lambda s: s["avg_case_ms"])["label"] if timed else None,
             "differing_tests": sum(1 for g in tests if g["differs"]),
-            "complete": all(s["status"] in ("passed", "failed", "error") for s in sites),
+            "complete": all(s["status"] in TERMINAL_VALUES for s in sites),
         },
     }

@@ -6,7 +6,8 @@ responsibility — we send a stable `event_id` per delivery attempt.
 
 Payload contract (sent as POST JSON):
     {
-      "event":       "run.completed" | "run.failed" | "run.passed",
+      "event":       "run.passed" | "run.failed" | "run.cancelled" | "run.timed_out"
+                     | "run.completed" (anything else, e.g. an errored run),
       "event_id":    "<uuid4>",
       "delivered_at":"<ISO-8601>",
       "run":         { id, status, suite_name, ..., git_commit, triggered_by, agent_id, ... },
@@ -46,14 +47,26 @@ def _event_for_run(run: TestRun) -> str:
         return "run.failed"
     if run.status == "passed":
         return "run.passed"
+    if run.status == "cancelled":
+        return "run.cancelled"
+    if run.status == "timed_out":
+        return "run.timed_out"
     return "run.completed"
+
+
+# Before WP15f a timed-out run was ERROR and went out as "run.completed". A
+# webhook filtered on "run.completed" keeps receiving those runs (and
+# cancelled ones) under their new, more specific names.
+_COMPLETED_ALIASES = {"run.completed", "run.cancelled", "run.timed_out"}
 
 
 def _match_event_filter(event_filter: Optional[str], event: str) -> bool:
     if not event_filter:
         return True
     allowed = {e.strip() for e in event_filter.split(",") if e.strip()}
-    return event in allowed
+    if event in allowed:
+        return True
+    return "run.completed" in allowed and event in _COMPLETED_ALIASES
 
 
 def _sign(body: bytes, secret: str) -> str:

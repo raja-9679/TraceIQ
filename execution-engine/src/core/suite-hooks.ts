@@ -29,6 +29,7 @@
  * injects `runStep` (TestExecutor.executeStep on the live page) and
  * `request` (the browser context's APIRequestContext).
  */
+import { JobAbort } from './run-control';
 import { RedactionPolicy, redactText } from './redact';
 import { safeUrl } from './evidence';
 import { resolveTemplates, TemplateContext, templateContextFrom } from './interpolate';
@@ -506,9 +507,19 @@ export async function withinDeadline<T>(deadline: number | undefined, exec: () =
     if (deadline === undefined) return exec();
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
-        throw new Error('Case timed out: the job time budget is exhausted (teardown time is reserved)');
+        throw new JobAbort('timed_out', 'Case timed out: the job time budget is exhausted (teardown time is reserved)');
     }
-    return withTimeout(exec(), remaining, 'Case');
+    // The platform's limit, not the test's: reported TIMED_OUT (WP15f), so
+    // it never counts as a failure of the application.
+    let timer: NodeJS.Timeout | undefined;
+    const t = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new JobAbort('timed_out', `Case timed out after ${remaining}ms (job time budget; teardown time is reserved)`)), remaining);
+    });
+    try {
+        return await Promise.race([exec(), t]);
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
 }
 
 /** A cleanup requester over a Playwright APIRequestContext. */

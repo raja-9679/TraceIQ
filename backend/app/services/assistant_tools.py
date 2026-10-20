@@ -433,7 +433,7 @@ async def t_project_overview(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str
 
 async def t_list_runs(ctx: ToolContext, args: Dict[str, Any]) -> Dict[str, Any]:
     pids = _scope(ctx, args)
-    status = _choice_arg(args, "status", ("passed", "failed", "error", "running", "pending"))
+    status = _choice_arg(args, "status", ("passed", "failed", "error", "cancelled", "timed_out", "running", "pending"))
     hours = _int_arg(args, "hours", default=168, lo=1, hi=24 * 90)
     limit = _int_arg(args, "limit", default=10, lo=1, hi=MAX_ITEMS)
     runs = await ctx.data.runs(pids, status=status, since=ctx.now - timedelta(hours=hours),
@@ -567,7 +567,7 @@ TOOLS: Dict[str, ToolSpec] = {t.name: t for t in [
              "last run and release verdict for one project", t_project_overview),
     ToolSpec("list_runs", "list_runs(project_id?, status?, hours=168, suite_contains?, "
              "git_branch?, limit=10)",
-             "recent runs, newest first; status is passed|failed|error|running|pending",
+             "recent runs, newest first; status is passed|failed|error|cancelled|timed_out|running|pending",
              t_list_runs),
     ToolSpec("get_run", "get_run(run_id)",
              "one run with its failing results and any stored failure analysis", t_get_run),

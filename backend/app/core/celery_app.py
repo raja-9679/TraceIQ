@@ -143,10 +143,6 @@ celery_app.conf.beat_schedule = {
         'task': 'app.tasks.webhook_tasks.process_webhook_queue',
         'schedule': settings.WEBHOOK_PROCESSOR_INTERVAL,
     },
-    'cleanup-stuck-tests': {
-        'task': 'app.tasks.cleanup_tasks.cleanup_stuck_tests',
-        'schedule': 300.0,  # Every 5 minutes
-    },
     # New: Result aggregator for distributed execution
     'process-job-results': {
         'task': 'app.tasks.result_aggregator.process_job_results',

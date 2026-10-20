@@ -24,11 +24,13 @@ from datetime import datetime
 import math
 from typing import Dict, Any, List, Optional
 import redis
+from sqlalchemy import or_
 from sqlmodel import Session, create_engine, select
 from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
 from app.models import TestRun, TestCaseResult, TestStatus, TestCase
 from app.services.run_completion import finalize_on_commit
+from app.services.run_status import normalise_result, run_outcome
 from app.services.redaction import redact_worker_result
 from app.core.secrets import decrypt_json, encrypt_json
 
@@ -199,9 +201,28 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
     completed = int(progress.get('completed', 0))
     total = int(progress.get('total', 0))
 
+    # A cancelled run keeps its status: results that were already in flight
+    # are stored, but they never turn it back into a pass or a failure.
+    if run.status == TestStatus.CANCELLED:
+        return
+
     if completed >= total and total > 0:
-        # All jobs complete - finalize run
-        if run.failed_tests > 0:
+        # All jobs complete - finalize run. Results decide the status: the
+        # Redis counters lump every non-pass into "failed", but a case the
+        # platform timed out or that was cancelled is not a verdict on the
+        # application (app/services/run_status.py).
+        try:
+            results = session.exec(
+                select(TestCaseResult).where(
+                    TestCaseResult.test_run_id == run_id)
+            ).all()
+        except Exception as e:
+            # Decide by the counter alone (the pre-WP15f rule) rather than
+            # leave the run unfinished.
+            print(f"[Aggregator] Could not read results of run {run_id}: {e}")
+            results = []
+        outcome = run_outcome([r.status for r in results], run.failed_tests)
+        if outcome == TestStatus.FAILED:
             run.status = TestStatus.FAILED
             # Clear stale timeout error_message; the real failures are in
             # individual TestCaseResult records.
@@ -220,11 +241,13 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
             except Exception as e:
                 print(f"[Aggregator] Could not queue failure analysis: {e}")
         else:
-            run.status = TestStatus.PASSED
+            run.status = outcome
             # Clear any stale error_message (e.g. from a previous timeout
             # marking by check_stale_runs that was later resolved by
             # arriving results).
             run.error_message = None
+            if outcome == TestStatus.TIMED_OUT:
+                run.error_message = "One or more cases hit the platform's time limit."
 
         # Calculate wall-clock duration from when the first worker actually
         # picked up a job (worker_started_at), not from queue dispatch time
@@ -245,12 +268,6 @@ def update_run_from_progress(run: TestRun, run_id: int, progress: Dict[str, str]
                 timezone.utc) if getattr(start_ref, 'tzinfo', None) else datetime.utcnow()
             run.duration_ms = int(
                 (now - start_ref).total_seconds() * 1000)
-
-        # Get results for artifact copying
-        results = session.exec(
-            select(TestCaseResult).where(
-                TestCaseResult.test_run_id == run_id)
-        ).all()
 
         # Copy video/trace/HAR from results to run level
         if len(results) == 1 and results[0]:
@@ -380,7 +397,10 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                 continue
             scored_case_ids.add(test_case.id)
 
-            # Last N completed results for this test name across runs
+            # Last N results WITH A VERDICT for this test name across runs.
+            # Cancelled / timed-out results and infrastructure errors (browser
+            # crash, worker out of disk) say nothing about the test, so they
+            # neither make it look flaky nor stable (WP15f).
             history_stmt = (
                 select(TestCaseResult)
                 .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
@@ -388,6 +408,8 @@ def _update_flake_scores(run: TestRun, run_id: int, session: Session):
                     TestCaseResult.test_name == res.test_name,
                     TestCaseResult.status.in_(
                         [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]),
+                    or_(TestCaseResult.error_kind.is_(None),
+                        TestCaseResult.error_kind != "infrastructure"),
                 )
                 .order_by(TestCaseResult.id.desc())
                 .limit(FLAKE_WINDOW)
@@ -758,12 +780,6 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
             print(f"[Aggregator] Run {run_id} not found")
             return
 
-        status_map = {
-            'passed': TestStatus.PASSED,
-            'failed': TestStatus.FAILED,
-            'error': TestStatus.ERROR
-        }
-
         # Job-level artifacts (shared video/trace/HAR for all tests in this job)
         artifacts = result.get('artifacts', {})
         job_video = artifacts.get('video')
@@ -774,8 +790,8 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
         # Process each test result in the job
         for test_res in test_results:
             test_name = test_res.get('test_name')
-            status = status_map.get(test_res.get(
-                'status', 'error'), TestStatus.ERROR)
+            status, error_kind = normalise_result(
+                test_res.get('status'), test_res.get('error'), test_res.get('error_kind'))
             response_data = test_res.get('response_data', {})
             request_data = response_data.get(
                 'request', {}) if response_data else {}
@@ -791,6 +807,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
             if existing:
                 # Update existing result
                 existing.status = status
+                existing.error_kind = error_kind
                 existing.duration_ms = test_res.get('duration_ms', 0)
                 existing.error_message = test_res.get('error')
                 if existing.test_case_id is None and test_res.get('test_case_id'):
@@ -818,6 +835,7 @@ def process_continuous_job_result(run_id: int, job_id: str, result: Dict[str, An
                     test_run_id=run_id,
                     test_name=test_name,
                     status=status,
+                    error_kind=error_kind,
                     test_case_id=(int(test_res['test_case_id'])
                                   if test_res.get('test_case_id') else None),
                     duration_ms=test_res.get('duration_ms', 0),
@@ -891,14 +909,9 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
             print(f"[Aggregator] Run {run_id} not found")
             return
 
-        # Map status
-        status_map = {
-            'passed': TestStatus.PASSED,
-            'failed': TestStatus.FAILED,
-            'error': TestStatus.ERROR
-        }
-        status = status_map.get(result.get(
-            'status', 'error'), TestStatus.ERROR)
+        # Map status (+ why it did not pass; derived for older workers)
+        status, error_kind = normalise_result(
+            result.get('status'), result.get('error'), result.get('error_kind'))
 
         # Check for existing result (idempotency)
         existing = session.exec(
@@ -931,6 +944,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
         if existing:
             # Update existing result
             existing.status = status
+            existing.error_kind = error_kind
             existing.duration_ms = result.get('duration_ms', 0)
             existing.error_message = result.get('error')
             if existing.test_case_id is None and test_case_id:
@@ -959,6 +973,7 @@ def process_single_test_result(run_id: int, job_id: str, result: Dict[str, Any])
                 test_run_id=run_id,
                 test_name=test_name,
                 status=status,
+                error_kind=error_kind,
                 test_case_id=int(test_case_id) if test_case_id else None,
                 duration_ms=result.get('duration_ms', 0),
                 error_message=result.get('error'),
@@ -1128,7 +1143,7 @@ def check_stale_runs():
 
         if killed > 0:
             session.commit()
-            print(f"[Aggregator] Marked {killed} stale run(s) as ERROR")
+            print(f"[Aggregator] Marked {killed} stale run(s) as TIMED_OUT")
         else:
             print(f"[Aggregator] check_stale_runs: {len(running_runs)} running, all healthy")
 
@@ -1140,15 +1155,17 @@ def _mark_run_timeout(
     reason: str
 ):
     """
-    Mark a run as ERROR due to timeout/staleness.
-    Includes partial progress counts from Redis if available.
+    Mark a run TIMED_OUT due to timeout/staleness (ERROR before WP15f).
+    Includes partial progress counts from Redis if available. TIMED_OUT is
+    terminal without a verdict: the platform gave up waiting, which says
+    nothing about the application, so it is missing data to the gate.
     """
     completed = int(progress.get('completed', 0)) if progress else 0
     total = int(progress.get('total', run.total_tests or 0)) if progress else (run.total_tests or 0)
     passed = int(progress.get('passed', 0)) if progress else run.passed_tests
     failed = int(progress.get('failed', 0)) if progress else run.failed_tests
 
-    run.status = TestStatus.ERROR
+    run.status = TestStatus.TIMED_OUT
     run.error_message = (
         f"Test execution timed out ({reason}). "
         f"{completed}/{total} jobs completed before timeout."
@@ -1164,7 +1181,7 @@ def _mark_run_timeout(
     # (monitors record DOWN, CI webhooks fire). Results that arrive later
     # still update the run, but its side effects have already been sent.
     finalize_on_commit(session, run.id)
-    print(f"[Aggregator] Run {run.id} → ERROR: {reason} ({completed}/{total} completed)")
+    print(f"[Aggregator] Run {run.id} → TIMED_OUT: {reason} ({completed}/{total} completed)")
 
 
 # NOTE: Beat schedule is registered in app/core/celery_app.py.

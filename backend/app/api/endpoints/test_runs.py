@@ -12,6 +12,7 @@ from app.services.test_service import test_service
 from app.services.access_service import access_service
 from app.services.audit import record as audit_record
 from app.services.entity_delete import cascade_delete, delete_objects
+from app.services import run_status
 from app.models import (
     User, AuditLog, AuditLogRead, Project, UserWorkspace, UserTeam, UserProjectAccess,
     TeamProjectAccess, TestSuite, TestCase, TestRun, TestRunRead, TestStatus, ExecutionMode,
@@ -1027,7 +1028,7 @@ async def force_complete_test_run(
             status_code=403, detail="You do not have permission to modify this test run")
 
     # Check if test is already in a final state
-    if run.status in [TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR]:
+    if run.status in run_status.TERMINAL:
         raise HTTPException(
             status_code=400,
             detail=f"Test run is already in final state: {run.status}"

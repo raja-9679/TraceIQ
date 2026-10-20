@@ -122,3 +122,36 @@ def test_aggregator_completion_path_finalizes(engine, run_id, queued, monkeypatc
     assert queued == [run_id]
     with Session(engine) as s:
         assert s.get(TestRun, run_id).status == TestStatus.PASSED
+
+
+def test_new_statuses_round_trip_and_decide_the_run(engine, run_id, queued, monkeypatch):
+    from app.models import TestCaseResult
+    from app.tasks import result_aggregator
+    monkeypatch.setattr(result_aggregator, "_update_flake_scores", lambda *a: None)
+    with Session(engine) as s:
+        s.add(TestCaseResult(test_run_id=run_id, test_name="login", status=TestStatus.PASSED, duration_ms=1))
+        s.add(TestCaseResult(test_run_id=run_id, test_name="checkout", status=TestStatus.TIMED_OUT,
+                             error_kind="timeout", duration_ms=600000))
+        s.commit()
+    with Session(engine) as s:
+        run = s.get(TestRun, run_id)
+        # The Redis counter lumps the timeout into "failed"; the results don't.
+        result_aggregator.update_run_from_progress(
+            run, run_id, {"total": "2", "completed": "2", "passed": "1", "failed": "1"}, s)
+        s.add(run)
+        s.commit()
+    with Session(engine) as s:
+        assert s.get(TestRun, run_id).status == TestStatus.TIMED_OUT
+        labels = s.exec(text(
+            "SELECT status::text, error_kind FROM testcaseresult ORDER BY test_name")).all()
+        assert [tuple(r) for r in labels] == [("TIMED_OUT", "timeout"), ("PASSED", None)]
+    assert queued == [run_id]
+
+
+def test_cancelled_label_is_stored_uppercase(engine, run_id):
+    with Session(engine) as s:
+        run = s.get(TestRun, run_id)
+        run.status = TestStatus.CANCELLED
+        s.add(run)
+        s.commit()
+        assert s.exec(text(f"SELECT status::text FROM testrun WHERE id = {run_id}")).one()[0] == "CANCELLED"

@@ -18,7 +18,8 @@ from traceiq_mcp.schemas.runs import (
     RunResults,
 )
 
-TERMINAL_STATUSES = {"passed", "failed", "error"}
+# cancelled / timed_out (server WP15f): over, but no verdict on the code.
+TERMINAL_STATUSES = {"passed", "failed", "error", "cancelled", "timed_out"}
 
 
 @mcp.tool()
@@ -79,8 +80,9 @@ async def get_run(run_id: int) -> RunDetail:
 @mcp.tool()
 async def wait_for_run(run_id: int, timeout_seconds: int = 600,
                        poll_interval_seconds: int = 5) -> RunDetail:
-    """Poll a run until it reaches a terminal status (passed/failed/error) or
-    the timeout elapses. Returns the final run either way — check `status`."""
+    """Poll a run until it reaches a terminal status (passed/failed/error, or
+    cancelled/timed_out — over but with no verdict on the code) or the timeout
+    elapses. Returns the final run either way — check `status`."""
     client = new_client()
     interval = max(1, poll_interval_seconds)
     elapsed = 0

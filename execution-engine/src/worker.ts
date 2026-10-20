@@ -26,6 +26,9 @@ import { TestExecutor } from './core/test-executor';
 import { isManualCase, manualJobResult, splitManualCases } from './core/manual-guard';
 import { AIEngine } from './ai';
 import { aiAllowedForRun, withAiGate } from './core/ai-gate';
+import {
+    abortedJobResult, CANCELLED_MESSAGE, ErrorKind, isJobAbort, JobAbort, JobTimeout, RunControl, timeoutMessage,
+} from './core/run-control';
 import { provider as llmProvider } from './llm-provider';
 import { collectWebVitals, WebVitals } from './web-vitals';
 import {
@@ -124,6 +127,9 @@ const MAX_HAR_REDACT_BYTES = parseInt(process.env.MAX_HAR_REDACT_BYTES || '13421
 
 class ExecutionWorker {
     private jobQueue: JobQueue;
+    // Cancellation + the platform time limit, checked at step boundaries
+    // (WP15f). Replaced in start() with one that reads Redis.
+    private runControl: RunControl = new RunControl(async () => null);
     private browserManager: BrowserManager;
     private isShuttingDown: boolean = false;
     private jobsProcessed: number = 0;
@@ -253,6 +259,8 @@ class ExecutionWorker {
 
         // Initialize job queue
         await this.jobQueue.initialize();
+        const controlRedis = this.jobQueue.duplicateRedis() as any;
+        this.runControl = new RunControl((key) => controlRedis.get(key));
 
         // Runtime config from the backend (WP8); falls back to env when the
         // backend is unreachable, so this never blocks startup for long.
@@ -370,12 +378,42 @@ class ExecutionWorker {
                     continue;
                 }
 
+                // A run cancelled while this job queued: report it without
+                // starting a browser (WP15f).
+                if (await this.runControl.isRunCancelled(job.run_id)) {
+                    await this.jobQueue.completeJob(
+                        streamId, abortedJobResult(job, 'cancelled', CANCELLED_MESSAGE), this.redactionPolicyFor(job));
+                    this.jobsProcessed++;
+                    this.heartbeat?.jobFinished(false);
+                    claimedJob = false;
+                    console.log(`[Worker] Job ${job.job_id}: run ${job.run_id} was cancelled; not executed`);
+                    continue;
+                }
+
                 // Process the job with a hard wall-clock timeout.
                 const limitMs = maxJobDurationMs();
-                const timeout = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error(`Job ${job.job_id} exceeded MAX_JOB_DURATION_MS (${limitMs}ms)`)), limitMs)
-                );
-                const result = await Promise.race([this.executeJob(job), timeout]);
+                let timer: NodeJS.Timeout | undefined;
+                const timeout = new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => reject(new JobTimeout(timeoutMessage(limitMs))), limitMs);
+                });
+                const execution = this.executeJob(job);
+                let result: JobResult;
+                try {
+                    result = await Promise.race([execution, timeout]);
+                } catch (raceErr: any) {
+                    if (!(raceErr instanceof JobTimeout)) throw raceErr;
+                    // Before WP15f the job was left unacknowledged here: no
+                    // result, a zombie execution still running, and a
+                    // redelivery that ran the case again. Report it TIMED_OUT
+                    // and stop the zombie at its next step boundary.
+                    console.warn(`[Worker] Job ${job.job_id} hit the time limit (${limitMs}ms); reporting timed_out`);
+                    this.runControl.markTimedOut(job.job_id);
+                    result = abortedJobResult(job, 'timed_out', raceErr.message, limitMs);
+                    await this.awaitWindDown(execution);
+                } finally {
+                    if (timer) clearTimeout(timer);
+                    this.runControl.release(job.job_id);
+                }
 
                 // Complete the job
                 await this.jobQueue.completeJob(streamId, result, this.redactionPolicyFor(job));
@@ -395,6 +433,27 @@ class ExecutionWorker {
 
         console.log('[Worker] Exiting processing loop');
         await this.shutdown();
+    }
+
+    /**
+     * Wait (bounded) for an abandoned execution to stop. It throws a JobAbort
+     * at its next step boundary and then runs its finally block, which stops
+     * the SHARED browser manager — if the next job had started by then, that
+     * would kill the next job's browser. Past the grace period the browser is
+     * stopped here instead, which makes the stuck call fail.
+     */
+    private async awaitWindDown(execution: Promise<unknown>): Promise<void> {
+        const graceMs = parseInt(process.env.TIMED_OUT_JOB_GRACE_MS || '60000') || 60000;
+        const settled = await Promise.race([
+            execution.then(() => true, () => true),
+            new Promise<boolean>((res) => setTimeout(() => res(false), graceMs)),
+        ]);
+        if (!settled) {
+            console.warn(`[Worker] Timed-out job did not stop within ${graceMs}ms; closing its browser`);
+            try { await this.browserManager.stop(); } catch { /* already closed */ }
+            await Promise.race([execution.then(() => {}, () => {}),
+                                new Promise((res) => setTimeout(res, 5000))]);
+        }
     }
 
     /**
@@ -726,7 +785,10 @@ class ExecutionWorker {
             ? Date.now() + Math.max(0, MAX_JOB_DURATION_MS - HOOK_TEARDOWN_BUDGET_MS) : undefined;
         let result = await this.executeSingleTestJob(job, 1, deadline);
         const attempts: AttemptSummary[] = [summariseAttempt(1, result)];
-        while (result.status !== 'passed' && attempt < maxRetries) {
+        // Cancelled / timed-out attempts are never retried: a retry cannot
+        // change a cancel, and the time budget spans every attempt.
+        while (result.status !== 'passed' && result.status !== 'cancelled'
+               && result.status !== 'timed_out' && attempt < maxRetries) {
             attempt++;
             const delay = backoffBase * Math.pow(2, attempt - 1);
             console.log(`[Worker] Test "${result.test_name}" ${result.status}; retry ${attempt}/${maxRetries} after ${delay}ms`);
@@ -778,8 +840,13 @@ class ExecutionWorker {
         let failedStepIndex = -1;
         let currentContext: Page | FrameLocator | null = null;
 
-        let status: 'passed' | 'failed' | 'error' = 'passed';
+        let status: JobResult['status'] = 'passed';
         let errorMessage: string | undefined;
+        // Why it did not pass (WP15f): steps → test, suite setup → setup,
+        // anything before the first step → infrastructure.
+        let errorKind: ErrorKind | undefined;
+        let phase: 'start' | 'setup' | 'steps' = 'start';
+        let abortedAt = -1;
         let responseData: any = undefined;
         let videoPath: string | null = null;
         let tracePath: string | null = null;
@@ -924,6 +991,7 @@ class ExecutionWorker {
 
             // Suite setup hooks (parent chain first). Teardown runs in the
             // finally below whatever happens from here on.
+            phase = 'setup';
             if (caseUsesHooks(testCase)) {
                 const hookContext = context;
                 hookRunner = new HookRunner({
@@ -947,9 +1015,14 @@ class ExecutionWorker {
 
             // Execute test steps
             currentContext = page;
+            phase = 'steps';
 
             for (let stepIndex = 0; stepIndex < testCase.steps.length; stepIndex++) {
                 const step = testCase.steps[stepIndex];
+                // Cancelled run / platform time limit: stop before this step.
+                abortedAt = stepIndex;
+                await this.runControl.check(job);
+                abortedAt = -1;
                 currentStep = step;
                 const consoleMark = consoleLogs.length;
                 recorder.begin(step, stepIndex);
@@ -983,6 +1056,13 @@ class ExecutionWorker {
                         }
                     }
                 } catch (stepErr: any) {
+                    if (isJobAbort(stepErr)) {
+                        // The step was cut off by the time budget: not a
+                        // selector problem, so never "heal" it.
+                        recorder.end('failed', stepErr.message);
+                        failedStepIndex = stepIndex;
+                        throw stepErr;
+                    }
                     if (stepErr.stepResult) {
                         lastStepResult = stepErr.stepResult;
                     }
@@ -1043,13 +1123,23 @@ class ExecutionWorker {
             }
 
         } catch (err: any) {
-            // A failed suite setup means the case never ran: 'error', not a
-            // verdict on the case itself.
-            status = err?.hookSetupFailed ? 'error' : 'failed';
             errorMessage = err.message;
-            console.error(`[Worker] Test failed: ${err.message}`);
+            if (isJobAbort(err)) {
+                // Cancelled, or the platform's time limit: no verdict on the
+                // case (WP15f). Teardown still runs in the finally below.
+                status = err.status;
+                errorKind = err.errorKind;
+                console.warn(`[Worker] Test ${err.status}: ${err.message}`);
+                if (abortedAt >= 0) recorder.skipRemaining(testCase.steps, abortedAt);
+            } else {
+                // A failed suite setup means the case never ran: 'error', not a
+                // verdict on the case itself.
+                status = err?.hookSetupFailed ? 'error' : 'failed';
+                errorKind = err?.hookSetupFailed ? 'setup' : phase === 'steps' ? 'test' : 'infrastructure';
+                console.error(`[Worker] Test failed: ${err.message}`);
+            }
 
-            await this.maybeProposeHeal(
+            if (!isJobAbort(err)) await this.maybeProposeHeal(
                 page, currentStep, testCaseId, job.run_id, err.message, healSuggestions, job);
 
             // Capture response data from failed step if available
@@ -1166,6 +1256,7 @@ class ExecutionWorker {
             test_case_id: testCaseId,
             test_name: testCase.name,
             status,
+            ...(errorKind && status !== 'passed' ? { error_kind: errorKind } : {}),
             duration_ms: duration,
             error: errorMessage,
             artifacts,
@@ -1206,8 +1297,11 @@ class ExecutionWorker {
         const policy = this.redactionPolicyFor(job);
         const captureLevel = this.captureLevelFor(job);
         const prefs = this.artifactPrefsFor(job);
-        let overallStatus: 'passed' | 'failed' | 'error' = 'passed';
+        let overallStatus: JobResult['status'] = 'passed';
         let overallError: string | undefined;
+        // Set once the run is cancelled or the job's time is up (WP15f):
+        // every case from then on is reported with that status, unrun.
+        let jobAbort: JobAbort | null = null;
         let videoPath: string | null = null;
         let tracePath: string | null = null;
         let capturedAuthState: any = null;
@@ -1349,8 +1443,29 @@ class ExecutionWorker {
 
             // Execute each test case sequentially
             for (const testCase of job.test_cases!) {
+                if (!jobAbort) {
+                    try {
+                        await this.runControl.check(job);
+                    } catch (e) {
+                        if (!isJobAbort(e)) throw e;
+                        jobAbort = e;
+                    }
+                }
+                if (jobAbort) {
+                    testResults.push({
+                        test_case_id: testCase.id,
+                        test_name: testCase.name,
+                        status: jobAbort.status,
+                        error_kind: jobAbort.errorKind,
+                        duration_ms: 0,
+                        error: jobAbort.message,
+                    });
+                    continue;
+                }
                 const caseStartTime = Date.now();
-                let caseStatus: 'passed' | 'failed' | 'error' = 'passed';
+                let caseStatus: JobResult['status'] = 'passed';
+                let caseErrorKind: ErrorKind | undefined;
+                let caseInSteps = false;
                 let caseError: string | undefined;
                 let responseData: any = undefined;
                 let lastStepResult: any = null;
@@ -1397,6 +1512,7 @@ class ExecutionWorker {
                             test_case_id: testCase.id,
                             test_name: testCase.name,
                             status: 'error',
+                            error_kind: 'infrastructure',
                             duration_ms: Date.now() - caseStartTime,
                             error: `Failed to create page: ${pageErr.message}`,
                             response_data: undefined
@@ -1434,9 +1550,18 @@ class ExecutionWorker {
 
                     // Execute test steps
                     currentContext = page;
+                    caseInSteps = true;
 
                     for (let stepIndex = 0; stepIndex < testCase.steps.length; stepIndex++) {
                         const step = testCase.steps[stepIndex];
+                        if (stepIndex > 0) {
+                            try {
+                                await this.runControl.check(job);
+                            } catch (e) {
+                                if (isJobAbort(e)) recorder.skipRemaining(testCase.steps, stepIndex);
+                                throw e;
+                            }
+                        }
                         currentStep = step;
                         const consoleMark = consoleLogs.length;
                         recorder.begin(step, stepIndex);
@@ -1515,13 +1640,20 @@ class ExecutionWorker {
                     }
 
                 } catch (err: any) {
-                    caseStatus = err?.hookSetupFailed ? 'error' : 'failed';
                     caseError = err.message;
-                    overallStatus = 'failed';
-                    console.error(`[Worker] Test case failed: ${testCase.name} - ${err.message}`);
-
-                    await this.maybeProposeHeal(
-                        page, currentStep, testCase.id, job.run_id, err.message, healSuggestions, job);
+                    if (isJobAbort(err)) {
+                        caseStatus = err.status;
+                        caseErrorKind = err.errorKind;
+                        jobAbort = err;
+                        console.warn(`[Worker] Test case ${err.status}: ${testCase.name} - ${err.message}`);
+                    } else {
+                        caseStatus = err?.hookSetupFailed ? 'error' : 'failed';
+                        caseErrorKind = err?.hookSetupFailed ? 'setup' : caseInSteps ? 'test' : 'infrastructure';
+                        overallStatus = 'failed';
+                        console.error(`[Worker] Test case failed: ${testCase.name} - ${err.message}`);
+                        await this.maybeProposeHeal(
+                            page, currentStep, testCase.id, job.run_id, err.message, healSuggestions, job);
+                    }
 
                     // Capture response data from failed step if available
                     if (err.stepResult) {
@@ -1579,6 +1711,7 @@ class ExecutionWorker {
                     test_case_id: testCase.id,
                     test_name: testCase.name,
                     status: caseStatus,
+                    ...(caseErrorKind && caseStatus !== 'passed' ? { error_kind: caseErrorKind } : {}),
                     duration_ms: caseDuration,
                     error: caseError,
                     response_data: responseData,

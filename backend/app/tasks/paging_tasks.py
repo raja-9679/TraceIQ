@@ -33,7 +33,9 @@ def page_decision(run: TestRun, schedule_is_monitor: bool):
         return None
     if trigger not in PAGEABLE_TRIGGERS or schedule_is_monitor:
         return None
-    if run.status in (TestStatus.FAILED, TestStatus.ERROR):
+    # TIMED_OUT pages, as it did when it was ERROR: an unattended run that
+    # hangs needs a human. CANCELLED never pages (a human stopped it).
+    if run.status in (TestStatus.FAILED, TestStatus.ERROR, TestStatus.TIMED_OUT):
         return "trigger"
     if run.status == TestStatus.PASSED:
         return "resolve"

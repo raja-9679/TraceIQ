@@ -12,59 +12,25 @@ from sqlmodel import create_engine
 sync_db_url = db_url_for(settings.DATABASE_URL, sync=True)
 sync_engine = create_engine(sync_db_url, echo=False)
 
-TIMEOUT_MINUTES = getattr(settings, 'STALE_RUN_INACTIVITY_MINUTES', 15)
-
 
 @celery_app.task(name="app.tasks.cleanup_tasks.cleanup_stuck_tests")
 def cleanup_stuck_tests():
+    """Retired in WP15f — kept registered so an old beat schedule entry
+    (RedBeat keeps entries in Redis) does not log "unregistered task".
+
+    It selected RUNNING runs by ``TestRun.updated_at``, a column TestRun has
+    never had, so every pass raised into its own ``except`` and nothing was
+    ever cleaned. Had it worked it would have been harmful: it killed any run
+    older than 15 minutes, including healthy 700-case runs that
+    ``result_aggregator.check_stale_runs`` (the real sweeper, which looks at
+    progress, not age) deliberately leaves alone.
     """
-    Find and mark tests that have been in RUNNING status for too long.
-    Runs periodically to detect stuck tests that never received completion webhooks.
-    """
-    timeout_threshold = datetime.utcnow() - timedelta(minutes=TIMEOUT_MINUTES)
-    cleaned_count = 0
-    
-    try:
-        with Session(sync_engine) as session:
-            # Find tests in RUNNING status older than timeout threshold
-            statement = select(TestRun).where(
-                TestRun.status == TestStatus.RUNNING,
-                TestRun.updated_at < timeout_threshold
-            )
-            
-            stuck_runs = session.exec(statement).all()
-            
-            for run in stuck_runs:
-                # Calculate how long it's been running
-                running_duration = datetime.utcnow() - run.updated_at
-                minutes_running = int(running_duration.total_seconds() / 60)
-                
-                # Mark as ERROR with timeout message
-                run.status = TestStatus.ERROR
-                run.error_message = f"Test execution timed out after {minutes_running} minutes - no completion webhook received"
-                run.updated_at = datetime.utcnow()
-                
-                session.add(run)
-                cleaned_count += 1
-                
-                print(f"[Cleanup] Marked run {run.id} as ERROR (timeout after {minutes_running} minutes)")
-            
-            if cleaned_count > 0:
-                session.commit()
-                print(f"[Cleanup] Cleaned up {cleaned_count} stuck test runs")
-
-    except Exception as e:
-        print(f"[Cleanup] Error cleaning up stuck tests: {e}")
-
-    return cleaned_count
+    return 0
 
 
-# Terminal statuses safe to purge (never delete an in-flight run).
-_PURGEABLE_STATUSES = (
-    TestStatus.PASSED,
-    TestStatus.FAILED,
-    TestStatus.ERROR,
-)
+# Terminal statuses safe to purge (never delete an in-flight run). Includes
+# CANCELLED / TIMED_OUT — without them those runs would be kept forever.
+from app.services.run_status import TERMINAL as _PURGEABLE_STATUSES  # noqa: E402
 
 
 @celery_app.task(name="app.tasks.cleanup_tasks.purge_old_runs")

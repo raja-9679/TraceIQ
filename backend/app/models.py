@@ -257,6 +257,13 @@ class TestStatus(str, Enum):
     PASSED = "passed"
     FAILED = "failed"
     ERROR = "error"
+    # WP15f. Terminal but WITHOUT a verdict: neither counts as a pass or a
+    # failure in any rate, gate or flake score (app/services/run_status.py).
+    # CANCELLED = someone stopped it; TIMED_OUT = the PLATFORM's time limit
+    # (job wall clock or stale-run sweep) — a step that times out waiting for
+    # the page is still an ordinary FAILED test.
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
 
 
 class ExecutionMode(str, Enum):
@@ -609,15 +616,18 @@ class TestRunBase(SQLModel):
         sa_column=Column(String, nullable=False,
                          server_default=ExecutorType.UI_PLAYWRIGHT.value))
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    # Set the first time POST /runs/{id}/finalize succeeds. Guards the six
-    # side-effecting tasks that endpoint dispatches (notifications, outbound
-    # webhooks, heal, monitor, security scan, triage) against redelivery — a
-    # retried webhook would otherwise re-send customer emails and re-fire CI
-    # callbacks.
+    # Claimed once when the run reaches a terminal state — by the aggregator,
+    # the stale sweep, a dispatch error, force-complete, cancel, or the legacy
+    # POST /runs/{id}/finalize (app/services/run_completion.py). Guards the
+    # side-effecting tasks (notifications, outbound webhooks, heal, monitor,
+    # paging, scans, triage) against redelivery — a retried result would
+    # otherwise re-send customer emails and re-fire CI callbacks.
     # index=True keeps create_all() (bootstrap_db.py) in sync with migration
     # a2f4c6d8e0b1, which creates ix_testrun_finalized_at — otherwise fresh
     # installs and migrated installs diverge on this index.
     finalized_at: Optional[datetime] = Field(default=None, index=True)
+    # WP15f: when POST /runs/{id}/cancel was accepted (who: the audit row).
+    cancelled_at: Optional[datetime] = Field(default=None)
     status: TestStatus = Field(default=TestStatus.PENDING)
     total_tests: int = 0
     passed_tests: int = 0
@@ -791,6 +801,12 @@ class TestCaseResult(SQLModel, table=True):
     request_method: Optional[str] = Field(default=None)
     request_params: Optional[dict] = Field(default={}, sa_column=Column(JSON))
     ai_analysis: Optional[str] = None
+
+    # WP15f: why a non-passing result did not pass — test | setup |
+    # infrastructure | timeout | cancelled | not_executed. NULL on passes and
+    # on rows from before WP15f; old workers send none, so the aggregator
+    # derives it (run_status.derive_error_kind).
+    error_kind: Optional[str] = Field(default=None)
 
     # Phase B: smart retry + flake separation.
     retry_count: int = Field(default=0)

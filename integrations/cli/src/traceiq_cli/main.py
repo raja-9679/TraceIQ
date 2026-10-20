@@ -25,7 +25,9 @@ from .client import ApiError, Client
 from .config import config_path, credentials, load_config, save_config
 
 EXIT_OK, EXIT_FAILED, EXIT_USAGE, EXIT_TIMEOUT, EXIT_PENDING, EXIT_ERROR = 0, 1, 2, 3, 4, 5
-TERMINAL = {"passed", "failed", "error"}
+# cancelled / timed_out (server WP15f) are over but carry no verdict: waiting
+# stops, and they never count as a pass.
+TERMINAL = {"passed", "failed", "error", "cancelled", "timed_out"}
 FAILING = {"failed", "error"}
 
 
