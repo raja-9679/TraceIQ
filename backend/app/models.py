@@ -1802,6 +1802,37 @@ class WorkspaceWebhook(SQLModel, table=True):
     failure_count: int = Field(default=0)
 
 
+class WebhookDelivery(SQLModel, table=True):
+    """One delivery ATTEMPT of one event to one webhook (WP15f L3).
+
+    `delivery_id` is stable across automatic retries and manual redelivery
+    of the same (event, webhook) — it is sent as `X-TraceIQ-Delivery`, so a
+    receiver that already processed it can drop the duplicate. `payload` is
+    the body as first built (re-signed on every attempt) so a redelivery
+    sends what the event said even after the run is gone. Never stored: the
+    response body, or the URL (it may carry a token). `run_id` is a soft
+    reference — the log outlives a deleted run. Swept after
+    WEBHOOK_DELIVERY_RETENTION_DAYS (30).
+    """
+    id: Optional[int] = Field(default=None, primary_key=True)
+    webhook_id: int = Field(foreign_key="workspacewebhook.id", index=True)
+    workspace_id: int = Field(index=True)
+    run_id: Optional[int] = Field(default=None, index=True)
+    event: str
+    event_id: str
+    delivery_id: str = Field(index=True)
+    attempt: int = Field(default=1)
+    manual: bool = Field(default=False)      # a person pressed "redeliver"
+    status: str = Field(default="pending")   # pending | ok | failed | skipped
+    status_code: Optional[int] = Field(default=None)
+    duration_ms: Optional[int] = Field(default=None)
+    error: Optional[str] = Field(default=None)
+    next_retry_at: Optional[datetime] = Field(default=None)
+    payload: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    completed_at: Optional[datetime] = Field(default=None)
+
+
 class WorkspaceWebhookCreate(SQLModel):
     name: str
     url: str

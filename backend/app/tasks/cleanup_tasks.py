@@ -356,6 +356,38 @@ def purge_orphaned_artifacts():
 WEBHOOK_CAPTURE_TTL_HOURS = 24
 
 
+WEBHOOK_DELIVERY_RETENTION_DAYS = 30
+
+
+@celery_app.task(name="app.tasks.cleanup_tasks.purge_webhook_deliveries")
+def purge_webhook_deliveries(days: int = WEBHOOK_DELIVERY_RETENTION_DAYS):
+    """Delete outbound webhook delivery log rows older than `days` (WP15f).
+
+    The log is for troubleshooting a receiver and redelivering what it
+    missed; a month covers that, and each row carries the event payload.
+    """
+    from sqlalchemy import text
+
+    cutoff = datetime.utcnow() - timedelta(days=max(1, int(days)))
+    batch = int(getattr(settings, 'RETENTION_BATCH_SIZE', 500) or 500)
+    total = 0
+    with Session(sync_engine) as session:
+        while True:
+            deleted = session.execute(text("""
+                DELETE FROM webhookdelivery
+                 WHERE id IN (SELECT id FROM webhookdelivery
+                               WHERE created_at < :cutoff
+                               ORDER BY id LIMIT :batch)
+            """), {"cutoff": cutoff, "batch": batch}).rowcount or 0
+            session.commit()
+            total += deleted
+            if deleted < batch:
+                break
+    if total:
+        print(f"[Cleanup] Expired {total} webhook delivery log row(s) older than {days} days")
+    return total
+
+
 @celery_app.task(name="app.tasks.cleanup_tasks.purge_webhook_captures")
 def purge_webhook_captures(ttl_hours: int = WEBHOOK_CAPTURE_TTL_HOURS):
     """Delete webhook captures older than the TTL.

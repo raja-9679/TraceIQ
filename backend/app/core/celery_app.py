@@ -102,6 +102,9 @@ celery_app.conf.task_routes = {
     "app.tasks.heartbeat_tasks.beat_heartbeat": "main-queue",
     "app.tasks.cleanup_tasks.purge_orphaned_artifacts": "main-queue",
     "app.tasks.cleanup_tasks.purge_webhook_captures": "main-queue",
+    "app.tasks.cleanup_tasks.purge_webhook_deliveries": "main-queue",
+    "app.tasks.outbound_webhook_tasks.retry_webhook_delivery": "main-queue",
+    "app.tasks.outbound_webhook_tasks.redeliver_webhook_delivery": "main-queue",
     "app.tasks.cleanup_tasks.purge_assistant_conversations": "main-queue",
     "app.tasks.cleanup_tasks.purge_policy_decisions": "main-queue",
     "app.tasks.result_aggregator.process_job_results": "aggregator-queue",
@@ -185,6 +188,10 @@ celery_app.conf.beat_schedule = {
     'purge-webhook-captures': {
         'task': 'app.tasks.cleanup_tasks.purge_webhook_captures',
         'schedule': 3600.0,  # Hourly; captures live 24 h (wait-for-webhook)
+    },
+    'purge-webhook-deliveries': {
+        'task': 'app.tasks.cleanup_tasks.purge_webhook_deliveries',
+        'schedule': 86400.0,  # Daily; the delivery log lives 30 days (WP15f)
     },
     'purge-assistant-conversations': {
         'task': 'app.tasks.cleanup_tasks.purge_assistant_conversations',

@@ -2,13 +2,18 @@
 
 Trigger: invoked from POST /api/runs/{id}/finalize (and any other point where
 TraceIQ wants to notify external systems). Idempotency is the recipient's
-responsibility — we send a stable `event_id` per delivery attempt.
+responsibility — `X-TraceIQ-Delivery` is stable across retries.
+
+Every attempt is logged (WebhookDelivery) and failures are retried with
+backoff — see app/services/webhook_delivery.py.
 
 Payload contract (sent as POST JSON):
     {
       "event":       "run.passed" | "run.failed" | "run.cancelled" | "run.timed_out"
                      | "run.completed" (anything else, e.g. an errored run),
-      "event_id":    "<uuid4>",
+      "event_id":    "<uuid4>",                       # one per event
+      "delivery_id": "<uuid4>",   # per (event, webhook); same on retries/redelivery
+      "attempt":     1,
       "delivered_at":"<ISO-8601>",
       "run":         { id, status, suite_name, ..., git_commit, triggered_by, agent_id, ... },
       "results":     [ { test_name, status, error_message, ... }, ... ]   # optional, omitted if large
@@ -17,11 +22,11 @@ Payload contract (sent as POST JSON):
 Signature:
     Header `X-TraceIQ-Signature: sha256=<hex>` — HMAC-SHA256 of the raw body
     using the webhook's stored `secret`. Recipients verify before trusting.
+    `X-TraceIQ-Delivery` repeats delivery_id: drop a delivery id you have
+    already processed.
 """
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import uuid
 from datetime import datetime
@@ -69,11 +74,6 @@ def _match_event_filter(event_filter: Optional[str], event: str) -> bool:
     return "run.completed" in allowed and event in _COMPLETED_ALIASES
 
 
-def _sign(body: bytes, secret: str) -> str:
-    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
-    return f"sha256={digest}"
-
-
 def _serialize_run(run: TestRun, results: List[TestCaseResult]) -> Dict[str, Any]:
     return {
         "id": run.id,
@@ -118,11 +118,16 @@ def _serialize_results(results: List[TestCaseResult], max_items: int = 100) -> L
 def dispatch_run_webhooks(self, run_id: int) -> Dict[str, Any]:
     """Fan-out registered webhooks for a finalized run.
 
-    Lookups the run's workspace via project → workspace, finds active webhooks
-    that match the event filter, and POSTs a signed payload to each. Per-target
-    failures are recorded but do not block other targets.
+    Looks up the run's workspace via project → workspace, finds the active
+    webhooks for it — workspace-wide ones plus those scoped to the run's own
+    project (a project-scoped webhook used to receive every project's runs)
+    — that match the event filter, and sends each a signed payload. Every
+    attempt is logged as a WebhookDelivery; failures are retried with backoff
+    (app/services/webhook_delivery.py). One target's failure never blocks
+    another.
     """
-    import requests  # local import keeps cold-start small
+    from sqlalchemy import or_
+    from app.services import webhook_delivery as wd
 
     with Session(_engine) as session:
         run = session.get(TestRun, run_id)
@@ -138,58 +143,87 @@ def dispatch_run_webhooks(self, run_id: int) -> Dict[str, Any]:
         if is_demo_workspace_sync(session, workspace_id):
             return {"dispatched": 0, "skipped": "demo workspace"}
 
-        results_stmt = select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)
-        results = list(session.exec(results_stmt))
-
-        webhooks_stmt = (
+        webhooks = list(session.exec(
             select(WorkspaceWebhook)
             .where(WorkspaceWebhook.workspace_id == workspace_id)
             .where(WorkspaceWebhook.is_active == True)  # noqa: E712
-        )
-        webhooks = list(session.exec(webhooks_stmt))
+            .where(or_(WorkspaceWebhook.project_id.is_(None),
+                       WorkspaceWebhook.project_id == run.project_id))
+        ))
         if not webhooks:
             return {"dispatched": 0, "skipped": "no webhooks registered"}
 
+        results = list(session.exec(select(TestCaseResult).where(TestCaseResult.test_run_id == run_id)))
         event = _event_for_run(run)
+        event_id = str(uuid.uuid4())
         payload = {
             "event": event,
-            "event_id": str(uuid.uuid4()),
-            "delivered_at": datetime.utcnow().isoformat(),
+            "event_id": event_id,
             "run": _serialize_run(run, results),
             "results": _serialize_results(results),
         }
-        body_bytes = json.dumps(payload, default=str).encode("utf-8")
 
         dispatched = 0
+        retries = []
         for webhook in webhooks:
             if not _match_event_filter(webhook.event_filter, event):
                 continue
-            try:
-                resp = requests.post(
-                    webhook.url,
-                    data=body_bytes,
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-TraceIQ-Event": event,
-                        "X-TraceIQ-Event-Id": payload["event_id"],
-                        "X-TraceIQ-Signature": _sign(body_bytes, webhook.secret),
-                        "User-Agent": "TraceIQ-Webhook/1.0",
-                    },
-                    timeout=10,
-                )
-                webhook.last_delivery_at = datetime.utcnow()
-                webhook.last_delivery_status = resp.status_code
-                if resp.status_code >= 300:
-                    webhook.failure_count += 1
-                else:
-                    webhook.failure_count = 0
-                    dispatched += 1
-            except Exception as exc:  # noqa: BLE001
-                print(f"[OutboundWebhook] Delivery to {webhook.url} failed: {exc}")
-                webhook.last_delivery_at = datetime.utcnow()
-                webhook.last_delivery_status = 0
-                webhook.failure_count += 1
+            row = wd.new_delivery(webhook, event=event, event_id=event_id, payload=payload, run_id=run_id)
+            if wd.attempt(row, webhook):
+                dispatched += 1
+            delay = wd.schedule_next(row)
+            session.add(row)
             session.add(webhook)
-
+            session.flush()
+            if delay is not None:
+                retries.append((row.id, delay))
         session.commit()
-        return {"dispatched": dispatched, "total_targets": len(webhooks)}
+
+    for row_id, delay in retries:
+        retry_webhook_delivery.apply_async((row_id,), countdown=delay)
+    return {"dispatched": dispatched, "total_targets": len(webhooks), "retrying": len(retries)}
+
+
+def _send_follow_up(row_id: int, *, manual: bool) -> Dict[str, Any]:
+    from app.services import webhook_delivery as wd
+    from app.models import WebhookDelivery
+
+    with Session(_engine) as session:
+        prev = session.get(WebhookDelivery, row_id)
+        if prev is None:
+            return {"skipped": "delivery not found"}
+        webhook = session.get(WorkspaceWebhook, prev.webhook_id)
+        if webhook is None or webhook.workspace_id != prev.workspace_id:
+            return {"skipped": "webhook gone"}
+        if not webhook.is_active and not manual:
+            return {"skipped": "webhook disabled"}
+        if not manual:
+            # A newer attempt of this delivery already exists (the retry was
+            # queued twice, or someone redelivered meanwhile): do nothing.
+            newer = session.exec(select(WebhookDelivery).where(
+                WebhookDelivery.delivery_id == prev.delivery_id,
+                WebhookDelivery.id > prev.id)).first()
+            if newer is not None:
+                return {"skipped": "superseded"}
+        prev.next_retry_at = None
+        row = wd.follow_up(prev, manual=manual)
+        ok = wd.attempt(row, webhook)
+        delay = wd.schedule_next(row)
+        session.add_all([prev, row, webhook])
+        session.commit()
+        new_id = row.id
+    if delay is not None:
+        retry_webhook_delivery.apply_async((new_id,), countdown=delay)
+    return {"delivery_row_id": new_id, "ok": ok, "retry_in": delay}
+
+
+@celery_app.task(name="app.tasks.outbound_webhook_tasks.retry_webhook_delivery")
+def retry_webhook_delivery(row_id: int) -> Dict[str, Any]:
+    """Automatic retry of a failed attempt (scheduled with a countdown)."""
+    return _send_follow_up(row_id, manual=False)
+
+
+@celery_app.task(name="app.tasks.outbound_webhook_tasks.redeliver_webhook_delivery")
+def redeliver_webhook_delivery(row_id: int) -> Dict[str, Any]:
+    """A workspace admin asked to send a logged delivery again."""
+    return _send_follow_up(row_id, manual=True)

@@ -131,6 +131,8 @@ ON_DELETE: Dict[str, str] = {
     "apikey.project_id": DELETE,
     "workspacewebhook.project_id": DELETE,
     "persona.project_id": DELETE,
+    # A deleted webhook's delivery log (WP15f) goes with it.
+    "webhookdelivery.webhook_id": DELETE,
 
     # --- into testsuite --------------------------------------------------------
     "testsuite.parent_id": DELETE,          # sub-modules go with their parent

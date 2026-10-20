@@ -1,10 +1,17 @@
 """Outbound webhook registry — workspace-scoped fan-out for run events.
 
-Surface:
+Surface (workspace admin; project-scoped API keys refused — WP15f):
     POST   /api/workspaces/{workspace_id}/webhooks       create
     GET    /api/workspaces/{workspace_id}/webhooks       list
     PATCH  /api/workspaces/{workspace_id}/webhooks/{id}  enable/disable
     DELETE /api/workspaces/{workspace_id}/webhooks/{id}  delete
+    GET    /api/workspaces/{workspace_id}/webhooks/{id}/deliveries          delivery log
+    POST   /api/workspaces/{workspace_id}/webhooks/{id}/deliveries/{d}/redeliver
+
+Admin, not member: a webhook receives every run of the workspace (results,
+error text, artifact links), and its URL is often itself a credential
+(Slack-style URLs carry the token in the path). Any member used to be able
+to add one and read them all.
 
 Webhook secrets are generated server-side and returned once at create time
 (same model as API keys). They are used to HMAC-SHA256 sign outbound
@@ -13,15 +20,19 @@ payloads — recipients verify the signature in `X-TraceIQ-Signature`.
 import secrets
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
+from app.services import webhook_delivery as wd
+from app.services.audit import record as audit_record
+from app.api.policies import require_workspace_admin
 from app.models import (
-    UserWorkspace,
+    Project,
+    WebhookDelivery,
     WorkspaceWebhook,
     WorkspaceWebhookCreate,
     WorkspaceWebhookRead,
@@ -38,19 +49,6 @@ class WebhookPatch(BaseModel):
     is_active: Optional[bool] = None
     event_filter: Optional[str] = None
     name: Optional[str] = None
-
-
-async def _ensure_workspace_member(workspace_id: int, user_id: int, session: AsyncSession) -> UserWorkspace:
-    res = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == workspace_id,
-            UserWorkspace.user_id == user_id,
-        )
-    )
-    membership = res.first()
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not a member of this workspace")
-    return membership
 
 
 def _to_read(w: WorkspaceWebhook) -> WorkspaceWebhookRead:
@@ -81,7 +79,11 @@ async def create_webhook(
 ) -> WebhookCreateResponse:
     if body.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="workspace_id mismatch")
-    await _ensure_workspace_member(workspace_id, principal.user.id, session)
+    await require_workspace_admin(session, principal, workspace_id)
+    if body.project_id is not None:
+        project = await session.get(Project, body.project_id)
+        if project is None or project.workspace_id != workspace_id:
+            raise HTTPException(status_code=404, detail="Project not found in this workspace")
 
     # SSRF guard: this URL is later POSTed to by a Celery task. Validate at
     # registration so a workspace admin can't point it at cloud metadata or an
@@ -104,6 +106,11 @@ async def create_webhook(
         created_by_id=principal.user.id,
     )
     session.add(webhook)
+    await session.flush()
+    await audit_record(session, entity_type="workspace_webhook", entity_id=webhook.id,
+                       action="create", workspace_id=workspace_id, principal=principal,
+                       changes={"name": body.name, "project_id": body.project_id,
+                                "event_filter": body.event_filter})
     await session.commit()
     await session.refresh(webhook)
 
@@ -122,7 +129,7 @@ async def list_webhooks(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> List[WorkspaceWebhookRead]:
-    await _ensure_workspace_member(workspace_id, principal.user.id, session)
+    await require_workspace_admin(session, principal, workspace_id)
     res = await session.exec(
         select(WorkspaceWebhook)
         .where(WorkspaceWebhook.workspace_id == workspace_id)
@@ -142,11 +149,14 @@ async def patch_webhook(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> WorkspaceWebhookRead:
-    await _ensure_workspace_member(workspace_id, principal.user.id, session)
+    await require_workspace_admin(session, principal, workspace_id)
 
     webhook = await session.get(WorkspaceWebhook, webhook_id)
     if not webhook or webhook.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Webhook not found")
+    await audit_record(session, entity_type="workspace_webhook", entity_id=webhook_id,
+                       action="update", workspace_id=workspace_id, principal=principal,
+                       changes=body.model_dump(exclude_none=True))
     if body.is_active is not None:
         webhook.is_active = body.is_active
     if body.event_filter is not None:
@@ -166,11 +176,70 @@ async def delete_webhook(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ):
-    await _ensure_workspace_member(workspace_id, principal.user.id, session)
+    await require_workspace_admin(session, principal, workspace_id)
 
     webhook = await session.get(WorkspaceWebhook, webhook_id)
     if not webhook or webhook.workspace_id != workspace_id:
         raise HTTPException(status_code=404, detail="Webhook not found")
+    from sqlalchemy import delete as sa_delete
+    await session.exec(sa_delete(WebhookDelivery).where(WebhookDelivery.webhook_id == webhook_id))
+    await audit_record(session, entity_type="workspace_webhook", entity_id=webhook_id,
+                       action="delete", workspace_id=workspace_id, principal=principal,
+                       changes={"name": webhook.name})
     await session.delete(webhook)
     await session.commit()
     return {"status": "deleted", "id": webhook_id}
+
+
+@router.get("/workspaces/{workspace_id}/webhooks/{webhook_id}/deliveries")
+async def list_deliveries(
+    workspace_id: int,
+    webhook_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    status: Optional[str] = Query(None, pattern="^(pending|ok|failed)$"),
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """Newest attempts first. Metadata only — never the payload or the URL."""
+    await require_workspace_admin(session, principal, workspace_id)
+    webhook = await session.get(WorkspaceWebhook, webhook_id)
+    if not webhook or webhook.workspace_id != workspace_id:
+        raise HTTPException(status_code=404, detail="Webhook not found")
+    stmt = (select(WebhookDelivery)
+            .where(WebhookDelivery.webhook_id == webhook_id,
+                   WebhookDelivery.workspace_id == workspace_id)
+            .order_by(WebhookDelivery.id.desc()).limit(limit))
+    if status:
+        stmt = stmt.where(WebhookDelivery.status == status)
+    rows = (await session.exec(stmt)).all()
+    return {"webhook_id": webhook_id, "retention_days": 30,
+            "deliveries": [wd.to_read(r) for r in rows]}
+
+
+@router.post("/workspaces/{workspace_id}/webhooks/{webhook_id}/deliveries/{delivery_row_id}/redeliver",
+             status_code=202)
+async def redeliver(
+    workspace_id: int,
+    webhook_id: int,
+    delivery_row_id: int,
+    request: Request,
+    principal: AuthPrincipal = Depends(get_current_principal),
+    session: AsyncSession = Depends(get_session),
+):
+    """Send a logged delivery again: same body and delivery id, freshly
+    signed, as a new attempt row. Works on a disabled webhook too (testing a
+    receiver before re-enabling it). Audited."""
+    await require_workspace_admin(session, principal, workspace_id)
+    webhook = await session.get(WorkspaceWebhook, webhook_id)
+    row = await session.get(WebhookDelivery, delivery_row_id)
+    if (not webhook or webhook.workspace_id != workspace_id or row is None
+            or row.webhook_id != webhook_id or row.workspace_id != workspace_id):
+        raise HTTPException(status_code=404, detail="Delivery not found")
+    await audit_record(session, entity_type="workspace_webhook", entity_id=webhook_id,
+                       action="redeliver", workspace_id=workspace_id, principal=principal,
+                       request=request,
+                       changes={"delivery_id": row.delivery_id, "event": row.event, "run_id": row.run_id})
+    await session.commit()
+    from app.tasks.outbound_webhook_tasks import redeliver_webhook_delivery
+    redeliver_webhook_delivery.delay(delivery_row_id)
+    return {"status": "queued", "delivery_id": row.delivery_id}
