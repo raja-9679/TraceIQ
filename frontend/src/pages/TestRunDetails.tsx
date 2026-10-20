@@ -12,6 +12,7 @@ import { errorKindLook, isLive, isNoVerdict, isTerminal, passRate as resultPassR
 import { CancelRunButton } from "@/components/runs/CancelRunButton";
 import { Button } from "@/components/ui/button";
 import { KindChip, ListCard, ListRow, PageHeader, Pill, SplitView } from "@/components/redesign/primitives";
+import { RunEnvironmentBanner, ValidationRunBanner } from "@/components/environments/RunEnvironmentBanner";
 import * as Tabs from "@radix-ui/react-tabs";
 import { motion, AnimatePresence } from "framer-motion";
 import { clsx, type ClassValue } from "clsx";
@@ -318,6 +319,8 @@ export default function TestRunDetails() {
                     )}
 
                     <Tabs.Content value="overview" className="focus:outline-none space-y-6">
+                        {run.is_validation && <ValidationRunBanner kind={run.validation_proposal_kind} />}
+                        <RunEnvironmentBanner runId={run.id} live={!isTerminal(run.status)} />
                         {isNoVerdict(run.status) && (
                             <div className="rounded-3xl border border-border bg-white p-6 shadow-[inset_4px_0_0_#F2C94C]">
                                 <h3 className="mb-2 flex items-center gap-2 font-semibold text-ink">

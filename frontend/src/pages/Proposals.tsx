@@ -10,6 +10,8 @@ import {
     CaseProposal, HealProposal, HealRecheck, ProposedStep, TestCaseInfo,
 } from '@/api/proposals';
 import HealCandidateList from '@/components/heal/HealCandidateList';
+import ValidationPanel from '@/components/proposals/ValidationPanel';
+import { acceptBlock, anyValidating, caseValidatable, detailText } from '@/components/proposals/repairValidation';
 import { candidatesOf, defaultPick } from '@/components/heal/healCandidates';
 import { api, getProjects } from '@/lib/api';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
@@ -42,7 +44,10 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
         // Only the fields being changed are sent: omitting a field leaves it alone
         // server-side, so editing the threshold cannot silently switch the
         // separate-approver control off.
-        mutationFn: async (patch: { auto_apply_threshold?: number | null; require_separate_approver?: boolean }) =>
+        mutationFn: async (patch: {
+            auto_apply_threshold?: number | null; require_separate_approver?: boolean;
+            require_validation_before_accept?: boolean;
+        }) =>
             (await api.put(`/workspaces/${workspaceId}/proposal-policy`, patch)).data,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['proposal-policy', workspaceId] });
@@ -51,7 +56,7 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         onError: (err: any) => toast.error('Failed to update policy', {
-            description: err.response?.data?.detail,
+            description: detailText(err.response?.data?.detail),
         }),
     });
 
@@ -64,6 +69,10 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
     const separationStored = policy?.require_separate_approver === true;
     const separationEnforced = policy?.separation_enforced === true;
     const forcedByInstance = separationEnforced && !separationStored;
+    // WP16c: same floor pattern for "validate before accept".
+    const validationStored = policy?.require_validation_before_accept === true;
+    const validationEnforced = policy?.validation_enforced === true;
+    const validationForced = validationEnforced && !validationStored;
 
     return (
         <section aria-label="Review policy" className="flex flex-col gap-3 rounded-2xl border border-border bg-white px-5 py-4 lg:flex-row lg:items-center lg:gap-6">
@@ -135,6 +144,28 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
                         disabled={saveMutation.isPending}
                     >
                         {separationStored ? 'Allow self-approval' : 'Require a second person'}
+                    </Button>
+                )}
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+                <span className="text-sm font-semibold text-ink">Validate before accept</span>
+                {validationEnforced ? (
+                    <Pill tone="mint">Required</Pill>
+                ) : (
+                    <span className="text-[13px] text-ink-soft">Optional (protected suites always)</span>
+                )}
+                {validationForced && (
+                    <span className="text-[13px] text-ink-soft">Enforced for the whole instance</span>
+                )}
+                {!validationForced && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-10 px-4"
+                        onClick={() => saveMutation.mutate({ require_validation_before_accept: !validationStored })}
+                        disabled={saveMutation.isPending}
+                    >
+                        {validationStored ? 'Make validation optional' : 'Require a validation run'}
                     </Button>
                 )}
             </div>
@@ -415,9 +446,19 @@ function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
             queryClient.invalidateQueries({ queryKey: ['case', proposal.target_case_id] });
             toast.success(vars.decision === 'accept' ? 'Proposal accepted and applied' : 'Proposal rejected');
         },
-        onError: (err: Error & { response?: { data?: { detail?: string } } }) =>
-            toast.error(`Failed to update proposal: ${err.response?.data?.detail || err.message}`),
+        onError: (err: Error & { response?: { data?: { detail?: unknown } } }) =>
+            toast.error(`Failed to update proposal: ${detailText(err.response?.data?.detail, err.message)}`),
     });
+    const validateMutation = useMutation({
+        mutationFn: () => caseProposalsApi.validate(proposal.id),
+        onSuccess: (out) => {
+            queryClient.invalidateQueries({ queryKey: ['case-proposals'] });
+            toast.success(`Validation run #${out.run_id} started`);
+        },
+        onError: (err: Error & { response?: { data?: { detail?: unknown } } }) =>
+            toast.error(`Couldn't start a validation run: ${detailText(err.response?.data?.detail, err.message)}`),
+    });
+    const block = acceptBlock(proposal);
 
     const actionStyle = ACTION_STYLES[proposal.action] || ACTION_STYLES.update;
     const st = statusStyle(proposal.status);
@@ -450,6 +491,14 @@ function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
 
             <EvidenceList items={facts} />
 
+            <ValidationPanel
+                proposal={proposal}
+                canValidate={caseValidatable(proposal)}
+                onValidate={() => validateMutation.mutate()}
+                busy={validateMutation.isPending}
+                block={block}
+            />
+
             {proposal.status === 'pending' && (
                 <div className="flex flex-col gap-3 border-t border-border pt-5">
                     <label className="flex flex-col gap-1.5 text-[13px] text-ink-soft">
@@ -464,7 +513,8 @@ function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
                     <div className="flex flex-wrap gap-2.5">
                         <Button
                             size="lg"
-                            disabled={decideMutation.isPending}
+                            disabled={decideMutation.isPending || !!block}
+                            title={block ?? undefined}
                             onClick={() => decideMutation.mutate({ decision: 'accept' })}
                         >
                             <Check className="h-4 w-4" /> Accept and apply
@@ -518,10 +568,11 @@ function CaseProposalsView({ proposals }: { proposals: CaseProposal[] }) {
 // Heal proposals
 // ---------------------------------------------------------------------------
 
-function HealDetail({ proposal: p, caseName, onDecide, busy, refusal }: {
+function HealDetail({ proposal: p, caseName, onDecide, onValidate, busy, refusal }: {
     proposal: HealProposal;
     caseName: string;
     onDecide: (decision: 'accept' | 'reject', selector?: string) => void;
+    onValidate: (selector: string) => void;
     busy: boolean;
     /** Why the last accept of this proposal was refused (409), if it was. */
     refusal?: string | null;
@@ -541,6 +592,7 @@ function HealDetail({ proposal: p, caseName, onDecide, busy, refusal }: {
         setPicked(selector);
         setRecheck(null);
     };
+    const block = acceptBlock(p, picked);
     return (
         <DetailCard label="Selected heal proposal">
             <div className="flex flex-col gap-2">
@@ -612,9 +664,18 @@ function HealDetail({ proposal: p, caseName, onDecide, busy, refusal }: {
                 ]}
             />
 
+            <ValidationPanel
+                proposal={p}
+                canValidate
+                onValidate={() => onValidate(picked)}
+                busy={busy}
+                block={block}
+            />
+
             {p.status === 'pending' && (
                 <div className="flex flex-wrap gap-2.5 border-t border-border pt-5">
-                    <Button size="lg" disabled={busy} onClick={() => onDecide('accept', picked)}>
+                    <Button size="lg" disabled={busy || !!block} title={block ?? undefined}
+                        onClick={() => onDecide('accept', picked)}>
                         <Check className="h-4 w-4" /> Apply to the test
                     </Button>
                     <Button size="lg" variant="outline" disabled={busy} onClick={() => onDecide('reject')}>
@@ -632,6 +693,8 @@ function HealProposalsTab({ status }: { status: string }) {
     const { data: proposals, isLoading, error } = useQuery({
         queryKey: ['heal-proposals', status],
         queryFn: () => healProposalsApi.list(status || undefined),
+        // Poll while a validation run is in flight so its outcome shows up.
+        refetchInterval: (q) => (anyValidating(q.state.data) ? 5000 : false),
     });
 
     const caseIds = useMemo(
@@ -669,11 +732,21 @@ function HealProposalsTab({ status }: { status: string }) {
             });
             toast.success(vars.decision === 'accept' ? 'Selector heal applied to the test case' : 'Heal proposal rejected');
         },
-        onError: (err: Error & { response?: { status?: number; data?: { detail?: string } } }, vars) => {
-            const detail = err.response?.data?.detail || err.message;
+        onError: (err: Error & { response?: { status?: number; data?: { detail?: unknown } } }, vars) => {
+            const detail = detailText(err.response?.data?.detail, err.message);
             if (err.response?.status === 409) setRefusals((r) => ({ ...r, [vars.id]: detail }));
             toast.error(`Failed to update heal proposal: ${detail}`);
         },
+    });
+
+    const validateMutation = useMutation({
+        mutationFn: ({ id, selector }: { id: number; selector: string }) => healProposalsApi.validate(id, selector),
+        onSuccess: (out) => {
+            queryClient.invalidateQueries({ queryKey: ['heal-proposals'] });
+            toast.success(`Validation run #${out.run_id} started`);
+        },
+        onError: (err: Error & { response?: { data?: { detail?: unknown } } }) =>
+            toast.error(`Couldn't start a validation run: ${detailText(err.response?.data?.detail, err.message)}`),
     });
 
     if (isLoading) {
@@ -723,7 +796,8 @@ function HealProposalsTab({ status }: { status: string }) {
                     key={selected.id}
                     proposal={selected}
                     caseName={nameOf(selected)}
-                    busy={decideMutation.isPending}
+                    busy={decideMutation.isPending || validateMutation.isPending}
+                    onValidate={(selector) => validateMutation.mutate({ id: selected.id, selector })}
                     refusal={refusals[selected.id] ?? null}
                     onDecide={(decision, selector) => decideMutation.mutate({ id: selected.id, decision, selector })}
                 />
@@ -751,6 +825,7 @@ export default function Proposals() {
         queryKey: ['case-proposals', projectId, status],
         queryFn: () => caseProposalsApi.list(projectId || undefined, status || undefined),
         enabled: tab === 'cases' && !!projectId,
+        refetchInterval: (q) => (anyValidating(q.state.data) ? 5000 : false),
     });
 
     const statuses = tab === 'cases' ? CASE_STATUSES : HEAL_STATUSES;

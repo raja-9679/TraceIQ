@@ -1,4 +1,5 @@
 import { api } from '@/lib/api';
+import type { ValidationConditions, ValidationStatus } from '@/components/proposals/repairValidation';
 
 // ---------------------------------------------------------------------------
 // Types — mirror backend/app/models.py CaseProposalRead / SelectorHealProposalRead
@@ -40,6 +41,14 @@ export interface CaseProposal {
     status: ProposalStatus;
     created_at: string;
     decided_at: string | null;
+    // WP16c — validation run state (see components/proposals/repairValidation.ts)
+    validation_status?: ValidationStatus;
+    validation_run_id?: number | null;
+    validation_conditions?: ValidationConditions | null;
+    validation_detail?: string | null;
+    validated_at?: string | null;
+    validation_required?: boolean | null;
+    protected_suite_id?: number | null;
 }
 
 export type HealProposalStatus = 'pending' | 'accepted' | 'rejected' | 'auto_applied';
@@ -82,6 +91,20 @@ export interface HealProposal {
     chosen_selector?: string | null;
     has_dom_snapshot?: boolean;
     recheck?: HealRecheck | null;
+    // WP16c — validation run state (see components/proposals/repairValidation.ts)
+    validation_status?: ValidationStatus;
+    validation_run_id?: number | null;
+    validation_conditions?: ValidationConditions | null;
+    validation_detail?: string | null;
+    validated_at?: string | null;
+    validation_required?: boolean | null;
+    protected_suite_id?: number | null;
+}
+
+export interface ValidationStarted {
+    run_id: number;
+    validation_status: ValidationStatus;
+    conditions: ValidationConditions | null;
 }
 
 // Shape of GET /api/cases/{id} (TestCaseRead) — only fields the review UI needs.
@@ -113,6 +136,12 @@ export const caseProposalsApi = {
         return response.data;
     },
 
+    /** WP16c: run the target case once with this change applied to that run only. */
+    validate: async (id: number): Promise<ValidationStarted> => {
+        const response = await api.post(`/case-proposals/${id}/validate`);
+        return response.data;
+    },
+
     reject: async (id: number, note?: string): Promise<CaseProposal> => {
         const response = await api.post(`/case-proposals/${id}/reject`, { note: note || null });
         return response.data;
@@ -141,6 +170,12 @@ export const healProposalsApi = {
     /** Dry run of the accept-time uniqueness check against the stored DOM snapshot. */
     recheck: async (id: number, selector?: string): Promise<HealRecheck> => {
         const response = await api.post(`/heal-proposals/${id}/recheck`, selector ? { selector } : undefined);
+        return response.data;
+    },
+
+    /** WP16c: run the case once with this selector applied to that run only. */
+    validate: async (id: number, selector?: string): Promise<ValidationStarted> => {
+        const response = await api.post(`/heal-proposals/${id}/validate`, selector ? { selector } : undefined);
         return response.data;
     },
 

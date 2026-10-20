@@ -97,6 +97,10 @@ api.interceptors.response.use(
 
 export interface TestRun {
     id: number;
+    // WP16c: a validation run tried a pending heal / case edit on this run only.
+    is_validation?: boolean;
+    validation_proposal_kind?: 'heal' | 'case' | null;
+    validation_proposal_id?: number | null;
     // ui_playwright | load | mobile_appium | manual | … (a manual run is recorded by a person).
     executor?: string;
     // Frontend matrix variant (viewport/locale/scheme) and the sweep it belongs to (WP10).

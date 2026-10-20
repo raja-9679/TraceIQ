@@ -14,6 +14,7 @@ import {
   DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
+import { holderText, type EnvironmentLock } from '@/components/environments/environmentLock';
 
 // ---------------------------------------------------------------------------
 // Types & API
@@ -26,6 +27,9 @@ interface ProjectEnvironment {
   base_url: string | null;
   variables: Record<string, string>;
   is_default: boolean;
+  // WP16c: one run at a time; `lock` = the current holder (null when free).
+  exclusive?: boolean;
+  lock?: EnvironmentLock | null;
   created_at: string;
   updated_at: string;
 }
@@ -35,6 +39,7 @@ interface EnvironmentPayload {
   base_url?: string | null;
   variables: Record<string, string>;
   is_default: boolean;
+  exclusive?: boolean;
 }
 
 interface SecretKeyInfo {
@@ -63,6 +68,10 @@ const environmentsApi = {
   },
   remove: async (id: number): Promise<void> => {
     await api.delete(`/environments/${id}`);
+  },
+  forceRelease: async (id: number): Promise<{ released: boolean }> => {
+    const res = await api.delete(`/environments/${id}/lock`);
+    return res.data;
   },
 };
 
@@ -294,7 +303,17 @@ function EnvironmentDetail({ env, projectId }: { env: ProjectEnvironment; projec
     onError: (err: unknown) => toast.error(`Failed to delete environment: ${errorDetail(err)}`),
   });
 
+  const releaseMutation = useMutation({
+    mutationFn: () => environmentsApi.forceRelease(env.id),
+    onSuccess: (out) => {
+      invalidate();
+      toast.success(out.released ? `Released "${env.name}"` : `"${env.name}" was already free`);
+    },
+    onError: (err: unknown) => toast.error(`Failed to release the environment: ${errorDetail(err)}`),
+  });
+
   const variables = Object.entries(env.variables || {});
+  const held = !!env.exclusive && env.lock?.run_id != null;
 
   return (
     <DetailCard label="Selected environment">
@@ -346,6 +365,50 @@ function EnvironmentDetail({ env, projectId }: { env: ProjectEnvironment; projec
               </ul>
             )}
           </div>
+
+          <section aria-label="Exclusive use" className="flex flex-col gap-2">
+            <Eyebrow right={env.exclusive ? <Pill tone="lavender">One run at a time</Pill> : undefined}>Exclusive use</Eyebrow>
+            <div className="flex flex-col gap-3 rounded-2xl bg-background p-4">
+              <p className="text-sm text-ink-soft">
+                {env.exclusive
+                  ? 'Only one run uses this environment at a time. Other runs wait (pending) and start automatically when it is released. Several runs started together, for example a browser or persona matrix, queue behind each other.'
+                  : 'Runs share this environment. Make it exclusive when runs would interfere with each other, such as a shared test account or database.'}
+              </p>
+              {env.exclusive && (
+                <p className="text-sm font-semibold text-ink" role="status">
+                  {held && env.lock?.run_id != null ? (
+                    <Link to={`/runs/${env.lock.run_id}`} className="underline underline-offset-2">{holderText(env.lock)}</Link>
+                  ) : holderText(env.lock)}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2.5">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-10 px-4"
+                  disabled={updateMutation.isPending}
+                  onClick={() => updateMutation.mutate({ exclusive: !env.exclusive })}
+                >
+                  {env.exclusive ? 'Allow parallel runs' : 'Make exclusive'}
+                </Button>
+                {held && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-10 px-4"
+                    disabled={releaseMutation.isPending}
+                    onClick={() => {
+                      if (window.confirm(`Force-release "${env.name}"? Run #${env.lock?.run_id} keeps running, and the next waiting run starts on this environment alongside it.`)) {
+                        releaseMutation.mutate();
+                      }
+                    }}
+                  >
+                    Force release
+                  </Button>
+                )}
+              </div>
+            </div>
+          </section>
 
           <div className="flex flex-wrap gap-2.5">
             <Button size="lg" onClick={() => setEditing(true)}>
@@ -563,6 +626,8 @@ function EnvironmentsView({ projectId, selection, setSelection }: {
   const { data: environments, isLoading, error } = useQuery({
     queryKey: ['environments', projectId],
     queryFn: () => environmentsApi.list(projectId),
+    // Holders change as runs finish; keep the "in use" line honest.
+    refetchInterval: (q) => (q.state.data?.some((e) => e.exclusive) ? 15000 : false),
   });
   const secretsQuery = useQuery({
     queryKey: ['secrets', projectId],
@@ -604,7 +669,9 @@ function EnvironmentsView({ projectId, selection, setSelection }: {
                   leading={<IconChip icon={Globe} tone="lavender" />}
                   title={env.name}
                   meta={<span className="break-all font-mono">{env.base_url || 'No base URL'}</span>}
-                  trailing={env.is_default ? <Pill tone="butter">Default</Pill> : undefined}
+                  trailing={env.exclusive && env.lock?.run_id != null
+                    ? <Pill tone="lavender">In use</Pill>
+                    : env.is_default ? <Pill tone="butter">Default</Pill> : undefined}
                 />
               ))
             )}

@@ -30,6 +30,7 @@ import { SuiteHooksCard } from '@/components/suite-hooks/SuiteHooksCard';
 import { ReviewIntervalCard } from '@/components/ownership/ReviewIntervalCard';
 import { getTestReview, type CaseOwnership } from '@/api/caseOwnership';
 import { personLabel, reviewSummary } from '@/components/ownership/ownershipHelpers';
+import { ProtectedSuiteCard } from '@/components/suite-settings/ProtectedSuiteCard';
 import { FrontendMatrixSettings, RunMatrixPicker } from '@/components/frontend-quality/MatrixFields';
 import { EMPTY_MATRIX, MatrixChoice, matrixRunContext } from '@/components/frontend-quality/matrixHelpers';
 import { manualTestingApi } from '@/api/manualTesting';
@@ -757,6 +758,9 @@ export default function SuiteDetails() {
                                         <p className="text-sm text-slate-500">Configure inheritance, execution modes, headers, and parameters.</p>
                                     </div>
                                 </div>
+
+                                {/* ── Protection (WP16c) ── */}
+                                <ProtectedSuiteCard suiteId={Number(suiteId)} protectedSuite={!!suite.protected} />
 
                                 {/* ── Inheritance Setting ── */}
                                 {suite.parent_id && (
