@@ -1812,7 +1812,9 @@ class WorkspaceWebhook(SQLModel, table=True):
 
     On run events the dispatcher POSTs a signed JSON payload to `url`.
     `event_filter` is a comma-separated list of event names; empty matches
-    all events. `secret` is used for HMAC-SHA256 request signing.
+    all events. `secret` is used for HMAC-SHA256 request signing; it is
+    stored as a `v1:` envelope (read it with
+    webhook_delivery.signing_secret, never directly).
     """
     id: Optional[int] = Field(default=None, primary_key=True)
     workspace_id: int = Field(foreign_key="workspace.id", index=True)

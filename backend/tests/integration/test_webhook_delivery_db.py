@@ -237,3 +237,52 @@ async def test_retention_sweep(session, scene, net):
     await session.commit()
     assert purge_webhook_deliveries.run() == 1
     assert [r.webhook_id for r in _sync_rows()] == [scene.hooks["shop"]]
+
+
+async def test_create_stores_the_secret_encrypted_and_deliveries_verify(session, scene, net, monkeypatch):
+    import hashlib
+    import hmac
+    from app.api import workspace_webhooks as api
+    from app.core import net_guard
+
+    async def ok(url, **k):
+        return url
+    monkeypatch.setattr(net_guard, "validate_outbound_url", ok)
+    created = await api.create_webhook(scene.ws_id, WorkspaceWebhookCreate(
+        name="enc", url="https://ci.example.com/enc", workspace_id=scene.ws_id),
+        principal=AuthPrincipal(user=scene.admin, api_key=None), session=session)
+    stored = (await session.exec(text(f"SELECT secret FROM workspacewebhook WHERE id = {created.id}"))).one()[0]
+    assert stored.startswith("v1:") and created.secret not in stored
+
+    seen = []
+    import requests
+    monkeypatch.setattr(requests, "post", lambda url, **kw: seen.append(kw) or SimpleNamespace(status_code=200))
+    from app.tasks.outbound_webhook_tasks import dispatch_run_webhooks
+    dispatch_run_webhooks.run(scene.run_id)
+    # One of the deliveries went to the new webhook, signed with the secret
+    # shown once at creation (not with the stored ciphertext).
+    assert any(k["headers"]["X-TraceIQ-Signature"]
+               == "sha256=" + hmac.new(created.secret.encode(), k["data"], hashlib.sha256).hexdigest()
+               for k in seen)
+
+
+async def test_migration_encrypts_legacy_rows_and_downgrade_restores_them(session, scene):
+    import importlib
+    from types import SimpleNamespace as NS
+    from app.core.secrets import decrypt_secret
+    mod = importlib.import_module("app.alembic.versions.d092b3c4d600_encrypt_webhook_secrets_wp15f")
+    eng = create_engine(db_url_for(settings.DATABASE_URL, sync=True))
+    try:
+        with eng.begin() as conn:
+            mod.op = NS(get_bind=lambda: conn)
+            mod.upgrade()
+            rows = dict(conn.execute(text("SELECT name, secret FROM workspacewebhook")).fetchall())
+            assert all(v.startswith("v1:") for v in rows.values())
+            assert decrypt_secret(rows["all"]) == "a"
+            mod.upgrade()      # idempotent: already-encrypted rows are left alone
+            assert dict(conn.execute(text("SELECT name, secret FROM workspacewebhook")).fetchall()) == rows
+            mod.downgrade()
+            back = dict(conn.execute(text("SELECT name, secret FROM workspacewebhook")).fetchall())
+            assert back["all"] == "a" and back["shop"] == "b"
+    finally:
+        eng.dispose()

@@ -46,7 +46,7 @@ process.env.REDIS_CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'mobile-w
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { JobQueue, workerRegion } = require('./core/job-queue') as typeof import('./core/job-queue');
-import { abortedJobResult, CANCELLED_MESSAGE, RunControl } from './core/run-control';
+import { abortedJobResult, CANCELLED_MESSAGE, isJobAbort, RunControl } from './core/run-control';
 import { Heartbeat } from './core/heartbeat';
 import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
@@ -98,7 +98,7 @@ interface StepExecMeta {
     variables: Record<string, any>;
 }
 
-class MobileWorker {
+export class MobileWorker {
     private queue = new JobQueue();
     // MOB-4: local Appium or a device cloud (MOBILE_DEVICE_PROVIDER) — same
     // WebDriver protocol either way. Misconfiguration throws at startup.
@@ -272,8 +272,17 @@ class MobileWorker {
         }
 
         try {
+            let aborted: TestCaseResult | null = null;
             for (const testCase of cases) {
-                testResults.push(await this.runCase(sessionId, testCase, app, job, shots, heals));
+                if (aborted) {
+                    // Cancelled / out of time: the remaining cases never start.
+                    testResults.push({ test_case_id: testCase.id, test_name: testCase.name, status: aborted.status,
+                        error_kind: aborted.error_kind, duration_ms: 0, error: aborted.error });
+                    continue;
+                }
+                const r = await this.runCase(sessionId, testCase, app, job, shots, heals);
+                testResults.push(r);
+                if (r.status === 'cancelled' || r.status === 'timed_out') aborted = r;
             }
         } finally {
             if (recording) {
@@ -300,8 +309,10 @@ class MobileWorker {
         if (videoKey) base.artifacts.video = videoKey;
 
         const failed = testResults.filter((r) => r.status !== 'passed').length;
-        const status: JobResult['status'] = failed === 0 ? 'passed' : 'failed';
         const single = cases.length === 1 && !job.test_cases;
+        // A single-case job reports that case's own status (cancelled /
+        // timed_out stay what they are); a multi-case job carries them per case.
+        const status: JobResult['status'] = single ? testResults[0].status : failed === 0 ? 'passed' : 'failed';
 
         return {
             ...base,
@@ -320,6 +331,7 @@ class MobileWorker {
                     test_case_id: cases[0].id,
                     test_name: cases[0].name,
                     error: testResults[0].error,
+                    ...(testResults[0].error_kind ? { error_kind: testResults[0].error_kind } : {}),
                 }
                 : { test_results: testResults }),
         };
@@ -353,9 +365,12 @@ class MobileWorker {
         };
         try {
             for (const step of testCase.steps || []) {
+                // Cancelled run / platform time limit: stop before this step (WP15f).
+                await this.runControl.check(job);
                 try {
                     await this.executeStep(sessionId, step, app, ctx, shots, meta);
                 } catch (stepErr: any) {
+                    if (isJobAbort(stepErr)) throw stepErr;
                     const recovered = await this.tryHeal(
                         sessionId, step, testCase, job, app, ctx, shots, heals, stepErr, meta);
                     if (!recovered) throw stepErr;
@@ -368,6 +383,17 @@ class MobileWorker {
                 duration_ms: Date.now() - start,
             };
         } catch (err: any) {
+            if (isJobAbort(err)) {
+                console.log(`[MobileWorker]   ${err.status}: ${err.message}`);
+                return {
+                    test_case_id: testCase.id,
+                    test_name: testCase.name,
+                    status: err.status,
+                    error_kind: err.errorKind,
+                    duration_ms: Date.now() - start,
+                    error: err.message,
+                };
+            }
             console.log(`[MobileWorker]   FAILED: ${err.message}`);
             // Failure screenshot — same convention as the web worker's
             // failure.png. Best-effort: the session may already be dead.
@@ -379,6 +405,7 @@ class MobileWorker {
                 test_case_id: testCase.id,
                 test_name: testCase.name,
                 status: 'failed',
+                error_kind: 'test',
                 duration_ms: Date.now() - start,
                 error: err.message,
             };
@@ -741,11 +768,15 @@ function sleep(ms: number): Promise<void> {
     return new Promise((r) => setTimeout(r, ms));
 }
 
-const worker = new MobileWorker();
-process.on('SIGINT', () => { worker.stop(); process.exit(0); });
-process.on('SIGTERM', () => { worker.stop(); process.exit(0); });
+// Started only when run as the entry point (`node dist/mobile-worker.js`), so
+// tests can import the class without connecting to Redis or Appium.
+if (require.main === module) {
+    const worker = new MobileWorker();
+    process.on('SIGINT', () => { worker.stop(); process.exit(0); });
+    process.on('SIGTERM', () => { worker.stop(); process.exit(0); });
 
-worker.start().catch((err) => {
-    console.error('[MobileWorker] Fatal:', err);
-    process.exit(1);
-});
+    worker.start().catch((err) => {
+        console.error('[MobileWorker] Fatal:', err);
+        process.exit(1);
+    });
+}

@@ -39,9 +39,11 @@ from app.core.secrets import default_box
 def _targets():
     from app.models import (
         InstanceSetting, IssueTrackerConfig, LLMProviderConfig, ProjectSecret, User,
+        WorkspaceWebhook,
     )
     return [
         (ProjectSecret, "value_encrypted"),
+        (WorkspaceWebhook, "secret"),  # plaintext before WP15f; see below
         (LLMProviderConfig, "api_key_encrypted"),
         (IssueTrackerConfig, "auth_secret_encrypted"),
         (User, "mfa_secret"),
@@ -89,7 +91,11 @@ def main() -> int:
                     continue
 
                 try:
-                    fresh = box.rotate(value)
+                    if name == "WorkspaceWebhook" and not str(value).startswith("v1:"):
+                        # A pre-WP15f plaintext signing secret: encrypt it.
+                        fresh = box.encrypt(value)
+                    else:
+                        fresh = box.rotate(value)
                 except InvalidToken:
                     # Unreadable with every key in the ring. Do NOT touch it:
                     # overwriting would destroy the only copy, and the right
