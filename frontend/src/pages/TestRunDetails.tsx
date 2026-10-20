@@ -20,6 +20,8 @@ import { RetryAttempts } from '@/components/flakes/RetryAttempts';
 import { attemptsOf } from '@/components/flakes/flakeHelpers';
 import { InvestigationReport } from '@/components/evidence/InvestigationReport';
 import { StepEvidenceTimeline } from '@/components/evidence/StepEvidenceTimeline';
+import { BackendTracesPanel } from '@/components/traces/BackendTracesPanel';
+import { hasTraceIds } from '@/components/traces/waterfall';
 import { HookOutcomes, RunDataSummary } from '@/components/suite-hooks/HookOutcomes';
 import { hookOutcomesOf, resultsWithHookWarnings } from '@/components/suite-hooks/suiteHooks';
 import { ReproBundleButton } from '@/components/ReproBundleButton';
@@ -1112,6 +1114,12 @@ function TestCaseResultItem({ result, runId, networkEvents = [], variant = 'acco
                                 highlightedStep={focus?.stepIndex ?? null}
                                 highlightedRef={focus?.ref ?? null}
                             />
+
+                            {/* Only results that carried trace ids (WP16a: the project had
+                                trace correlation on when it ran). */}
+                            {hasTraceIds(stepEvidence) && (
+                                <BackendTracesPanel runId={result.test_run_id} resultId={result.id} />
+                            )}
 
                             {(result as any).result_kind === 'load' && (result as any).result_payload && (() => {
                                 const lp = (result as any).result_payload;

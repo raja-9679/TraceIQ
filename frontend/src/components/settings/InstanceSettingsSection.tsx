@@ -44,7 +44,7 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'policies', title: 'Policies', description: 'Network and retention behavior.' },
     { id: 'worker', title: 'Execution workers', description: 'Runtime config every execution worker fetches from /api/internal/worker-config at start and every 60s (blank = the worker keeps its own environment value), plus the instance-wide egress allowlist. Redis, the worker secret, MinIO credentials and WORKER_REGION stay environment-only on the worker.' },
     { id: 'network', title: 'Network access control', description: 'Trusted reverse proxies (whose X-Forwarded-For is believed), the SCIM source allowlist, and optional mTLS for worker → backend calls. A wrong CIDR here can lock out your IdP — values are validated on save.' },
-    { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results.' },
+    { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results, and the Jaeger or Tempo it reads backend traces from for projects with trace correlation on (Project settings → Backend traces).' },
     { id: 'cost', title: 'Cost', description: 'Your own prices, used to turn AI tokens and worker time into money on the Costs page and for project budgets. Nothing is priced until a currency is set; a model missing from the table shows as not priced. TraceIQ ships no vendor prices.' },
 ];
 

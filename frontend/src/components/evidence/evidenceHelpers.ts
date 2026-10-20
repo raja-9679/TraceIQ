@@ -26,6 +26,8 @@ export interface StepEvidence {
     screenshot?: string;
     dom?: string;
     dom_scope?: 'target' | 'page';
+    /** WP16a: ids this step propagated in `traceparent` (trace correlation). */
+    trace?: { trace_id: string; span_id: string; requests?: number };
 }
 
 export interface EvidenceItem { id: string; kind: string; label: string; step_index?: number | null }

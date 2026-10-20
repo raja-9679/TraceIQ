@@ -9,12 +9,14 @@ import { SectionNav, SettingsCard } from '@/components/redesign-local/groupD/set
 import { DataPolicySection } from '@/components/settings/DataPolicySection';
 import { OpenApiSpecSection } from '@/components/settings/OpenApiSpecSection';
 import { ProjectNotificationsSection } from '@/components/project-settings/ProjectNotificationsSection';
+import { TraceCorrelationSection } from '@/components/settings/TraceCorrelationSection';
 
-type SectionId = 'notifications' | 'capture' | 'api' | 'more';
+type SectionId = 'notifications' | 'capture' | 'traces' | 'api' | 'more';
 
 const SECTIONS: { id: SectionId; name: string }[] = [
     { id: 'notifications', name: 'Notifications' },
     { id: 'capture', name: 'Data capture and retention' },
+    { id: 'traces', name: 'Backend traces' },
     { id: 'api', name: 'OpenAPI spec' },
     { id: 'more', name: 'Members and other policies' },
 ];
@@ -60,6 +62,7 @@ export default function ProjectSettings() {
                         )}
                         {section === 'notifications' && <ProjectNotificationsSection projectId={projectId} canEdit={canEdit} />}
                         {section === 'capture' && <DataPolicySection projectId={projectId} />}
+                        {section === 'traces' && <TraceCorrelationSection projectId={projectId} canEdit={canEdit} />}
                         {section === 'api' && <OpenApiSpecSection projectId={projectId} />}
                         {section === 'more' && ELSEWHERE.map((e) => (
                             <SettingsCard key={e.href} labelledBy={`ps-${e.href}`} title={e.title} description={e.text}>
