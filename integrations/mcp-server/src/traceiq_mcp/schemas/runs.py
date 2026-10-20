@@ -158,3 +158,15 @@ class FailureAnalysis(TQModel):
     analysis: Dict[str, Any] = {}
     reports: List[CaseFailureReport] = []
     failed_results: List[CaseResult] = []
+
+
+class CancelResult(TQModel):
+    """Outcome of cancel_run. The run is CANCELLED as soon as this returns:
+    queued jobs are skipped and a running case stops before its next step
+    (its suite teardown still runs). workers_notified=False means the
+    server could not reach Redis — the run is still cancelled, queued jobs
+    just run to no effect."""
+    run_id: int
+    status: str
+    cancelled_at: Optional[str] = None
+    workers_notified: Optional[bool] = None

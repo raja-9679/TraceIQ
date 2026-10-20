@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional, Union, Dict, Any
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Header
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Header, Request
 from pydantic import BaseModel
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, func, or_, and_, delete
@@ -1003,6 +1003,53 @@ async def finalize_test_run(
     print(f"[Finalize] Queued {len(queued)} side-effect task(s) for run {run_id}")
 
     return {"status": "finalized", "run_id": run_id}
+
+
+@router.post("/runs/{run_id}/cancel")
+async def cancel_test_run(
+    run_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """Cancel a pending or running run (WP15f).
+
+    Editor on the run's project; a project-scoped API key must cover it. The
+    run becomes CANCELLED at once — no verdict, so it counts neither as a
+    pass nor a failure anywhere. Queued jobs are skipped; a running case
+    stops before its next step and still runs its suite teardown/cleanups.
+    409 when the run already finished.
+    """
+    from app.api.jobs import api_key_allows_project
+    from app.services.agent_controls import enforce_agent_write
+    from app.services.run_cancel import RunNotCancellable, cancel_run
+
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if principal.api_key is not None and not api_key_allows_project(principal.api_key, run.project_id):
+        raise HTTPException(status_code=403, detail="API key is not scoped to this project")
+    if not await access_service.has_project_access(
+            principal.user.id, run.project_id, session, min_role="editor"):
+        raise HTTPException(status_code=403, detail="Editor access required")
+    await enforce_agent_write(session, principal, run.project_id)
+
+    project = await session.get(Project, run.project_id) if run.project_id else None
+    previous = run.status.value if hasattr(run.status, "value") else str(run.status)
+    # Added before the conditional update so it commits with it — and is
+    # rolled back with it when the run had already finished.
+    await audit_record(
+        session, entity_type="test_run", entity_id=run_id, action="cancel",
+        workspace_id=project.workspace_id if project else None,
+        principal=principal, request=request,
+        changes={"previous_status": previous, "project_id": run.project_id},
+    )
+    try:
+        return await cancel_run(session, run)
+    except RunNotCancellable as e:
+        raise HTTPException(status_code=409, detail={
+            "error": "run_not_cancellable", "status": e.status.value,
+            "message": f"Run {run_id} already finished ({e.status.value})."})
 
 
 @router.post("/runs/{run_id}/force-complete")

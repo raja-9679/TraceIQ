@@ -10,6 +10,7 @@ from traceiq_mcp.app import mcp
 from traceiq_mcp.client import new_client
 from traceiq_mcp.schemas.common import AcceptedResult, ArtifactUrl
 from traceiq_mcp.schemas.runs import (
+    CancelResult,
     CaseFailureReport,
     CaseResult,
     FailureAnalysis,
@@ -152,6 +153,17 @@ async def analyze_run(run_id: int,
     acknowledgement — poll get_failure_analysis for the result."""
     data = await new_client().analyze_run(run_id, provider_id)
     return AcceptedResult.model_validate(data)
+
+
+@mcp.tool()
+async def cancel_run(run_id: int) -> CancelResult:
+    """Cancel a pending or running run you started (editor on its project).
+    It becomes `cancelled` — over, with no verdict: it counts neither as a
+    pass nor a failure. Queued cases are skipped; a running case stops
+    before its next step and still runs its suite teardown/cleanups.
+    Errors with 409 if the run already finished."""
+    data = await new_client().cancel_run(run_id)
+    return CancelResult.model_validate(data)
 
 
 @mcp.tool()

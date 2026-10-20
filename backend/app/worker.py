@@ -81,6 +81,12 @@ def run_test_suite(run_id: int, tags: list = None):
             print(f"[Worker] Run {run_id} not found")
             return
 
+        # Cancelled (or otherwise finished) before Celery got to it — e.g.
+        # while deferred by the concurrency cap. Never start it (WP15f).
+        if run.status not in (TestStatus.PENDING, TestStatus.RUNNING):
+            print(f"[Worker] Run {run_id} is {run.status.value}; not dispatching")
+            return
+
         # A manual run is worked through by a person on the manual-run screen;
         # nothing here may touch it (it would be set RUNNING, then ERROR).
         if getattr(run.executor, 'value', run.executor) == ExecutorType.MANUAL.value:
