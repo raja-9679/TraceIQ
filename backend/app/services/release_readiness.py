@@ -46,6 +46,7 @@ from app.models import (
     TestStatus, User,
 )
 from app.services.flake_policy import QUARANTINE_SCORE, active_quarantine_clause
+from app.services.run_scope import counted
 
 CRITICAL = "critical"
 FINISHED = (TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR)
@@ -238,7 +239,7 @@ async def results_in_scope(session: AsyncSession, project_id: int,
     stmt = (select(TestCaseResult.id, TestCaseResult.test_case_id, TestCaseResult.status,
                    TestRun.id, TestRun.browser, TestRun.device)
             .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-            .where(TestRun.project_id == project_id,
+            .where(TestRun.project_id == project_id, counted(),
                    TestCaseResult.test_case_id.is_not(None)))
     if git_commit:
         stmt = stmt.where(TestRun.git_commit == git_commit, TestRun.status.in_(FINISHED))
@@ -265,7 +266,7 @@ async def newest_passes(session: AsyncSession, project_id: int,
     rows = (await session.exec(
         select(TestCaseResult.test_case_id, func.max(evidence_time()))
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id == project_id,
+        .where(TestRun.project_id == project_id, counted(),
                TestCaseResult.status == TestStatus.PASSED,
                TestCaseResult.test_case_id.in_(list(case_ids)))
         .group_by(TestCaseResult.test_case_id))).all()
@@ -333,7 +334,7 @@ async def resolve_runs(session: AsyncSession, project_id: int, git_commit: Optio
     run (on the branch, if given) picks the commit, so readiness judges a
     whole commit rather than whichever single run happened to finish last."""
     base = select(TestRun).where(TestRun.project_id == project_id,
-                                 TestRun.status.in_(FINISHED))
+                                 TestRun.status.in_(FINISHED), counted())
     if git_commit:
         runs = (await session.exec(
             base.where(TestRun.git_commit == git_commit)
@@ -361,7 +362,7 @@ async def _last_results(session: AsyncSession, project_id: int,
         return {}
     newest = (select(func.max(TestCaseResult.id))
               .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-              .where(TestRun.project_id == project_id,
+              .where(TestRun.project_id == project_id, counted(),
                      TestCaseResult.test_case_id.in_(list(case_ids)))
               .group_by(TestCaseResult.test_case_id))
     rows = (await session.exec(
@@ -378,7 +379,7 @@ async def recent_commits(session: AsyncSession, project_id: int,
         select(TestRun.git_commit, func.max(TestRun.git_branch),
                func.max(TestRun.created_at), func.count())
         .where(TestRun.project_id == project_id, TestRun.git_commit.is_not(None),
-               TestRun.status.in_(FINISHED))
+               TestRun.status.in_(FINISHED), counted())
         .group_by(TestRun.git_commit)
         .order_by(func.max(TestRun.created_at).desc())
         .limit(limit))).all()

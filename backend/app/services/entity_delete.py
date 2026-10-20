@@ -129,6 +129,7 @@ ON_DELETE: Dict[str, str] = {
     "accessibilityviolation.project_id": DELETE,
     "accessibilitywaiver.project_id": DELETE,
     "hararchive.project_id": DELETE,
+    "repairoutcome.project_id": DELETE,     # WP16c repair history
     # Reporting (WP12c): imports, path rules, journeys, flag catalogue and
     # benchmark groups are all project data.
     "journeyimport.project_id": DELETE,
@@ -206,6 +207,10 @@ ON_DELETE: Dict[str, str] = {
     # check is a point in the schedule's uptime history.
     "selectorhealproposal.source_run_id": NULLIFY,
     "caseproposal.source_run_id": NULLIFY,
+    # WP16c: a proposal outlives the run that validated it (it reads as "not
+    # validated" again once the link is gone).
+    "selectorhealproposal.validation_run_id": NULLIFY,
+    "caseproposal.validation_run_id": NULLIFY,
     "issueticket.run_id": NULLIFY,
     "monitorcheck.run_id": NULLIFY,
     # A matrix cell's verdict outlives the TestRun a case row executed as.

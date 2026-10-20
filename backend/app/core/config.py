@@ -183,6 +183,11 @@ class Settings(BaseSettings):
     # setting can exceed it. See app/services/data_policy.py.
     MAX_CAPTURE_LEVEL: str = "standard"
 
+    # Database-level tenant isolation (WP15a): off | log | enforce. Usually set
+    # from Settings → Instance (Admin); see app/services/rls.py.
+    RLS_MODE: str = "off"
+    RLS_LOG_SAMPLE_PERCENT: int = 100
+
     # Key material for secrets at rest (project secrets, MFA seeds, provider
     # API keys, stored session state). Independent of SECRET_KEY so JWT signing
     # can be rotated without destroying every stored secret. Accepts a real

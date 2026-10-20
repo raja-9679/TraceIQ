@@ -34,6 +34,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.models import (
     FailureCluster, Incident, Project, SecurityFinding, TestCaseResult, TestRun, TestStatus,
 )
+from app.services.run_scope import counted
 
 FINISHED = (TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR)
 FAILING = (TestStatus.FAILED, TestStatus.ERROR)
@@ -243,7 +244,7 @@ async def stats_by_project(session: AsyncSession, project_ids: Sequence[int],
         return out
     rows = (await session.exec(
         select(TestRun.project_id, TestRun.status, func.count(TestRun.id))
-        .where(TestRun.project_id.in_(list(project_ids)), TestRun.created_at >= since,
+        .where(TestRun.project_id.in_(list(project_ids)), counted(), TestRun.created_at >= since,
                TestRun.created_at < until, TestRun.status.in_(FINISHED))
         .group_by(TestRun.project_id, TestRun.status))).all()
     for pid, status, n in rows:
@@ -256,7 +257,7 @@ async def stats_by_project(session: AsyncSession, project_ids: Sequence[int],
     fails = (await session.exec(
         select(TestRun.project_id, func.count(TestCaseResult.id))
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id.in_(list(project_ids)), TestRun.created_at >= since,
+        .where(TestRun.project_id.in_(list(project_ids)), counted(), TestRun.created_at >= since,
                TestRun.created_at < until, TestCaseResult.status.in_(FAILING))
         .group_by(TestRun.project_id))).all()
     for pid, n in fails:
@@ -273,7 +274,7 @@ async def daily_series(session: AsyncSession, project_ids: Sequence[int],
         day = func.date(TestRun.created_at)
         for d, status, n in (await session.exec(
                 select(day, TestRun.status, func.count(TestRun.id))
-                .where(TestRun.project_id.in_(list(project_ids)), TestRun.created_at >= since,
+                .where(TestRun.project_id.in_(list(project_ids)), counted(), TestRun.created_at >= since,
                        TestRun.status.in_(FINISHED))
                 .group_by(day, TestRun.status))).all():
             if isinstance(d, str):
@@ -296,7 +297,7 @@ async def top_failing(session: AsyncSession, project_ids: Sequence[int],
     rows = (await session.exec(
         select(TestCaseResult.test_name, func.count(TestCaseResult.id))
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id.in_(list(project_ids)), TestRun.created_at >= since,
+        .where(TestRun.project_id.in_(list(project_ids)), counted(), TestRun.created_at >= since,
                TestCaseResult.status.in_(FAILING))
         .group_by(TestCaseResult.test_name)
         .order_by(func.count(TestCaseResult.id).desc(), TestCaseResult.test_name)
@@ -363,7 +364,7 @@ async def incident_counts(session: AsyncSession, project_ids: Sequence[int],
 async def last_runs(session: AsyncSession, project_ids: Sequence[int]) -> Dict[int, Dict[str, Any]]:
     if not project_ids:
         return {}
-    newest = (select(func.max(TestRun.id)).where(TestRun.project_id.in_(list(project_ids)),
+    newest = (select(func.max(TestRun.id)).where(TestRun.project_id.in_(list(project_ids)), counted(),
                                                  TestRun.status.in_(FINISHED))
               .group_by(TestRun.project_id))
     rows = (await session.exec(select(TestRun).where(TestRun.id.in_(newest)))).all()

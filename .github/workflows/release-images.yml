@@ -32,6 +32,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Keyless cosign: the job's GitHub OIDC token is exchanged with Fulcio
+      # for a short-lived certificate naming this workflow. No signing key
+      # exists anywhere to leak or rotate.
+      id-token: write
     env:
       # Docker Hub publishing is optional: it activates only when both
       # DOCKERHUB_USERNAME and DOCKERHUB_TOKEN repo secrets exist. Forks and
@@ -57,12 +64,12 @@ jobs:
             context: .
             dockerfile: ./infrastructure/aio/Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -70,13 +77,13 @@ jobs:
 
       - name: Log in to Docker Hub
         if: env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
         with:
           # The `|| 'unset'` keeps the disabled Docker Hub entry syntactically
           # valid when the secret is absent; `enable` drops it from the output.
@@ -91,7 +98,8 @@ jobs:
             type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
@@ -104,6 +112,65 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+      # ---- Supply chain: signature + CycloneDX SBOM attestation ----------
+      # Everything below works on the pushed DIGEST, never a tag: a tag can be
+      # moved after signing, a digest cannot. Every repository the image was
+      # pushed to (GHCR, plus Docker Hub when enabled) gets its own signature
+      # and attestation, because cosign stores them next to the image.
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Image references by digest
+        id: refs
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          # One line per tag in; one `repo@digest` per distinct repo out.
+          refs="$(printf '%s\n' "$TAGS" | sed -e '/^$/d' -e 's/:[^:/]*$//' | sort -u | sed "s|\$|@${DIGEST}|")"
+          echo "$refs"
+          {
+            echo "refs<<EOF"
+            echo "$refs"
+            echo "EOF"
+            echo "primary=$(printf '%s\n' "$refs" | grep "^${REGISTRY}/" | head -n1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Sign (cosign keyless)
+        env:
+          REFS: ${{ steps.refs.outputs.refs }}
+        run: |
+          set -euo pipefail
+          while read -r ref; do
+            [ -n "$ref" ] || continue
+            cosign sign --yes "$ref"
+          done <<< "$REFS"
+
+      - name: Generate CycloneDX SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ steps.refs.outputs.primary }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.name }}.cdx.json
+          artifact-name: sbom-${{ matrix.name }}.cdx.json
+          upload-artifact: true
+
+      - name: Attest SBOM (cosign attest)
+        env:
+          REFS: ${{ steps.refs.outputs.refs }}
+        run: |
+          set -euo pipefail
+          while read -r ref; do
+            [ -n "$ref" ] || continue
+            cosign attest --yes --type cyclonedx \
+              --predicate "sbom-${{ matrix.name }}.cdx.json" "$ref"
+          done <<< "$REFS"
 
   # Scan what was actually published rather than a local build, so the report
   # matches the artifact users pull. Non-blocking on main, enforced on tags.
@@ -131,8 +198,11 @@ jobs:
             echo "tag=edge" >> "$GITHUB_OUTPUT"
           fi
 
+      # The 0.28.0 tag this used to name no longer exists upstream (the
+      # trivy-action tags were rewritten in 2026), which is exactly why every
+      # action here is pinned to a commit rather than a tag.
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.REGISTRY }}/${{ github.repository_owner }}/traceiq-${{ matrix.name }}:${{ steps.t.outputs.tag }}
           severity: HIGH,CRITICAL
@@ -147,7 +217,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Compose must REFUSE with no secrets
         working-directory: infrastructure

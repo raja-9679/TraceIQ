@@ -141,6 +141,46 @@ becomes the workspace admin**, so do this before exposing the instance.
 
 ---
 
+## Verify the images
+
+Every published image (`traceiq-backend`, `traceiq-frontend`,
+`traceiq-execution-worker`, `traceiq-aio`) is signed with
+[cosign](https://docs.sigstore.dev/) keyless signing by the release workflow,
+and carries a CycloneDX SBOM as a signed attestation. There is no TraceIQ
+signing key: the signature's certificate names the GitHub workflow that built
+the image, issued against GitHub's OIDC token. Use cosign v3.
+
+```bash
+IMAGE=ghcr.io/raja-9679/traceiq-backend:latest   # or a version tag / @sha256 digest
+IDENTITY='^https://github\.com/raja-9679/TraceIQ/\.github/workflows/release-images\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+.*|heads/main)$'
+ISSUER=https://token.actions.githubusercontent.com
+
+# 1. Signature: built by this repo's release workflow, from a release tag or main.
+cosign verify "$IMAGE" \
+  --certificate-identity-regexp "$IDENTITY" \
+  --certificate-oidc-issuer "$ISSUER"
+
+# 2. SBOM attestation (CycloneDX), same identity rules.
+cosign verify-attestation "$IMAGE" --type cyclonedx \
+  --certificate-identity-regexp "$IDENTITY" \
+  --certificate-oidc-issuer "$ISSUER" > /dev/null && echo "SBOM attestation OK"
+
+# 3. Extract the SBOM itself (e.g. to feed a scanner).
+cosign verify-attestation "$IMAGE" --type cyclonedx \
+  --certificate-identity-regexp "$IDENTITY" \
+  --certificate-oidc-issuer "$ISSUER" \
+  | jq -r '.payload' | base64 -d | jq '.predicate' > traceiq-backend.cdx.json
+```
+
+Signatures are made over the image digest, so verify the digest you actually
+run: `docker compose images` or `docker inspect --format '{{index .RepoDigests 0}}'`
+shows it. Pin `TRACEIQ_VERSION` to a version tag rather than `latest`, and
+re-verify after every upgrade. If you mirror the images (see "What is
+pinned, and how to mirror it"), copy the signatures too — `cosign copy` does
+both. Images pulled from Docker Hub are signed the same way under their own
+repository name. Images published before signing was added (2026-10) are not
+signed.
+
 ## There are no default passwords
 
 Compose will refuse to start until the required secrets are set, and it names

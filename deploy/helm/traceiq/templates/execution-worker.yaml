@@ -68,6 +68,16 @@ spec:
             {{- end }}
             - name: REDIS_RESULTS_STREAM
               value: jobs:results
+            # OpenTelemetry (WP15b H3): off while the endpoint is empty.
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ $root.Values.config.otelExporterOtlpEndpoint | quote }}
+            - name: OTEL_TRACES_SAMPLER
+              value: {{ $root.Values.config.otelTracesSampler | quote }}
+            - name: OTEL_TRACES_SAMPLER_ARG
+              value: {{ $root.Values.config.otelTracesSamplerArg | quote }}
+            - name: OTEL_SERVICE_NAME
+              value: traceiq-execution-worker
+            {{- include "traceiq.secretEnv" (dict "name" "OTEL_EXPORTER_OTLP_HEADERS" "secret" $secret "key" "OTEL_EXPORTER_OTLP_HEADERS" "optional" true) | nindent 12 }}
             - name: REDIS_CONSUMER_GROUP
               value: execution-workers
             - name: MINIO_ENDPOINT

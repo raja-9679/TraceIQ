@@ -75,6 +75,8 @@ def dispatch_site_crawl(crawl_run_id: int) -> Dict[str, Any]:
     except redis.ResponseError as e:
         if "BUSYGROUP" not in str(e):
             raise
+    from app.core.telemetry import stamp_trace
+    stamp_trace(job)  # WP15b H3: continue this trace in the worker
     rc.xadd(JOBS_STREAM, {"job_id": job["job_id"], "run_id": "0", "payload": json.dumps(job)})
     collect_site_crawl.apply_async((crawl_run_id,), countdown=POLL_COUNTDOWN)
     return {"status": "dispatched", "job_id": job["job_id"]}

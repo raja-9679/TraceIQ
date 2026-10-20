@@ -32,6 +32,7 @@ from app.models import (
 from app.services import frontend_matrix, site_crawl, storybook
 from app.services.access_service import access_service
 from app.services.audit import record as audit_record
+from app.services.run_scope import counted
 
 router = APIRouter()
 
@@ -440,7 +441,7 @@ async def selector_health(project_id: int, days: int = Query(90, ge=1, le=365),
     rows = (await session.exec(
         select(TestCaseResult.test_case_id, TestCaseResult.result_payload, TestRun.id, TestRun.created_at)
         .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestRun.project_id == project_id, TestRun.created_at >= since,
+        .where(TestRun.project_id == project_id, TestRun.created_at >= since, counted(),
                TestCaseResult.result_payload.is_not(None))
         .order_by(TestRun.id.desc()).limit(3000))).all()
     failures = []

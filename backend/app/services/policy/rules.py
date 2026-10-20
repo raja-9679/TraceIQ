@@ -182,6 +182,22 @@ def _concurrency(ctx: PolicyContext) -> Optional[Decision]:
     return None
 
 
+def _environment_lock(ctx: PolicyContext) -> Optional[Decision]:
+    """Wraps environment_lock.try_acquire (fails open there). Takes the lease
+    as a side effect when the environment is free — admit is the one place a
+    run becomes RUNNING, so taking it anywhere else would race."""
+    from app.services import environment_lock
+    verdict = environment_lock.try_acquire(ctx.facts["run"], ctx.session)
+    if verdict.get("acquired", True):
+        return None
+    held_by = (verdict.get("holder") or {}).get("run_id")
+    return Decision.defer(
+        "environment.exclusive_lock",
+        f"environment '{verdict.get('environment')}' is in use by run #{held_by}; waiting",
+        data={"retry_seconds": environment_lock.RETRY_SECONDS,
+              "environment_id": verdict.get("environment_id"), "holder_run_id": held_by})
+
+
 def _capture(ctx: PolicyContext) -> Optional[Decision]:
     from app.worker import _load_data_policy
     return Decision.with_data(data_policy=_load_data_policy(ctx.project_id, ctx.session))
@@ -220,6 +236,14 @@ register(Rule(
                 "(a deferral, not a deny — not logged).",
     configured="Workspace settings → max concurrent runs (0 = unlimited)",
     enforced_in="app/worker.py _workspace_at_capacity", outcome="defer", order=10))
+register(Rule(
+    name="environment.exclusive_lock", action="run.dispatch", stages=("admit",),
+    check=_environment_lock,
+    description="A run on an environment marked exclusive takes a lease on it; other runs on "
+                "that environment stay PENDING and are retried every 20 s until it is released "
+                "(on any terminal status, or by an editor). A deferral, not a deny.",
+    configured="Project → Environments → exclusive (editor)",
+    enforced_in="app/services/environment_lock.py try_acquire", outcome="defer", order=20))
 register(Rule(
     name="data.capture_ceiling", action="run.dispatch", stages=("configure",), check=_capture,
     description="Resolves the run's capture policy: the project's level clamped to the instance "
@@ -325,6 +349,42 @@ def _auto_apply_kill(ctx: PolicyContext) -> Optional[Decision]:
     return None
 
 
+def _validation_required(ctx: PolicyContext) -> Optional[Decision]:
+    """Wraps proposal_policy.validation_required + validation_block. The facts
+    come from repair_validation.repair_guard (computed by the caller, which
+    has the session); without them the rule has no opinion."""
+    from app.services.proposal_policy import validation_block, validation_required
+    g = ctx.facts.get("repair")
+    if g is None:
+        return None
+    required = validation_required(workspace_flag=g.workspace_flag,
+                                   suite_protected=g.protected_suite_id is not None)
+    reason = validation_block(validatable=g.validatable, required=required, status=g.status,
+                              validated_selector=g.validated_selector, selector=g.selector)
+    if reason is None:
+        return None
+    return Decision.deny(
+        "proposal.validation_required", reason, status_code=409,
+        detail={"error": "validation_required", "rule": "proposal.validation_required",
+                "message": reason, "validation_status": g.status,
+                "protected_suite_id": g.protected_suite_id},
+        data={"proposal_id": g.proposal_id, "kind": g.kind})
+
+
+def _protected_suite(ctx: PolicyContext) -> Optional[Decision]:
+    """Wraps proposal_policy.protected_block."""
+    from app.services.proposal_policy import protected_block
+    g = ctx.facts.get("repair")
+    if g is None:
+        return None
+    reason = protected_block(protected_suite_id=g.protected_suite_id)
+    if reason is None:
+        return None
+    return Decision.deny("proposal.protected_suite", reason, status_code=403,
+                         data={"proposal_id": g.proposal_id,
+                               "protected_suite_id": g.protected_suite_id})
+
+
 register(Rule(
     name="proposal.separation_of_duties", action="proposal.approve", acheck=_separation,
     description="Whoever filed a proposal cannot accept it, when the workspace (or the instance, "
@@ -337,6 +397,25 @@ register(Rule(
                 "proposals. Evaluated only when a proposal would otherwise auto-apply.",
     configured="Instance settings → AUTO_APPLY_DISABLED",
     enforced_in="app/services/proposal_policy.py auto_apply_disabled"))
+
+
+_VALIDATION_DESC = ("Heal and case-edit proposals need a PASSING validation run (the change "
+                    "applied to one run only) before they are accepted or auto-applied, when "
+                    "the workspace requires it, the instance forces it, or the proposal "
+                    "touches a protected suite.")
+_VALIDATION_WHERE = ("Proposals → policy (workspace admin); suite settings → Protected (editor); "
+                     "Instance settings → REQUIRE_REPAIR_VALIDATION")
+for _action, _order in (("proposal.approve", 50), ("proposal.auto_apply", 50)):
+    register(Rule(
+        name="proposal.validation_required", action=_action, check=_validation_required,
+        description=_VALIDATION_DESC, configured=_VALIDATION_WHERE,
+        enforced_in="app/services/proposal_policy.py validation_block", order=_order))
+register(Rule(
+    name="proposal.protected_suite", action="proposal.auto_apply", check=_protected_suite,
+    description="Proposals touching a protected suite (or a suite below it) are never "
+                "auto-applied, whatever the workspace's confidence threshold.",
+    configured="Suite settings → Protected (editor, audited)",
+    enforced_in="app/services/proposal_policy.py protected_block", order=40))
 
 
 # ---------------------------------------------------------------------------

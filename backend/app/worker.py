@@ -8,6 +8,7 @@ Architecture:
 from celery import Celery
 from sqlmodel import Session, create_engine
 from app.core.celery_app import celery_app
+from app.core import telemetry
 from app.core.config import db_url_for, settings
 from app.core.secrets import decrypt_json, encrypt_json
 from app.models import TestRun, TestStatus, ExecutionMode, ExecutorType
@@ -24,12 +25,17 @@ sync_engine = create_engine(sync_db_url, echo=False)
 redis_client = redis.from_url(
     settings.CELERY_BROKER_URL, decode_responses=True)
 
-# Legacy execution engine URL (for CONTINUOUS mode)
+# Legacy execution engine (execution-engine/src/server.ts). DEPRECATED
+# (WP15b H4), removed one release after 2026-10: it does not honour
+# ai_allowed, the egress allowlist or run cancel.
 EXECUTION_ENGINE_URL = settings.EXECUTION_ENGINE_URL
 
-# Feature flag for new architecture
-USE_DISTRIBUTED_EXECUTION = getattr(
-    settings, 'USE_DISTRIBUTED_EXECUTION', True)
+# Always True. USE_DISTRIBUTED_EXECUTION was never a Settings field, so this
+# getattr has returned its default in every deployment and the compose files'
+# `USE_DISTRIBUTED_EXECUTION=true` set nothing: every mode, CONTINUOUS
+# included, has gone to the distributed workers. Kept as a constant (not a
+# setting) on purpose — there is no supported way back to the legacy engine.
+USE_DISTRIBUTED_EXECUTION = True
 
 # Webhook secret for internal service-to-service calls
 _WEBHOOK_SECRET = getattr(settings, 'WEBHOOK_SECRET', None) or settings.SECRET_KEY
@@ -102,7 +108,10 @@ def run_test_suite(run_id: int, tags: list = None):
         admit = evaluate_sync("run.dispatch", PolicyContext(
             project_id=run.project_id, stage="admit", session=session, facts={"run": run}))
         if not admit.allowed:
-            print(f"[Worker] Run {run_id} deferred: workspace at concurrency cap")
+            # Deferrals: the concurrency cap, or an exclusive environment
+            # another run holds (environment.exclusive_lock, WP16c). Either
+            # way the run stays PENDING and is retried — never failed.
+            print(f"[Worker] Run {run_id} deferred ({admit.rule}): {admit.reason}")
             run_test_suite.apply_async((run_id,), {'tags': tags},
                                        countdown=admit.data.get('retry_seconds', 30))
             return
@@ -130,6 +139,14 @@ def run_test_suite(run_id: int, tags: list = None):
             if not cases_to_run:
                 raise Exception("No test cases found to execute")
 
+            # Validation run (WP16c): the proposed heal / case edit is applied
+            # to this run's copy of the case only — an overlay object, never
+            # an assignment to the ORM row (this session commits below).
+            validation = getattr(run, 'is_validation', False) is True
+            if validation:
+                from app.services.repair_validation import apply_overlay
+                cases_to_run = apply_overlay(run, cases_to_run, session)
+
             # Manual cases are executed by people (manual runs), never by a
             # worker: they carry no automation steps.
             from app.services.manual_testing import exclude_manual
@@ -145,7 +162,10 @@ def run_test_suite(run_id: int, tags: list = None):
             # Phase B: drop quarantined test cases before dispatch so flaky
             # tests don't gate AI-agent regressions. The flake records live
             # at the test_case level; sub-step granularity is informational.
-            cases_to_run = _filter_quarantined(cases_to_run, session)
+            # A validation run tests exactly the case it names, quarantined
+            # or not.
+            if not validation:
+                cases_to_run = _filter_quarantined(cases_to_run, session)
 
             # Tag-based run selection: keep only cases carrying a requested tag.
             if tags:
@@ -161,6 +181,9 @@ def run_test_suite(run_id: int, tags: list = None):
             # Get effective settings
             effective_settings = test_service.get_effective_settings_sync(
                 run.test_suite_id, session)
+            if validation:
+                from app.services.repair_validation import harden_settings
+                harden_settings(effective_settings)
 
             # Inject the project's stored auth session (Playwright
             # storageState) so cases start already logged in. Workers skip
@@ -356,7 +379,12 @@ def run_test_suite(run_id: int, tags: list = None):
                     dispatch_parallel_jobs(
                         run, cases_to_run, effective_settings, session)
                 else:
-                    # CONTINUOUS mode: dispatch each case as an independent job
+                    # CONTINUOUS mode: one job per case on the distributed
+                    # workers, as it has been since the legacy engine stopped
+                    # being reachable. Not one shared-browser job: CONTINUOUS
+                    # is every suite's default, and a single job would
+                    # serialise it onto one worker under MAX_JOB_DURATION_MS
+                    # (parked in SCOPE_NOTES.md, WP15b H4).
                     dispatch_cases_to_queue(
                         run, cases_to_run, effective_settings, session)
             else:
@@ -371,6 +399,11 @@ def run_test_suite(run_id: int, tags: list = None):
             run.status = TestStatus.ERROR
             run.error_message = str(e)
             session.add(run)
+            # The exclusive-environment lease (if any) goes now, not when the
+            # finalize claim's side effects run: that claim may already be
+            # taken, and a lease must never outlive its run.
+            from app.services.environment_lock import release_for_run
+            release_for_run(run.id)
             # Nothing was dispatched, so no result will ever finalize this
             # run: do it here (CI webhooks and notifications learn it errored).
             from app.services.run_completion import finalize_on_commit
@@ -544,6 +577,12 @@ def _settings_payload(settings: dict) -> dict:
         payload['flags'] = settings['flags']
     if settings.get('trace_correlation'):
         payload['trace_correlation'] = settings['trace_correlation']
+    # Validation run (WP16c): the worker must not self-heal or propose heals —
+    # a validation that only passed because a selector was re-pointed at run
+    # time validated nothing. Older workers ignore it (the aggregator then
+    # notices the runtime heal and fails the validation).
+    if settings.get('validation_run'):
+        payload['validation_run'] = True
     if wants_step_dom(settings.get('data_policy')):
         payload['capture_step_dom'] = True
     # Hosts expect-blocked-after may hammer (project security allowlist).
@@ -654,18 +693,10 @@ def _load_mobile_app(run, session) -> dict | None:
 
 def _load_environment(run, project_id, session):
     """The run's pinned environment, or the project default, as a payload dict."""
-    from sqlmodel import select
-    from app.models import ProjectEnvironment
-
-    env = None
-    if getattr(run, 'environment_id', None):
-        env = session.get(ProjectEnvironment, run.environment_id)
-    elif project_id:
-        env = session.exec(
-            select(ProjectEnvironment).where(
-                ProjectEnvironment.project_id == project_id,
-                ProjectEnvironment.is_default == True)  # noqa: E712
-        ).first()
+    # One resolution rule for the payload and the exclusive-environment lease
+    # (WP16c), so the lock is always on the environment the job really uses.
+    from app.services.environment_lock import environment_for_run
+    env = environment_for_run(run, project_id, session)
     if not env:
         return None
     return {
@@ -782,6 +813,8 @@ def _enqueue_job(pipe, jobs_stream: str, local_key: str | None, run_id: int, job
     put it back on the same stream."""
     if region and not local_key:
         job['region'] = region
+    # One run = one trace (WP15b H3): no-op unless OTel is configured.
+    telemetry.stamp_trace(job)
     if local_key:
         pipe.rpush(local_key, json.dumps(job))
         # Local queues are polled over HTTP; expire abandoned ones after a day.
@@ -1098,10 +1131,16 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
 
 def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, execution_mode: ExecutionMode):
     """
-    Legacy execution via single execution engine.
-    Used for CONTINUOUS mode where tests share browser context.
+    DEPRECATED (WP15b H4): legacy execution via the single execution engine
+    (server.ts). Unreachable — nothing calls it — and removed one release
+    after 2026-10 together with server.ts. That engine ignores ai_allowed,
+    the egress allowlist and run cancel.
     """
-    from app.services.test_service import test_service
+    import logging
+    logging.getLogger(__name__).warning(
+        "dispatch_legacy_execution is deprecated and will be removed; run %s "
+        "goes to the legacy engine, which ignores ai_allowed, egress policy "
+        "and cancel", run.id)
 
     # Serialize test cases
     test_cases_data = []

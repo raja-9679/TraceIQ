@@ -1005,6 +1005,49 @@ async def finalize_test_run(
     return {"status": "finalized", "run_id": run_id}
 
 
+@router.get("/runs/{run_id}/environment-lock")
+async def run_environment_lock(
+    run_id: int,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """WP16c: is this run waiting for, or holding, an exclusive environment?
+    {state: none | waiting | holding, environment_id, environment,
+    holder_run_id, since}. Viewer on the run's project."""
+    import asyncio
+    from app.api.jobs import api_key_allows_project
+    from app.services import environment_lock
+
+    run = await session.get(TestRun, run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if principal.api_key is not None and not api_key_allows_project(principal.api_key, run.project_id):
+        raise HTTPException(status_code=404, detail="Run not found")
+    if not await access_service.has_project_access(principal.user.id, run.project_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+    out = {"run_id": run_id, "state": "none"}
+    if run.status not in (TestStatus.PENDING, TestStatus.RUNNING):
+        return out
+
+    def _lookup():
+        wait = environment_lock.waiting(run_id)
+        if wait and run.status == TestStatus.PENDING:
+            return {**out, "state": "waiting", "environment_id": wait.get("environment_id"),
+                    "environment": wait.get("environment"),
+                    "holder_run_id": wait.get("holder_run_id"),
+                    "since": wait.get("holder_since")}
+        env_id, held = environment_lock.held_by_run(run_id)
+        if held:
+            return {**out, "state": "holding", "environment_id": env_id,
+                    "environment": held.get("environment"), "holder_run_id": run_id,
+                    "since": held.get("since")}
+        return out
+    try:
+        return await asyncio.to_thread(_lookup)
+    except Exception:  # noqa: BLE001 — informational only
+        return out
+
+
 @router.post("/runs/{run_id}/cancel")
 async def cancel_test_run(
     run_id: int,

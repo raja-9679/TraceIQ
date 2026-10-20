@@ -83,6 +83,20 @@ Not built in WP14. Needs an explicit owner decision on scope and safeguards befo
 work starts, the same way estate active probing was parked. The existing access
 matrix (WP4) with ID-swap replay remains the supported authorization testing path.
 
+### CONTINUOUS mode as one shared-browser job (WP15b H4, parked 2026-10-20, needs the owner's decision)
+H4's default said to route CONTINUOUS runs through the distributed worker's
+continuous sub-suite job (one job, one browser, cases in order). Found while
+building it: CONTINUOUS has already been on the distributed workers for
+several releases, as ONE JOB PER CASE (`dispatch_cases_to_queue`) — the
+legacy engine was unreachable because `USE_DISTRIBUTED_EXECUTION` was never a
+Settings field. CONTINUOUS is also the DEFAULT mode of every suite. Switching
+it to a single shared-browser job would serialise every default suite onto
+one worker under the per-job wall clock (`MAX_JOB_DURATION_MS`, 10 min) — a
+large suite would time out where it passes today. Not done. If wanted: make it
+opt-in per suite (e.g. `share_browser: true` in suite settings → one
+`execution_mode: continuous` job built like `dispatch_separate_jobs`' sub-suite
+branch), with a case-count cap and a matching job time budget.
+
 ### Estate: active probing (parked 2026-10-15, needs the owner's decision)
 WP9 built the passive estate checks only. These were designed but deliberately
 not built, because they actively probe hosts and should be a conscious product

@@ -1,4 +1,11 @@
-fastapi==0.109.0
+# FastAPI 0.153 / Starlette 1.9 (WP15b): clears the Starlette/FastAPI and
+# python-multipart pip-audit advisories. FastAPI now depends on
+# opentelemetry-api>=1.44, which is what moved the OTel pins below. Its native
+# telemetry is switched off in app/main.py (FastAPIInstrumentor stays the one
+# source of request spans). Starlette is pinned explicitly so a FastAPI patch
+# release cannot float it.
+fastapi==0.153.0
+starlette==1.9.0
 uvicorn[standard]==0.27.0
 sqlmodel==0.0.14
 celery==5.3.6
@@ -12,7 +19,7 @@ boto3==1.34.23
 openai==1.10.0
 asyncpg==0.29.0
 psycopg2-binary==2.9.9
-python-multipart==0.0.20
+python-multipart==0.0.32
 pydantic-settings==2.1.0
 httpx==0.26.0
 requests==2.32.4
@@ -22,7 +29,7 @@ python-jose[cryptography]==3.4.0
 croniter==2.0.2
 # Estate scanning (WP9): SPF/DMARC/DKIM/CAA/DNSSEC/CNAME lookups.
 dnspython==2.7.0
-slowapi==0.1.9
+slowapi==0.1.10
 anthropic==0.39.0
 PyYAML==6.0.1
 # LDAP / on-prem Active Directory login (pure Python — no libldap needed)
@@ -36,14 +43,14 @@ xmlsec==1.3.17
 lxml==6.1.3
 # Observability (workstream H4): OTLP traces to any collector, optional Sentry.
 # All no-ops until OTEL_EXPORTER_OTLP_ENDPOINT / SENTRY_DSN are set.
-opentelemetry-sdk==1.27.0
-opentelemetry-exporter-otlp-proto-http==1.27.0
-opentelemetry-instrumentation-fastapi==0.48b0
-opentelemetry-instrumentation-sqlalchemy==0.48b0
-opentelemetry-instrumentation-httpx==0.48b0
-opentelemetry-instrumentation-redis==0.48b0
-opentelemetry-instrumentation-celery==0.48b0
-sentry-sdk[fastapi,celery,sqlalchemy]==2.19.0
+opentelemetry-sdk==1.45.1
+opentelemetry-exporter-otlp-proto-http==1.45.1
+opentelemetry-instrumentation-fastapi==0.66b1
+opentelemetry-instrumentation-sqlalchemy==0.66b1
+opentelemetry-instrumentation-httpx==0.66b1
+opentelemetry-instrumentation-redis==0.66b1
+opentelemetry-instrumentation-celery==0.66b1
+sentry-sdk[fastapi,celery,sqlalchemy]==2.72.0
 
 alembic==1.13.1
 # Linear-time regex for author-supplied patterns (app/services/inbox_providers.py)

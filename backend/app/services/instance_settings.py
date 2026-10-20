@@ -46,7 +46,7 @@ class SettingDef:
 
 # Groups: email | notifications | ai | storage | sso | saml | ldap | federation |
 #         test_inbox | siem | security_alerts | policies | worker | network | observability |
-#         cost
+#         cost | tenant_isolation
 REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
     # --- Email (SMTP) ---
     SettingDef("SMTP_HOST", "email", label="SMTP host"),
@@ -357,6 +357,12 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                            "changes have no human reviewer at any point, so a "
                            "regulated environment needs to be able to switch it off "
                            "and demonstrate that it is off"),
+    SettingDef("REQUIRE_REPAIR_VALIDATION", "policies", type="bool",
+               label="Repairs need a passing validation run",
+               description="heal and case-edit proposals cannot be accepted (or auto-applied) "
+                           "until a validation run — the change applied to one run only — has "
+                           "passed. Turning this on here forces it for EVERY workspace; a "
+                           "workspace can still opt in on its own"),
     # WP14b — agent session budgets (decision W3). Per X-Agent-Session-Id;
     # a workspace's Agents page overrides them. Empty / 0 = no limit.
     SettingDef("AGENT_SESSION_MAX_RUNS", "policies", type="int",
@@ -537,6 +543,19 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                description="what one minute of automated test execution costs you; "
                            "browser-minutes are summed case durations (an approximation "
                            "of worker time)"),
+    # --- Tenant isolation in the database (WP15a). See app/services/rls.py. ---
+    SettingDef("RLS_MODE", "tenant_isolation", label="Row-level security mode",
+               description="off | log | enforce. A second wall behind the application's "
+                           "access checks: Postgres itself hides other tenants' runs, "
+                           "results, cases, suites, secrets and findings from a request. "
+                           "Roll out as off → log (nothing refused; requests whose loaded "
+                           "rows fall outside the caller's workspaces are counted and "
+                           "logged) → enforce once the count stays at zero. Background "
+                           "jobs, migrations and public pages are never restricted"),
+    SettingDef("RLS_LOG_SAMPLE_PERCENT", "tenant_isolation", type="int",
+               label="Log mode: share of requests checked (%)",
+               description="0-100. Each checked request costs one extra query per "
+                           "covered table it touched; lower it on very busy instances"),
     SettingDef("MAX_CAPTURE_LEVEL", "policies", type="str",
                label="Maximum capture level",
                description="ceiling no project may exceed: none | minimal | standard | "

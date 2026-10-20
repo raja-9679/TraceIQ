@@ -48,6 +48,7 @@ process.env.REDIS_CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'mobile-w
 const { JobQueue, workerRegion } = require('./core/job-queue') as typeof import('./core/job-queue');
 import { abortedJobResult, CANCELLED_MESSAGE, isJobAbort, RunControl } from './core/run-control';
 import { Heartbeat } from './core/heartbeat';
+import { initTracing, shutdownTracing, startJobSpan } from './core/tracing';
 import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
 import type { TestJob, JobResult, TestCaseResult, TestCase } from './core/job-queue';
 import { WebDriverClient } from './core/webdriver-client';
@@ -60,6 +61,7 @@ import {
 import { jobDataPolicy, policyFromDataPolicy, redactPageSource } from './core/redact';
 import { AIEngine } from './ai';
 import { aiAllowedForRun, withAiGate } from './core/ai-gate';
+import { isValidationJob } from './core/validation-run';
 import { provider as llmProvider } from './llm-provider';
 import { pickDeviceProvider, DeviceCloudProvider } from './device-cloud';
 import * as fs from 'fs';
@@ -118,6 +120,8 @@ export class MobileWorker {
         this.runControl = new RunControl((key) => controlRedis.get(key));
         // Runtime config + fleet heartbeat (WP8), same as the web worker.
         await startWorkerConfigPolling();
+        // OpenTelemetry (WP15b H3): no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
+        await initTracing('traceiq-mobile-worker');
         this.heartbeat = new Heartbeat(this.queue.duplicateRedis() as any, {
             workerId: this.queue.workerId,
             kind: 'mobile',
@@ -153,7 +157,9 @@ export class MobileWorker {
                     continue;
                 }
                 this.heartbeat?.jobStarted(claimed.job);
+                const jobSpan = startJobSpan(claimed.job, 'mobile');
                 let result: any = null;
+                let jobError: unknown;
                 try {
                     if (await this.runControl.isRunCancelled(claimed.job.run_id)) {
                         result = abortedJobResult(claimed.job, 'cancelled', CANCELLED_MESSAGE);
@@ -162,8 +168,12 @@ export class MobileWorker {
                     }
                     result = await this.runJob(claimed.job);
                     await this.queue.completeJob(claimed.streamId, result, policyFromDataPolicy(jobDataPolicy(claimed.job)));
+                } catch (err) {
+                    jobError = err;
+                    throw err;
                 } finally {
                     this.heartbeat?.jobFinished(!result || result.status !== 'passed');
+                    jobSpan.finish(result ?? undefined, jobError);
                 }
             } catch (err: any) {
                 console.error('[MobileWorker] Loop error:', err.message);
@@ -602,6 +612,7 @@ export class MobileWorker {
     ): Promise<boolean> {
         try {
             if (llmProvider.name === 'null' || !aiAllowedForRun(job.run_id)) return false;
+            if (isValidationJob(job)) return false;   // WP16c: never heal a validation run
             if (!step?.selector || !testCase.id) return false;
             if (!MOBILE_SELECTOR_FAILURE_RE.test(err.message || '')) return false;
 
@@ -772,8 +783,10 @@ function sleep(ms: number): Promise<void> {
 // tests can import the class without connecting to Redis or Appium.
 if (require.main === module) {
     const worker = new MobileWorker();
-    process.on('SIGINT', () => { worker.stop(); process.exit(0); });
-    process.on('SIGTERM', () => { worker.stop(); process.exit(0); });
+    // Flush buffered spans (bounded) before exiting.
+    const exit = () => { worker.stop(); void Promise.race([shutdownTracing(), sleep(2000)]).finally(() => process.exit(0)); };
+    process.on('SIGINT', exit);
+    process.on('SIGTERM', exit);
 
     worker.start().catch((err) => {
         console.error('[MobileWorker] Fatal:', err);

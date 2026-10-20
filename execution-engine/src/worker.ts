@@ -41,6 +41,7 @@ import {
 import { installEgressGuard } from './core/egress-guard';
 import { TraceCorrelation } from './core/trace-context';
 import { Heartbeat } from './core/heartbeat';
+import { initTracing, JobSpan, shutdownTracing, startJobSpan } from './core/tracing';
 import { workerRegion } from './core/job-queue';
 import { startWorkerConfigPolling, stopWorkerConfigPolling } from './core/worker-config';
 import {
@@ -50,6 +51,7 @@ import {
 } from './core/evidence';
 import { jobDataPolicy, maskSelectorsFrom, redactDom } from './core/redact';
 import { healCandidatesFor, healSuggestion, LlmHeal, runtimeHeal } from './core/selector-heal';
+import { isValidationJob } from './core/validation-run';
 import { RunScope } from './core/run-scope';
 import {
     HOOK_TEARDOWN_BUDGET_MS, HookReport, HookRunner, caseUsesHooks, isEmptyReport, mergeReports,
@@ -169,6 +171,7 @@ class ExecutionWorker {
     ): Promise<void> {
         try {
             if (!step?.selector || !testCaseId) return;
+            if (isValidationJob(job)) return;   // WP16c: the selector under test IS a proposal
             if (this.healAttempted.has(step)) return;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return;
             if (!page || page.isClosed()) return;
@@ -206,6 +209,7 @@ class ExecutionWorker {
     ): Promise<boolean> {
         try {
             if (process.env.RUNTIME_HEAL_ENABLED !== 'true') return false;
+            if (isValidationJob(job)) return false;   // WP16c: never heal a validation run
             if (!step?.selector || !page || page.isClosed()) return false;
             if (!SELECTOR_FAILURE_RE.test(errorMessage || '')) return false;
 
@@ -267,6 +271,10 @@ class ExecutionWorker {
         // backend is unreachable, so this never blocks startup for long.
         await startWorkerConfigPolling();
 
+        // OpenTelemetry (WP15b H3): a no-op that loads nothing unless
+        // OTEL_EXPORTER_OTLP_ENDPOINT is set, as on the backend.
+        await initTracing('traceiq-worker');
+
         // Fleet heartbeat (WP8): who this worker is and what it is doing.
         this.heartbeat = new Heartbeat(this.jobQueue.duplicateRedis() as any, {
             workerId: this.jobQueue.workerId,
@@ -323,6 +331,10 @@ class ExecutionWorker {
             }
 
             let claimedJob = false;
+            // One span per job, continuing the dispatcher's trace (WP15b H3).
+            let jobSpan: JobSpan | null = null;
+            let spanResult: JobResult | undefined;
+            let spanError: unknown;
             try {
                 // Try to claim a job
                 const claimed = await this.jobQueue.claimJob();
@@ -335,6 +347,7 @@ class ExecutionWorker {
                 const { streamId, job } = claimed;
                 claimedJob = true;
                 this.heartbeat?.jobStarted(job);
+                jobSpan = startJobSpan(job, 'web');
 
                 // Cancel idle timer while processing
                 this.cancelIdleTimer();
@@ -382,8 +395,9 @@ class ExecutionWorker {
                 // A run cancelled while this job queued: report it without
                 // starting a browser (WP15f).
                 if (await this.runControl.isRunCancelled(job.run_id)) {
-                    await this.jobQueue.completeJob(
-                        streamId, abortedJobResult(job, 'cancelled', CANCELLED_MESSAGE), this.redactionPolicyFor(job));
+                    const aborted = abortedJobResult(job, 'cancelled', CANCELLED_MESSAGE);
+                    spanResult = aborted;
+                    await this.jobQueue.completeJob(streamId, aborted, this.redactionPolicyFor(job));
                     this.jobsProcessed++;
                     this.heartbeat?.jobFinished(false);
                     claimedJob = false;
@@ -417,6 +431,7 @@ class ExecutionWorker {
                 }
 
                 // Complete the job
+                spanResult = result;
                 await this.jobQueue.completeJob(streamId, result, this.redactionPolicyFor(job));
 
                 this.jobsProcessed++;
@@ -425,10 +440,14 @@ class ExecutionWorker {
                 console.log(`[Worker] Completed job ${job.job_id} (total: ${this.jobsProcessed})`);
 
             } catch (err: any) {
+                spanError = err;
                 if (claimedJob) this.heartbeat?.jobFinished(true);
                 console.error('[Worker] Error in processing loop:', err);
                 // Small delay before retrying
                 await this.sleep(1000);
+            } finally {
+                // Runs on `continue` too, so side jobs get their span ended.
+                jobSpan?.finish(spanResult, spanError);
             }
         }
 
@@ -2144,6 +2163,7 @@ class ExecutionWorker {
         await this.heartbeat?.stop();
         await this.browserManager.stop();
         await this.jobQueue.shutdown();
+        await shutdownTracing();   // flushes buffered spans
         console.log('[Worker] Shutdown complete');
     }
 

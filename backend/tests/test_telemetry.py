@@ -162,3 +162,37 @@ def test_configure_logging_text_mode_leaves_stdout_alone(monkeypatch):
     # root handler carries the context filter either way
     root = logging.getLogger()
     assert any(isinstance(f, ContextFilter) for h in root.handlers for f in h.filters)
+
+
+def test_fastapi_native_telemetry_is_off_in_the_app():
+    # FastAPI >= 0.15x emits its own spans against the global provider, query
+    # strings included and /health not excluded; ours is FastAPIInstrumentor.
+    from app.main import app as real_app
+    cfg = real_app._telemetry
+    assert cfg["tracing"] is False and cfg["metrics"] is False and cfg["logs"] is False
+
+
+def test_instrumented_app_emits_one_server_span_per_request():
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import SpanKind
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    app = FastAPI(telemetry={"tracing": False, "metrics": False, "logs": False})
+
+    @app.get("/items/{item_id}")
+    def item(item_id: int):
+        return {"id": item_id}
+
+    FastAPIInstrumentor.instrument_app(app, tracer_provider=provider, excluded_urls="health")
+    try:
+        assert TestClient(app).get("/items/7").status_code == 200
+        servers = [s for s in exporter.get_finished_spans() if s.kind == SpanKind.SERVER]
+        assert len(servers) == 1
+        assert servers[0].attributes.get("http.route") == "/items/{item_id}"
+    finally:
+        FastAPIInstrumentor.uninstrument_app(app)

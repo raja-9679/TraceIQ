@@ -267,9 +267,14 @@ services:
       replicas: ${REGION_WORKERS:-1}
 
   # --------------------------------------------------------------------------
-  # Legacy Execution Engine (for CONTINUOUS mode)
+  # Legacy Execution Engine (server.ts)
   # --------------------------------------------------------------------------
+  # DEPRECATED (WP15b H4) — removed one release after 2026-10. The backend
+  # never calls it (every run goes to execution-worker) and it ignores
+  # ai_allowed, the egress allowlist and run cancel. Only started with
+  # `--profile legacy`; see docs/OPERATIONS.md -> "Legacy execution engine".
   execution-engine:
+    profiles: ["legacy"]
     build:
       context: ../execution-engine
       dockerfile: Dockerfile

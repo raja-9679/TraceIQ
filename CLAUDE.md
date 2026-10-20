@@ -23,7 +23,7 @@ All services run via Docker Compose from the `infrastructure/` directory.
 |---------|-------|------|
 | `backend` | FastAPI + SQLModel + Celery | 8000 |
 | `execution-worker` (×4) | Node.js + Playwright | — |
-| `execution-engine` | Node.js (legacy CONTINUOUS mode) | 3000 |
+| `execution-engine` | Node.js legacy engine — DEPRECATED, compose profile `legacy` only | 3000 |
 | `postgres` | PostgreSQL 15 | 5432 |
 | `redis` | Redis 7 | 6379 |
 | `object-store` | RustFS (S3-compatible; network alias `minio`) | 9000 |
@@ -118,7 +118,7 @@ npm test             # Vitest + Testing Library (jsdom); currently the sidebar n
 ### Execution Engine (run from `execution-engine/`)
 
 ```bash
-npm run dev          # Dev server (legacy engine, port 3000)
+npm run dev          # DEPRECATED legacy engine (server.ts, port 3000)
 npm run dev:worker   # Distributed worker in dev mode
 npm run build        # TypeScript compile to dist/
 npm test             # node:test via ts-node; *.test.ts are excluded from the build
@@ -241,7 +241,7 @@ The heaviest pages (all collocated in `src/pages/`):
 execution-engine/src/
 ├── worker.ts      # Redis Stream consumer (main distributed worker)
 ├── runner.ts      # Playwright step orchestration
-├── server.ts      # Express server for legacy POST /run endpoint
+├── server.ts      # DEPRECATED legacy engine (POST /run); removal planned
 ├── ai.ts          # OpenAI failure analysis
 ├── controller/    # Run lifecycle management
 └── core/          # Object store + Redis client setup
@@ -1366,6 +1366,32 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `GET .../quality-gate?policy_version=&run_ids=`; history at
   `.../quality-gate/policy/versions[/{n}]`. Worker + backend + frontend
   rebuild needed.
+- **Supply chain + worker tracing (WP15b, 2026-10-20)** — **H2:**
+  `release-images.yml` (still dispatch-only) cosign-signs every pushed image
+  by digest (keyless, GitHub OIDC; `id-token: write` on the build job only) in
+  every repo it went to, and attaches a CycloneDX SBOM (anchore/sbom-action)
+  as a `cosign attest --type cyclonedx`; every action pinned to a commit SHA
+  (trivy-action's old `0.28.0` tag no longer exists). Verify commands in
+  SELF_HOSTING.md. FastAPI 0.153 / Starlette 1.9 / OTel 1.45 — FastAPI now
+  depends on `opentelemetry-api` and ships native telemetry that records
+  `url.query`: it is OFF in `main.py` (FastAPIInstrumentor is ours);
+  `strict_content_type` is on (body without Content-Type ≠ JSON). **H3:**
+  `core/tracing.ts` — jobs carry `traceparent` (stamped by
+  `telemetry.stamp_trace` in `_enqueue_job` + the side-job senders; a replayed
+  job keeps its original); Celery instrumented in the API process too, so a
+  run is one trace API → Celery → worker. One `job` span per job, `case`/
+  `step` children reconstructed from step evidence after the job (capped
+  100/300). Attributes are an ALLOW-LIST (`safeAttributes`: ids, types,
+  statuses, counts, durations — never values/URLs/selectors/errors). SDK
+  loaded by a variable-specifier `import()` only when the endpoint is set,
+  typed locally (no @types needed); missing packages → off with one warning.
+  Worker image rebuild needed (new deps). **H4:** `server.ts` is
+  deprecated (removed one release after 2026-10): boot banner
+  (`core/legacy-engine.ts`), compose profile `legacy` only, and it ignores
+  ai_allowed / egress / cancel. `USE_DISTRIBUTED_EXECUTION` was never a
+  Settings field, so `dispatch_legacy_execution` was already unreachable;
+  it is now a constant. CONTINUOUS stays one job per case (not one
+  shared-browser job — default mode, 10-min job clock; parked in SCOPE_NOTES).
 
 - **Trace correlation (WP16a, 2026-10, decision V1)** — migration
   `e112b3c4d611` (`project.trace_settings` JSON, NULL = off). Opt-in per
@@ -1478,6 +1504,86 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   passing result) committed before sending. Logic in
   `app/services/ownership_review.py` / `app/api/case_ownership.py` (not
   `test_*` — pytest would collect them). Backend + frontend rebuild.
+
+- **Environment locks + validated repairs (WP16c, 2026-10, V3/V4)** —
+  migration `e132b3c4d613`. **Locks:** `ProjectEnvironment.exclusive`; rule
+  `environment.exclusive_lock` (run.dispatch/admit, after the concurrency cap)
+  wraps `environment_lock.try_acquire` — Redis lease `envlock:env:<id>` = run
+  id (+ meta/reverse/wait keys), TTL 180 s, renewed by beat
+  `refresh-environment-leases` (30 s) only while the holder is RUNNING (a
+  PENDING holder gets 10 min grace). Losers DEFER (PENDING, retry 20 s), never
+  fail; fail open on Redis errors; `target_url` runs exempt. Released
+  compare-and-delete in `run_completion.queue_side_effects` (every terminal
+  path funnels there) and in `run_test_suite`'s exception path. UI data:
+  environment list `lock`, `GET /runs/{id}/environment-lock`,
+  `DELETE /environments/{id}/lock` (editor, audited). **Validated repairs:**
+  `POST /heal-proposals/{id}/validate {selector?}` and
+  `/case-proposals/{id}/validate` (UPDATE with steps/executor only) create a
+  `TestRun(is_validation, validation_proposal_kind/_id)` copying the source
+  run's browser/device/environment/persona/emulation. The change is an
+  `OverlayCase` built at dispatch (`repair_validation.overlay_for_run`) —
+  never assigned to the ORM row; retries and runtime heal are off
+  (`settings.validation_run`, worker `core/validation-run.ts`; an older
+  worker's applied runtime heal is noticed by the aggregator and fails the
+  validation). Proposals carry `validation_status`
+  (validating|validated|validation_failed, separate from `status`),
+  `validation_run_id` (NULLIFY on run delete), conditions, detail; settled by
+  `record_validation_outcome` (in SIDE_EFFECT_TASKS — the ONLY side effect a
+  validation run gets). A heal validation counts only for the selector it ran.
+  Rules `proposal.validation_required` (approve + auto_apply; facts from
+  `repair_validation.repair_guard`) and `proposal.protected_suite`
+  (auto_apply) wrap `proposal_policy.validation_block` / `protected_block`.
+  Required when `workspace.require_validation_before_accept` (proposal-policy
+  endpoint), `REQUIRE_REPAIR_VALIDATION` (instance floor) or the proposal
+  touches a `TestSuite.protected` suite or its subtree
+  (`PUT /suites/{id}/protected`, editor, humans only, audited). `RepairOutcome`
+  logs validation_passed/failed (+ `conditions_matched`) and
+  accepted/rejected/auto_applied for WP16d. **Exclusion:** every aggregate
+  filters with `app/services/run_scope.py` (`counted()`, `NOT t.is_validation`
+  in raw SQL): analytics, quality dashboard + gate (also inside
+  `evaluate_gate_for_runs`, even explicit run_ids), release readiness, DORA,
+  reporting/digests/portfolio, PoC, flake snapshots + patterns, vendor health,
+  requirements/traceability/journeys/flags, selector health, failure history,
+  impact analysis + case history, assistant tools; the aggregator skips
+  last_validated stamping, flake scoring, page budgets, visual comparisons and
+  heal proposals for them. Deliberately NOT excluded: run lists, cost/quota,
+  ops metrics, the concurrency cap. Worker + backend + frontend rebuild needed.
+
+- **Tenant isolation in Postgres (WP15a, H1, 2026-10-20)** — migration
+  `e012b3c4d601`; `app/services/rls.py`; operator steps in `docs/OPERATIONS.md`
+  → "Tenant isolation". RLS is a SECOND wall; Python checks stay. One policy
+  `traceiq_tenant` per table in `RLS_POLICIES` (project, testsuite, testcase,
+  testrun, testcaseresult, projectsecret, securityfinding, persona,
+  authsession, mobileappbuild, visualcomparison, visualbaseline); tables are
+  ENABLEd, never FORCEd. **The app user is the owner — and a superuser in the
+  shipped compose — so RLS alone would do nothing**: enforcing transactions
+  `SET LOCAL ROLE <db>_rls` (NOLOGIN role the migration creates + grants;
+  per-database name because roles are cluster-wide) and set
+  `traceiq.rls_mode/workspace_ids/project_ids`. Nobody else switches role, so
+  Celery/beat/migrations/pg_dump/public endpoints are untouched, plans
+  included. Policies also only restrict when `rls_mode='enforce'` — that is
+  what makes the no-CREATEROLE fallback (FORCE RLS, applied by
+  `reconcile_sync` only while enforcing) safe. Bound in
+  `get_current_principal` (`rls.bind_principal`; after_begin listener
+  re-applies per transaction — SET LOCAL dies at commit);
+  `get_current_instance_admin` calls `rls.bypass`; `create_workspace` calls
+  `rls.extend`. Scope = every workspace the user relates to (membership,
+  team, tenant role/owner, demo owner, any project/case grant) — a tenant
+  wall, not RBAC; API keys are held to their workspace (+ project). Instance
+  settings `RLS_MODE` off|log|enforce (default off; typo → off) and
+  `RLS_LOG_SAMPLE_PERCENT`. **Log mode is app-side on purpose**: a
+  policy-side counter fires for every row a scan VISITS, not returns. ORM
+  loads/flushes of covered rows are remembered and `rls.finish` (get_session
+  teardown) asks Postgres with `shadow_predicate` which were out of scope →
+  warning + Redis counter → `GET /api/admin/rls/status`. Saving `enforce`
+  refuses an `unavailable` mechanism. Not covered: SQL injection (can RESET
+  ROLE), sessions endpoints open themselves, raw SQL/deletes in log mode,
+  `RLS_DEFERRED` tables. `tests/test_rls_plan.py` = purge-plan-style FK walk +
+  frozen migration text == `policy_sql()`; live `test_rls_db.py` bypasses the
+  Python check and shows Postgres still denies. `TRACEIQ_RLS_MODE=enforce
+  ./run-tests-live.sh` scopes every directly-called endpoint via
+  `tests/integration/conftest.py`. New tenant table → policy + migration, or
+  `RLS_EXEMPT` with a reason.
 
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
@@ -1651,8 +1757,8 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   It runs `tests/integration` and an `alembic downgrade -3 && upgrade head`
   round trip. `tests/integration/*` self-skip unless `TRACEIQ_LIVE_DB` is set.
   `tests/integration/test_tenant_isolation_db.py` is the important one: isolation
-  here is **application-layer only** (no RLS, one shared bucket), so every
-  boundary is a Python `if`. Five of the eight old `verify_*.py` scripts could not
+  here is **application-layer first** (RLS since WP15a is opt-in and covers a
+  subset of tables; one shared bucket), so every boundary is a Python `if`. Five of the eight old `verify_*.py` scripts could not
   even import (they referenced the long-gone `Organization` model) and are
   deleted — they were never convertible.
   Coverage gates: a low global floor (22%; real ~24%) plus a **70% floor on the

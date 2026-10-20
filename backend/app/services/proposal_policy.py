@@ -55,3 +55,53 @@ def approver_conflict(*, created_by_id: Optional[int], approver_id: Optional[int
 def auto_apply_disabled() -> bool:
     """Instance-wide kill switch for policy-driven (human-free) application."""
     return bool(effective("AUTO_APPLY_DISABLED"))
+
+
+# ---------------------------------------------------------------------------
+# Validated repairs (WP16c, decision V4)
+# ---------------------------------------------------------------------------
+#
+# A repair proposal (a selector heal, or a case edit that changes steps) can be
+# tried first: a VALIDATION RUN executes the affected case once with the
+# change applied to that run only (app/services/repair_validation.py). These
+# functions decide when that is required. Same shape as separation of duties:
+# off by default, a workspace opts in, REQUIRE_REPAIR_VALIDATION is an
+# instance floor, and a protected suite forces it for proposals touching it.
+
+
+def validation_required(*, workspace_flag: bool, suite_protected: bool) -> bool:
+    if bool(effective("REQUIRE_REPAIR_VALIDATION")):
+        return True
+    return bool(workspace_flag) or bool(suite_protected)
+
+
+def validation_block(*, validatable: bool, required: bool, status: Optional[str],
+                     validated_selector: Optional[str] = None,
+                     selector: Optional[str] = None) -> Optional[str]:
+    """Why this proposal may not be accepted yet, or None.
+
+    A proposal that cannot be validated (a CREATE has no case to run yet; a
+    DELETE/MOVE/settings change has nothing to try) is never blocked here —
+    a protected suite still keeps it away from auto-apply, so a human
+    reviews it. For a heal, the validation counts only for the selector it
+    ran with: picking a different candidate at accept time needs a new run."""
+    if not required or not validatable:
+        return None
+    if status == "validating":
+        return "The validation run for this proposal has not finished yet."
+    if status == "validated":
+        if selector is not None and validated_selector is not None and selector != validated_selector:
+            return (f"The validation run used {validated_selector!r}; validate "
+                    f"{selector!r} before accepting it.")
+        return None
+    if status == "validation_failed":
+        return ("The validation run for this proposal did not pass. Fix or reject it, "
+                "or validate again.")
+    return "This change must pass a validation run before it can be accepted."
+
+
+def protected_block(*, protected_suite_id: Optional[int]) -> Optional[str]:
+    """Auto-apply never touches a protected suite (or anything below one)."""
+    if protected_suite_id is None:
+        return None
+    return f"suite {protected_suite_id} is protected: proposals touching it need a human"

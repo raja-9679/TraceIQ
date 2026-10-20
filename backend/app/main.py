@@ -88,6 +88,13 @@ async def lifespan(app: FastAPI):
             await ensure_bootstrap_admin(session)
     except Exception:
         logger.exception("bootstrap admin provisioning failed; continuing startup")
+    # Tenant isolation (WP15a): align table flags with RLS_MODE. Only the FORCE
+    # fallback ever changes anything; failure leaves the status page saying so.
+    try:
+        from app.services import rls
+        logger.info("rls: %s", await rls.reconcile())
+    except Exception:
+        logger.exception("rls: reconcile at startup failed; continuing")
     logger.info("Startup complete")
     yield
     logger.info("Shutting down...")
@@ -95,7 +102,17 @@ async def lifespan(app: FastAPI):
     logger.info("Shutdown complete")
 
 
-app = FastAPI(title="Quality Intelligence Platform", lifespan=lifespan)
+# FastAPI >= 0.15x ships its own OpenTelemetry spans/metrics/logs, on by
+# default against the GLOBAL providers. It steps aside for FastAPIInstrumentor
+# only when that wraps the stack, and on its own it records `url.query` (query
+# strings can carry tokens), traces /health and /metrics, and logs validation
+# failures. app.core.telemetry's FastAPIInstrumentor stays the one source of
+# request spans, with our exclusions.
+app = FastAPI(
+    title="Quality Intelligence Platform",
+    lifespan=lifespan,
+    telemetry={"tracing": False, "metrics": False, "logs": False},
+)
 
 # X-Request-ID in, contextvar for the logs, X-Request-ID out. Added before the
 # tracer so the span and the log lines for one request can be joined.

@@ -2,10 +2,13 @@
 
 Environments are named deployment targets (dev/staging/prod) whose
 `variables` are referenced in test steps as `{{env.KEY}}` and whose
-`base_url` prefixes relative goto URLs. Secrets are write-only values
+`base_url` prefixes relative goto URLs. An `exclusive` environment runs one
+TestRun at a time (WP16c; app/services/environment_lock.py) — the list shows
+the current holder and an editor can force-release it. Secrets are write-only values
 referenced as `{{secret.KEY}}`, encrypted at rest; the API never returns
 plaintext — it is decrypted only at dispatch time into job payloads.
 """
+import asyncio
 from datetime import datetime
 from typing import Optional
 
@@ -15,7 +18,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.core.database import get_session
-from app.core.auth import get_current_user
+from app.core.auth import AuthPrincipal, get_current_principal, get_current_user
 from app.core.secrets import encrypt_secret
 from app.models import ProjectEnvironment, ProjectSecret, User
 from app.services.access_service import access_service
@@ -28,6 +31,7 @@ class EnvironmentCreate(BaseModel):
     base_url: Optional[str] = None
     variables: dict = {}
     is_default: bool = False
+    exclusive: bool = False
 
 
 class EnvironmentUpdate(BaseModel):
@@ -35,6 +39,7 @@ class EnvironmentUpdate(BaseModel):
     base_url: Optional[str] = None
     variables: Optional[dict] = None
     is_default: Optional[bool] = None
+    exclusive: Optional[bool] = None
 
 
 class SecretWrite(BaseModel):
@@ -54,7 +59,55 @@ async def list_environments(project_id: int, session: AsyncSession = Depends(get
         raise HTTPException(status_code=403, detail="Access denied")
     result = await session.exec(
         select(ProjectEnvironment).where(ProjectEnvironment.project_id == project_id))
-    return result.all()
+    return [await _with_lock(env) for env in result.all()]
+
+
+async def _holder(env: ProjectEnvironment):
+    """The lease holder of an exclusive environment, None when free. Redis
+    trouble reads as "unknown" rather than failing the page."""
+    if not env.exclusive:
+        return None
+    from app.services import environment_lock
+    try:
+        return await asyncio.to_thread(environment_lock.holder, env.id)
+    except Exception as exc:  # noqa: BLE001
+        return {"run_id": None, "since": None, "error": f"lock state unavailable: {exc}"[:200]}
+
+
+async def _with_lock(env: ProjectEnvironment) -> dict:
+    return {**env.model_dump(), "lock": await _holder(env)}
+
+
+@router.delete("/environments/{environment_id}/lock")
+async def force_release_lock(environment_id: int, principal: AuthPrincipal = Depends(get_current_principal),
+                             session: AsyncSession = Depends(get_session)):
+    """Force-release an exclusive environment's lease (editor, audited). The
+    holder run keeps running; the next waiting run is admitted on its next
+    retry. For a run that is stuck or a lease you know is stale."""
+    env = await session.get(ProjectEnvironment, environment_id)
+    if not env:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    if principal.api_key is not None:
+        from app.api.jobs import api_key_allows_project
+        if not api_key_allows_project(principal.api_key, env.project_id):
+            raise HTTPException(status_code=403, detail="API key is not scoped to this project")
+    await _require_editor(principal.user.id, env.project_id, session)
+    from app.services import environment_lock
+    try:
+        previous = await asyncio.to_thread(environment_lock.force_release, env.id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503, detail=f"Lock store unavailable: {exc}"[:300])
+    if previous is not None:
+        from app.models import Project
+        from app.services.audit import record as audit_record
+        project = await session.get(Project, env.project_id)
+        await audit_record(session, entity_type="project_environment", entity_id=env.id,
+                           action="lock_force_released", principal=principal,
+                           workspace_id=getattr(project, "workspace_id", None),
+                           changes={"environment": env.name, "holder_run_id": previous["run_id"],
+                                    "held_since": previous.get("since")})
+        await session.commit()
+    return {"environment_id": env.id, "released": previous is not None, "previous_holder": previous}
 
 
 @router.post("/projects/{project_id}/environments")
@@ -72,7 +125,7 @@ async def create_environment(project_id: int, body: EnvironmentCreate, session: 
         await session.rollback()
         raise HTTPException(status_code=409, detail=f"Environment '{body.name}' already exists")
     await session.refresh(env)
-    return env
+    return await _with_lock(env)
 
 
 @router.put("/environments/{environment_id}")
@@ -85,13 +138,24 @@ async def update_environment(environment_id: int, body: EnvironmentUpdate, sessi
     data = body.model_dump(exclude_unset=True)
     if data.get("is_default"):
         await _clear_default(env.project_id, session)
+    if "exclusive" in data and bool(data["exclusive"]) != bool(env.exclusive):
+        # Who made an environment exclusive (or stopped it being) is the first
+        # question when runs start queueing — or stop queueing — on it.
+        from app.models import Project
+        from app.services.audit import record as audit_record
+        project = await session.get(Project, env.project_id)
+        await audit_record(session, entity_type="project_environment", entity_id=env.id,
+                           action="exclusive_on" if data["exclusive"] else "exclusive_off",
+                           user_id=current_user.id,
+                           workspace_id=getattr(project, "workspace_id", None),
+                           changes={"environment": env.name})
     for key, value in data.items():
         setattr(env, key, value)
     env.updated_at = datetime.utcnow()
     session.add(env)
     await session.commit()
     await session.refresh(env)
-    return env
+    return await _with_lock(env)
 
 
 @router.delete("/environments/{environment_id}")

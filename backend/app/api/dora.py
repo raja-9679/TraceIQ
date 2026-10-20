@@ -26,6 +26,7 @@ from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import Deployment, Incident, ProjectEnvironment, TestRun, TestStatus
 from app.services import dora as dora_svc
+from app.services.run_scope import counted
 from app.services.audit import record as audit_record
 
 router = APIRouter()
@@ -206,7 +207,7 @@ async def dora_metrics(project_id: int, days: int = Query(30, ge=1, le=180),
             select(TestRun.id, TestRun.created_at, TestRun.environment_id).where(
                 TestRun.project_id == project_id, TestRun.created_at >= start,
                 TestRun.created_at < end,
-                TestRun.status.in_([TestStatus.FAILED, TestStatus.ERROR]),
+                TestRun.status.in_([TestStatus.FAILED, TestStatus.ERROR]), counted(),
                 or_(*conds)))).all()
 
     commits = sorted({d.git_commit for d in deps if d.git_commit and not d.commit_at})
@@ -214,7 +215,7 @@ async def dora_metrics(project_id: int, days: int = Query(30, ge=1, le=180),
     if commits:
         first_run_at = {c: t for c, t in (await session.exec(
             select(TestRun.git_commit, func.min(TestRun.created_at)).where(
-                TestRun.project_id == project_id, TestRun.git_commit.in_(commits))
+                TestRun.project_id == project_id, TestRun.git_commit.in_(commits), counted())
             .group_by(TestRun.git_commit))).all()}
 
     result = dora_svc.compute(

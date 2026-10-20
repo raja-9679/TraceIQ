@@ -212,8 +212,28 @@ shows `traceiq-backend → traceiq-celery-worker` as separate services. The
 the kill switch. The monitoring overlay ships Jaeger all-in-one (UI :16686) as
 somewhere to look. Verified 2026-09-07 against Jaeger: request, `SELECT`,
 `PING` and outbound spans arrive under the configured service name, and the
-`trace_id` in the JSON log line matches the trace. The Node execution worker
-is **not** instrumented — its jobs appear as Celery/HTTP edges only.
+`trace_id` in the JSON log line matches the trace.
+
+**One run = one trace (WP15b).** Celery is instrumented in the API process
+too (the producer side), so `POST /api/runs` → `run_test_suite` is one trace,
+and the dispatcher stamps a W3C `traceparent` on every worker job
+(`telemetry.stamp_trace`, in `_enqueue_job` and the side-job senders). The
+web and mobile workers (`execution-engine/src/core/tracing.ts`) continue it:
+one `job <type>` span per job, then one `case` span per case and one
+`step <type>` span per step, rebuilt from the result's step evidence after the
+job (marked `traceiq.timing=reconstructed`; capped at 100 cases / 300 steps
+per job). Same switch as the backend — `OTEL_EXPORTER_OTLP_ENDPOINT` (or
+`_TRACES_ENDPOINT` / `OTEL_ENABLED`), `OTEL_SDK_DISABLED=true` wins — and with
+it unset the SDK is never loaded. Span attributes are an allow-list: run/job/
+case ids, job/step type, status, error kind, counts, durations; never step
+values, URLs, selectors, headers, bodies or error text. The worker exports
+OTLP/HTTP **JSON** (`/v1/traces`); collectors and Jaeger accept it on the same
+port as the backend's protobuf. The community compose and Helm pass the OTEL
+variables to the workers; `docker-compose.prod.yml` wires OTEL for no service
+— add it to the worker with the backend if you use that file. Results flow
+back through `jobs:results` into the aggregator as a separate trace (not
+linked). Not verified against a live collector in CI; checked with a local
+OTLP receiver.
 
 **Error tracking.** `SENTRY_DSN` turns on Sentry (or a compatible receiver).
 PII is off, request bodies are never sent, cookies and the query string are
@@ -314,6 +334,70 @@ no effect, and the API says `workers_notified: false`.
 outbound webhooks, monitor check, paging, scans, triage). Since WP15f the
 aggregator does this itself; before, only the legacy `execution-engine`
 service did, and deployments without it never sent any of them.
+
+## Legacy execution engine (deprecated)
+
+`execution-engine/src/server.ts` (the Express "execution controller" on port
+3000 with `POST /run`) is **deprecated and will be removed one release after
+2026-10**. Nothing needs it:
+
+- The backend never calls it. `dispatch_legacy_execution` is only reachable
+  through `USE_DISTRIBUTED_EXECUTION`, which was never a real setting — so
+  every run, CONTINUOUS mode included, has gone to `execution-worker` for
+  several releases (CONTINUOUS = one job per case; a shared-browser job is
+  parked in `SCOPE_NOTES.md`). Setting `USE_DISTRIBUTED_EXECUTION=false` does
+  nothing; there is no switch back.
+- Run completion side effects (notifications, webhooks, monitors, paging,
+  scans, triage) no longer depend on its controller calling
+  `/api/runs/{id}/finalize` — the aggregator finalizes (WP15f L0).
+
+If you start it anyway it prints a banner at boot and on every `/run`, and
+answers with `Deprecation: true`. It does **not** honour the workspace AI
+opt-out (`ai_allowed`), the project egress allowlist, or run cancel.
+
+What still starts it: `docker-compose.yml` (local dev), and the legacy
+`docker-compose.distributed.yml` / `docker-compose.prod-1.yml` — all three now
+only under `--profile legacy`. The community and prod compose files, the AIO
+image and the Helm chart never ran it. To remove it from a host that ran it:
+`docker compose rm -sf execution-engine`.
+## Exclusive environments (WP16c)
+
+Mark an environment **exclusive** (Environments page → Exclusive use) when two
+runs against it would interfere — one shared test account, a staging database
+a suite resets, a sandbox with one merchant. Dispatch then takes a Redis lease
+on the environment (policy rule `environment.exclusive_lock`, stage `admit`):
+
+- Other runs on that environment stay **PENDING** and are retried every 20 s.
+  They never fail for waiting. Their run page says *Waiting for environment X,
+  held by run #N*; the environment shows *In use by run #N since …*.
+- **Several runs from one request queue behind each other.** A browser /
+  device / persona / viewport matrix started with one `POST /api/runs` on an
+  exclusive environment runs one variant at a time — expect it to take N times
+  as long. A run uses one environment, so runs cannot deadlock.
+- The lease is released on every terminal status (pass, fail, error, cancel,
+  time-out, force-complete) and when dispatch itself fails. Its TTL is 180 s,
+  renewed every 30 s by the beat task `refresh-environment-leases` while the
+  holder is RUNNING; a crashed worker holds it only until `check_stale_runs`
+  times the run out. If beat stops, leases expire on their own.
+- **Force release** (editor, audited as `lock_force_released`) drops the lease
+  without stopping the holder run — the next waiting run then shares the
+  environment with it. Use it for a lease you know is stale.
+- Comparison / benchmark runs (`target_url`) do not take the lease: they do not
+  use the environment's deployment. Redis errors admit the run (fail open,
+  like the concurrency cap).
+
+## Validation runs (WP16c)
+
+A heal or case-edit proposal can be **validated** before it is accepted: the
+case runs once with the proposed change applied to that run only (the stored
+case, its revisions, git-sync export and repro bundles never see it), under
+the failing run's browser, device, environment and persona, with retries and
+runtime self-heal switched off. Validation runs are excluded from every
+statistic (`app/services/run_scope.py`) and send no notifications, CI
+webhooks, pages or monitor checks. Workspaces can require a passing
+validation before accept (Proposals → policy); `REQUIRE_REPAIR_VALIDATION` is
+the instance floor; a **protected** suite forces it and never auto-applies.
+They do count as runs for plan quota and browser-minute cost.
 
 ## Outbound webhook deliveries
 
@@ -540,6 +624,90 @@ The CPU HPA (`executionWorker.autoscaling`) is not rendered while KEDA is on;
 two autoscalers on one Deployment fight. `minReplicas: 0` scales a pool to zero
 when idle (`activationLagCount` wakes it). Off by default; with it off the
 chart renders byte-for-byte what it did before.
+
+## Tenant isolation: row-level security (WP15a)
+
+Every endpoint checks access in Python. Row-level security (RLS) is a second
+wall behind those checks: in `enforce` mode Postgres itself keeps a request to
+the caller's workspaces, so a query that forgot its `WHERE` returns nothing
+from another tenant and cannot write into one. It is never a replacement for
+the Python checks.
+
+**Covered tables:** `project`, `testsuite`, `testcase`, `testrun`,
+`testcaseresult`, `projectsecret`, `securityfinding`, `persona`, `authsession`,
+and the artifact records `mobileappbuild`, `visualcomparison`,
+`visualbaseline`. The rest are listed in `app/services/rls.py`
+(`RLS_DEFERRED` is the backlog; `tests/test_rls_plan.py` stops it growing).
+
+**What is scoped:** requests that authenticate through
+`get_current_principal` (JWT or API key). Scope = every workspace the user has
+any relationship with (membership, team, tenant admin/owner, a direct
+project or case grant). An API key is held to its own workspace, and a
+project-scoped key to its one project. **Not scoped**, by design: Celery and
+beat, migrations, scripts, `pg_dump`, unauthenticated endpoints (share links,
+trust centers, status pages, webhook capture, incident webhooks, worker
+`/internal/*` and run webhooks, SCIM, login/SSO/register), and instance-admin
+endpoints (`get_current_instance_admin` drops the scope — fleet, DLQ, policy
+decisions, instance-wide access reviews and restore drills read across
+tenants on purpose).
+
+**How, with one database user.** The migration creates a `NOLOGIN` role
+`<database>_rls` and grants it to the app user; tables get `ENABLE ROW LEVEL
+SECURITY` (never `FORCE`). An enforcing request transaction does `SET LOCAL
+ROLE <database>_rls` plus three `SET LOCAL` settings; nothing else ever
+switches role, so the owner — and in the shipped compose files the owner is
+the Postgres superuser, which RLS never applies to — is exactly as before,
+including its query plans. If the app user lacks `CREATEROLE` the migration
+skips the role with a NOTICE and enforce mode uses `FORCE ROW LEVEL SECURITY`
+instead (applied only while enforcing; the policies stay inert for sessions
+that never set `traceiq.rls_mode`). A DBA can create the role later:
+
+```sql
+CREATE ROLE "<database>_rls" NOLOGIN NOINHERIT NOBYPASSRLS;
+GRANT "<database>_rls" TO <app_user>;
+-- then restart one backend: it grants table privileges itself at startup
+```
+
+With the FORCE fallback, `pg_dump` (and `scripts/restore_drill.sh` dumps)
+needs `--enable-row-security` while enforcing — without it pg_dump refuses
+forced tables. Neither is needed with the role.
+
+**What it does not protect against.** SQL injection: the request's own
+connection can `RESET ROLE` and change the settings, as with any scheme where
+the app holds one login. Sessions an endpoint opens itself
+(`async_session_factory()`), and tables not yet covered.
+
+### Rollout
+
+1. **Check it can enforce.** Settings → Instance (Admin) → *Tenant isolation*
+   → Status, or `GET /api/admin/rls/status`. Mechanism should read *role*;
+   *unavailable* means a superuser app user and no role (create it, above);
+   *not installed* means migrations have not run.
+2. **`log`.** Set *Row-level security mode* to `log`. Nothing is refused and
+   the database is not involved during the request: a sampled share of
+   authenticated requests (`RLS_LOG_SAMPLE_PERCENT`, default 100) remembers
+   the covered rows it loaded or wrote as ORM objects, and at the end of the
+   request one query per touched table asks Postgres, with the same predicate
+   the policy uses, which were outside the caller's scope. Each hit is a
+   warning in the backend log — `rls(log): N testrun row(s) outside the
+   caller's tenant scope … (actor=user:12, request=GET /api/…, ids=[…])` — and
+   a count on the status card (per table, instance-wide via Redis). Column-only
+   selects, raw SQL and deletes are not seen by log mode; enforce covers them.
+3. **Fix or explain every hit.** A hit is either a real cross-tenant read the
+   Python checks let through (fix it) or a path that legitimately crosses
+   tenants (give it `rls.bypass()` with a comment, like the instance-admin
+   dependency). Reset the count and keep watching through a normal week.
+4. **`enforce`.** Saving `enforce` re-checks the mechanism and refuses if it
+   cannot work. Out-of-scope rows become invisible (a run of another tenant
+   now answers 404 rather than 403) and writes into another tenant fail.
+   Enforcing requests cost one extra statement per transaction; covered rows
+   with no direct project column (`testcaseresult`, `visualbaseline`) cost a
+   primary-key lookup each under enforce.
+5. **Back out** by setting `off` (or `log`); takes effect within ~15 s in
+   every process, no restart.
+
+`RLS_MODE` may also come from the environment (the database value wins).
+An unrecognised value is treated as `off` and logged, never as `enforce`.
 
 ## Restore drill
 

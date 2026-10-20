@@ -16,6 +16,9 @@
 #   ./run-tests-live.sh tests/integration/test_x.py -q   # one file
 #   ./run-tests-live.sh --migrations                     # scripts/verify_migrations.py
 #   KEEP_DB=1 ./run-tests-live.sh ...                    # leave the scratch DB for psql
+#   TRACEIQ_RLS_MODE=enforce ./run-tests-live.sh         # whole suite with RLS enforcing
+#     (tests/integration/conftest.py then scopes every endpoint call the way
+#     get_current_principal would — see that file)
 set -euo pipefail
 
 IMAGE="${TRACEIQ_TEST_IMAGE:-traceiq-backend-test:local}"
@@ -69,15 +72,20 @@ fi
 # Exposed to tests so live object-store tests can skip cleanly without one.
 STORE_AVAILABLE=0; [ "$MINIO_EP" != "127.0.0.1:9000" ] && STORE_AVAILABLE=1
 
+# The RLS migration (WP15a) creates a cluster-wide role named after the
+# database; drop it with the database so scratch runs leave nothing behind.
+RLS_ROLE="${SCRATCH:0:59}_rls"
 cleanup() {
   [ -n "${KEEP_DB:-}" ] && { echo "Keeping scratch database '$SCRATCH'."; return; }
   docker exec "$PGC" psql -U "$PGUSER_" -d postgres -q \
-    -c "DROP DATABASE IF EXISTS ${SCRATCH} WITH (FORCE);" >/dev/null
+    -c "DROP DATABASE IF EXISTS ${SCRATCH} WITH (FORCE);" \
+    -c "DROP ROLE IF EXISTS \"${RLS_ROLE}\";" >/dev/null
 }
 trap cleanup EXIT
 
 docker exec "$PGC" psql -U "$PGUSER_" -d postgres -q \
   -c "DROP DATABASE IF EXISTS ${SCRATCH} WITH (FORCE);" \
+  -c "DROP ROLE IF EXISTS \"${RLS_ROLE}\";" \
   -c "CREATE DATABASE ${SCRATCH};" >/dev/null
 echo "Scratch database ${SCRATCH} created."
 
@@ -95,6 +103,7 @@ run() {
     -e SECRET_KEY=test-only-secret-value-not-real \
     -e TRACEIQ_LIVE_DB=1 \
     -e TRACEIQ_LIVE_STORE="$STORE_AVAILABLE" \
+    ${TRACEIQ_RLS_MODE:+-e RLS_MODE="$TRACEIQ_RLS_MODE"} \
     "$IMAGE" "${@:2}"
 }
 
