@@ -189,10 +189,12 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 #: CLOUD_KEY_PATTERNS and reused by app/services/leak_detection.py, which turns
 #: the same hits (and the markers they leave behind) into security findings.
 #: The PEM rule runs to the END line, or to the end of the text when a capture
-#: was truncated mid-key — a partial private key is still a private key.
+#: was truncated mid-key — a partial private key is still a private key. `\Z`,
+#: not `$`: Python's `$` also matches before a final newline, which left that
+#: newline behind where the JS twin's `$` consumes it (tests/vectors).
 CLOUD_KEY_PATTERNS: Tuple[Tuple[str, "re.Pattern[str]"], ...] = (
     ("private_key", re.compile(
-        r"-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|$)")),
+        r"-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?(?:-----END \1PRIVATE KEY-----|\Z)")),
     ("aws_access_key", re.compile(r"(?<![A-Z0-9])(?:AKIA|ASIA)[0-9A-Z]{16}(?![A-Z0-9])")),
     ("github_token", re.compile(
         r"(?<![A-Za-z0-9_])(?:gh[pousr]_[A-Za-z0-9]{36,255}|github_pat_[A-Za-z0-9_]{22,255})")),
@@ -387,7 +389,11 @@ def redact_body(
             parsed = json.loads(body)
         except (ValueError, TypeError):
             return redact_text(body, policy)
-        return json.dumps(_redact_json(parsed, denied_keys, policy))
+        # Serialised like the worker's JSON.stringify (compact, non-ASCII kept),
+        # so re-redacting a worker-redacted body at ingestion does not
+        # reformat it (tests/vectors body.json_compact_serialisation).
+        return json.dumps(_redact_json(parsed, denied_keys, policy),
+                          separators=(",", ":"), ensure_ascii=False)
 
     return redact_text(body, policy)
 
@@ -599,6 +605,17 @@ def _text_field(value: Any, policy: RedactionPolicy) -> Any:
     return redact_text(value, policy) if isinstance(value, str) else value
 
 
+def _text_fields(item: Dict[str, Any], fields: Sequence[str], policy: RedactionPolicy) -> Dict[str, Any]:
+    """`item` with each PRESENT field scrubbed. Absent fields stay absent: the
+    JS twin assigns `undefined`, which JSON drops, so adding a None here made
+    the two disagree on the shape of the result."""
+    out = dict(item)
+    for field in fields:
+        if field in out:
+            out[field] = _text_field(out[field], policy)
+    return out
+
+
 def redact_page_budgets(items: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
     """`check-page-budget` outcomes (WP10): page URL, failure text, SEO check
     values/details. Twin of `redactPageBudgets` in redact.ts."""
@@ -609,12 +626,10 @@ def redact_page_budgets(items: Any, policy: RedactionPolicy = DEFAULT_POLICY) ->
         if not isinstance(b, dict):
             out.append(b)
             continue
-        item = {**b, "url": _text_field(b.get("url"), policy),
-                "failure": _text_field(b.get("failure"), policy)}
+        item = _text_fields(b, ("url", "failure"), policy)
         if isinstance(b.get("seo"), list):
             item["seo"] = [
-                {**c, "value": _text_field(c.get("value"), policy),
-                 "detail": _text_field(c.get("detail"), policy)} if isinstance(c, dict) else c
+                _text_fields(c, ("value", "detail"), policy) if isinstance(c, dict) else c
                 for c in b["seo"]
             ]
         out.append(item)
@@ -717,11 +732,10 @@ def redact_crawl_report(report: Any, policy: RedactionPolicy = DEFAULT_POLICY) -
     and detail text. Twin of `redactCrawlReport` in redact.ts."""
     if not isinstance(report, dict):
         return report
-    out = {**report, "error": _text_field(report.get("error"), policy)}
+    out = _text_fields(report, ("error",), policy)
     if isinstance(report.get("pages"), list):
         out["pages"] = [
-            {**p, "url": _text_field(p.get("url"), policy), "error": _text_field(p.get("error"), policy)}
-            if isinstance(p, dict) else p
+            _text_fields(p, ("url", "error"), policy) if isinstance(p, dict) else p
             for p in report["pages"]
         ]
     if isinstance(report.get("issues"), list):
@@ -730,12 +744,10 @@ def redact_crawl_report(report: Any, policy: RedactionPolicy = DEFAULT_POLICY) -
             if not isinstance(i, dict):
                 issues.append(i)
                 continue
-            item = dict(i)
-            for field in ("page_url", "target_url", "detail"):
-                item[field] = _text_field(i.get(field), policy)
+            item = _text_fields(i, ("page_url", "target_url", "detail"), policy)
             if isinstance(i.get("redirect_chain"), list):
                 item["redirect_chain"] = [
-                    {**h, "url": _text_field(h.get("url"), policy)} if isinstance(h, dict) else h
+                    _text_fields(h, ("url",), policy) if isinstance(h, dict) else h
                     for h in i["redirect_chain"]
                 ]
             issues.append(item)
@@ -861,9 +873,10 @@ def redact_har(har: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
         out = dict(entry)
         if isinstance(out.get("request"), dict):
             req = dict(out["request"])
-            req["headers"] = _redact_name_value_list(req.get("headers"), denied, policy)
-            req["cookies"] = _redact_name_value_list(req.get("cookies"), denied, policy, True)
-            req["queryString"] = _redact_name_value_list(req.get("queryString"), denied, policy)
+            # Only lists that exist: an absent one stays absent (JS twin).
+            for key, always in (("headers", False), ("cookies", True), ("queryString", False)):
+                if key in req:
+                    req[key] = _redact_name_value_list(req[key], denied, policy, always)
             if isinstance(req.get("url"), str):
                 req["url"] = redact_text(req["url"], policy)
             post = req.get("postData")
@@ -872,8 +885,9 @@ def redact_har(har: Any, policy: RedactionPolicy = DEFAULT_POLICY) -> Any:
             out["request"] = req
         if isinstance(out.get("response"), dict):
             res = dict(out["response"])
-            res["headers"] = _redact_name_value_list(res.get("headers"), denied, policy)
-            res["cookies"] = _redact_name_value_list(res.get("cookies"), denied, policy, True)
+            for key, always in (("headers", False), ("cookies", True)):
+                if key in res:
+                    res[key] = _redact_name_value_list(res[key], denied, policy, always)
             content = res.get("content")
             if isinstance(content, dict) and isinstance(content.get("text"), str):
                 res["content"] = {**content, "text": redact_body(content["text"], content.get("mimeType"), policy)}

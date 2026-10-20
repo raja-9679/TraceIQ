@@ -34,10 +34,16 @@ if [ $# -eq 0 ]; then
     --ignore-glob='tests/verify_*.py' -q
 fi
 
+# Shared twin vectors (tests/test_twin_vectors.py) live at the REPO root so the
+# engine's tests read the same files; mounted where that test resolves them
+# (/src/tests/.. /.. /tests/vectors).
+VECTORS="$(cd "$REPO_BACKEND/.." && pwd)/tests/vectors"
+
 # --entrypoint python bypasses the image's wait-for-database entrypoint.
 exec docker run --rm \
   --entrypoint python \
   -v "$REPO_BACKEND":/src \
+  -v "$VECTORS":/tests/vectors:ro \
   -w /src \
   -e PYTHONPATH=/src \
   -e PYTHONDONTWRITEBYTECODE=1 \

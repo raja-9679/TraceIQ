@@ -128,6 +128,19 @@ export function implicitRole(el: HtmlElement): string | null {
     return null;
 }
 
+/**
+ * Element text as Playwright's text engine sees it: an input button is
+ * matched by its value, not its (empty) content. Twin of `text_of` — without
+ * this the TS twin never offered `text="Continue"` for
+ * `<input type=submit value=Continue>` while the Python twin did.
+ */
+export function textOf(el: HtmlElement): string {
+    if (el.tag === 'input' && ['submit', 'button', 'reset'].includes((el.attrs.get('type') || '').toLowerCase())) {
+        return normalizeSpace(el.attrs.get('value') || '');
+    }
+    return normalizeSpace(textContent(el));
+}
+
 function byId(root: HtmlElement, id: string): HtmlElement | null {
     for (const el of walk(root)) if (el.attrs.get('id') === id) return el;
     return null;
@@ -138,7 +151,7 @@ export function accessibleName(el: HtmlElement, root: HtmlElement): string {
     const labelledby = el.attrs.get('aria-labelledby');
     if (labelledby) {
         const parts = labelledby.split(/\s+/).map(id => byId(root, id)).filter(Boolean) as HtmlElement[];
-        const name = normalizeSpace(parts.map(textContent).join(' '));
+        const name = normalizeSpace(parts.map(textOf).join(' '));
         if (name) return name;
     }
     const aria = normalizeSpace(el.attrs.get('aria-label') || '');
@@ -152,17 +165,17 @@ export function accessibleName(el: HtmlElement, root: HtmlElement): string {
         const id = el.attrs.get('id');
         if (id) {
             for (const l of walk(root)) {
-                if (l.tag === 'label' && l.attrs.get('for') === id) return normalizeSpace(textContent(l));
+                if (l.tag === 'label' && l.attrs.get('for') === id) return textOf(l);
             }
         }
         for (let p = el.parent; p; p = p.parent) {
-            if (p.tag === 'label') return normalizeSpace(textContent(p));
+            if (p.tag === 'label') return textOf(p);
         }
         return normalizeSpace(el.attrs.get('title') || el.attrs.get('placeholder') || '');
     }
     if (el.tag === 'img') return normalizeSpace(el.attrs.get('alt') || '');
     if (NAME_FROM_CONTENT.has(role)) {
-        const t = normalizeSpace(textContent(el));
+        const t = textOf(el);
         if (t) return t;
     }
     return normalizeSpace(el.attrs.get('title') || '');
@@ -177,7 +190,7 @@ const CSS_IDENT = /^-?[A-Za-z_][A-Za-z0-9_-]*$/;
 export const quoteValue = (v: string) => `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 
 function elementFeatures(el: HtmlElement, root: HtmlElement): string[] {
-    const own = normalizeSpace(textContent(el));
+    const own = textOf(el);
     return [
         ...tokens(el.tag),
         ...tokens(el.attrs.get('id')),
@@ -259,10 +272,10 @@ export function labelStrategy(el: HtmlElement): string[] {
 }
 
 export function textStrategy(el: HtmlElement): string[] {
-    const text = normalizeSpace(textContent(el));
+    const text = textOf(el);
     if (!text || text.length > 50 || text.includes('[REDACTED')) return [];
     // Playwright's text engine picks the innermost element with that text.
-    const childHasSame = el.children.some(c => typeof c !== 'string' && normalizeSpace(textContent(c)) === text);
+    const childHasSame = el.children.some(c => typeof c !== 'string' && textOf(c) === text);
     if (childHasSame) return [];
     return [`text=${quoteValue(text)}`];
 }

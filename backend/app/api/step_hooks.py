@@ -249,9 +249,13 @@ def _redact_query(query: str, policy: RedactionPolicy) -> str:
     return urlencode(out, safe="[]*")
 
 
+# One route per method: a single multi-method route gives every method the same
+# OpenAPI operationId, which the generated frontend types reject as duplicates.
 for _path in ("/hooks/capture/{token}", "/hooks/capture/{token}/{subpath:path}"):
-    router.add_api_route(_path, capture_webhook, methods=CAPTURE_METHODS,
-                         include_in_schema=_path.endswith("{token}"))
+    for _method in CAPTURE_METHODS:
+        router.add_api_route(_path, capture_webhook, methods=[_method],
+                             operation_id=f"capture_webhook_{_method.lower()}",
+                             include_in_schema=_path.endswith("{token}"))
 
 
 # --------------------------------------------------------------------------

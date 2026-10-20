@@ -1606,6 +1606,32 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   the manual `docs/REAL_SERVICE_CHECKLIST.md`; results go in the tracker,
   never credentials.
 
+- **Typed API + shared twin vectors (WP15e, H8, 2026-10-20)** — no migration.
+  **Types:** `frontend/src/api/generated/{openapi.json,schema.ts}` come from
+  `npm run gen:api` (`backend/scripts/dump_openapi.py` imports the app in the
+  test image — no server — then `openapi-typescript` pinned 7.13.0, types
+  only). Commit both with any API change; CI diffs both (backend job: JSON;
+  frontend job: schema.ts). Adopt per client via `src/api/schemaTypes.ts`
+  (`Schema<N>` request bodies, `Out<N>` responses), keeping exported names.
+  428/548 operations return bare dicts and generate `unknown` — add a
+  `response_model` before converting such a client. operationIds must be
+  unique: a multi-method `add_api_route` breaks the generated file.
+  **Vectors:** `tests/vectors/{redaction,heal_ranking}.json` (repo root,
+  README there) are run by BOTH `twin-vectors.test.ts` and
+  `tests/test_twin_vectors.py`; `run-tests*.sh` mount the dir at
+  `/tests/vectors`; a missing file FAILS. Credential formats are stored as
+  `$concat` pieces (scanners). A disagreement is fixed in the wrong twin, or
+  recorded as `known_divergence` + `expected_by_twin` (each twin pins its own
+  output). Fixed on the way: Python PEM `$`→`\Z`; Python `redact_body`
+  re-serialises JSON compactly like `JSON.stringify`; Python page-budget/
+  crawl/HAR redaction no longer adds absent keys as null; heal scores round
+  half-up like `Math.round` (`_round3`); TS heal `textOf` (input buttons by
+  value, as Playwright); TS `redactDom` drops markup inside template/noscript
+  and no longer emits a DOCTYPE for CDATA/`<?xml`; TS `redactJobResult` now
+  also scrubs `console_errors`, top-level request/response headers+bodies,
+  `results`, and steps typed into password fields (`redactSteps`). Open:
+  fullwidth-digit PANs (Python redacts, TS keeps) and form-encoding of `*`/`~`.
+  Worker image rebuild needed.
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,
