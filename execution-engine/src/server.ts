@@ -6,6 +6,11 @@
  * 2. Metrics and monitoring API
  * 3. Optional AI analysis (results sent to Backend)
  * 4. Legacy execution endpoint (DEPRECATED - only for fallback)
+ *
+ * DEPRECATED AS A WHOLE (WP15b H4): no shipped deployment starts this file and
+ * the backend never calls /run; it is removed one release after 2026-10. It
+ * does not honour ai_allowed, the egress allowlist or run cancel — see
+ * core/legacy-engine.ts and docs/OPERATIONS.md.
  * 
  * PRIMARY ARCHITECTURE:
  * - All test cases are dispatched to Redis queue by backend
@@ -23,6 +28,11 @@ import { ExecutionController } from './controller';
 import { RunMonitor } from './controller/run-monitor';
 import { MetricsCollector } from './controller/metrics-collector';
 import { AIAnalyzer } from './controller/ai-analyzer';
+import { legacyEngineBanner } from './core/legacy-engine';
+
+// WP15b H4: deprecated, removed one release later. Said at import time so it
+// is the first thing in the log however this file is started.
+console.warn(legacyEngineBanner());
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -187,6 +197,8 @@ app.get('/health', (req, res) => {
 
 app.post('/run', async (req, res) => {
     const { runId, testCases, browser, globalSettings, device, executionMode, callbackUrl, webhookSecret } = req.body;
+    console.warn(`[DEPRECATED] legacy /run used for run ${runId}: ai_allowed, egress policy and cancel are not honoured`);
+    res.setHeader('Deprecation', 'true');
     console.log(`Received run request for runId: ${runId}`);
     console.log(`Test Cases count: ${testCases?.length || 0}`);
     console.log(`Browser: ${browser}`);
@@ -251,7 +263,8 @@ async function startServer() {
             console.log(`  GET  /api/runs/active     - Active runs`);
             console.log(`  GET  /api/runs/:id/progress - Run progress`);
             console.log(`  POST /api/runs/:id/analyze  - AI analysis`);
-            console.log(`  POST /run                 - Legacy execution\n`);
+            console.log(`  POST /run                 - Legacy execution (DEPRECATED)\n`);
+            console.warn(legacyEngineBanner());
         });
     } catch (err) {
         console.error('Failed to start server:', err);

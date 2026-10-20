@@ -335,6 +335,32 @@ outbound webhooks, monitor check, paging, scans, triage). Since WP15f the
 aggregator does this itself; before, only the legacy `execution-engine`
 service did, and deployments without it never sent any of them.
 
+## Legacy execution engine (deprecated)
+
+`execution-engine/src/server.ts` (the Express "execution controller" on port
+3000 with `POST /run`) is **deprecated and will be removed one release after
+2026-10**. Nothing needs it:
+
+- The backend never calls it. `dispatch_legacy_execution` is only reachable
+  through `USE_DISTRIBUTED_EXECUTION`, which was never a real setting — so
+  every run, CONTINUOUS mode included, has gone to `execution-worker` for
+  several releases (CONTINUOUS = one job per case; a shared-browser job is
+  parked in `SCOPE_NOTES.md`). Setting `USE_DISTRIBUTED_EXECUTION=false` does
+  nothing; there is no switch back.
+- Run completion side effects (notifications, webhooks, monitors, paging,
+  scans, triage) no longer depend on its controller calling
+  `/api/runs/{id}/finalize` — the aggregator finalizes (WP15f L0).
+
+If you start it anyway it prints a banner at boot and on every `/run`, and
+answers with `Deprecation: true`. It does **not** honour the workspace AI
+opt-out (`ai_allowed`), the project egress allowlist, or run cancel.
+
+What still starts it: `docker-compose.yml` (local dev), and the legacy
+`docker-compose.distributed.yml` / `docker-compose.prod-1.yml` — all three now
+only under `--profile legacy`. The community and prod compose files, the AIO
+image and the Helm chart never ran it. To remove it from a host that ran it:
+`docker compose rm -sf execution-engine`.
+
 ## Outbound webhook deliveries
 
 Every attempt is logged (Webhooks page → a webhook → Recent deliveries, or

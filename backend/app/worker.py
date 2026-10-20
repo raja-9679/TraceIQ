@@ -25,12 +25,17 @@ sync_engine = create_engine(sync_db_url, echo=False)
 redis_client = redis.from_url(
     settings.CELERY_BROKER_URL, decode_responses=True)
 
-# Legacy execution engine URL (for CONTINUOUS mode)
+# Legacy execution engine (execution-engine/src/server.ts). DEPRECATED
+# (WP15b H4), removed one release after 2026-10: it does not honour
+# ai_allowed, the egress allowlist or run cancel.
 EXECUTION_ENGINE_URL = settings.EXECUTION_ENGINE_URL
 
-# Feature flag for new architecture
-USE_DISTRIBUTED_EXECUTION = getattr(
-    settings, 'USE_DISTRIBUTED_EXECUTION', True)
+# Always True. USE_DISTRIBUTED_EXECUTION was never a Settings field, so this
+# getattr has returned its default in every deployment and the compose files'
+# `USE_DISTRIBUTED_EXECUTION=true` set nothing: every mode, CONTINUOUS
+# included, has gone to the distributed workers. Kept as a constant (not a
+# setting) on purpose — there is no supported way back to the legacy engine.
+USE_DISTRIBUTED_EXECUTION = True
 
 # Webhook secret for internal service-to-service calls
 _WEBHOOK_SECRET = getattr(settings, 'WEBHOOK_SECRET', None) or settings.SECRET_KEY
@@ -357,7 +362,12 @@ def run_test_suite(run_id: int, tags: list = None):
                     dispatch_parallel_jobs(
                         run, cases_to_run, effective_settings, session)
                 else:
-                    # CONTINUOUS mode: dispatch each case as an independent job
+                    # CONTINUOUS mode: one job per case on the distributed
+                    # workers, as it has been since the legacy engine stopped
+                    # being reachable. Not one shared-browser job: CONTINUOUS
+                    # is every suite's default, and a single job would
+                    # serialise it onto one worker under MAX_JOB_DURATION_MS
+                    # (parked in SCOPE_NOTES.md, WP15b H4).
                     dispatch_cases_to_queue(
                         run, cases_to_run, effective_settings, session)
             else:
@@ -1101,10 +1111,16 @@ def dispatch_parallel_jobs(run: TestRun, cases: list, settings: dict, session: S
 
 def dispatch_legacy_execution(run: TestRun, cases: list, settings: dict, execution_mode: ExecutionMode):
     """
-    Legacy execution via single execution engine.
-    Used for CONTINUOUS mode where tests share browser context.
+    DEPRECATED (WP15b H4): legacy execution via the single execution engine
+    (server.ts). Unreachable — nothing calls it — and removed one release
+    after 2026-10 together with server.ts. That engine ignores ai_allowed,
+    the egress allowlist and run cancel.
     """
-    from app.services.test_service import test_service
+    import logging
+    logging.getLogger(__name__).warning(
+        "dispatch_legacy_execution is deprecated and will be removed; run %s "
+        "goes to the legacy engine, which ignores ai_allowed, egress policy "
+        "and cancel", run.id)
 
     # Serialize test cases
     test_cases_data = []

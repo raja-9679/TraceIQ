@@ -23,7 +23,7 @@ All services run via Docker Compose from the `infrastructure/` directory.
 |---------|-------|------|
 | `backend` | FastAPI + SQLModel + Celery | 8000 |
 | `execution-worker` (×4) | Node.js + Playwright | — |
-| `execution-engine` | Node.js (legacy CONTINUOUS mode) | 3000 |
+| `execution-engine` | Node.js legacy engine — DEPRECATED, compose profile `legacy` only | 3000 |
 | `postgres` | PostgreSQL 15 | 5432 |
 | `redis` | Redis 7 | 6379 |
 | `object-store` | RustFS (S3-compatible; network alias `minio`) | 9000 |
@@ -117,7 +117,7 @@ npm run lint         # ESLint
 ### Execution Engine (run from `execution-engine/`)
 
 ```bash
-npm run dev          # Dev server (legacy engine, port 3000)
+npm run dev          # DEPRECATED legacy engine (server.ts, port 3000)
 npm run dev:worker   # Distributed worker in dev mode
 npm run build        # TypeScript compile to dist/
 npm test             # node:test via ts-node; *.test.ts are excluded from the build
@@ -240,7 +240,7 @@ The heaviest pages (all collocated in `src/pages/`):
 execution-engine/src/
 ├── worker.ts      # Redis Stream consumer (main distributed worker)
 ├── runner.ts      # Playwright step orchestration
-├── server.ts      # Express server for legacy POST /run endpoint
+├── server.ts      # DEPRECATED legacy engine (POST /run); removal planned
 ├── ai.ts          # OpenAI failure analysis
 ├── controller/    # Run lifecycle management
 └── core/          # Object store + Redis client setup
@@ -1384,7 +1384,13 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   statuses, counts, durations — never values/URLs/selectors/errors). SDK
   loaded by a variable-specifier `import()` only when the endpoint is set,
   typed locally (no @types needed); missing packages → off with one warning.
-  Worker image rebuild needed (new deps).
+  Worker image rebuild needed (new deps). **H4:** `server.ts` is
+  deprecated (removed one release after 2026-10): boot banner
+  (`core/legacy-engine.ts`), compose profile `legacy` only, and it ignores
+  ai_allowed / egress / cancel. `USE_DISTRIBUTED_EXECUTION` was never a
+  Settings field, so `dispatch_legacy_execution` was already unreachable;
+  it is now a constant. CONTINUOUS stays one job per case (not one
+  shared-browser job — default mode, 10-min job clock; parked in SCOPE_NOTES).
 
 - **Trace correlation (WP16a, 2026-10, decision V1)** — migration
   `e112b3c4d611` (`project.trace_settings` JSON, NULL = off). Opt-in per
