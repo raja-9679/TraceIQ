@@ -1,7 +1,7 @@
 # Handoff — resuming the regulated-readiness work
 
 Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-07, status corrected
-2026-09-08, latest resume section 2026-10-16 evening. Branch `feature/enterprise-auth-ai`.
+2026-09-08, latest resume section 2026-10-21. Branch `feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
 machine. Assistant session memory does **not** — it sits in
@@ -9,6 +9,31 @@ machine. Assistant session memory does **not** — it sits in
 it belongs here rather than in a chat history.
 
 ---
+
+## Resume here (2026-10-21, home laptop) — read this first
+
+**State.** Everything in `info/ROADMAP_EXECUTION_2026-10.md` is built:
+WP0–WP14 (2026-10-16), WP15f run lifecycle (2026-10-20), and WP15a–e + WP16
+(2026-10-21: RLS, signed images + FastAPI 0.153/Starlette 1.9 + worker OTel +
+legacy-engine deprecation, own E2E suite, accessibility register + HAR replay,
+generated API types + twin vectors, trace correlation, OpenAPI diff, test
+ownership, environment locks, validated repairs, value report). The tracker's
+log has every deviation from the owner's defaults. Migration head
+**`e152b3c4d616`**. MCP server: 54 tools.
+
+**Testing on this laptop.** Backend tests need the image with the new
+dependencies: `export TRACEIQ_TEST_IMAGE=traceiq-backend-test:wp15b` (or
+rebuild `:local` from the current `backend/requirements.txt`). RLS enforce
+run: `TRACEIQ_RLS_MODE=enforce ./run-tests-live.sh -q` — expected failures are
+the 20 cross-tenant tests that get 404 instead of 403. TraceIQ's own browser
+suite: `e2e/run-e2e.sh --build` (isolated `traceiq-e2e` stack, no host ports).
+
+**Open, needs the owner:** the real-service checklist
+(`docs/REAL_SERVICE_CHECKLIST.md` — SAML, PagerDuty/Opsgenie, Jira/Linear,
+Splunk/Elastic, Jaeger/Tempo need sandbox accounts); the release workflow's
+signing has never run (manual dispatch); RLS enforce rollout on a real
+deployment (off → log → enforce, docs/OPERATIONS.md); WP14d and estate active
+probing still parked; C5 history force-push still not done.
 
 ## Resume here (2026-10-16 evening, home laptop) — read this first
 

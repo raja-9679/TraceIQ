@@ -368,7 +368,7 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   TraceIQ principal; recording it as `system` makes "who removed this person's
   access" unanswerable).
 - **MCP server v2** — `integrations/mcp-server/` (pkg `traceiq-mcp-server`
-  0.2.0, FastMCP, `mcp>=1.10,<2`): 53 tools, each with Pydantic input/output
+  0.2.0, FastMCP, `mcp>=1.10,<2`): 54 tools, each with Pydantic input/output
   models → `outputSchema` + validated structured content. stdio
   (`traceiq-mcp`) + streamable HTTP (`traceiq-mcp-http`, POST /mcp on 8088,
   per-request `X-API-Key`/Bearer). Add a tool = output model in
