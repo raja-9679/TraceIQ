@@ -280,6 +280,51 @@ Image provenance: build with `--build-arg GIT_SHA=$(git rev-parse HEAD)`
 `monitoring/alerts.yml` alerts on no live workers while jobs wait, lag high or
 growing, and skew, and the Grafana dashboard has panels for the first two.
 
+## Run end states, cancel and time limits (WP15f)
+
+A run ends in one of five states. `passed`, `failed` and `error` are verdicts.
+`cancelled` (someone pressed Cancel, `POST /api/runs/{id}/cancel`) and
+`timed_out` (the platform gave up) are over **without** a verdict: they are
+never counted as a pass or a failure in pass rates, the quality gate or
+release readiness — a gate with nothing else to go on reads "insufficient
+data".
+
+Where `timed_out` comes from:
+
+| Limit | Default | What happens |
+|---|---|---|
+| `MAX_JOB_DURATION_MS` (worker config) | 600 000 | The worker reports the job `timed_out`, stops it at its next step boundary, and waits up to `TIMED_OUT_JOB_GRACE_MS` (60 000) for it to wind down before taking more work; past that it closes the browser. |
+| `STALE_RUN_INACTIVITY_MINUTES` (backend) | 15 | `check_stale_runs` marks a run with no new results `timed_out`. Results that arrive later still update it. |
+| `MAX_RUN_DURATION_HOURS` (backend) | 6 | Hard cap, same outcome. |
+
+A step that times out waiting for the page (`DEFAULT_TIMEOUT`, 30 s) is an
+ordinary test **failure**, not `timed_out`.
+
+Every non-passing result also carries `error_kind`: `test`, `setup`,
+`infrastructure`, `timeout`, `cancelled` or `not_executed`. A rise in
+`infrastructure` means look at the workers, not the application; flake
+scoring ignores those results.
+
+Cancellation reaches workers through the Redis key `run:cancelled:<id>`
+(72 h). If Redis is down when someone cancels, the run is still cancelled (its
+status is final and late results cannot reopen it) — queued jobs just run to
+no effect, and the API says `workers_notified: false`.
+
+**Finishing a run fires its side effects exactly once** (notifications,
+outbound webhooks, monitor check, paging, scans, triage). Since WP15f the
+aggregator does this itself; before, only the legacy `execution-engine`
+service did, and deployments without it never sent any of them.
+
+## Outbound webhook deliveries
+
+Every attempt is logged (Webhooks page → a webhook → Recent deliveries, or
+`GET /api/workspaces/{ws}/webhooks/{id}/deliveries`) for 30 days. Failed
+attempts retry after 1, 5 and 30 minutes; `410 Gone` and URLs refused by the
+network policy are not retried. Any logged delivery can be sent again
+(Redeliver) — same body and `X-TraceIQ-Delivery` id, freshly signed. URLs are
+checked against the network policy before every attempt and redirects are not
+followed. Only workspace admins see or manage webhooks.
+
 ## DB-driven worker config
 
 Instance settings group **worker** (Settings → Instance (Admin)) holds what a

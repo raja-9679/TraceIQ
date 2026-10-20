@@ -769,6 +769,8 @@ class TestCaseResultRead(SQLModel):
     result_kind: Optional[str] = None
     result_payload: Optional[dict] = None
     test_case_id: Optional[int] = None
+    # WP15f: why a non-passing result did not pass (run_status.ERROR_KINDS).
+    error_kind: Optional[str] = None
 
 
 class TestRunRead(TestRunBase):
@@ -1427,6 +1429,31 @@ class QualityGateResult(SQLModel):
     git_branch: Optional[str] = None
     evaluated_run_ids: List[int] = []
     checks: List[QualityGateCheck] = []
+    # WP15f: which stored policy judged this, so the verdict can be
+    # reproduced (GET .../quality-gate?policy_version=&run_ids=).
+    policy_version: Optional[int] = None
+    policy_sha256: Optional[str] = None
+    # Runs in scope that were left out because they carry no verdict
+    # (cancelled / timed out) — shown, never silently dropped.
+    ignored_run_ids: List[int] = []
+
+
+class GatePolicyVersion(SQLModel, table=True):
+    """An immutable snapshot of a project's EFFECTIVE gate policy (WP15f L4).
+
+    Written whenever the policy a gate evaluation would use differs from the
+    newest stored version: by PUT .../quality-gate/policy, and lazily by an
+    evaluation (first use, or a changed built-in default) — so every verdict
+    names a version that existed when it was made. Never updated.
+    """
+    __table_args__ = (UniqueConstraint("project_id", "version", name="uq_gatepolicyversion_project_version"),)
+    id: Optional[int] = Field(default=None, primary_key=True)
+    project_id: int = Field(foreign_key="project.id", index=True)
+    version: int
+    policy: Dict[str, Any] = Field(sa_column=Column(JSON, nullable=False))
+    sha256: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_by_id: Optional[int] = Field(default=None, foreign_key="users.id")
 
 
 DEFAULT_QUALITY_GATE = QualityGatePolicy()

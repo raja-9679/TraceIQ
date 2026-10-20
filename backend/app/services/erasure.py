@@ -78,6 +78,8 @@ RETAINED_AUTHORSHIP: List[str] = [
     # WP12d. A manual result's tester is result_payload.tester_id (JSON, same
     # position: the id survives, the identity does not).
     "releasesignoff.signed_by_id", "projectcostbudget.updated_by_id",
+    # WP15f: who saved a gate policy version (the version is the record).
+    "gatepolicyversion.created_by_id",
     # WP13a compliance records: who owns a control, who added evidence, who
     # requested / approved an exception, who generated a pack or reported a
     # drill. Governance records of the workspace (or instance, for drills).

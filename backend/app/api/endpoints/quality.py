@@ -16,7 +16,7 @@ Two things on top of everything shipped so far:
 """
 from collections import defaultdict
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from sqlmodel import select, func
@@ -27,7 +27,7 @@ from app.core.database import get_session
 from app.core.auth import get_current_user, get_current_principal, AuthPrincipal
 from app.services.access_service import access_service
 from app.services.flake_policy import active_quarantine_clause
-from app.services import release_readiness
+from app.services import gate_policy_versions, release_readiness, run_status
 from app.services.audit import record as audit_record
 from app.api.jobs import api_key_allows_project
 from app.models import (
@@ -46,10 +46,7 @@ FLAKE_THRESHOLD = 0.4  # matches auto-quarantine threshold in result_aggregator
 
 def _policy(project: Project) -> QualityGatePolicy:
     """Project policy merged over built-in defaults."""
-    if project.quality_gate_policy:
-        merged = {**DEFAULT_QUALITY_GATE.model_dump(), **project.quality_gate_policy}
-        return QualityGatePolicy(**merged)
-    return QualityGatePolicy()
+    return gate_policy_versions.effective_policy(project)
 
 
 async def _severity_counts(session: AsyncSession, *, project_id=None, run_ids=None,
@@ -172,13 +169,43 @@ async def set_quality_gate_policy(
     session.add(project)
     # The gate decides releases; who loosened it, and when, has to be answerable.
     changed = {k: {"from": before.get(k), "to": v} for k, v in after.items() if before.get(k) != v}
+    # Commits with the change: every policy that was ever in force stays
+    # addressable, so a past verdict can be re-evaluated against it (WP15f).
+    version = await gate_policy_versions.ensure_current(
+        session, project, policy, created_by_id=current_user.id, commit=False)
     if changed:
         await audit_record(
             session, entity_type="project", entity_id=project_id,
             action="quality_gate_policy_update", workspace_id=project.workspace_id,
-            user_id=current_user.id, changes=changed)
+            user_id=current_user.id, changes={**changed, "policy_version": version.version})
     await session.commit()
     return policy
+
+
+@router.get("/projects/{project_id}/quality-gate/policy/versions")
+async def list_quality_gate_policy_versions(
+    project_id: int,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    """Every policy that has judged this project's gate, newest first."""
+    await _readable_project(project_id, session, principal)
+    rows = await gate_policy_versions.list_versions(session, project_id)
+    return {"project_id": project_id, "versions": [gate_policy_versions.to_read(r) for r in rows]}
+
+
+@router.get("/projects/{project_id}/quality-gate/policy/versions/{version}")
+async def get_quality_gate_policy_version(
+    project_id: int,
+    version: int,
+    session: AsyncSession = Depends(get_session),
+    principal: AuthPrincipal = Depends(get_current_principal),
+):
+    await _readable_project(project_id, session, principal)
+    row = await gate_policy_versions.get_version(session, project_id, version)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Policy version not found")
+    return gate_policy_versions.to_read(row, include_policy=True)
 
 
 def coverage_check(finished_runs: list) -> QualityGateCheck:
@@ -208,11 +235,21 @@ def coverage_check(finished_runs: list) -> QualityGateCheck:
 async def evaluate_gate_for_runs(
     session: AsyncSession, project: Project, finished_runs: list,
     git_commit: Optional[str] = None, git_branch: Optional[str] = None,
+    *, policy_version=None, ignored_run_ids: Optional[List[int]] = None,
 ) -> QualityGateResult:
     """Evaluate the project's gate policy over a given set of finished runs.
     Shared by the gate endpoint and the run-report endpoint. Fails closed when
-    the set is empty — you can't certify what didn't run."""
-    policy = _policy(project)
+    the set is empty — you can't certify what didn't run.
+
+    `policy_version` (a GatePolicyVersion) re-judges with a past policy;
+    otherwise the current policy is used and recorded as a version, and the
+    result names it either way (WP15f)."""
+    if policy_version is None:
+        policy_version = await gate_policy_versions.ensure_current(session, project)
+    policy = gate_policy_versions.policy_of(policy_version)
+    # Anything else in finished_runs that has no verdict is left out loudly.
+    ignored = list(ignored_run_ids or []) + [r.id for r in finished_runs if r.status not in FINISHED]
+    finished_runs = [r for r in finished_runs if r.status in FINISHED]
     run_ids = [r.id for r in finished_runs]
     checks: list[QualityGateCheck] = []
 
@@ -222,7 +259,9 @@ async def evaluate_gate_for_runs(
         name="pass_rate",
         passed=bool(finished_runs) and pr >= policy.min_pass_rate,
         actual=f"{pr}%", threshold=f">= {policy.min_pass_rate}%",
-        detail=None if finished_runs else "no finished runs found",
+        detail=(("no finished runs found" if not finished_runs else None) if not ignored
+                else f"{len(ignored)} cancelled / timed-out run(s) not counted"
+                     + ("" if finished_runs else "; no other finished runs")),
         missing_data=not finished_runs))
     checks.append(coverage_check(finished_runs))
 
@@ -316,7 +355,9 @@ async def evaluate_gate_for_runs(
     return QualityGateResult(
         project_id=project.id, passed=passed_gate,
         git_commit=git_commit, git_branch=git_branch,
-        evaluated_run_ids=run_ids, checks=checks)
+        evaluated_run_ids=run_ids, checks=checks,
+        policy_version=policy_version.version, policy_sha256=policy_version.sha256,
+        ignored_run_ids=sorted(set(ignored)))
 
 
 async def _readable_project(project_id: int, session: AsyncSession,
@@ -340,23 +381,48 @@ async def evaluate_quality_gate(
     git_branch: Optional[str] = Query(None),
     session: AsyncSession = Depends(get_session),
     principal: AuthPrincipal = Depends(get_current_principal),
+    # Annotated so a direct (non-HTTP) call gets plain None defaults.
+    policy_version: Annotated[Optional[int], Query(ge=1)] = None,
+    run_ids: Annotated[Optional[List[int]], Query()] = None,
 ):
     """Go/no-go for a release. Evaluates the runs for a commit (or branch, or
-    the single latest run) against the project policy."""
+    the single latest run) against the project policy.
+
+    To reproduce an earlier verdict pass the `policy_version` and the
+    `evaluated_run_ids` it reported as `run_ids` (they must belong to this
+    project). Cancelled / timed-out runs are never counted; they are listed
+    in `ignored_run_ids`."""
     project = await _readable_project(project_id, session, principal)
 
+    version = None
+    if policy_version is not None:
+        version = await gate_policy_versions.get_version(session, project_id, policy_version)
+        if version is None:
+            raise HTTPException(status_code=404, detail="Policy version not found")
+
     stmt = select(TestRun).where(TestRun.project_id == project_id)
-    if git_commit:
+    if run_ids:
+        if len(run_ids) > 500:
+            raise HTTPException(status_code=400, detail="At most 500 run_ids")
+        stmt = stmt.where(TestRun.id.in_(run_ids))
+    elif git_commit:
         stmt = stmt.where(TestRun.git_commit == git_commit)
     elif git_branch:
         stmt = stmt.where(TestRun.git_branch == git_branch)
     runs = (await session.exec(stmt.order_by(TestRun.created_at.desc()))).all()
+    if run_ids and len({r.id for r in runs}) != len(set(run_ids)):
+        # Another project's run id must not be distinguishable from a missing one.
+        raise HTTPException(status_code=404, detail="Run not found in this project")
 
     finished = [r for r in runs if r.status in FINISHED]
-    if not git_commit and not git_branch:
+    if not run_ids and not git_commit and not git_branch:
         finished = finished[:1]  # latest finished run only
+    ignored = [r.id for r in runs if r.status in run_status.NO_VERDICT]
+    if not run_ids and not git_commit and not git_branch:
+        ignored = []          # "latest run" scope: older no-verdict runs are not in it
 
-    return await evaluate_gate_for_runs(session, project, finished, git_commit, git_branch)
+    return await evaluate_gate_for_runs(session, project, finished, git_commit, git_branch,
+                                        policy_version=version, ignored_run_ids=ignored)
 
 
 @router.get("/projects/{project_id}/release-readiness", response_model=ReleaseReadiness)
