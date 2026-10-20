@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import LLMProvidersCard from '@/components/settings/LLMProvidersCard';
 import IdpQuickSetupCard from '@/components/settings/IdpQuickSetupCard';
 import SiemStatusPanel from '@/components/settings/SiemStatusPanel';
+import RlsStatusPanel from '@/components/settings/RlsStatusPanel';
 import CostPricesEditor from '@/components/settings/CostPricesEditor';
 import { Pill } from '@/components/redesign/primitives';
 import {
@@ -45,6 +46,7 @@ const GROUPS: { id: string; title: string; description: string }[] = [
     { id: 'worker', title: 'Execution workers', description: 'Runtime config every execution worker fetches from /api/internal/worker-config at start and every 60s (blank = the worker keeps its own environment value), plus the instance-wide egress allowlist. Redis, the worker secret, MinIO credentials and WORKER_REGION stay environment-only on the worker.' },
     { id: 'network', title: 'Network access control', description: 'Trusted reverse proxies (whose X-Forwarded-For is believed), the SCIM source allowlist, and optional mTLS for worker → backend calls. A wrong CIDR here can lock out your IdP — values are validated on save.' },
     { id: 'observability', title: 'Observability', description: 'Prometheus the backend queries to show server metrics next to k6 load-test results, and the Jaeger or Tempo it reads backend traces from for projects with trace correlation on (Project settings → Backend traces).' },
+    { id: 'tenant_isolation', title: 'Tenant isolation (row-level security)', description: 'A second wall behind the application\'s access checks: Postgres itself keeps each request to the caller\'s workspaces for runs, results, cases, suites, secrets, findings and artifact records. Roll out off → log → enforce: log refuses nothing and counts requests that loaded another tenant\'s rows; move to enforce once that count stays at zero. Background jobs, migrations and public pages are never restricted. See docs/OPERATIONS.md → Tenant isolation.' },
     { id: 'cost', title: 'Cost', description: 'Your own prices, used to turn AI tokens and worker time into money on the Costs page and for project budgets. Nothing is priced until a currency is set; a model missing from the table shows as not priced. TraceIQ ships no vendor prices.' },
 ];
 
@@ -384,6 +386,11 @@ export default function InstanceSettingsSection() {
                                     </Button>
                                     <span className="text-xs text-ink-soft">Save first — the test uses saved values.</span>
                                 </div>
+                            </RowGroup>
+                        )}
+                        {group.id === 'tenant_isolation' && (
+                            <RowGroup title="Status">
+                                <RlsStatusPanel />
                             </RowGroup>
                         )}
                         {group.id === 'siem' && (
