@@ -20,7 +20,7 @@ application code that changes under it); tests/test_rls_plan.py checks it
 against app.services.rls.policy_sql().
 
 Revision ID: e012b3c4d601
-Revises: d092b3c4d600
+Revises: e132b3c4d613
 Create Date: 2026-10-20 20:00:00.000000
 """
 from typing import Sequence, Union
@@ -28,7 +28,7 @@ from typing import Sequence, Union
 from alembic import op
 
 revision: str = 'e012b3c4d601'
-down_revision: Union[str, None] = 'd092b3c4d600'
+down_revision: Union[str, None] = 'e132b3c4d613'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

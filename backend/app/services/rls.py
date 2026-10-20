@@ -139,6 +139,16 @@ RLS_POLICIES: Dict[str, str] = {
         "(SELECT COALESCE(c.project_id, (SELECT s.project_id FROM testsuite s "
         "WHERE s.id = c.test_suite_id)) FROM testcase c "
         "WHERE c.id = visualbaseline.test_case_id)"),
+    # Added at integration (migration e142b3c4d615): tables WP15d / WP16b /
+    # WP16c created alongside WP15a. All carry project_id. hararchive holds
+    # object-store keys; projectapispecversion holds full API specs.
+    "accessibilitycheck": _in_project("accessibilitycheck.project_id"),
+    "accessibilityviolation": _in_project("accessibilityviolation.project_id"),
+    "accessibilitywaiver": _in_project("accessibilitywaiver.project_id"),
+    "hararchive": _in_project("hararchive.project_id"),
+    "projectapispecversion": _in_project("projectapispecversion.project_id"),
+    "caseownernotice": _in_project("caseownernotice.project_id"),
+    "repairoutcome": _in_project("repairoutcome.project_id"),
 }
 
 # Tenant-linked tables that deliberately have NO policy, with the reason.
