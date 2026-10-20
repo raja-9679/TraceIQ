@@ -283,6 +283,23 @@ async def update_instance_settings(
         raise HTTPException(status_code=400,
                             detail="WORKER_LLM_PROVIDER: use inherit, anthropic, openai, "
                                    "gemini, ollama or openai-compatible")
+    backend_kind = body.values.get("TRACE_BACKEND")
+    if backend_kind not in (None, ""):
+        from app.services.trace_backends import BACKENDS
+        if str(backend_kind).strip().lower() not in BACKENDS:
+            raise HTTPException(status_code=400, detail="TRACE_BACKEND: use jaeger or tempo")
+        body.values["TRACE_BACKEND"] = str(backend_kind).strip().lower()
+    if body.values.get("TRACE_BACKEND_URL"):
+        from urllib.parse import urlsplit
+        from app.core.net_guard import UnsafeUrlError, validate_outbound_url
+        trace_url = str(body.values["TRACE_BACKEND_URL"])
+        try:
+            # Same rule as PROMETHEUS_URL: the admin naming the host is its
+            # private-network exemption; metadata ranges stay refused.
+            await validate_outbound_url(
+                trace_url, extra_allowed_hosts=[urlsplit(trace_url).hostname or ""])
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=400, detail=f"TRACE_BACKEND_URL: {exc}")
     if body.values.get("PROMETHEUS_URL"):
         from urllib.parse import urlsplit
         from app.core.net_guard import UnsafeUrlError, validate_outbound_url

@@ -191,6 +191,11 @@ class Project(SQLModel, table=True):
     # carried in the job as settings.egress_policy.
     network_policy: Optional[Dict[str, Any]] = Field(
         default=None, sa_column=Column(JSON))
+    # Trace correlation with the application under test (WP16a, V1). None →
+    # off. Shape mirrors app.services.trace_correlation.TraceSettings; when
+    # on, workers add a W3C traceparent to requests to the project's OWN hosts.
+    trace_settings: Optional[Dict[str, Any]] = Field(
+        default=None, sa_column=Column(JSON))
     # Who hears about this project's runs and where (email recipients, the
     # project's own Slack/Teams webhooks, encrypted). None → email the run
     # starter only, no chat. Shape and rules: app/services/project_notifications.py.

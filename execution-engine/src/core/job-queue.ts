@@ -84,6 +84,9 @@ export interface TestJob {
         ai_allowed?: boolean;
         // Feature flags / variant the run declared (WP12c), for {{flag.NAME}}.
         flags?: Record<string, string | boolean>;
+        // WP16a: own hosts that get a W3C traceparent (core/trace-context.ts).
+        // Absent = trace correlation off.
+        trace_correlation?: { enabled: boolean; hosts: string[]; cross_origin?: boolean };
         // Phase MOB: app binary descriptor for mobile_appium jobs — presigned
         // MinIO URL + metadata the mobile worker needs to install/launch it.
         mobile_app?: {

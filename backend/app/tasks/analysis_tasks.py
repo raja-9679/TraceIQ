@@ -80,6 +80,7 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
                         print(f"[FailureAnalysis] history lookup failed for result {result.id}: {exc}")
 
                 payload = result.result_payload or {}
+                step_traces = backend_error_spans(run, project, payload.get("step_evidence"))
                 report = analyze_case_failure(
                     test_name=result.test_name,
                     error_message=result.error_message or "",
@@ -94,6 +95,7 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
                     history=history,
                     changed_since_last_pass=change,
                     result_id=result.id,
+                    step_traces=step_traces,
                 )
                 result.ai_analysis = report.model_dump_json()
                 session.add(result)
@@ -109,6 +111,28 @@ def analyze_run_failures(run_id: int, provider_id: int | None = None) -> Dict[st
               f"({rollup.categories})")
         return {"status": "ok", "analyzed": len(reports),
                 "categories": rollup.categories}
+
+
+def backend_error_spans(run, project, step_evidence) -> dict | None:
+    """{step index: error-span summary} from the trace backend (WP16a), or
+    None when there is nothing to look up. Never raises: traces are evidence
+    for the report, and spans that have not been ingested yet simply mean no
+    `sN.trace` item (re-running the analysis later picks them up)."""
+    from app.services import trace_backends
+    if run.local_worker_id or not trace_backends.step_trace_refs(step_evidence):
+        return None
+    cfg = trace_backends.configured()
+    if cfg is None:
+        return None
+    try:
+        from app.services.data_policy import resolve_for_project
+        from app.services.redaction import RedactionPolicy
+        policy = RedactionPolicy.from_data_policy(resolve_for_project(project) if project else None)
+        payload = trace_backends.build_result_traces(step_evidence, cfg=cfg, policy=policy)
+        return trace_backends.error_spans_by_step(payload) or None
+    except Exception as exc:  # noqa: BLE001
+        print(f"[FailureAnalysis] trace lookup failed for run {run.id}: {exc}")
+        return None
 
 
 def network_failures_for(events, test_name: str) -> list:

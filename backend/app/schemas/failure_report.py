@@ -29,11 +29,12 @@ class FailureEvidence(BaseModel):
 class EvidenceItem(BaseModel):
     """One citable piece of evidence. `id` is what observations and
     hypotheses reference: `s3` (step 4), `s3.c0` (its first console line),
-    `s3.r1` (its second failed request), `s3.dom`, `s3.shot`, `error`,
+    `s3.r1` (its second failed request), `s3.dom`, `s3.shot`, `s3.trace`
+    (backend error spans under the step, WP16a), `error`,
     `run:<id>` (a prior run of this case); results from workers that predate
     per-step evidence use `console.<n>` / `net.<n>`."""
     id: str
-    kind: str  # step | console | request | dom | screenshot | error | history
+    kind: str  # step | console | request | dom | screenshot | trace | error | history
     label: str
     step_index: Optional[int] = None
 

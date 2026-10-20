@@ -13,6 +13,7 @@ import { jsonPath } from './json-path';
 import { checkExpectSchema, formatViolations } from './schema-check';
 import { localiseUrl } from './frontend-quality/emulation';
 import { executeVisualMatch } from './visual-step';
+import { traceApiHeaders } from './trace-context';
 
 // jsonPath lives in ./json-path (shared with the wait-for-webhook step);
 // re-exported so existing imports keep working.
@@ -180,11 +181,13 @@ export class TestExecutor {
                         } catch (e) { }
                     };
 
+                    // Own-host traceparent (WP16a), per URL: a batch may mix hosts.
+                    const sendHeaders = { ...mergedHeaders, ...traceApiHeaders(testCaseContext, reqUrl, mergedHeaders) };
                     page.context().on('request', requestHandler);
                     try {
                         apiResponse = await page.request.fetch(reqUrl, {
                             method,
-                            headers: mergedHeaders,
+                            headers: sendHeaders,
                             params: mergedParams,
                             data: body,
                             timeout: 30000
@@ -462,7 +465,7 @@ export class TestExecutor {
 
                 console.log(`  [GraphQL] POST ${gqlUrl}`);
                 const gqlResp = await page.request.post(gqlUrl, {
-                    headers: gqlHeaders,
+                    headers: { ...gqlHeaders, ...traceApiHeaders(testCaseContext, gqlUrl, gqlHeaders) },
                     data: { query, variables: gqlVariables },
                     timeout: 30000,
                 });
@@ -608,7 +611,10 @@ export class TestExecutor {
 
                     page.context().on('request', requestHandler);
                     try {
-                        feedResponse = await page.request.get(feedUrl, { headers: mergedHeaders, params: mergedParams });
+                        feedResponse = await page.request.get(feedUrl, {
+                            headers: { ...mergedHeaders, ...traceApiHeaders(testCaseContext, feedUrl, mergedHeaders) },
+                            params: mergedParams,
+                        });
                     } finally {
                         page.context().off('request', requestHandler);
                     }

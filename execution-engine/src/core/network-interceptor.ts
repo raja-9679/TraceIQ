@@ -1,5 +1,6 @@
 import { BrowserContext } from 'playwright';
 import { RedactionPolicy, redactHeaders, redactText } from './redact';
+import { TraceCorrelation, frameUrlOf } from './trace-context';
 
 export class NetworkInterceptor {
     /**
@@ -76,7 +77,9 @@ export class NetworkInterceptor {
     public static async setupRouteInterception(
         context: BrowserContext,
         currentSettings: any,
-        sourceDomain: { value: string | null }
+        sourceDomain: { value: string | null },
+        // WP16a: adds `traceparent` to own-host requests during a step.
+        trace?: TraceCorrelation | null
     ) {
         const getDomain = (url: string) => {
             try {
@@ -172,6 +175,19 @@ export class NetworkInterceptor {
                     newUrl = appendParams(newUrl, globalParams);
                     if (newUrl !== urlStr) modifiedUrl = true;
                 }
+            }
+
+            // Trace correlation last, so a traceparent the suite headers or
+            // the page already set is seen and left alone.
+            const tp = trace?.browserHeaders({
+                url: modifiedUrl ? newUrl : urlStr,
+                navigation: request.isNavigationRequest(),
+                frameUrl: frameUrlOf(request),
+                headers,
+            });
+            if (tp) {
+                Object.assign(headers, tp);
+                modifiedHeaders = true;
             }
 
             if (modifiedHeaders || modifiedUrl) {
