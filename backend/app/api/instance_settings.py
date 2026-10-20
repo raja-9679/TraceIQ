@@ -57,6 +57,10 @@ async def get_current_instance_admin(
             status_code=403,
             detail="Instance settings can only be managed by the instance admin "
                    "(an admin of the first tenant on this deployment)")
+    # Operator endpoints read across tenants on purpose (fleet, DLQ, policy
+    # decisions, instance-wide reviews): no database tenant scope for them.
+    from app.services import rls
+    await rls.bypass(session, "instance_admin")
     return current_user
 
 
@@ -331,6 +335,11 @@ async def update_instance_settings(
                 if body.values[key] in (None, {}):
                     body.values[key] = None
 
+    # Tenant isolation (WP15a): refuse a mode this database cannot enforce, and
+    # switch table flags BEFORE saving, so a refused DDL leaves nothing saved.
+    if "RLS_MODE" in body.values or "RLS_LOG_SAMPLE_PERCENT" in body.values:
+        await _check_rls_settings(session, proposed)
+
     for key, value in body.values.items():
         d = insvc.REGISTRY[key]
         row = (await session.exec(
@@ -386,6 +395,62 @@ async def update_instance_settings(
             await session.commit()
 
     return [_read_one(k) for k in insvc.REGISTRY]
+
+
+async def _check_rls_settings(session: AsyncSession, proposed) -> None:
+    from app.services import rls
+    raw = proposed("RLS_MODE")
+    mode = str(raw or "off").strip().lower()
+    if mode not in rls.MODES:
+        raise HTTPException(status_code=400,
+                            detail=f"RLS_MODE must be one of {', '.join(rls.MODES)}")
+    try:
+        pct = int(proposed("RLS_LOG_SAMPLE_PERCENT") if proposed("RLS_LOG_SAMPLE_PERCENT")
+                  is not None else 100)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="RLS_LOG_SAMPLE_PERCENT must be a number")
+    if not 0 <= pct <= 100:
+        raise HTTPException(status_code=400, detail="RLS_LOG_SAMPLE_PERCENT must be 0-100")
+    if mode == "enforce":
+        # Fresh, not the 5-minute cache: the operator may just have created the role.
+        mech = rls._remember(await session.run_sync(lambda s: rls.detect_sync(s.connection())))
+        if not mech.effective:
+            raise HTTPException(status_code=400, detail=(
+                f"Row-level security cannot be enforced on this database: {mech.detail}"))
+    try:
+        await rls.reconcile(mode)
+    except Exception as exc:  # noqa: BLE001 — e.g. lock_timeout on a busy table
+        raise HTTPException(status_code=503, detail=(
+            f"Could not switch row-level security on the covered tables ({exc.__class__.__name__}); "
+            "nothing was saved. Retry when the database is quieter."))
+
+
+@router.get("/admin/rls/status")
+async def rls_status(
+    session: AsyncSession = Depends(get_session),
+    admin: User = Depends(get_current_instance_admin),
+):
+    """Mode, whether enforcement is actually possible on this database, the
+    per-table policy state, and what log mode has counted."""
+    from app.services import rls
+    return await rls.status(session)
+
+
+@router.post("/admin/rls/violations/reset")
+async def rls_reset_violations(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    admin: User = Depends(get_current_instance_admin),
+):
+    from app.services import rls
+    from app.services.audit import record
+    before = await rls.violation_counts()
+    await rls.reset_violation_counts()
+    await record(session, entity_type="instance_setting", entity_id=0,
+                 action="rls_violations_reset", user_id=admin.id,
+                 changes={"total_before": before.get("total", 0)}, request=request)
+    await session.commit()
+    return await rls.violation_counts()
 
 
 @router.delete("/admin/instance-settings/{key}", response_model=SettingRead)

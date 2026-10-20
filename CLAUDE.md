@@ -1548,6 +1548,42 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   heal proposals for them. Deliberately NOT excluded: run lists, cost/quota,
   ops metrics, the concurrency cap. Worker + backend + frontend rebuild needed.
 
+- **Tenant isolation in Postgres (WP15a, H1, 2026-10-20)** — migration
+  `e012b3c4d601`; `app/services/rls.py`; operator steps in `docs/OPERATIONS.md`
+  → "Tenant isolation". RLS is a SECOND wall; Python checks stay. One policy
+  `traceiq_tenant` per table in `RLS_POLICIES` (project, testsuite, testcase,
+  testrun, testcaseresult, projectsecret, securityfinding, persona,
+  authsession, mobileappbuild, visualcomparison, visualbaseline); tables are
+  ENABLEd, never FORCEd. **The app user is the owner — and a superuser in the
+  shipped compose — so RLS alone would do nothing**: enforcing transactions
+  `SET LOCAL ROLE <db>_rls` (NOLOGIN role the migration creates + grants;
+  per-database name because roles are cluster-wide) and set
+  `traceiq.rls_mode/workspace_ids/project_ids`. Nobody else switches role, so
+  Celery/beat/migrations/pg_dump/public endpoints are untouched, plans
+  included. Policies also only restrict when `rls_mode='enforce'` — that is
+  what makes the no-CREATEROLE fallback (FORCE RLS, applied by
+  `reconcile_sync` only while enforcing) safe. Bound in
+  `get_current_principal` (`rls.bind_principal`; after_begin listener
+  re-applies per transaction — SET LOCAL dies at commit);
+  `get_current_instance_admin` calls `rls.bypass`; `create_workspace` calls
+  `rls.extend`. Scope = every workspace the user relates to (membership,
+  team, tenant role/owner, demo owner, any project/case grant) — a tenant
+  wall, not RBAC; API keys are held to their workspace (+ project). Instance
+  settings `RLS_MODE` off|log|enforce (default off; typo → off) and
+  `RLS_LOG_SAMPLE_PERCENT`. **Log mode is app-side on purpose**: a
+  policy-side counter fires for every row a scan VISITS, not returns. ORM
+  loads/flushes of covered rows are remembered and `rls.finish` (get_session
+  teardown) asks Postgres with `shadow_predicate` which were out of scope →
+  warning + Redis counter → `GET /api/admin/rls/status`. Saving `enforce`
+  refuses an `unavailable` mechanism. Not covered: SQL injection (can RESET
+  ROLE), sessions endpoints open themselves, raw SQL/deletes in log mode,
+  `RLS_DEFERRED` tables. `tests/test_rls_plan.py` = purge-plan-style FK walk +
+  frozen migration text == `policy_sql()`; live `test_rls_db.py` bypasses the
+  Python check and shows Postgres still denies. `TRACEIQ_RLS_MODE=enforce
+  ./run-tests-live.sh` scopes every directly-called endpoint via
+  `tests/integration/conftest.py`. New tenant table → policy + migration, or
+  `RLS_EXEMPT` with a reason.
+
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,
@@ -1720,8 +1756,8 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   It runs `tests/integration` and an `alembic downgrade -3 && upgrade head`
   round trip. `tests/integration/*` self-skip unless `TRACEIQ_LIVE_DB` is set.
   `tests/integration/test_tenant_isolation_db.py` is the important one: isolation
-  here is **application-layer only** (no RLS, one shared bucket), so every
-  boundary is a Python `if`. Five of the eight old `verify_*.py` scripts could not
+  here is **application-layer first** (RLS since WP15a is opt-in and covers a
+  subset of tables; one shared bucket), so every boundary is a Python `if`. Five of the eight old `verify_*.py` scripts could not
   even import (they referenced the long-gone `Organization` model) and are
   deleted — they were never convertible.
   Coverage gates: a low global floor (22%; real ~24%) plus a **70% floor on the

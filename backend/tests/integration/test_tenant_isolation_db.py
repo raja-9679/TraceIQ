@@ -10,10 +10,11 @@ however long that took, and nobody noticed, because nothing ran them.
 So there was nothing to convert. These are written from intent.
 
 That matters more here than anywhere else in the codebase, because **tenant
-isolation is application-layer only**: no row-level security, no `CREATE POLICY`,
-one shared Postgres and one shared bucket. Every boundary below is a Python `if`.
-If one of them regresses, one customer reads another customer's tests, and no
-database constraint will stop it.
+isolation is application-layer first**: one shared Postgres and one shared
+bucket, and every boundary below is a Python `if`. Row-level security (WP15a,
+tests/integration/test_rls_db.py) is a second wall, but it is opt-in
+(RLS_MODE), covers a subset of tables and never the object store — so if one
+of these regresses, assume nothing else stops it.
 
 Two tenants, no relationship between them, and every question asked from the
 wrong side:

@@ -625,6 +625,90 @@ two autoscalers on one Deployment fight. `minReplicas: 0` scales a pool to zero
 when idle (`activationLagCount` wakes it). Off by default; with it off the
 chart renders byte-for-byte what it did before.
 
+## Tenant isolation: row-level security (WP15a)
+
+Every endpoint checks access in Python. Row-level security (RLS) is a second
+wall behind those checks: in `enforce` mode Postgres itself keeps a request to
+the caller's workspaces, so a query that forgot its `WHERE` returns nothing
+from another tenant and cannot write into one. It is never a replacement for
+the Python checks.
+
+**Covered tables:** `project`, `testsuite`, `testcase`, `testrun`,
+`testcaseresult`, `projectsecret`, `securityfinding`, `persona`, `authsession`,
+and the artifact records `mobileappbuild`, `visualcomparison`,
+`visualbaseline`. The rest are listed in `app/services/rls.py`
+(`RLS_DEFERRED` is the backlog; `tests/test_rls_plan.py` stops it growing).
+
+**What is scoped:** requests that authenticate through
+`get_current_principal` (JWT or API key). Scope = every workspace the user has
+any relationship with (membership, team, tenant admin/owner, a direct
+project or case grant). An API key is held to its own workspace, and a
+project-scoped key to its one project. **Not scoped**, by design: Celery and
+beat, migrations, scripts, `pg_dump`, unauthenticated endpoints (share links,
+trust centers, status pages, webhook capture, incident webhooks, worker
+`/internal/*` and run webhooks, SCIM, login/SSO/register), and instance-admin
+endpoints (`get_current_instance_admin` drops the scope — fleet, DLQ, policy
+decisions, instance-wide access reviews and restore drills read across
+tenants on purpose).
+
+**How, with one database user.** The migration creates a `NOLOGIN` role
+`<database>_rls` and grants it to the app user; tables get `ENABLE ROW LEVEL
+SECURITY` (never `FORCE`). An enforcing request transaction does `SET LOCAL
+ROLE <database>_rls` plus three `SET LOCAL` settings; nothing else ever
+switches role, so the owner — and in the shipped compose files the owner is
+the Postgres superuser, which RLS never applies to — is exactly as before,
+including its query plans. If the app user lacks `CREATEROLE` the migration
+skips the role with a NOTICE and enforce mode uses `FORCE ROW LEVEL SECURITY`
+instead (applied only while enforcing; the policies stay inert for sessions
+that never set `traceiq.rls_mode`). A DBA can create the role later:
+
+```sql
+CREATE ROLE "<database>_rls" NOLOGIN NOINHERIT NOBYPASSRLS;
+GRANT "<database>_rls" TO <app_user>;
+-- then restart one backend: it grants table privileges itself at startup
+```
+
+With the FORCE fallback, `pg_dump` (and `scripts/restore_drill.sh` dumps)
+needs `--enable-row-security` while enforcing — without it pg_dump refuses
+forced tables. Neither is needed with the role.
+
+**What it does not protect against.** SQL injection: the request's own
+connection can `RESET ROLE` and change the settings, as with any scheme where
+the app holds one login. Sessions an endpoint opens itself
+(`async_session_factory()`), and tables not yet covered.
+
+### Rollout
+
+1. **Check it can enforce.** Settings → Instance (Admin) → *Tenant isolation*
+   → Status, or `GET /api/admin/rls/status`. Mechanism should read *role*;
+   *unavailable* means a superuser app user and no role (create it, above);
+   *not installed* means migrations have not run.
+2. **`log`.** Set *Row-level security mode* to `log`. Nothing is refused and
+   the database is not involved during the request: a sampled share of
+   authenticated requests (`RLS_LOG_SAMPLE_PERCENT`, default 100) remembers
+   the covered rows it loaded or wrote as ORM objects, and at the end of the
+   request one query per touched table asks Postgres, with the same predicate
+   the policy uses, which were outside the caller's scope. Each hit is a
+   warning in the backend log — `rls(log): N testrun row(s) outside the
+   caller's tenant scope … (actor=user:12, request=GET /api/…, ids=[…])` — and
+   a count on the status card (per table, instance-wide via Redis). Column-only
+   selects, raw SQL and deletes are not seen by log mode; enforce covers them.
+3. **Fix or explain every hit.** A hit is either a real cross-tenant read the
+   Python checks let through (fix it) or a path that legitimately crosses
+   tenants (give it `rls.bypass()` with a comment, like the instance-admin
+   dependency). Reset the count and keep watching through a normal week.
+4. **`enforce`.** Saving `enforce` re-checks the mechanism and refuses if it
+   cannot work. Out-of-scope rows become invisible (a run of another tenant
+   now answers 404 rather than 403) and writes into another tenant fail.
+   Enforcing requests cost one extra statement per transaction; covered rows
+   with no direct project column (`testcaseresult`, `visualbaseline`) cost a
+   primary-key lookup each under enforce.
+5. **Back out** by setting `off` (or `log`); takes effect within ~15 s in
+   every process, no restart.
+
+`RLS_MODE` may also come from the environment (the database value wins).
+An unrecognised value is treated as `off` and logged, never as `enforce`.
+
 ## Restore drill
 
 `scripts/restore_drill.sh` restores the newest backup into a throwaway

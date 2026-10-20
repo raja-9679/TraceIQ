@@ -218,6 +218,16 @@ async def _principal_from_api_key(
 _READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 
+async def _bind_tenant_scope(session: AsyncSession, principal: AuthPrincipal,
+                             request: Request) -> None:
+    """WP15a. Scope the rest of this request's transactions to the caller's
+    workspaces at the DATABASE level (RLS_MODE log|enforce; a no-op when off).
+    FastAPI caches get_session per request, so this is the endpoint's own
+    session."""
+    from app.services import rls
+    await rls.bind_principal(session, principal, request)
+
+
 async def _agent_gate(request: Request, session: AsyncSession, principal: AuthPrincipal) -> None:
     """WP14b. Attribute this request's LLM calls to the calling agent, and
     apply the agent kill switch to writes made with a workspace API key (the
@@ -265,6 +275,7 @@ async def get_current_principal(
             api_key_raw, session, agent_id, client_addr=client_ip(request))
         if principal:
             principal.agent_session_id = agent_session_id
+            await _bind_tenant_scope(session, principal, request)
             await _agent_gate(request, session, principal)
             return principal
         raise HTTPException(status_code=401, detail="Invalid API key")
@@ -277,6 +288,7 @@ async def get_current_principal(
                 agent_id=agent_id,
                 agent_session_id=agent_session_id,
             )
+            await _bind_tenant_scope(session, principal, request)
             await _agent_gate(request, session, principal)
             return principal
 

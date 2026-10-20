@@ -37,6 +37,11 @@ class WorkspaceService:
              
         user_ws = UserWorkspace(user_id=owner_id, workspace_id=ws.id, role_id=admin_role.id, role="admin")
         session.add(user_ws)
+        # The caller now administers a workspace their request-time tenant
+        # scope (WP15a) did not include, and may write projects into it next
+        # (demo workspace, auto_create_project).
+        from app.services import rls
+        await rls.extend(session, [ws.id])
         
         # Audit log
         audit = AuditLog(

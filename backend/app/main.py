@@ -88,6 +88,13 @@ async def lifespan(app: FastAPI):
             await ensure_bootstrap_admin(session)
     except Exception:
         logger.exception("bootstrap admin provisioning failed; continuing startup")
+    # Tenant isolation (WP15a): align table flags with RLS_MODE. Only the FORCE
+    # fallback ever changes anything; failure leaves the status page saying so.
+    try:
+        from app.services import rls
+        logger.info("rls: %s", await rls.reconcile())
+    except Exception:
+        logger.exception("rls: reconcile at startup failed; continuing")
     logger.info("Startup complete")
     yield
     logger.info("Shutting down...")

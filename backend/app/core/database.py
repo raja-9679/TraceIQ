@@ -45,7 +45,14 @@ async def init_db():
 
 async def get_session() -> AsyncSession:
     async with async_session_factory() as session:
-        yield session
+        try:
+            yield session
+        finally:
+            # RLS log mode (WP15a): check the rows this request loaded against
+            # the caller's tenant scope. A dict lookup when nothing was bound.
+            if session.info:
+                from app.services import rls
+                await rls.finish(session)
 
 
 @asynccontextmanager
