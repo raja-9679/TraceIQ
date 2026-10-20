@@ -244,13 +244,17 @@ async def _previous_run_id(session, project_id: int, key: Tuple, before: datetim
     """Latest run before `before` with a check for this comparable key."""
     from sqlmodel import select
     from app.models import AccessibilityCheck, TestRun
+    from app.services import run_scope
 
     kind, who, browser, device = key
     stmt = (select(AccessibilityCheck.test_run_id)
             .join(TestRun, TestRun.id == AccessibilityCheck.test_run_id)
             .where(AccessibilityCheck.project_id == project_id,
                    AccessibilityCheck.browser == browser,
-                   TestRun.created_at < before))
+                   TestRun.created_at < before,
+                   # A validation run (WP16c) ran an overlay, not the stored
+                   # case: it is never the baseline "new" is judged against.
+                   run_scope.counted(TestRun)))
     stmt = stmt.where(AccessibilityCheck.test_case_id == who) if kind == "case" \
         else stmt.where(AccessibilityCheck.test_case_id.is_(None),
                         AccessibilityCheck.test_name == who)

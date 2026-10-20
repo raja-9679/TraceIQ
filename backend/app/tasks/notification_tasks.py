@@ -514,7 +514,7 @@ def owner_notices_for_run(session: Session, run_id: int, send=None) -> int:
     concurrent failing runs produce one email per pass->fail transition."""
     from sqlalchemy.exc import IntegrityError
     from app.models import CaseOwnerNotice, ProjectNotificationPref, TestCase, TestCaseResult
-    from app.services import project_notifications as pn
+    from app.services import project_notifications as pn, run_scope
     from app.services.ownership_review import is_test_failure
     from app.settings_models import UserSettings
     send = send or send_account_email
@@ -545,6 +545,8 @@ def owner_notices_for_run(session: Session, run_id: int, send=None) -> int:
             select(TestCaseResult).join(TestRun, TestRun.id == TestCaseResult.test_run_id)
             .where(TestCaseResult.test_case_id == case_id, TestRun.project_id == project.id,
                    TestRun.id != run.id, TestRun.created_at <= run.created_at,
+                   # Validation runs (WP16c) ran an overlay, not this test.
+                   run_scope.counted(TestRun),
                    TestCaseResult.status.in_(verdicts),
                    (TestCaseResult.result_kind.is_(None)) | (TestCaseResult.result_kind != "manual"))
             .order_by(TestRun.created_at.desc(), TestCaseResult.id.desc()).limit(1)).first()
