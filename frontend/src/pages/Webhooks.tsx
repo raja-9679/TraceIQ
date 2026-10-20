@@ -19,6 +19,7 @@ import {
 import type { Tone } from '@/components/redesign/kinds';
 import { Facts, Field, FormCard, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { cn } from '@/lib/utils';
+import { DeliveryLog } from '@/components/webhooks/DeliveryLog';
 
 interface ApiError extends Error {
   response?: { data?: { detail?: string } };
@@ -197,6 +198,7 @@ function CreateWebhookForm({
           </div>
           <p className="text-xs text-ink-soft">
             {events.length === 0 ? 'No filter — all run events are delivered.' : `${events.length} event(s) selected.`}
+            {' '}<span className="font-mono">run.completed</span> also covers errored, cancelled and timed-out runs.
           </p>
         </fieldset>
       </div>
@@ -342,7 +344,12 @@ export default function Webhooks() {
           {isLoading ? (
             <ListSkeleton />
           ) : error ? (
-            <EmptyState title="Couldn't load webhooks">{errorDetail(error)}</EmptyState>
+            (error as { response?: { status?: number } }).response?.status === 403
+              ? <EmptyState title="Workspace admins only">
+                  Webhooks receive every run of this workspace, and their URLs often carry credentials,
+                  so only workspace admins can see and manage them.
+                </EmptyState>
+              : <EmptyState title="Couldn't load webhooks">{errorDetail(error)}</EmptyState>
           ) : all.length === 0 ? (
             <EmptyState title="No webhooks yet">
               Register a webhook so external systems — Slack relays, dashboards, or your own services — are
@@ -384,8 +391,8 @@ export default function Webhooks() {
                     </ListGroup>
                   ))}
                   <p className="px-1 text-xs leading-relaxed text-ink-soft">
-                    The signing secret is shown once at creation. Failed deliveries are retried and counted —
-                    disable a webhook to stop delivery without deleting it.
+                    The signing secret is shown once at creation. Failed deliveries are retried (1, 5 and 30 minutes)
+                    and logged — disable a webhook to stop delivery without deleting it.
                   </p>
                 </>
               }
@@ -429,7 +436,10 @@ export default function Webhooks() {
                     <Panel title="Verifying deliveries" callout>
                       Each POST carries an HMAC-SHA256 signature of the body in the{' '}
                       <code className="font-mono text-sm">X-TraceIQ-Signature</code> header, computed with the signing secret shown at creation.
+                      {' '}<code className="font-mono text-sm">X-TraceIQ-Delivery</code> stays the same across retries — use it to drop duplicates.
                     </Panel>
+
+                    <DeliveryLog workspaceId={workspaceId} webhookId={selected.id} />
 
                     <div className="flex flex-wrap gap-2.5">
                       <Button

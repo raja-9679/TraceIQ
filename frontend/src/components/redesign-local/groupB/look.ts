@@ -10,6 +10,9 @@ export const statusLook = (status: string | null | undefined): { kind: Kind; ton
         case 'running': return { kind: 'review', tone: 'lavender', label: 'Running' };
         case 'pending': return { kind: 'skip', tone: 'neutral', label: 'Queued' };
         case 'skipped': return { kind: 'skip', tone: 'neutral', label: 'Skipped' };
+        // WP15f: over, but no verdict.
+        case 'cancelled': return { kind: 'skip', tone: 'neutral', label: 'Cancelled' };
+        case 'timed_out': return { kind: 'block', tone: 'butter', label: 'Timed out' };
         default: return { kind: 'skip', tone: 'neutral', label: status || 'Unknown' };
     }
 };

@@ -24,6 +24,9 @@ const RUN_LOOK: Record<TestRun['status'], { label: string; tone: Tone }> = {
     error: { label: 'Error', tone: 'peach' },
     running: { label: 'Running', tone: 'lavender' },
     pending: { label: 'Queued', tone: 'neutral' },
+    // WP15f: over, but no verdict.
+    cancelled: { label: 'Cancelled', tone: 'neutral' },
+    timed_out: { label: 'Timed out', tone: 'butter' },
 };
 
 function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {

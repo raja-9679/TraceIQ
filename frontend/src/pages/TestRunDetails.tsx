@@ -3,11 +3,13 @@ import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { api, getRun, getArtifactUrl, forceCompleteRun, createComparisonRun, apiWebSocketUrl, triggerRun } from "@/lib/api";
 import { llmProvidersApi } from "@/api/llmProviders";
-import { Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Activity, LayoutGrid, Bug, PlayCircle, Server, Globe, Zap, ExternalLink, GitCompareArrows, MonitorSmartphone } from "lucide-react";
+import { Brain, FileText, Video, ChevronDown, ChevronRight, CheckCircle, XCircle, Copy, Check, AlertTriangle, Activity, LayoutGrid, Bug, PlayCircle, Server, Globe, Zap, ExternalLink, GitCompareArrows, MonitorSmartphone, Ban } from "lucide-react";
 import { useState, useEffect } from "react";
 import { TraceTimeline } from "@/components/TraceTimeline";
 import CreateTicketDialog from "@/components/CreateTicketDialog";
 import { toast } from "sonner";
+import { errorKindLook, isLive, isNoVerdict, isTerminal, passRate as resultPassRate, statusLabel } from "@/lib/runStatus";
+import { CancelRunButton } from "@/components/runs/CancelRunButton";
 import { Button } from "@/components/ui/button";
 import { KindChip, ListCard, ListRow, PageHeader, Pill, SplitView } from "@/components/redesign/primitives";
 import * as Tabs from "@radix-ui/react-tabs";
@@ -52,8 +54,10 @@ export default function TestRunDetails() {
     // WebSocket for Real-time Updates
     useEffect(() => {
         if (!isValidRunId) return;
-        // If run is already finished, no need to connect (unless you want to watch for potential post-run updates, but unlikely)
-        if (run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error') return;
+        // If run is already finished, no need to connect. Includes cancelled /
+        // timed out (WP15f) — the old passed/failed/error check kept a
+        // cancelled run's page connected forever.
+        if (isTerminal(run?.status)) return;
 
         // Browsers can't set headers on a WebSocket, so the JWT rides in the
         // subprotocol list (Sec-WebSocket-Protocol), not the URL — a URL ends
@@ -176,7 +180,7 @@ export default function TestRunDetails() {
             toast.error("Failed to start the run", { description: detail || "An error occurred" });
         }
     });
-    const isFinishedRun = run?.status === 'passed' || run?.status === 'failed' || run?.status === 'error';
+    const isFinishedRun = isTerminal(run?.status);
 
     // Check if test is stuck (running for more than 10 minutes)
     const isStuckTest = run?.status === "running" && run?.created_at &&
@@ -192,7 +196,10 @@ export default function TestRunDetails() {
     const passedCount = run.results?.filter(r => r.status === 'passed').length || 0;
     const failedCount = run.results?.filter(r => r.status === 'failed').length || 0;
     const totalCount = run.results?.length || 0;
-    const passRate = totalCount > 0 ? Math.round((passedCount / totalCount) * 100) : 0;
+    // Cancelled / timed-out cases carry no verdict, so they are not in the rate.
+    const rate = resultPassRate((run.results || []).map(r => r.status));
+    const passRate = rate.rate ?? 0;
+    const noVerdictCount = rate.ignored;
 
     return (
         <Tabs.Root defaultValue="overview" className="flex flex-col gap-5 pb-12">
@@ -204,9 +211,10 @@ export default function TestRunDetails() {
                 </>}
                 title={run.test_case_name || run.suite_name || `Run #${run.id}`}
                 badge={
-                    <Pill tone={run.status === 'passed' ? 'mint' : (run.status === 'failed' || run.status === 'error') ? 'peach' : 'lavender'}>
+                    <Pill tone={run.status === 'passed' ? 'mint' : (run.status === 'failed' || run.status === 'error') ? 'peach'
+                        : run.status === 'timed_out' ? 'butter' : run.status === 'cancelled' ? 'neutral' : 'lavender'}>
                         {run.status === 'running' && <Activity size={12} className="animate-spin" />}
-                        {run.status === 'passed' ? 'Passed' : run.status === 'failed' ? `Failed · ${failedCount} of ${totalCount}` : run.status === 'error' ? 'Error' : run.status === 'running' ? 'Running' : run.status}
+                        {run.status === 'failed' ? `Failed · ${failedCount} of ${totalCount}` : statusLabel(run.status)}
                     </Pill>
                 }
                 subtitle={[
@@ -230,6 +238,7 @@ export default function TestRunDetails() {
                     )}
                     <CreateTicketDialog runId={run.id} />
                     {isFinishedRun && run.project_id && <ShareRunButton runId={run.id} projectId={run.project_id} />}
+                    {isLive(run.status) && run.executor !== 'manual' && <CancelRunButton runId={run.id} />}
                     {isStuckTest && (
                         <Button variant="destructive" onClick={() => setShowForceCompleteDialog(true)}>
                             <AlertTriangle size={16} /> Force complete
@@ -293,7 +302,7 @@ export default function TestRunDetails() {
                                 <div className="h-full bg-[#E0603A]" style={{ width: `${(failedCount / totalCount) * 100}%` }} />
                             </>)}
                         </div>
-                        <span className="flex justify-between text-xs text-ink-soft"><span>{passedCount} passed</span><span>{failedCount} failed</span></span>
+                        <span className="flex justify-between text-xs text-ink-soft"><span>{passedCount} passed</span><span>{failedCount} failed{noVerdictCount > 0 ? ` · ${noVerdictCount} not counted` : ''}</span></span>
                     </div>
                 </div>
 
@@ -307,7 +316,22 @@ export default function TestRunDetails() {
                     )}
 
                     <Tabs.Content value="overview" className="focus:outline-none space-y-6">
-                        {run.error_message && (
+                        {isNoVerdict(run.status) && (
+                            <div className="rounded-3xl border border-border bg-white p-6 shadow-[inset_4px_0_0_#F2C94C]">
+                                <h3 className="mb-2 flex items-center gap-2 font-semibold text-ink">
+                                    <Ban size={18} /> {run.status === 'cancelled' ? 'This run was cancelled' : "This run hit the platform's time limit"}
+                                </h3>
+                                <p className="text-sm text-ink-soft">
+                                    No verdict: it counts neither as a pass nor as a failure in pass rates, the quality gate
+                                    or release readiness. {run.status === 'cancelled'
+                                        ? 'Cases that had not started were skipped; a case that was running stopped before its next step.'
+                                        : 'Re-run it, or raise the job time limit if the suite legitimately needs longer.'}
+                                    {run.cancelled_at ? ` Cancelled ${new Date(run.cancelled_at).toLocaleString()}.` : ''}
+                                </p>
+                            </div>
+                        )}
+
+                        {run.error_message && !isNoVerdict(run.status) && (
                             <div className="rounded-3xl border border-border bg-white p-6 shadow-[inset_4px_0_0_#E0603A]">
                                 <h3 className="mb-3 flex items-center gap-2 font-semibold text-ink">
                                     <Bug size={18} /> Run error
@@ -935,7 +959,8 @@ function ResultsSplit({ runId, results, networkEvents, search, onSearch, focus =
                             onSelect={() => setSelectedId(r.id)}
                             leading={<KindChip kind={r.status === 'passed' ? 'pass' : (r.status === 'failed' || r.status === 'error') ? 'failure' : 'skip'} size="sm" />}
                             title={r.test_name}
-                            meta={`${r.status} · ${Math.round(r.duration_ms)}ms`}
+                            meta={[statusLabel(r.status), errorKindLook(r.error_kind)?.label, `${Math.round(r.duration_ms)}ms`]
+                                .filter(Boolean).join(' · ')}
                         />
                     ))}
                 </ListCard>
@@ -1031,8 +1056,14 @@ function TestCaseResultItem({ result, runId, networkEvents = [], variant = 'acco
                             isError ? "bg-pastel-peach/60 text-pastel-ink-peach border-transparent" :
                                 "bg-gray-50 text-gray-700 border-gray-200"
                     )}>
-                        {result.status}
+                        {statusLabel(result.status)}
                     </span>
+                    {errorKindLook(result.error_kind) && result.status !== 'passed' && (
+                        <span title={errorKindLook(result.error_kind)!.hint}
+                            className="rounded-full border border-border bg-white px-3 py-1 text-[11px] font-medium text-ink-soft">
+                            {errorKindLook(result.error_kind)!.label}
+                        </span>
+                    )}
                     {!isDetail && (
                         <div className={cn(
                             "w-8 h-8 rounded-full flex items-center justify-center transition-transform duration-300",

@@ -105,7 +105,9 @@ export interface TestRun {
     sweep_group?: string | null;
     project_id?: number | null;
     created_at: string;
-    status: "pending" | "running" | "passed" | "failed" | "error";
+    // cancelled / timed_out: over, but no verdict (lib/runStatus.ts).
+    status: "pending" | "running" | "passed" | "failed" | "error" | "cancelled" | "timed_out";
+    cancelled_at?: string | null;
     total_tests: number;
     passed_tests: number;
     failed_tests: number;
@@ -136,7 +138,9 @@ export interface TestRun {
     results?: {
         id: number;
         test_name: string;
-        status: "pending" | "running" | "passed" | "failed" | "error";
+        status: "pending" | "running" | "passed" | "failed" | "error" | "cancelled" | "timed_out";
+        // Why it did not pass: test | setup | infrastructure | timeout | cancelled | not_executed.
+        error_kind?: string | null;
         duration_ms: number;
         error_message?: string;
         video_url?: string;
@@ -673,6 +677,19 @@ export const getRoles = async (): Promise<Role[]> => {
 
 export const getMyPermissions = async (): Promise<UserPermissions> => {
     const response = await api.get("/auth/permissions");
+    return response.data;
+};
+
+export interface CancelRunResult {
+    run_id: number;
+    status: string;
+    cancelled_at?: string;
+    // false = the server could not reach its workers; the run is still cancelled.
+    workers_notified?: boolean;
+}
+
+export const cancelRun = async (runId: number): Promise<CancelRunResult> => {
+    const response = await api.post(`/runs/${runId}/cancel`);
     return response.data;
 };
 

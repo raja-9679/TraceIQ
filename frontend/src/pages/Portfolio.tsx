@@ -8,6 +8,7 @@ import { reportsApi, type PortfolioRow } from '@/api/reports';
 import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
 import { SkeletonRows } from '@/components/redesign-local/groupB/bits';
 import { fmtPct, sortPortfolio, verdictOf, type PortfolioKey } from '@/components/reports/reportHelpers';
+import { isNoVerdict, statusLabel } from '@/lib/runStatus';
 
 const COLUMNS: { key: PortfolioKey; label: string; numeric?: boolean }[] = [
     { key: 'project_name', label: 'Project' },
@@ -94,7 +95,7 @@ export default function Portfolio() {
                                         <td className="px-4 py-3 text-ink-soft">
                                             {r.last_run?.created_at ? (
                                                 <span className="flex items-center gap-2">
-                                                    <Pill tone={r.last_run.status === 'passed' ? 'mint' : 'peach'}>{r.last_run.status}</Pill>
+                                                    <Pill tone={r.last_run.status === 'passed' ? 'mint' : isNoVerdict(r.last_run.status) ? 'neutral' : 'peach'}>{statusLabel(r.last_run.status)}</Pill>
                                                     {new Date(r.last_run.created_at).toLocaleDateString()}
                                                 </span>
                                             ) : 'never'}

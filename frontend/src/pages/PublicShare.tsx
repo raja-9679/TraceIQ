@@ -7,6 +7,7 @@ import { fetchPublicShare, type PublicRunReport } from '@/api/reports';
 import { SummaryView } from '@/components/reports/SummaryView';
 import { fmtPct } from '@/components/reports/reportHelpers';
 import { PocReportView } from '@/components/poc/PocReportView';
+import { statusLabel } from '@/lib/runStatus';
 
 // Public, unauthenticated read-only report, rendered outside the app shell.
 // Data: POST /api/share/view - a reduced view (names, statuses, counts).
@@ -28,7 +29,7 @@ function RunReportView({ data }: { data: PublicRunReport }) {
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                     <h2 className="text-xl font-semibold text-ink">{r.suite_name || `Run #${r.id}`}</h2>
-                    <Pill tone={statusTone(r.status)}>{r.status}</Pill>
+                    <Pill tone={statusTone(r.status)}>{statusLabel(r.status)}</Pill>
                 </div>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[['Pass rate', fmtPct(r.pass_rate)], ['Tests', r.total_tests], ['Failed', r.failed_tests], ['Duration', fmtMs(r.duration_ms)]].map(([l, v]) => (
@@ -48,7 +49,7 @@ function RunReportView({ data }: { data: PublicRunReport }) {
                                 <span className="min-w-0 truncate text-ink" title={t.test_name}>{t.test_name}</span>
                                 <span className="flex flex-none items-center gap-3">
                                     <span className="font-mono text-xs text-ink-soft tabular-nums">{fmtMs(t.duration_ms)}</span>
-                                    <Pill tone={statusTone(t.status)}>{t.status}</Pill>
+                                    <Pill tone={statusTone(t.status)}>{statusLabel(t.status)}</Pill>
                                 </span>
                             </li>
                         ))}

@@ -24,7 +24,7 @@ const errDetail = (e: any): string => e?.response?.data?.detail || e?.message ||
 // release manager reads, with where the evidence for each one lives.
 const CHECKS: Record<string, { title: string; explain: string; links: { tag: string; text: string; to: string }[] }> = {
     pass_rate: {
-        title: 'Pass rate', explain: 'Share of finished runs that passed among the runs this gate evaluated.',
+        title: 'Pass rate', explain: 'Share of finished runs that passed among the runs this gate evaluated. Cancelled and timed-out runs carry no verdict and are not counted.',
         links: [{ tag: 'runs', text: 'See the evaluated runs', to: '/runs' }, { tag: 'triage', text: 'Group the failures', to: '/triage' }],
     },
     security_high_findings: {
@@ -80,6 +80,7 @@ function PolicyForm({ projectId, initial }: { projectId: number; initial: Qualit
             toast.success('Gate policy saved');
             qc.invalidateQueries({ queryKey: ['quality-gate', projectId] });
             qc.invalidateQueries({ queryKey: ['quality-policy', projectId] });
+            qc.invalidateQueries({ queryKey: ['quality-policy-versions', projectId] });
         },
         onError: (e) => toast.error(`Save failed: ${errDetail(e)}`),
     });
@@ -134,6 +135,33 @@ function CiForm({ projectId, initial }: { projectId: number; initial: CiSettings
     );
 }
 
+// Every policy that has judged this gate (WP15f). A verdict names its
+// version, so "why did this pass last week?" has an answer.
+function PolicyHistory({ projectId }: { projectId: number }) {
+    const q = useQuery({ queryKey: ['quality-policy-versions', projectId], queryFn: () => qualityApi.policyVersions(projectId) });
+    const versions = q.data?.versions ?? [];
+    if (!versions.length) return null;
+    return (
+        <section className="flex flex-col gap-2 rounded-3xl border border-border bg-white p-6">
+            <h2 className="text-base font-semibold text-ink">Rule history</h2>
+            <p className="text-[13px] text-ink-soft">
+                Each version is kept unchanged. A gate result names the version that judged it, so an old verdict
+                can be re-checked against the rules in force at the time.
+            </p>
+            <ul className="flex flex-col divide-y divide-border">
+                {versions.slice(0, 10).map((v) => (
+                    <li key={v.version} className="flex flex-wrap items-center gap-3 py-2 text-sm">
+                        <Pill tone={v.version === versions[0].version ? 'mint' : 'neutral'}>v{v.version}</Pill>
+                        <span className="text-ink-soft">{v.created_at ? new Date(v.created_at).toLocaleString() : '—'}</span>
+                        <span className="text-ink-soft">{v.created_by_id ? 'saved by a person' : 'recorded at evaluation'}</span>
+                        <span className="ml-auto font-mono text-[11px] text-ink-soft" title={v.sha256}>{v.sha256.slice(0, 12)}</span>
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+}
+
 function PolicyPanel({ projectId }: { projectId: number }) {
     const policyQ = useQuery({ queryKey: ['quality-policy', projectId], queryFn: () => qualityApi.getPolicy(projectId) });
     const ciQ = useQuery({ queryKey: ['ci-settings', projectId], queryFn: () => qualityApi.getCiSettings(projectId) });
@@ -145,6 +173,7 @@ function PolicyPanel({ projectId }: { projectId: number }) {
             </div>
             {/* Data-capture policy sits with the other per-project policies: it is
                 scoped to a project and reads alongside the gate it feeds. */}
+            <PolicyHistory projectId={projectId} />
             <DataPolicySection projectId={projectId} />
             <OpenApiSpecSection projectId={projectId} />
         </div>
@@ -248,7 +277,7 @@ export default function QualityDashboard() {
                 )}
                 subtitle={
                     gate.data
-                        ? <>Gate evaluated on {gate.data.evaluated_run_ids.length ? `${gate.data.evaluated_run_ids.length === 1 ? 'run' : 'runs'} ${gate.data.evaluated_run_ids.map((id) => `#${id}`).join(', ')}` : 'no runs yet'}{gate.data.git_branch ? ` · ${gate.data.git_branch}` : ''}{gate.data.git_commit ? ` · ${gate.data.git_commit.slice(0, 8)}` : ''}</>
+                        ? <>Gate evaluated on {gate.data.evaluated_run_ids.length ? `${gate.data.evaluated_run_ids.length === 1 ? 'run' : 'runs'} ${gate.data.evaluated_run_ids.map((id) => `#${id}`).join(', ')}` : 'no runs yet'}{gate.data.git_branch ? ` · ${gate.data.git_branch}` : ''}{gate.data.git_commit ? ` · ${gate.data.git_commit.slice(0, 8)}` : ''}{gate.data.policy_version ? ` · rules v${gate.data.policy_version}` : ''}{gate.data.ignored_run_ids?.length ? ` · ${gate.data.ignored_run_ids.length} cancelled / timed-out run(s) not counted` : ''}</>
                         : 'The release gate turns run health, monitors and security into a go / no-go.'
                 }
                 actions={projectId ? (
