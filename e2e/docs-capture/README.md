@@ -16,7 +16,15 @@ UI changed. ffmpeg on the host converts the recordings to MP4.
 
 **Narration.** Every `caption()` is also spoken, by
 [Piper](https://github.com/rhasspy/piper) (offline text-to-speech, MIT) with
-the public-domain LJSpeech voice. Nothing is sent to an online service.
+the British English "cori" voice. Nothing is sent to an online service.
+
+The voice was chosen for its licence (checked 2026-10-21): cori is public
+domain, trained from scratch on LibriVox recordings. Most other en_GB Piper
+voices (alan, alba, aru, jenny_dioco, northern_english_male, vctk) are
+fine-tuned from the US "lessac" voice, whose Blizzard 2013 dataset licence is
+"Research Purposes only" and excludes anything based on it; semaine is
+CC BY-NC-SA. Check the MODEL_CARD's licence AND its "finetuned from" line
+before changing voice.
 `run.sh` downloads both into `e2e/.cache/piper` the first time (~130 MB, voice
 checked by SHA-256); spoken lines are cached in `e2e/.cache/narration`, so
 re-runs only synthesise new sentences. A caption waits for the previous one to

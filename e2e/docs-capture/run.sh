@@ -23,21 +23,24 @@ NET="${TRACEIQ_DOCS_NETWORK:-$(docker inspect "$FRONTEND_C" -f '{{range $k,$v :=
 PW_VERSION="$(node -p "require('$ROOT/e2e/package.json').devDependencies['@playwright/test']" 2>/dev/null \
   || grep -o '"@playwright/test": *"[^"]*"' "$ROOT/e2e/package.json" | grep -o '[0-9][0-9.]*')"
 
-# Narration: Piper (offline text-to-speech, MIT licence) and the LJSpeech
-# voice (public domain). Downloaded once into e2e/.cache/piper (gitignored);
+# Narration: Piper (offline text-to-speech, MIT licence) and the British
+# English "cori" voice (public domain; trained from scratch on LibriVox, NOT
+# fine-tuned from the research-only "lessac" voice like most en_GB voices).
+# Downloaded once into e2e/.cache/piper (gitignored), voice pinned by SHA-256;
 # TRACEIQ_DOCS_VOICE=off skips it and records captions only.
 PIPER_DIR="$ROOT/e2e/.cache/piper"
 PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
-VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/high"
-VOICE_SHA256="5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a"
-if [ "${TRACEIQ_DOCS_VOICE:-on}" != "off" ] && [ ! -f "$PIPER_DIR/en_US-ljspeech-high.onnx" ]; then
-  echo "Downloading the narration voice (Piper + LJSpeech, ~130 MB, once) ..." >&2
+VOICE="en_GB-cori-high"
+VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high"
+VOICE_SHA256="470b4dd634c98f8a4850d7626ffc3dfc90774628eeef6605a6dd8f88f30a5903"
+if [ "${TRACEIQ_DOCS_VOICE:-on}" != "off" ] && [ ! -f "$PIPER_DIR/$VOICE.onnx" ]; then
+  echo "Downloading the narration voice (Piper + $VOICE, ~130 MB, once) ..." >&2
   mkdir -p "$PIPER_DIR"
-  curl -fsSL "$PIPER_URL" | tar xz -C "$PIPER_DIR"
-  curl -fsSL -o "$PIPER_DIR/en_US-ljspeech-high.onnx.json" "$VOICE_URL/en_US-ljspeech-high.onnx.json"
-  curl -fsSL -o "$PIPER_DIR/en_US-ljspeech-high.onnx.tmp" "$VOICE_URL/en_US-ljspeech-high.onnx"
-  echo "$VOICE_SHA256  $PIPER_DIR/en_US-ljspeech-high.onnx.tmp" | sha256sum -c --quiet -
-  mv "$PIPER_DIR/en_US-ljspeech-high.onnx.tmp" "$PIPER_DIR/en_US-ljspeech-high.onnx"
+  [ -x "$PIPER_DIR/piper/piper" ] || curl -fsSL "$PIPER_URL" | tar xz -C "$PIPER_DIR"
+  curl -fsSL -o "$PIPER_DIR/$VOICE.onnx.json" "$VOICE_URL/$VOICE.onnx.json"
+  curl -fsSL -o "$PIPER_DIR/$VOICE.onnx.tmp" "$VOICE_URL/$VOICE.onnx"
+  echo "$VOICE_SHA256  $PIPER_DIR/$VOICE.onnx.tmp" | sha256sum -c --quiet -
+  mv "$PIPER_DIR/$VOICE.onnx.tmp" "$PIPER_DIR/$VOICE.onnx"
 fi
 
 if [ -z "$NET" ]; then

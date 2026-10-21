@@ -141,12 +141,15 @@ export async function pointAt(page: Page, target: Locator, pause = 900) {
 
 // ---------- narration ----------
 // Captions are also spoken, by Piper (offline text-to-speech, MIT) with the
-// public-domain LJSpeech voice. run.sh downloads both into e2e/.cache/piper.
+// British English "cori" voice: public domain, trained from scratch on
+// LibriVox recordings. Most other en_GB Piper voices are fine-tuned from the
+// US "lessac" voice, whose dataset licence is research-only — don't switch to
+// one of those. run.sh downloads Piper + the voice into e2e/.cache/piper.
 // TRACEIQ_DOCS_VOICE=off records captions only.
 
 const VOICE = {
     bin: '.cache/piper/piper/piper',
-    model: '.cache/piper/en_US-ljspeech-high.onnx',
+    model: '.cache/piper/en_GB-cori-high.onnx',
     cache: '.cache/narration',
     get enabled() {
         return process.env.TRACEIQ_DOCS_VOICE !== 'off' && existsSync(this.bin) && existsSync(this.model);
