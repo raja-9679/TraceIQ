@@ -3,7 +3,8 @@
 One click gives an evaluator a workspace that already looks lived-in: two
 projects (a web app and an API), suites, environments, personas, a monitor,
 requirements and ~30 days of run history with the things reports exist to show
-— a mostly-green trend, a few real failures, one flaky case, a failure cluster,
+— a mostly-green trend, a few real failures (all grouped into failure
+clusters, as the triage task would), one flaky case,
 a security finding and flake records.
 
 Rules that matter:
@@ -33,6 +34,8 @@ import random
 import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Any, Dict, List, Optional
+
+from app.services.failure_signature import compute_signature
 
 DEFAULT_SEED = 1307
 HISTORY_DAYS = 30
@@ -135,17 +138,22 @@ def _api_cases(rng: random.Random) -> List[Dict[str, Any]]:
 _CLUSTER = {"project": "api", "key": "delay_timeout", "category": "timeout",
             "signature": "demo:timeout:httpbin-delay",
             "title": "Timeout waiting for /delay response",
-            "error": "http-request: timeout of 3000ms exceeded (GET https://httpbin.org/delay/1)"}
-_FLAKY_ERROR = "expect-visible: locator('#todo-list li') not visible after 5000ms"
+            "error": "apiRequestContext.fetch: Timeout 3000ms exceeded.\nCall log:\n  - → GET https://httpbin.org/delay/1"}
+_MONITOR_ERROR = "Expected status 200 but got 503"
+_FLAKY_ERROR = ("page.waitForSelector: Timeout 5000ms exceeded.\nCall log:\n"
+                "  - waiting for locator('#todo-list li') to be visible")
+# Error texts are worded exactly as the worker words them
+# (execution-engine/src/core/test-executor.ts, security-steps.ts), so triage
+# groups and categorises the demo's failures as it would real ones.
 _RANDOM_ERRORS = {
-    "home": "expect-text: h1 expected 'Example Domain', got ''",
-    "a11y": "check-accessibility: 1 serious violation (color-contrast)",
-    "login": "expect-text: #current-user expected 'alice', got ''",
-    "cookie": "expect-cookie-flags: cookie 'session' not set",
-    "json": "http-request: expected status 200, got 502",
-    "echo": "http-request: json-path json.order does not exist",
-    "auth": "http-request: expected status 401, got 503",
-    "headers": "http-request: json-path headers.X-Demo expected '1', got undefined",
+    "home": 'Expected text "Example Domain" not found in element "h1"',
+    "a11y": "Accessibility check failed: 1 violation(s) — color-contrast (serious, 3)",
+    "login": 'Expected text "alice" not found in element "#current-user"',
+    "cookie": "Expected cookie session to be set",
+    "json": "Expected status 200 but got 502",
+    "echo": "Expected json.order to equal 42 but got undefined",
+    "auth": "Expected status 401 but got 503",
+    "headers": "Expected headers.X-Demo to equal 1 but got undefined",
 }
 
 
@@ -231,7 +239,10 @@ def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
                     elif case["key"] == "delay" and d in cluster_days:
                         status, error, cluster = "failed", _CLUSTER["error"], _CLUSTER["key"]
                     elif rng.random() < 0.015:
-                        status, error = "failed", _RANDOM_ERRORS.get(case["key"], "step failed")
+                        if case["key"] == "delay":   # the same slow endpoint: the same group
+                            status, error, cluster = "failed", _CLUSTER["error"], _CLUSTER["key"]
+                        else:
+                            status, error = "failed", _RANDOM_ERRORS.get(case["key"], "step failed")
                     base = 900 if proj["key"] == "api" else 4200
                     results.append({"case": case["key"], "status": status, "error": error,
                                     "is_flaky": flaky, "retry_count": retries, "cluster": cluster,
@@ -258,6 +269,28 @@ def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
     cluster_times = [r["created_at"] for r in runs if any(x["cluster"] for x in r["results"])]
     clusters = [{**_CLUSTER, "occurrence_count": cluster_hits,
                  "first_seen_at": min(cluster_times), "last_seen_at": max(cluster_times)}]
+    # Every other failure is grouped the way app/tasks/triage_tasks.py groups
+    # real ones (same compute_signature, per project), so Failure triage shows
+    # what a real project with this history would — not only the scripted one.
+    grouped: Dict[str, Dict[str, Any]] = {}
+
+    def group(project: str, error: str, at: datetime) -> str:
+        sig, title, category = compute_signature(error)
+        key = f"{project}:{sig}"
+        c = grouped.setdefault(key, {"project": project, "key": key, "category": category,
+                                     "signature": sig, "title": title, "error": error,
+                                     "occurrence_count": 0, "first_seen_at": at, "last_seen_at": at})
+        c["occurrence_count"] += 1
+        c["first_seen_at"], c["last_seen_at"] = min(c["first_seen_at"], at), max(c["last_seen_at"], at)
+        return key
+
+    for r in runs:
+        for x in r["results"]:
+            if x["status"] == "failed" and not x["cluster"]:
+                x["cluster"] = group(r["project"], x["error"], r["created_at"])
+    for chk in monitor["checks"]:
+        chk["cluster"] = None if chk["up"] else group(monitor["project"], _MONITOR_ERROR, chk["at"])
+    clusters += list(grouped.values())
     finding_at = datetime.combine(first + timedelta(days=days - 5), time(2, 30))
     findings = [{"project": "web", "category": "missing-header", "severity": "medium",
                  "title": "Missing Content-Security-Policy header",
@@ -516,6 +549,14 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
         mon_runs.append((run, chk))
     await session.flush()
 
+    # A cluster points at its newest failing run, whichever loop meets it last.
+    newest: Dict[int, datetime] = {}
+
+    def last_hit(cluster: Any, run: Any) -> None:
+        if run.created_at >= newest.get(id(cluster), run.created_at):
+            newest[id(cluster)] = run.created_at
+            cluster.last_run_id = run.id
+
     for run, r in run_rows:
         for x in r["results"]:
             case = cases[r["project"]][x["case"]]
@@ -526,13 +567,15 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
                 is_flaky=x["is_flaky"], retry_count=x["retry_count"],
                 cluster_id=cluster.id if cluster else None, screenshots=[]))
             if cluster is not None:
-                cluster.last_run_id = run.id
+                last_hit(cluster, run)
     for run, chk in mon_runs:
         session.add(TestCaseResult(
             test_run_id=run.id, test_name=mcase.name, test_case_id=mcase.id,
             status=TestStatus.PASSED if chk["up"] else TestStatus.FAILED, duration_ms=chk["duration_ms"],
-            error_message=None if chk["up"] else "http-request: expected status 200, got 503",
-            screenshots=[]))
+            error_message=None if chk["up"] else _MONITOR_ERROR,
+            cluster_id=clusters[chk["cluster"]].id if chk["cluster"] else None, screenshots=[]))
+        if chk["cluster"]:
+            last_hit(clusters[chk["cluster"]], run)
         session.add(MonitorCheck(schedule_id=schedule.id, run_id=run.id,
                                  status=TestStatus.PASSED if chk["up"] else TestStatus.FAILED,
                                  is_up=chk["up"], checked_at=chk["at"]))
