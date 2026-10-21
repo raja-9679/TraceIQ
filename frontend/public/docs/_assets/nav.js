@@ -1,0 +1,115 @@
+/* The guide's table of contents. Mirrors the app sidebar
+   (frontend/src/components/layout/nav.ts): same groups, same order, same
+   names. When a sidebar item is added, renamed or moved, change it here too.
+   `ready: true` = the page is written; others show as "soon". */
+window.DOCS_NAV = [
+  {
+    name: 'Today', tone: 't-lavender', icon: 'inbox',
+    blurb: 'What needs your attention now: run health, failures to look at, suggested fixes, flaky tests and screenshots to review.',
+    pages: [
+      { name: 'Overview', slug: 'today/overview', ready: true },
+      { name: 'Failure triage', slug: 'today/failure-triage' },
+      { name: 'Proposals', slug: 'today/proposals' },
+      { name: 'Flaky tests', slug: 'today/flaky-tests' },
+      { name: 'Visual review', slug: 'today/visual-review' },
+    ],
+  },
+  {
+    name: 'Releases', tone: 't-mint', icon: 'flag',
+    blurb: 'Is this version ready to ship? Quality rules, a ready / not-ready verdict, human sign-off, and the link from requirements to tests to incidents.',
+    pages: [
+      { name: 'Quality gate', slug: 'releases/quality-gate' },
+      { name: 'Release readiness', slug: 'releases/release-readiness' },
+      { name: 'Release sign-off', slug: 'releases/release-signoff' },
+      { name: 'Requirements', slug: 'releases/requirements' },
+      { name: 'Traceability', slug: 'releases/traceability' },
+      { name: 'Incidents', slug: 'releases/incidents' },
+    ],
+  },
+  {
+    name: 'Reports', tone: 't-butter', icon: 'chart',
+    blurb: 'Summaries for people who read results rather than write tests: leadership views, delivery speed, reliability, coverage and cost.',
+    pages: [
+      { name: 'Executive summary', slug: 'reports/executive-summary' },
+      { name: 'Portfolio', slug: 'reports/portfolio' },
+      { name: 'Delivery (DORA)', slug: 'reports/delivery' },
+      { name: 'SLOs', slug: 'reports/slo' },
+      { name: 'Flake trends', slug: 'reports/flake-trends' },
+      { name: 'Dependencies', slug: 'reports/dependencies' },
+      { name: 'Journey coverage', slug: 'reports/journey-coverage' },
+      { name: 'Business journeys', slug: 'reports/business-journeys' },
+      { name: 'Flag coverage', slug: 'reports/flag-coverage' },
+      { name: 'Benchmarks', slug: 'reports/benchmarks' },
+      { name: 'Costs', slug: 'reports/costs' },
+      { name: 'PoC report', slug: 'reports/poc-report' },
+      { name: 'Value report', slug: 'reports/value-report' },
+    ],
+  },
+  {
+    name: 'Tests', tone: 't-pink', icon: 'flask',
+    blurb: 'Where tests are written, organised and scheduled, plus the settings, app builds and quality checks they run with.',
+    pages: [
+      { name: 'Suites', slug: 'tests/suites' },
+      { name: 'Test review', slug: 'tests/test-review' },
+      { name: 'Schedules', slug: 'tests/schedules' },
+      { name: 'Environments', slug: 'tests/environments' },
+      { name: 'App builds', slug: 'tests/app-builds' },
+      { name: 'Frontend quality', slug: 'tests/frontend-quality' },
+      { name: 'Accessibility', slug: 'tests/accessibility' },
+      { name: 'Import Playwright', slug: 'tests/import-playwright' },
+      { name: 'Test packs', slug: 'tests/test-packs' },
+      { name: 'Analytics', slug: 'tests/analytics' },
+    ],
+  },
+  {
+    name: 'Runs', tone: 't-peach', icon: 'play',
+    blurb: 'Every execution of your tests, with step-by-step results, screenshots, videos, logs and AI analysis of failures.',
+    pages: [
+      { name: 'Runs', slug: 'runs/runs' },
+    ],
+  },
+  {
+    name: 'Watch', tone: 't-sky', icon: 'radio',
+    blurb: 'Keep an eye on live sites: monitors that check them on a timer, and who gets paged when they go down.',
+    pages: [
+      { name: 'Monitors', slug: 'watch/monitors' },
+      { name: 'On-call', slug: 'watch/on-call' },
+    ],
+  },
+  {
+    name: 'Security', tone: 't-lavender', icon: 'shield',
+    blurb: 'Security scans and findings, who can access what, your public footprint, third-party scripts, and compliance evidence.',
+    pages: [
+      { name: 'Scans & findings', slug: 'security/scans-and-findings' },
+      { name: 'Access matrix', slug: 'security/access-matrix' },
+      { name: 'Access reviews', slug: 'security/access-reviews' },
+      { name: 'Estate', slug: 'security/estate' },
+      { name: 'Script inventory', slug: 'security/script-inventory' },
+      { name: 'Controls', slug: 'security/controls' },
+      { name: 'Evidence packs', slug: 'security/evidence-packs' },
+      { name: 'Audit log', slug: 'security/audit-log' },
+      { name: 'Trust center', slug: 'security/trust-center' },
+    ],
+  },
+  {
+    name: 'Setup', tone: 't-neutral', icon: 'settings',
+    blurb: 'Your account, projects, people, integrations and server-wide settings.',
+    pages: [
+      { name: 'My settings', slug: 'setup/my-settings' },
+      { name: 'Project settings', slug: 'setup/project-settings' },
+      { name: 'Workspace', slug: 'setup/workspace' },
+      { name: 'Users', slug: 'setup/users' },
+      { name: 'Tenant admin', slug: 'setup/tenant-admin' },
+      { name: 'Worker fleet', slug: 'setup/worker-fleet' },
+      { name: 'Sizing calculator', slug: 'setup/sizing-calculator' },
+      { name: 'Instance settings', slug: 'setup/instance-settings' },
+      { name: 'API keys', slug: 'setup/api-keys' },
+      { name: 'Webhooks', slug: 'setup/webhooks' },
+      { name: 'Issue trackers', slug: 'setup/issue-trackers' },
+      { name: 'AI usage', slug: 'setup/ai-usage' },
+      { name: 'Policies', slug: 'setup/policies' },
+      { name: 'Agents', slug: 'setup/agents' },
+      { name: 'Billing', slug: 'setup/billing' },
+    ],
+  },
+];

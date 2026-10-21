@@ -42,6 +42,8 @@ Thumbs.db
 
 # Large media files
 *.mp4
+# …except the user guide's walkthroughs (frontend/public/docs/, ~0.5 MB each).
+!frontend/public/docs/media/**/*.mp4
 *.tiff
 *.avi
 *.flv

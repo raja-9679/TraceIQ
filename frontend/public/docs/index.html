@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TraceIQ Guide</title>
+  <meta name="description" content="A plain-language guide to every page and feature of TraceIQ.">
+  <link rel="icon" href="../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="_assets/docs.css">
+</head>
+<body data-page="">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="./"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../"><span data-icon="out" data-size="15"></span><span class="btn-label">Open TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <section class="hero">
+          <div class="meta-row" style="margin-bottom:14px">
+            <span class="tag t-lavender">User guide</span>
+          </div>
+          <h1>Welcome to the TraceIQ guide</h1>
+          <p class="lead" style="margin:0">
+            Every page of TraceIQ, explained in plain words: what it is for, what each part of
+            the screen means, and how to use it. You don't need to be a tester or a developer
+            to follow it.
+          </p>
+        </section>
+
+        <h2 id="what-is-traceiq">What TraceIQ does, in one minute</h2>
+        <p>
+          Before a website or app reaches its users, someone has to check that it still works:
+          that people can sign in, that the checkout still takes payments, that a page didn't
+          break after the latest change. Doing that by hand every day is slow and easy to forget.
+        </p>
+        <p>
+          TraceIQ does those checks <strong>automatically</strong>. You describe a check once
+          (a <em>test</em>: "open the home page, click Sign in, type the email, expect to see
+          the dashboard"), and TraceIQ runs it in a real browser whenever you want: on a timer,
+          when a developer changes code, or with one click. Each time, it records what happened,
+          with screenshots, video and logs, and tells you clearly what passed and what failed.
+          When something fails, it helps you find out why.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>1 · Write a test</h4><p>Describe the steps a person would take, and what should happen.</p></div>
+          <div class="mini"><h4>2 · Run it</h4><p>TraceIQ runs it in a real browser, as often as you need.</p></div>
+          <div class="mini"><h4>3 · Read the result</h4><p>Passed or failed, with the evidence to show why.</p></div>
+        </div>
+
+        <h2 id="words">A few words you will see everywhere</h2>
+        <dl class="terms">
+          <dt>Test (or test case)</dt><dd>One check, written as a list of steps. For example "a visitor can add an item to the basket".</dd>
+          <dt>Suite</dt><dd>A folder of related tests, such as "Checkout" or "Sign-in". Suites can hold smaller suites inside them.</dd>
+          <dt>Run</dt><dd>One execution of a suite or a single test. Every run gets its own page with the results.</dd>
+          <dt>Project</dt><dd>Everything that belongs to one product or website: its suites, runs, settings and people. You pick the active project at the top of the app's sidebar.</dd>
+          <dt>Workspace</dt><dd>A team's space. It holds one or more projects and the people who can use them.</dd>
+          <dt>Pass rate</dt><dd>Out of the runs that finished with a verdict, the share that passed. 9 passed out of 10 = 90%.</dd>
+        </dl>
+
+        <h2 id="how-organised">How this guide is organised</h2>
+        <p>
+          The guide follows the app's own sidebar, top to bottom. Each group below is a group
+          in the sidebar, and each page in the guide matches one item in it, so you can always
+          find the help for the screen you are looking at.
+        </p>
+        <div class="grid-2" id="places"></div>
+
+        <h2 id="how-to-read">How each page is laid out</h2>
+        <p>Every page in this guide follows the same pattern, so you always know where to look:</p>
+        <ol class="steps">
+          <li><strong>In short</strong>: the page explained in one or two sentences.</li>
+          <li><strong>What it is for</strong>: the question it answers, and who usually uses it.</li>
+          <li><strong>A tour of the screen</strong>: a screenshot with numbered parts, then an explanation of each number. Click any screenshot to see it larger.</li>
+          <li><strong>A short video</strong>: the page in use, with captions.</li>
+          <li><strong>How to…</strong>: step-by-step answers to common tasks.</li>
+          <li><strong>Good to know</strong>: the details that are easy to miss.</li>
+        </ol>
+        <div class="callout tip">
+          <span class="icon">✓</span>
+          <div><strong class="title">Where the pictures come from</strong>
+            The screenshots and videos are taken from a demo workspace filled with example data,
+            so names like "Web smoke (demo)" are samples. Your own screens will show your projects.</div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Next page"></nav>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="_assets/nav.js"></script>
+  <script src="_assets/docs.js"></script>
+</body>
+</html>

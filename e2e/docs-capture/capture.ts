@@ -1,0 +1,155 @@
+import type { Browser, Locator, Page } from '@playwright/test';
+import { mkdirSync, readFileSync, renameSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+
+// Helpers shared by the page captures. Pictures land in
+// frontend/public/docs/media/<section>/<page>/ — the guide references them by
+// those paths, so a re-run refreshes the guide without touching its HTML.
+
+export const MEDIA = join(__dirname, '../../frontend/public/docs/media');
+
+export function project(): { id: number; name: string } {
+    return JSON.parse(readFileSync('.auth/docs-project.json', 'utf8'));
+}
+
+export function out(path: string): string {
+    const full = join(MEDIA, path);
+    mkdirSync(dirname(full), { recursive: true });
+    return full;
+}
+
+/** Waits until the page has stopped fetching (no request for 750 ms) — data-driven pages render late. */
+export async function settle(page: Page, quietMs = 750, maxMs = 20_000) {
+    let last = Date.now();
+    const bump = () => { last = Date.now(); };
+    page.on('request', bump);
+    page.on('requestfinished', bump);
+    const start = Date.now();
+    while (Date.now() - last < quietMs && Date.now() - start < maxMs) {
+        await page.waitForTimeout(100);
+    }
+    page.off('request', bump);
+    page.off('requestfinished', bump);
+}
+
+// Pastel callout colours, same family as the app (tailwind.config.js pastel-*).
+const BADGE = { fill: '#E9E7FD', ink: '#3A31A8', ring: '#A9A2EE' };
+
+/**
+ * Draws numbered badges + a soft outline on the given elements, so the guide
+ * can say "① is …". Returns a cleanup that removes them again.
+ */
+export async function annotate(page: Page, marks: { n: number; target: Locator; inset?: boolean; side?: 'left' | 'right' }[]) {
+    for (const m of marks) {
+        await m.target.first().scrollIntoViewIfNeeded();
+        const box = await m.target.first().boundingBox();
+        if (!box) throw new Error(`annotation ${m.n}: element not visible`);
+        await page.evaluate(({ n, box, inset, right, c }) => {
+            const sx = window.scrollX, sy = window.scrollY;
+            const ring = document.createElement('div');
+            ring.dataset.docsMark = '1';
+            Object.assign(ring.style, {
+                position: 'absolute', left: `${box.x + sx - 4}px`, top: `${box.y + sy - 4}px`,
+                width: `${box.width + 8}px`, height: `${box.height + 8}px`,
+                border: `2px dashed ${c.ring}`, borderRadius: '14px', zIndex: '99998', pointerEvents: 'none',
+            });
+            const badge = document.createElement('div');
+            badge.dataset.docsMark = '1';
+            badge.textContent = String(n);
+            const edge = right ? box.x + sx + box.width - 12 : box.x + sx - 16;
+            const left = inset ? (right ? edge - 24 : box.x + sx + 8) : edge;
+            const top = inset ? box.y + sy + 8 : box.y + sy - 16;
+            Object.assign(badge.style, {
+                position: 'absolute', left: `${Math.max(2, left)}px`, top: `${Math.max(2, top)}px`,
+                width: '28px', height: '28px', borderRadius: '999px', background: c.fill, color: c.ink,
+                border: `2px solid ${c.ring}`, font: '700 14px/24px Geist, system-ui, sans-serif',
+                textAlign: 'center', zIndex: '99999', pointerEvents: 'none',
+                boxShadow: '0 2px 6px rgba(28,27,34,.12)',
+            });
+            document.body.append(ring, badge);
+        }, { n: m.n, box, inset: !!m.inset, right: m.side === 'right', c: BADGE });
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
+    return async () => {
+        await page.evaluate(() => document.querySelectorAll('[data-docs-mark]').forEach((e) => e.remove()));
+    };
+}
+
+/** A visible pointer for recordings — Playwright's videos don't show the mouse. */
+const POINTER = `
+(() => {
+  const add = () => {
+    if (document.getElementById('docs-pointer')) return;
+    const p = document.createElement('div');
+    p.id = 'docs-pointer';
+    Object.assign(p.style, {
+      position: 'fixed', left: '-40px', top: '-40px', width: '22px', height: '22px',
+      borderRadius: '999px', background: 'rgba(233,231,253,.85)', border: '2px solid #A9A2EE',
+      boxShadow: '0 2px 8px rgba(28,27,34,.18)', transform: 'translate(-50%,-50%)',
+      transition: 'transform .12s ease', zIndex: '2147483647', pointerEvents: 'none',
+    });
+    document.body.appendChild(p);
+    addEventListener('mousemove', (e) => { p.style.left = e.clientX + 'px'; p.style.top = e.clientY + 'px'; }, true);
+    addEventListener('mousedown', () => { p.style.transform = 'translate(-50%,-50%) scale(.7)'; }, true);
+    addEventListener('mouseup', () => { p.style.transform = 'translate(-50%,-50%)'; }, true);
+  };
+  if (document.body) add(); else addEventListener('DOMContentLoaded', add);
+})();`;
+
+/**
+ * Records a short walkthrough. `script` drives the page; pauses between steps
+ * are deliberate (this is a video for people, not a test), so use `beat()`.
+ */
+export async function record(browser: Browser, file: string, script: (page: Page) => Promise<void>) {
+    const size = { width: 1280, height: 800 };
+    const ctx = await browser.newContext({
+        viewport: size,
+        recordVideo: { dir: out('.tmp-video'), size },
+        storageState: '.auth/docs-user.json',
+    });
+    await ctx.addInitScript(POINTER);
+    const page = await ctx.newPage();
+    await script(page);
+    await beat(page, 1200);
+    const video = page.video();
+    await ctx.close();
+    if (!video) throw new Error('no video recorded');
+    renameSync(await video.path(), out(file));
+}
+
+/** A pause the viewer can follow. */
+export const beat = (page: Page, ms = 900) => page.waitForTimeout(ms);
+
+/** Moves the visible pointer to an element in a few steps, then pauses on it. */
+export async function pointAt(page: Page, target: Locator, pause = 900) {
+    const box = await target.first().boundingBox();
+    if (!box) return;
+    await page.mouse.move(box.x + box.width / 2, box.y + Math.min(box.height / 2, 40), { steps: 18 });
+    await beat(page, pause);
+}
+
+/**
+ * Shows a subtitle at the bottom of the recording ("This tile counts …").
+ * Pass '' to hide it. Set it again after a navigation — it lives in the page.
+ */
+export async function caption(page: Page, text: string, pause = 0) {
+    await page.evaluate((t) => {
+        let el = document.getElementById('docs-caption');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'docs-caption';
+            Object.assign(el.style, {
+                position: 'fixed', left: '50%', bottom: '28px', transform: 'translateX(-50%)',
+                maxWidth: '78%', padding: '12px 22px', borderRadius: '16px',
+                background: 'rgba(251,242,211,.97)', color: '#4A3A00', border: '1.5px solid #EAD9A0',
+                font: '500 17px/1.45 Geist, system-ui, sans-serif', textAlign: 'center',
+                boxShadow: '0 6px 24px rgba(28,27,34,.14)', zIndex: '2147483646', pointerEvents: 'none',
+                transition: 'opacity .25s ease',
+            });
+            document.body.appendChild(el);
+        }
+        el.textContent = t;
+        el.style.opacity = t ? '1' : '0';
+    }, text);
+    if (pause) await beat(page, pause);
+}

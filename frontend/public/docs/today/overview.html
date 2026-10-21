@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overview · TraceIQ Guide</title>
+  <meta name="description" content="The Overview page: run totals, the 14-day pass-rate chart and the newest runs, explained.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/today-overview.spec.ts. Page: frontend/src/pages/Dashboard.tsx. -->
+<body data-page="today/overview">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../overview"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Overview</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Today</span>
+          <span class="tag t-neutral">Everyone can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Your home page. In a few seconds it tells you how testing is going: how many runs
+            there have been, how many passed or failed, how the pass rate has moved over the last
+            two weeks, and what ran most recently.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Overview answers one question: <strong>"Is everything all right, or does something
+          need my attention?"</strong> It is the first page you see after signing in, and the
+          page to come back to when you want a quick check before a meeting, a release or the
+          end of the day.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>See at a glance whether last night's runs passed, and jump straight to the ones that didn't.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Check that the run for their change finished, and how it went.</p></div>
+          <div class="mini"><h4>Leads and managers</h4><p>Watch the trend: is quality steady, getting better or getting worse?</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Today → Overview</strong>.
+          TraceIQ also opens it automatically after you sign in.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has four parts. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/today/overview/page-annotated.png" alt="The Overview page with four numbered parts: 1 the four number tiles, 2 the pass-rate chart, 3 the list of recent runs, 4 the All runs button" loading="lazy" width="1440" height="1240"></div>
+          <figcaption>The Overview page. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="tiles" data-toc="① The four tiles">The four tiles</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/today/overview/tiles.png" alt="Four tiles: Total runs 240, Passed 45 with 100% pass rate today, Failed 5, Running 0" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Total runs</strong></td><td>Every run you are allowed to see, in <em>all</em> your projects, since the beginning.</td></tr>
+              <tr><td><strong>Passed</strong></td><td>How many of the <strong>50 most recent runs</strong> passed. The small line underneath shows the pass rate for <em>today</em> in the project selected in the sidebar.</td></tr>
+              <tr><td><strong>Failed</strong></td><td>How many of the <strong>50 most recent runs</strong> failed. If it is above zero, it says "Needs attention".</td></tr>
+              <tr><td><strong>Running</strong></td><td>How many of the <strong>50 most recent runs</strong> are running right now.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Why Passed + Failed doesn't add up to Total</strong>
+            <p><em>Total runs</em> counts all of history, but <em>Passed</em>, <em>Failed</em> and
+            <em>Running</em> only look at the newest 50 runs. In the screenshot, 240 runs exist
+            in total; of the newest 50, 45 passed and 5 failed. Read the three smaller tiles as
+            "lately", not "ever".</p>
+            <p>Also, <em>Failed</em> counts only runs marked <span class="pill t-peach">Failed</span>.
+            Runs that ended in <span class="pill t-peach">Error</span> or
+            <span class="pill t-butter">Timed out</span> are not in that number, so check the
+            list of recent runs too.</p></div>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="chart" data-toc="② Pass rate, last 14 days">Pass rate, last 14 days</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/today/overview/trend.png" alt="A bar chart with one bar per day for the last 14 days, most bars green, some orange" loading="lazy"></div>
+        </figure>
+        <p>
+          One bar for each of the last 14 days, oldest on the left and today on the right. The
+          taller the bar, the higher that day's pass rate. The label in the top-right corner
+          repeats today's pass rate.
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Bar colour</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#8FD3B6"></span>Green</td><td>90% or more of that day's runs passed. A healthy day.</td></tr>
+              <tr><td><span class="swatch" style="background:#F2C94C"></span>Yellow</td><td>Between 60% and 89% passed. Worth a look.</td></tr>
+              <tr><td><span class="swatch" style="background:#E0603A"></span>Orange</td><td>Less than 60% passed. Something was wrong that day.</td></tr>
+              <tr><td><span class="swatch" style="background:#F3F1EC"></span>Grey stub</td><td>No runs finished that day, so there is nothing to measure.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Point at a bar</strong> to see that day's exact numbers, for example
+          <em>"2026-10-14: 50.0% pass rate (1 passed / 1 failed of 2 runs)"</em>.</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Which runs the chart counts</strong>
+            <ul>
+              <li><strong>Only the project selected in the sidebar.</strong> The tiles and the run list cover all your projects; the chart covers one. Switch project with the project picker at the top of the sidebar.</li>
+              <li><strong>Pass rate = passed ÷ (passed + failed + error).</strong> Runs that were cancelled, timed out, or are still queued or running are left out, because they have no pass/fail answer.</li>
+              <li>Re-runs that TraceIQ makes only to <em>check a suggested fix</em> (see <em>Proposals</em>) are left out too, so they can't make a day look better or worse.</li>
+              <li>Days are calendar days in <strong>UTC</strong>. In India (UTC+5:30), a run at 2 a.m. counts towards the previous day.</li>
+            </ul>
+            <p>If no project is selected, or the project has no runs yet, the chart is not shown.</p></div>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="recent" data-toc="③ Recent runs">Recent runs</h2></div>
+        <p>The 10 newest runs across all your projects, newest first. Each row is one run:</p>
+        <figure>
+          <div class="frame small"><img src="../media/today/overview/recent-run-row.png" alt="One row from the list: a green tick, the suite name API contract (demo), a grey label with the test name, the date, time and duration, and a green Passed label" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>The icon on the left</strong> repeats the result at a glance: a tick for passed, a cross for failed or error, a spinner while running, and a dash for anything else (queued, cancelled, timed out).</li>
+          <li><strong>The name</strong> is the suite that ran. If only one test was run instead of a whole suite, its name appears next to it in a grey label.</li>
+          <li><strong>Underneath</strong>: when the run started, and how long it took.</li>
+          <li><strong>The coloured label on the right</strong> is the result (see the table below).</li>
+          <li><strong>Click anywhere on the row</strong> to open the run's own page, with every test, step, screenshot and log.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Label</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Passed</span></td><td>Every test in the run did what it should.</td></tr>
+              <tr><td><span class="pill t-peach">Failed</span></td><td>At least one test found a problem: something on the page or in the response was not as expected.</td></tr>
+              <tr><td><span class="pill t-peach">Error</span></td><td>Something went wrong <em>around</em> the test rather than in it, for example a preparation step failed. Treat it like a failure: it needs a look.</td></tr>
+              <tr><td><span class="pill t-lavender">Running</span></td><td>The run is happening right now.</td></tr>
+              <tr><td><span class="pill t-neutral">Queued</span></td><td>The run is waiting for a free test machine and will start shortly.</td></tr>
+              <tr><td><span class="pill t-neutral">Cancelled</span></td><td>Someone stopped the run before it finished. There is no verdict.</td></tr>
+              <tr><td><span class="pill t-butter">Timed out</span></td><td>The run went past TraceIQ's time limit and was stopped. There is no verdict. (A single step waiting too long on a page is a <em>Failed</em>, not a time-out.)</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="all-runs" data-toc="④ All runs">All runs</h2></div>
+        <p>The <strong>All runs</strong> button in the top-right corner opens the full list of
+          runs, with search and filters by status, browser and device. It is the same page as
+          <strong>Runs</strong> in the sidebar.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/today/overview/page.png" width="1280" height="800">
+              <source src="../media/today/overview/walkthrough.mp4" type="video/mp4">
+              <source src="../media/today/overview/walkthrough.webm" type="video/webm">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 30 seconds, no sound. The captions explain each part as the pointer moves over it.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check whether anything needs attention</h3>
+        <ol class="steps">
+          <li>Look at the <strong>Failed</strong> tile. Zero means none of the latest runs failed.</li>
+          <li>Scan the coloured labels in <strong>Recent runs</strong> for <em>Failed</em>, <em>Error</em> or <em>Timed out</em>.</li>
+          <li>Click a run that isn't green to see what went wrong.</li>
+        </ol>
+        <h3>…see whether quality is getting better or worse</h3>
+        <ol class="steps">
+          <li>Make sure the right project is selected at the top of the sidebar.</li>
+          <li>Read the chart from left to right. Several orange or yellow bars in a row means a lasting problem, not a one-off.</li>
+          <li>Point at a bar to see how many runs that day's percentage is based on. A day with 1 failed run out of 2 shows 50%, which looks worse than it is.</li>
+        </ol>
+        <h3>…look at a different project</h3>
+        <ol class="steps">
+          <li>Click the project name at the top of the sidebar.</li>
+          <li>Choose the project. The chart and today's pass rate update straight away.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>It updates by itself.</strong> The tiles and the run list refresh every 15 seconds and the chart every minute, so you can leave the page open.</li>
+          <li><strong>You only see your own projects.</strong> Every number counts only the projects you have access to. Two people can see different numbers on the same page.</li>
+          <li><strong>Nothing here can be changed.</strong> Overview is read-only. To run tests, go to <em>Tests → Suites</em>.</li>
+          <li><strong>A brand-new account</strong> shows zeros and "No runs yet" until the first test runs.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Runs</h4><p>The complete list of runs, with search and filters, and each run's full result.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>The next page in this guide: failures grouped by cause, so you fix one problem instead of reading twenty runs.</p></div>
+          <div class="mini"><h4>Analytics</h4><p>One project over 7, 30 or 90 days: which tests fail most, which are slowest, which are flakiest.</p></div>
+          <div class="mini"><h4>Release readiness</h4><p>A clear "ready / not ready" answer for a specific version of your app.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Overview page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
