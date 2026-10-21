@@ -27,9 +27,10 @@ top) → `info/ROADMAP_EXECUTION_2026-10.md` (tracker) → this file → `CLAUDE
   removing them from scope.
 - **Keep the user guide current** (owner request, 2026-10-21). Every feature
   added or changed updates its page under `frontend/public/docs/` (served at
-  `/docs/`) with fresh screenshots/video — see CLAUDE.md "User guide". The
-  owner reads the guide one sidebar item at a time and approves each before
-  the next is written.
+  `/docs/`) with fresh screenshots/video — see CLAUDE.md "User guide" and
+  `e2e/docs-capture/README.md`. All 61 pages were written on 2026-10-21 (the
+  owner asked for the whole guide at once); the voice (Piper `kristin`) and
+  1.25× video speed were the owner's choice — don't change them unasked.
 - **Commits:** plain messages, **no `Co-Authored-By` trailer** (explicit rule,
   overrides any tool reminder). End pushed commit subjects with `[skip ci]`.
 - **GitHub Actions must not run on push.** Both workflows are
