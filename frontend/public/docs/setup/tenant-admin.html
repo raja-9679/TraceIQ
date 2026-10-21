@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tenant admin · TraceIQ Guide</title>
+  <meta name="description" content="The Tenant admin page: everyone in your organisation across all its workspaces, and adding a person to several workspaces at once.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-tenant-admin.spec.ts. Page: frontend/src/pages/AdminUsersPage.tsx;
+     sidebar entry guarded in frontend/src/components/layout/nav.ts (permission tenant:manage_settings).
+     API: backend/app/api/admin.py (get_current_tenant_admin, GET /admin/users, GET /admin/workspaces,
+     POST /admin/users/{id}/assignments), app/services/workspace_service.py (get_tenant_users_detailed,
+     invite_user_to_workspace). -->
+<body data-page="setup/tenant-admin">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../admin/users"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Tenant admin</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Tenant admins only</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>For the administrators of your whole organisation: a list of every person in it,
+            across all of its workspaces, with a way to add someone to several workspaces in one
+            go.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Tenant admin answers <strong>"Who is in our organisation, and how do I give someone
+          access to several workspaces?"</strong> In TraceIQ a <em>tenant</em> is your
+          organisation: it holds one or more <em>workspaces</em>, and each workspace holds
+          projects. A <em>tenant admin</em> manages the whole organisation. The person who signs
+          up and creates the organisation becomes its first tenant admin.
+        </p>
+        <div class="grid-2">
+          <div class="mini"><h4>Tenant admins</h4><p>See everyone at once, spot accounts that are no longer active, and add a new starter to every workspace they need.</p></div>
+          <div class="mini"><h4>Everyone else</h4><p>This page isn't in your sidebar. Ask a tenant admin, or use <em>Users</em> to see your own workspace's people.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Tenant admin</strong>.
+          It is only listed for tenant admins. The page's own heading says <strong>Tenant users</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/tenant-admin/page-annotated.png" alt="The Tenant users page with four numbered parts: 1 the heading with the number of users and workspaces, 2 the search box and list of people, 3 the selected person's details, 4 the Assign workspaces button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Tenant users page for the guide's own organisation, which has one person. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="summary" data-toc="① The summary line">The summary line</h2></div>
+        <p>Under the heading, for example <em>"1 user across 2 workspaces in your tenant"</em>: how
+          many people are in the organisation, and how many workspaces it has.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of people">The list of people</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/tenant-admin/list.png" alt="A search box above an Active group with one person, Alex Morgan, labelled Tenant Admin" loading="lazy"></div>
+        </figure>
+        <p>Everyone who belongs to at least one of the organisation's workspaces, plus its tenant
+          admins, each listed once. Search by name or email. People are grouped into
+          <strong>Active</strong> and <strong>Inactive</strong> (accounts that have been
+          deactivated and can no longer sign in).</p>
+        <p>The label on the right is the person's <strong>highest role</strong> anywhere in the
+          organisation:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:26%">Label</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-pink">Tenant Admin</span></td><td>Manages the whole organisation: every workspace, its people and its settings.</td></tr>
+              <tr><td><span class="pill t-lavender">Workspace Admin</span></td><td>Manages at least one workspace.</td></tr>
+              <tr><td><span class="pill t-neutral">Workspace Member</span></td><td>An ordinary member, who sees the projects they have been given access to.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="detail" data-toc="③ The selected person">The selected person</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/tenant-admin/detail.png" alt="The selected user card: Alex Morgan, the email address, Role Tenant Admin, Status Active, a Workspace access note, and an Assign workspaces button" loading="lazy"></div>
+        </figure>
+        <p>Click someone in the list to see their name, email, role and status. Until you do, the
+          first active person is shown.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="assign" data-toc="④ Assign workspaces">Assign workspaces</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/tenant-admin/assign-dialog.png" alt="The Assign workspaces dialog: Role Member, a list of workspaces with checkboxes (Docs Guide, Demo workspace), and Cancel and Assign buttons" loading="lazy"></div>
+        </figure>
+        <p>Adds the selected person to one or more of the organisation's workspaces at once. Pick
+          the <strong>Role</strong> (<em>Member</em> or <em>Admin</em>), tick the workspaces, and
+          press <strong>Assign</strong>. They are added straight away; there is nothing for them
+          to accept.</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">It only adds</strong>
+            <p>Workspaces the person already belongs to are left exactly as they are, including
+            their role there. So Assign can't promote a member to admin of a workspace they are
+            already in, and it never removes anyone. To take someone out of a workspace, use
+            <em>Users</em>.</p></div>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/tenant-admin/page.png" width="1280" height="800">
+              <source src="../media/setup/tenant-admin/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 50 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…give a new starter access to several workspaces</h3>
+        <ol class="steps">
+          <li>Make sure they have signed up, or are already in one workspace, so that they appear in the list.</li>
+          <li>Find them with the search box and click them.</li>
+          <li>Press <strong>Assign workspaces</strong>, choose <strong>Member</strong>, and tick the workspaces.</li>
+          <li>Press <strong>Assign</strong>. Then give them access to the right projects on <em>Workspace → Projects</em> or through a team.</li>
+        </ol>
+        <h3>…check for accounts that should no longer have access</h3>
+        <ol class="steps">
+          <li>Read down the <strong>Active</strong> group for people who have left.</li>
+          <li>Remove them from each workspace on <em>Users</em>, or start an <em>Access review</em> to check everyone formally.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only your organisation.</strong> The list and the workspaces in the dialog come only from the organisations you are a tenant admin of. People in other organisations on the same server never appear.</li>
+          <li><strong>Someone who is in no workspace yet</strong> (and is not a tenant admin) doesn't appear here. Invite them on <em>Users</em> instead.</li>
+          <li><strong>This page can't remove or deactivate anyone.</strong> It only adds people to workspaces.</li>
+          <li><strong>Every addition is recorded</strong> in the audit log of the workspace concerned, as a role granted by you.</li>
+          <li><strong>Not a tenant admin?</strong> Opening the page's address directly shows "No users found.", because TraceIQ refuses to list anyone for you.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Worker fleet</h4><p>The next page in this guide: the browser workers that run your tests, for instance admins.</p></div>
+          <div class="mini"><h4>Users</h4><p>The people of one workspace, with invitations and removal.</p></div>
+          <div class="mini"><h4>Workspace</h4><p>Teams, and access to each project.</p></div>
+          <div class="mini"><h4>Access reviews</h4><p>A formal, signed-off check of who has access to what.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Tenant admin page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project settings · TraceIQ Guide</title>
+  <meta name="description" content="The Project settings page: who hears about a project's runs, what its runs may record and how long they are kept, backend traces and the OpenAPI spec, explained.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-project-settings.spec.ts. Page: frontend/src/pages/ProjectSettings.tsx
+     (+ components/project-settings/ProjectNotificationsSection.tsx, components/settings/DataPolicySection.tsx,
+     TraceCorrelationSection.tsx, OpenApiSpecSection.tsx, OpenApiSpecHistory.tsx).
+     API: backend/app/api/project_notifications.py + app/services/project_notifications.py,
+     app/tasks/notification_tasks.py, app/api/data_policy.py + app/services/data_policy.py, app/services/retention.py,
+     app/api/trace_correlation.py, app/api/developer.py (openapi-spec). -->
+<body data-page="setup/project-settings">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../project-settings"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Project settings</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Project admins can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>The settings that belong to one project and apply to everyone working in it: who is
+            told about its runs, how much its runs may record, which secrets are wiped out before
+            anything is stored, and how long old runs are kept.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Project settings answers <strong>"What are the rules for this project?"</strong> A
+          <em>project</em> is one application you test, with its own tests, runs and people.
+          Whatever is set here applies to every run in the project, whoever starts it. Your
+          personal preferences are on <em>My settings</em> instead.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Project admins</h4><p>Decide who is emailed, connect the team's Slack or Teams channel, and set how long results are kept.</p></div>
+          <div class="mini"><h4>Security and privacy</h4><p>Limit what runs record, and make sure passwords, card numbers and personal data never end up in screenshots or logs.</p></div>
+          <div class="mini"><h4>Everyone else</h4><p>See why a run has no video, or why nobody got an email, and choose whether this project emails you.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Project settings</strong>.
+          The page shows the project selected at the top of the sidebar, and names it under the
+          heading. With no project selected it shows only "Select a project in the sidebar to see
+          its settings."</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The list on the left switches between five sections. The numbers on the screenshot
+          match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/project-settings/page-annotated.png" alt="The Project settings page for Demo — Todo web app with the section list numbered: 1 Notifications, 2 Data capture and retention, 3 Backend traces, 4 OpenAPI spec, 5 Members and other policies. The Notifications section is open" loading="lazy" width="1440" height="900"></div>
+          <figcaption>Project settings for the demo's web project, opened on Notifications. Click the picture to see it larger.</figcaption>
+        </figure>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Looking is open to all, changing is not</strong>
+            <p>Anyone with access to the project can open every section. If you are not a project
+            admin, a line at the top says "You can see these settings; changing them needs the
+            project admin role", and the cards say "Only project admins can change this."
+            Two exceptions: your own email choice (the first card) is yours to change, and the
+            OpenAPI spec can be changed by editors as well.</p></div>
+        </div>
+
+        <div class="part"><span class="num">1</span><h2 id="notifications" data-toc="① Notifications">Notifications</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/your-choice.png" alt="The Your notifications for this project card: Email me about, set to My default" loading="lazy"></div>
+        </figure>
+        <p><strong>Your notifications for this project</strong> is the one card that is about
+          you: <em>My default</em> (follow My settings → Notifications), <em>All runs</em>,
+          <em>Failed runs only</em> or <em>Nothing</em>. It is saved the moment you pick, and
+          it is the same choice as this project's line in My settings → Per project.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/email.png" alt="The Email card: three checkboxes (Send email about this project's runs, Only for failed runs, Tell a test's owner when it starts failing), a People list with one member, an Other addresses box, and a Save button" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Setting</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Send email about this project's runs</strong></td><td>The main switch. Off, nobody is emailed about this project's runs, whatever their own choices.</td></tr>
+              <tr><td><strong>Only for failed runs</strong></td><td>Skip runs that passed. This also applies to the Slack and Teams posts below.</td></tr>
+              <tr><td><strong>Tell a test's owner when it starts failing</strong></td><td>One email to the test's owner (or its backup owner, if there is no owner) the first time it fails after passing. Owners are set on the <em>Test review</em> page.</td></tr>
+              <tr><td><strong>People</strong></td><td>Project members to email about every run. The person who started a run is always included. Each person can still say no for themselves.</td></tr>
+              <tr><td><strong>Other addresses</strong></td><td>Up to 20 addresses outside TraceIQ, such as a team mailing list, one per line. These always get the email: there is nobody to ask.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/slack.png" alt="The Slack card: a Post this project's runs to Slack checkbox with the hint Add a webhook below first, and a Webhook field" loading="lazy"></div>
+        </figure>
+        <p><strong>Slack</strong> and <strong>Microsoft Teams</strong> post a message about each
+          run to a channel. In the chat tool, create an <em>incoming webhook</em> for the channel
+          (an address that accepts messages), paste it into <strong>Webhook</strong>, tick
+          <strong>Post this project's runs to…</strong> and save. Once saved, the address is
+          never shown again in full, only a short hint of it; paste a new one to replace it, or
+          press <strong>Remove the webhook</strong>.</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">The server has the last word</strong>
+            <p>Your instance admin can switch email, Slack or Teams off for the whole server, or
+            send only failures everywhere. When that happens these settings are kept but have no
+            effect. The demo projects never send anything.</p></div>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="capture" data-toc="② Data capture and retention">Data capture and retention</h2></div>
+        <p>One card, <strong>Data capture and redaction</strong>, with a single <strong>Save data
+          policy</strong> button at the bottom. Changes apply to the next run that starts.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/capture-level.png" alt="Capture level: four choices, none, minimal, standard (selected) and full, each with a one-line description" loading="lazy"></div>
+        </figure>
+        <p>The <strong>capture level</strong> decides how much a run is allowed to record:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">Level</th><th>What runs record</th></tr></thead>
+            <tbody>
+              <tr><td><strong>none</strong></td><td>Whether each step passed or failed, and how long it took. Nothing else.</td></tr>
+              <tr><td><strong>minimal</strong></td><td>Adds a screenshot when a test fails.</td></tr>
+              <tr><td><strong>standard</strong></td><td>Adds screenshots, the browser's console messages and a list of network requests, all with secrets removed. Also screenshot comparisons. The level a new project starts at.</td></tr>
+              <tr><td><strong>full</strong></td><td>Adds video, Playwright traces and HAR files (a full record of the network traffic). None of these can have secrets removed, so choose it only if the app shows no sensitive data.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/recorded-now.png" alt="Recorded right now (effective level: standard): Screenshots, Console logs and Network logs in green; Video, Playwright trace and HAR marked off" loading="lazy"></div>
+        </figure>
+        <p><strong>Recorded right now</strong> shows what is really recorded. It can be less than
+          you chose: your instance admin sets a ceiling for the whole server. A level above it
+          is marked "Above the instance ceiling", and if the project asks for more than the
+          ceiling, a note at the top says which level actually applies.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/patterns.png" alt="Redact these value patterns: checkboxes pan, aadhaar, jwt, cloud_keys (ticked) and email, phone (not ticked)" loading="lazy"></div>
+        </figure>
+        <p><strong>Redaction</strong> means replacing secrets with a placeholder before anything is
+          stored. <strong>Redact these value patterns</strong> looks for kinds of values wherever
+          they appear:</p>
+        <ul>
+          <li><code>pan</code>: payment card numbers, <code>aadhaar</code>: Indian Aadhaar numbers. Both are checked with their checksum, so an order number that happens to be 16 digits is left alone.</li>
+          <li><code>jwt</code>: sign-in tokens; <code>cloud_keys</code>: access keys for AWS, GitHub, Slack, Stripe, Google and Azure, and private keys.</li>
+          <li><code>email</code> and <code>phone</code>: off at first, because removing every email address breaks tests that check one is shown.</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/lists.png" alt="Three boxes: Extra headers, Extra body fields, Mask selectors" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Extra headers</strong>: names of request headers to blank out, one per line. Authorization, Cookie and similar are always blanked.</li>
+          <li><strong>Extra body fields</strong>: names of fields in requests and responses to blank out. <code>policy_no</code> also catches <code>policyNo</code> and <code>Policy-No</code>.</li>
+          <li><strong>Mask selectors</strong>: parts of the page to paint over in screenshots, written as CSS selectors (the way a test points at an element, such as <code>#ssn</code>). The covered pixels are never saved.</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/retention.png" alt="A ticked Store request and response bodies checkbox, and Retention (days) set to 0" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Store request and response bodies</strong>: untick to keep only headers and status codes of network traffic, never its content.</li>
+          <li><strong>Retention (days)</strong>: runs older than this are deleted, with their screenshots and files. 0 means "use the server's setting". If both are set, the shorter one wins; if neither is, runs are kept forever. The clean-up runs every hour.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="traces" data-toc="③ Backend traces">Backend traces</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/traces.png" alt="The Backend traces card, marked Off: a note that no trace backend is configured on this instance yet, and two checkboxes, Send trace headers to this project's own hosts and Also on cross-origin browser requests" loading="lazy"></div>
+        </figure>
+        <p>For teams whose servers record <em>traces</em> (a timeline of what each server did to
+          answer a request) in Jaeger or Tempo. When this is on, the requests a test makes to your
+          own sites carry a label, and each test step's result can show what your servers did for
+          it. It is off at first.</p>
+        <ul>
+          <li><strong>Send trace headers to this project's own hosts</strong>: "own hosts" are the addresses in the project's environments, its suites' allowed sites and its security settings, never third-party sites. Not sent when the capture level is <em>none</em>.</li>
+          <li><strong>Also on cross-origin browser requests</strong>: leave off unless your developers say otherwise; it can make the browser refuse some requests.</li>
+        </ul>
+        <p>Both checkboxes save the moment you click them. Showing the server's side also needs your
+          instance admin to connect TraceIQ to Jaeger or Tempo; until then the card says "No trace
+          backend is configured on this instance yet".</p>
+
+        <div class="part"><span class="num">4</span><h2 id="openapi" data-toc="④ OpenAPI spec">OpenAPI spec</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/openapi.png" alt="The OpenAPI spec card: No spec stored for this project, a Choose file button and an Or fetch from a URL field with a Fetch and save button" loading="lazy"></div>
+        </figure>
+        <p>An <em>OpenAPI spec</em> is a file that describes an API: its addresses and what each
+          answer should look like. Store your API's spec here, and API tests can check that every
+          answer matches it, instead of each test spelling out the expected shape.</p>
+        <ul>
+          <li><strong>Choose file</strong> uploads a JSON file; <strong>Fetch and save</strong> downloads it from an address.</li>
+          <li>Once stored, the card shows its title, version and the first 12 of its operations, and a <strong>Remove spec</strong> button.</li>
+          <li>Every new upload is kept as a numbered version. With two or more, the card lists them and shows what changed between two versions, <strong>breaking changes first</strong>, naming the project's tests that use each changed operation.</li>
+        </ul>
+        <p>Editors can change the spec, not only project admins. Tests created from an OpenAPI file
+          (through TraceIQ's API, by a CI script or an AI agent) also store the spec here.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="more" data-toc="⑤ Members and other policies">Members and other policies</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/project-settings/more.png" alt="Four cards with links: Members and access (Open Workspace), Quality gate and CI (Open Quality gate), Network policy (Open On-call), Environments (Open Environments)" loading="lazy"></div>
+        </figure>
+        <p>Other rules for the project live on pages of their own. This section only links to them:</p>
+        <ul>
+          <li><strong>Members and access</strong> → <em>Workspace</em>: who can see, edit and run this project.</li>
+          <li><strong>Quality gate and CI</strong> → <em>Quality gate</em>: the rules a release is judged on.</li>
+          <li><strong>Network policy</strong> → <em>On-call</em>: which sites this project's tests may reach.</li>
+          <li><strong>Environments</strong> → <em>Environments</em>: addresses, variables and secrets for each place the app runs.</li>
+        </ul>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/project-settings/page.png" width="1280" height="800">
+              <source src="../media/setup/project-settings/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute and a quarter, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…email the whole team when a run fails</h3>
+        <ol class="steps">
+          <li>Open <strong>Notifications</strong>.</li>
+          <li>In <strong>Email</strong>, tick <strong>Send email about this project's runs</strong> and <strong>Only for failed runs</strong>.</li>
+          <li>Tick the people under <strong>People</strong>, or type the team's mailing list under <strong>Other addresses</strong>.</li>
+          <li>Press <strong>Save</strong>.</li>
+        </ol>
+        <h3>…post run results to a Slack channel</h3>
+        <ol class="steps">
+          <li>In Slack, create an incoming webhook for the channel and copy its address.</li>
+          <li>Open <strong>Notifications</strong>, paste the address into <strong>Webhook</strong> on the <strong>Slack</strong> card.</li>
+          <li>Tick <strong>Post this project's runs to Slack</strong> and press <strong>Save</strong>.</li>
+        </ol>
+        <h3>…keep personal data out of screenshots</h3>
+        <ol class="steps">
+          <li>Open <strong>Data capture and retention</strong>.</li>
+          <li>Make sure the capture level is <strong>standard</strong> or lower, so nothing is recorded that can't be cleaned.</li>
+          <li>Under <strong>Mask selectors</strong>, add the parts of the page that show personal data, one per line (ask a tester or developer for the selectors).</li>
+          <li>Tick <strong>email</strong> or <strong>phone</strong> under the value patterns if the app shows them, then press <strong>Save data policy</strong>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Changes are recorded.</strong> Every change to the notification settings or the data policy is written to the audit log with who made it. Webhook addresses are never written there, only that one was set or removed.</li>
+          <li><strong>Old runs keep what they recorded.</strong> Raising or lowering the capture level, or adding a redaction rule, affects new runs only.</li>
+          <li><strong>A shorter retention deletes for real.</strong> Lowering it means the next hourly clean-up deletes every run older than the new number of days, with its files. There is no undo.</li>
+          <li><strong>Email recipients must belong to the project.</strong> Only people with access to it are listed under People, and someone who loses access stops getting mail.</li>
+          <li><strong>Webhook addresses are checked.</strong> TraceIQ checks a Slack or Teams address when it is saved and again before every post, and refuses one that points into a private or internal network unless your instance admin allows that.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Workspace</h4><p>The next page in this guide: members, teams and who may see each project.</p></div>
+          <div class="mini"><h4>My settings</h4><p>Your own email defaults and recording choices, which work inside the limits set here.</p></div>
+          <div class="mini"><h4>Environments</h4><p>The addresses and secrets your tests use, per environment.</p></div>
+          <div class="mini"><h4>Test review</h4><p>Where each test gets an owner, who can be emailed when it starts failing.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Project settings page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My settings · TraceIQ Guide</title>
+  <meta name="description" content="The My settings page: your own run defaults, recording choices, email notifications, account and two-factor sign-in, explained.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-my-settings.spec.ts. Page: frontend/src/pages/Settings.tsx
+     (+ components/settings/personalCards.tsx). API: backend/app/api/settings.py (settings_models.UserSettings),
+     app/api/project_notifications.py + app/services/project_notifications.py, app/api/auth.py (MFA),
+     app/api/api_keys.py. Where the choices are used: api/endpoints/test_runs.py (_resolve_matrix),
+     app/services/artifact_prefs.py, app/services/data_policy.py. -->
+<body data-page="setup/my-settings">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../settings"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>My settings</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Everyone has one</span>
+          <span class="tag t-neutral">Only you can change yours</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Your own corner of TraceIQ. Here you choose which browser your runs use when nothing
+            else decides, what your runs record, which emails you get, and whether signing in
+            needs a code from your phone. Nothing here changes anyone else's settings.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          My settings answers <strong>"How do I want TraceIQ to behave for me?"</strong> A
+          <em>run</em> is one execution of your tests; when you start one, TraceIQ uses some of
+          the choices on this page to fill in what the test itself leaves open. Settings that
+          everyone in a project shares, such as how long runs are kept, are not here: they are in
+          <em>Project settings</em>.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Run every test on Firefox and WebKit as well as Chromium without editing each suite, and keep a video of failed runs.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Get an email only when a run fails, and switch off emails from projects you only look at now and then.</p></div>
+          <div class="mini"><h4>Everyone</h4><p>Protect your account with an authenticator app, and check the name and email address TraceIQ has for you.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → My settings</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The list on the left switches between five sections; the cards of the chosen section
+          appear on the right. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/my-settings/page-annotated.png" alt="The My settings page with the section list numbered: 1 General, 2 Runs and recordings, 3 Notifications, 4 Account and API keys, 5 Two-factor sign-in. The General section is open, showing the Display card and the Features in this browser card" loading="lazy" width="1440" height="900"></div>
+          <figcaption>My settings, opened on its General section. Click the picture to see it larger.</figcaption>
+        </figure>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Each card saves on its own</strong>
+            <p>Most cards have their own <strong>Save</strong> button, which saves only that card.
+            It stays grey until you change something; then the card says "Unsaved changes." and a
+            <strong>Discard</strong> button puts the card back as it was. Saving one card never
+            touches another, so you can change one thing at a time. Two places save straight away
+            instead, without a Save button: <em>Features in this browser</em> and the
+            <em>Per project</em> email choices.</p></div>
+        </div>
+
+        <div class="part"><span class="num">1</span><h2 id="general" data-toc="① General">General</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/display.png" alt="The Display card: Theme Light, Timezone UTC, Date format MM/DD/YYYY, and a grey Save button" loading="lazy"></div>
+        </figure>
+        <p><strong>Display</strong> holds a theme (Light, Dark or Auto), a time zone and a date
+          format.</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">These three have no effect yet</strong>
+            <p>TraceIQ saves them with your account, but in this version nothing else in the app
+            reads them: changing the theme does not darken the screens, and dates and times are
+            not reformatted.</p></div>
+        </div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/features.png" alt="The Features in this browser card with one checkbox: AI test generation" loading="lazy"></div>
+        </figure>
+        <p><strong>Features in this browser</strong> has one switch, <strong>AI test
+          generation</strong>. Ticked, suite pages show a <strong>Generate</strong> button that
+          drafts test cases with the AI provider your organisation has set up. The choice is
+          remembered by <em>this browser only</em>: on another computer, or after clearing the
+          browser's data, it is off again.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="runs" data-toc="② Runs and recordings">Runs and recordings</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/run-defaults.png" alt="The Run defaults card: Default browser Chromium, Default device Desktop" loading="lazy"></div>
+        </figure>
+        <p><strong>Run defaults</strong> pick the browser and the device for runs you start, but
+          only as a last resort. TraceIQ takes the first answer it finds, in this order:</p>
+        <ol>
+          <li>the browser or device you chose when starting the run;</li>
+          <li>what the test itself asks for;</li>
+          <li>what its suite (the folder of tests it belongs to), or a suite above it, asks for;</li>
+          <li><strong>your defaults on this page</strong>;</li>
+          <li>Chromium, on a desktop-sized window.</li>
+        </ol>
+        <p>"Desktop" means no device imitation. The other devices (Mobile, iPhone 13, Pixel 5) make
+          the browser behave like that phone's screen.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/browsers.png" alt="The Several browsers card: a Run on several browsers checkbox, then Chromium ticked, Firefox and WebKit not ticked" loading="lazy"></div>
+        </figure>
+        <p><strong>Several browsers</strong> and <strong>Several devices</strong> work the same
+          way. Tick <em>Run on several browsers</em>, tick the browsers, and save: from then on,
+          each test in a run you start runs once on every ticked browser, instead of once on your
+          default browser. Three browsers and two devices make six copies of every test, so runs
+          take longer.</p>
+        <p>Below these cards, a short card called <strong>Timeouts, retries and parallel
+          runs</strong> explains where those are set instead: on each suite's page (retries,
+          execution mode) and by your instance admin (step timeout). They are not personal, so
+          every run of a suite behaves the same whoever starts it.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/capture-pointer.png" alt="The What the project allows card: This project's capture level is standard, so no video or Playwright traces are recorded, whatever you choose below" loading="lazy"></div>
+        </figure>
+        <p><strong>What the project allows</strong> shows the <em>capture level</em> of the
+          project selected in the sidebar: how much a run in that project is allowed to record.
+          It is set in Project settings, and it is the ceiling for your own choices below.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/recordings.png" alt="The Recordings and screenshots card: Video recording Only on Failure, Screenshot on error ticked, Playwright trace files ticked" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Choice</th><th>What it does</th><th style="width:24%">Needs capture level</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Video recording</strong></td><td>Keep a video of every test (<em>Always Record</em>), only of tests that failed (<em>Only on Failure</em>, the default), or none.</td><td>Full</td></tr>
+              <tr><td><strong>Screenshot on error</strong></td><td>Take a picture of the page when a test fails.</td><td>Minimal or higher</td></tr>
+              <tr><td><strong>Playwright trace files</strong></td><td>Keep a trace: a detailed recording of every step that developers can replay.</td><td>Full</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Your choices can only make a run record <em>less</em> than the project allows, never
+          more. They apply to runs you start and to scheduled runs of schedules you created.</p>
+        <p>The last card, <strong>Retention</strong>, only explains that how long runs are kept is a
+          project setting (in <em>Project settings → Data capture and retention</em>).</p>
+
+        <div class="part"><span class="num">3</span><h2 id="notifications" data-toc="③ Notifications">Notifications</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/notifications.png" alt="The Email notifications card: Send me email about test runs ticked, an empty Notification email field, and Email me about set to All runs" loading="lazy"></div>
+        </figure>
+        <p><strong>Email notifications</strong> is your default for emails about runs. TraceIQ
+          emails you about a run when you started it, when it came from a schedule you created, or
+          when a project admin has added you to the project's email list.</p>
+        <ul>
+          <li><strong>Send me email about test runs</strong>: untick it to get no run emails by default.</li>
+          <li><strong>Notification email</strong>: an address to use instead of the one you sign in with. Leave it empty to use your account email.</li>
+          <li><strong>Email me about</strong>: <em>All runs</em>, or <em>Failed runs only</em>, which skips runs that passed.</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/per-project.png" alt="The Per project card: three projects (My first project, Demo — Todo web app, Demo — Public API), each set to My default" loading="lazy"></div>
+        </figure>
+        <p><strong>Per project</strong> lists every project you can see, and lets you override
+          your default for one of them: <em>My default</em> (follow the card above), <em>All
+          runs</em>, <em>Failed runs only</em> or <em>Nothing</em>. A choice here is saved the
+          moment you pick it.</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Why you might still get no email</strong>
+            <p>These are your wishes, not the last word. A project can switch email off for
+            everyone in its own notification settings, and the server must have email set up by
+            your instance admin. The demo projects never send email at all.</p></div>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="account" data-toc="④ Account and API keys">Account and API keys</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/profile.png" alt="The Profile card: Full name Alex Morgan, Email docs-guide-92886b@example.com" loading="lazy"></div>
+        </figure>
+        <p><strong>Profile</strong> shows the name and email address TraceIQ has for you. You can't
+          change them here; ask your workspace administrator.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/api-keys.png" alt="The API keys card: a Create API key button, a Workspace menu showing Docs Guide, and the text No API keys yet" loading="lazy"></div>
+        </figure>
+        <p><strong>API keys</strong> is a short version of the <em>API keys</em> page: the keys of
+          one workspace, with their name, the first characters of the key, whether they are still
+          active, and when they were last used. If you belong to more than one workspace, choose
+          it in the <strong>Workspace</strong> menu. Keys are shared by the workspace, not
+          personal, and the <em>API keys</em> page explains them fully.</p>
+        <p><strong>Connect an IDE through MCP</strong> shows the settings to paste into a code
+          editor (Claude Code, Cursor or VS Code) so an AI assistant in it can use TraceIQ through
+          an API key.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="two-factor" data-toc="⑤ Two-factor sign-in">Two-factor sign-in</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/my-settings/two-factor.png" alt="The Two-factor sign-in section: an Authenticator app card with a Set up authenticator button, a Recovery codes card, and a Turn off two-factor sign-in card" loading="lazy"></div>
+        </figure>
+        <p>Two-factor sign-in means that signing in with your password also needs a 6-digit code
+          from an <em>authenticator app</em> on your phone (Google Authenticator, Authy,
+          1Password and similar). Someone who learns your password still can't get in.</p>
+        <ul>
+          <li><strong>Authenticator app</strong>: set it up (see <a href="#how-to">How to…</a>).</li>
+          <li><strong>Recovery codes</strong>: a fresh set of 10 backup codes, for when you don't have your phone. Each code works once. Making a new set needs a current code from the app, and the old set stops working.</li>
+          <li><strong>Turn off two-factor sign-in</strong>: enter a current code and press <strong>Disable MFA</strong> to go back to password only. Your recovery codes are deleted too.</li>
+        </ul>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">The page doesn't say whether it is on</strong>
+            <p>All three cards are always shown, whether or not you have two-factor sign-in.
+            If you press <strong>Set up authenticator</strong> when it is already on, TraceIQ
+            refuses with "MFA is already enabled"; to move to a new phone, turn it off first with
+            a code from the old one, then set it up again.</p></div>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/my-settings/page.png" width="1280" height="800">
+              <source src="../media/setup/my-settings/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…run your tests on several browsers</h3>
+        <ol class="steps">
+          <li>Open <strong>Runs and recordings</strong>.</li>
+          <li>In <strong>Several browsers</strong>, tick <strong>Run on several browsers</strong>, then tick each browser you want.</li>
+          <li>Press <strong>Save</strong> on that card.</li>
+          <li>Start a run as usual. Tests whose suite doesn't choose its own browsers now run once per ticked browser.</li>
+        </ol>
+        <h3>…get emails only when something fails</h3>
+        <ol class="steps">
+          <li>Open <strong>Notifications</strong>.</li>
+          <li>Make sure <strong>Send me email about test runs</strong> is ticked, and set <strong>Email me about</strong> to <strong>Failed runs only</strong>.</li>
+          <li>Press <strong>Save</strong>.</li>
+          <li>To silence one busy project completely, set it to <strong>Nothing</strong> under <strong>Per project</strong> (saved at once).</li>
+        </ol>
+        <h3>…turn on two-factor sign-in</h3>
+        <ol class="steps">
+          <li>Install an authenticator app on your phone.</li>
+          <li>Open <strong>Two-factor sign-in</strong> and press <strong>Set up authenticator</strong>. A QR code appears.</li>
+          <li>Scan it with the app (or type in the key shown next to it). The app starts showing 6-digit codes.</li>
+          <li>Type the current code and press <strong>Verify and turn on</strong>.</li>
+          <li>TraceIQ shows 10 recovery codes, once. Copy them somewhere safe, then press <strong>I've saved them</strong>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Your settings follow you, not the project.</strong> A colleague who starts the same suite gets their own defaults. That is why suite settings win over yours: a suite that names its browsers behaves the same for everyone.</li>
+          <li><strong>Scheduled runs don't use your browser defaults.</strong> A schedule runs on the browser set on the schedule. Your recording choices do apply to schedules you created.</li>
+          <li><strong>There is a limit of 120 copies of one test per run.</strong> Browsers × devices (× screen sizes and identities, if the run uses them) above that, and TraceIQ refuses to start the run.</li>
+          <li><strong>Two-factor sign-in is for password sign-in</strong>, including a company directory (LDAP) password. If you sign in through your company's single sign-on (SSO), TraceIQ doesn't ask for its code; your company's own sign-in decides whether you need a second step. Your instance admin can also make two-factor sign-in compulsory; you are then asked to set it up the next time you sign in with a password.</li>
+          <li><strong>Turning two-factor sign-in on or off is recorded</strong> in TraceIQ's audit trail, with the time.</li>
+          <li><strong>Codes allow a little clock drift.</strong> A code from the previous or next 30 seconds is accepted too, so a phone clock that is slightly off still works.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Project settings</h4><p>The next page in this guide: settings shared by everyone in a project, including the capture level and how long runs are kept.</p></div>
+          <div class="mini"><h4>API keys</h4><p>Create and revoke the keys that let CI pipelines and AI agents use TraceIQ.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where a suite can choose its own browsers, devices and retries, which win over your defaults.</p></div>
+          <div class="mini"><h4>Schedules</h4><p>Runs on a timer. They pick their own browser; your recording choices still apply.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the My settings page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

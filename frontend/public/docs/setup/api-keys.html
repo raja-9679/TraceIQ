@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API keys · TraceIQ Guide</title>
+  <meta name="description" content="The API keys page: create, limit and revoke the keys that let CI pipelines, scripts and AI agents use TraceIQ.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-api-keys.spec.ts. Page: frontend/src/pages/ApiKeys.tsx
+     (API client frontend/src/api/apiKeys.ts). API: backend/app/api/api_keys.py; how a key signs in:
+     backend/app/core/auth.py (_principal_from_api_key); project scope: app/api/jobs.py (api_key_allows_project). -->
+<body data-page="setup/api-keys">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../api-keys"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>API keys</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Every member of the workspace can see it</span>
+          <span class="tag t-neutral">Every member can create and revoke keys</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>An API key is a long secret code that lets another program use TraceIQ in your name,
+            without anyone signing in: a build pipeline that runs the tests after every change, a
+            script, or an AI coding assistant. This page creates keys, limits what they can
+            reach, and switches them off.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          API keys answer <strong>"How do our other tools talk to TraceIQ safely?"</strong> The
+          <em>API</em> is the way programs talk to TraceIQ. A program can't type a password or
+          a two-factor code, so it sends a key with every request instead. Anyone who has the
+          key can do what the key allows, so treat it like a password.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Developers</h4><p>Let the CI pipeline (for example the TraceIQ GitHub Action) start a run for every pull request and wait for the result.</p></div>
+          <div class="mini"><h4>AI assistants</h4><p>Connect Claude Code, Cursor or VS Code to TraceIQ through its MCP server, so the assistant can run and read tests.</p></div>
+          <div class="mini"><h4>Admins</h4><p>See which keys exist and when each was last used, and revoke one that is no longer needed or may have leaked.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → API keys</strong>.
+          A shorter version of the same list is in <em>My settings → Account and API keys</em>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The numbers on the screenshot match the sections below. The demo workspace has no keys,
+          so the picture shows the page before the first key is made.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/api-keys/page-annotated.png" alt="The API keys page with three numbered parts: 1 the Workspace menu, 2 the New API key button, 3 the list of keys, here empty with the text No API keys yet" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The API keys page for the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The line under the heading counts the keys, for example <em>"2 active of 3"</em>.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>Keys belong to a <em>workspace</em>, not to a person. If you are in more than one
+          workspace, this menu chooses whose keys you see and where a new key is made. It is only
+          shown when you belong to more than one.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="new-key" data-toc="② New API key">New API key</h2></div>
+        <p>Opens the form for a new key:</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/api-keys/new-key-form.png" alt="The New API key form: Name (filled in as ci-regression-bot), Project scope Entire workspace, Role Default, Expires in (days) never, Allowed source IPs, and the Create key and Cancel buttons" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:26%">Field</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Name</strong></td><td>Required. Say who uses the key, such as "ci-regression-bot" or "claude-code", so it can be recognised later.</td></tr>
+              <tr><td><strong>Project scope</strong></td><td><em>Entire workspace</em>, or one project. Limit it to one project whenever you can: a key for one project is refused for other projects' runs, results, reports and quality gates. (In this version that limit is not yet applied everywhere, for example not to reading suites and tests, so don't rely on it alone.)</td></tr>
+              <tr><td><strong>Role</strong></td><td>Saved with the key, but in this version it does not change what the key can do (see below).</td></tr>
+              <tr><td><strong>Expires in (days)</strong></td><td>After this many days the key stops working by itself. Empty means it never expires.</td></tr>
+              <tr><td><strong>Allowed source IPs</strong></td><td>Optional. Network addresses (written like <code>203.0.113.0/24</code>, separated by commas) the key may be used from. A request from anywhere else is refused and recorded in the audit log. Empty means any address.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/api-keys/scope-menu.png" alt="The Project scope menu open: Entire workspace (ticked), Demo — Todo web app, Demo — Public API" loading="lazy"></div>
+          <figcaption>Project scope lists the workspace's projects.</figcaption>
+        </figure>
+        <p>Press <strong>Create key</strong>. A yellow box marked <span class="pill t-butter">Shown once</span>
+          then shows the whole key, which starts with <code>tiq_</code>, with a <strong>Copy key</strong>
+          button. <strong>This is the only time the full key is ever shown.</strong> Copy it into
+          the place that needs it (for example your CI system's secret settings) before pressing
+          <strong>Done</strong>. If it is lost, revoke it and make a new one.</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">A key can do what its creator can do</strong>
+            <p>A key always acts with the access of the person who created it: the projects
+            they can see, and their role in each. The <strong>Role</strong> you pick in the
+            form is stored, but it does not reduce that. To limit a key, use <strong>Project
+            scope</strong>, an expiry and source IPs. If the creator's account is deactivated,
+            their keys stop working too.</p></div>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list of keys">The list of keys</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/api-keys/empty.png" alt="An empty list with the title No API keys yet" loading="lazy"></div>
+        </figure>
+        <p>Once there are keys, they are listed in three groups, <strong>Active keys</strong>,
+          <strong>Expired</strong> and <strong>Revoked</strong>, newest first. Each row shows the
+          key's name, its scope (a project, or "Entire workspace"), when it was last used, and the
+          first few characters of the key, so you can tell keys apart without seeing them. Click
+          a key to see its details on the right:</p>
+        <ul>
+          <li><strong>Status</strong>: <span class="pill t-mint">Active</span>, <span class="pill t-butter">Expired</span> or <span class="pill t-peach">Revoked</span>.</li>
+          <li><strong>Key, Scope, Source IPs, Last used</strong>, and when it expires (or was revoked).</li>
+          <li><strong>Edit source IPs</strong> changes the allowed addresses. Only the key's creator or a workspace admin may do this.</li>
+          <li><strong>Revoke key</strong> switches it off for good, after you confirm. Everything using it loses access at once. A revoked key stays in the list, so its history can still be traced.</li>
+        </ul>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/api-keys/page.png" width="1280" height="800">
+              <source src="../media/setup/api-keys/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. No key is created in the video.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…make a key for a CI pipeline</h3>
+        <ol class="steps">
+          <li>Choose the workspace, then press <strong>New API key</strong>.</li>
+          <li>Name it after the pipeline, choose the one project it tests under <strong>Project scope</strong>, and set an expiry, such as 90 days.</li>
+          <li>Press <strong>Create key</strong>, then <strong>Copy key</strong>.</li>
+          <li>Paste it into the pipeline's secret settings (for GitHub, a repository secret), not into a file in the code.</li>
+          <li>Press <strong>Done</strong>.</li>
+        </ol>
+        <h3>…switch off a key that may have leaked</h3>
+        <ol class="steps">
+          <li>Find the key in the list (the first characters shown match the start of the leaked key).</li>
+          <li>Click it, press <strong>Revoke key</strong>, and confirm. It stops working straight away.</li>
+          <li>Make a new key for whatever needs one, and look up the key's use in <em>Security → Audit log</em>.</li>
+        </ol>
+        <h3>…replace a key before it expires</h3>
+        <ol class="steps">
+          <li>Make a new key with the same scope.</li>
+          <li>Put the new key where the old one was used.</li>
+          <li>Once <strong>Last used</strong> of the old key stops changing, revoke it.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Any member of the workspace can create, see and revoke its keys.</strong> They see every key in the workspace, not only their own, but never the full key.</li>
+          <li><strong>A key can't make or revoke keys.</strong> A program using a key is refused if it tries; only a signed-in person can.</li>
+          <li><strong>Creating and revoking are recorded</strong> in the audit log, with the key's name and first characters, never the key itself.</li>
+          <li><strong>Programs send the key in a header</strong> called <code>X-API-Key</code>. The details for developers are in TraceIQ's API documentation and the GitHub Action's README.</li>
+          <li><strong>Deactivating a person stops their keys.</strong> Keys work only while the person who created them is active. Moving a key to someone else isn't possible; make a new one.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Webhooks</h4><p>The next page in this guide: TraceIQ calls your systems when a run finishes, the opposite direction to a key.</p></div>
+          <div class="mini"><h4>My settings</h4><p>The same keys in a shorter list, and the settings for connecting an AI assistant through MCP.</p></div>
+          <div class="mini"><h4>Agents</h4><p>What AI agents using your keys have done, with limits and a switch to stop them.</p></div>
+          <div class="mini"><h4>Audit log</h4><p>Every key created or revoked, and every request refused because of a key's source IPs.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the API keys page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Users · TraceIQ Guide</title>
+  <meta name="description" content="The Users page: who is in each workspace, how to invite people to a workspace or a single project, and how to remove them.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-users.spec.ts. Page: frontend/src/pages/UsersPage.tsx.
+     API: backend/app/api/workspaces.py (members/detailed, invitations, DELETE users), app/api/projects.py
+     (POST projects/{id}/invitations), app/api/admin.py (GET admin/users = "All workspaces"),
+     app/services/workspace_service.py (invite_user_to_workspace, remove_user_from_workspace,
+     process_pending_invitations, get_tenant_users_detailed). -->
+<body data-page="setup/users">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../users"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Users</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Everyone in a workspace can see it</span>
+          <span class="tag t-neutral">Workspace admins invite and remove</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>The list of people in a workspace: their role, whether they are active, and when they
+            last signed in. Workspace admins also invite new people here, to the whole workspace or
+            to a single project, and remove people who should no longer have access.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Users answers <strong>"Who has access, and how do I add or remove someone?"</strong> A
+          <em>workspace</em> is the space your team's projects live in; to work on a project, a
+          person must first be a member of its workspace. The <em>Workspace</em> page does the same
+          for teams and for access to each project; this page is about the people themselves.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Workspace admins</h4><p>Bring a new colleague in, and take someone out when they leave the team.</p></div>
+          <div class="mini"><h4>Tenant admins</h4><p>See everyone in the organisation at once, across all its workspaces.</p></div>
+          <div class="mini"><h4>Everyone else</h4><p>Look up who else is in the workspace and who its admins are.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Users</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/users/page-annotated.png" alt="The Users page for the demo workspace with four numbered parts: 1 the workspace menu, 2 the Invite people button, 3 the search box and list of members, 4 the selected member's details" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Users page for the demo workspace, which has one member. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The line under the heading counts what is shown, for example <em>"1 member · 0 pending
+          invites in Demo workspace"</em>.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="scope" data-toc="① Whose people">Whose people</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/users/scope-menu.png" alt="The open menu: All workspaces, Docs Guide, Demo workspace" loading="lazy"></div>
+        </figure>
+        <p>The menu chooses the workspace whose people are listed. If you are a <em>tenant admin</em>
+          (an administrator of the whole organisation, see <em>Tenant admin</em>), it has one more
+          choice, <strong>All workspaces</strong>, and starts there. Everyone else starts on their
+          first workspace.</p>
+        <p><strong>All workspaces</strong> lists each person in the organisation once, with their
+          highest role anywhere in it (for example <em>Tenant Admin</em>). It doesn't list pending
+          invitations, and to remove someone you first pick a single workspace. Its
+          <strong>Workspace</strong> box shows only a dash in this version.</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/users/all-detail.png" alt="A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Workspace -, Last active, and the note Pick a single workspace in the scope menu to remove people from it" loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">2</span><h2 id="invite" data-toc="② Invite people">Invite people</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/users/invite-dialog.png" alt="The Invite people dialog: Email address, Invite to Workspace, Workspace Current: Demo workspace, Role Member, and Cancel and Send invitation buttons" loading="lazy"></div>
+        </figure>
+        <p>Only shown to people who may manage the workspace's members (workspace admins and tenant
+          admins). The dialog asks:</p>
+        <ul>
+          <li><strong>Email address</strong> of the person.</li>
+          <li><strong>Invite to</strong>: the whole <em>Workspace</em>, or one <em>Project</em> (then pick the project).</li>
+          <li><strong>Workspace</strong>: the one you are looking at, another of yours, or <em>Create a new workspace</em> (only tenant admins may create one).</li>
+          <li><strong>Role</strong>: for a workspace, <em>Member</em> or <em>Admin</em>; for a project, <em>Project Admin</em>, <em>Editor</em> or <em>Viewer</em>.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Role</th><th>What it allows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Workspace Admin</strong></td><td>Everything in the workspace: every project, its people, teams and settings.</td></tr>
+              <tr><td><strong>Workspace Member</strong></td><td>Belongs to the workspace, but sees only the projects they are given access to, directly or through a team.</td></tr>
+              <tr><td><strong>Project Viewer</strong></td><td>Can look at the project's tests and results.</td></tr>
+              <tr><td><strong>Editor</strong></td><td>Can also create, change and run tests.</td></tr>
+              <tr><td><strong>Project Admin</strong></td><td>Can also manage the project's members, settings, and delete things.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">What "Send invitation" really does</strong>
+            <ul>
+              <li><strong>If the person already has a TraceIQ account</strong> with that email, they are added straight away. Nothing to accept.</li>
+              <li><strong>If not</strong>, TraceIQ keeps a pending invitation, listed under <em>Pending invites</em>. In this version <strong>no email is sent</strong>, so tell them yourself. When they sign up with exactly that address, they join with the role you chose.</li>
+              <li>A project admin who is not a workspace admin can only invite people who are already in the workspace.</li>
+            </ul></div>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list">The list</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/users/list.png" alt="A search box above a Members group with one person, Alex Morgan, with the role Admin" loading="lazy"></div>
+        </figure>
+        <p>Type in the search box to find someone by name or email. The list has up to two groups:</p>
+        <ul>
+          <li><strong>Members</strong>: each person, with their email and their role in this workspace on the right. Admin roles have a lavender label.</li>
+          <li><strong>Pending invites</strong>: invitations for addresses that have no account yet, marked <span class="pill t-butter">Pending</span>. They can't be withdrawn on this page yet.</li>
+        </ul>
+
+        <div class="part"><span class="num">4</span><h2 id="detail" data-toc="④ The selected person">The selected person</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/users/detail.png" alt="The selected member card: Alex Morgan, the email address, Role Admin, Status active, Last active, and a Remove from workspace button" loading="lazy"></div>
+        </figure>
+        <p>Click someone in the list to see them here: their <strong>role</strong>, their
+          <strong>status</strong>, and <strong>Last active</strong>, which is when they last signed
+          in ("Never" if they haven't yet).</p>
+        <p><strong>Remove from workspace</strong> (admins only) takes the person out of the workspace
+          and out of all its teams, after you confirm. Their account itself is kept, and so is
+          everything they created.</p>
+        <div class="callout warn">
+          <span class="icon">!</span>
+          <div><strong class="title">Check their project access too</strong>
+            <p>Removing someone does not take away access that was given to them directly on a
+            project. After removing a person, open <em>Workspace → Projects</em> and remove them
+            from <em>Direct members</em> of each project as well.</p></div>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/users/page.png" width="1280" height="800">
+              <source src="../media/setup/users/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…give a new colleague access to one project</h3>
+        <ol class="steps">
+          <li>Ask them to sign up to TraceIQ with their work email (or do the next steps first; they join when they sign up).</li>
+          <li>Pick the workspace in the menu, then press <strong>Invite people</strong>.</li>
+          <li>Type their email, set <strong>Invite to</strong> to <strong>Project</strong>, and choose the project.</li>
+          <li>Choose <strong>Viewer</strong>, <strong>Editor</strong> or <strong>Project Admin</strong>, and press <strong>Send invitation</strong>.</li>
+        </ol>
+        <h3>…remove someone who has left</h3>
+        <ol class="steps">
+          <li>Pick the workspace in the menu and find the person with the search box.</li>
+          <li>Press <strong>Remove from workspace</strong> and confirm.</li>
+          <li>Open <em>Workspace → Projects</em> and remove them from each project's <strong>Direct members</strong>.</li>
+          <li>If they had API keys, those keep working until the account is deactivated or the keys are revoked: revoke them on <em>API keys</em>.</li>
+        </ol>
+        <h3>…find out who the admins are</h3>
+        <ol class="steps">
+          <li>Pick the workspace.</li>
+          <li>Look for the lavender <strong>Admin</strong> labels on the right of the list.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who you see depends on who you are.</strong> Workspace and tenant admins see every member, the pending invitations, <em>Invite people</em> and <em>Remove from workspace</em>. Other members see only the people who have been given access to the same projects as them, one by one (access through a team doesn't count here), and nothing to change.</li>
+          <li><strong>Removing is immediate and can't be undone</strong>, but you can invite the person again; an existing account is added straight back.</li>
+          <li><strong>Inviting someone who is already a member changes nothing</strong>, not even their role. There is no button to change a workspace role in this version: remove the person and invite them again with the new role.</li>
+          <li><strong>Pending invitations don't expire</strong> for people who sign up with the invited address, whenever they do.</li>
+          <li><strong>With single sign-on</strong>, people may be added to the workspace automatically when they first sign in, depending on how your instance admin set it up.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Tenant admin</h4><p>The next page in this guide: everyone in the organisation, and adding a person to several workspaces at once.</p></div>
+          <div class="mini"><h4>Workspace</h4><p>Teams, and who may use each project, as viewer, editor or admin.</p></div>
+          <div class="mini"><h4>Access reviews</h4><p>Regular checks that everyone still needs the access they have.</p></div>
+          <div class="mini"><h4>API keys</h4><p>Keys made by a person keep working until revoked or until that person is deactivated.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Users page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

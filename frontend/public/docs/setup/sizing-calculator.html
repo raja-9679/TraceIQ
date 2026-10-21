@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sizing calculator · TraceIQ Guide</title>
+  <meta name="description" content="The Sizing calculator: estimate how many browser workers, how much CPU, memory and storage a TraceIQ installation needs, with every formula shown.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-sizing-calculator.spec.ts. Page: frontend/src/pages/SizingCalculator.tsx.
+     API: frontend/src/api/solution.ts (sizingApi) → backend/app/api/sizing.py; all the arithmetic is in
+     backend/app/services/sizing.py. -->
+<body data-page="setup/sizing-calculator">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../sizing"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Sizing calculator</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Everyone who is signed in can use it</span>
+          <span class="tag t-neutral">Saves nothing</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A calculator for whoever plans the servers TraceIQ runs on. Describe how much testing
+            you expect, and it estimates how many browser workers you need, how much processing
+            power and memory, and how much storage, showing the sum behind every number.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          The sizing calculator answers <strong>"How big a machine, or how many, do we need for
+          TraceIQ?"</strong> TraceIQ runs each test in a <em>browser worker</em>: a small program
+          that opens a real browser, does what the test says, and reports back. One worker runs
+          one test at a time, so the more tests you run at once, the more workers (and the more
+          processing power and memory) you need. Results, screenshots and logs also take up
+          storage until they are deleted.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>IT and operations</h4><p>Order the right server, or set the right number of workers, before the first team starts using TraceIQ.</p></div>
+          <div class="mini"><h4>Leads and buyers</h4><p>See what growing from 2,000 to 20,000 tests a day would cost in hardware, and why.</p></div>
+          <div class="mini"><h4>Anyone curious</h4><p>Try numbers freely: nothing is saved, and none of your own data is read.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Sizing calculator</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>Your inputs are on the left, the estimate on the right. The numbers on the screenshot
+          match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/sizing-calculator/page-annotated.png" alt="The Sizing calculator with seven numbered parts: 1 Workload, 2 Storage and options, 3 the four result tiles, 4 Components, 5 Deploy it, 6 How each number is calculated, 7 Assumptions" loading="lazy" width="1440" height="3482"></div>
+          <figcaption>The Sizing calculator with its starting figures. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The page opens with example figures already filled in (2,000 tests a day, one minute
+          each), so it shows an answer straight away. Change any number and the estimate is
+          worked out again a moment later; "Recalculating…" shows at the top right while it
+          happens.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="workload" data-toc="① Workload">Workload</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/sizing-calculator/workload.png" alt="The Workload card: Executions per day 2000, Average test duration 60 s, Peak-hour share 0.25, Browsers × devices per test 1, Largest suite 25 cases, Target max queue wait 300 s" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Field</th><th>What to enter</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Executions per day</strong></td><td>How many times a test is run per day, counting each test separately (a suite of 20 tests run 10 times is 200).</td></tr>
+              <tr><td><strong>Average test duration</strong></td><td>How long one test takes, in seconds.</td></tr>
+              <tr><td><strong>Peak-hour share</strong></td><td>How much of the day's testing happens in the busiest hour, as a fraction: 0.25 means a quarter. Nightly runs that all start at once make this high.</td></tr>
+              <tr><td><strong>Browsers × devices per test</strong></td><td>How many copies of each test run: 3 if every test runs on Chromium, Firefox and WebKit.</td></tr>
+              <tr><td><strong>Largest suite (cases)</strong></td><td>How many tests your biggest run starts at the same moment.</td></tr>
+              <tr><td><strong>Target max queue wait</strong></td><td>How long, in seconds, the last test of that biggest run may wait for a free worker.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="storage" data-toc="② Storage and options">Storage and options</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/sizing-calculator/storage.png" alt="The Storage and options card: Capture level Standard, Failure rate 0.05, Retention 90 days, and checkboxes High availability and Android emulators" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Capture level</strong>: how much each test records (see <em>Project settings → Data capture and retention</em>). More recording means more storage.</li>
+          <li><strong>Failure rate</strong>: the share of tests that fail, as a fraction. It matters because a failed test keeps an extra screenshot and, at Full, a video.</li>
+          <li><strong>Retention</strong>: how many days results are kept before they are deleted.</li>
+          <li><strong>High availability</strong>: plan for the installation to keep running if one machine fails: one spare worker, two copies of the main services, a standby database.</li>
+          <li><strong>Android emulators</strong>: add machines for testing Android apps; each emulator needs about 4 GB of memory and a host that supports hardware virtualisation (KVM).</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="results" data-toc="③ The estimate">The estimate</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/setup/sizing-calculator/results.png" alt="Four tiles: Browser workers, Object store, Postgres, Whole deployment" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Browser workers</strong></td><td>How many workers to run, with the processing power (CPU) and memory they need together.</td></tr>
+              <tr><td><strong>Object store</strong></td><td>Storage for screenshots, logs and other files over the retention period, and the average size per test.</td></tr>
+              <tr><td><strong>Postgres</strong></td><td>The size of the database that holds results, and the CPU and memory to give it.</td></tr>
+              <tr><td><strong>Whole deployment</strong></td><td>Everything added up. "fits one host" means it can all run on a single machine (16 CPU and 64 GB or less).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The number of workers is the larger of two answers: enough workers to handle the
+          busiest hour while staying 70% busy, and enough for the biggest run's last test to
+          start within the wait you set. For a single machine, a yellow note may add that
+          TraceIQ still wants at least 4 CPU and 8 GB, whatever the sums say.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="components" data-toc="④ Components">Components</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/sizing-calculator/components.png" alt="The Components table: one row per part of TraceIQ with replicas, CPU each and RAM each, and a Redis memory row" loading="lazy"></div>
+        </figure>
+        <p>The same total, split into TraceIQ's parts: the browser workers, the web server
+          (backend), the background workers, the database, the queue (Redis), the file store
+          and the screens (frontend). <em>Replicas</em> is how many copies of each part to run;
+          the CPU and memory figures are for one copy.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="deploy" data-toc="⑤ Deploy it">Deploy it</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/sizing-calculator/deploy.png" alt="The Deploy it card: a Compose (.env) snippet and a Helm values (with KEDA) snippet" loading="lazy"></div>
+        </figure>
+        <p>Ready-made settings to give to whoever installs TraceIQ: two lines for the
+          <code>.env</code> file of a Docker Compose install (the number of workers and the
+          retention), and settings for a Kubernetes install with Helm. The Helm settings use
+          KEDA, which adds and removes workers automatically depending on how many tests are
+          waiting.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="formulas" data-toc="⑥ How each number is calculated">How each number is calculated</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/sizing-calculator/formulas.png" alt="A table with columns Quantity, Formula, With your inputs and Result, one row per calculated number" loading="lazy"></div>
+        </figure>
+        <p>Every number on the page, in the order it is worked out: the formula, the same formula
+          with your figures put in, and the result. Use it to check the estimate by hand, or to
+          explain it to someone else.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="assumptions" data-toc="⑦ Assumptions">Assumptions</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/sizing-calculator/assumptions.png" alt="The Assumptions list, each line with its source" loading="lazy"></div>
+        </figure>
+        <p>The fixed figures the sums rest on, each with where it comes from: for example that a
+          worker uses about 1 CPU and 1.5 GB of memory, or how big an average screenshot is.
+          Lines marked "declared" are TraceIQ's own estimates, not measurements.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/sizing-calculator/page.png" width="1280" height="800">
+              <source src="../media/setup/sizing-calculator/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…size a first installation</h3>
+        <ol class="steps">
+          <li>Estimate how many tests you will run a day, and how long a typical test takes (a run page shows each test's duration).</li>
+          <li>Enter them under <strong>Workload</strong>, with the size of your biggest suite.</li>
+          <li>Set <strong>Capture level</strong> and <strong>Retention</strong> to what your projects will use.</li>
+          <li>Read the four tiles. If the last one says "fits one host", one machine of that size is enough.</li>
+          <li>Pass the <strong>Deploy it</strong> settings to whoever installs TraceIQ.</li>
+        </ol>
+        <h3>…see what growth would cost</h3>
+        <ol class="steps">
+          <li>Start from your current figures.</li>
+          <li>Change one thing at a time, for example <strong>Browsers × devices per test</strong> from 1 to 3, and watch the tiles.</li>
+          <li>Open <strong>How each number is calculated</strong> to see which line grew.</li>
+        </ol>
+        <h3>…shorten how long tests wait</h3>
+        <ol class="steps">
+          <li>Lower <strong>Target max queue wait</strong>.</li>
+          <li>See how many more <strong>Browser workers</strong> that takes. Waiting is usually cheaper than workers, so pick the wait people can live with.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>It is an estimate.</strong> The file sizes it assumes (a screenshot is counted as 250 KB, for example) are not measured from your tests. Real figures can be quite different.</li>
+          <li><strong>Nothing is saved.</strong> Leave the page and the starting figures come back. Write down or copy what you need.</li>
+          <li><strong>It doesn't look at your installation.</strong> It reads no runs, projects or workers; it only does the sums. To see the workers you really have, an instance admin opens <em>Worker fleet</em>.</li>
+          <li><strong>Video is counted for failed tests only</strong>, at capture level Full, because that is the default recording choice. A trace is counted for every test at Full.</li>
+          <li><strong>Impossible numbers are refused.</strong> A field left empty, or a value out of range (such as a peak-hour share above 1), makes the estimate stop updating, or shows a yellow note saying what is wrong.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Instance settings</h4><p>The next page in this guide: server-wide settings, including the retention that applies to every project.</p></div>
+          <div class="mini"><h4>Worker fleet</h4><p>The browser workers actually running, how busy they are, and how many tests are waiting.</p></div>
+          <div class="mini"><h4>Project settings</h4><p>The capture level and retention of each project, which decide how much storage it uses.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Sizing calculator page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

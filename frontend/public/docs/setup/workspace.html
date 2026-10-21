@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workspace · TraceIQ Guide</title>
+  <meta name="description" content="The Workspace page: members, teams, projects and who may use each project, and deleting a workspace.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-workspace.spec.ts. Page: frontend/src/pages/WorkspacePage.tsx
+     (+ components/WorkspaceDeleteDialog.tsx, components/demo/DemoWorkspaceCard.tsx).
+     API: backend/app/api/workspaces.py, app/api/projects.py (create, delete, project teams/users),
+     app/services/workspace_service.py, app/services/rbac_service.py + app/core/rbac_init.py (who may do what),
+     app/services/purge.py (workspace delete), app/api/demo_workspace.py. -->
+<body data-page="setup/workspace">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../workspace"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Workspace</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Every member of the workspace can see it</span>
+          <span class="tag t-neutral">Admins make most changes</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>The place where a workspace is organised: who is in it, which teams it has, which
+            projects it holds, and who may use each project. It is also where new projects and
+            teams are made.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Workspace answers <strong>"Who can work on which project?"</strong> A
+          <em>workspace</em> is your team's shared space; it holds <em>projects</em> (one per
+          application you test), and its <em>members</em> are the people allowed in. Being a member
+          is not enough to see a project: a person also needs access to it, either given to them
+          directly, or through a <em>team</em> (a named group of people, such as "QA" or
+          "Payments developers").
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Workspace admins</h4><p>Make teams, link them to projects, and decide who is a viewer, editor or admin of each project.</p></div>
+          <div class="mini"><h4>Project admins</h4><p>Give people and teams access to their own project.</p></div>
+          <div class="mini"><h4>Everyone</h4><p>Check which teams you are in and what access you have to each project; create a new project.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Workspace</strong>.
+          The page's heading is the name of the workspace you are looking at, for example
+          <strong>Demo workspace</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The numbers on the screenshot match the sections below. The page opens on your first
+          workspace; the picture shows the demo workspace, picked in the menu.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/workspace/page-annotated.png" alt="The Workspace page for Demo workspace with six numbered parts: 1 the workspace menu, 2 the tabs Members, Teams, Projects and Danger zone, 3 the Invite people button, 4 the list of members, 5 the selected member's details, 6 the Demo workspace card" loading="lazy" width="1440" height="1200"></div>
+          <figcaption>The Workspace page for the demo workspace, on the Members tab. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>Under the heading, a line counts the workspace's members, teams and projects, and says
+          what the current tab is for.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="picker" data-toc="① Workspace menu">Workspace menu</h2></div>
+        <p>If you belong to more than one workspace, choose which one the page shows. Demo
+          workspaces carry a <span class="pill t-butter">DEMO</span> label. Next to it,
+          <strong>New workspace</strong> makes another workspace with a name and an optional
+          description; only tenant admins (administrators of the whole organisation) may do this,
+          and anyone else is refused.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="tabs" data-toc="② The tabs">The tabs</h2></div>
+        <p>Four tabs, each with a count. The page opens on <strong>Members</strong>.</p>
+
+        <h3>Members</h3>
+        <p>Everyone in the workspace, with their workspace role, and invitations not yet accepted
+          (shown only to admins). This is a read-only view: invite people with the button (③),
+          and remove them on the <em>Users</em> page.</p>
+
+        <h3>Teams</h3>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/team-dialog.png" alt="The New team dialog: Team name, Description, and an optional Link to project menu" loading="lazy"></div>
+        </figure>
+        <p>A team gives several people the same access to a project at once, and new members of
+          the team get that access automatically. The demo workspace has no teams yet, so the tab
+          says "No teams created yet". Once there are teams, pick one to see its members and
+          three buttons:</p>
+        <ul>
+          <li><strong>Add member</strong>: add someone already in the workspace, or type an email. Someone with an account is added at once; for an address with no account, TraceIQ keeps an invitation and adds them when they sign up.</li>
+          <li><strong>Link project</strong>: give the whole team access to a project, as viewer, editor or admin.</li>
+          <li><strong>Delete team</strong>, after you confirm. The people stay in the workspace, but lose any access they had only through this team.</li>
+        </ul>
+        <p>The <strong>×</strong> next to a member takes them out of the team at once, without asking.
+          Making, changing and deleting teams needs a workspace admin; the one exception is that
+          anyone may take themselves out of a team.</p>
+
+        <h3>Projects</h3>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/projects-list.png" alt="The Projects list: Demo — Todo web app and Demo — Public API, each labelled Admin" loading="lazy"></div>
+        </figure>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/project-access.png" alt="The selected project card for Demo — Todo web app: Your access admin, Teams with access (none), Direct members with Alex Morgan as admin, Grant controls, and a Delete project button" loading="lazy"></div>
+        </figure>
+        <p>The workspace's projects that you can see, each with your own access level. Pick one to
+          see who can use it:</p>
+        <ul>
+          <li><strong>Teams with access</strong>: the teams linked to this project and their level.</li>
+          <li><strong>Direct members</strong>: people given access one by one.</li>
+          <li>Under each list, pick a team or a person, choose <strong>Viewer</strong>, <strong>Editor</strong> or <strong>Admin</strong>, and press <strong>Grant</strong>. The <strong>×</strong> removes access at once, without asking.</li>
+          <li><strong>Delete project</strong> deletes the project with all its suites, tests and runs, after you confirm. It can't be undone.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">Level</th><th>What the person or team can do in the project</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Viewer</strong></td><td>Look at tests, runs and reports.</td></tr>
+              <tr><td><strong>Editor</strong></td><td>Also create, change and run tests.</td></tr>
+              <tr><td><strong>Admin</strong></td><td>Also manage who has access, change the project's settings, and delete things.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Granting and removing access needs a workspace admin or an admin of that project.
+          Workspace admins can use every project in the workspace without being listed.</p>
+
+        <h3>Danger zone</h3>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/danger.png" alt="The Danger zone card: Cannot be undone, Delete Demo workspace, and a Delete workspace button" loading="lazy"></div>
+        </figure>
+        <p><strong>Delete workspace</strong> deletes the whole workspace: every team, project, test,
+          run and stored file in it. TraceIQ first shows what would be removed, then asks you to
+          type the workspace's exact name. The audit history is kept.</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Deleting a workspace is refused in this version</strong>
+            <p>The server currently refuses this for everyone, admins included: the dialog
+            shows "Permission denied: workspace:delete_workspace" where the list of what would
+            be removed should be. A demo workspace can still be removed with <strong>Delete demo
+            workspace</strong> on its own card (⑥).</p></div>
+        </div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/delete-dialog.png" alt="The Delete workspace dialog for Demo workspace, showing Permission denied: workspace:delete_workspace in red above the box for typing the name" loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">3</span><h2 id="action" data-toc="③ The tab's button">The tab's button</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/invite-dialog.png" alt="The Invite to workspace dialog: Email address, Workspace role Member, and Cancel and Send invitation buttons" loading="lazy"></div>
+        </figure>
+        <p>The button on the right of the tabs changes with the tab:</p>
+        <ul>
+          <li><strong>Invite people</strong> (Members): an email address and a workspace role, <em>Member</em> or <em>Admin</em>. Someone who already has an account is added at once. For a new address, TraceIQ keeps a pending invitation; no email is sent in this version, so tell the person, and they join when they sign up with exactly that address. Needs a workspace admin.</li>
+          <li><strong>New team</strong> (Teams): a name, a description, and optionally a first project to link it to.</li>
+          <li><strong>New project</strong> (Projects): a name and a description. Any member of the workspace can create one, and becomes its admin.</li>
+        </ul>
+
+        <div class="part"><span class="num">4</span><h2 id="list" data-toc="④ The list">The list</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/members-list.png" alt="The Members group with one person, Alex Morgan, labelled Workspace Admin" loading="lazy"></div>
+        </figure>
+        <p>The people, teams or projects of the current tab. Click one to see it on the right.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="detail" data-toc="⑤ The details">The details</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/member-detail.png" alt="The selected member card for Alex Morgan: Workspace role Workspace Admin, Status Active, Last active less than a minute ago, and a Changing access note" loading="lazy"></div>
+        </figure>
+        <p>For a person: their workspace role, status and when they last signed in, with a reminder
+          that project access comes from teams and direct grants. For a team or a project: the
+          members and controls described under ②.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="demo" data-toc="⑥ Demo workspace">Demo workspace</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/demo-card.png" alt="The Demo workspace card listing Demo — Todo web app and Demo — Public API, with Open the demo and Delete demo workspace buttons" loading="lazy"></div>
+        </figure>
+        <p>Always at the bottom of the page. A demo workspace is a separate workspace filled with
+          made-up sample data (two projects and 30 days of test history), for trying TraceIQ out.
+          Nothing in it really runs, and it never sends emails or messages.</p>
+        <ul>
+          <li><strong>Create demo workspace</strong>: makes yours. Each person can have one.</li>
+          <li><strong>Open the demo</strong>: switches the sidebar to the demo's first project.</li>
+          <li><strong>Delete demo workspace</strong>: removes it and everything you added to it, after you confirm. Your real workspaces are not touched.</li>
+        </ul>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/workspace/page.png" width="1280" height="800">
+              <source src="../media/setup/workspace/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…give a group of people access to a project</h3>
+        <ol class="steps">
+          <li>On <strong>Teams</strong>, press <strong>New team</strong>, name it, and choose the project and level under <strong>Link to project</strong>. Press <strong>Create team</strong>.</li>
+          <li>Pick the team and press <strong>Add member</strong>, then <strong>Add</strong> next to each person.</li>
+          <li>Everyone in the team can now use the project at that level.</li>
+        </ol>
+        <h3>…give one person access to a project</h3>
+        <ol class="steps">
+          <li>Make sure they are a member of the workspace (see <em>Users</em>).</li>
+          <li>On <strong>Projects</strong>, pick the project.</li>
+          <li>Under <strong>Direct members</strong>, choose the person and a level, and press <strong>Grant</strong>.</li>
+        </ol>
+        <h3>…check what access someone has</h3>
+        <ol class="steps">
+          <li>On <strong>Projects</strong>, pick each project in turn and look at <strong>Teams with access</strong> and <strong>Direct members</strong>.</li>
+          <li>On <strong>Teams</strong>, check which teams the person is in.</li>
+          <li>For a formal check of everyone at once, use <em>Access reviews</em>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Removing a person is on Users, not here.</strong> And removing someone from the workspace does not remove access given to them directly on a project: remove them from <em>Direct members</em> too.</li>
+          <li><strong>Many changes save at once, without asking.</strong> Grant, the × buttons and Add take effect immediately. Only deletions ask you to confirm.</li>
+          <li><strong>Someone in two teams</strong> linked to the same project, or with a direct grant as well, gets the highest of those levels.</li>
+          <li><strong>A team can only be linked to projects of its own workspace.</strong></li>
+          <li><strong>Members who aren't admins</strong> see a shorter Members list (only the people given access to the same projects as them), no pending invitations, and get "Permission denied" if they try an admin-only change.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Users</h4><p>The next page in this guide: invite people to a workspace or one project, and remove them.</p></div>
+          <div class="mini"><h4>Project settings</h4><p>Notifications, data capture and the other rules of a single project.</p></div>
+          <div class="mini"><h4>Tenant admin</h4><p>Everyone in the organisation, across all its workspaces.</p></div>
+          <div class="mini"><h4>Access reviews</h4><p>A signed-off check that everyone still needs their access.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Workspace page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
