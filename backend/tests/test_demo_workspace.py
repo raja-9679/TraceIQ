@@ -33,10 +33,37 @@ def test_history_is_mostly_green_with_the_story_reports_need():
     failed = [x for x in results if x["status"] == "failed"]
     assert 0.02 < len(failed) / len(results) < 0.15
     assert {x["case"] for x in results if x["is_flaky"]} == {"add_todo"}
-    cluster = [x for x in results if x["cluster"]]
-    assert len(cluster) == plan["clusters"][0]["occurrence_count"] >= 4
+    scripted = [x for x in results if x["cluster"] == "delay_timeout"]
+    assert len(scripted) == plan["clusters"][0]["occurrence_count"] >= 4
     assert plan["findings"] and plan["flakes"] and plan["flakes"][0]["flake_score"] > 0.33
     assert any(not c["up"] for c in plan["monitor"]["checks"])
+
+
+def test_every_failure_is_grouped_like_the_real_triage_task():
+    from app.services.failure_signature import compute_signature
+    plan = dw.build_demo_plan(dw.DEFAULT_SEED, TODAY)
+    by_key = {c["key"]: c for c in plan["clusters"]}
+    hits = {k: 0 for k in by_key}
+    for r in plan["runs"]:
+        for x in r["results"]:
+            assert (x["cluster"] is not None) == (x["status"] == "failed"), x
+            if x["cluster"]:
+                hits[x["cluster"]] += 1
+                c = by_key[x["cluster"]]
+                assert c["project"] == r["project"]
+                if c["key"] != "delay_timeout":
+                    assert compute_signature(x["error"])[0] == c["signature"]
+    for chk in plan["monitor"]["checks"]:
+        assert (chk["cluster"] is None) == chk["up"]
+        if chk["cluster"]:
+            hits[chk["cluster"]] += 1
+    assert hits == {k: c["occurrence_count"] for k, c in by_key.items()}
+    # Several kinds of problem, in both projects, so the triage page has groups.
+    assert len(plan["clusters"]) >= 4
+    assert {c["project"] for c in plan["clusters"]} == {"web", "api"}
+    assert len({c["category"] for c in plan["clusters"]}) >= 3
+    # (project, signature) is unique in the database.
+    assert len({(c["project"], c["signature"]) for c in plan["clusters"]}) == len(plan["clusters"])
 
 
 def test_steps_only_name_allowed_hosts_and_known_step_types():

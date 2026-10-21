@@ -113,7 +113,20 @@ async def test_demo_seeds_history_the_reports_can_show(session, scene):
 
     clusters = await triage.list_clusters(api, status=None, category=None, session=session,
                                           current_user=scene.user)
-    assert len(clusters) == 1 and clusters[0].occurrence_count >= 4
+    timeout = [c for c in clusters if c.category == "timeout"]
+    assert len(timeout) == 1 and timeout[0].occurrence_count >= 4
+    assert await triage.list_clusters(web, status=None, category=None, session=session,
+                                      current_user=scene.user)
+    # Every failing demo result is in a cluster, and each count is its results.
+    from app.models import FailureCluster, TestCaseResult, TestRun, TestStatus
+    failed = (await session.exec(select(TestCaseResult).join(TestRun, TestRun.id == TestCaseResult.test_run_id)
+                                 .where(TestRun.project_id.in_([web, api]),
+                                        TestCaseResult.status == TestStatus.FAILED))).all()
+    assert failed and all(r.cluster_id for r in failed)
+    rows = (await session.exec(select(FailureCluster).where(FailureCluster.project_id.in_([web, api])))).all()
+    assert {c.id: c.occurrence_count for c in rows} == {
+        c.id: sum(1 for r in failed if r.cluster_id == c.id) for c in rows}
+    assert all(c.last_run_id for c in rows)
     flake = await reliability_reports.flake_trend(
         web, days=30, top=8, principal=AuthPrincipal(user=scene.user, api_key=None), session=session)
     assert flake["daily"] and flake["cases"] and flake["missing"] is None
