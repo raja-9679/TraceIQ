@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portfolio · TraceIQ Guide</title>
+  <meta name="description" content="The Portfolio page: every project of a workspace in one sortable table, with pass rates, the last run, release readiness, flaky tests and open security findings.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-portfolio.spec.ts. Page: frontend/src/pages/Portfolio.tsx
+     (+ components/reports/reportHelpers.ts for sorting). API: backend/app/api/reports.py (workspace_portfolio);
+     numbers: app/services/reporting.py (portfolio_rows). -->
+<body data-page="reports/portfolio">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/portfolio"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Portfolio</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Every workspace member can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>All the projects of a workspace in one table, one row each: how often their runs pass,
+            when they last ran, whether they are ready to release, and how many flaky tests and
+            open security findings they have. The project that needs attention most comes first.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Portfolio answers <strong>"Which of our projects needs attention?"</strong> The
+          executive summary describes one project (or adds them all up); this page puts them
+          next to each other so you can compare them.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Managers and leadership</h4><p>See every team's project at once, and which ones are not ready to release.</p></div>
+          <div class="mini"><h4>Quality leads</h4><p>Find the project with the worst pass rate or the most flaky tests, and start there.</p></div>
+          <div class="mini"><h4>Security and compliance</h4><p>Spot projects that still have open security findings, or that haven't run for a while.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Portfolio</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page is one table. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/portfolio/page-annotated.png" alt="The Portfolio page with four numbered parts: 1 the workspace menu, 2 the column headings, 3 one row per project, 4 the Open summary button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Portfolio of the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/portfolio/workspace.png" alt="A menu labelled Workspace, set to Demo workspace" loading="lazy"></div>
+        </figure>
+        <p>The table shows one workspace at a time. If you belong to more than one, this menu
+          picks which; otherwise it isn't shown. When the page opens, the first workspace in
+          your list is chosen. It does <em>not</em> follow the project selected in the sidebar.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="sort" data-toc="② Sorting">Sorting</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/portfolio/headings.png" alt="Column headings: Project, Pass rate 7 days with a small up arrow, Pass rate 30 days, Runs 7 days, Last run, Readiness, Flaky tests, Open findings" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li>When the page opens, rows are sorted by <strong>Pass rate, 7 days</strong>, lowest first, so the project in most trouble is at the top. The small arrow marks the column the table is sorted by.</li>
+          <li><strong>Click a heading</strong> to sort by that column, highest first (for <em>Project</em>: A to Z). Click it again to turn the order round.</li>
+          <li><em>Readiness</em> sorts <span class="pill t-peach">Not ready</span>, then <span class="pill t-butter">Not enough data</span>, then <span class="pill t-mint">Ready</span> (or the other way round).</li>
+          <li>Projects with no value in that column, such as no pass rate because nothing ran, always go to the bottom.</li>
+        </ul>
+        <p>The order isn't remembered: it goes back to the worst 7-day pass rate the next time you open the page.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="rows" data-toc="③ The project rows">The project rows</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/portfolio/table.png" alt="A table of two projects. Demo — Todo web app: 71.4% over 7 days, 83.1% over 30 days, 14 runs, last run Passed, Ready, 1 flaky test, 1 open finding. Demo — Public API: 88.1%, 92.7%, 42 runs, Passed, Ready, 0, 0" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pass rate, 7 days</strong></td><td>The share of the project's finished runs in the last 7 days (counting back from now) that passed. A run that ended in <em>Error</em> counts as not passed. "—" means no run finished in that time.</td></tr>
+              <tr><td><strong>Pass rate, 30 days</strong></td><td>The same over the last 30 days. Comparing the two shows whether things got better or worse lately.</td></tr>
+              <tr><td><strong>Runs, 7 days</strong></td><td>How many runs finished with a result (passed, failed or error) in the last 7 days. A pass rate based on 2 runs means less than one based on 200.</td></tr>
+              <tr><td><strong>Last run</strong></td><td>The result and date of the project's newest run that finished with a result. "never" if none has.</td></tr>
+              <tr><td><strong>Readiness</strong></td><td>Whether the latest version of the app is ready to release, by the project's quality gate: <span class="pill t-mint">Ready</span>, <span class="pill t-peach">Not ready</span>, <span class="pill t-butter">Not enough data</span>, or <span class="pill t-neutral">Unknown</span> when it can't be worked out.</td></tr>
+              <tr><td><strong>Flaky tests</strong></td><td>Tests that are quarantined right now, or that TraceIQ currently rates as flaky (a flakiness score of 0.4 or more).</td></tr>
+              <tr><td><strong>Open findings</strong></td><td>Security findings with the status <em>Open</em>. Findings someone is working on, has marked fixed, or has accepted as a risk are not counted.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The result label under <em>Last run</em> is green for <span class="pill t-mint">Passed</span>
+          and orange for <span class="pill t-peach">Failed</span> or <span class="pill t-peach">Error</span>.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="open-summary" data-toc="④ Open summary">Open summary</h2></div>
+        <p><strong>Open summary</strong> at the end of a row selects that project in the sidebar
+          and opens its <em>Executive summary</em>. The project stays selected afterwards, so
+          other pages you open show it too.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/portfolio/page.png" width="1280" height="800">
+              <source src="../media/reports/portfolio/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 50 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…find the project that needs attention most</h3>
+        <ol class="steps">
+          <li>Open the page. The project with the lowest pass rate over the last 7 days is at the top.</li>
+          <li>Check <strong>Runs, 7 days</strong> on that row: a low pass rate from very few runs may be one bad day.</li>
+          <li>Press <strong>Open summary</strong> to see which tests are failing.</li>
+        </ol>
+        <h3>…see which projects are not ready to release</h3>
+        <ol class="steps">
+          <li>Click the <strong>Readiness</strong> heading once. <em>Ready</em> projects come first.</li>
+          <li>Click it again: <em>Not ready</em> projects move to the top.</li>
+          <li>Open the <em>Release readiness</em> page for one of them to see exactly which checks failed.</li>
+        </ol>
+        <h3>…find projects that have stopped running</h3>
+        <ol class="steps">
+          <li>Click the <strong>Last run</strong> heading. The most recent runs come first.</li>
+          <li>Click it again: the projects that ran longest ago move to the top, and projects that never ran stay at the bottom.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only the projects you can open.</strong> Projects in the workspace that you have no access to are left out, not shown as empty. Two people can see different rows.</li>
+          <li><strong>Which runs count.</strong> Only runs that finished with a result: passed, failed or error. Cancelled and timed-out runs, runs still going, and the check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>) are left out.</li>
+          <li><strong>Flaky tests, readiness and open findings are "right now"</strong>, not counted over 7 or 30 days.</li>
+          <li><strong>The same numbers as the executive summary.</strong> Both pages are built from the same counts, so a project's 7-day or 30-day pass rate here matches its summary for that period.</li>
+          <li><strong>It doesn't update by itself.</strong> The table is fetched when you open the page, change workspace, or come back to its browser tab.</li>
+          <li><strong>Nothing here can be changed.</strong> The page only reads.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Delivery (DORA)</h4><p>The next page in this guide: how often you deploy, how long a change takes to reach production, and how often a deployment goes wrong.</p></div>
+          <div class="mini"><h4>Executive summary</h4><p>One project, or the whole workspace, on one printable page.</p></div>
+          <div class="mini"><h4>Release readiness</h4><p>Why a project is "Not ready": every check of its quality gate, with reasons.</p></div>
+          <div class="mini"><h4>Scans &amp; findings</h4><p>The security findings behind the "Open findings" column.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Portfolio page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flake trends · TraceIQ Guide</title>
+  <meta name="description" content="The Flake trends page: how the number of flaky tests changes over time, the flakiest tests, and where flakiness concentrates by browser, environment, time of day and step type.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-flake-trends.spec.ts. Page: frontend/src/pages/FlakeTrends.tsx
+     (+ components/reports/charts.tsx). API: backend/app/api/reliability_reports.py (flake-trend, flake-patterns);
+     snapshots: app/tasks/reliability_tasks.py; rules: app/services/flake_patterns.py; is_flaky: app/tasks/result_aggregator.py. -->
+<body data-page="reports/flake-trends">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/flake-trends"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Flake trends</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Whether flaky tests are becoming more or less common over time, which tests are the
+            flakiest, and where flakiness gathers: in one browser, one environment, at one time of
+            day, or in one kind of test step.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          A <strong>flaky test</strong> passes and fails without anything having changed, so its
+          failures can't be trusted. The <em>Flaky tests</em> page deals with them one by one.
+          This page steps back and answers <strong>"Is flakiness getting better or worse, and is
+          there a common cause?"</strong> If most flaky results come from one browser, or from
+          runs at 2 a.m., the cause is probably the environment rather than each test.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Quality leads</h4><p>Show whether the effort spent on flaky tests is paying off, month by month.</p></div>
+          <div class="mini"><h4>Testers</h4><p>See which tests have been getting flakier, before they are quarantined.</p></div>
+          <div class="mini"><h4>Platform engineers</h4><p>Spot a browser, environment or time of day where tests are unstable, which points at the infrastructure.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Flake trends</strong>.</p>
+
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">The flakiness score</strong>
+            <p>For every test, TraceIQ looks at its last 20 results and counts how often the
+            result flipped between pass and fail. A test that always passes (or always fails)
+            scores 0%; one that flips every time scores 100%. The page shows it as a percentage.</p></div>
+        </div>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar. The upper half is the
+          trend over time; the lower half is the patterns. The numbers on the screenshot match the
+          sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/flake-trends/page-annotated.png" alt="The Flake trends page with five numbered parts: 1 the Trend and Patterns menus, 2 the flaky tests over time chart, 3 the flakiest tests, 4 the patterns summary, 5 four pattern boxes by browser, environment, time of day and failing step type" loading="lazy" width="1440" height="1100"></div>
+          <figcaption>The Flake trends page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="windows" data-toc="① Trend and Patterns">Trend and Patterns</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/flake-trends/toolbar.png" alt="Two menus: Trend, set to Last 90 days, and Patterns, set to Last 30 days" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Trend</strong>: how far back the chart and the score history go: the last 30, 90 (chosen first) or 180 days.</li>
+          <li><strong>Patterns</strong>: which test results the lower half looks at: those of runs in the last 7, 30 (chosen first) or 90 days.</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="over-time" data-toc="② Flaky tests over time">Flaky tests over time</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/flake-trends/over-time.png" alt="A chart from 2026-09-22 to 2026-10-21 with a yellow area and a dark line. Underneath: Latest: 1 flaky cases (score ≥ 33%), 0 quarantined" loading="lazy"></div>
+        </figure>
+        <p>One point per day, oldest on the left.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Line</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#F2C94C"></span>Yellow area</td><td><strong>Flaky cases</strong>: how many tests had a flakiness score of 33% or more that day.</td></tr>
+              <tr><td><span class="swatch" style="background:#1C1B22"></span>Dark line</td><td><strong>Flaky results %</strong>: of that day's test results, the share that were flaky (see <a href="#good-to-know">Good to know</a> for what makes a result flaky).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The line underneath gives the latest day's figures: the number of flaky tests and how
+          many are quarantined (set aside so their failures don't count).</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Read the shape, not the height</strong>
+            <p>The chart has no scale, and each of the two lines is stretched to fill the height
+            on its own. A peak at the top means "the most in this period", whether that is 1 test
+            or 40. Use the "Latest" line for an exact number.</p></div>
+        </div>
+        <p><strong>Where the points come from.</strong> TraceIQ takes a snapshot of every
+          project every 6 hours; the last one of a day is that day's point. Days before the
+          first snapshot have no point, and snapshots are kept for 180 days. A brand-new project
+          says "No snapshots yet" until the first one is taken.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="flakiest" data-toc="③ The flakiest tests">The flakiest tests</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/flake-trends/flakiest.png" alt="Flakiest tests: score history. One row: Add a todo, a small red line rising slightly, and 40%" loading="lazy"></div>
+        </figure>
+        <p>Up to 8 tests with the highest flakiness score in the latest snapshot (tests scoring 0%
+          are left out). For each: a small line of how its score moved over the trend period
+          (bottom = 0%, top = 100%), and its latest score. A line going up is a test that is
+          getting flakier. The box is hidden when no test has a score.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="summary" data-toc="④ Patterns summary">Patterns summary</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/flake-trends/summary.png" alt="Patterns, last 30 days: 9 of 300 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more." loading="lazy"></div>
+        </figure>
+        <p>How many of the period's finished test results were flaky. In the boxes below, every
+          figure is a <strong>rate</strong> within its group, so a browser that runs ten times
+          as often doesn't look ten times as flaky.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="patterns" data-toc="⑤ Where flakiness gathers">Where flakiness gathers</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/flake-trends/patterns.png" alt="Four boxes. By browser: chromium 3.0% flaky, 9/300, 3.3% failed. By environment: local, the same figures. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: unknown (no per-step evidence), 9 flaky, 10 failed" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Box</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>By browser</strong></td><td>One row per browser, the flakiest first: "3.0% flaky · 9/300 · 3.3% failed" means 9 of its 300 results were flaky (3.0%), and 3.3% failed or ended in error.</td></tr>
+              <tr><td><strong>By environment</strong></td><td>The same per environment. Runs without an environment are grouped as "default (no environment)".</td></tr>
+              <tr><td><strong>By time of day (UTC)</strong></td><td>24 bars, one per hour of the day in UTC, by when the run started. The taller the bar, the higher that hour's flaky rate. A grey stub means no run started in that hour.</td></tr>
+              <tr><td><strong>By failing step type</strong></td><td>For flaky and failed results: the kind of step that failed first (for example a click, or an expected text). The bar is the total; the text splits it into flaky and failed. "unknown (no per-step evidence)" counts results that didn't record their steps, or flaky ones that passed in the end and so have no failed step.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>In India (UTC+5:30), a bar at 02:00 UTC is 7:30 in the morning.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/flake-trends/page.png" width="1280" height="800">
+              <source src="../media/reports/flake-trends/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…show whether flakiness went down this quarter</h3>
+        <ol class="steps">
+          <li>Choose <strong>Last 90 days</strong> in the <strong>Trend</strong> menu.</li>
+          <li>Compare the left and right ends of the yellow area. Lower on the right is fewer flaky tests.</li>
+          <li>Read the exact current number in the "Latest" line under the chart.</li>
+        </ol>
+        <h3>…check whether the infrastructure is the cause</h3>
+        <ol class="steps">
+          <li>Choose <strong>Last 30 days</strong> in the <strong>Patterns</strong> menu.</li>
+          <li>Compare the rows in <strong>By browser</strong> and <strong>By environment</strong>. One row with a much higher flaky rate points at that browser or environment.</li>
+          <li>Look for one or two tall bars in <strong>By time of day</strong>: a busy time on a shared server, or a nightly job, can make tests unstable.</li>
+        </ol>
+        <h3>…find a test that is getting worse</h3>
+        <ol class="steps">
+          <li>In <strong>The flakiest tests</strong>, look for a line that rises towards the right.</li>
+          <li>Open <em>Flaky tests</em> to give it an owner, or quarantine it while it is fixed.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>What makes a result flaky.</strong> A single test result is flaky when it passed only after being retried, or when its test's flakiness score was 40% or more at the time.</li>
+          <li><strong>Two different lines are drawn.</strong> The chart counts a test as flaky from a score of 33%, while a single result (and the <em>Executive summary</em>, <em>Portfolio</em> and release readiness) uses 40%. So the chart can show a flaky test before the other pages do.</li>
+          <li><strong>Which results count.</strong> Finished results only (passed, failed, error), from runs in the chosen period. The check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>) are left out.</li>
+          <li><strong>Days and hours are in UTC.</strong></li>
+          <li><strong>It doesn't update by itself.</strong> The page fetches the numbers when you open it, change a menu, or come back to its browser tab. The chart itself moves on only when a new snapshot is taken (every 6 hours).</li>
+          <li><strong>Nothing here can be changed.</strong> To quarantine a test or give it an owner, use the <em>Flaky tests</em> page.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Dependencies</h4><p>The next page in this guide: outside services your app loads during tests, and whether their errors line up with failing tests.</p></div>
+          <div class="mini"><h4>Flaky tests</h4><p>Every flaky test with its score, owner and quarantine, and the place to act on them.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures grouped by cause; a flaky test shows up there whenever it fails.</p></div>
+          <div class="mini"><h4>Analytics</h4><p>One project's flakiest, slowest and most-failing tests over 7, 30 or 90 days.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Flake trends page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

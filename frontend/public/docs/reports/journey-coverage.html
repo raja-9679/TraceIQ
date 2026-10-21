@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Journey coverage · TraceIQ Guide</title>
+  <meta name="description" content="The Journey coverage page: how much of your real visitors' traffic the tests visit, which busy pages have no test, and how to import page-view data and fold addresses together with path rules.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-journey-coverage.spec.ts (the demo has no traffic import: empty Coverage tab).
+     Page: frontend/src/pages/JourneyCoverage.tsx (+ components/journey-reports/). API: backend/app/api/journey_reports.py
+     (journey-imports, journey-rules, journey-coverage); rules: app/services/journey_coverage.py. -->
+<body data-page="reports/journey-coverage">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../journey-coverage"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Journey coverage</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can import data and change rules</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>You upload a list of your site's pages with how many times each was viewed, exported
+            from your analytics tool. TraceIQ compares it with the pages your tests open and tells
+            you what share of real traffic is tested, and which busy pages have no test at all.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          This page answers <strong>"Are we testing the pages people actually use?"</strong>
+          A hundred tests can still miss the page half your visitors land on. Weighting by page
+          views shows where a missing test hurts most, and where tests guard pages almost nobody
+          visits.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Decide which test to write next: the busiest page that no test opens.</p></div>
+          <div class="mini"><h4>Product owners</h4><p>Check that the key journeys, such as sign-up or checkout, are tested step by step.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Report test coverage in terms of real use ("80% of page views") rather than a count of tests.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Journey coverage</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar, in three tabs. The demo
+          projects have no traffic data yet, so the screenshot shows the <strong>Coverage</strong>
+          tab before the first import; <a href="#with-data">When there is data</a> describes the
+          full report. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/page-annotated.png" alt="The Journey coverage page with two numbered parts: 1 the tabs Coverage, Imports and Path rules, 2 a box saying No traffic imported yet with an Import traffic data button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Journey coverage page for the demo's web project, before any traffic data is imported. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="tabs" data-toc="① The three tabs">The three tabs</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/journey-coverage/tabs.png" alt="Three tabs: Coverage (selected), Imports, Path rules" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Coverage</strong>: the report. Opens first.</li>
+          <li><strong>Imports</strong>: upload page-view data, and the list of earlier uploads.</li>
+          <li><strong>Path rules</strong>: tell TraceIQ which addresses are really the same page.</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="empty" data-toc="② Before the first import">Before the first import</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/empty.png" alt="No traffic imported yet. Upload a page-view export (columns: path or url, views; optional journey, step, date) to see coverage. An Import traffic data button" loading="lazy"></div>
+        </figure>
+        <p>Until someone uploads traffic data, the Coverage tab says so. <strong>Import traffic
+          data</strong> takes you to the Imports tab.</p>
+
+        <h3 id="imports">The Imports tab</h3>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/import-form.png" alt="Import traffic data: a File chooser, an optional Label, a Format menu set to Detect from the file, and an Upload import button" loading="lazy"></div>
+        </figure>
+        <p>Export a page-view report from your analytics tool (Google Analytics, Matomo, Adobe and
+          others all can) as a <strong>CSV</strong> or <strong>JSON</strong> file, choose it under
+          <strong>File</strong>, optionally give it a <strong>Label</strong> such as the month it
+          covers, and press <strong>Upload import</strong>. TraceIQ recognises the columns by name
+          (upper or lower case, spaces allowed):</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>Names it looks for</th></tr></thead>
+            <tbody>
+              <tr><td><strong>The page</strong> (needed)</td><td><code>path</code>, <code>url</code>, <code>page</code>, <code>page path</code>, <code>page url</code>, <code>landing page</code>, <code>page location</code>, <code>pathname</code>, <code>route</code></td></tr>
+              <tr><td><strong>Views</strong></td><td><code>views</code>, <code>pageviews</code>, <code>screenPageViews</code>, <code>count</code>, <code>hits</code>, <code>sessions</code>, <code>visits</code>, <code>users</code>. With none of these, every row counts as one view, and the import shows a warning.</td></tr>
+              <tr><td><strong>Journey</strong> (optional)</td><td><code>journey</code>, <code>funnel</code>, <code>flow</code>: the name of a journey such as "Checkout".</td></tr>
+              <tr><td><strong>Step</strong> (optional)</td><td><code>step</code>, <code>order</code>, <code>position</code>: the page's place in that journey.</td></tr>
+              <tr><td><strong>Date</strong> (optional)</td><td><code>date</code>, <code>day</code>, <code>start date</code>, <code>end date</code>: used to show the period the data covers.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout tip">
+          <span class="icon">✓</span>
+          <div><strong class="title">Rename a column if it isn't recognised</strong>
+            <p>The names must match one of these, apart from upper/lower case and spaces. An
+            export whose page column is called, say, "Page path and screen class" is refused
+            with "no path column"; rename that column to <code>page path</code> in a
+            spreadsheet and upload again.</p></div>
+        </div>
+        <p>A file can be up to 5 MB and 50,000 rows. The <strong>Import history</strong> below the
+          form lists each upload with its rows, views and period, any warnings (for example rows
+          skipped because they had no page), <strong>View coverage</strong> to see the report for
+          an older upload, and <strong>Delete</strong>. The 20 newest uploads are kept; the
+          newest one, marked <span class="pill t-mint">latest</span>, is the one the Coverage tab
+          uses.</p>
+
+        <h3 id="rules">The Path rules tab</h3>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/rules.png" alt="Path rules: an explanation of the pattern syntax, a note that rules apply to every import, one rule row with the pattern /product/{id}, kind Path pattern and an empty display name, and the buttons Save rules, Add rule and Discard changes" loading="lazy"></div>
+          <figcaption>An example rule, typed in for the picture and then discarded.</figcaption>
+        </figure>
+        <p>Your analytics tool sees <code>/product/123</code>, <code>/product/456</code> and so on
+          as separate pages, but a test that opens one product page covers them all. A
+          <strong>path rule</strong> folds them into one page:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">In a pattern</th><th>Matches</th></tr></thead>
+            <tbody>
+              <tr><td><code>{id}</code> or <code>*</code> as a whole part</td><td>Exactly one part of the address between slashes: <code>/product/{id}</code> matches <code>/product/123</code> but not <code>/product/123/reviews</code>.</td></tr>
+              <tr><td><code>**</code></td><td>Any number of parts: <code>/blog/**</code> matches every address under <code>/blog/</code>.</td></tr>
+              <tr><td><code>*</code> inside a part</td><td>Any characters: <code>/files/*.pdf</code>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>For harder cases, set <strong>Kind</strong> to <em>Regex (RE2)</em> and write a regular
+          expression. A <strong>Display name</strong> is optional; without one, the pattern is the
+          page's name in the report. The first rule that matches wins. Rules apply to the uploaded
+          traffic <em>and</em> to your tests' addresses, and to every import, old ones included,
+          so nothing needs uploading again. <strong>Save rules</strong> keeps them;
+          <strong>Discard changes</strong> goes back to the saved ones. Up to 100 rules.</p>
+
+        <h2 id="with-data">When there is data</h2>
+        <p>After an upload, the Coverage tab starts with the import's name, the period it covers and
+          when it was uploaded, then four figures:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Figure</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Traffic covered</strong></td><td>Page views of pages that some test opens, as a share of all page views in the file. The headline number.</td></tr>
+              <tr><td><strong>Pages covered</strong></td><td>How many of the file's pages (after path rules) a test opens, out of how many pages there are.</td></tr>
+              <tr><td><strong>Pages tests visit</strong></td><td>How many different pages your tests open.</td></tr>
+              <tr><td><strong>Journeys</strong></td><td>How many named journeys the file has.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Then four boxes, each listing up to 50 pages with their views and share of all views:</p>
+        <ul>
+          <li><strong>Top uncovered pages</strong>: the busiest pages that no test opens. Start here.</li>
+          <li><strong>Tested, little or no traffic</strong>: pages your tests open that get under 0.5% of views, or none at all. Worth checking the test still matters, or that the address is right.</li>
+          <li><strong>Journeys and funnels</strong>: for each journey in the file, its steps in order, each labelled <span class="pill t-mint">tested</span> or <span class="pill t-peach">untested</span>, with "N of M steps tested", the share of the journey's views that is tested, and the first untested step ("first gap").</li>
+          <li><strong>Covered pages</strong>: the pages tests open, busiest first, with the names of up to three tests that open each one.</li>
+        </ul>
+        <p>"(3 paths)" after a page means three different addresses were folded into it by a path
+          rule.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/journey-coverage/page.png" width="1280" height="800">
+              <source src="../media/reports/journey-coverage/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary, on the demo project before any import. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…see how much of your traffic is tested</h3>
+        <ol class="steps">
+          <li>In your analytics tool, export the page views per page for a recent period (a month is a good start) as CSV.</li>
+          <li>Open the <strong>Imports</strong> tab, choose the file, give it a label and press <strong>Upload import</strong>. A message says how many rows and views were read.</li>
+          <li>Open the <strong>Coverage</strong> tab and read <strong>Traffic covered</strong>.</li>
+        </ol>
+        <h3>…decide which test to write next</h3>
+        <ol class="steps">
+          <li>On the Coverage tab, look at <strong>Top uncovered pages</strong>.</li>
+          <li>If the list is full of near-identical addresses (one per product, per article), add a path rule for them first; the list then shows the real gaps.</li>
+          <li>Write a test that opens the page at the top of the list.</li>
+        </ol>
+        <h3>…check a checkout or sign-up journey</h3>
+        <ol class="steps">
+          <li>Export the journey from your analytics tool with a journey name and a step number per row, and upload it.</li>
+          <li>In <strong>Journeys and funnels</strong>, find the journey and look for the first <span class="pill t-peach">untested</span> step.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Pages are compared by address only.</strong> The site name, anything after <code>?</code> or <code>#</code>, and a final <code>/</code> are dropped on both sides, so a test against your test environment still covers the same page on the live site. Upper and lower case matter: <code>/Cart</code> and <code>/cart</code> are two pages.</li>
+          <li><strong>What "a test opens a page" means.</strong> TraceIQ looks at the <em>Go to</em> steps of every test in the project, whether or not it has run. A page reached by clicking a link, without a Go to step, doesn't count.</li>
+          <li><strong>Page rows and journey rows.</strong> If a file has both, only the page rows count towards the total views, because journey steps repeat views already counted.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can read the report. Uploading, deleting an import and saving path rules need the <em>editor</em> role.</li>
+          <li><strong>Your data stays aggregated.</strong> TraceIQ keeps only page addresses (without their query part) and view counts, not individual visits.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Business journeys</h4><p>The next page in this guide: your key journeys as an ordered list of tests, with their health and traffic.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where tests are written, including the Go to steps this page reads.</p></div>
+          <div class="mini"><h4>Requirements</h4><p>Coverage of requirements instead of traffic: which acceptance criteria have a test.</p></div>
+          <div class="mini"><h4>Flag coverage</h4><p>Which feature-flag values your runs have tested.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Journey coverage page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

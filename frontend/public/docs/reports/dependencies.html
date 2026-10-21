@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dependencies · TraceIQ Guide</title>
+  <meta name="description" content="The Dependencies page: the outside services your app loads during tests, how often they return errors, how slow they are, and whether their errors line up with failing tests.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-dependencies.spec.ts (empty state: the demo has no third-party traffic).
+     Page: frontend/src/pages/DependencyHealth.tsx. API: backend/app/api/reliability_reports.py (dependency-health);
+     roll-up: app/tasks/reliability_tasks.py (aggregate_vendor_health); rules: app/services/vendor_health.py. -->
+<body data-page="reports/dependencies">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/dependencies"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Dependencies</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Your app probably loads things from other companies' servers: analytics, payments,
+            fonts, maps, a content delivery network. This page lists those outside services, as
+            seen during your test runs, with how often they returned errors, how slow they were,
+            and whether their errors happen more often when tests fail.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          This page answers <strong>"Is it us, or is it them?"</strong> When tests fail, the
+          cause is sometimes not your app at all but a service it depends on, such as a payment
+          provider having a bad day. TraceIQ already records the requests the browser makes
+          during each run, so it can tell you which outside services were involved and how they
+          behaved.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Check whether a failing test lines up with errors from an outside service before reporting a bug in your own app.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See which outside services your pages load, and which of them are slow.</p></div>
+          <div class="mini"><h4>Leads and architects</h4><p>Know which vendors you depend on, and how reliable they have been.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Dependencies</strong>.
+          The page's own heading says <strong>Third-party dependencies</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar. The demo projects only
+          call their own sites, so the screenshot shows what the page looks like before there is
+          anything to list. <a href="#with-data">When there is data</a> describes the full page.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/dependencies/page-annotated.png" alt="The Third-party dependencies page with two numbered parts: 1 the window menu, 2 a box saying No third-party requests" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Dependencies page for the demo's web project, which loads nothing from outside services. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Window">Window</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/dependencies/window.png" alt="A menu labelled Window, set to Last 30 days" loading="lazy"></div>
+        </figure>
+        <p>How many days to cover: the last 7, 30 (chosen first), 90 or 180 days, counted in whole
+          calendar days (UTC) up to and including today.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="empty" data-toc="② No third-party requests">No third-party requests</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/dependencies/empty.png" alt="No third-party requests. No third-party requests recorded in this window. Runs are rolled up hourly from their captured network traffic." loading="lazy"></div>
+        </figure>
+        <p>This box means no run in the window loaded anything from an outside service, or the
+          runs haven't been added up yet. It is normal for an API-only project, or a site that
+          serves everything itself. Runs are added up <strong>once an hour</strong>, so a run
+          that just finished can take up to an hour to appear.</p>
+
+        <h2 id="with-data">When there is data</h2>
+        <p>The line under the heading then says how many outside services were seen, how many
+          returned errors, and when the figures were last added up. Below it, the page splits in
+          two: a list on the left, details on the right.</p>
+
+        <h3 id="list">The list of services</h3>
+        <p>Services are in two groups, <strong>Returned errors</strong> first, then
+          <strong>No errors</strong>; within each, the services with the most errors (then the
+          most requests) come first. Each row shows the service's name, its number of requests
+          and its p95 speed (see below), with its error rate on the right. Click a row to show
+          it on the right; until you do, the first one is shown.</p>
+        <p>A <strong>service</strong> is a web domain, such as <code>stripe.com</code>.
+          Well-known ones get a readable name ("Stripe", "Google Analytics", "jsDelivr CDN"…);
+          others are shown by their domain.</p>
+
+        <h3 id="detail">The selected service</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Part</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Requests</strong></td><td>How many responses the browser got from this service, and in how many runs.</td></tr>
+              <tr><td><strong>Error rate</strong></td><td>The share of those responses that were errors (an HTTP status of 400 or more, or no status at all), with the number of errors and of runs that had at least one.</td></tr>
+              <tr><td><strong>Latency p50 / p95</strong></td><td>How long its responses took. <em>p50</em>: half were quicker than this; <em>p95</em>: 95% were. These are approximate: TraceIQ sorts times into ranges (up to 25 ms, up to 50 ms, … up to 30 s) and shows the top of the range.</td></tr>
+              <tr><td><strong>Errors per day</strong></td><td>A small line of the number of errors each day in the window.</td></tr>
+              <tr><td><strong>Does it line up with failing tests?</strong></td><td>Two bars: of the <em>failed</em> test results, the share whose run saw an error from this service; and the same for <em>passed</em> results. Then one sentence:
+                <ul>
+                  <li>If failing results saw its errors more than 1.5 times as often as passing ones: "Worth a look".</li>
+                  <li>Otherwise: "It is unlikely to be the cause".</li>
+                  <li>"Not enough data on both sides to compare" when either side has nothing to compare.</li>
+                </ul></td></tr>
+              <tr><td><strong>Hosts seen</strong></td><td>The exact server names used under that domain, for example <code>js.stripe.com</code> and <code>api.stripe.com</code> (up to 20).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>At the bottom, <strong>How this is built</strong> repeats the rules in short (see <a href="#good-to-know">Good to know</a>).</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/dependencies/page.png" width="1280" height="800">
+              <source src="../media/reports/dependencies/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 45 seconds, with a spoken commentary, on the demo project (which has no outside services). The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check whether an outside service broke your tests</h3>
+        <ol class="steps">
+          <li>Choose a window that covers the failures, for example <strong>Last 7 days</strong>.</li>
+          <li>Look at the <strong>Returned errors</strong> group and click the service at the top.</li>
+          <li>Read <strong>Does it line up with failing tests?</strong> "Worth a look" means its errors came with failing tests much more often than with passing ones.</li>
+          <li>Check <strong>Errors per day</strong>: errors on the same days as the failures make the link stronger.</li>
+        </ol>
+        <h3>…find the slowest outside services</h3>
+        <ol class="steps">
+          <li>Read the p95 figure in each row of the list.</li>
+          <li>Click a slow one and compare <strong>Latency p50</strong> and <strong>p95</strong>: a big gap means it is usually quick but sometimes very slow.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>What counts as outside.</strong> A request is to an outside service when its domain is different from your app's own: the site of the first page each test opened, the address a run was pointed at, and the environment's base address. <code>cdn.example.com</code> and <code>www.example.com</code> are the same domain, so they count as your own.</li>
+          <li><strong>Only answered requests.</strong> Requests that got no response at all (for example blocked or timed out in the browser) are not in the figures.</li>
+          <li><strong>Only server names are kept</strong>, never the rest of the address (paths or anything after a <code>?</code>), so nothing private from the requests is stored here.</li>
+          <li><strong>Which runs count.</strong> Finished runs (passed, failed or error). The check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>) are left out.</li>
+          <li><strong>Updated hourly.</strong> Each hour TraceIQ adds up today and yesterday again. Figures are kept for 180 days.</li>
+          <li><strong>A link is not proof.</strong> "Worth a look" says errors and failures happened in the same runs; it doesn't say which caused which. Open a failing run and look at its network requests to be sure.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Journey coverage</h4><p>The next page in this guide: how much of your real visitors' traffic your tests cover.</p></div>
+          <div class="mini"><h4>Runs</h4><p>A run's own page, with the network requests it recorded, for the details behind these figures.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures grouped by cause; a <em>Network</em> group often points at an outside service.</p></div>
+          <div class="mini"><h4>Script inventory</h4><p>The scripts your pages load from other sites, from a security point of view.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Dependencies page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

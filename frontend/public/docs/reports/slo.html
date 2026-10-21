@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SLOs · TraceIQ Guide</title>
+  <meta name="description" content="The SLOs page: whether each monitor meets its availability and speed targets, how much error budget is left, and how fast it is being used up.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-slo.spec.ts. Page: frontend/src/pages/SloReports.tsx
+     (+ components/reports/chartMath.ts, charts.tsx). API: backend/app/api/reliability_reports.py (SLO section);
+     maths: app/services/slo.py. -->
+<body data-page="reports/slo">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/slo"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>SLOs</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change the targets</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>For every monitor in the project: how often its checks passed, compared with the
+            target you set, how much room for failures is left before the target is missed, and
+            how quickly that room is being used up. Also how fast the checks were.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          An <strong>SLO</strong> (service level objective) is a promise about how reliable a
+          service should be, for example <em>"99.9% of checks pass over 30 days"</em>. This page
+          answers <strong>"Are we keeping that promise, and will we still be keeping it at the
+          end of the month?"</strong>
+        </p>
+        <p>The numbers come from <strong>monitors</strong>: schedules that check a live site or API
+          on a timer (a schedule with monitor mode turned on; see <em>Watch → Monitors</em>). Each time a monitor runs is one
+          <strong>check</strong>. A check is good when its test run passed.</p>
+        <div class="grid-3">
+          <div class="mini"><h4>Service owners</h4><p>See whether the service meets its target, and how many more failures it can take this month.</p></div>
+          <div class="mini"><h4>On-call and operations</h4><p>Spot a fast burn: a recent run of failures that will break the target soon if it continues.</p></div>
+          <div class="mini"><h4>Managers</h4><p>Report reliability against an agreed number instead of "it felt stable".</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → SLOs</strong>.
+          The page's own heading says <strong>SLO reports</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the monitors of the project selected at the top of the sidebar, one card
+          each, in name order. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/slo/page-annotated.png" alt="The SLO reports page with five numbered parts: 1 the window menu, 2 the monitor's name, target and status, 3 four tiles, 4 the daily compliance bars, 5 how this is measured" loading="lazy" width="1440" height="1000"></div>
+          <figcaption>The SLO reports page for the demo's API project, which has one (paused) monitor. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Window">Window</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/slo/window.png" alt="A menu labelled Window, set to Each monitor's own window" loading="lazy"></div>
+        </figure>
+        <p>How many days of checks to count, ending now. <strong>Each monitor's own window</strong>
+          uses the default saved for each monitor (30 days unless someone changed it). Choosing
+          <strong>Last 7, 30 or 90 days</strong> applies that window to every monitor on the page,
+          without changing what is saved.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="status" data-toc="② Name, target and status">Name, target and status</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/slo/monitor-head.png" alt="Public API health (demo, paused). Last 30 days, 119 checks, target 99%. A label Target breached and an Edit targets button" loading="lazy"></div>
+        </figure>
+        <p>The monitor's name, then the window, the number of checks in it and the availability
+          target. "(default target)" means no target has been set, so TraceIQ uses
+          <strong>99.9%</strong>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Status</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Meeting target</span></td><td>The share of good checks is at or above the target, and the last 24 hours look fine.</td></tr>
+              <tr><td><span class="pill t-butter">At risk (fast burn)</span></td><td>Still above the target over the window, but in the last 24 hours checks failed faster than the target allows. If that continues, the target will be missed.</td></tr>
+              <tr><td><span class="pill t-peach">Target breached</span></td><td>The share of good checks in the window is below the target.</td></tr>
+              <tr><td><span class="pill t-neutral">No data</span></td><td>No checks in the window. The card then says so instead of showing the tiles.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Edit targets</strong> opens the targets form; see <a href="#targets">below</a>.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="tiles" data-toc="③ The four tiles">The four tiles</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/slo/tiles.png" alt="Four tiles: Compliance 98.32% (117 good, 2 failed checks); Error budget left -68.1% (2 of 1.19 allowed failures spent); Burn rate 1.68× (last 24 h 0.00×); Latency p95 984 ms, Within target, target 1.5 s" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Compliance</strong></td><td>The share of checks in the window that were good. Underneath: how many were good and how many failed.</td></tr>
+              <tr><td><strong>Error budget left</strong></td><td>The <strong>error budget</strong> is how many failed checks the target allows. With a 99% target and 119 checks, 1% of 119 = 1.19 checks may fail. The tile shows how much of that is left: 100% = no failures yet, 0% = used up exactly. <strong>Below zero means overspent</strong>: in the example, 2 failures against 1.19 allowed is −68.1%. The bar is green, turns yellow under 25% and red at 0% or below.</td></tr>
+              <tr><td><strong>Burn rate</strong></td><td>How fast the budget is being used. <strong>1×</strong> uses it up exactly at the end of the window; 2× twice as fast; under 1× leaves some over. The big number is for the whole window; the line underneath is for the last 24 hours, the early warning.</td></tr>
+              <tr><td><strong>Latency p95</strong></td><td>How long checks took: 95% of checks were this quick or quicker, so a few slow ones don't hide behind the average. It is the duration of the check's whole test run. With a latency target set, a label says <span class="pill t-mint">Within target</span> or <span class="pill t-peach">Over target</span>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">A 100% target leaves no budget</strong>
+            <p>With a target of 100%, no failure is allowed at all. The error budget shows 100%
+            while every check passes, and "—" as soon as one fails.</p></div>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="daily" data-toc="④ Daily compliance">Daily compliance</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/slo/daily.png" alt="A row of 30 bars, all green and full height except one shorter orange bar" loading="lazy"></div>
+        </figure>
+        <p>One bar per day of the window, oldest on the left. The height is that day's share of good
+          checks.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Bar colour</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#8FD3B6"></span>Green</td><td>That day met the target.</td></tr>
+              <tr><td><span class="swatch" style="background:#E0603A"></span>Orange</td><td>That day was below the target.</td></tr>
+              <tr><td><span class="swatch" style="background:#EDEBE5"></span>Grey line</td><td>No checks that day, for example while the monitor was paused.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Because the bars start at zero, a 98% day and a 100% day look almost the same height: go
+          by the colour. Days are calendar days in <strong>UTC</strong>.</p>
+        <p>If a monitor checks from more than one <strong>region</strong> (place in the world), a
+          <strong>By region</strong> table follows, with the same figures per region.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="measured" data-toc="⑤ How this is measured">How this is measured</h2></div>
+        <p>A short reminder, at the bottom of the page, of the rules above: each check is one
+          event, good when its run passed; the error budget is the share of checks the target
+          allows to fail; latency is the check's run duration.</p>
+
+        <h3 id="targets">Editing the targets</h3>
+        <figure>
+          <div class="frame"><img src="../media/reports/slo/targets.png" alt="The Edit targets form: Availability target 99, Latency p95 target 1500 ms, Default window 30 days, and a Save targets button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Availability target (%)</strong>: the share of checks that must pass, e.g. 99.9. Leave it empty to use the default of 99.9%.</li>
+          <li><strong>Latency p95 target (ms)</strong>: optional, in milliseconds (1500 = 1.5 seconds).</li>
+          <li><strong>Default window</strong>: 7, 30 or 90 days; used when the page's window menu is on "Each monitor's own window".</li>
+        </ul>
+        <p><strong>Save targets</strong> needs the <em>editor</em> role on the project; others get an
+          error message. Every change is recorded in the audit log with the old and new values.
+          <strong>Close targets</strong> closes the form without saving.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/slo/page.png" width="1280" height="800">
+              <source src="../media/reports/slo/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…set a target for a monitor</h3>
+        <ol class="steps">
+          <li>Select the monitor's project at the top of the sidebar.</li>
+          <li>On the monitor's card, press <strong>Edit targets</strong>.</li>
+          <li>Enter the availability target, and a latency target if you have one. Choose the window your target is measured over.</li>
+          <li>Press <strong>Save targets</strong>. The card updates straight away.</li>
+        </ol>
+        <h3>…tell whether there is still room for failures this month</h3>
+        <ol class="steps">
+          <li>Choose <strong>Last 30 days</strong> in the window menu.</li>
+          <li>Read <strong>Error budget left</strong>. Above zero, the target still holds; how far above says how many more failures it can take.</li>
+          <li>Read the <strong>Burn rate</strong> line for the last 24 hours. Above 1×, the budget is shrinking faster than planned.</li>
+        </ol>
+        <h3>…find the bad days</h3>
+        <ol class="steps">
+          <li>Look for orange bars in <strong>Daily compliance</strong>.</li>
+          <li>Open <em>Watch → Monitors</em> for that monitor to see its recent checks.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only monitors.</strong> Ordinary schedules and runs you start yourself don't count. A project with no monitors shows "No monitors".</li>
+          <li><strong>Paused monitors are listed too</strong>, with the checks they made before they were paused. Once the window has moved past those, the card says there are no checks.</li>
+          <li><strong>The window is rolling.</strong> "Last 30 days" counts back from this moment, not from the start of the month, so the numbers move a little every day as old checks drop out.</li>
+          <li><strong>Latency includes the whole test.</strong> It is the run's duration, not just the time the site took to answer, so a long test makes it larger.</li>
+          <li><strong>It doesn't update by itself.</strong> The page fetches the numbers when you open it, change the window or project, or come back to its browser tab.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Flake trends</h4><p>The next page in this guide: whether tests that pass and fail at random are becoming more or less common, and where.</p></div>
+          <div class="mini"><h4>Monitors</h4><p>The monitors these numbers come from: their state, recent checks and alerts.</p></div>
+          <div class="mini"><h4>On-call</h4><p>Who gets paged when a monitor goes down.</p></div>
+          <div class="mini"><h4>Delivery (DORA)</h4><p>How often you deploy and how often a deployment goes wrong.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the SLOs page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

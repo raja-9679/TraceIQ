@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Executive summary · TraceIQ Guide</title>
+  <meta name="description" content="The Executive summary page: a one-page, printable view of test results for a project or a whole workspace, and how to share it.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-executive-summary.spec.ts. Page: frontend/src/pages/ExecutiveSummary.tsx
+     (+ components/reports/SummaryView.tsx, ShareLinks.tsx). API: backend/app/api/reports.py, app/api/share_links.py;
+     numbers: app/services/reporting.py; public links: app/services/share_links.py. -->
+<body data-page="reports/executive-summary">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/summary"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Executive summary</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can share it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>One page, in plain words, about how testing is going: the pass rate and how it has
+            changed, whether the latest version is ready to release, and what to keep an eye on.
+            For one project or for a whole workspace. You can print it, save it as a PDF, or send
+            a read-only link to people without a TraceIQ account.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          The executive summary answers <strong>"In short, how are we doing?"</strong> for
+          people who don't read test results every day. It takes the same numbers the rest of
+          TraceIQ uses and puts them on one page, with a sentence at the top that says what they
+          mean.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Managers and leadership</h4><p>Read one sentence and six numbers instead of a list of runs. Print it for a meeting.</p></div>
+          <div class="mini"><h4>Team leads</h4><p>Send a weekly or monthly update to stakeholders with a link that always shows the latest numbers.</p></div>
+          <div class="mini"><h4>Testers</h4><p>See which tests failed most over the period, and how many separate problems are still open.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Executive summary</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>When the page opens it shows the project selected at the top of the sidebar, over the
+          last 30 days. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/executive-summary/page-annotated.png" alt="The Executive summary page with seven numbered parts: 1 the scope and period buttons, 2 the headline, 3 six number tiles, 4 the pass-rate chart, 5 top failing tests and open failure groups, 6 the share-a-link card, 7 the print button" loading="lazy" width="1440" height="1400"></div>
+          <figcaption>The Executive summary for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="scope" data-toc="① Scope and period">Scope and period</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/executive-summary/toolbar.png" alt="Two sets of buttons: This project (selected) and Whole workspace; 7 days, 30 days (selected) and 90 days" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>This project</strong> shows the project selected at the top of the sidebar.</li>
+          <li><strong>Whole workspace</strong> adds up every project in the workspace that <em>you</em> can see, and adds a table with one row per project (see <a href="#workspace">below</a>). If you belong to more than one workspace, a <strong>Workspace</strong> menu appears so you can pick which one.</li>
+          <li><strong>7 days, 30 days, 90 days</strong> is the period the numbers cover. It counts back from this moment, not from the start of a calendar week or month.</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="headline" data-toc="② The headline">The headline</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/executive-summary/headline.png" alt="Demo — Todo web app, last 30 days, generated 10/21/2026. 83.1% of 59 runs passed in the last 30 days. The latest build is ready to release. Watch: 4 open failure groups, 1 flaky test. Release readiness: Ready" loading="lazy"></div>
+        </figure>
+        <p>The top line names the project, the period and when the summary was made. Then
+          TraceIQ writes one to three sentences from the numbers:</p>
+        <ul>
+          <li><strong>The pass rate</strong>, and whether it went up or down compared with the period before. A change of less than half a point reads "about the same".</li>
+          <li><strong>Release readiness</strong>: whether the latest version of your app is ready to ship, by the rules set on the <em>Quality gate</em> page. TraceIQ takes the newest finished run, and judges every run of that same version of the code. The coloured label repeats the answer, and the lines underneath give the reasons.</li>
+          <li><strong>Watch:</strong> the things worth a look, but only those that are above zero: open failure groups, flaky tests and escaped defects.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Label</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Ready</span></td><td>The latest version passed every check of the project's quality gate.</td></tr>
+              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which.</td></tr>
+              <tr><td><span class="pill t-butter">Not enough data</span></td><td>TraceIQ can't judge yet, for example because a check needs results that don't exist.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>If readiness can't be worked out at all, the label is left out.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="tiles" data-toc="③ The six tiles">The six tiles</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/executive-summary/tiles.png" alt="Six tiles: Pass rate 83.1%, Runs 59 (+59 vs previous), Failing results 10 (+10 vs previous), Flaky tests 1, Open failure groups 4, Escaped defects 0" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pass rate</strong></td><td>The share of finished runs in the period that passed. A run that ended in <em>Error</em> counts as not passed. The line underneath is the change in <strong>points</strong> ("+3.1 pts" = from, say, 80% to 83.1%).</td></tr>
+              <tr><td><strong>Runs</strong></td><td>How many runs finished with a result (passed, failed or error) in the period, and how many more or fewer than in the period before.</td></tr>
+              <tr><td><strong>Failing results</strong></td><td>How many times a single test failed or ended in error. One run with three failing tests counts as three. This is the number that goes down when a team fixes things.</td></tr>
+              <tr><td><strong>Flaky tests</strong></td><td>Tests that are quarantined right now, or that TraceIQ currently rates as flaky (a flakiness score of 0.4 or more). This is today's count, not a count over the period.</td></tr>
+              <tr><td><strong>Open failure groups</strong></td><td>Problems on the <em>Failure triage</em> page that are still <em>Open</em> or <em>Investigating</em>, whenever they started.</td></tr>
+              <tr><td><strong>Escaped defects</strong></td><td>Incidents marked as escaped defects (bugs that reached users without a test catching them) in the period. If a critical incident is still open, the tile says so underneath.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>"vs previous" compares with the period of the same length just before: with 30 days
+          selected, the 30 days before those. The change is coloured green when things got better
+          and orange when they got worse. A pass-rate change shows "—" when either period had no
+          finished runs, because there is nothing to compare.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="trend" data-toc="④ Pass rate trend">Pass rate trend</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/executive-summary/trend.png" alt="A bar chart, one dark bar per day from 2026-09-21 to 2026-10-21, most bars full height and some half height" loading="lazy"></div>
+        </figure>
+        <p>One bar for each day of the period, oldest on the left and today on the right. The
+          height of a bar is the share of that day's runs that passed: a full bar is 100%, a
+          half bar 50%. A flat grey line means no run finished that day.
+          <strong>Point at a bar</strong> to see its date, percentage and number of runs, for
+          example <em>"2026-10-14: 50% of 2 runs"</em>.</p>
+        <p>The bars are all one colour on purpose, so the page prints well in black and white.
+          Days are calendar days in <strong>UTC</strong>, and the first bar is usually a part
+          day, because the period starts at this time of day, N days ago.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="lists" data-toc="⑤ Failing tests and failure groups">Failing tests and failure groups</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/executive-summary/lists.png" alt="Two boxes. Top failing tests: Add a todo 6 failures, Session cookie is HttpOnly 2, Homepage loads 1, No serious accessibility violations 1. Open failure groups: page.waitForSelector: Timeout &lt;n&gt; exceeded (selector, 6×), and three more" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Top failing tests</strong>: the five tests that failed most often in the period, with how many times. Tests are matched by name.</li>
+          <li><strong>Open failure groups</strong>: the five open problems that have caused the most failures, with their kind (selector, assertion, timeout, network, navigation or other) and their count. A group is one cause behind many failures; the <em>Failure triage</em> page explains them.</li>
+        </ul>
+
+        <div class="part"><span class="num">6</span><h2 id="share" data-toc="⑥ Share a read-only link">Share a read-only link</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/executive-summary/share.png" alt="A card titled Share a read-only link, with an Expires after menu set to 7 days, a Label field, the heading This project's links with No links yet, and a Create link button" loading="lazy"></div>
+        </figure>
+        <p>A link anyone can open <strong>without signing in</strong>, for people who don't have
+          a TraceIQ account. They see this summary, but with less in it (see the table below).</p>
+        <ul>
+          <li><strong>Expires after</strong>: 1, 7, 30 or 90 days. 7 is chosen first.</li>
+          <li><strong>Label</strong>: optional, to tell your links apart later, for example who it is for.</li>
+          <li><strong>Create link</strong> shows the link once, with a <strong>Copy link</strong> button. Copy it then: TraceIQ keeps only a scrambled form of it and can't show it again.</li>
+          <li>The list underneath shows each link with its status (<span class="pill t-mint">Active</span>, <span class="pill t-neutral">Expired</span> or <span class="pill t-neutral">Revoked</span>), who made it, when it expires, how many times it has been opened and when it was last opened. <strong>Revoke</strong> stops a link working straight away.</li>
+        </ul>
+        <p>The link always covers the period that was selected when you made it (7, 30 or 90 days),
+          and its numbers are worked out again <strong>every time someone opens it</strong>, so
+          it always shows the latest state, not a copy from the day you sent it.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">On the shared page</th><th>What is in it</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Shown</strong></td><td>The headline, the tiles, the chart, the top failing tests (their names and counts) and the readiness label. For a workspace: the project names and their numbers.</td></tr>
+              <tr><td><strong>Left out</strong></td><td>The list of open failure groups (their names can quote error messages), the reasons under release readiness, and anything else from the runs: no screenshots, errors, web addresses or email addresses.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>On <strong>This project</strong>, the list also shows the project's links to single
+          runs, made with <strong>Share</strong> on a run's page.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="print" data-toc="⑦ Print or save as PDF">Print or save as PDF</h2></div>
+        <p>The <strong>Print or save as PDF</strong> button opens your browser's print window. The
+          sidebar, the buttons and the share card are left out of the printout. To get a PDF,
+          choose <em>Save as PDF</em> as the printer.</p>
+
+        <h3 id="workspace">The whole-workspace view</h3>
+        <p>With <strong>Whole workspace</strong> chosen, the numbers add up all the projects you
+          can see in that workspace. The headline then counts projects by readiness instead of
+          showing one label:</p>
+        <figure>
+          <div class="frame small"><img src="../media/reports/executive-summary/workspace-headline.png" alt="Demo workspace, last 30 days. 90.3% of 236 runs passed in the last 30 days. Watch: 6 open failure groups, 1 flaky test. Every project is ready to release. Release readiness by project: 2 ready, 0 not ready, 0 not enough data" loading="lazy"></div>
+        </figure>
+        <p>Below the chart, a <strong>Projects</strong> table gives each project's pass rate, the
+          change in points against the period before, its runs, its flaky tests and its
+          readiness label:</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/executive-summary/workspace-projects.png" alt="A table of two projects: Demo — Public API 92.7%, 177 runs, 0 flaky, Ready; Demo — Todo web app 83.1%, 59 runs, 1 flaky, Ready" loading="lazy"></div>
+        </figure>
+        <p>A line under the page says how many projects it covers.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/executive-summary/page.png" width="1280" height="800">
+              <source src="../media/reports/executive-summary/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…prepare a monthly update for a meeting</h3>
+        <ol class="steps">
+          <li>Select the project at the top of the sidebar, or choose <strong>Whole workspace</strong>.</li>
+          <li>Choose <strong>30 days</strong>.</li>
+          <li>Press <strong>Print or save as PDF</strong>, and choose <em>Save as PDF</em> in the print window.</li>
+        </ol>
+        <h3>…send stakeholders a link that stays up to date</h3>
+        <ol class="steps">
+          <li>Choose the scope and the period the link should cover.</li>
+          <li>In <strong>Share a read-only link</strong>, choose how long it should work and give it a label, for example "Board update".</li>
+          <li>Press <strong>Create link</strong>, then <strong>Copy link</strong>, and paste it into your email or chat. It is not shown again.</li>
+          <li>When it is no longer needed, press <strong>Revoke</strong> next to it in the list.</li>
+        </ol>
+        <h3>…compare this week with last week</h3>
+        <ol class="steps">
+          <li>Choose <strong>7 days</strong>.</li>
+          <li>Read the lines under the tiles: each compares the last 7 days with the 7 days before.</li>
+          <li>If the pass rate went down, look at <strong>Top failing tests</strong> to see which tests are behind it.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Which runs count.</strong> Only runs that finished with a result: passed, failed or error. Cancelled and timed-out runs, runs still going, and the check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>) are left out.</li>
+          <li><strong>You only see your own projects.</strong> The workspace view adds up only the projects you have access to, so two people can see different numbers for the same workspace.</li>
+          <li><strong>Who can share.</strong> Anyone who can see the project can read this page. Making a project link needs the <em>editor</em> role on it. A workspace link needs editor on at least one project, and covers <strong>only the projects where you are an editor</strong>, so it can show fewer projects than you see on screen.</li>
+          <li><strong>A link stops working</strong> when it expires, when it is revoked, or when the person who made it loses editor access or their account is switched off. A project link can be revoked by any editor of the project; a workspace link by the person who made it or a workspace admin.</li>
+          <li><strong>It doesn't update by itself.</strong> The page fetches the numbers when you open it, change scope or period, or come back to its browser tab.</li>
+          <li><strong>The same numbers everywhere.</strong> The weekly digest email set up on the <em>Analytics</em> page and the <em>Portfolio</em> page are built from the same counts, so they can't disagree with this page for the same project and period.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Portfolio</h4><p>The next page in this guide: every project in the workspace side by side, in one sortable table.</p></div>
+          <div class="mini"><h4>Release readiness</h4><p>The full "ready / not ready" answer behind the label in the headline, with every check and reason.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>The open failure groups in detail: the error, every test it broke, and who is working on it.</p></div>
+          <div class="mini"><h4>Analytics</h4><p>One project in more depth, and where the weekly digest email is set up.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Executive summary page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

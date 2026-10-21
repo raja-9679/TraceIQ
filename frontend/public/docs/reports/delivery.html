@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delivery (DORA) · TraceIQ Guide</title>
+  <meta name="description" content="The Delivery (DORA) page: deployment frequency, lead time, change failure rate and time to restore, worked out from the deployments your build pipeline reports.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-delivery.spec.ts. Page: frontend/src/pages/DeliveryReport.tsx
+     (+ components/reports/chartMath.ts, ReportControls.tsx). API: backend/app/api/dora.py; maths: app/services/dora.py. -->
+<body data-page="reports/delivery">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/delivery"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Delivery (DORA)</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Four measures of how well your team delivers software: how often you deploy, how long
+            a change takes to reach users, how often a deployment goes wrong, and how quickly you
+            recover when it does. TraceIQ works them out from the deployments your build pipeline
+            reports, plus your test runs and incidents.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          This page answers <strong>"Are we shipping quickly <em>and</em> safely?"</strong> The
+          four measures come from DORA (DevOps Research and Assessment), a long-running research
+          programme into how software teams work. They are widely used because they balance each
+          other: deploying more often only counts as progress if deployments don't fail more
+          often too.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Engineering managers</h4><p>See whether delivery is speeding up or slowing down, and compare with the published research bands.</p></div>
+          <div class="mini"><h4>Team leads</h4><p>Find out which recent deployments were followed by failed tests or an incident.</p></div>
+          <div class="mini"><h4>Release and platform engineers</h4><p>Check that the build pipeline reports every deployment, with the details the measures need.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Delivery (DORA)</strong>.</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">TraceIQ doesn't see your deployments by itself</strong>
+            <p>A <strong>deployment</strong> is putting a new version of your app live. TraceIQ
+            only knows a deployment happened when your build pipeline (CI, for example GitHub
+            Actions or GitLab) tells it, with one web request after each deployment. Until that
+            is set up, this page has nothing to measure. See <a href="#how-to-send">⑤ How to send
+            deployments</a>.</p></div>
+        </div>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar. The numbers on the
+          screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/delivery/page-annotated.png" alt="The Delivery (DORA) page with five numbered parts: 1 the window and environment menus, 2 the four measures, 3 the inputs used, 4 the list of recent deployments, 5 how to send deployments" loading="lazy" width="1440" height="1560"></div>
+          <figcaption>The Delivery page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="filters" data-toc="① Window and environment">Window and environment</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/delivery/toolbar.png" alt="Two menus: Window, set to Last 30 days, and Environment, set to All environments" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Window</strong>: the last 7, 30, 90 or 180 days, counting back from this moment. 30 days is chosen first. Only deployments made in the window are measured.</li>
+          <li><strong>Environment</strong>: all environments, or just one, for example production. Environments are the places your tests run against, set up on the <em>Environments</em> page; a deployment is linked to one when the pipeline names it.</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="measures" data-toc="② The four measures">The four measures</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/delivery/tiles.png" alt="Four tiles: Deployment frequency 2.33 per week, band High; Lead time for changes —, No band; Change failure rate 30%, band Low; Time to restore —, No band" loading="lazy"></div>
+        </figure>
+        <p>Each tile shows the measure, a coloured <strong>band</strong>, and underneath, what the
+          number is based on. A dash (—) and <span class="pill t-neutral">No band</span> mean
+          there was nothing to measure; the line underneath then says what is missing.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Measure</th><th>How TraceIQ works it out</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Deployment frequency</strong></td><td>The number of deployments in the window, shown per week (and per day underneath).</td></tr>
+              <tr><td><strong>Lead time for changes</strong></td><td>For each deployment: the time from when the change was made to when it went live. "When the change was made" is the commit time if the pipeline sent it; otherwise the first test run in TraceIQ of that exact version of the code (its commit). The tile shows the <strong>median</strong>: half of the deployments were quicker, half slower. Deployments with neither time are left out.</td></tr>
+              <tr><td><strong>Change failure rate</strong></td><td>The share of deployments that went wrong. A deployment went wrong if any of three things happened (the line underneath counts each):
+                <ul>
+                  <li>the pipeline reported the deployment itself as <em>failed</em>;</li>
+                  <li>an incident started within 24 hours after it;</li>
+                  <li>a test run on the same environment failed (or ended in error) within 24 hours after it.</li>
+                </ul></td></tr>
+              <tr><td><strong>Time to restore</strong></td><td>For each incident that started in the window and has been resolved: the time from start to resolution. The tile shows the median, and how many incidents are still open.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Band thresholds</strong> under each tile folds out the limits for that measure.
+          They are the ones published in the 2023 <em>State of DevOps</em> report:</p>
+        <figure>
+          <div class="frame small"><img src="../media/reports/delivery/thresholds.png" alt="The Deployment frequency tile with Band thresholds opened: Elite on demand (at least once a day), High between once a day and once a week, Medium between once a week and once a month, Low less than once a month" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:16%">Band</th><th>Deploys</th><th>Lead time</th><th>Change failure rate</th><th>Time to restore</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Elite</span></td><td>at least once a day</td><td>under 1 day</td><td>5% or less</td><td>under 1 hour</td></tr>
+              <tr><td><span class="pill t-lavender">High</span></td><td>once a day to once a week</td><td>1 day to 1 week</td><td>10% or less</td><td>under 1 day</td></tr>
+              <tr><td><span class="pill t-butter">Medium</span></td><td>once a week to once a month</td><td>1 week to 1 month</td><td>15% or less</td><td>1 day to 1 week</td></tr>
+              <tr><td><span class="pill t-peach">Low</span></td><td>less than once a month</td><td>over 1 month</td><td>over 15%</td><td>over 1 week</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="inputs" data-toc="③ Inputs used">Inputs used</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/delivery/inputs.png" alt="Inputs used: 10 deployments, 0 incidents, 10 failed runs, 0 commits matched to test runs, with two notes about how incidents and failed runs are matched" loading="lazy"></div>
+        </figure>
+        <p>What the four measures were worked out from, in this window: the deployments, the
+          incidents, the failed test runs on the deployments' environments, and how many
+          deployed versions TraceIQ could match to a test run (for lead time). If a measure looks
+          wrong, start here. The two notes repeat the matching rules: incidents have no
+          environment, so they are matched across the whole project; a failed run counts against
+          the latest deployment to the same environment in the 24 hours before it.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="deployments" data-toc="④ Recent deployments">Recent deployments</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/delivery/deployments.png" alt="A table of deployments with the columns Deployed, Environment, Version / commit, Lead time and Outcome. Most rows say No failure seen; some say Failed run within 24 h or Deployment failed" loading="lazy"></div>
+        </figure>
+        <p>The deployments in the window, newest first (up to 50):</p>
+        <ul>
+          <li><strong>Deployed</strong>: date and time it went live.</li>
+          <li><strong>Environment</strong>: where it went; "default" if the pipeline named none.</li>
+          <li><strong>Version / commit</strong>: the version name and/or the first 12 characters of the commit, as the pipeline sent them.</li>
+          <li><strong>Lead time</strong>: for this deployment, and whether it was measured "from commit time" or "from first test run". A dash if neither was available.</li>
+          <li><strong>Outcome</strong>: <span class="pill t-mint">No failure seen</span>, or one label per reason it counts as a failure: <span class="pill t-peach">Deployment failed</span>, <span class="pill t-peach">Incident within 24 h</span>, <span class="pill t-peach">Failed run within 24 h</span>.</li>
+        </ul>
+        <p>The table is hidden when there are no deployments in the window.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="how-to-send" data-toc="⑤ How to send deployments">How to send deployments</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/delivery/how-to-send.png" alt="A panel titled How to send deployments with a short explanation and a curl command that posts git_commit, environment, version, external_id and status" loading="lazy"></div>
+        </figure>
+        <p>The example request your build pipeline sends after each deployment, filled in with this
+          project's address. A developer or whoever looks after the pipeline adds it as the last
+          step of the deployment job. It needs an <strong>API key</strong> (made under
+          <em>Setup → API keys</em>) belonging to someone with the <em>editor</em> role on the
+          project.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Field</th><th>What it is for</th></tr></thead>
+            <tbody>
+              <tr><td><code>git_commit</code></td><td>Which version of the code went out. Needed for lead time when <code>commit_at</code> is not sent.</td></tr>
+              <tr><td><code>environment</code></td><td>The environment's name exactly as on the <em>Environments</em> page. An unknown name is refused.</td></tr>
+              <tr><td><code>version</code></td><td>A version name people recognise, e.g. "v1.4.2". Also used to link an incident that names the release.</td></tr>
+              <tr><td><code>status</code></td><td><code>success</code> or <code>failed</code>. A failed deployment counts towards the change failure rate.</td></tr>
+              <tr><td><code>external_id</code></td><td>The pipeline's own run number. If the same number is sent twice (a retried step), the first record is updated instead of counting a second deployment.</td></tr>
+              <tr><td><code>commit_at</code></td><td>Optional: when the change was committed. Gives the most accurate lead time.</td></tr>
+              <tr><td><code>deployed_at</code></td><td>Optional: when it went live. Left out, it is the moment the request arrives. A time in the future is refused.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/delivery/page.png" width="1280" height="800">
+              <source src="../media/reports/delivery/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…start measuring delivery</h3>
+        <ol class="steps">
+          <li>Make an API key under <strong>Setup → API keys</strong>. It acts as you, so you need the <em>editor</em> role on this project.</li>
+          <li>Copy the request from <strong>How to send deployments</strong> at the bottom of this page.</li>
+          <li>Have it added as the last step of your deployment job, with the key stored as a secret in the pipeline.</li>
+          <li>After the next deployment, open this page: the deployment appears in <strong>Recent deployments</strong>.</li>
+        </ol>
+        <h3>…find out why the change failure rate is high</h3>
+        <ol class="steps">
+          <li>Look at the line under <strong>Change failure rate</strong>: it says how many failures came from incidents, from failed runs and from failed deployments.</li>
+          <li>In <strong>Recent deployments</strong>, find the rows with orange labels.</li>
+          <li>For <em>Failed run within 24 h</em>, open <em>Runs</em> and look at the failed runs on that environment after that time. They may be test problems rather than a bad deployment.</li>
+        </ol>
+        <h3>…look at production only</h3>
+        <ol class="steps">
+          <li>Choose your production environment in the <strong>Environment</strong> menu.</li>
+          <li>Read the tiles again: deployments and failed runs now come from production only. Incidents still come from the whole project.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>A failure is blamed on one deployment.</strong> An incident goes to the deployment whose commit or version it names; otherwise to the latest deployment in the 24 hours before it started. A failed run goes to the latest deployment to the same environment in the 24 hours before it. Failures more than 24 hours after any deployment are not counted.</li>
+          <li><strong>Incidents ignore the environment menu.</strong> Incidents (from the <em>Incidents</em> page) don't record an environment, so they are matched across the whole project, and <em>Time to restore</em> uses all of the project's incidents whatever you pick.</li>
+          <li><strong>Lead time from a test run needs the exact commit.</strong> The commit the pipeline sends must be the same as the one on the test run. Runs started without a commit can't be matched.</li>
+          <li><strong>Which runs count.</strong> Only runs that ended <em>Failed</em> or <em>Error</em> make a deployment count as failed. The check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>) are left out.</li>
+          <li><strong>Deployments are removed only through the API.</strong> There is no button on this page to delete one; an editor can do it with a request to the API.</li>
+          <li><strong>It doesn't update by itself.</strong> The page fetches the numbers when you open it, change a menu, or come back to its browser tab.</li>
+          <li><strong>Times are shown in your browser's time zone.</strong></li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>SLOs</h4><p>The next page in this guide: whether your monitors meet the availability you promised, and how much error budget is left.</p></div>
+          <div class="mini"><h4>Incidents</h4><p>Where incidents arrive from PagerDuty or Opsgenie, and are marked resolved. They feed the change failure rate and time to restore.</p></div>
+          <div class="mini"><h4>Environments</h4><p>The environments a deployment can name, and that runs are linked to.</p></div>
+          <div class="mini"><h4>API keys</h4><p>Make the key your build pipeline uses to report deployments.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Delivery (DORA) page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
