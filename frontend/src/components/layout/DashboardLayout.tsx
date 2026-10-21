@@ -11,6 +11,7 @@ import {
     ChevronDown,
     Plus,
     Sparkles,
+    type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { getProjects, getWorkspaces } from '@/lib/api';
@@ -27,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
-import { places, setupLinks, isIn, isGroup, type SubLink } from './nav';
+import { places, setupLinks, setupTone, toneClass, isIn, isGroup, type SubLink, type Tone } from './nav';
 
 function initials(name?: string | null, email?: string | null) {
     const src = (name || email || '?').trim();
@@ -73,6 +74,22 @@ function RailButton({ label, onClick, children }: { label: string; onClick: () =
             {children}
             <RailLabel>{label}</RailLabel>
         </button>
+    );
+}
+
+// A place's icon on its pastel tile (same colours as the user guide's groups).
+function PlaceIcon({ icon: Icon, tone, size = 'md' }: { icon: LucideIcon; tone: Tone; size?: 'md' | 'lg' }) {
+    return (
+        <span
+            aria-hidden="true"
+            className={cn(
+                'flex flex-none items-center justify-center',
+                size === 'lg' ? 'h-8 w-8 rounded-[10px]' : 'h-[26px] w-[26px] rounded-lg',
+                toneClass[tone],
+            )}
+        >
+            <Icon className={size === 'lg' ? 'h-[17px] w-[17px]' : 'h-[15px] w-[15px]'} strokeWidth={2} />
+        </span>
     );
 }
 
@@ -329,7 +346,7 @@ export default function DashboardLayout() {
                                 data-active={active || undefined}
                                 className={cn(placeRow, active ? placeActive : placeIdle)}
                             >
-                                <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                                <PlaceIcon icon={place.icon} tone={place.tone} />
                                 <span className="flex-1">{place.name}</span>
                             </Link>
                         );
@@ -339,7 +356,7 @@ export default function DashboardLayout() {
                         <NavGroup
                             key={place.name}
                             label={place.name}
-                            icon={<place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+                            icon={<PlaceIcon icon={place.icon} tone={place.tone} />}
                             active={active}
                             open={open}
                             onToggle={() => toggleGroup(place.name, active)}
@@ -353,7 +370,7 @@ export default function DashboardLayout() {
             <div className="mt-auto flex flex-col gap-0.5">
                 <NavGroup
                     label="Setup"
-                    icon={<Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />}
+                    icon={<PlaceIcon icon={Settings} tone={setupTone} />}
                     active={inSetup}
                     open={groupOpen('Setup', inSetup)}
                     onToggle={() => toggleGroup('Setup', inSetup)}
@@ -424,7 +441,7 @@ export default function DashboardLayout() {
                     if (!isGroup(place)) {
                         return (
                             <RailLink key={place.name} to={place.href} label={place.name} active={active}>
-                                <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                                <PlaceIcon icon={place.icon} tone={place.tone} size="lg" />
                             </RailLink>
                         );
                     }
@@ -442,7 +459,7 @@ export default function DashboardLayout() {
                                         active ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
                                     )}
                                 >
-                                    <place.icon className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                                    <PlaceIcon icon={place.icon} tone={place.tone} size="lg" />
                                     <RailLabel>{place.name}</RailLabel>
                                 </button>
                             </DropdownMenuTrigger>
@@ -468,7 +485,7 @@ export default function DashboardLayout() {
                                 inSetup ? 'bg-white text-ink shadow-[0_2px_8px_rgba(28,27,34,0.08)]' : 'text-ink/80 hover:bg-white/60'
                             )}
                         >
-                            <Settings className="h-[18px] w-[18px]" strokeWidth={1.9} />
+                            <PlaceIcon icon={Settings} tone={setupTone} size="lg" />
                             <RailLabel>Setup</RailLabel>
                         </button>
                     </DropdownMenuTrigger>

@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import appSource from '../../App.tsx?raw';
-import { places, setupLinks, isIn, isGroup } from './nav';
+import guideNav from '../../../public/docs/_assets/nav.js?raw';
+import { places, setupLinks, setupTone, isIn, isGroup } from './nav';
 import DashboardLayout from './DashboardLayout';
 
 // ---- Navigation config -----------------------------------------------------
@@ -47,6 +48,13 @@ describe('sidebar information architecture', () => {
         ];
         expect(hrefs).toHaveLength(61);
         expect(new Set(hrefs).size).toBe(hrefs.length);
+    });
+
+    it('gives each place the colour its group has in the user guide', () => {
+        const guide = Object.fromEntries(
+            [...guideNav.matchAll(/name: '([^']+)', tone: 't-([a-z]+)'/g)].map((m) => [m[1], m[2]]),
+        );
+        expect(Object.fromEntries([...places.map((p) => [p.name, p.tone]), ['Setup', setupTone]])).toEqual(guide);
     });
 
     it('points every link at a route that exists in App.tsx', () => {

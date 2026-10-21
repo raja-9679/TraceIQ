@@ -21,10 +21,27 @@ export type SubLink = {
     permission?: string;
 };
 
+// Each place has a pastel colour for its icon tile, the same one the user
+// guide (public/docs/_assets/nav.js `tone`) gives that group, so the app and
+// its guide read as one system.
+export type Tone = 'lavender' | 'mint' | 'butter' | 'pink' | 'peach' | 'sky' | 'neutral';
+
+// Literal class strings (not built from `tone`) so Tailwind sees them.
+export const toneClass: Record<Tone, string> = {
+    lavender: 'bg-pastel-lavender text-pastel-ink-lavender',
+    mint: 'bg-pastel-mint text-pastel-ink-mint',
+    butter: 'bg-pastel-butter text-pastel-ink-butter',
+    pink: 'bg-pastel-pink text-pastel-ink-pink',
+    peach: 'bg-pastel-peach text-pastel-ink-peach',
+    sky: 'bg-pastel-sky text-pastel-ink-sky',
+    neutral: 'bg-neutral-100 text-ink-soft',
+};
+
 export type Place = {
     name: string;
     href: string;
     icon: LucideIcon;
+    tone: Tone;
     // Route patterns that count as "inside" this place, so the sidebar keeps
     // the right place highlighted on detail pages.
     match: string[];
@@ -36,7 +53,7 @@ export type Place = {
 export const places: Place[] = [
     {
         // "/" redirects to /overview (the old Dashboard), so it belongs here too.
-        name: 'Today', href: '/overview', icon: Inbox,
+        name: 'Today', href: '/overview', icon: Inbox, tone: 'lavender',
         match: ['/', '/overview', '/triage', '/proposals', '/flaky-tests', '/visual-review'],
         children: [
             { name: 'Overview', href: '/overview' },
@@ -47,7 +64,7 @@ export const places: Place[] = [
         ],
     },
     {
-        name: 'Releases', href: '/quality', icon: Flag,
+        name: 'Releases', href: '/quality', icon: Flag, tone: 'mint',
         // Requirements → cases → incidents is the trace chain a release is judged on.
         match: ['/quality', '/release-readiness', '/release-signoff', '/requirements', '/traceability', '/incidents'],
         children: [
@@ -62,7 +79,7 @@ export const places: Place[] = [
     {
         // WP12: summaries for people who read results rather than write tests
         // (leadership, PM, CPO), plus delivery, reliability and coverage views.
-        name: 'Reports', href: '/reports/summary', icon: BarChart3,
+        name: 'Reports', href: '/reports/summary', icon: BarChart3, tone: 'butter',
         match: ['/reports/*', '/journey-coverage', '/business-journeys', '/flag-coverage', '/benchmarks', '/costs'],
         children: [
             { name: 'Executive summary', href: '/reports/summary' },
@@ -82,7 +99,7 @@ export const places: Place[] = [
         ],
     },
     {
-        name: 'Tests', href: '/suites', icon: FlaskConical,
+        name: 'Tests', href: '/suites', icon: FlaskConical, tone: 'pink',
         // Analytics lives here: it reports per-project test effectiveness, not a release.
         match: ['/suites', '/suites/*', '/tests/review', '/import-playwright', '/test-packs', '/environments', '/app-builds', '/schedules', '/analytics', '/frontend-quality', '/accessibility'],
         children: [
@@ -101,13 +118,13 @@ export const places: Place[] = [
         ],
     },
     {
-        name: 'Runs', href: '/runs', icon: Play,
+        name: 'Runs', href: '/runs', icon: Play, tone: 'peach',
         match: ['/runs', '/runs/*'],
         children: [],
     },
     {
         // On-call (paging channels + maintenance windows) is where monitor alerts escalate.
-        name: 'Watch', href: '/monitors', icon: Radio,
+        name: 'Watch', href: '/monitors', icon: Radio, tone: 'sky',
         match: ['/monitors', '/on-call'],
         children: [
             { name: 'Monitors', href: '/monitors' },
@@ -115,7 +132,7 @@ export const places: Place[] = [
         ],
     },
     {
-        name: 'Security', href: '/security', icon: ShieldCheck,
+        name: 'Security', href: '/security', icon: ShieldCheck, tone: 'lavender',
         // Estate (domain/TLS/header sweeps) and Script inventory (third-party
         // scripts on payment pages) are posture checks, so they live here too.
         // WP13: compliance (controls, evidence packs, audit log) and the public
@@ -135,6 +152,8 @@ export const places: Place[] = [
         ],
     },
 ];
+
+export const setupTone: Tone = 'neutral';
 
 export const setupLinks: SubLink[] = [
     { name: 'My settings', href: '/settings' },

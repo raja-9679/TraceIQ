@@ -34,11 +34,11 @@ export default {
                 ink: { DEFAULT: '#1C1B22', soft: '#4B4A57', muted: '#6B6A75' },
                 pastel: {
                     lavender: '#E9E7FD', pink: '#FBE4F0', peach: '#FDE8E1',
-                    butter: '#FBF2D3', mint: '#DDF0EA',
+                    butter: '#FBF2D3', mint: '#DDF0EA', sky: '#E1EEFB',
                 },
                 'pastel-ink': {
                     lavender: '#3A31A8', pink: '#8B2560', peach: '#8A2A0C',
-                    butter: '#6B4E00', mint: '#1D5E4A',
+                    butter: '#6B4E00', mint: '#1D5E4A', sky: '#1F4E79',
                 },
                 background: 'hsl(var(--background))',
                 foreground: 'hsl(var(--foreground))',
