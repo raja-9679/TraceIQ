@@ -34,6 +34,11 @@ being said. When the written words read badly aloud, pass
 `mux.py` mixes the lines into the MP4 at the moments their captions appeared.
 `TRACEIQ_DOCS_VOICE=off` records silent videos.
 
+The voice speaks at 1.3× its natural length (Piper `length_scale`), with
+longer pauses between sentences, because the natural pace was too fast to
+follow. `TRACEIQ_DOCS_VOICE_PACE=1.5` slows it further; the pace is part of
+the narration cache key, so changing it re-synthesises every line.
+
 The first run signs up a dedicated account ("Alex Morgan",
 `docs-guide-…@example.com`) and gives it the built-in demo workspace, so
 every picture shows sample data and never a real project. Credentials stay in

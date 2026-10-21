@@ -151,11 +151,16 @@ const VOICE = {
     bin: '.cache/piper/piper/piper',
     model: '.cache/piper/en_GB-cori-high.onnx',
     cache: '.cache/narration',
+    // Speaking pace: Piper's length_scale (1 = the voice's natural speed,
+    // higher = slower). 1.3 because viewers found the natural pace too fast to
+    // follow; TRACEIQ_DOCS_VOICE_PACE overrides it for a one-off recording.
+    pace: process.env.TRACEIQ_DOCS_VOICE_PACE || '1.3',
+    sentenceSilence: '0.6',
     get enabled() {
         return process.env.TRACEIQ_DOCS_VOICE !== 'off' && existsSync(this.bin) && existsSync(this.model);
     },
 };
-const GAP_MS = 450; // silence between two spoken lines
+const GAP_MS = 800; // silence between two spoken lines
 
 /** Seconds of audio in a PCM WAV file (from its header). */
 function wavSeconds(file: string): number {
@@ -171,14 +176,15 @@ function wavSeconds(file: string): number {
     throw new Error(`no data chunk in ${file}`);
 }
 
-/** Speaks `text` into a cached WAV (same text + voice = same file) and returns it. */
+/** Speaks `text` into a cached WAV (same text + voice + pace = same file) and returns it. */
 function synthesize(text: string): Promise<{ file: string; seconds: number }> {
-    const key = createHash('sha256').update(`${VOICE.model}\n${text}`).digest('hex').slice(0, 20);
+    const key = createHash('sha256').update(`${VOICE.model}\n${VOICE.pace}\n${VOICE.sentenceSilence}\n${text}`).digest('hex').slice(0, 20);
     const file = join(VOICE.cache, `${key}.wav`);
     if (existsSync(file)) return Promise.resolve({ file, seconds: wavSeconds(file) });
     mkdirSync(VOICE.cache, { recursive: true });
     return new Promise((resolve, reject) => {
-        const p = spawn(VOICE.bin, ['--model', VOICE.model, '--output_file', file, '--sentence_silence', '0.3'],
+        const p = spawn(VOICE.bin, ['--model', VOICE.model, '--output_file', file,
+            '--length_scale', VOICE.pace, '--sentence_silence', VOICE.sentenceSilence],
             { stdio: ['pipe', 'ignore', 'pipe'] });
         let err = '';
         p.stderr.on('data', (d) => { err += d; });

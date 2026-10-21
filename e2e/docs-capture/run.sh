@@ -28,6 +28,7 @@ PW_VERSION="$(node -p "require('$ROOT/e2e/package.json').devDependencies['@playw
 # fine-tuned from the research-only "lessac" voice like most en_GB voices).
 # Downloaded once into e2e/.cache/piper (gitignored), voice pinned by SHA-256;
 # TRACEIQ_DOCS_VOICE=off skips it and records captions only.
+# TRACEIQ_DOCS_VOICE_PACE=1.5 speaks slower (default 1.3, 1 = natural speed).
 PIPER_DIR="$ROOT/e2e/.cache/piper"
 PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 VOICE="en_GB-cori-high"
@@ -52,6 +53,7 @@ docker run --rm --network "$NET" --ipc host \
   --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e TRACEIQ_DOCS_BASE_URL="${TRACEIQ_DOCS_BASE_URL:-http://frontend}" \
   -e TRACEIQ_DOCS_VOICE="${TRACEIQ_DOCS_VOICE:-on}" \
+  -e TRACEIQ_DOCS_VOICE_PACE="${TRACEIQ_DOCS_VOICE_PACE:-}" \
   -v "$ROOT":/work -w /work/e2e \
   "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" \
   sh -c 'npm ci --no-audit --no-fund --silent && npx playwright test -c docs-capture/playwright.config.ts "$@"' sh "$@"
