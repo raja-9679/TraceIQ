@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flag coverage · TraceIQ Guide</title>
+  <meta name="description" content="The Flag coverage page: which feature flags and A/B variants your test runs have tried, and which values were never tested.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-flag-coverage.spec.ts. Page: frontend/src/pages/FlagCoverage.tsx
+     (+ components/journey-reports/). API: frontend/src/api/journeyReports.ts → backend/app/api/journey_reports.py
+     (flag-catalog, flag-coverage); rules: backend/app/services/flag_coverage.py; run body: app/api/endpoints/test_runs.py. -->
+<body data-page="reports/flag-coverage">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../flag-coverage"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Flag coverage</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change the catalogue</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Many apps can be switched into different versions with <strong>feature flags</strong>
+            ("new checkout on or off") or <strong>A/B variants</strong> ("layout A or B"). This page
+            shows which of those settings your test runs have actually tried, how those runs went,
+            and which settings no run has tested at all.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Flag coverage answers <strong>"Have we tested every version of the app our customers
+          might see?"</strong> If the new checkout is switched on for half of your customers but
+          every test ran with it switched off, the tests say nothing about what that half sees.
+          This page makes that gap visible.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Find flag values that no run has tried yet, and see whether runs with a value pass as often as runs without it.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Check that a flag you are about to switch on has been tested in both positions.</p></div>
+          <div class="mini"><h4>Product owners</h4><p>Keep a list of the flags and experiments that exist, with a short description of each.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Flag coverage</strong>.
+          It shows the project selected at the top of the sidebar.</p>
+
+        <h2 id="where-flags-come-from">Where the flag values come from</h2>
+        <p>TraceIQ doesn't read your app's flag settings. Instead, whoever <em>starts</em> a test
+          run says which flags it runs with. A <strong>run</strong> is one time TraceIQ carries
+          out a set of tests and records the result of each. Runs started from a build pipeline
+          (CI) or by a script through TraceIQ's API can include a list such as
+          <code>checkout_v2 = true</code>, <code>layout = B</code>. Runs started with the buttons in
+          TraceIQ itself don't carry flags.</p>
+        <p>Ask the person who looks after your build pipeline to add the flags when it starts a run.
+          (For them: the <code>flags</code> field of the <code>POST /api/runs</code> body, up to 50
+          names, each a text or true/false value.) Tests can also use the value in their steps,
+          written as <code>{{flag.checkout_v2}}</code>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has two tabs: <strong>Coverage</strong> (the report) and <strong>Flag
+          catalogue</strong> (the list of flags you expect). The numbers on the screenshots match
+          the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/flag-coverage/page-annotated.png" alt="The Flag coverage page on the Coverage tab, with four numbered parts: 1 the two tabs, 2 the Window menu set to Last 30 days, 3 four number tiles all showing 0, 4 the message No flags yet" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Coverage tab for the demo's web project. None of the demo's runs sent flags, so every number is zero. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="tabs" data-toc="① The tabs">The tabs</h2></div>
+        <p><strong>Coverage</strong> is open when the page loads. <strong>Flag catalogue</strong>
+          is where you list the flags and values you expect (parts 5 and 6).</p>
+
+        <div class="part"><span class="num">2</span><h2 id="window" data-toc="② Window">Window</h2></div>
+        <p>How far back to look: the last 7, 30 (the starting value), 90 or 180 days. Only runs
+          started in that time count.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="tiles" data-toc="③ The four tiles">The four tiles</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/flag-coverage/tiles.png" alt="Four tiles: Runs with flags 0, last 30 days; Flags seen or catalogued 0; Catalogue values never tested 0; Flags not in the catalogue 0" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Runs with flags</strong></td><td>Runs in the window that said which flags they ran with. Runs without flags are not counted anywhere on this page.</td></tr>
+              <tr><td><strong>Flags seen or catalogued</strong></td><td>Every flag name that appears in those runs, in the catalogue, or in both.</td></tr>
+              <tr><td><strong>Catalogue values never tested</strong></td><td>Values listed in the catalogue that no run in the window has used. This is the number to bring down.</td></tr>
+              <tr><td><strong>Flags not in the catalogue</strong></td><td>Flag names runs sent that nobody has added to the catalogue, often a typo or a new flag.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="flags" data-toc="④ One card per flag">One card per flag</h2></div>
+        <p>Below the tiles there is one card per flag, in alphabetical order. While no run has
+          sent flags and the catalogue is empty, there is only the message <em>"No flags
+          yet"</em>, as in the picture. A card shows:</p>
+        <ul>
+          <li><strong>The flag's name</strong>, with labels: <span class="pill t-lavender">not in catalogue</span> when runs sent it but it isn't listed, and <span class="pill t-peach">2 value(s) never tested</span> when catalogue values are missing from the runs. The catalogue's description is shown underneath.</li>
+          <li><strong>Never tested:</strong> the catalogue values no run has used.</li>
+          <li><strong>A table with one row per value runs used</strong>, the most used first:</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Value</strong></td><td>The value, such as <code>true</code> or <code>B</code>. A <span class="pill t-lavender">not catalogued</span> label means the flag is in the catalogue but this value isn't in its list.</td></tr>
+              <tr><td><strong>Runs</strong></td><td>How many runs used this value.</td></tr>
+              <tr><td><strong>Cases</strong></td><td>How many different tests those runs carried out.</td></tr>
+              <tr><td><strong>Passed</strong> / <strong>Failed</strong></td><td>How many of those runs passed, and how many failed or ended in an error. Runs still going, cancelled or timed out are in neither.</td></tr>
+              <tr><td><strong>Last seen</strong></td><td>When the newest run with this value started, in your time zone, with a <strong>run</strong> link to open it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A catalogued flag that no run used shows "No run in this window used this flag." instead of a table.</p>
+
+        <h3 id="catalogue">The Flag catalogue tab</h3>
+        <figure>
+          <div class="frame"><img src="../media/reports/flag-coverage/catalogue-annotated.png" alt="The Flag catalogue tab with two numbered parts: 5 the Add a flag form filled in with checkout_v2, true, false and a description, 6 the Catalogue box saying No flags catalogued yet" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The catalogue tab with an example typed in. Add flag was not pressed, so nothing was saved.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">5</span><h2 id="add" data-toc="⑤ Add a flag">Add a flag</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/flag-coverage/add-flag.png" alt="The Add a flag form: Name checkout_v2, Possible values true, false, Description New checkout page, being rolled out, and an Add flag button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Name</strong>: exactly as runs send it, up to 64 letters, digits, <code>_</code>, <code>.</code> or <code>-</code>. Capital letters count: <code>Checkout</code> and <code>checkout</code> are two flags.</li>
+          <li><strong>Possible values</strong>: separated by commas, up to 50. Values are compared as text; for an on/off flag, type <code>true, false</code>.</li>
+          <li><strong>Description</strong>: optional, shown on the flag's card.</li>
+          <li><strong>Add flag</strong> saves it. A name that is already in the catalogue is refused.</li>
+        </ul>
+
+        <div class="part"><span class="num">6</span><h2 id="list" data-toc="⑥ Catalogue">Catalogue</h2></div>
+        <p>Every catalogued flag, one row each, in alphabetical order. You can change a flag's
+          values and description and press <strong>Save</strong>, or press
+          <strong>Remove</strong> (it asks first). The name can't be changed: remove the flag and
+          add it again. Removing a flag only takes it off the list; the runs that used it still
+          count on the Coverage tab.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/flag-coverage/page.png" width="1280" height="800">
+              <source src="../media/reports/flag-coverage/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…find flag values nobody has tested</h3>
+        <ol class="steps">
+          <li>On the <strong>Flag catalogue</strong> tab, make sure each flag lists all its possible values.</li>
+          <li>Go back to <strong>Coverage</strong> and choose a window, such as the last 30 days.</li>
+          <li>Look at <strong>Catalogue values never tested</strong>, then for cards with a red "never tested" label. Each one names the values missing.</li>
+          <li>Ask for a run with those values, for example by adding them to the build pipeline.</li>
+        </ol>
+        <h3>…see whether a flag value makes tests fail</h3>
+        <ol class="steps">
+          <li>Find the flag's card on the <strong>Coverage</strong> tab.</li>
+          <li>Compare the <strong>Passed</strong> and <strong>Failed</strong> columns between its values. If one value fails much more often, it is worth a look.</li>
+          <li>Press <strong>run</strong> under Last seen to open the newest run with that value.</li>
+        </ol>
+        <h3>…tidy up flags that runs send but nobody listed</h3>
+        <ol class="steps">
+          <li>Look for cards with <span class="pill t-lavender">not in catalogue</span>.</li>
+          <li>If the name is a typo, ask for the pipeline to be fixed. If it is a real flag, add it on the <strong>Flag catalogue</strong> tab with its values.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only runs that send flags count.</strong> TraceIQ doesn't know which flags were on in your app unless the run says so.</li>
+          <li><strong>Runs, not tests, carry flags.</strong> Every test in a run counts towards each flag value that run sent.</li>
+          <li><strong>At most 5,000 runs are counted</strong>, the newest ones. When the window holds more, the first tile says "newest 5,000 counted".</li>
+          <li><strong>Check runs are left out.</strong> Runs TraceIQ makes only to try a suggested fix (see <em>Proposals</em>) are not counted.</li>
+          <li><strong>In a test step</strong>, <code>{{flag.NAME}}</code> is replaced by the value the run sent. If the run didn't send that flag, the text stays as it is.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see both tabs. Adding, changing or removing catalogue flags needs the <em>editor</em> role; every change is recorded in the audit log. A project can catalogue up to 500 flags.</li>
+          <li><strong>It doesn't update by itself</strong> while you look at it; it refreshes when you come back to its browser tab, or when you reload.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Benchmarks</h4><p>The next page in this guide: run the same tests against several sites and compare them side by side.</p></div>
+          <div class="mini"><h4>Business journeys</h4><p>The previous page: group tests into the journeys your customers make, and see each one's health.</p></div>
+          <div class="mini"><h4>Runs</h4><p>Every run, with each test's steps, screenshots and logs.</p></div>
+          <div class="mini"><h4>API keys</h4><p>The keys a build pipeline uses to start runs, including runs that send flags.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Flag coverage page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

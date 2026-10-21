@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Costs · TraceIQ Guide</title>
+  <meta name="description" content="The Costs page: what testing costs in AI use and test-machine time, per workspace or project, and monthly budgets with alerts.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-costs.spec.ts. Page: frontend/src/pages/Costs.tsx
+     (+ components/costs/). API: frontend/src/api/costs.ts → backend/app/api/costs.py;
+     prices + maths: backend/app/services/cost.py; budget alerts: backend/app/tasks/cost_tasks.py. -->
+<body data-page="reports/costs">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../costs"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Costs</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone can see it (their own projects)</span>
+          <span class="tag t-neutral">Project admins set budgets</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>What your testing costs. TraceIQ adds up two things it already records — how much
+            AI it used, and how long test machines spent running tests — and turns them into
+            money with a price list your server administrator sets. Each project can have a
+            monthly budget, with an alert when it gets close.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Costs answers <strong>"How much is testing costing us, and where does it go?"</strong>
+          It shows the spend per day, per AI model, per feature, per project and for the most
+          expensive runs, so you can see which project or which kind of work drives the bill.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Project admins</h4><p>Set a monthly budget and get warned at 80% and 100% of it.</p></div>
+          <div class="mini"><h4>Leads and managers</h4><p>Compare projects, and see whether spend is going up or down over time.</p></div>
+          <div class="mini"><h4>Testers and developers</h4><p>Find the runs that use the most AI or machine time, and make them cheaper.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Costs</strong>.
+          The page has its own workspace and project pickers; it does not follow the project
+          selected in the sidebar.</p>
+        <p>Two words used on this page: <strong>tokens</strong> are the units AI services count
+          and charge by (roughly, pieces of words sent to and received from the AI).
+          <strong>Browser-minutes</strong> are the minutes that tests spent running in a browser
+          on TraceIQ's test machines.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/costs/page-annotated.png" alt="The Costs page for the demo workspace with seven numbered parts: 1 the window, workspace and project pickers, 2 a yellow note saying no currency is set, 3 four tiles all showing not priced, 4 the Token use per day chart, 5 the By model and By feature boxes, 6 the By project table, 7 the Most expensive runs table" loading="lazy" width="1440" height="1900"></div>
+          <figcaption>The Costs page for the demo workspace. This server has no prices set, so every amount says "not priced". Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="pickers" data-toc="① The pickers">The pickers</h2></div>
+        <ul>
+          <li><strong>Window</strong>: the last 7, 30 (the starting value), 90 or 365 days, counted in whole UTC days up to now.</li>
+          <li><strong>Workspace</strong>: the page opens on your first workspace; choose another here.</li>
+          <li><strong>Project</strong>: <em>All my projects</em>, or one project. Choosing one project also shows its monthly budget (part 8).</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="prices" data-toc="② When there are no prices">When there are no prices</h2></div>
+        <p>TraceIQ never invents a price. Until an instance administrator sets a currency in
+          <strong>Setup → Instance settings → Cost</strong>, a yellow note says
+          <em>"No currency is set, so usage is shown without money"</em>, and every amount reads
+          <strong>not priced</strong>. Tokens and browser-minutes are still counted and shown.</p>
+        <p>With a currency set, the administrator can give a price per million tokens for each AI
+          model, and a price per browser-minute. Anything without a price stays "not priced"
+          (never 0, which would read as "free"); a second yellow note then says the total covers
+          only the priced part.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="tiles" data-toc="③ The four tiles">The four tiles</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/costs/tiles.png" alt="Four tiles: Total not priced, last 30 days; AI (LLM tokens) not priced, 0 tokens; Workers (browser-minutes) not priced, 33.28 min; Workspace-level AI not priced, LLM calls not tied to a project" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Tile</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Total</strong></td><td>AI plus machine time, for the window.</td></tr>
+              <tr><td><strong>AI (LLM tokens)</strong></td><td>The cost of AI use (failure analysis, fixing broken selectors, writing tests…), with the number of tokens underneath.</td></tr>
+              <tr><td><strong>Workers (browser-minutes)</strong></td><td>The cost of test-machine time, with the minutes underneath (and the price per minute, once set).</td></tr>
+              <tr><td><strong>Workspace-level AI</strong></td><td>Shown to workspace admins in the all-projects view: AI used for the workspace as a whole rather than for one project. Others see <strong>Projects covered</strong>, the number of projects in the report.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="trend" data-toc="④ Per day">Per day</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/costs/trend.png" alt="A chart titled Token use per day from 2026-09-22 to 2026-10-21, with no bars" loading="lazy"></div>
+        </figure>
+        <p>One bar per day of the window, oldest on the left. With prices it is called
+          <strong>Spend per day</strong> and the bars are money. Without prices it is called
+          <strong>Token use per day</strong> and the bars are AI tokens only, so machine time
+          doesn't appear in the bars. <strong>Point at a day</strong> to see its numbers,
+          including that day's browser-minutes. The demo has no AI use, so its chart is empty.</p>
+        <p>Under the chart, a short note explains how browser-minutes are counted (see
+          <a href="#good-to-know">Good to know</a>).</p>
+
+        <div class="part"><span class="num">5</span><h2 id="by-model" data-toc="⑤ By model and by feature">By model and by feature</h2></div>
+        <p>The AI use split two ways: by <strong>model</strong> (which AI, with its provider, and
+          the tokens sent in and received out) and by <strong>feature</strong> (what TraceIQ used it
+          for, such as Failure analysis, Selector healing or Test generation). The most
+          expensive comes first. When nothing used AI in the window, both say "No AI usage in
+          this window."</p>
+
+        <div class="part"><span class="num">6</span><h2 id="by-project" data-toc="⑥ By project">By project</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/costs/by-project.png" alt="By project: Demo — Public API and Demo — Todo web app, each not priced for the window and this month, and Budget none" loading="lazy"></div>
+        </figure>
+        <p>Shown when <em>All my projects</em> is picked. For each project: the cost in the
+          window, the cost so far <strong>this month</strong> (from the 1st, UTC), and its budget.
+          A budget shows as a label such as "85% of €200.00": green below 80%, yellow from 80%,
+          peach from 100%. Click a project's name to look at that project alone.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="top-runs" data-toc="⑦ Most expensive runs">Most expensive runs</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/costs/top-runs.png" alt="Most expensive runs: a table of ten runs such as #468 Web smoke (demo), Demo — Todo web app, 10/17/2026, with Tokens 0, Browser-min 0.48 and Cost not priced" loading="lazy"></div>
+        </figure>
+        <p>The ten runs that cost the most in the window, with their tokens, browser-minutes and
+          cost. Without prices they are ranked by tokens, then by minutes. Click a run to open it.</p>
+
+        <div class="part"><span class="num">8</span><h2 id="budget" data-toc="⑧ Monthly budget">Monthly budget</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/costs/budget.png" alt="Monthly budget: Set a currency and prices in Instance settings → Cost first; budgets are checked against priced spend. Budget per month, an empty box, Leave empty for no budget, and a Save budget button" loading="lazy"></div>
+        </figure>
+        <p>Appears at the bottom when one project is picked. Type an amount per month and press
+          <strong>Save budget</strong>; leave the box empty and save to remove the budget. Only a
+          project <em>admin</em> can change it; others see the amount and "Changing the budget
+          needs the project admin role".</p>
+        <p>Once an hour TraceIQ compares this month's priced spend with the budget. When it
+          reaches <strong>80%</strong>, and again at <strong>100%</strong>, it sends one alert to
+          the project's own notification recipients and its Slack or Teams channels (set in the
+          project's notification settings). Each alert is sent at most once per month (one message if both are crossed at once), and only if the project's notifications are switched on. Without a
+          currency nothing is priced, so no alert is ever sent.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/costs/page.png" width="1280" height="800">
+              <source src="../media/reports/costs/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…see which project costs the most</h3>
+        <ol class="steps">
+          <li>Choose the <strong>Workspace</strong> and a window, such as 30 days.</li>
+          <li>Leave the project on <strong>All my projects</strong>.</li>
+          <li>Compare the <strong>Window</strong> column in <strong>By project</strong>.</li>
+        </ol>
+        <h3>…set a monthly budget for a project</h3>
+        <ol class="steps">
+          <li>Make sure prices are set (no yellow "No currency is set" note). If not, ask your TraceIQ administrator.</li>
+          <li>Click the project's name in <strong>By project</strong>, or pick it in the Project picker.</li>
+          <li>Under <strong>Monthly budget</strong>, type the amount and press <strong>Save budget</strong>.</li>
+          <li>Check that the project's notification settings have the right people and channels, because that is where the alerts go.</li>
+        </ol>
+        <h3>…find what makes testing expensive</h3>
+        <ol class="steps">
+          <li>Look at <strong>By feature</strong>: is most AI spent on analysing failures, or on fixing selectors?</li>
+          <li>Look at <strong>Most expensive runs</strong> and open the top ones. Long-running suites and runs with many failures (each analysed by AI) usually lead the list.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Browser-minutes are an approximation.</strong> They add up how long each test ran. Time a test machine spends idle, starting a browser, or waiting between retries is not included, so the real machine time is higher.</li>
+          <li><strong>What isn't counted as machine time:</strong> manual tests (a person's time, not a machine's) and runs on a developer's own computer (local worker). Check runs for suggested fixes <em>are</em> counted, because they use machine time too.</li>
+          <li><strong>You only see your own projects.</strong> The report covers the workspace's projects you can access. AI use not tied to any project is shown only to workspace admins. You need access to at least one project in the workspace (or be its admin) to see the page at all.</li>
+          <li><strong>Rounding.</strong> Amounts are rounded once, to the currency's smallest unit (cents, or whole yen). A total can therefore differ by one cent from the sum of its rounded lines, as on an invoice.</li>
+          <li><strong>Days and months are UTC.</strong> "This month" starts at midnight UTC on the 1st.</li>
+          <li><strong>Budget changes are recorded</strong> in the audit log, with the old and new amount.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>PoC report</h4><p>The next page in this guide: a one-page summary of a trial, with a labelled time-saved estimate.</p></div>
+          <div class="mini"><h4>AI usage</h4><p>AI use in tokens, by feature and over time, and the monthly token limit.</p></div>
+          <div class="mini"><h4>Instance settings</h4><p>Where an administrator sets the currency and the price list (the Cost section).</p></div>
+          <div class="mini"><h4>Project settings</h4><p>The notification recipients and channels that receive budget alerts.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Costs page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

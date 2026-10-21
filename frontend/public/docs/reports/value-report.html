@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Value report · TraceIQ Guide</title>
+  <meta name="description" content="The Value report page: time to diagnosis, AI analysis accuracy, CI time saved and proposal outcomes, each labelled measured or estimated.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-value-report.spec.ts. Page: frontend/src/pages/ValueReport.tsx
+     (+ components/value/). API: frontend/src/api/valueReport.ts → backend/app/api/value_report.py;
+     maths: backend/app/services/value_report.py. -->
+<body data-page="reports/value-report">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/value"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Value report</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Four numbers that show what TraceIQ did for you over a period: how quickly new
+            failures got looked at, how often its AI explanation of a failure was right, how much
+            test time targeted runs saved, and what happened to the fixes it suggested. Each
+            number says whether it is <strong>measured</strong> or an <strong>estimate</strong>,
+            and how it was worked out.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          The Value report answers <strong>"Is TraceIQ actually helping, and how do we
+          know?"</strong> It is meant for the end of a pilot or a quarterly review, where
+          numbers have to be defensible. That is why every card shows its sample size, its
+          definition and its data source, and why a number with too little data behind it is
+          left out rather than shown as zero.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Pilot sponsors</h4><p>Get honest numbers to decide whether to continue, with what each one is based on.</p></div>
+          <div class="mini"><h4>Leads</h4><p>See whether failures are picked up quickly, and whether the team trusts the suggested fixes.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Check that your work (triaging, rating AI explanations) is being counted.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Value report</strong>.
+          It starts on the project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/value-report/page-annotated.png" alt="The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.1 h median, 4 AI failure-analysis accuracy with no ratings yet, 5 CI time saved by targeted runs with no targeted run, 6 Proposal outcomes with no proposals, 7 Reported elsewhere" loading="lazy" width="1440" height="1500"></div>
+          <figcaption>The Value report for the demo's web project, last 30 days. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="controls" data-toc="① Scope and dates">Scope and dates</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/value-report/controls.png" alt="Scope This project, From 09/22/2026, To 10/21/2026, and an Update report button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Scope</strong>: <em>This project</em> (the one selected in the sidebar) or <em>Workspace (projects you can read)</em>, which adds up every project of a workspace you have access to. With more than one workspace, a <strong>Workspace</strong> picker appears; it starts on your first one.</li>
+          <li><strong>From</strong> / <strong>To</strong>: the period, both days included, the last 30 days to begin with, at most 366 days. New dates apply when you press <strong>Update report</strong>; the scope and workspace apply at once.</li>
+          <li><strong>Print</strong>, above the controls, opens your browser's print window (choose "Save as PDF" for a file).</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="covered" data-toc="② What is covered">What is covered</h2></div>
+        <p>One line naming the project (or the workspace and how many projects), the dates, and a
+          reminder that <em>validation runs are excluded</em>: the check runs TraceIQ makes only
+          to try a suggested fix (see <em>Proposals</em>) never count in any number here.</p>
+
+        <h3 id="cards">How every card is built</h3>
+        <figure>
+          <div class="frame small"><img src="../media/reports/value-report/time-to-diagnosis.png" alt="The Time to diagnosis card: a green Measured label, 24.1 h median, Sample: 2 diagnosed failure clusters, 90th percentile 24.6 h, 2 clusters not diagnosed yet, First signal passed again on a new commit: 2, then Definition and Data source" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>The label</strong> top right: <span class="pill t-mint">Measured</span> means counted from what happened; <span class="pill t-butter">Estimate</span> means worked out from assumptions.</li>
+          <li><strong>The big number</strong>, with what it is ("median", for instance). If there isn't enough data, a grey box says why instead, such as "No targeted run in this window". It never shows 0 for "no data".</li>
+          <li><strong>Sample</strong>: how many things the number is based on. A number from 2 items is a hint, not a result.</li>
+          <li><strong>Details</strong>, then <strong>Definition</strong> and <strong>Data source</strong>: the exact rule, always shown so the reader can check it.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="ttd" data-toc="③ Time to diagnosis">Time to diagnosis</h2></div>
+        <p>How long a new problem waited before someone did something about it. It looks at each
+          failure group (a set of failures with the same cause, as on <em>Failure triage</em>) whose
+          first failure falls in the period, and measures the time from that first failure to the
+          first sign that it was dealt with:</p>
+        <ul>
+          <li>someone set the group to <em>Investigating</em> or <em>Resolved</em> on Failure triage;</li>
+          <li>a ticket was filed for it;</li>
+          <li>one of its tests was quarantined (set aside as unreliable);</li>
+          <li>one of its tests passed again on a different version of the code (git commit).</li>
+        </ul>
+        <p>The big number is the <strong>median</strong> (half were faster, half slower); the
+          <strong>90th percentile</strong> underneath is the time 9 in 10 were dealt with by.
+          Groups nobody has dealt with yet are counted separately ("not diagnosed yet") and left
+          out of both. The lines "First signal …" say which sign came first, and how often.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="accuracy" data-toc="④ AI failure-analysis accuracy">AI failure-analysis accuracy</h2></div>
+        <p>How often the AI's best explanation of a failure was right. On a run's page, each
+          failure has an AI analysis with ranked explanations ("hypotheses"), and editors can mark
+          each one <strong>👍 Correct</strong> or <strong>👎 Incorrect</strong>. This card takes
+          the <em>top</em> explanation of each rated failure and counts the share the reviewers
+          marked correct (by majority; ties are "split" and left out). It also shows the votes,
+          and the split between explanations from the AI model and from TraceIQ's built-in rules.</p>
+        <p>It is a <strong>reviewed sample</strong>: only failures someone rated are included.
+          With fewer than <strong>5</strong> rated explanations the share is not shown at all.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="saved" data-toc="⑤ CI time saved by targeted runs">CI time saved by targeted runs</h2></div>
+        <p>An <strong>estimate</strong>. A <em>targeted</em> run carries out only the tests
+          affected by a change, instead of the whole suite (it is started from a build pipeline,
+          CI — for example by TraceIQ's GitHub Action — or by an AI agent). For each one,
+          TraceIQ looks for the newest earlier <em>full</em> run of the same suite in the 30 days
+          before it, and estimates:</p>
+        <p><strong>saved = full run's test time × (1 − tests run ÷ tests in the suite)</strong></p>
+        <p>The big number is browser time saved; underneath are the wall-clock time saved
+          (also an estimate) and the counts it rests on, including targeted runs that had no
+          full run to compare with. Manual runs are left out.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="proposals" data-toc="⑥ Proposal outcomes">Proposal outcomes</h2></div>
+        <p>What happened to the fixes TraceIQ (or an AI agent) suggested in the period: new or
+          changed tests (<em>case proposals</em>) and new ways to find a page element that moved
+          (<em>heal proposals</em>). The big number is the share of decided proposals that were
+          applied. Underneath, for each kind: how many were created, the share accepted,
+          auto-applied (accepted by the workspace's rule, with no person deciding) and
+          rejected, and how many are still waiting. Two more lines:</p>
+        <ul>
+          <li><strong>Reverted later</strong>: of the accepted changes, how many were later undone by someone putting back the earlier steps. Only changes to existing tests can be checked; others are "not measurable".</li>
+          <li><strong>Repair validation</strong>: how often a trial run of a suggested fix passed under the same conditions as the failure, and how many accepted fixes were tried that way first.</li>
+        </ul>
+
+        <div class="part"><span class="num">7</span><h2 id="elsewhere" data-toc="⑦ Reported elsewhere">Reported elsewhere</h2></div>
+        <p>Links to related numbers that live on their own pages and are not repeated here:
+          <strong>Flake trend</strong> (unreliable tests over time), <strong>Escaped defects</strong>
+          (incidents no test caught, on <em>Incidents</em>) and <strong>Delivery (DORA)</strong>
+          (how fast and safely changes reach production).</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/value-report/page.png" width="1280" height="800">
+              <source src="../media/reports/value-report/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…prepare the numbers for a pilot review</h3>
+        <ol class="steps">
+          <li>Set <strong>Scope</strong> to <em>Workspace</em> and pick the pilot's workspace.</li>
+          <li>Set <strong>From</strong> and <strong>To</strong> to the pilot's first and last day, and press <strong>Update report</strong>.</li>
+          <li>For every number you quote, also quote its <strong>Sample</strong>, and say whether it is measured or an estimate.</li>
+          <li>Press <strong>Print</strong> to save the page as a PDF.</li>
+        </ol>
+        <h3>…make the AI accuracy number appear</h3>
+        <ol class="steps">
+          <li>Open a failed run on the <em>Runs</em> page and look at the AI analysis of a failing test.</li>
+          <li>Press <strong>👍 Correct</strong> or <strong>👎 Incorrect</strong> under the top explanation (editors only).</li>
+          <li>Once at least 5 failures in the period are rated, the card shows a percentage.</li>
+        </ol>
+        <h3>…bring the time to diagnosis down</h3>
+        <ol class="steps">
+          <li>Look at new problems on <em>Failure triage</em> every day.</li>
+          <li>Set each one to <strong>Investigating</strong> as soon as someone picks it up: that moment is what this card measures.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Nothing here can be changed.</strong> The page only reads. The ratings and triage it counts are made on the run pages and on Failure triage.</li>
+          <li><strong>You see only what you can access.</strong> The workspace scope adds up only the projects you can read.</li>
+          <li><strong>Days are UTC days.</strong> The period runs from midnight UTC on the first day to the end of the last day.</li>
+          <li><strong>Ratings are made by people.</strong> Only editors can rate an AI explanation, and an API key (used by scripts and agents) can't, so an agent can't rate its own work. If the analysis is regenerated after you open the page, your vote is refused rather than counted against a different explanation.</li>
+          <li><strong>Small samples.</strong> The demo's 24.1 hours comes from 2 problems. Read any number with a small sample as a direction, not a result.</li>
+          <li><strong>Not in shared links.</strong> Unlike the PoC report and the executive summary, the Value report can't be shared as a public link; print it instead.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Failure triage</h4><p>Where problems are set to Investigating or Resolved, which Time to diagnosis measures.</p></div>
+          <div class="mini"><h4>Proposals</h4><p>The suggested fixes counted in Proposal outcomes, and where they are accepted or rejected.</p></div>
+          <div class="mini"><h4>PoC report</h4><p>The previous page: a one-page trial summary with a labelled time-saved estimate.</p></div>
+          <div class="mini"><h4>Flake trends</h4><p>Unreliable tests over time, linked from Reported elsewhere.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Value report page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

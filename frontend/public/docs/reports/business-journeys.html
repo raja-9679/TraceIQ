@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Business journeys · TraceIQ Guide</title>
+  <meta name="description" content="The Business journeys page: group tests into the journeys your customers make, and see each journey's health, trend, requirements and traffic.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-business-journeys.spec.ts. Page: frontend/src/pages/BusinessJourneys.tsx
+     (+ components/journey-reports/). API: frontend/src/api/journeyReports.ts → backend/app/api/journey_reports.py;
+     health rules: backend/app/services/business_journeys.py. -->
+<body data-page="reports/business-journeys">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../business-journeys"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Business journeys</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A journey is something a customer does from start to finish, such as "Checkout" or
+            "Sign up". You choose the tests that together check that journey, and this page shows
+            how the journey as a whole is doing: healthy, failing or unreliable, plus its trend,
+            its requirements and how much real traffic goes through it.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Business journeys answers <strong>"Can our customers still do the things that matter
+          most?"</strong> Test results are usually listed one test at a time, which is hard to
+          read if you think in terms of what the business sells. Here, a handful of tests become
+          one card called, say, <em>Checkout</em>, with one verdict.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Product owners</h4><p>See at a glance whether the journeys you are responsible for work, without reading test names.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Group existing tests by journey, spot journeys with tests that never ran, and see which requirements they cover.</p></div>
+          <div class="mini"><h4>Leads and managers</h4><p>Check the critical journeys first, and see who owns each one.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Business journeys</strong>.
+          It shows the project selected at the top of the sidebar.</p>
+        <p>A few words used on this page: a <strong>test</strong> (TraceIQ also calls it a
+          <em>case</em>) is one scripted check, such as "Sign in as alice". A <strong>run</strong> is
+          one time TraceIQ carried out a set of tests and recorded the result of each.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has two views: the <strong>board</strong>, with one card per journey, and the
+          <strong>form</strong> you use to create or change a journey. The numbers on the
+          screenshots match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/business-journeys/page-annotated.png" alt="The Business journeys page with two numbered parts: 1 the New journey button, 2 the board, which says No journeys yet" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The board for the demo's web project, which has no journeys yet. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="new" data-toc="① New journey">New journey</h2></div>
+        <p>Opens the form (parts 3 to 6 below) in place of the board. The button is hidden while
+          the form is open.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="board" data-toc="② The board">The board</h2></div>
+        <p>One card per journey, two cards side by side on a wide screen. <strong>Critical</strong>
+          journeys come first, then high, medium and low; journeys with the same criticality are in
+          alphabetical order. Until the project has a journey, the board says <em>"No journeys
+          yet"</em>, as in the picture.</p>
+        <p>Each card shows, from top to bottom:</p>
+        <ul>
+          <li><strong>The journey's name and its health</strong> (see the table below), with the description underneath.</li>
+          <li><strong>Its criticality, owner and last run</strong>: when the most recent run of any of its tests started, in your own time zone.</li>
+          <li><strong>A count of its tests by state</strong>, for example "2 passing" and "1 not run".</li>
+          <li><strong>Daily pass rate, 14 days</strong>: one small bar per day, oldest on the left. Point at a bar to see that day's numbers, such as "2026-10-14: 75% of 4".</li>
+          <li><strong>Requirements</strong>: how many of the linked requirements are covered by the journey's tests, and a label per requirement coloured by the state of the tests that cover it.</li>
+          <li><strong>Traffic</strong>: how many real visits go through the journey, from the latest traffic file imported on <em>Journey coverage</em>.</li>
+          <li><strong>Its tests, in order</strong>, each with its own state and a <strong>Last run</strong> link to the run it last ran in. A test that is set aside as unreliable (<em>quarantined</em>) has an extra "quarantined" label.</li>
+          <li><strong>Edit</strong> (top right of the card) opens the same form as New journey, filled in.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Health</th><th>When a test has it</th><th>When the journey has it</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-peach">Failing</span></td><td>Its most recent result failed or ended in an error.</td><td>At least one of its tests is failing.</td></tr>
+              <tr><td><span class="pill t-butter">Flaky</span></td><td>Its latest result did not fail, but the test is unreliable: it is quarantined, its latest result was marked flaky (it passed only after a retry, or the test has a high flakiness score), or its last 10 results mix passes and failures.</td><td>No test is failing, but at least one is flaky.</td></tr>
+              <tr><td><span class="pill t-mint">Passing</span></td><td>Its most recent result passed, and none of the above applies.</td><td>No test is failing or flaky, and at least one is passing.</td></tr>
+              <tr><td><span class="pill t-neutral">Not run</span></td><td>It has no result in the last 30 days, or its latest result has no verdict (still queued or running, cancelled or timed out).</td><td>None of its tests is passing, failing or flaky — usually because none has run in the last 30 days.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A requirement whose label says <span class="pill t-neutral">No case</span> is linked to
+          the journey but none of the journey's tests covers it.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Bar colour</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#1D5E4A"></span>Dark green</td><td>Every result that day passed.</td></tr>
+              <tr><td><span class="swatch" style="background:#6B4E00"></span>Brown</td><td>Some passed, some did not. The taller the bar, the more passed.</td></tr>
+              <tr><td><span class="swatch" style="background:#8A2A0C"></span>Dark red</td><td>Nothing passed that day.</td></tr>
+              <tr><td><span class="swatch" style="background:#F3F1EB"></span>Grey stub</td><td>None of the journey's tests ran that day.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 id="form">The form</h3>
+        <figure>
+          <div class="frame"><img src="../media/reports/business-journeys/form-annotated.png" alt="The New journey form with four numbered parts: 3 the details, from Name to Traffic journey, 4 the cases in the journey in order, 5 the list to add cases from, 6 the Save journey and Cancel buttons" loading="lazy" width="1440" height="960"></div>
+          <figcaption>The form after pressing New journey, with three tests added. It was left with Cancel, so nothing was saved.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">3</span><h2 id="details" data-toc="③ The details">The details</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/business-journeys/form-details.png" alt="Fields Name, Description, Owner (No owner), Criticality (medium), Requirement refs, and Traffic journey (Use the cases' pages)" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Field</th><th>What to put in it</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Name</strong></td><td>Required, up to 120 characters, and different from the project's other journeys.</td></tr>
+              <tr><td><strong>Description</strong></td><td>Optional. Shown under the name on the card.</td></tr>
+              <tr><td><strong>Owner</strong></td><td>Optional. Chosen from the people who have access to the project; TraceIQ refuses an owner who doesn't.</td></tr>
+              <tr><td><strong>Criticality</strong></td><td>Critical, high, medium (the starting value) or low. Decides the order of the board.</td></tr>
+              <tr><td><strong>Requirement refs</strong></td><td>Ticket keys separated by commas, such as <code>DEMO-101, DEMO-102</code> (up to 50). Requirements already linked to the journey's tests are added on their own; you don't need to type those.</td></tr>
+              <tr><td><strong>Traffic journey</strong></td><td>A journey (or funnel) name from the latest traffic import on <em>Journey coverage</em>. Leave it on <em>Use the cases' pages</em> to count the visits to the pages the tests open instead.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="cases" data-toc="④ Cases in this journey">Cases in this journey</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/business-journeys/form-cases.png" alt="Left: Cases in this journey, in order (3): 1 Homepage loads, 2 Sign in as alice, 3 Add a todo, each with Up, Down and Remove buttons. Right: Add cases, a filter box, and No serious accessibility violations and Session cookie is HttpOnly, each with an Add button" loading="lazy"></div>
+        </figure>
+        <p>The tests that make up the journey, numbered in the order a customer meets them.
+          <strong>Up</strong> and <strong>Down</strong> change the order; <strong>Remove</strong>
+          takes a test out of the journey (the test itself is not touched). A journey can hold up
+          to 200 tests.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="add" data-toc="⑤ Add cases">Add cases</h2></div>
+        <p>Every test in the project that isn't in the journey yet. Type in <strong>Filter by
+          name</strong> to narrow the list, and press <strong>Add</strong> to put a test at the end
+          of the journey. The list shows at most 50 tests at a time, so use the filter in a large
+          project.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="save" data-toc="⑥ Save or cancel">Save or cancel</h2></div>
+        <p><strong>Save journey</strong> stores the journey and takes you back to the board; it
+          stays grey until there is a name. <strong>Cancel</strong> goes back without saving.
+          When you edit an existing journey there is also <strong>Delete journey</strong>, which
+          asks you to confirm and removes only the journey, never its tests.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/business-journeys/page.png" width="1280" height="800">
+              <source src="../media/reports/business-journeys/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…set up a journey</h3>
+        <ol class="steps">
+          <li>Make sure the right project is selected at the top of the sidebar.</li>
+          <li>Press <strong>New journey</strong> and type a name, such as <em>Checkout</em>.</li>
+          <li>Choose an owner and how critical the journey is.</li>
+          <li>Under <strong>Add cases</strong>, press <strong>Add</strong> next to each test that belongs to the journey. Put them in order with <strong>Up</strong> and <strong>Down</strong>.</li>
+          <li>Press <strong>Save journey</strong>. The card appears on the board straight away.</li>
+        </ol>
+        <h3>…find out why a journey is red</h3>
+        <ol class="steps">
+          <li>On the journey's card, look down the list of tests for the ones marked <span class="pill t-peach">Failing</span>.</li>
+          <li>Press <strong>Last run</strong> next to it to open the run, with its screenshots and logs.</li>
+          <li>Check the 14-day bars: one red day after many green ones is a new problem; a long run of brown bars is a lasting one.</li>
+        </ol>
+        <h3>…link a journey to its requirements</h3>
+        <ol class="steps">
+          <li>Press <strong>Edit</strong> on the journey's card.</li>
+          <li>Type the ticket keys into <strong>Requirement refs</strong>, separated by commas.</li>
+          <li>Press <strong>Save journey</strong>. The card's Requirements box shows how many of them the journey's tests cover. A title appears next to a key when that requirement has been imported on the <em>Requirements</em> page.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Health is worked out each time you open the page</strong>, from the last 30 days of results in this project. Nothing is stored, so changing a journey's tests changes its health at once.</li>
+          <li><strong>One project at a time.</strong> A journey belongs to one project and can only contain that project's tests. Switch project at the top of the sidebar to see another project's journeys.</li>
+          <li><strong>Deleted tests drop out by themselves.</strong> If a test in a journey is deleted, the card says how many tests "no longer exist in this project and are ignored".</li>
+          <li><strong>Days in the trend are UTC days.</strong> In India (UTC+5:30), a result recorded at 2 a.m. counts towards the previous day.</li>
+          <li><strong>Check runs are left out.</strong> Runs TraceIQ makes only to try a suggested fix (see <em>Proposals</em>) count towards neither health nor trend. Runs that were cancelled or timed out don't count in the trend either.</li>
+          <li><strong>Traffic needs an import.</strong> Without a traffic file on <em>Journey coverage</em>, the Traffic box says "No traffic import" with a link to import one.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see the board. Creating, editing or deleting a journey needs the <em>editor</em> role; others can open the form but saving is refused. Every change is recorded in the audit log.</li>
+          <li><strong>It doesn't update by itself</strong> while you look at it; it refreshes when you come back to its browser tab, or when you reload.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Flag coverage</h4><p>The next page in this guide: which values of your feature flags have actually been tested.</p></div>
+          <div class="mini"><h4>Journey coverage</h4><p>Import real traffic figures and see which pages and funnels your tests cover. The Traffic box here reads from it.</p></div>
+          <div class="mini"><h4>Requirements</h4><p>Import tickets from Jira or Linear and see which are covered by tests. Gives requirement keys their titles here.</p></div>
+          <div class="mini"><h4>Flaky tests</h4><p>Why a test counts as unreliable, and how quarantine works.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Business journeys page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

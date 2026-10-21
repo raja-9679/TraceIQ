@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PoC report · TraceIQ Guide</title>
+  <meta name="description" content="The PoC report page: a one-page summary of a TraceIQ trial — what was set up, what ran, what it found — with a clearly labelled time-saved estimate.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/reports-poc-report.spec.ts. Page: frontend/src/pages/PocReport.tsx
+     (+ components/poc/, components/reports/ShareLinks.tsx). API: frontend/src/api/pocReport.ts →
+     backend/app/api/poc_reports.py, backend/app/services/poc_report.py; share links: backend/app/api/share_links.py. -->
+<body data-page="reports/poc-report">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../reports/poc"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>PoC report</h1>
+        <div class="meta-row">
+          <span class="tag t-butter">Reports</span>
+          <span class="tag t-neutral">Every workspace member can see it (their own projects)</span>
+          <span class="tag t-neutral">Editors can share it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A one-page summary of a trial of TraceIQ (a "proof of concept", or PoC): what was set
+            up, how much testing ran, what it found, and an estimate of the hours of manual testing
+            it replaced. You can print it, save it as a PDF, or send a read-only link.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          The PoC report answers <strong>"What did we get out of the trial?"</strong> At the end
+          of a trial someone has to explain to a manager or a buyer what happened. This page
+          collects the facts in one place, and keeps the one number that is a guess (the time
+          saved) clearly marked as an estimate, with the assumptions next to it.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Trial leads</h4><p>Produce the end-of-trial summary in a few clicks, for exactly the dates and projects of the trial.</p></div>
+          <div class="mini"><h4>Managers and buyers</h4><p>Read a short, printable page with counts and names only, and an honest estimate.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Check that the work done during the trial is reflected, and adjust the minutes per test to how long it really takes by hand.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → PoC report</strong>.
+          It covers a whole workspace (or the projects you tick), not the project selected in the sidebar.</p>
+        <p>A few words used on this page: a <strong>test</strong> (also called a <em>case</em>) is
+          one scripted check; a <strong>run</strong> is one time TraceIQ carries out a set of tests;
+          one <strong>case execution</strong> is one test carried out once in a run.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page is one long report. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/poc-report/page-annotated.png" alt="The PoC report for the demo workspace with eight numbered parts: 1 the Print or save as PDF button, 2 Scope and assumptions, 3 the estimate, 4 four number tiles, 5 Setup, 6 Activity, 7 What it found, 8 Share a read-only link" loading="lazy" width="1440" height="2500"></div>
+          <figcaption>The PoC report for the demo workspace, last 30 days. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The line under the heading names the workspace and the dates, for example
+          <em>"Demo workspace · 2026-09-22 to 2026-10-21"</em>.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="print" data-toc="① Print or save as PDF">Print or save as PDF</h2></div>
+        <p>Opens your browser's print window. The sidebar, the assumptions form and the sharing box
+          are left out of the printout, so the paper (or PDF) holds just the report. Choose
+          "Save as PDF" as the printer to get a file.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="inputs" data-toc="② Scope and assumptions">Scope and assumptions</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/poc-report/inputs.png" alt="The Scope and assumptions box: Workspace Demo workspace, From and To dates, Minutes per manual execution 5, Hourly rate (optional), Currency code, a Projects list with Demo — Public API and Demo — Todo web app, and an Update report button" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Field</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Workspace</strong></td><td>Shown only if you belong to more than one. The page starts on your first workspace, so pick the trial's one. Changing it reloads the report at once.</td></tr>
+              <tr><td><strong>From</strong> / <strong>To</strong></td><td>The trial's dates, both days included, at most 366 days. The last 30 days to begin with. Days are UTC days.</td></tr>
+              <tr><td><strong>Minutes per manual execution</strong></td><td>How long a person would take to carry out one test by hand. 5 to begin with; anything above 0 and up to 480.</td></tr>
+              <tr><td><strong>Hourly rate</strong> and <strong>Currency code</strong></td><td>Optional. With both, the estimate also gives an amount of money. The code is three letters, such as EUR or INR; a rate without a code is refused.</td></tr>
+              <tr><td><strong>Projects</strong></td><td>Tick the projects the trial used. None ticked = every project of the workspace you can see.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Typing doesn't change the report: press <strong>Update report</strong> when you are
+          done. If something is wrong (a rate with no currency, say), the button is grey and a
+          message says why.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="estimate" data-toc="③ The estimate">The estimate</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/poc-report/estimate.png" alt="ESTIMATE: Estimated 60 hours of manual testing replaced (720 automated case executions x 5 min each). Estimate from your assumptions, not a measurement." loading="lazy"></div>
+        </figure>
+        <p>The hours of manual testing the automated tests replaced, worked out as:</p>
+        <p><strong>hours = automated case executions × minutes per manual execution ÷ 60</strong></p>
+        <p>In the demo, 720 case executions × 5 minutes = 3,600 minutes = 60 hours. With a rate and
+          a currency there is a second line, hours × rate:</p>
+        <figure>
+          <div class="frame small"><img src="../media/reports/poc-report/estimate-money.png" alt="The estimate with a rate: Estimated 60 hours of manual testing replaced, and Estimated EUR 2,400.00 at EUR 40.00 per hour" loading="lazy"></div>
+        </figure>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">It is an estimate, and says so</strong>
+            <p>Nothing here is measured: it is your own assumption multiplied by a count. It also
+            assumes every automated test would otherwise have been done by hand, every time. Pick
+            minutes that match how your team really tests, and say how you chose them when you
+            share the report.</p></div>
+        </div>
+        <p>Only tests that finished with a pass or fail count, and only from automated runs:
+          tests that people carry out by hand (manual tests) are left out.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="tiles" data-toc="④ The four tiles">The four tiles</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/poc-report/tiles.png" alt="Four tiles: Runs 240 in 30 days, Pass rate 90.4%, Automated case executions 720, Failures caught 23" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Runs</strong></td><td>Runs started in the date range that finished with a verdict (passed, failed or error). Runs that were cancelled, timed out or are still going are left out.</td></tr>
+              <tr><td><strong>Pass rate</strong></td><td>Passed runs ÷ those runs.</td></tr>
+              <tr><td><strong>Automated case executions</strong></td><td>The number the estimate is based on (see above).</td></tr>
+              <tr><td><strong>Failures caught</strong></td><td>Test results that failed or ended in an error, manual ones included.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="setup" data-toc="⑤ Setup">Setup</h2></div>
+        <p>What exists in the covered projects <em>today</em> (not only what was added during the
+          dates): their names, how many suites and tests, tests by type (for example "Browser
+          journeys 10"), environment names, active monitors, and the connections made: issue
+          trackers, outbound webhooks, incident webhooks, paging channels, status pages and API
+          keys that haven't been revoked. Issue trackers, webhooks and API keys that belong to the
+          whole workspace are counted too.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="activity" data-toc="⑥ Activity">Activity</h2></div>
+        <p>Finished runs and passed runs (as in the tiles), automated and manual case executions,
+          and the browsers and devices that runs used in the date range.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="found" data-toc="⑦ What it found">What it found</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/poc-report/found.png" alt="What it found: Failing test results 23, Distinct failure causes (clusters) 6, Security findings 1 (critical 0, high 0, medium 1, low 0, info 0), Flaky tests identified 1, Production incidents 0, Incidents linked to a test or failure 0" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Line</th><th>What it counts</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Failing test results</strong></td><td>The same as <em>Failures caught</em>.</td></tr>
+              <tr><td><strong>Distinct failure causes (clusters)</strong></td><td>Groups of failures with the same cause (as on <em>Failure triage</em>) that happened at some point in the date range.</td></tr>
+              <tr><td><strong>Security findings</strong></td><td>Security problems first recorded in the date range, by severity. A problem seen by several scans counts once.</td></tr>
+              <tr><td><strong>Flaky tests identified</strong></td><td>Tests that are unreliable as of the end date: quarantined then, or with a high flakiness score now.</td></tr>
+              <tr><td><strong>Production incidents</strong></td><td>Incidents (from <em>Incidents</em>) that started in the date range.</td></tr>
+              <tr><td><strong>Incidents linked to a test or failure</strong></td><td>Of those, the ones connected to a test, a failure group, a new regression test, or a test that should have caught it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Under the report, a line says how many projects it covers.</p>
+
+        <div class="part"><span class="num">8</span><h2 id="share" data-toc="⑧ Share a read-only link">Share a read-only link</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/reports/poc-report/share.png" alt="Share a read-only link: Expires after 30 days, Label (optional), a Create link button, and PoC report links: No links yet" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Expires after</strong>: 1, 7, 30 (the starting value) or 90 days.</li>
+          <li><strong>Label</strong>: optional, for example who the link is for.</li>
+          <li><strong>Create link</strong> makes the link and shows it once, with a <strong>Copy link</strong> button. It is not shown again, so copy it straight away.</li>
+          <li><strong>PoC report links</strong> lists the workspace's PoC links: who made each, when it expires, how often it was opened, and a <strong>Revoke</strong> button that switches it off at once (no confirmation).</li>
+        </ul>
+        <p>The link keeps the dates, project selection and assumptions you last applied with
+          Update report. The numbers themselves are worked out again each time someone opens it.
+          Anyone with the link can open it without signing in, until it expires. It shows names
+          and counts only: no error messages, web addresses or email addresses.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/reports/poc-report/page.png" width="1280" height="800">
+              <source src="../media/reports/poc-report/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…make the end-of-trial report</h3>
+        <ol class="steps">
+          <li>Choose the trial's <strong>Workspace</strong>.</li>
+          <li>Set <strong>From</strong> and <strong>To</strong> to the first and last day of the trial.</li>
+          <li>Tick the projects the trial used (or leave them all unticked for every project).</li>
+          <li>Set <strong>Minutes per manual execution</strong> to a realistic figure for your team.</li>
+          <li>Press <strong>Update report</strong>, then check the numbers.</li>
+        </ol>
+        <h3>…show the saving in money</h3>
+        <ol class="steps">
+          <li>Type an <strong>Hourly rate</strong>, for example the cost of a tester's hour.</li>
+          <li>Type the three-letter <strong>Currency code</strong>, such as EUR.</li>
+          <li>Press <strong>Update report</strong>. A second line under the estimate gives the amount.</li>
+        </ol>
+        <h3>…send it to someone without a TraceIQ account</h3>
+        <ol class="steps">
+          <li>Set up the report as above and press <strong>Update report</strong>.</li>
+          <li>In <strong>Share a read-only link</strong>, choose how long it should work and add a label.</li>
+          <li>Press <strong>Create link</strong> and copy the link straight away. Or press <strong>Print or save as PDF</strong> and send the file.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>You see only your own projects.</strong> The report covers the workspace's projects you have access to. Ticking a project you can't see does nothing.</li>
+          <li><strong>A shared link covers less, not more.</strong> A link only reaches projects where you are an <em>editor</em>, and you need the editor role on at least one project to create one. If you later lose that access, the link stops showing those projects.</li>
+          <li><strong>Check runs are left out.</strong> Runs TraceIQ makes only to try a suggested fix (see <em>Proposals</em>) are not counted as trial activity.</li>
+          <li><strong>Revoking.</strong> The person who made a link, or a workspace admin, can revoke it.</li>
+          <li><strong>Nothing is saved.</strong> The form's values are forgotten when you leave the page; only a shared link keeps them.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Value report</h4><p>The next page in this guide: measured numbers for a pilot, such as how quickly failures get diagnosed.</p></div>
+          <div class="mini"><h4>Executive summary</h4><p>A short status of one project or a workspace for leadership, also shareable as a link.</p></div>
+          <div class="mini"><h4>Costs</h4><p>The other side of the ledger: what the testing cost in AI use and machine time.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>The failure groups counted as "distinct failure causes" here.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the PoC report page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
