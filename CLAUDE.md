@@ -15,6 +15,33 @@ to rediscover.
 
 ---
 
+## User guide (`<host>/docs/`) — keep it current
+
+A plain-language guide for end users, one page per sidebar item, served by the
+frontend's nginx from `frontend/public/docs/` (static HTML, no login). It lives
+on `feature/redesign-a`, because its screenshots show the redesign UI.
+
+**Rule: any change that adds, removes, renames or changes something a user can
+see or do updates the matching guide page in the same piece of work.** That
+means the page text, its entry in `frontend/public/docs/_assets/nav.js` (which
+mirrors `frontend/src/components/layout/nav.ts`: same groups, order, names;
+`ready: true` once written), and fresh pictures via
+`e2e/docs-capture/run.sh pages/<group>-<page>` after rebuilding the frontend
+image (README in `e2e/docs-capture/`). A new sidebar item = a new guide page +
+a capture spec. Functional work done on `feature/enterprise-auth-ai` gets its
+guide update when it is merged and ported into the redesign.
+
+Writing rules: for readers who are not testers or developers; every statement
+checked against the page component and the API behind it (not against what the
+screen seems to show — e.g. Overview's Passed/Failed tiles count only the newest
+50 runs); the same section order on every page (In short → What it is for →
+tour of the screen with numbered parts → video → How to… → Good to know →
+Related); pastel palette only (the app's `pastel-*` colours, in `docs.css`);
+no inline scripts (the app's CSP is `script-src 'self'`). Pictures come from the
+demo workspace, never a real project.
+
+---
+
 ## Services
 
 All services run via Docker Compose from the `infrastructure/` directory.

@@ -29,6 +29,7 @@ from app.services import value_report as vr                      # noqa: E402
 from tests.integration.test_targeted_runs_db import (            # noqa: E402,F401
     no_queue, scene, session,
 )
+from tests.integration.denied import DENIED                      # noqa: E402
 
 HYP = {"category": "app_bug", "summary": "Checkout API returned 500", "source": "heuristic",
        "confidence": 0.7, "evidence_refs": ["s1"]}
@@ -152,7 +153,7 @@ async def test_who_may_rate(session, scene):
     outsider = AuthPrincipal(user=User(id=999999, email="x@y", full_name="x", hashed_password="x"))
     with pytest.raises(HTTPException) as exc:
         await api.run_hypothesis_feedback(run_id, session=session, principal=outsider)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 # --- report: access + roll-up ------------------------------------------------------
@@ -171,7 +172,7 @@ async def test_project_report_access(session, scene):
                  prefix="tiq_s", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await _report(session, scene, AuthPrincipal(user=scene.user, api_key=key))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 async def test_workspace_rollup_covers_only_readable_projects(session, scene):

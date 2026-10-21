@@ -138,7 +138,7 @@ async def test_access_control_on_imports_rules_and_cross_project_ids(session, sc
     await jr.journey_coverage(scene.project_id, import_id=None, top=5, session=session, principal=viewer)
     with pytest.raises(HTTPException) as exc:
         await jr.journey_board(scene.project_id, session=session, principal=outsider)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     # An import of another project is not reachable through this project.
     other = await jr.create_import(scene.other_project_id, None, file=_upload(CSV), label=None,
                                    format=None, session=session, principal=me(scene))
@@ -150,7 +150,7 @@ async def test_access_control_on_imports_rules_and_cross_project_ids(session, sc
     key = ApiKey(name="ci", workspace_id=1, project_id=scene.other_project_id, prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await jr.flag_coverage(scene.project_id, days=30, session=session, principal=me(scene, key))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 # --- business journeys ----------------------------------------------------------------

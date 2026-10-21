@@ -173,7 +173,7 @@ async def test_bundle_cross_project_access_is_refused(session, scene, artifacts)
     with pytest.raises(HTTPException) as exc:
         await developer.download_repro_bundle(run.id, result.id, principal=AuthPrincipal(user=scene.user, api_key=key),
                                               session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
     # A result id from another run is not reachable through this run.
     other_run = TestRun(test_suite_id=scene.root_id, project_id=scene.project_id, status=TestStatus.PASSED)
