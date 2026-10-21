@@ -86,3 +86,14 @@ are regenerated, never edited.
 - Captures take turns (a file lock), so several people or agents can queue
   runs; a waiting run says so.
 
+
+**Instance-admin pages** (Worker fleet, Instance settings) refuse the docs
+account. `admin-capture.sh pages/<spec> …` takes the capture lock, makes the
+docs account an instance admin, runs the specs, and revokes the grant on exit
+(even on failure), so no other capture ever runs with it. Local stack only.
+
+**Fresh stack / new laptop.** The docs account lives in `e2e/.auth/`
+(gitignored), so a new stack gets a new one on the first `run.sh`: signup,
+then `POST /demo-workspace`. The first run also downloads Piper and the voice
+(~130 MB, checksum-pinned) into `e2e/.cache/`. Host needs docker, node,
+python3 and ffmpeg.
