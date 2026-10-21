@@ -10,7 +10,71 @@ it belongs here rather than in a chat history.
 
 ---
 
-## Resume here (2026-10-21, home laptop) — read this first
+## Resume here (2026-10-21 evening, home laptop) — read this first
+
+**State.** Both branches pushed (fast-forward): `feature/enterprise-auth-ai`
+→ `origin/feature/enterprise-auth-ai-2026-10`, `feature/redesign-a` →
+`origin/feature/redesign-a`. Nothing local is unpushed.
+
+**Done today.**
+- **User guide finished** (redesign branch): all 61 pages under
+  `frontend/public/docs/`, each with numbered screenshots, close-ups, a
+  narrated video and a Markdown copy (`<page>.md`, ending with the video
+  script). Every page marked `ready: true` in `_assets/nav.js`. Written by
+  parallel writers from one brief, every claim checked against the page
+  component + API; reviewed and committed per sidebar group.
+- **Guide tooling** (`e2e/docs-capture/`, README there): voice is Piper
+  `kristin` (US, public domain — the owner rejected the British `cori`; the
+  licence survey of every candidate incl. Indian English is in the README),
+  `length_scale` 1.3, finished videos sped up 1.25× in a second ffmpeg pass.
+  `TRACEIQ_DOCS_VIDEO=off` = pictures only (~10 s), `check-page.sh` renders a
+  page from disk, `export_md.py` writes the `.md` copies (run.sh calls it),
+  `admin-capture.sh` for the two instance-admin pages, a file lock so
+  captures take turns.
+- **Sidebar** (redesign): place icons on pastel tiles, same tone per group as
+  the guide; `nav.test.tsx` pins the two together.
+- **Fixes** (enterprise, merged into redesign): a RESOLVED failure cluster
+  reopens when it fails again; cluster tickets only to the cluster's own
+  workspace's tracker (+ the Triage page lists that workspace's trackers);
+  the demo workspace groups every failure into clusters with the worker's
+  real error wording; Instance settings 403 text says instance admin.
+  `tests/integration/test_triage_db.py` is new.
+- The 2026-10-21 "Unfinished, small" list below: schedules `created_at`,
+  `requests` bump and the RLS second-assert fixes were done (commits
+  e2bd266, db60292, e030c47); only `gen-api-types.sh`'s image default is
+  still open.
+
+**Next — the owner chooses** (asked, not answered yet):
+`info/GUIDE_FOLLOWUPS.md` (redesign branch) lists what the guide writers
+found. Two piles:
+1. ~40 product bugs, six of them access-control: removing a workspace member
+   leaves their project grants; project-scoped API keys not enforced on
+   test-case/suite endpoints; issue-tracker URLs skip net_guard (and trackers
+   are any-member writable, unaudited); run tickets can use another
+   workspace's tracker; any workspace admin can self-assign a paid plan;
+   team add-by-email ignores workspace membership. Also broken: nobody can
+   delete a workspace (`workspace:delete_workspace` permission doesn't
+   exist), no UI to create a monitor.
+2. ~25 guide pages show an empty state because the demo workspace has no
+   such data (proposals, incidents, scans, AI usage, …). Fix = seed it in
+   `demo_workspace.py` (enterprise), merge, delete + recreate the docs
+   account's demo (`DELETE /demo-workspace`), re-run those pages' specs.
+   The demo also dates some runs/monitor checks later today than "now".
+
+**Traps found today.**
+- A power cut during `git commit` left 14 EMPTY files in `.git/objects`
+  (`find .git/objects -type f -empty`) and a branch pointing at one. Fix
+  used: back up `.git`, move the empty files aside, `git update-ref` the
+  branch to the previous good commit, `git reset` in that worktree, drop the
+  reflog lines naming the lost commit, `git fsck`, recommit from the working
+  tree (it was intact). `sync` after commits on this laptop.
+- ffmpeg: `apad` + `-shortest` with a filtered video stream never ends (the
+  file grows without limit) — hence the two-pass speed-up in `mux.py`.
+- `pkill -f <pattern>` also matches the shell running it.
+- Commit messages: **no `Co-Authored-By` / session trailers** (WORKING_NOTES
+  rule; today's commits were rewritten before pushing to remove them).
+
+## Resume here (2026-10-21, home laptop)
 
 **State.** Everything in `info/ROADMAP_EXECUTION_2026-10.md` is built:
 WP0–WP14 (2026-10-16), WP15f run lifecycle (2026-10-20), and WP15a–e + WP16
