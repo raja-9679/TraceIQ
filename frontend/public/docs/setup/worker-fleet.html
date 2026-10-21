@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Worker fleet · TraceIQ Guide</title>
+  <meta name="description" content="The Worker fleet page: the machines that run tests, whether they are alive, and the queues of work waiting for them.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-worker-fleet.spec.ts (needs an instance admin: captured with the
+     docs account made instance admin for that run only). Page: frontend/src/pages/WorkerFleet.tsx.
+     API: backend/app/api/fleet.py, backend/app/services/worker_fleet.py. -->
+<body data-page="setup/worker-fleet">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../admin/workers"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Worker fleet</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Instance admin only</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Tests don't run inside the TraceIQ website itself: they run on separate machines
+            called <em>workers</em>, each with its own browser. This page shows those workers,
+            whether each one is alive, what it is doing, and how much work is waiting for them.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Worker fleet answers <strong>"Can TraceIQ run tests right now, and if not, why
+          not?"</strong> When runs stay <em>Queued</em> for a long time, the reason is usually
+          here: no worker is alive, every worker is busy, or a worker is too old to run a new
+          kind of step.
+        </p>
+        <p>It is a page for the person who looks after the TraceIQ server (the <em>instance
+          admin</em>). Everyone else sees "Instance admins only", because it names every machine
+          and region in the installation.</p>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Worker fleet</strong>.
+          The sidebar shows it to organisation admins too, but only an instance admin can open it.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has three parts. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/worker-fleet/page-annotated.png" alt="The Worker fleet page with three numbered parts: 1 five number tiles, 2 the table of workers, 3 the table of job streams" loading="lazy" width="1440" height="1100"></div>
+          <figcaption>The Worker fleet page with two workers alive and nothing waiting. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>Above the tiles, the page reminds you how it decides that a worker is alive: every
+          worker checks in every <strong>15 seconds</strong>, and one that hasn't checked in for
+          <strong>45 seconds</strong> is shown as lost.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="tiles" data-toc="① The five tiles">The five tiles</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/setup/worker-fleet/tiles.png" alt="Five tiles: Alive 2, Lost 0, Busy 0, Version skew 0, Dead letters 0" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Alive</strong></td><td>Workers that checked in within the last 45 seconds and can take tests.</td></tr>
+              <tr><td><strong>Lost</strong></td><td>Workers that stopped checking in: stopped, crashed or cut off. A lost worker stays on the page for <strong>10 minutes</strong> after its last check-in, then disappears.</td></tr>
+              <tr><td><strong>Busy</strong></td><td>Alive workers that are running a test at this moment.</td></tr>
+              <tr><td><strong>Version skew</strong></td><td>Alive workers older than the TraceIQ server: they don't know some of the step types the server offers, so tests using those steps fail on them. The fix is to update the workers.</td></tr>
+              <tr><td><strong>Dead letters</strong></td><td>Jobs that failed to run several times in a row and were set aside, so they don't block the queue. They need someone to look at them.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>If something needs attention (a queue with no worker to serve it, workers too old, jobs
+          set aside), a yellow box under the tiles says so in a sentence.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="workers" data-toc="② Workers">Workers</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/setup/worker-fleet/workers.png" alt="A table with two rows, each an alive web worker in the global pool, version 1.0.0, idle, with jobs processed and failed, started time and last seen 12 seconds ago" loading="lazy"></div>
+        </figure>
+        <p>One row per worker. Alive workers come first.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Worker</strong></td><td><span class="pill t-mint">alive</span> or <span class="pill t-peach">lost</span>, the worker's name, and under it the machine it runs on.</td></tr>
+              <tr><td><strong>Kind / region</strong></td><td><em>web</em> (browser tests), <em>mobile</em> (phone app tests) or <em>local</em> (a developer's own computer, with the workspace it belongs to). The region is where it runs; <em>global pool</em> means it takes work from everyone.</td></tr>
+              <tr><td><strong>Version</strong></td><td>The worker's software version. A yellow "skew" label lists the step types it is missing; "step types not reported" means it is too old to say, so TraceIQ can't tell.</td></tr>
+              <tr><td><strong>Current job</strong></td><td>The run it is working on, as a link, or <em>idle</em>.</td></tr>
+              <tr><td><strong>Processed / failed</strong></td><td>How many jobs it has finished since it started, and how many of those did not pass. A test that failed counts as failed here too, so this is not a measure of the worker's health on its own.</td></tr>
+              <tr><td><strong>Started</strong>, <strong>Last seen</strong></td><td>When the worker started, and how long ago it last checked in.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="streams" data-toc="③ Job streams">Job streams</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/setup/worker-fleet/streams.png" alt="A table of two queues, jobs:pending and jobs:mobile:pending, both global, with their length, queued and in-flight counts" loading="lazy"></div>
+        </figure>
+        <p>A <em>job stream</em> is a queue of work. When you start a run, TraceIQ puts one job per
+          test on a queue, and workers take jobs from it. Browser tests and phone
+          tests have their own queues, and each region has its own.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Length</strong></td><td>Every job still stored in the queue, <em>including finished ones</em>. A large number here is normal.</td></tr>
+              <tr><td><strong>Queued (lag)</strong></td><td>Jobs no worker has picked up yet. This is the number that means waiting. Shown in bold when above zero.</td></tr>
+              <tr><td><strong>In flight</strong></td><td>Jobs a worker has taken but not finished yet.</td></tr>
+              <tr><td><strong>In flight per consumer</strong></td><td>Which worker holds those jobs, and how many each.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/worker-fleet/page.png" width="1280" height="800">
+              <source src="../media/setup/worker-fleet/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…find out why runs stay queued</h3>
+        <ol class="steps">
+          <li>Look at <strong>Alive</strong>. If it is zero, no worker is running: start the workers on the server.</li>
+          <li>If workers are alive, look at <strong>Busy</strong>. If every alive worker is busy, runs are waiting their turn; more workers would help.</li>
+          <li>In <strong>Job streams</strong>, find the queue with a bold <strong>Queued</strong> number. If the yellow box says no live worker serves it (for example a region with no worker), start a worker for that region.</li>
+        </ol>
+        <h3>…check that an update reached every worker</h3>
+        <ol class="steps">
+          <li>Look at <strong>Version skew</strong>. It should be zero.</li>
+          <li>In the <strong>Version</strong> column, every worker should show the new version and no yellow "skew" label.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>It updates by itself</strong> every 15 seconds. <strong>Refresh</strong> (top right) updates it straight away.</li>
+          <li><strong>Lost isn't always bad.</strong> A worker that was stopped on purpose, or replaced by a new one, shows as lost for 10 minutes and then leaves the list.</li>
+          <li><strong>Nothing can be changed here.</strong> Starting, stopping or adding workers happens on the server. Jobs in <em>Dead letters</em> can be retried or thrown away only through TraceIQ's API, by an instance admin; ask whoever runs your TraceIQ server.</li>
+          <li><strong>Local workers</strong> (on a developer's computer) appear here while they are running, labelled with their workspace.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Sizing calculator</h4><p>The next page in this guide: how many workers you need for the tests you run.</p></div>
+          <div class="mini"><h4>Instance settings</h4><p>Server-wide settings, including the ones every worker picks up.</p></div>
+          <div class="mini"><h4>Runs</h4><p>Every run, including the ones still queued.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Worker fleet page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
