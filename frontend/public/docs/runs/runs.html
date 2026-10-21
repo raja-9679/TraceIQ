@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Runs · TraceIQ Guide</title>
+  <meta name="description" content="The Runs list and a run's own page: finding a run, reading its result, the AI analysis of a failure, and each test's error and evidence.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/runs-runs.spec.ts. Pages: frontend/src/pages/TestMatrix.tsx (list),
+     frontend/src/pages/TestRunDetails.tsx (one run; + components/runs/CancelRunButton.tsx,
+     components/evidence/*, components/reports/ShareLinks.tsx, components/CreateTicketDialog.tsx).
+     API: frontend/src/lib/api.ts (getRuns, getRun); backend/app/api/endpoints/test_runs.py
+     (get_runs, get_run, delete_run(s), analyze, cancel, force-complete); statuses: frontend/src/lib/runStatus.ts,
+     app/services/run_status.py; failure analysis: app/tasks/analysis_tasks.py (queued by app/tasks/result_aggregator.py). -->
+<body data-page="runs/runs">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../runs"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Runs</h1>
+        <div class="meta-row">
+          <span class="tag t-peach">Runs</span>
+          <span class="tag t-neutral">Everyone can see the runs of their projects</span>
+          <span class="tag t-neutral">Editors can cancel, re-analyse and delete</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Every time tests are executed, that is a <strong>run</strong>. This page lists all
+            runs of all your projects, newest first, with search and filters. Open one to see
+            what happened: which tests passed, which failed, the error of each failure, and
+            TraceIQ's guess at the cause.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Runs answers <strong>"What happened when the tests ran?"</strong> The list helps you
+          find a run (last night's, the one for a change, the failed ones). The run's own page
+          helps you understand it, down to the single step that went wrong.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Open last night's failed run, see which tests failed and read their errors.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Find the run for their change and see whether the failure is the app, the test or the environment.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Share a read-only summary of a run, or file a ticket for it, without copying anything by hand.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Runs</strong>. The
+          page's own heading says <strong>Test runs</strong>. A run's own page opens when you
+          click a run here, or anywhere else a run is mentioned (Overview, Failure triage,
+          Monitors…).</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Runs, suites and tests</strong>
+            <p>A <strong>test</strong> is one journey, such as "Sign in". A <strong>suite</strong>
+            is a folder of tests. A run executes a whole suite, or a single test, once, in one
+            browser. Each test in it gets its own result.</p></div>
+        </div>
+
+        <h2 id="tour" data-toc="A tour of the list">A tour of the list</h2>
+        <p>The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/runs/runs/page-annotated.png" alt="The Runs list with six numbered parts: 1 the search box, 2 the status filter, 3 the browser filter, 4 the three tiles, 5 one run in the list, 6 the More menu" loading="lazy" width="1440" height="1000"></div>
+          <figcaption>The Runs list in the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="search" data-toc="① Search">Search</h2></div>
+        <p>Type part of a suite's or a test's name to show only matching runs. The search
+          <strong>matches upper and lower case exactly</strong>: "Web" finds "Web smoke (demo)",
+          "web" does not.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="status" data-toc="② Filter by result">Filter by result</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/status-filter.png" alt="Six buttons: All (selected), Passed, Failed, Active, Cancelled, Timed out" loading="lazy"></div>
+        </figure>
+        <p>Shows only runs with one result. Each button matches exactly one status:</p>
+        <ul>
+          <li><strong>Failed</strong> shows runs marked Failed only, not those that ended in <em>Error</em>. There is no button for Error; use <em>All</em>.</li>
+          <li><strong>Active</strong> shows runs that are running right now, not those still queued.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="browser" data-toc="③ Filter by browser">Filter by browser</h2></div>
+        <p><strong>All browsers</strong>, <strong>Chrome</strong>, <strong>Firefox</strong> or
+          <strong>Safari</strong>: the browser the run used. When any filter or a search is set, a
+          <strong>Clear</strong> button appears next to them.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="tiles" data-toc="④ The three tiles">The three tiles</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/tiles.png" alt="Three tiles: Total runs, Pass rate on this page with the number of finished runs it is based on, and Average duration" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Total runs</strong></td><td>How many runs match the search and filters, across all your projects.</td></tr>
+              <tr><td><strong>Pass rate on this page</strong></td><td>The share of passed runs <strong>among those on the current page</strong> of the list (50 by default), counting only runs with a pass/fail answer: cancelled, timed-out, queued and running ones are left out. The line below says how many it is based on.</td></tr>
+              <tr><td><strong>Average duration</strong></td><td>The average length of those same runs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="row" data-toc="⑤ One run in the list">One run in the list</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/run-row.png" alt="One row: a tick box, a status icon, the suite name, the run number, date and test name, a Passed label, the duration, the browser, and eye and bin buttons" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>The name</strong> is the suite that ran (or the test, when only one ran). Underneath: the run number, when it started, and the test's name if a single test of a suite ran. Runs of manual tests carry a <span class="pill t-lavender">Manual</span> label and open their own page.</li>
+          <li><strong>On the right</strong>: the result, how long it took, and the browser.</li>
+          <li><strong>Click the row</strong> (or the eye button) to open the run. The tick box on the left selects it; the bin button deletes it.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Result</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Passed</span></td><td>Every test in the run did what it should.</td></tr>
+              <tr><td><span class="pill t-peach">Failed</span></td><td>At least one test found a problem.</td></tr>
+              <tr><td><span class="pill t-peach">Error</span></td><td>Something went wrong around the tests, for example the run could not be started. Treat it like a failure.</td></tr>
+              <tr><td><span class="pill t-lavender">Running</span> / <span class="pill t-neutral">Queued</span></td><td>Happening now / waiting for a free test machine.</td></tr>
+              <tr><td><span class="pill t-neutral">Cancelled</span></td><td>Someone stopped it. No verdict.</td></tr>
+              <tr><td><span class="pill t-butter">Timed out</span></td><td>It went past TraceIQ's time limit. No verdict.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">6</span><h2 id="more" data-toc="⑥ More, deleting, pages">More, deleting and pages</h2></div>
+        <ul>
+          <li>Select runs with their tick boxes (or <strong>Select all on this page</strong>) and a <strong>Delete N selected</strong> button appears at the top.</li>
+          <li><strong>More → Delete all runs</strong> deletes every run in every project where you are an editor, whatever the search or filters show. Use it with care.</li>
+          <li>Deleting removes the run with its screenshots, videos and logs, and asks you to confirm first. It is recorded in the audit log.</li>
+          <li>At the bottom, the page controls move through the list, and set how many runs a page shows (25, 50 or 100).</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/pagination.png" alt="Showing 1–50 of the runs, a 50 / page menu, and buttons for the first, previous, next and last page" loading="lazy"></div>
+        </figure>
+
+        <h2 id="run-page" data-toc="A tour of one run">A tour of one run</h2>
+        <p>Clicking a run opens its own page. This one is a failed run of the demo's web
+          suite. The numbers continue from the list above.</p>
+        <figure>
+          <div class="frame"><img src="../media/runs/runs/run-annotated.png" alt="One run's page with seven numbered parts: 7 the title and result, 8 the action buttons, 9 the tabs Overview, Traces and Network, 10 the duration, tests and pass rate, 11 the AI analysis box, 12 the list of tests, 13 the selected test" loading="lazy" width="1440" height="1000"></div>
+          <figcaption>A failed run in the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">7</span><h2 id="run-title" data-toc="⑦ Title and result">Title and result</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/run-title.png" alt="The breadcrumb Runs / Web smoke (demo) / run number, the heading Web smoke (demo), a label Failed · 1 of 5, and a line with the duration, the date and by schedule" loading="lazy"></div>
+        </figure>
+        <p>The suite (or test) that ran, and its result: for a failed run, how many of its tests
+          failed. Below: how long it took, when it started, the code version (commit) and branch
+          it tested if it was started from a build pipeline, and who or what started it
+          (<em>by human</em>, <em>by schedule</em>, <em>by ci</em>, <em>by api_agent</em>,
+          <em>by webhook</em>).</p>
+
+        <div class="part"><span class="num">8</span><h2 id="run-actions" data-toc="⑧ The buttons">The buttons</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/run-actions.png" alt="Three buttons: Compare deployment, Create ticket, Share" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Button</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Compare deployment</strong></td><td>Runs the same suite again against another address of your app (say, the new version on a staging site) and shows the two results side by side.</td></tr>
+              <tr><td><strong>Create ticket</strong></td><td>Files a ticket for this run in a connected issue tracker (Jira, GitHub or iTop).</td></tr>
+              <tr><td><strong>Share</strong></td><td>Makes a read-only link for people without a TraceIQ account. It shows test names, results and timings only; never screenshots, videos, errors or addresses. It expires after the number of days you choose.</td></tr>
+              <tr><td><strong>Cancel run</strong></td><td>Only while it runs. Queued tests don't start, and a running test stops before its next step. The run ends as Cancelled and nobody is notified.</td></tr>
+              <tr><td><strong>Force complete</strong></td><td>Only for a run that has said "running" for more than 10 minutes, i.e. one that seems stuck. Marks it as finished with an Error.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">9</span><h2 id="run-tabs" data-toc="⑨ The tabs">The tabs</h2></div>
+        <ul>
+          <li><strong>Overview</strong> (opens first): everything described below.</li>
+          <li><strong>Traces</strong>: the recordings the run kept, if any: a step-by-step trace you can play back, a video, a file of all network traffic (HAR) to download, and every screenshot. A project records video, traces and network files only when its data settings allow the fullest level of capture.</li>
+          <li><strong>Network</strong>: the web requests the browser made during the run, grouped, with their status codes.</li>
+          <li><strong>Sweep</strong> appears only for runs that ran the same tests at several screen sizes or languages.</li>
+        </ul>
+
+        <div class="part"><span class="num">10</span><h2 id="run-tiles" data-toc="⑩ Duration, tests, pass rate">Duration, tests and pass rate</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/run-tiles.png" alt="Three boxes: Duration in seconds, Tests 5, Pass rate 80% with a green and orange bar, 4 passed, 1 failed" loading="lazy"></div>
+        </figure>
+        <p>How long the run took, how many tests it held, and the share that passed. The bar is
+          green for passed tests and orange for failed ones. Tests that were cancelled or timed
+          out are not in the pass rate; the line underneath says how many were "not counted".</p>
+        <p>Above these, banners can appear: the run's data seed (with <strong>Re-run with this
+          seed</strong>, to repeat it with the same generated test data), a run that is waiting
+          for a shared test environment to be free, a cancelled or timed-out run, or a
+          <em>validation run</em> that tried a suggested fix from <em>Proposals</em>.</p>
+
+        <div class="part"><span class="num">11</span><h2 id="run-ai" data-toc="⑪ TraceIQ thinks">TraceIQ thinks (AI analysis)</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/run-ai.png" alt="A box titled TraceIQ thinks, AI analysis · a guess, ranked by confidence, with an Analyze failures button and the text No analysis yet" loading="lazy"></div>
+        </figure>
+        <p>For a failed run (or one that ended in Error), TraceIQ looks at the failures and
+          suggests a likely cause. When a run fails this starts by itself; it uses simple rules
+          always, and an AI model as well when one is set up.</p>
+        <ul>
+          <li>Each finding has a <strong>kind</strong>: <em>app bug</em>, <em>test bug</em>, <em>environment</em>, <em>flake</em> or <em>unknown</em>, with a confidence, a short explanation and often a <strong>suggested fix</strong>.</li>
+          <li>Newer findings list what was observed and several possible causes, each pointing at the evidence it is based on. Click a piece of evidence to jump to that step of that test. Editors can mark each cause as right or wrong; those votes feed the <em>Value report</em>.</li>
+          <li><strong>Analyze failures</strong> (or <strong>Re-analyze</strong>) runs it again, optionally with another AI provider from the menu next to it. It needs the editor role.</li>
+          <li>It is a guess. Read the error and the evidence before acting on it.</li>
+        </ul>
+        <p>The demo's runs have no analysis yet, so the box says "No analysis yet".</p>
+
+        <div class="part"><span class="num">12</span><h2 id="run-tests" data-toc="⑫ Tests in this run">Tests in this run</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/runs/runs/run-tests.png" alt="A box titled Tests in this run, 5, with a search box and five rows, the failed test Add a todo first and selected" loading="lazy"></div>
+        </figure>
+        <p>Every test of the run, <strong>failed ones first</strong>, then the rest, then passed
+          ones; the first is shown on the right straight away. Each row gives the result, what
+          kind of failure it was (see below) and how long it took. The search box filters the
+          list by name (upper and lower case don't matter here).</p>
+
+        <div class="part"><span class="num">13</span><h2 id="run-test" data-toc="⑬ The selected test">The selected test</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/runs/runs/run-test-detail.png" alt="The selected test Add a todo: a Failed label, the duration, a Reproduce locally (.zip) button, and Error Details: page.waitForSelector: Timeout 5000ms exceeded" loading="lazy"></div>
+        </figure>
+        <p>The test's name, result and duration, then whatever the run recorded for it:</p>
+        <ul>
+          <li><strong>Error Details</strong>: the full error message of a failure.</li>
+          <li><strong>Retries</strong>: when the test was tried more than once, each attempt and its result.</li>
+          <li><strong>Step evidence</strong>: each step in order with its result, and for the failing step its console messages, failed requests, a screenshot and a piece of the page. How much is kept depends on the project's data settings.</li>
+          <li><strong>Reproduce locally (.zip)</strong>: a download with the test, its settings and a script a developer can run on their own computer. Passwords and keys are never included; the script asks for them.</li>
+          <li>Tabs for the request and response <strong>details</strong>, <strong>headers</strong>, the test's own <strong>media</strong> and its <strong>network</strong> requests, when there are any.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Kind of failure</th><th>What it tells you</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Test failure</strong></td><td>A step or check failed against the app. Look at the app or the test.</td></tr>
+              <tr><td><strong>Setup failed</strong></td><td>The suite's preparation steps failed, so the test never ran.</td></tr>
+              <tr><td><strong>Infrastructure</strong></td><td>The browser or the test machine failed. Not a verdict on the app.</td></tr>
+              <tr><td><strong>Time limit</strong></td><td>TraceIQ's time limit stopped it. Not a verdict on the app.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The demo's history was generated, so its tests have an error message but no step
+          evidence, screenshots or network requests. A real run shows them here.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/runs/runs/page.png" width="1280" height="800">
+              <source src="../media/runs/runs/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…find out why last night's run failed</h3>
+        <ol class="steps">
+          <li>On the Runs list, press <strong>Failed</strong>.</li>
+          <li>Click the run. The failed test is already selected on the right.</li>
+          <li>Read <strong>Error Details</strong>, then <strong>TraceIQ thinks</strong> for a likely cause.</li>
+          <li>If the same failure appears in many runs, go to <em>Failure triage</em> and deal with it once.</li>
+        </ol>
+        <h3>…find the run for a particular suite</h3>
+        <ol class="steps">
+          <li>Type the start of the suite's name in the search box, with the same capital letters.</li>
+          <li>Add a result or browser filter if you need to.</li>
+          <li>Press <strong>Clear</strong> to see everything again.</li>
+        </ol>
+        <h3>…show a run to someone without an account</h3>
+        <ol class="steps">
+          <li>Open the run and press <strong>Share</strong>.</li>
+          <li>Choose how long the link should work, then <strong>Create link</strong>, and copy it.</li>
+          <li>Send it. It shows names, results and timings only, and stops working when it expires.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>All your projects at once.</strong> The list covers every project you have access to, not only the one selected in the sidebar.</li>
+          <li><strong>It updates by itself.</strong> The list refreshes every 5 seconds. A run's page updates live while it is running, and stops once it is finished.</li>
+          <li><strong>Everything is here.</strong> Scheduled runs, monitor checks, runs from build pipelines and AI agents, and validation runs for suggested fixes are all listed. Some of them (validation runs) are left out of pass rates and reports elsewhere.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to a project sees its runs. Cancelling, re-analysing, force-completing and deleting need the <em>editor</em> role; deleting a run you may not edit is refused.</li>
+          <li><strong>Old runs may be removed automatically</strong> after the number of days set in the project's data settings or by the server administrator.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Monitors</h4><p>The next page in this guide: tests on a timer against the live site.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures from many runs grouped by cause, so you fix each problem once.</p></div>
+          <div class="mini"><h4>Overview</h4><p>The newest runs and the pass-rate trend, at a glance.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where tests are written and runs are started.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Runs page and a run's page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

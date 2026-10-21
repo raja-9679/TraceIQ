@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Monitors · TraceIQ Guide</title>
+  <meta name="description" content="The Monitors page: tests that run on a timer against a live site, their uptime and failure streaks, and the public status page.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/watch-monitors.spec.ts. Page: frontend/src/pages/Monitors.tsx.
+     API: frontend/src/api/monitors.ts; backend/app/api/endpoints/schedules.py (list_monitors, _build_monitor_status),
+     backend/app/api/status_pages.py; state and alerts: app/tasks/monitor_tasks.py. -->
+<body data-page="watch/monitors">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../monitors"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Monitors</h1>
+        <div class="meta-row">
+          <span class="tag t-sky">Watch</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors change monitors</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A monitor runs one of your tests on a timer, for example every five minutes,
+            against the live site. This page shows whether each monitor is up or down, its
+            recent checks and its uptime, and links to the run behind every check.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Monitors answer <strong>"Is the live site working right now, and has it been
+          working?"</strong> Because every check is a real test (open the page, sign in, add an
+          item…), a monitor notices a broken page or a failing sign-in, not only a server that
+          doesn't answer. When a monitor goes down, TraceIQ can tell your team in Slack, Teams or
+          by email, and page whoever is on call.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Operations and on-call</h4><p>See at a glance what is down, since when, and open the failing check.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Tell an environment problem from a real bug: if the monitor was down too, the failed runs were probably the site, not the code.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Follow uptime over the last day and week, and share a public status page with customers.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Watch → Monitors</strong>.
+          The page's own heading says <strong>Watch</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the monitors of the project selected at the top of the sidebar. The
+          list is on the left; the monitor you pick is shown in detail on the right. The numbers
+          on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/watch/monitors/page-annotated.png" alt="The Monitors page with seven numbered parts: 1 the header with Refresh and New monitor, 2 the list of monitors, 3 the public status page card, 4 the recent checks bars, 5 the four numbers, 6 what this means, 7 the evidence list of checks" loading="lazy" width="1440" height="1240"></div>
+          <figcaption>The Monitors page for the demo's Public API project, which has one monitor. It is paused, so it no longer checks. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="header" data-toc="① The header">The header</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/header.png" alt="The heading Watch, the line 1 monitor · 0 down · refreshes every 30 seconds, and the buttons Refresh and New monitor" loading="lazy"></div>
+        </figure>
+        <p>The line under the heading counts the project's monitors and how many are down. The
+          page fetches new checks every 30 seconds by itself; <strong>Refresh</strong> fetches
+          them now. <strong>New monitor</strong> opens the <em>Schedules</em> page, because a
+          monitor is a schedule with monitor mode switched on (see <a href="#how-to">How to set up a monitor</a>).</p>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of monitors">The list of monitors</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/list.png" alt="A box titled Paused with one row: Public API health (demo, paused), 120 checks, last checked, and 100% on the right" loading="lazy"></div>
+        </figure>
+        <p>Monitors are boxed by state, the most urgent first:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Box</th><th>What it holds</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Needs attention</strong></td><td>Monitors that are <span class="pill t-peach">Down</span>.</td></tr>
+              <tr><td><strong>Healthy</strong></td><td>Monitors that are <span class="pill t-mint">Up</span>.</td></tr>
+              <tr><td><strong>No checks yet</strong></td><td>New monitors waiting for their first check, which runs at the schedule's next time.</td></tr>
+              <tr><td><strong>Paused</strong></td><td>Monitors whose schedule is switched off. They record no checks and send no alerts.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each row shows the monitor's name, how many checks it has recorded, when the last one
+          ran, and on the right its uptime over the last 24 hours. Click a row to show it on the
+          right.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="status-page" data-toc="③ Public status page">Public status page</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/status-page.png" alt="The Public status page card: An unauthenticated page built from this project's monitors. It shows names and uptime only. A Create page button" loading="lazy"></div>
+        </figure>
+        <p>A web page anyone with the link can open without signing in, for example your
+          customers. It shows only the names of the project's monitors, whether each is up or
+          down, and their uptime; never addresses, errors or run details.</p>
+        <ul>
+          <li><strong>Create page</strong> makes the page and switches it on. Its address then appears on the card, with <strong>Copy link</strong>.</li>
+          <li><strong>Turn off</strong> / <strong>Turn on</strong> hides or shows it again under the same address.</li>
+          <li><strong>Rotate link</strong> gives the page a new address; the old link stops working.</li>
+        </ul>
+        <p>These buttons save straight away and need the <em>editor</em> role.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="checks" data-toc="④ Recent checks">Recent checks</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/detail-top.png" alt="A grey Paused label, the name Public API health (demo, paused), and the line Schedule #4 · last checked" loading="lazy"></div>
+        </figure>
+        <p>At the top: the monitor's state, its name, its schedule number and when it last
+          checked. A monitor that checks from several regions also shows one label per region,
+          for example <em>eu · down (2 in a row)</em>.</p>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/checks.png" alt="Recent checks, oldest to newest: a row of green bars" loading="lazy"></div>
+        </figure>
+        <p>One bar per check, for the latest 20, oldest on the left.
+          <span class="swatch" style="background:#8FD3B6"></span>Green means the check's test
+          passed; <span class="swatch" style="background:#E0603A"></span>orange means it didn't.
+          Point at a bar to see its time and result.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="numbers" data-toc="⑤ The four numbers">The four numbers</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/stats.png" alt="Four boxes: 24-hour uptime 100%, 7-day uptime 100%, Failures in a row 0, Checks recorded 120" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Number</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>24-hour uptime</strong></td><td>The share of checks in the last 24 hours that passed. "—" when there were none.</td></tr>
+              <tr><td><strong>7-day uptime</strong></td><td>The same over the last 7 days.</td></tr>
+              <tr><td><strong>Failures in a row</strong></td><td>How many of the most recent checks failed one after the other (counted among the latest 20). 0 means the last check passed.</td></tr>
+              <tr><td><strong>Checks recorded</strong></td><td>Every check this monitor has ever recorded.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Uptime counts checks, not minutes: a monitor that checks once an hour and fails once
+          in a day shows about 96%, whatever the outage really lasted.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="meaning" data-toc="⑥ What this means">What this means</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/meaning.png" alt="What this means: Paused. It records no checks and sends no alerts until the schedule is turned back on." loading="lazy"></div>
+        </figure>
+        <p>The state in plain words. For a healthy monitor that was up less than 99% of the last
+          7 days, it says so, because a wobbling site is worth a look before it becomes a
+          release blocker.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="evidence" data-toc="⑦ Evidence">Evidence</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/watch/monitors/evidence.png" alt="A list of five checks, each tagged up, with the result passed and how long ago it ran" loading="lazy"></div>
+        </figure>
+        <p>The 5 most recent checks, each with its result and time. Every check is a run, so
+          <strong>click one</strong> to open its full result: the steps, the error and any
+          screenshots. <strong>Open latest check</strong> does the same for the newest one, and
+          <strong>Edit schedule</strong> opens the Schedules page, where the monitor's timer and
+          regions are changed, and where it can be paused.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/watch/monitors/page.png" width="1280" height="800">
+              <source src="../media/watch/monitors/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Just under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…set up a monitor</h3>
+        <ol class="steps">
+          <li>Create a schedule for the test that checks the live site, on <em>Tests → Schedules</em> (<strong>New monitor</strong> takes you there), and choose how often it runs.</li>
+          <li>Have monitor mode switched on for that schedule. The Schedules page has no switch for it yet, so this is done through TraceIQ's API (a developer or an AI agent can do it), together with how many failed checks in a row count as down (1 unless set) and who gets an email.</li>
+          <li>Come back here. The monitor waits under <strong>No checks yet</strong> until its first check.</li>
+        </ol>
+        <h3>…find out why a monitor is down</h3>
+        <ol class="steps">
+          <li>Click the monitor in <strong>Needs attention</strong>.</li>
+          <li>Look at the bars: one orange bar at the end is a fresh problem; a long orange run means it has been down for a while.</li>
+          <li>Press <strong>Open latest check</strong> and read the failing step and its error.</li>
+        </ol>
+        <h3>…give customers a status page</h3>
+        <ol class="steps">
+          <li>On the <strong>Public status page</strong> card, press <strong>Create page</strong>.</li>
+          <li>Press <strong>Copy link</strong> and share it.</li>
+          <li>If the link ends up somewhere it shouldn't, press <strong>Rotate link</strong> and share the new one.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>When a monitor counts as down.</strong> A check is up only when its test <em>passed</em>. The monitor turns Down once the number of failed checks in a row reaches the schedule's threshold; below that it keeps its previous state. A check that ran out of time counts as failed; a cancelled one doesn't count at all.</li>
+          <li><strong>Alerts go out on the change, not on every check.</strong> One message when it goes down (to the project's Slack or Teams channel, if notifications are on, and to the monitor's own email list), and one when it recovers, unless recovery alerts are switched off. Paging is set up on the <em>On-call</em> page.</li>
+          <li><strong>Several regions.</strong> A monitor can check from several places at once. Each region keeps its own streak and alerts; the monitor is Down if any region is down.</li>
+          <li><strong>Checks are ordinary runs.</strong> They also appear on the <em>Runs</em> page, started "by schedule".</li>
+          <li><strong>The demo never alerts.</strong> Its monitor is paused and its history was generated; no one is ever notified from a demo workspace.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Creating or changing a monitor, and the status page buttons, need the <em>editor</em> role.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>On-call</h4><p>The next page in this guide: who gets paged when a monitor goes down, and quiet hours for maintenance.</p></div>
+          <div class="mini"><h4>Schedules</h4><p>Where monitors are created and changed: the timer, the threshold, the alert emails and the regions.</p></div>
+          <div class="mini"><h4>SLOs</h4><p>Uptime targets for a monitor and how much "error budget" is left.</p></div>
+          <div class="mini"><h4>Runs</h4><p>Every check's full result, with steps, errors and screenshots.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Monitors page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

@@ -9,9 +9,9 @@ window.DOCS_NAV = [
     pages: [
       { name: 'Overview', slug: 'today/overview', ready: true },
       { name: 'Failure triage', slug: 'today/failure-triage', ready: true },
-      { name: 'Proposals', slug: 'today/proposals' },
-      { name: 'Flaky tests', slug: 'today/flaky-tests' },
-      { name: 'Visual review', slug: 'today/visual-review' },
+      { name: 'Proposals', slug: 'today/proposals', ready: true },
+      { name: 'Flaky tests', slug: 'today/flaky-tests', ready: true },
+      { name: 'Visual review', slug: 'today/visual-review', ready: true },
     ],
   },
   {
@@ -65,15 +65,15 @@ window.DOCS_NAV = [
     name: 'Runs', tone: 't-peach', icon: 'play',
     blurb: 'Every execution of your tests, with step-by-step results, screenshots, videos, logs and AI analysis of failures.',
     pages: [
-      { name: 'Runs', slug: 'runs/runs' },
+      { name: 'Runs', slug: 'runs/runs', ready: true },
     ],
   },
   {
     name: 'Watch', tone: 't-sky', icon: 'radio',
     blurb: 'Keep an eye on live sites: monitors that check them on a timer, and who gets paged when they go down.',
     pages: [
-      { name: 'Monitors', slug: 'watch/monitors' },
-      { name: 'On-call', slug: 'watch/on-call' },
+      { name: 'Monitors', slug: 'watch/monitors', ready: true },
+      { name: 'On-call', slug: 'watch/on-call', ready: true },
     ],
   },
   {

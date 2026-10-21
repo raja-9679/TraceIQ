@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>On-call · TraceIQ Guide</title>
+  <meta name="description" content="The On-call page: paging PagerDuty or Opsgenie when monitors go down, quiet hours for maintenance, the log of paging decisions, and which sites test browsers may reach.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/watch-on-call.spec.ts. Page: frontend/src/pages/OnCall.tsx.
+     API: frontend/src/api/oncall.ts; backend/app/api/paging.py; rules: app/services/paging.py,
+     app/tasks/paging_tasks.py (run failures), app/tasks/monitor_tasks.py (monitors),
+     app/services/network_policy.py + execution-engine/src/core/egress-guard.ts (egress). -->
+<body data-page="watch/on-call">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../on-call"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>On-call</h1>
+        <div class="meta-row">
+          <span class="tag t-sky">Watch</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Project admins can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Who gets woken up, and when not. Here you connect a project to PagerDuty or
+            Opsgenie so that a monitor going down pages whoever is on call, set quiet hours for
+            planned maintenance, see every paging decision TraceIQ made, and limit which
+            websites the project's test browsers may reach.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          On-call answers <strong>"If the live site breaks at 3 a.m., will the right person
+          hear about it, and will nobody be woken for a planned outage?"</strong> A Slack message
+          is easy to miss at night. PagerDuty and Opsgenie are services that phone or text the
+          person on duty. TraceIQ opens an incident there when something breaks and closes it
+          again when it recovers.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Operations</h4><p>Connect the project to the on-call service, and test that the connection works.</p></div>
+          <div class="mini"><h4>Release managers</h4><p>Set a maintenance window for a planned deploy, so nobody is paged for it.</p></div>
+          <div class="mini"><h4>Security and leads</h4><p>Check why someone was, or wasn't, paged, and keep test browsers away from sites they shouldn't touch.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Watch → On-call</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar, in four cards. The
+          numbers on the screenshot match the sections below. The demo workspace has no paging
+          set up (a demo never pages anyone), so its cards are empty.</p>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/page-annotated.png" alt="The On-call page with four numbered cards: 1 Paging channels, 2 Maintenance windows, 3 Recent paging decisions, 4 Worker egress allowlist" loading="lazy" width="1440" height="1400"></div>
+          <figcaption>The On-call page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="channels" data-toc="① Paging channels">Paging channels</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/channels.png" alt="The Paging channels card with an Add channel button and the text No paging channels. Monitors still alert Slack/Teams/email; add PagerDuty or Opsgenie to wake someone up." loading="lazy"></div>
+        </figure>
+        <p>A <strong>channel</strong> is one connection to PagerDuty or Opsgenie. A project can have
+          several, for example one per team. <strong>Add channel</strong> opens this form:</p>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/channel-form.png" alt="The new channel form: Name, Service PagerDuty (Events API v2), Routing key, Severity error, three ticked or unticked boxes, and Add channel and Cancel buttons" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Field</th><th>What to fill in</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Name</strong></td><td>Anything that tells people which channel it is, e.g. "Checkout on-call".</td></tr>
+              <tr><td><strong>Service</strong></td><td>PagerDuty or Opsgenie. For Opsgenie, also choose its <strong>region</strong> (US or EU), the one your Opsgenie account is in.</td></tr>
+              <tr><td><strong>Routing key / API key</strong></td><td>The key from PagerDuty or Opsgenie that lets TraceIQ open incidents. It is stored encrypted and never shown again; when editing, leave it empty to keep it.</td></tr>
+              <tr><td><strong>Severity</strong></td><td>How urgent the incidents are: critical, error, warning or info (in Opsgenie, priority P1 to P4).</td></tr>
+              <tr><td><strong>Page on monitor DOWN</strong></td><td>On by default. Opens an incident when a monitor goes down and closes it when the monitor recovers.</td></tr>
+              <tr><td><strong>Page on failed scheduled / CI runs</strong></td><td>Off by default. Opens an incident when a run started by a schedule, by your build pipeline (CI) or by a webhook fails, and closes it when the next run of the same suite or test passes.</td></tr>
+              <tr><td><strong>Enabled</strong></td><td>Untick to stop a channel paging without deleting it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Once there are channels, a table lists each one: what it pages on, when it last sent
+          something (and the last error, if sending failed), and three buttons.
+          <strong>Test</strong> opens a test incident ("TraceIQ test page — safe to ignore") and
+          closes it again at once, so you know the key works. <strong>Edit</strong> and
+          <strong>Delete</strong> do what they say.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="windows" data-toc="② Maintenance windows">Maintenance windows</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/windows.png" alt="The Maintenance windows card with an Add window button, the note During a window pages are suppressed but still recorded below. Slack, Teams and email alerts are unaffected. and No maintenance windows." loading="lazy"></div>
+        </figure>
+        <p>A <strong>maintenance window</strong> is a time when TraceIQ must not page anyone, such
+          as a planned deploy. During a window, pages are held back but still written to the
+          list below, so you can see what would have happened. Slack, Teams and email alerts
+          still go out.</p>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/window-form.png" alt="The new window form: Name, Type One-off, Enabled, Starts and Ends in your local time, Save window and Cancel" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>One-off</strong>: a start and an end, typed in your own local time.</li>
+          <li><strong>Weekly recurring</strong>: the days of the week, a from and until time, and a time zone (for example <code>Europe/Berlin</code>; it starts as your browser's). An end earlier than the start runs past midnight, e.g. Friday 22:00 to Saturday 06:00.</li>
+          <li>A window that is in force right now is marked <strong>active now</strong>.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="events" data-toc="③ Recent paging decisions">Recent paging decisions</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/events.png" alt="The Recent paging decisions card with the text Nothing paged yet." loading="lazy"></div>
+        </figure>
+        <p>The 50 newest decisions, one row per channel, newest first:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>When</strong></td><td>The date and time, in your local time.</td></tr>
+              <tr><td><strong>Source</strong></td><td><em>monitor</em> or <em>run</em>, with the run number.</td></tr>
+              <tr><td><strong>Action</strong></td><td><em>trigger</em> (open an incident) or <em>resolve</em> (close it).</td></tr>
+              <tr><td><strong>Dedup key</strong></td><td>The name the incident goes by in PagerDuty or Opsgenie. A monitor that stays down keeps the same key, so it adds to one incident instead of opening a new one each time.</td></tr>
+              <tr><td><strong>Outcome</strong></td><td><strong>sent</strong>, <strong>suppressed</strong> (held back by a maintenance window, which is named), or <strong>failed</strong> (with the reason, e.g. a wrong key).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="egress" data-toc="④ Worker egress allowlist">Worker egress allowlist</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/watch/on-call/egress.png" alt="The Worker egress allowlist card: an explanation, the boxes Enforce for this project and Allow private / internal addresses, an Allowed hosts box, a Save egress policy button, and on the right Effective at dispatch: Not enforced — workers behave as before." loading="lazy"></div>
+        </figure>
+        <p>This card is about the <em>test browsers</em>, not about paging. When it is
+          enforced, the browser that runs this project's tests may only open the listed websites
+          (and their sub-addresses: <code>example.com</code> also allows <code>shop.example.com</code>).
+          Anything else is blocked, and shows up as a blocked request in the run's network
+          details. This keeps tests from reaching, for example, a live payment provider.</p>
+        <ul>
+          <li><strong>Enforce for this project</strong> switches the list on.</li>
+          <li><strong>Allow private / internal addresses</strong> lets tests reach machines inside your own network. A server administrator can forbid that for everyone; the right-hand side then says it is capped.</li>
+          <li><strong>Allowed hosts</strong>: one website per line.</li>
+          <li><strong>Effective at dispatch</strong>, on the right, shows what the next run will actually use. The address of the environment a test runs against is always allowed, and the special addresses cloud servers use for their own settings are always blocked. A server administrator can also enforce the list for every project.</li>
+        </ul>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Enforced with no hosts blocks everything</strong>
+            <p>If the list is enforced and empty (apart from the environment's own address), every
+            other request of the test browser is blocked. Live connections such as WebSockets are
+            not checked by the list.</p></div>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/watch/on-call/page.png" width="1280" height="800">
+              <source src="../media/watch/on-call/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…page the on-call person when a monitor goes down</h3>
+        <ol class="steps">
+          <li>In PagerDuty (or Opsgenie), create an integration for TraceIQ and copy its routing key (or API key).</li>
+          <li>Here, press <strong>Add channel</strong>, give it a name, choose the service and paste the key. Leave <strong>Page on monitor DOWN</strong> ticked.</li>
+          <li>Press <strong>Add channel</strong>, then <strong>Test</strong> on its row. A test incident should appear and close in PagerDuty or Opsgenie.</li>
+        </ol>
+        <h3>…stop pages during a planned deploy</h3>
+        <ol class="steps">
+          <li>Press <strong>Add window</strong> and give it a name, e.g. "Release 4.2".</li>
+          <li>Keep <strong>One-off</strong> and type the start and end in your own time. For a regular slot, choose <strong>Weekly recurring</strong> instead.</li>
+          <li>Press <strong>Save window</strong>. During it, decisions show as <em>suppressed</em> in the list below.</li>
+        </ol>
+        <h3>…find out why someone was, or wasn't, paged</h3>
+        <ol class="steps">
+          <li>Look at <strong>Recent paging decisions</strong> for the time in question.</li>
+          <li><em>suppressed</em> names the maintenance window that held it back; <em>failed</em> gives the error from PagerDuty or Opsgenie.</li>
+          <li>No row at all means nothing asked to page: check that the channel is enabled and set to page on monitors or runs.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Adding, editing, testing and deleting channels and windows, and saving the egress list, need the project's <em>admin</em> role (editor is not enough), because they decide who is woken up and what tests can reach. Every change is written to the audit log.</li>
+          <li><strong>Which runs page.</strong> Only runs started by a schedule, by CI or by a webhook. Runs started by a person, by an AI agent or on a developer's own computer never page; nor does a cancelled run. A run that hits TraceIQ's time limit pages like a failure. A monitor's checks page through the monitor setting, not this one.</li>
+          <li><strong>Recovery closes the same incident.</strong> When the monitor recovers, or the next run passes, TraceIQ closes exactly the incident it opened. If the page was held back by a maintenance window, nothing is closed, because nothing was opened.</li>
+          <li><strong>Pages go out on the change.</strong> A monitor pages once when it goes down, not on every failed check.</li>
+          <li><strong>Keys stay secret.</strong> A saved key is never shown again or written to the decision list.</li>
+          <li><strong>It updates by itself.</strong> The decisions refresh every 30 seconds and the windows every minute.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Monitors</h4><p>The tests on a timer whose ups and downs page the on-call person.</p></div>
+          <div class="mini"><h4>Scans &amp; findings</h4><p>The next part of this guide: security scans of your app and what they found.</p></div>
+          <div class="mini"><h4>Schedules</h4><p>The timers behind monitors and scheduled runs.</p></div>
+          <div class="mini"><h4>Audit log</h4><p>Who changed a channel, a window or the egress list, and when.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the On-call page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

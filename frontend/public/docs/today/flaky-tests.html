@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flaky tests · TraceIQ Guide</title>
+  <meta name="description" content="The Flaky tests page: what a flake score is, who owns a flaky test, and how quarantine takes a test out of runs for a while.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/today-flaky-tests.spec.ts. Page: frontend/src/pages/FlakyTests.tsx
+     (+ components/flakes/FlakeControls.tsx, flakeHelpers.ts). API: frontend/src/api/flakes.ts;
+     backend/app/api/analytics.py (project_flakiness), backend/app/api/flake_records.py;
+     rules: app/services/flake_policy.py; scoring: app/tasks/result_aggregator.py (_update_flake_scores);
+     skipping at dispatch: app/worker.py (_filter_quarantined). -->
+<body data-page="today/flaky-tests">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../flaky-tests"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Flaky tests</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Today</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A flaky test passes one time and fails the next, without anything having changed.
+            This page scores every test on how often that happens, names who should fix it, and
+            lets you <strong>quarantine</strong> one: take it out of runs for a set number of days
+            so it stops turning your results red.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Flaky tests answers <strong>"Which tests can't I trust, and what are we doing about
+          them?"</strong> A flaky test is worse than useless: when it fails, people learn to
+          shrug, and then they shrug at a real failure too. Here you see which tests flip between
+          pass and fail, decide whether to keep them in runs, and give each one an owner.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Find the tests that fail for no reason, and quarantine the worst while they are being fixed.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See the flaky tests they own and the last error, which usually points at a timing or test-data problem.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Check that every quarantined test has an owner, a reason and an end date, so nothing stays hidden for ever.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Today → Flaky tests</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar. The tests are listed on
+          the left; the one you pick is shown in detail on the right. The numbers on the
+          screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/today/flaky-tests/page-annotated.png" alt="The Flaky tests page with seven numbered parts: 1 the summary line, 2 the list of tests, 3 the flake score bar, 4 runs sampled and recent failures, 5 the owner, 6 what this means, 7 the Quarantine button" loading="lazy" width="1440" height="1000"></div>
+          <figcaption>The Flaky tests page for the demo's web project, which has one flaky test. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="summary" data-toc="① The summary line">The summary line</h2></div>
+        <p>Under the heading, for example <em>"1 test pass and fail under the same conditions · 0
+          quarantined"</em>: how many tests are in the list, and how many of them are quarantined
+          right now.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of tests">The list of tests</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/list.png" alt="A box titled Still in runs with one row: Add a todo, 6 recent failures, 60 runs sampled, Owner: Alex Morgan, a yellow bar and 40%" loading="lazy"></div>
+        </figure>
+        <p>Tests are boxed by what is happening to them, highest score first in each box:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Box</th><th>What it holds</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Needs a decision</strong></td><td>Tests whose quarantine has ended. They <em>run again</em>, but someone should either release them for good or quarantine them again. Shown first for that reason.</td></tr>
+              <tr><td><strong>Still in runs</strong></td><td>Tests that are not quarantined and run normally.</td></tr>
+              <tr><td><strong>Quarantined</strong></td><td>Tests that are being skipped right now.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each row shows the test's name, its failures in the last 30 days, how many results its
+          score is based on, its owner (or "Unowned"), a small score bar, and the score itself on
+          the right. <strong>Click a row</strong> to show it on the right; until you do, the first
+          one is shown.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="score" data-toc="③ The flake score">The flake score</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/score.png" alt="Flake score 40%, a bar filled to 40% in yellow, labelled 0% stable on the left and 100% pure flake on the right" loading="lazy"></div>
+        </figure>
+        <p>How often the test's result <strong>flipped</strong> between pass and fail over its
+          most recent results. TraceIQ looks at the last 20 results of the test (in this project),
+          counts how many times the result changed from one to the next, and divides by the
+          number of chances it had to change.</p>
+        <ul>
+          <li>Passed every time: <strong>0%</strong>. Failed every time: also <strong>0%</strong>. A test that is always red is broken, not flaky.</li>
+          <li>Pass, fail, pass, fail…: <strong>100%</strong>.</li>
+          <li>Cancelled and timed-out runs, failures caused by the test machine itself (for example a browser crash), and TraceIQ's own check runs for a <em>Proposals</em> fix don't count either way.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Bar colour</th><th>Score</th><th>What it says</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#8FD3B6"></span>Green</td><td>below 33%</td><td>Mostly stable.</td></tr>
+              <tr><td><span class="swatch" style="background:#F2C94C"></span>Yellow</td><td>33% to 65%</td><td>Sometimes fails for no reason. Keep an eye on it.</td></tr>
+              <tr><td><span class="swatch" style="background:#E0603A"></span>Orange</td><td>66% and above</td><td>Its result tells you little. Quarantine it and fix it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The score is recalculated each time a run that includes the test finishes.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="facts" data-toc="④ Runs sampled, recent failures">Runs sampled and recent failures</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/facts.png" alt="Two boxes: Runs sampled 60, Recent failures 6" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Fact</th><th>What it tells you</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Runs sampled</strong></td><td>How many results the score is based on (at most the last 20 in a real project; the demo's made-up history says 60). With only a handful, the score is a rough guess.</td></tr>
+              <tr><td><strong>Recent failures</strong></td><td>How many times a test with this name ended <em>Failed</em> or <em>Error</em> in this project in the last 30 days.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="owner" data-toc="⑤ The owner">The owner</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/owner.png" alt="Owner: a menu showing Alex Morgan, with the note Who fixes it. Stays with the test after a release." loading="lazy"></div>
+        </figure>
+        <p>The person who will fix the test. Pick someone from the menu (or <em>Unowned</em>);
+          the change is saved straight away and written to the audit log. The menu lists the
+          workspace's members who can edit this project, because only they could fix it. The
+          owner stays with the test after its quarantine ends.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="meaning" data-toc="⑥ What this means">What this means, and the last failure</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/meaning.png" alt="What this means: This test sometimes fails for no reason the code explains. Keep an eye on it; quarantine it if it starts blocking releases." loading="lazy"></div>
+        </figure>
+        <p><strong>What this means</strong> puts the score, or the quarantine, into plain words
+          and suggests what to do. Below it, <strong>Last failure</strong> is the error message
+          from the most recent failure among the results the score was based on.</p>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/last-failure.png" alt="Last failure: page.waitForSelector: Timeout 5000ms exceeded. Call log: waiting for locator('#todo-list li') to be visible" loading="lazy"></div>
+        </figure>
+        <p>In the demo the test waited 5 seconds for the new item to appear in the list. A
+          wait that is sometimes too short is the most common cause of a flaky test.</p>
+
+        <div class="part"><span class="num">7</span><h2 id="quarantine" data-toc="⑦ Quarantine and release">Quarantine and release</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/actions.png" alt="A Quarantine button, with the note A quarantine needs a reason and ends on its own (14 days by default, at most 90)" loading="lazy"></div>
+        </figure>
+        <p>A <strong>quarantined</strong> test is left out of every run while the quarantine
+          lasts, so its random failures stop blocking your results. It is not deleted, and its
+          steps don't change.</p>
+        <ul>
+          <li><strong>Quarantine</strong> opens a short form: a <strong>reason</strong> (required), the number of <strong>days</strong> (1 to 90, 14 suggested) and the <strong>owner</strong>. With no owner chosen, the current owner is kept; if there is none, you become the owner.</li>
+          <li><strong>Release back into runs</strong> ends a quarantine early, once the cause is fixed.</li>
+          <li><strong>Quarantine again</strong> appears when a quarantine has ended, for when the test still needs time.</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/quarantine-dialog.png" alt="The Quarantine Add a todo form: Reason (empty, with an example), Days 14, Owner Keep Alex Morgan, and Cancel and Quarantine buttons" loading="lazy"></div>
+          <figcaption>The quarantine form. The Quarantine button stays grey until you type a reason.</figcaption>
+        </figure>
+        <p>Once quarantined, the detail shows <span class="pill t-butter">Quarantined</span> and
+          a line such as <em>"Until 4 Nov 2026 · races the payment mock"</em>. A quarantine that
+          has ended shows <span class="pill t-peach">Quarantine expired</span>; a test that is
+          not quarantined shows <span class="pill t-mint">Still running</span>.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/today/flaky-tests/page.png" width="1280" height="800">
+              <source src="../media/today/flaky-tests/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Just under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…stop a flaky test from blocking runs while it is fixed</h3>
+        <ol class="steps">
+          <li>Click the test in the list and read its <strong>Last failure</strong>.</li>
+          <li>Press <strong>Quarantine</strong>.</li>
+          <li>Write why, for example <em>"waits too short for the list; fix in JIRA-123"</em>, choose how many days, and pick the owner.</li>
+          <li>Press <strong>Quarantine</strong>. The test moves to the Quarantined box and is skipped from the next run on.</li>
+        </ol>
+        <h3>…bring a fixed test back</h3>
+        <ol class="steps">
+          <li>Click the test in the <strong>Quarantined</strong> box.</li>
+          <li>Press <strong>Release back into runs</strong>. It runs again from the next run.</li>
+        </ol>
+        <h3>…deal with a quarantine that has ended</h3>
+        <ol class="steps">
+          <li>Look at the <strong>Needs a decision</strong> box at the top of the list. These tests are already running again.</li>
+          <li>If the cause is fixed, press <strong>Release back into runs</strong> to clear the flag.</li>
+          <li>If not, press <strong>Quarantine again</strong> with a new reason and length.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>TraceIQ quarantines on its own, too.</strong> When a test reaches a score of 40% or more over at least 6 results and isn't quarantined, it is quarantined automatically for 14 days. Its reason then starts with "auto:", for example "auto: flake score 0.45 over 12 runs". An automatic quarantine is lifted by itself if the score drops below 15%; one that a person set never is.</li>
+          <li><strong>An ended quarantine is never renewed by itself.</strong> The test runs again, and only a person can quarantine it again.</li>
+          <li><strong>The list isn't only flaky tests.</strong> Every test that has run gets a score, so in a project with history the list also holds stable tests at 0%, and the summary line counts them too. Look at the score and colour, not just at whether a test is listed.</li>
+          <li><strong>Tests are matched by name.</strong> The score and the failure count follow the test's name within the project; two tests with the same name are counted together.</li>
+          <li><strong>A quarantine shows up elsewhere.</strong> <em>Release readiness</em> lists the active quarantines, with owner and end date, and can be set to refuse a release when too many tests are quarantined or score 40% or more.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Quarantining, releasing and changing the owner need the <em>editor</em> role, and every one of them is written to the audit log.</li>
+          <li><strong>It doesn't update by itself.</strong> It fetches new scores when you come back to its browser tab, or when you reload it.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Visual review</h4><p>The next page in this guide: screenshots that changed since they were last approved.</p></div>
+          <div class="mini"><h4>Flake trends</h4><p>Whether the project is getting more or less flaky over time, and when flaky failures tend to happen.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures grouped by cause. A flaky test's failures show up there too, so check here first.</p></div>
+          <div class="mini"><h4>Release readiness</h4><p>A ready / not-ready verdict that can take quarantined tests into account.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Flaky tests page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
