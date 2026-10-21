@@ -134,7 +134,7 @@ export default function InstanceSettingsSection() {
                 <div className="flex items-center gap-3 text-gray-600">
                     <ShieldAlert className="h-5 w-5 text-amber-500" />
                     {status === 403
-                        ? 'Instance settings can only be managed by a tenant admin.'
+                        ? 'Instance settings can only be managed by the instance admin (being a tenant admin is not enough).'
                         : 'Could not load instance settings.'}
                 </div>
             </CardContent></Card>
