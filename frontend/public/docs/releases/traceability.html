@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Traceability · TraceIQ Guide</title>
+  <meta name="description" content="The Traceability page: which tests check which requirement or ticket, how those tests are doing, and which tests are linked to nothing.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/releases-traceability.spec.ts. Page: frontend/src/pages/Traceability.tsx (API client src/api/traceability.ts).
+     API: backend/app/api/traceability.py (project_requirements, traceability_gaps, add_case_requirement). -->
+<body data-page="releases/traceability">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../traceability"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Traceability</h1>
+        <div class="meta-row">
+          <span class="tag t-mint">Releases</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can add links</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Connects tests to the requirements or tickets they check, such as
+            <code>JIRA-123</code>. For each requirement you see its tests and whether they pass;
+            at the bottom, the tests that aren't connected to anything yet, with a box to connect
+            them.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Traceability answers two questions: <strong>"Which tests prove that this requirement
+          works?"</strong> and <strong>"Which tests don't belong to any requirement?"</strong>
+          The connection between a test and a requirement is called a <em>link</em>. It is just
+          the requirement's reference (its ticket key, or any name you agree on), written next to
+          the test. Requirements don't have to be imported first: typing a reference here is
+          enough.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Link each test to the ticket it checks, and see which tests are still unlinked.</p></div>
+          <div class="mini"><h4>Product owners</h4><p>See, ticket by ticket, whether the tests behind it pass.</p></div>
+          <div class="mini"><h4>Auditors</h4><p>Show that a requirement was tested, and by which tests.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Traceability</strong>.
+          It shows the project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The share of linked tests is at the top, the requirements below it with the selected one
+          on the right, and the unlinked tests at the bottom. The numbers on the screenshot match
+          the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/traceability/page-annotated.png" alt="The Traceability page with four numbered parts: 1 the share of tests linked to a requirement, 2 the list of requirements, 3 the selected requirement, 4 the untraced tests" loading="lazy" width="1440" height="1060"></div>
+          <figcaption>The Traceability page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="share" data-toc="① Tests linked">Tests linked to a requirement</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/traceability/share.png" alt="Tests linked to a requirement: 2 of 5, 40%, with a bar filled to 40%" loading="lazy"></div>
+        </figure>
+        <p>How many of the project's tests have at least one link, out of all its tests, as a
+          number and a percentage. A test with several links counts once.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The requirements">The requirements</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/traceability/list.png" alt="A box headed Passing with two rows: DEMO-101 A user can sign in, 1 test, 1 passing, 0 failing, 0 untested; DEMO-102 A user can add a todo, 1 test, 1 passing" loading="lazy"></div>
+        </figure>
+        <p>One row for every reference that has at least one test linked to it, boxed by status.
+          The boxes come in this order, and inside a box the rows are in order of reference:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Box</th><th>A requirement is here when…</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-peach">Failing</span></td><td>…the newest result of at least one of its tests failed (or ended in error).</td></tr>
+              <tr><td><span class="pill t-butter">Mixed results</span></td><td>…some of its tests passed and the others have never run. None failed.</td></tr>
+              <tr><td><span class="pill t-mint">Passing</span></td><td>…the newest result of every one of its tests passed.</td></tr>
+              <tr><td><span class="pill t-neutral">Not run yet</span></td><td>…none of its tests has run yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Under each reference: its number of tests, and how many are passing, failing and
+          untested. Click a row to show it on the right; until you do, the first one is shown.</p>
+        <p>If no test is linked to anything yet, the box says "No requirements linked yet".</p>
+
+        <div class="part"><span class="num">3</span><h2 id="selected" data-toc="③ The selected requirement">The selected requirement</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/traceability/detail.png" alt="The selected requirement DEMO-101, labelled Passing, titled A user can sign in, with counts Tests 1, Passing 1, Failing 0, Not run yet 0, and Covered by Sign in as alice" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>The label</strong> is its status from the table above.</li>
+          <li><strong>The reference</strong>, and its title if one was saved with the link. When
+            the link carries an address, the reference opens the ticket in a new tab.</li>
+          <li><strong>Tests, Passing, Failing, Not run yet</strong>: the counts behind the status.</li>
+          <li><strong>Covered by</strong>: the names of the linked tests.</li>
+        </ul>
+
+        <div class="part"><span class="num">4</span><h2 id="untraced" data-toc="④ Untraced tests">Untraced tests</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/traceability/untraced.png" alt="Untraced tests · 3: Homepage loads, No serious accessibility violations, Session cookie is HttpOnly, each with a REQ / ticket ref box and a Link button" loading="lazy"></div>
+        </figure>
+        <p>Every test of the project that isn't linked to anything, with the number in the heading.
+          Type a reference in the box next to a test and press <strong>Link</strong>. The test
+          then leaves this list, and the reference appears in ②. Up to 200 tests are listed; the
+          line underneath says how many more there are. When every test is linked, this card
+          disappears.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/releases/traceability/page.png" width="1280" height="800">
+              <source src="../media/releases/traceability/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing is linked in the video.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…link a test to a ticket</h3>
+        <ol class="steps">
+          <li>Find the test under <strong>Untraced tests</strong>.</li>
+          <li>Type the ticket's key exactly as it is written in your tracker, for example <code>DEMO-103</code>.</li>
+          <li>Press <strong>Link</strong>. You need the <em>editor</em> role. A message says "Requirement linked".</li>
+        </ol>
+        <h3>…check that a requirement is tested and working</h3>
+        <ol class="steps">
+          <li>Find its reference in the list. If it isn't there, no test is linked to it.</li>
+          <li>Click it and look at the counts. <em>Failing</em> above zero means at least one of its tests is broken now.</li>
+          <li>Open <strong>Runs</strong> or <strong>Failure triage</strong> to see why.</li>
+        </ol>
+        <h3>…see how well the project is traced</h3>
+        <ol class="steps">
+          <li>Read the percentage at the top.</li>
+          <li>Work down the <strong>Untraced tests</strong> list. Some tests (for example a general "the site loads" check) may not belong to any one ticket, and that's fine.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Results are matched by test name here.</strong> This page takes each test's newest result <em>with the same name</em> in the project, whatever version of the app it ran on. After a test is renamed, it shows as not run until it runs again under its new name. The <em>Requirements</em> and <em>Release readiness</em> pages match results to the test itself instead, so their numbers can differ.</li>
+          <li><strong>The reference must match exactly.</strong> For an imported ticket to count a link on the <em>Requirements</em> page, the reference must be written the same way as its key. <code>demo-101</code> and <code>DEMO-101</code> are two different references.</li>
+          <li><strong>Links can't be removed from this page.</strong> There is no button for it; a link can only be removed through TraceIQ's API.</li>
+          <li><strong>Other ways links are made.</strong> Accepting a test that was generated from an imported requirement links it automatically.</li>
+          <li><strong>It doesn't update by itself.</strong> Come back to the browser tab or reload to see newer results.</li>
+          <li><strong>Check runs don't count.</strong> The runs TraceIQ makes to check a suggested fix are left out.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Incidents</h4><p>The next page in this guide: production problems, recurring ones, and the bugs your tests let through.</p></div>
+          <div class="mini"><h4>Requirements</h4><p>Import tickets from Jira or Linear, with their acceptance criteria.</p></div>
+          <div class="mini"><h4>Release readiness</h4><p>The linked requirements, judged on one version of your app.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where the tests themselves are written and organised.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Traceability page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

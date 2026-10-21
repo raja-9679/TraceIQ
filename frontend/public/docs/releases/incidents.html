@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Incidents · TraceIQ Guide</title>
+  <meta name="description" content="The Incidents page: production incidents, recurrences, regression tests suggested for them, and the escaped-defect count.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/releases-incidents.spec.ts. Page: frontend/src/pages/Incidents.tsx (API client src/api/incidents.ts).
+     API: backend/app/api/incidents.py (ingest, webhook, escaped report); matching + fingerprints: app/services/incidents.py;
+     proposals: app/services/generation_proposals.py. -->
+<body data-page="releases/incidents">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../incidents"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Incidents</h1>
+        <div class="meta-row">
+          <span class="tag t-mint">Releases</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can record and change incidents</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A list of the problems that reached your live site. For each one, TraceIQ notices when
+            the same problem happened before, suggests a test that would catch it next time, and
+            lets you record whether a test should have caught it. That last part gives the
+            <em>escaped defects</em> count at the top.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          An <em>incident</em> is something going wrong in production: an outage, an error page,
+          a broken checkout. Incidents answers <strong>"What got past our tests, and are we making
+          sure it can't happen again?"</strong> Incidents can be typed in by hand or sent in
+          automatically by a paging tool such as PagerDuty or Opsgenie.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>On-call and support</h4><p>Record an incident and see straight away whether it has happened before.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Get a suggested test for each incident, so the same bug is caught before the next release.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Track escaped defects over time, and how often a test was added afterwards.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Incidents</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo projects have no incidents yet, so the list is empty in these pictures; the
+          sections below describe what appears once there are some. The numbers on the screenshot
+          match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/page-annotated.png" alt="The Incidents page with four numbered parts: 1 the Project menu, 2 the four escaped-defect tiles, 3 the filter and action buttons, 4 the list of incidents, here empty, 5 the Webhook setup button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Incidents page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="project" data-toc="① Project">Project</h2></div>
+        <p>The project whose incidents are shown. This is the same choice as the project picker at
+          the top of the sidebar: changing it here changes it for the whole app.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="tiles" data-toc="② Escaped defects">Escaped defects</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/tiles.png" alt="Four tiles: Escaped defects (180d) 0, Test added afterwards —, Missed by an existing test 0, No test existed 0" loading="lazy"></div>
+        </figure>
+        <p>An <em>escaped defect</em> is an incident that someone has marked as a bug the tests
+          should have caught (see <a href="#row">Marking an escaped defect</a>). The tiles count
+          those that <strong>started in the last 180 days</strong>:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Tile</th><th>What it counts</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Escaped defects (180d)</strong></td><td>All incidents marked as escaped defects.</td></tr>
+              <tr><td><strong>Test added afterwards</strong></td><td>The share of them that got a new regression test, created after the incident started. Linking a test that already existed doesn't count. Shows "—" while there are none.</td></tr>
+              <tr><td><strong>Missed by an existing test</strong></td><td>A test existed but didn't catch it.</td></tr>
+              <tr><td><strong>No test existed</strong></td><td>Nothing tested that part at all.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Once there are escaped defects, a table under the tiles splits the same numbers by
+          month (the month the incident started).</p>
+
+        <div class="part"><span class="num">3</span><h2 id="toolbar" data-toc="③ Filters and buttons">Filters and buttons</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/toolbar.png" alt="The heading Incidents with filter buttons All, Open, Escaped, and the buttons Webhook setup and New incident" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>All / Open / Escaped</strong>: show every incident, only those with status
+            <em>open</em>, or only escaped defects.</li>
+          <li><strong>Webhook setup</strong> (⑤) shows how a paging tool can send incidents in (see
+            <a href="#webhook">below</a>).</li>
+          <li><strong>New incident</strong> opens a form to record one by hand.</li>
+        </ul>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/new-incident.png" alt="The New incident form, showing example text in grey in each empty field: Title, Severity (high), Service, Affected URL, Incident link, Commit, Branch, Release, a ticked box Propose a regression test, Into suite, and the buttons Record incident and Cancel" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Field</th><th>What to enter</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Title</strong></td><td>What went wrong, in a line. The only required field.</td></tr>
+              <tr><td><strong>Severity</strong></td><td>critical, high (chosen at first), medium or low.</td></tr>
+              <tr><td><strong>Service</strong></td><td>The part of the system affected, for example <code>checkout-api</code>. Used to recognise repeats.</td></tr>
+              <tr><td><strong>Affected URL</strong></td><td>The page or address that failed. Used to find the test that covers it, and as the starting page of the suggested test.</td></tr>
+              <tr><td><strong>Incident link, Commit, Branch, Release</strong></td><td>Optional: where the incident is described, and which version of the app was live.</td></tr>
+              <tr><td><strong>Propose a regression test</strong> / <strong>Into suite</strong></td><td>On at first: TraceIQ drafts a test meant to catch this problem, in the suite you pick (or, if you don't, the suite of the matching test, else the project's first suite).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Press <strong>Record incident</strong> to save it, or <strong>Cancel</strong>. A message
+          says whether it is a repeat ("Recorded — recurrence #2") and the number of the suggested
+          test.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="row" data-toc="④ The incidents">The incidents</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/empty.png" alt="An empty box saying No incidents yet." loading="lazy"></div>
+        </figure>
+        <p>Up to 200 incidents, newest first (by when they started). Each row shows the severity,
+          the title, then the service, where it came from (<em>manual</em>, <em>pagerduty</em>,
+          <em>opsgenie</em> or <em>generic</em>), when it started, its status and the state of its
+          regression test. On the right, a <strong>Recurrence #N</strong> label when the same
+          problem happened before, and <strong>Escaped</strong> when it is marked as an escaped
+          defect. Click a row to open it:</p>
+        <ul>
+          <li><strong>Details</strong>: the incident link, the affected address, the release and
+            commit, the previous occurrence (<em>incident #12</em>), what TraceIQ matched it to (a
+            test and/or a failure group, with the reason), and its regression test or suggestion
+            (which links to <em>Proposals</em>).</li>
+          <li><strong>Status</strong>: open, acknowledged or resolved. Changing it saves straight
+            away; <em>resolved</em> also records the time it was resolved.</li>
+          <li><strong>Propose regression test</strong> asks for a suggested test again (only when
+            there is no regression test and no suggestion waiting for review).</li>
+          <li><strong>Delete</strong> removes the incident after you confirm.</li>
+          <li><strong>Marking an escaped defect</strong>: under <em>Escaped defect — should have
+            been caught by</em>, choose the test that should have caught it, or <strong>No test
+            existed</strong>; add a note on why it slipped through, and press <strong>Mark
+            escaped</strong>. <strong>Clear</strong> removes the mark.</li>
+        </ul>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">How TraceIQ spots a repeat, and the related test</strong>
+            <ul>
+              <li><strong>A repeat</strong> has the same service and the same title once numbers,
+              IDs and times are taken out. "Checkout API 503 for 12% of requests at 10:42" and
+              "Checkout API 502 for 40% of requests" are the same problem. The new incident is
+              labelled <em>Recurrence #N</em> and points to the previous one.</li>
+              <li><strong>The related test</strong> is one that opens the affected address (the
+              best evidence), or else one whose name shares at least two significant words with
+              the title. A failure group from <em>Failure triage</em> is matched by shared words
+              too. These are guesses, shown with their reason.</li>
+            </ul></div>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="webhook" data-toc="⑤ Webhook setup">Webhook setup</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/webhook.png" alt="The Inbound webhook panel: the address to POST to with a Copy URL button, the three ways to authenticate, and a Create webhook secret button" loading="lazy"></div>
+        </figure>
+        <p>A <em>webhook</em> lets another tool send incidents to TraceIQ as they happen. The panel
+          shows the address to send them to, and how the sender proves it is allowed: a signature
+          made with a shared secret (TraceIQ's own or PagerDuty's format), or, for Opsgenie, which
+          can't sign, the secret itself in a header. TraceIQ recognises plain JSON, PagerDuty and
+          Opsgenie messages by itself.</p>
+        <ul>
+          <li><strong>Create webhook secret</strong> makes the secret and shows it <strong>once</strong>;
+            copy it into your paging tool then. Later the button reads <strong>Rotate
+            secret</strong>, which replaces it (the old one stops working at once).</li>
+          <li>Once there is a secret: <strong>Regression proposals go to</strong> (the suite for
+            suggested tests), <strong>Enabled</strong>, <strong>Delete webhook</strong>, and when
+            the last incident arrived.</li>
+          <li>While there is no secret, or the webhook is switched off, the address answers as if
+            it didn't exist.</li>
+          <li>When the paging tool updates an incident it already sent (acknowledged, resolved),
+            TraceIQ updates the same incident instead of adding a new one.</li>
+        </ul>
+        <p>Seeing this panel needs the <em>editor</em> role; creating, rotating, changing or
+          deleting the webhook needs project <em>admin</em>, and can't be done with an API key.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/releases/incidents/page.png" width="1280" height="800">
+              <source src="../media/releases/incidents/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing is saved in the video.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…record an incident by hand</h3>
+        <ol class="steps">
+          <li>Press <strong>New incident</strong>. (You need the <em>editor</em> role.)</li>
+          <li>Type the title, pick the severity, and fill in the service and affected address if you know them.</li>
+          <li>Leave <strong>Propose a regression test</strong> ticked, choose the suite, and press <strong>Record incident</strong>.</li>
+          <li>Review the suggested test on <strong>Today → Proposals</strong>.</li>
+        </ol>
+        <h3>…send incidents in from PagerDuty or Opsgenie</h3>
+        <ol class="steps">
+          <li>Ask a project <em>admin</em> to open <strong>Webhook setup</strong> and press <strong>Create webhook secret</strong>.</li>
+          <li>Copy the address and the secret into the paging tool's webhook settings (the secret is shown only once).</li>
+          <li>Choose where suggested tests should go under <strong>Regression proposals go to</strong>. New incidents then arrive by themselves, each with a suggested test.</li>
+        </ol>
+        <h3>…record that a test missed a bug</h3>
+        <ol class="steps">
+          <li>Open the incident.</li>
+          <li>Under <strong>Escaped defect</strong>, choose the test that should have caught it, or <strong>No test existed</strong>.</li>
+          <li>Add a short note and press <strong>Mark escaped</strong>. The tiles at the top update.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Suggested tests are only suggestions.</strong> They wait on <em>Proposals</em> until a person accepts them (a workspace can let confident ones through automatically; an incomplete draft never). Without an AI set up, the suggestion is an empty outline to fill in.</li>
+          <li><strong>A repeat is recognised from the incident as it arrived.</strong> Editing an incident later doesn't change what it is matched with.</li>
+          <li><strong>Incidents feed the delivery report.</strong> The <em>Delivery (DORA)</em> report uses them for "change failure rate" and "time to restore".</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Recording, editing, marking and deleting need the <em>editor</em> role. Every change is written to the audit log.</li>
+          <li><strong>Times are shown in your own time zone.</strong></li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Proposals</h4><p>Where suggested regression tests wait for review.</p></div>
+          <div class="mini"><h4>Delivery (DORA)</h4><p>Change failure rate and time to restore, worked out from deployments and incidents.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures grouped by cause; an incident can be matched to one of these groups.</p></div>
+          <div class="mini"><h4>On-call</h4><p>Who gets paged when a monitor finds the live site down.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Incidents page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

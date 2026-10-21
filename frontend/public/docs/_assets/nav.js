@@ -18,12 +18,12 @@ window.DOCS_NAV = [
     name: 'Releases', tone: 't-mint', icon: 'flag',
     blurb: 'Is this version ready to ship? Quality rules, a ready / not-ready verdict, human sign-off, and the link from requirements to tests to incidents.',
     pages: [
-      { name: 'Quality gate', slug: 'releases/quality-gate' },
-      { name: 'Release readiness', slug: 'releases/release-readiness' },
-      { name: 'Release sign-off', slug: 'releases/release-signoff' },
-      { name: 'Requirements', slug: 'releases/requirements' },
-      { name: 'Traceability', slug: 'releases/traceability' },
-      { name: 'Incidents', slug: 'releases/incidents' },
+      { name: 'Quality gate', slug: 'releases/quality-gate', ready: true },
+      { name: 'Release readiness', slug: 'releases/release-readiness', ready: true },
+      { name: 'Release sign-off', slug: 'releases/release-signoff', ready: true },
+      { name: 'Requirements', slug: 'releases/requirements', ready: true },
+      { name: 'Traceability', slug: 'releases/traceability', ready: true },
+      { name: 'Incidents', slug: 'releases/incidents', ready: true },
     ],
   },
   {

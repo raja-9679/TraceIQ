@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quality gate · TraceIQ Guide</title>
+  <meta name="description" content="The Quality gate page: the ready / not-ready verdict for a project, the checks behind it, the rules, and the project's health over the last days.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/releases-quality-gate.spec.ts. Page: frontend/src/pages/QualityDashboard.tsx (API client src/api/quality.ts).
+     API: backend/app/api/endpoints/quality.py (gate, policy, health, CI settings); opt-in checks: app/services/release_readiness.py;
+     rule versions: app/services/gate_policy_versions.py. -->
+<body data-page="releases/quality-gate">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../quality"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Quality gate</h1>
+        <div class="meta-row">
+          <span class="tag t-mint">Releases</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change the rules</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A short list of rules a release has to meet, such as "every test passed" and "no
+            serious security problem". The page checks the newest run against those rules and
+            says <strong>Ready to ship</strong> or <strong>Not ready</strong>, with the reason for
+            each rule.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          The quality gate answers <strong>"Can we release this, by the rules we agreed?"</strong>
+          Instead of everyone judging the test results in their own way, the team writes the rules
+          down once (for example: a 100% pass rate, no high-severity security finding, all
+          monitors up), and TraceIQ applies them the same way every time. The same verdict can
+          also stop an automatic build from going out, when your build system asks TraceIQ.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Release managers</h4><p>See in one word whether the project meets the release rules, and which rule is in the way.</p></div>
+          <div class="mini"><h4>Testers and developers</h4><p>Find out which check is blocking and jump to the runs, failures or findings behind it.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Decide the rules for the project, and see when they were changed.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Quality gate</strong>.
+          The page's own heading says <strong>Releases</strong>. It shows the project selected at
+          the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The verdict and its checks are at the top; the project's general health is underneath;
+          the rules open from a button in the heading. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/quality-gate/page-annotated.png" alt="The Quality gate page with five numbered parts: 1 the heading with the verdict and buttons, 2 the summary and list of checks, 3 the selected check, 4 the project health tiles, 5 the daily pass-rate chart and external CI results, 6 the Gate rules button" loading="lazy" width="1440" height="1100"></div>
+          <figcaption>The Quality gate page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="verdict" data-toc="① The verdict">The verdict</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/quality-gate/header.png" alt="The heading Releases with a green label Ready to ship, the line Gate evaluated on run #484 · rules v1, and two buttons, Gate rules and Re-evaluate" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>The label next to the heading</strong> is the verdict:
+            <span class="pill t-mint">Ready to ship</span> when every check passes, or
+            <span class="pill t-peach">Not ready · 2 blockers</span> with the number of checks that fail.</li>
+          <li><strong>The line underneath</strong> says what was judged: the run number (for
+            example <em>run #484</em>), its branch and commit if the run recorded them, and the
+            version of the rules used (<em>rules v1</em>). If runs were left out because they were
+            cancelled or timed out, it says how many.</li>
+          <li><strong>Gate rules</strong> (⑥) opens the rules below the heading (see
+            <a href="#rules">Gate rules</a>). Press it again to close them.</li>
+          <li><strong>Re-evaluate</strong> checks the gate again, for example after a new run has finished.</li>
+        </ul>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">This page judges one run: the newest finished one</strong>
+            <p>On this page, the gate looks only at the <strong>most recent run that finished</strong>
+            in the project (passed, failed or error), whichever suite it was. So the pass-rate check
+            is either 100% or 0% here. To judge everything that ran on one version of your app (one
+            <em>commit</em>), use <strong>Release readiness</strong>, or let your build system ask
+            the gate for a commit or a branch: then every finished run on it is counted.</p></div>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="checks" data-toc="② The checks">The checks</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/quality-gate/checks.png" alt="A ring showing 3/3 with the text Every check passes, and a list headed Passing with three rows: Pass rate 100.0%, coverage full suite, High-severity security findings 0" loading="lazy"></div>
+        </figure>
+        <p>The ring counts the checks that pass out of all checks. Below it, the checks are split
+          into <strong>Blocking</strong> (failing, shown first) and <strong>Passing</strong>. Each
+          row shows the check's name and, on the right, the value it found. Click a row to show it
+          in detail on the right.</p>
+        <p>Which checks appear depends on the rules. Three are always there:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Check</th><th>What it looks at</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pass rate</strong></td><td>The share of the judged runs that passed. Runs that were cancelled or timed out have no pass/fail answer and are left out. With no finished run at all, this check fails.</td></tr>
+              <tr><td><strong>coverage</strong></td><td>For information only, it never blocks. <em>full suite</em> means the whole suite ran; <em>targeted — 4 of 30 cases ran</em> means only some tests ran, so a pass says less.</td></tr>
+              <tr><td><strong>High-severity security findings</strong></td><td>Security problems of high severity found <em>in the judged runs</em> by the checks TraceIQ makes on every run's traffic. The rule says how many are allowed (0 by default).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Others appear only when a rule switches them on: medium-severity findings, monitors up,
+          external CI tests, the three performance budgets, and the release-readiness checks
+          (flaky tests, critical tests, how fresh the results are, sign-off, accessibility). The
+          newer checks show their technical name, for example <em>flaky cases</em> or
+          <em>critical passed</em>.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="selected" data-toc="③ The selected check">The selected check</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/quality-gate/detail.png" alt="The selected check Pass rate, labelled Passing: Now 100.0%, Rule at least 100.0%, a box What this check looks at, and an Evidence list with See the evaluated runs and Group the failures" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Passing / Blocking</strong>: whether this check meets its rule.</li>
+          <li><strong>Now</strong> is the value found; <strong>Rule</strong> is what it must be
+            (<code>&gt;=</code> means "at least", <code>&lt;=</code> means "at most").</li>
+          <li><strong>What this check looks at</strong> explains the check in a sentence. Extra
+            detail from the check appears in brackets, such as the names of the monitors that are
+            down or of the tests that failed.</li>
+          <li><strong>Evidence</strong> links to the pages where you can look further: Runs,
+            Failure triage, Security or Monitors. The Runs link opens the full list of runs, not
+            only the judged one.</li>
+        </ul>
+        <p>When the page opens, the first blocking check is shown; if nothing blocks, the first
+          passing one.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="health" data-toc="④ Project health">Project health</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/quality-gate/health.png" alt="Project health with a 7 days menu and five tiles: Pass rate 73.33% (11 of 15 finished runs), Runs 15, Flaky tests 1 (0 quarantined), Monitors down 0 of 0, Security findings 0 high (1 medium, 0 low); below, a daily pass-rate chart and an empty External CI results box" loading="lazy"></div>
+        </figure>
+        <p>The wider picture, separate from the verdict. The menu on the right chooses the period:
+          the last <strong>7</strong>, <strong>14</strong> or <strong>30 days</strong>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pass rate</strong></td><td>Of the runs in the period that finished with a verdict (passed, failed or error), the share that passed.</td></tr>
+              <tr><td><strong>Runs</strong></td><td>Every run started in the period, including ones still running, cancelled or timed out.</td></tr>
+              <tr><td><strong>Flaky tests</strong></td><td>Tests that currently pass and fail without anything changing (a flake score of 0.4 or more). This number is <em>not</em> limited to the period. Underneath: how many are quarantined, that is, left out of runs for the time being.</td></tr>
+              <tr><td><strong>Monitors down</strong></td><td>The project's monitors that are down right now, out of all its monitors.</td></tr>
+              <tr><td><strong>Security findings</strong></td><td>Security findings recorded in the period, by severity, whatever their status (fixed ones included).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="trend" data-toc="⑤ Daily pass rate and CI results">Daily pass rate and CI results</h2></div>
+        <p><strong>Daily pass rate</strong> has one bar for each day in the period on which at least
+          one run finished; days without runs are simply left out. Days are counted in
+          <strong>UTC</strong>. Point at a bar to see its date, pass rate and number of runs. The
+          colours are the same as on Overview:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Bar colour</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#8FD3B6"></span>Green</td><td>90% or more of that day's runs passed.</td></tr>
+              <tr><td><span class="swatch" style="background:#F2C94C"></span>Yellow</td><td>Between 60% and 89% passed.</td></tr>
+              <tr><td><span class="swatch" style="background:#E0603A"></span>Orange</td><td>Less than 60% passed. A day where nothing passed still shows a thin orange stub.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>External CI results</strong> lists the five newest test reports your own build
+          system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each
+          with its number of tests and failures. Until one arrives it says "None yet". These
+          reports count towards the verdict only when the rule <em>Require external CI tests
+          green</em> is on.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="rules" data-toc="⑥ Gate rules">Gate rules</h2></div>
+        <p>Press <strong>Gate rules</strong> in the heading to open the rules. Anyone can read them;
+          only <em>editors</em> can save changes.</p>
+        <figure>
+          <div class="frame small"><img src="../media/releases/quality-gate/rules.png" alt="The Gate rules form: Minimum pass rate 100, Maximum high findings 0, Maximum medium findings blank, checkboxes for monitors and external CI tests, a Release readiness section, a Performance budgets section, and a Save rules button" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:36%">Rule</th><th>What it does (default)</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Minimum pass rate (%)</strong></td><td>The pass rate the judged runs must reach (100).</td></tr>
+              <tr><td><strong>Maximum high findings</strong> / <strong>medium findings</strong></td><td>How many high or medium security findings the judged runs may have (0 high; medium not checked while blank).</td></tr>
+              <tr><td><strong>Require monitors up</strong></td><td>Blocks while any of the project's monitors is down (off).</td></tr>
+              <tr><td><strong>Require external CI tests green</strong></td><td>The newest report from your build system (for the commit being judged, if there is one) must have no failures. With no report at all, it blocks (off).</td></tr>
+              <tr><td><strong>Release readiness</strong> section</td><td>Limits on flaky tests, "every critical test passed", how old the newest passing result may be, an approved sign-off, and no new serious accessibility problems. All off until filled in or ticked; <em>Release readiness</em> and <em>Release sign-off</em> explain them.</td></tr>
+              <tr><td><strong>Performance budgets</strong></td><td>The slowest page-load figure measured in the judged runs (LCP, CLS, TTFB) must stay under the limit. 0 = not checked. If no run measured it, the check passes with "no samples".</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Next to the rules is <strong>CI reporting</strong>, which tells TraceIQ's GitHub Action how
+          to use the gate:</p>
+        <figure>
+          <div class="frame small"><img src="../media/releases/quality-gate/ci.png" alt="CI reporting with three checkboxes: Enabled (off), Enforce the gate (on), Post a PR comment (on), and a Save CI settings button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Enabled</strong> and <strong>Enforce the gate</strong>: a failing gate stops the build only when <em>both</em> are ticked. Enabled is off by default, so out of the box a failing gate is reported but doesn't stop anything.</li>
+          <li><strong>Post a PR comment</strong>: whether the GitHub Action may write its summary as a comment on the pull request.</li>
+        </ul>
+        <p>Below that is <strong>Rule history</strong>:</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/quality-gate/history.png" alt="Rule history with one entry: v1, a date and time, recorded at evaluation, and a short code" loading="lazy"></div>
+        </figure>
+        <p>Every set of rules that has ever judged the project is kept unchanged, numbered v1, v2
+          and so on (the 10 newest are listed). <em>saved by a person</em> means someone changed
+          the rules; <em>recorded at evaluation</em> means TraceIQ stored the rules in force when
+          it first used them. Because each verdict names its version, an old verdict can be
+          explained later with the rules of that day.</p>
+        <p>The panel also holds two project settings that are explained under <em>Project
+          settings</em>: <strong>Data capture and redaction</strong> (what runs may record) and
+          the project's <strong>OpenAPI spec</strong>.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/releases/quality-gate/page.png" width="1280" height="800">
+              <source src="../media/releases/quality-gate/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…find out why the project is not ready</h3>
+        <ol class="steps">
+          <li>Make sure the right project is selected at the top of the sidebar.</li>
+          <li>Look at the <strong>Blocking</strong> list. The first blocking check is already shown on the right.</li>
+          <li>Compare <strong>Now</strong> with <strong>Rule</strong>, and read the detail in brackets.</li>
+          <li>Follow a link under <strong>Evidence</strong> to the runs, failures or findings behind it.</li>
+        </ol>
+        <h3>…change what a release must pass</h3>
+        <ol class="steps">
+          <li>Press <strong>Gate rules</strong>. (You need the <em>editor</em> role to save.)</li>
+          <li>Change the numbers or tick the boxes. Leave a box blank, or a budget at 0, to switch that rule off.</li>
+          <li>Press <strong>Save rules</strong>. The verdict is worked out again straight away, and the change is kept as a new version in <strong>Rule history</strong>.</li>
+        </ol>
+        <h3>…make a failing gate stop your build</h3>
+        <ol class="steps">
+          <li>Press <strong>Gate rules</strong> and find <strong>CI reporting</strong>.</li>
+          <li>Tick <strong>Enabled</strong> and <strong>Enforce the gate</strong>, then press <strong>Save CI settings</strong>.</li>
+          <li>Your build must use TraceIQ's GitHub Action (or call the gate itself). Ask whoever looks after your builds.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>No runs, no release.</strong> If the project has no finished run, the gate is <em>Not ready</em>: TraceIQ can't vouch for something that wasn't tested.</li>
+          <li><strong>Only the security checks on the runs count.</strong> The security rules count findings that TraceIQ's automatic checks found in the judged runs, whatever their status. Findings from separate security scans (on the Security pages) are not part of this count.</li>
+          <li><strong>Cancelled and timed-out runs are ignored</strong>, and so are the check runs TraceIQ makes to test a suggested fix (see <em>Proposals</em>).</li>
+          <li><strong>It doesn't update by itself.</strong> Press <strong>Re-evaluate</strong>, or come back to the browser tab, to see newer results. Changing the period refreshes the health section.</li>
+          <li><strong>Rule changes are recorded.</strong> Besides the Rule history, every change of the rules is written to the audit log with who changed what, from which value to which.</li>
+          <li><strong>One project at a time.</strong> Each project has its own rules. Switch project at the top of the sidebar.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Release readiness</h4><p>The next page in this guide: the same gate for one version (commit) of your app, with the tests, flaky tests and requirements behind it.</p></div>
+          <div class="mini"><h4>Release sign-off</h4><p>A person's approval of a release, which the gate can require.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures grouped by cause, when the pass-rate check is blocking.</p></div>
+          <div class="mini"><h4>Scans &amp; findings</h4><p>Every security finding of the project, with its status and owner.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Quality gate page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

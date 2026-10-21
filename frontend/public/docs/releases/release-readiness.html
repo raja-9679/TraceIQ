@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Release readiness · TraceIQ Guide</title>
+  <meta name="description" content="The Release readiness page: a ready / not ready / insufficient data answer for one commit, with the checks, runs, critical tests, quarantines and requirements behind it.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/releases-release-readiness.spec.ts. Page: frontend/src/pages/ReleaseReadiness.tsx (API client src/api/quality.ts).
+     API: backend/app/api/endpoints/quality.py (release_readiness_view, evaluate_gate_for_runs); logic: app/services/release_readiness.py. -->
+<body data-page="releases/release-readiness">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../release-readiness"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Release readiness</h1>
+        <div class="meta-row">
+          <span class="tag t-mint">Releases</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>One answer for one version of your app: <strong>Ready to release</strong>,
+            <strong>Not ready</strong> or <strong>Insufficient data</strong>. Underneath it, all the
+            evidence the answer is based on: the quality-gate checks, the runs, your critical tests,
+            the tests left out as flaky, and the requirements they cover.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Release readiness answers <strong>"Is <em>this version</em> good enough to release, and
+          what is that based on?"</strong> A version is a <em>commit</em>: a saved state of your
+          app's code, shown as a short code like <code>f4bfd81</code>. Several runs may have tested
+          the same commit (different suites, different browsers). This page puts all of them
+          together and judges them with the project's quality-gate rules, so the answer covers the
+          whole version, not just one run.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Release managers</h4><p>Get a yes or no for the version you are about to release, with the reasons written out.</p></div>
+          <div class="mini"><h4>Testers</h4><p>See which critical tests have, or haven't, passed on that version, and which tests were left out.</p></div>
+          <div class="mini"><h4>Product owners</h4><p>Check that the requirements for the release have passing tests behind them.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Release readiness</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The controls are at the top, the answer below them, and the evidence underneath. The
+          numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/release-readiness/page-annotated.png" alt="The Release readiness page with seven numbered parts: 1 the project, commit and branch controls, 2 the verdict, 3 gate checks, 4 runs considered, 5 critical cases, 6 active quarantines, 7 requirements" loading="lazy" width="1440" height="1380"></div>
+          <figcaption>The Release readiness page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="controls" data-toc="① Choosing what to judge">Choosing what to judge</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/release-readiness/controls.png" alt="A Project menu set to Demo — Todo web app, a Commit menu set to Latest run, a Branch field with the hint e.g. main, and the buttons Use branch and Re-evaluate" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Project</strong> picks the project. This is the same choice as the project
+            picker at the top of the sidebar: changing it here changes it for the whole app.</li>
+          <li><strong>Commit</strong> picks the version to judge. <em>Latest run</em> (the
+            starting point) takes the commit of the newest finished run in the project. The menu
+            also lists the 20 most recent commits that have a finished run, each with its branch
+            and number of runs.</li>
+          <li><strong>Branch (latest commit on it)</strong>: type a branch name, such as
+            <code>main</code>, and press <strong>Use branch</strong> to judge the commit of the
+            newest finished run on that branch.</li>
+          <li><strong>Re-evaluate</strong> works the answer out again, for example after a new run.</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/releases/release-readiness/commit-menu.png" alt="The Commit menu open: Latest run, then commits such as f4bfd81 · main · 1 run(s)" loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">2</span><h2 id="verdict" data-toc="② The answer">The answer</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/release-readiness/verdict-ready.png" alt="A green box: Ready to release, commit f4bfd81, 1 run(s) evaluated, chosen from the latest run; Every gate check passed on the evidence below; all 3 checks passed over 1 run(s)" loading="lazy"></div>
+        </figure>
+        <p>The coloured box gives the answer, the commit it is about, how many runs were judged,
+          and the reasons as a list.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:26%">Answer</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Ready to release</span></td><td>Every quality-gate check passed on the runs of this commit.</td></tr>
+              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>pass_rate: 0.0% (needs &gt;= 100.0%)</em>.</td></tr>
+              <tr><td><span class="pill t-butter">Insufficient data</span></td><td>Nothing failed, but evidence is missing: there is no finished run, or a required check has nothing to judge (a critical test that didn't run on this commit, no sign-off yet, no report from your build system). Missing evidence never counts as a pass.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <div class="frame"><img src="../media/releases/release-readiness/verdict-not-ready.png" alt="A pink box: Not ready, an older commit, 1 run(s) evaluated; At least one gate check failed; pass_rate: 0.0% (needs at least 100.0%)" loading="lazy"></div>
+          <figcaption>An older demo commit whose only run failed. The critical-cases table below shows which test it was.</figcaption>
+        </figure>
+        <p>When the commit was chosen for you (from <em>Latest run</em> or a branch), the line
+          under the answer ends with "chosen from the latest run" or "chosen from the latest run on
+          the branch". If the run it started from recorded no commit, only that one run is judged
+          and the line says "no commit".</p>
+
+        <div class="part"><span class="num">3</span><h2 id="checks" data-toc="③ Gate checks">Gate checks</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/release-readiness/checks.png" alt="Gate checks: pass_rate 100.0% needs at least 100.0%, coverage full suite needs informational, security_high_findings 0 needs at most 0, each with a green tick" loading="lazy"></div>
+        </figure>
+        <p>The checks of the project's <strong>quality gate</strong>, applied to every run in
+          ④. Each line shows the value found, then "needs" and the rule. A green tick means
+          passed, a red cross failed, and an amber dash failed <em>because evidence was
+          missing</em>. A grey line under a check gives detail, such as the names of the tests
+          concerned. The checks appear here under their technical names (<code>pass_rate</code>,
+          <code>critical_passed</code>…); the <em>Quality gate</em> page explains each one.</p>
+        <p>Which checks there are depends on the project's rules, which are set on the
+          <em>Quality gate</em> page under <strong>Gate rules</strong>. Four of them exist for
+          this page in particular and are off until switched on there:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Check</th><th>What it requires</th></tr></thead>
+            <tbody>
+              <tr><td><code>flaky_cases</code></td><td>No more than N flaky tests: tests that are quarantined now, or have a flake score of 0.4 or more.</td></tr>
+              <tr><td><code>critical_passed</code></td><td>Every critical test passed on this commit. If the project has no critical test, this check fails: whoever switched it on expected it to protect something.</td></tr>
+              <tr><td><code>evidence_age</code></td><td>The newest pass of each critical test (of every test, when none is critical) is at most N days old, on any commit. This checks that the evidence is recent, not that this commit passed.</td></tr>
+              <tr><td><code>manual_signoff</code></td><td>The newest release sign-off for this commit is an approval. See <em>Release sign-off</em>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="runs" data-toc="④ Runs considered">Runs considered</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/release-readiness/runs.png" alt="Runs considered: Every finished run on f4bfd81. One row: #484 Web smoke (demo) · chromium, 5/5, a date and time, PASSED" loading="lazy"></div>
+        </figure>
+        <p>Every finished run on the commit (passed, failed or error), newest first: the run
+          number, the suite, the browser, and "targeted" or "case" when only part of the suite ran.
+          On the right: tests passed out of tests run, when it started, and its result. Click a
+          run to open it.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="critical" data-toc="⑤ Critical cases">Critical cases</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/release-readiness/critical.png" alt="Critical cases table with two tests, Homepage loads and Sign in as alice, both PASSED on this commit and as last result, with dates, commit f4bfd81 and last passed time" loading="lazy"></div>
+        </figure>
+        <p>A <em>case</em> is one test. The tests whose priority is set to <strong>critical</strong>
+          are the ones a release depends on, and each gets a row:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>On this commit</strong></td><td><span class="pill t-mint">passed</span>, <span class="pill t-peach">failed</span> or <span class="pill t-butter">no result</span> (it didn't run on this commit). A failure names the run and, if known, the browser or device.</td></tr>
+              <tr><td><strong>Last result</strong>, <strong>When</strong>, <strong>Commit</strong></td><td>The newest result of the test anywhere in the project, whatever the commit. Useful when it didn't run on this one.</td></tr>
+              <tr><td><strong>Last passed</strong></td><td>When it last passed, on any commit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <div class="frame"><img src="../media/releases/release-readiness/critical-not-ready.png" alt="Critical cases on the older commit: Homepage loads is FAILED on this commit (failed in run 420, chromium) although its last result anywhere is PASSED" loading="lazy"></div>
+          <figcaption>On that older commit a critical test failed; its newest result anywhere has since passed.</figcaption>
+        </figure>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">How "passed on this commit" is decided</strong>
+            <ul>
+              <li>Results are matched to the test itself, never by its name, so renaming a test doesn't lose its history.</li>
+              <li>Each browser and device is judged separately, using its newest result. A green re-run replaces an earlier red one, but a pass in Chrome doesn't hide a failure in Firefox.</li>
+            </ul>
+            <p>"Critical" is matched without regard to capitals or spaces. For manual tests, the
+            priority is chosen in the manual test editor. Automated tests get theirs when they are
+            imported (suite import, Git sync) or created by an AI assistant; the editor for
+            automated tests has no priority field yet.</p></div>
+        </div>
+
+        <div class="part"><span class="num">6</span><h2 id="quarantines" data-toc="⑥ Active quarantines">Active quarantines</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/release-readiness/quarantines.png" alt="Active quarantines: No active quarantines, and a link Manage flaky tests" loading="lazy"></div>
+        </figure>
+        <p>Tests that are <em>quarantined</em> right now: flaky tests that TraceIQ leaves out of
+          runs for a while. Because they didn't run, they are no evidence for this release. Each
+          one shows its flake score, whether it was quarantined automatically or by a person, its
+          owner, when the quarantine ends, and the reason given. <strong>Manage flaky tests</strong>
+          opens the <em>Flaky tests</em> page. In the demo there are none, so the box says
+          "No active quarantines".</p>
+
+        <div class="part"><span class="num">7</span><h2 id="requirements" data-toc="⑦ Requirements">Requirements</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/releases/release-readiness/requirements.png" alt="Requirements: DEMO-101 A user can sign in, PASSING (Sign in as alice: passed); DEMO-102 A user can add a todo, PASSING (Add a todo: passed); and a link Manage requirement links" loading="lazy"></div>
+        </figure>
+        <p>Requirements (such as a ticket <code>DEMO-101</code>) that have tests linked to them,
+          judged on the same commit as the critical tests. Under each one: its linked tests and
+          their result on this commit. The ticket number links to the ticket when an address was
+          saved with the link.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Status</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-peach">failing</span></td><td>At least one linked test failed on this commit. Shown first.</td></tr>
+              <tr><td><span class="pill t-neutral">untested</span></td><td>None of its tests has a result on this commit.</td></tr>
+              <tr><td><span class="pill t-butter">partial</span></td><td>Some tests passed, none failed, but some didn't run.</td></tr>
+              <tr><td><span class="pill t-mint">passing</span></td><td>Every linked test passed on this commit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Manage requirement links</strong> opens the <em>Traceability</em> page, where
+          tests are linked to requirements.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/releases/release-readiness/page.png" width="1280" height="800">
+              <source src="../media/releases/release-readiness/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check the version you are about to release</h3>
+        <ol class="steps">
+          <li>Find out the commit of that version (your developers or your build system can tell you; the first characters are enough to recognise it).</li>
+          <li>Choose it in the <strong>Commit</strong> menu. If it isn't listed, no finished run has tested it yet.</li>
+          <li>Read the answer and its reasons. For <em>Not ready</em> or <em>Insufficient data</em>, the reasons say which check is in the way.</li>
+        </ol>
+        <h3>…check the newest version of a branch</h3>
+        <ol class="steps">
+          <li>Type the branch name, for example <code>main</code>, in <strong>Branch</strong>.</li>
+          <li>Press <strong>Use branch</strong>. The page judges the commit of the newest finished run on that branch.</li>
+          <li>To go back, choose <strong>Latest run</strong> in the Commit menu (it then still applies the branch), or clear the field and press Use branch again.</li>
+        </ol>
+        <h3>…make critical tests count</h3>
+        <ol class="steps">
+          <li>Give the tests your release depends on the priority <strong>critical</strong> (see "How passed on this commit is decided" above for where priority is set).</li>
+          <li>On <strong>Quality gate</strong>, open <strong>Gate rules</strong> and tick <strong>Require every critical case passed on the commit</strong>. You need the <em>editor</em> role.</li>
+          <li>From then on, a critical test that failed makes the answer <em>Not ready</em>, and one that didn't run makes it <em>Insufficient data</em>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Different scope from the Quality gate page.</strong> That page judges only the newest finished run. This one judges <em>every</em> finished run of the chosen commit, so the two can disagree: a commit with one failed suite and one passed suite is <em>Not ready</em> here, even if the newest run passed.</li>
+          <li><strong>Runs without a verdict don't count.</strong> Runs that are still going, cancelled or timed out are left out, and so are the check runs TraceIQ makes to test a suggested fix (see <em>Proposals</em>).</li>
+          <li><strong>The rules live on the Quality gate page.</strong> Nothing can be changed here; the page only reads.</li>
+          <li><strong>It doesn't update by itself.</strong> Press <strong>Re-evaluate</strong>, or come back to the browser tab.</li>
+          <li><strong>Times are shown in your own time zone</strong>, as set on your computer.</li>
+          <li><strong>The same answer is available to tools.</strong> Build systems and AI assistants can ask for it with an API key; a key limited to one project can only ask about that project.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Release sign-off</h4><p>The next page in this guide: a person's recorded approval of a release, which this answer can require.</p></div>
+          <div class="mini"><h4>Quality gate</h4><p>The rules this page applies, and where they are changed.</p></div>
+          <div class="mini"><h4>Traceability</h4><p>Link tests to requirements, so the Requirements box fills in.</p></div>
+          <div class="mini"><h4>Flaky tests</h4><p>Why tests are quarantined, who owns them and when the quarantine ends.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Release readiness page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

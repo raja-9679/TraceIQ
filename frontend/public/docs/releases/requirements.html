@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Requirements · TraceIQ Guide</title>
+  <meta name="description" content="The Requirements page: tickets imported from Jira or Linear, their acceptance criteria, suggested tests, and whether each one is covered.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/releases-requirements.spec.ts. Page: frontend/src/pages/Requirements.tsx (API client src/api/requirements.ts).
+     API: backend/app/api/requirements.py (import, sync, coverage_for, generate); parsing: app/services/acceptance_criteria.py;
+     trackers: app/services/tracker_import.py; proposals: app/services/generation_proposals.py. -->
+<body data-page="releases/requirements">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../requirements"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Requirements</h1>
+        <div class="meta-row">
+          <span class="tag t-mint">Releases</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can import and generate</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Bring your tickets (user stories, requirements) in from Jira or Linear. TraceIQ reads
+            each ticket's acceptance criteria, can turn every criterion into a suggested test, and
+            shows for each ticket whether its tests are passing, failing, not run yet, or missing.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Requirements answers <strong>"Is everything we promised actually tested, and does it
+          work?"</strong> A ticket usually lists its <em>acceptance criteria</em>: the conditions
+          that must be true for the work to count as done, such as "a guest can pay by card".
+          This page keeps a copy of those tickets next to your tests, points out criteria that are
+          too vague to test, and drafts a test for each of the others.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Product owners</h4><p>See at a glance which tickets are covered by passing tests and which have none yet.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Get a first draft of a test for each acceptance criterion, and a warning when a criterion is too vague.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Find the gaps before a release: tickets that are failing or not covered at all.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Requirements</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The counts are at the top, then the list of imported tickets. In the picture the first
+          ticket has been opened. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/requirements/page-annotated.png" alt="The Requirements page with four numbered parts: 1 the four coverage counts, 2 the Imported requirements heading with Sync all and Import, 3 one ticket row, 4 the opened ticket with its criteria, tests and Generate tests" loading="lazy" width="1440" height="1100"></div>
+          <figcaption>The Requirements page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The <strong>Project</strong> menu at the top right is the same choice as the project
+          picker in the sidebar: changing it here changes it for the whole app.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="counts" data-toc="① The four counts">The four counts</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/requirements/tiles.png" alt="Four tiles: Covered 2, Failing 0, Not run yet 0, Not covered 0" loading="lazy"></div>
+        </figure>
+        <p>Every imported ticket falls into exactly one of these:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Count</th><th>A ticket counts here when…</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Covered</span></td><td>…it has linked tests, and the newest result of every one of them passed.</td></tr>
+              <tr><td><span class="pill t-peach">Failing</span></td><td>…the newest result of at least one linked test failed (or ended in error).</td></tr>
+              <tr><td><span class="pill t-butter">Not run yet</span></td><td>…it has linked tests, none failing, but at least one has never run.</td></tr>
+              <tr><td><span class="pill t-neutral">Not covered</span></td><td>…no test is linked to it yet.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">"Linked" and "newest result"</strong>
+            <p>A test is linked to a ticket when its requirement reference is the ticket's key
+            (for example <code>DEMO-101</code>). Links come from accepting a test generated here,
+            or are added by hand on the <em>Traceability</em> page; both count. "Newest result"
+            means the test's most recent result in this project, whichever version of the app it
+            ran on. To judge one particular version, use <em>Release readiness</em>.</p></div>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="toolbar" data-toc="② Sync all and Import">Sync all and Import</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/requirements/toolbar.png" alt="The heading Imported requirements, with the buttons Sync all and Import" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Sync all</strong> fetches every imported ticket again from Jira or Linear,
+            so its title, status, description and acceptance criteria are up to date. A message
+            says how many were synced and how many failed.</li>
+          <li><strong>Import</strong> opens the import panel (the button then reads
+            <strong>Close import</strong>).</li>
+        </ul>
+        <figure>
+          <div class="frame"><img src="../media/releases/requirements/import.png" alt="The import panel, saying No Jira or Linear connection in this workspace yet. Add one on the Issue Trackers page." loading="lazy"></div>
+          <figcaption>The demo workspace has no Jira or Linear connection, so the panel says where to add one.</figcaption>
+        </figure>
+        <p>Once a connection exists (set up on <strong>Setup → Issue trackers</strong>, and
+          switched on), the panel has:</p>
+        <ul>
+          <li><strong>Connection</strong>: which Jira or Linear connection to use.</li>
+          <li><strong>For Jira, JQL</strong>: a Jira search, for example
+            <code>project = SHOP AND sprint in openSprints()</code>.
+            <strong>For Linear</strong>: a team key, words in the title, and a label.</li>
+          <li><strong>Search</strong> shows up to 25 matching tickets with tick boxes; ones you
+            already imported are marked "imported". <strong>Import selected</strong> brings in the
+            ticked ones.</li>
+          <li>Or type ticket keys (<code>SHOP-12, SHOP-14</code>) and press
+            <strong>Import by key</strong>. Keys that don't exist are listed in a warning.</li>
+        </ul>
+        <p>Importing a ticket that is already there updates it instead of adding a second copy.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="row" data-toc="③ A ticket">A ticket</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/requirements/row.png" alt="A ticket row: DEMO-101 A user can sign in; 0 criteria, 0 proposed, 1 linked test(s), synced with a date; a Covered label" loading="lazy"></div>
+        </figure>
+        <p>One row per imported ticket, in order of their keys. The first line is the ticket's key
+          and title. The second line says how many acceptance criteria were found, how many
+          already have a suggested test ("proposed"), how many are too vague ("ambiguous", in
+          amber), how many tests are linked, and when it was last fetched. "sync error" in red
+          means the last fetch failed. On the right is its count from ①. Click the row to open
+          it.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="detail" data-toc="④ An opened ticket">An opened ticket</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/releases/requirements/detail.png" alt="An opened ticket: buttons Re-sync and Remove, an empty Acceptance criteria list, Covered by Sign in as alice · passed, and a Generate tests box with Target suite, Target URL, Include ambiguous" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Open in jira / linear</strong> (when the ticket has an address) opens the
+            original ticket. <strong>Re-sync</strong> fetches just this one again.
+            <strong>Remove</strong> takes the ticket off this page after you confirm; the tests and
+            their links stay.</li>
+          <li><strong>Acceptance criteria</strong>: each criterion found in the ticket, numbered
+            AC1, AC2… A criterion that already has a suggested test shows its number and state
+            (for example <em>#41 pending</em>), which links to the <em>Proposals</em> page.
+            A vague one says why in amber, for example <em>Ambiguous: vague term "fast"</em>.
+            The demo tickets were created without a description, so this list is empty for them.</li>
+          <li><strong>Covered by</strong>: the linked tests and the result of each one's newest
+            run ("not run" if it never ran).</li>
+          <li><strong>Generate tests</strong>: pick the suite the suggested tests should go into,
+            optionally the address of the page they should start on, and whether to include the
+            vague criteria. Then press <strong>Generate tests</strong>.</li>
+        </ul>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Generated tests are suggestions, not tests yet</strong>
+            <p>Generate tests makes one <em>proposal</em> per criterion and puts it in the queue on
+            <em>Today → Proposals</em>, where a person accepts or rejects it. Only an accepted
+            proposal becomes a real test, and it is then linked to the ticket by itself. A
+            workspace can allow confident suggestions to be accepted automatically; a draft that
+            still needs work never is.</p>
+            <p>If no AI is set up for TraceIQ (or the AI allowance has run out), each proposal is
+            an empty outline marked <em>needs authoring</em> that someone fills in.</p></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">How criteria are found</th><th>Example</th></tr></thead>
+            <tbody>
+              <tr><td>Given / When / Then scenarios</td><td><em>Given a guest with items in the cart, When they pay by card, Then they see the order number</em></td></tr>
+              <tr><td>A heading "Acceptance criteria" followed by lines</td><td>The lines under it, one criterion each</td></tr>
+              <tr><td>Bullet lists and checklists</td><td><em>- [ ] The total includes VAT</em></td></tr>
+              <tr><td>Numbered labels</td><td><em>AC1: The page shows the delivery date</em></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>If the ticket's description contains none of these, its <strong>title</strong> becomes
+          its one criterion. When a ticket is synced again, a criterion whose wording hasn't
+          changed keeps its suggested test; a reworded one starts afresh.</p>
+        <p>A criterion is flagged as <strong>ambiguous</strong> when it is shorter than three
+          words, uses a vague word such as <em>fast</em>, <em>easy</em>, <em>intuitive</em> or
+          <em>works as expected</em>, or names nothing a test could check (Given/When/Then without
+          a Then). Speed words are fine when a number goes with them: "loads within 2 s" is
+          testable, "loads fast" is not.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/releases/requirements/page.png" width="1280" height="800">
+              <source src="../media/releases/requirements/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…bring in this sprint's tickets</h3>
+        <ol class="steps">
+          <li>Press <strong>Import</strong>. (You need the <em>editor</em> role and to be a member of the workspace.)</li>
+          <li>Choose the connection and type a search, for example <code>project = SHOP AND sprint in openSprints()</code>.</li>
+          <li>Press <strong>Search</strong>, tick the tickets you want, and press <strong>Import selected</strong>.</li>
+        </ol>
+        <h3>…get draft tests for a ticket</h3>
+        <ol class="steps">
+          <li>Click the ticket to open it, and read its acceptance criteria. Reword vague ones in Jira or Linear, then press <strong>Re-sync</strong>.</li>
+          <li>Under Generate tests, choose the <strong>Target suite</strong> and, if you know it, the page address.</li>
+          <li>Press <strong>Generate tests</strong>. A message says how many proposals were queued.</li>
+          <li>Open <strong>Today → Proposals</strong> to review and accept them.</li>
+        </ol>
+        <h3>…find what isn't tested before a release</h3>
+        <ol class="steps">
+          <li>Look at <strong>Failing</strong> and <strong>Not covered</strong> in the counts.</li>
+          <li>Scan the list for those labels and open each ticket to see which test is failing, or that there is none.</li>
+          <li>For a release check of one version, use <strong>Release readiness</strong>, which judges the same links on that version's runs.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>TraceIQ only reads from Jira and Linear.</strong> Importing and syncing never change the ticket. (Tickets <em>to</em> Jira are filed from <em>Failure triage</em>; Linear connections are import-only.)</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Importing, syncing, removing and generating need the <em>editor</em> role; searching and importing also need workspace membership, because the connection belongs to the whole workspace.</li>
+          <li><strong>One project at a time.</strong> A ticket is imported into the selected project, and only that project's tests count towards it.</li>
+          <li><strong>Criteria are not re-generated by accident.</strong> A criterion whose suggestion is still waiting, or was already accepted, is skipped when you press Generate tests again.</li>
+          <li><strong>Check runs don't count.</strong> The runs TraceIQ makes to check a suggested fix are left out of the coverage.</li>
+          <li><strong>Imports, removals and generated proposals are recorded</strong> in the audit log.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Traceability</h4><p>The next page in this guide: link tests to tickets by hand, and find tests linked to nothing.</p></div>
+          <div class="mini"><h4>Proposals</h4><p>Where the generated tests wait for someone to accept or reject them.</p></div>
+          <div class="mini"><h4>Issue trackers</h4><p>Connect Jira or Linear, so tickets can be imported.</p></div>
+          <div class="mini"><h4>Release readiness</h4><p>The same tickets, judged on the runs of one version of your app.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Requirements page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
