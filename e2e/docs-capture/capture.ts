@@ -141,15 +141,15 @@ export async function pointAt(page: Page, target: Locator, pause = 900) {
 
 // ---------- narration ----------
 // Captions are also spoken, by Piper (offline text-to-speech, MIT) with the
-// British English "cori" voice: public domain, trained from scratch on
-// LibriVox recordings. Most other en_GB Piper voices are fine-tuned from the
-// US "lessac" voice, whose dataset licence is research-only — don't switch to
-// one of those. run.sh downloads Piper + the voice into e2e/.cache/piper.
+// US English "kristin" voice: public domain, trained from scratch on LibriVox
+// recordings. Many Piper voices are fine-tuned from the US "lessac" voice,
+// whose dataset licence is research-only — don't switch to one of those
+// (README lists what was checked). run.sh downloads Piper + the voice into e2e/.cache/piper.
 // TRACEIQ_DOCS_VOICE=off records captions only.
 
 const VOICE = {
     bin: '.cache/piper/piper/piper',
-    model: '.cache/piper/en_GB-cori-high.onnx',
+    model: '.cache/piper/en_US-kristin-medium.onnx',
     cache: '.cache/narration',
     // Speaking pace: Piper's length_scale (1 = the voice's natural speed,
     // higher = slower). 1.3 because viewers found the natural pace too fast to

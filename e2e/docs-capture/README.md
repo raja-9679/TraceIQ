@@ -16,15 +16,20 @@ UI changed. ffmpeg on the host converts the recordings to MP4.
 
 **Narration.** Every `caption()` is also spoken, by
 [Piper](https://github.com/rhasspy/piper) (offline text-to-speech, MIT) with
-the British English "cori" voice. Nothing is sent to an online service.
+the US English "kristin" voice. Nothing is sent to an online service.
 
-The voice was chosen for its licence (checked 2026-10-21): cori is public
-domain, trained from scratch on LibriVox recordings. Most other en_GB Piper
-voices (alan, alba, aru, jenny_dioco, northern_english_male, vctk) are
+The voice was chosen for its licence and for being easy to follow (checked
+2026-10-21). Public domain and trained from scratch on LibriVox: kristin,
+norman (male), en_GB cori (tried first; viewers found the British accent
+harder to follow), john (male; built on kristin). Not usable: alan, alba, aru,
+jenny_dioco, northern_english_male, vctk, joe, kusal and l2arctic are
 fine-tuned from the US "lessac" voice, whose Blizzard 2013 dataset licence is
-"Research Purposes only" and excludes anything based on it; semaine is
-CC BY-NC-SA. Check the MODEL_CARD's licence AND its "finetuned from" line
-before changing voice.
+"Research Purposes only" and excludes anything based on it; semaine and ryan
+are CC BY-NC-SA, l2arctic is also CC BY-NC. Piper has no Indian English voice
+(the hi_IN ones are CC BY-NC-SA or lessac-based); AI4Bharat Indic Parler-TTS
+(Apache-2.0, CC0/CC BY 4.0 data) has one but is gated on Hugging Face and
+needs ~4 GB + PyTorch. Check the MODEL_CARD's licence AND its "finetuned
+from" line before changing voice.
 `run.sh` downloads both into `e2e/.cache/piper` the first time (~130 MB, voice
 checked by SHA-256); spoken lines are cached in `e2e/.cache/narration`, so
 re-runs only synthesise new sentences. A caption waits for the previous one to

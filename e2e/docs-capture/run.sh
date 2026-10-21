@@ -23,17 +23,17 @@ NET="${TRACEIQ_DOCS_NETWORK:-$(docker inspect "$FRONTEND_C" -f '{{range $k,$v :=
 PW_VERSION="$(node -p "require('$ROOT/e2e/package.json').devDependencies['@playwright/test']" 2>/dev/null \
   || grep -o '"@playwright/test": *"[^"]*"' "$ROOT/e2e/package.json" | grep -o '[0-9][0-9.]*')"
 
-# Narration: Piper (offline text-to-speech, MIT licence) and the British
-# English "cori" voice (public domain; trained from scratch on LibriVox, NOT
-# fine-tuned from the research-only "lessac" voice like most en_GB voices).
+# Narration: Piper (offline text-to-speech, MIT licence) and the US English
+# "kristin" voice (public domain; trained from scratch on LibriVox, NOT
+# fine-tuned from the research-only "lessac" voice like many Piper voices).
 # Downloaded once into e2e/.cache/piper (gitignored), voice pinned by SHA-256;
 # TRACEIQ_DOCS_VOICE=off skips it and records captions only.
 # TRACEIQ_DOCS_VOICE_PACE=1.5 speaks slower (default 1.3, 1 = natural speed).
 PIPER_DIR="$ROOT/e2e/.cache/piper"
 PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
-VOICE="en_GB-cori-high"
-VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/cori/high"
-VOICE_SHA256="470b4dd634c98f8a4850d7626ffc3dfc90774628eeef6605a6dd8f88f30a5903"
+VOICE="en_US-kristin-medium"
+VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/kristin/medium"
+VOICE_SHA256="5849957f929cbf720c258f8458692d6103fff2f0e3d3b19c8259474bb06a18d4"
 if [ "${TRACEIQ_DOCS_VOICE:-on}" != "off" ] && [ ! -f "$PIPER_DIR/$VOICE.onnx" ]; then
   echo "Downloading the narration voice (Piper + $VOICE, ~130 MB, once) ..." >&2
   mkdir -p "$PIPER_DIR"
