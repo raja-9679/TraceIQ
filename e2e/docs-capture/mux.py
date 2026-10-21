@@ -7,12 +7,22 @@ started), the lines are placed at those offsets and mixed into an AAC track;
 otherwise the MP4 is silent. The WebM and the JSON are removed afterwards —
 only the MP4 is published.
 
+The finished video is then sped up by TRACEIQ_DOCS_VIDEO_SPEED (default
+1.25: viewers watched the 1x recordings at 1.25x), picture and voice together
+— atempo keeps the voice's pitch — so captions stay where they were spoken.
+
     mux.py <media dir> <e2e dir>     (run.sh calls this; needs ffmpeg)
 """
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+SPEED = float(os.environ.get("TRACEIQ_DOCS_VIDEO_SPEED") or "1.25")
+if not 0.5 <= SPEED <= 2.0:   # atempo's single-filter range
+    sys.exit(f"TRACEIQ_DOCS_VIDEO_SPEED={SPEED} must be between 0.5 and 2")
 
 
 def convert(webm: Path, e2e: Path) -> None:
@@ -32,11 +42,12 @@ def convert(webm: Path, e2e: Path) -> None:
         # loudnorm: speech-level loudness (-16 LUFS) with peaks kept below
         # -1.5 dB, so it neither whispers nor crackles on laptop speakers.
         graph = (f"{delayed}{mixed}amix=inputs={len(lines)}:normalize=0:duration=longest,"
-                 "loudnorm=I=-16:TP=-1.5:LRA=11,apad[aout]")
-        cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[aout]", *video,
+                 f"atempo={SPEED},loudnorm=I=-16:TP=-1.5:LRA=11,apad[aout];"
+                 f"[0:v]setpts=PTS/{SPEED}[vout]")
+        cmd += ["-filter_complex", graph, "-map", "[vout]", "-map", "[aout]", *video,
                 "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-shortest", str(mp4)]
     else:
-        cmd += [*video, "-an", str(mp4)]
+        cmd += ["-vf", f"setpts=PTS/{SPEED}", *video, "-an", str(mp4)]
     subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
     webm.unlink()
     meta.unlink(missing_ok=True)

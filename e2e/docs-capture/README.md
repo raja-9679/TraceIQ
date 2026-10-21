@@ -44,6 +44,10 @@ longer pauses between sentences, because the natural pace was too fast to
 follow. `TRACEIQ_DOCS_VOICE_PACE=1.5` slows it further; the pace is part of
 the narration cache key, so changing it re-synthesises every line.
 
+The finished MP4 is then played back 1.25× faster (picture and voice together;
+the voice keeps its pitch), because that is the speed viewers found right.
+`TRACEIQ_DOCS_VIDEO_SPEED=1` keeps the recorded speed.
+
 The first run signs up a dedicated account ("Alex Morgan",
 `docs-guide-…@example.com`) and gives it the built-in demo workspace, so
 every picture shows sample data and never a real project. Credentials stay in

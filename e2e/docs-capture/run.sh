@@ -29,6 +29,7 @@ PW_VERSION="$(node -p "require('$ROOT/e2e/package.json').devDependencies['@playw
 # Downloaded once into e2e/.cache/piper (gitignored), voice pinned by SHA-256;
 # TRACEIQ_DOCS_VOICE=off skips it and records captions only.
 # TRACEIQ_DOCS_VOICE_PACE=1.5 speaks slower (default 1.3, 1 = natural speed).
+# TRACEIQ_DOCS_VIDEO_SPEED=1 keeps the recorded speed (default 1.25, applied by mux.py).
 PIPER_DIR="$ROOT/e2e/.cache/piper"
 PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 VOICE="en_US-kristin-medium"
@@ -42,6 +43,16 @@ if [ "${TRACEIQ_DOCS_VOICE:-on}" != "off" ] && [ ! -f "$PIPER_DIR/$VOICE.onnx" ]
   curl -fsSL -o "$PIPER_DIR/$VOICE.onnx.tmp" "$VOICE_URL/$VOICE.onnx"
   echo "$VOICE_SHA256  $PIPER_DIR/$VOICE.onnx.tmp" | sha256sum -c --quiet -
   mv "$PIPER_DIR/$VOICE.onnx.tmp" "$PIPER_DIR/$VOICE.onnx"
+fi
+
+# One capture at a time: runs share e2e/node_modules (npm ci), the login state
+# in e2e/.auth, the .tmp-video folder and mux.py's sweep of every *.webm, so two
+# at once would break each other. A second run waits here for the first.
+mkdir -p "$ROOT/e2e/.cache"
+exec 9>"$ROOT/e2e/.cache/capture.lock"
+if ! flock -n 9; then
+  echo "Another capture is running; waiting for it to finish ..." >&2
+  flock 9
 fi
 
 if [ -z "$NET" ]; then
