@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getProjects, getWorkspaces } from '@/lib/api';
+import { getProjects } from '@/lib/api';
 import { triageApi, FailureCluster } from '@/api/triage';
 import { ticketsApi } from '@/api/tickets';
 
@@ -35,8 +35,10 @@ function ClusterCard({ cluster }: { cluster: FailureCluster }) {
     const detail = useQuery({ queryKey: ['cluster', cluster.id], queryFn: () => triageApi.get(cluster.id), enabled: open });
 
     // trackers for the one-ticket-per-cluster action
-    const { data: workspaces } = useQuery({ queryKey: ['workspaces'], queryFn: getWorkspaces, enabled: open });
-    const wsId = workspaces?.[0]?.id ?? null;
+    // The cluster's own workspace, not the user's first one: the backend only
+    // accepts a tracker from the workspace the cluster's project is in.
+    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects(), enabled: open });
+    const wsId = projects?.find((p) => p.id === cluster.project_id)?.workspace_id ?? null;
     const trackers = useQuery({ queryKey: ['trackers', wsId], queryFn: () => ticketsApi.listConfigs(wsId!), enabled: open && !!wsId });
     const [trackerId, setTrackerId] = useState('');
 

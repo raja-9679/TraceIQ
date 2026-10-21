@@ -4,6 +4,13 @@ Hooked best-effort at run finalize. Each failing TestCaseResult is fingerprinted
 (app/services/failure_signature.py) and upserted into a per-project
 FailureCluster so identical root causes across runs collapse into one triage
 item. Idempotent: only results not yet assigned to a cluster are processed.
+
+A RESOLVED cluster that fails again is reopened (status back to open,
+resolved_at cleared): "resolved" is a claim the failure is gone, and a
+recurrence disproves it. Otherwise it would keep collecting failures on the
+Resolved tab where nobody looks. IGNORED and INVESTIGATING are left alone —
+those are decisions about a failure that is expected to keep happening.
+first_triaged_at is kept (the diagnosis did happen).
 """
 import logging
 from datetime import datetime
@@ -72,6 +79,10 @@ def cluster_run_failures(self, run_id: int):
                     s, run.project_id, sig, title, category, r.error_message, run_id)
                 cluster.occurrence_count += 1
                 cluster.last_seen_at = datetime.utcnow()
+                if cluster.status == "resolved":
+                    cluster.status = "open"
+                    cluster.resolved_at = None
+                    logger.info("[Triage] cluster %s failed again in run %s: reopened", cluster.id, run_id)
                 cluster.last_run_id = run_id
                 r.cluster_id = cluster.id
                 s.add(cluster)
