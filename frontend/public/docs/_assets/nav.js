@@ -8,7 +8,7 @@ window.DOCS_NAV = [
     blurb: 'What needs your attention now: run health, failures to look at, suggested fixes, flaky tests and screenshots to review.',
     pages: [
       { name: 'Overview', slug: 'today/overview', ready: true },
-      { name: 'Failure triage', slug: 'today/failure-triage' },
+      { name: 'Failure triage', slug: 'today/failure-triage', ready: true },
       { name: 'Proposals', slug: 'today/proposals' },
       { name: 'Flaky tests', slug: 'today/flaky-tests' },
       { name: 'Visual review', slug: 'today/visual-review' },

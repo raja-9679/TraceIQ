@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Failure triage · TraceIQ Guide</title>
+  <meta name="description" content="The Failure triage page: failed tests grouped by cause, what each part of a group means, and how to work through them.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/today-failure-triage.spec.ts. Page: frontend/src/pages/Triage.tsx.
+     API: backend/app/api/triage.py; grouping: app/tasks/triage_tasks.py + app/services/failure_signature.py. -->
+<body data-page="today/failure-triage">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../triage"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Failure triage</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Today</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>When tests fail, TraceIQ puts failures with the same cause into one group. Instead of
+            reading twenty failed runs, you look at the three or four problems behind them, fix
+            each one once, and mark it as dealt with.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Failure triage answers <strong>"What is actually broken, and what should I look at
+          first?"</strong> One broken button can fail the same test every night for a week, or
+          fail ten different tests in one run. On the run pages that looks like many failures. On
+          this page it is <strong>one problem</strong>, with a count of how many times it
+          happened.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Start the day with the biggest problem, not the most recent failure. Decide whether it's the app or the test that needs fixing.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See the exact error message and every test it broke, then open a run to look at the screenshots and logs.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Know how many separate problems there are and who is working on them, and file one ticket per problem instead of one per failure.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Today → Failure triage</strong>.
+          The page's own heading says <strong>Triage</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar. The list of problems is
+          on the left; the one you pick is shown in detail on the right. The numbers on the
+          screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/today/failure-triage/page-annotated.png" alt="The Failure triage page with five numbered parts: 1 the status tabs, 2 the list of problems grouped by kind, 3 the three facts about the selected problem, 4 the evidence list, 5 the status and ticket controls" loading="lazy" width="1440" height="1500"></div>
+          <figcaption>The Failure triage page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The line under the heading sums it up, for example <em>"4 problems behind 10 failures"</em>:
+          four separate causes, which between them made tests fail ten times. It counts only the
+          problems on the tab you are looking at.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="tabs" data-toc="① The status tabs">The status tabs</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/tabs.png" alt="Five tabs: Open (selected), Investigating, Resolved, Ignored, All" loading="lazy"></div>
+        </figure>
+        <p>Every problem has a status, and the tabs show one status at a time.
+          <strong>Open</strong> is selected when the page opens, because those are the problems
+          nobody has dealt with yet.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Status</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-peach">Open</span></td><td>New, and nobody has looked at it yet. Every new problem starts here.</td></tr>
+              <tr><td><span class="pill t-butter">Investigating</span></td><td>Someone is working out the cause or fixing it.</td></tr>
+              <tr><td><span class="pill t-mint">Resolved</span></td><td>Fixed. TraceIQ notes the time, which the reports use to show how quickly problems get fixed.</td></tr>
+              <tr><td><span class="pill t-neutral">Ignored</span></td><td>Known and accepted, for now. It no longer shows under Open.</td></tr>
+              <tr><td><strong>All</strong></td><td>Every problem, whatever its status.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of problems">The list of problems</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/list.png" alt="Two boxes. Selector, 2 problems: page.waitForSelector: Timeout &lt;n&gt; exceeded, ×6; Expected text &lt;str&gt; not found in element &lt;str&gt;, ×1. Other, 2 problems: Expected cookie session to be set, ×2; Accessibility check failed, ×1" loading="lazy"></div>
+        </figure>
+        <p>Problems are boxed by <strong>kind</strong> (see the table below). The box with the most
+          failures comes first, and inside a box the most frequent problem comes first. The small
+          number next to a box's name is how many problems it holds.</p>
+        <ul>
+          <li><strong>The name</strong> of a problem is its error message (the first line).</li>
+          <li><strong>Underneath:</strong> its status, and how long ago it last happened.</li>
+          <li><strong>×6</strong> on the right means it has made a test fail six times so far.</li>
+          <li><strong>The icon</strong> on the left is a cross for Open and Investigating, a tick for Resolved, and a dash for Ignored.</li>
+          <li><strong>Click a problem</strong> to show it on the right. Until you do, the most frequent one is shown.</li>
+        </ul>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">What &lt;n&gt; and &lt;str&gt; mean</strong>
+            <p>Two failures belong together when their error messages say the same thing.
+            Details that change from one failure to the next, such as a number of seconds or an
+            ID, would keep them apart, so TraceIQ swaps those details for a placeholder before
+            comparing:</p>
+            <ul>
+              <li><code>&lt;n&gt;</code> = a number, e.g. "5000ms" or "502"</li>
+              <li><code>&lt;str&gt;</code> = text in quotes, e.g. a button's label or a page element</li>
+              <li><code>&lt;url&gt;</code> = a web address, <code>&lt;path&gt;</code> = a file path, <code>&lt;uuid&gt;</code> and <code>&lt;hex&gt;</code> = IDs</li>
+            </ul>
+            <p>So "Expected status 200 but got 502" and "Expected status 200 but got 503" are one
+            problem: <em>Expected status &lt;n&gt; but got &lt;n&gt;</em>. The full message,
+            with the real values, is under <a href="#facts">Sample error</a>.</p></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:20%">Kind</th><th>What it usually means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-lavender">Selector</span></td><td>Something the test looks for on the page could not be found, or did not appear in time. Usually the page changed, so the test needs updating.</td></tr>
+              <tr><td><span class="pill t-neutral">Assertion</span></td><td>The page loaded but showed something different from what the test expected. The kind most likely to be a real bug.</td></tr>
+              <tr><td><span class="pill t-butter">Timeout</span></td><td>Something took longer than the test was willing to wait. Check for a slow server or a problem with the test environment before blaming the test.</td></tr>
+              <tr><td><span class="pill t-peach">Network</span></td><td>A request failed, got an error status (such as 502), or got no answer. Often the environment, not the code.</td></tr>
+              <tr><td><span class="pill t-pink">Navigation</span></td><td>The browser could not open or finish loading a page.</td></tr>
+              <tr><td><span class="pill t-neutral">Other</span></td><td>Failures with the same message that don't fit any of the kinds above.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">The kind is a best guess</strong>
+            <p>TraceIQ picks the kind from words in the error message, checking for Selector
+            first, then Assertion, Timeout, Network and Navigation. A test that timed out while
+            waiting for a button is therefore a <em>Selector</em> problem, not a Timeout. And
+            "Expected text … not found in element …" is a Selector problem too, even when the
+            element was there with the wrong text. Read the error before deciding who should fix
+            it.</p></div>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="facts" data-toc="③ The selected problem">The selected problem</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/detail-header.png" alt="Labels Open and Selector, the heading page.waitForSelector: Timeout &lt;n&gt; exceeded, and the line Last seen 3 days ago in run #471" loading="lazy"></div>
+        </figure>
+        <p>At the top: the problem's status and kind, its name, and the last run it happened in.
+          Then three facts:</p>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/facts.png" alt="Three boxes: Times it failed 6, First seen 28 days ago, Last seen 3 days ago" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Fact</th><th>What it tells you</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Times it failed</strong></td><td>How many test results this problem has caused, since it first appeared. Ten tests failing in one run count as ten.</td></tr>
+              <tr><td><strong>First seen</strong></td><td>When it happened for the first time. A problem first seen today is probably caused by something that changed today.</td></tr>
+              <tr><td><strong>Last seen</strong></td><td>When it happened most recently. If that was weeks ago, it may already be fixed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>What this means</strong> repeats, in plain words, what this kind of problem
+          usually comes down to (the same explanations as the table above).</p>
+        <p><strong>Sample error</strong> is the complete message from the <em>first</em>
+          failure in the group, with the real numbers and text in place of the placeholders. It
+          is often more than one line: Playwright adds a "Call log" saying exactly what it was
+          waiting for.</p>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/sample-error.png" alt="Sample error: page.waitForSelector: Timeout 5000ms exceeded. Call log: waiting for locator('#todo-list li') to be visible" loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">4</span><h2 id="evidence" data-toc="④ Evidence">Evidence</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/evidence.png" alt="A list of rows, each with a run number such as run #471 and the test name Add a todo" loading="lazy"></div>
+        </figure>
+        <p>One row per failure in the group, newest first: the run it happened in, and the name
+          of the test that failed. <strong>Click a row</strong> to open that run, with its
+          screenshots, step-by-step results and logs. The list shows up to the
+          <strong>50 newest</strong> failures; <em>Times it failed</em> counts all of them.</p>
+        <p>If every row names the same test, one test keeps failing in the same way. If the rows
+          name many different tests, one cause (often a shared page or a server problem) is
+          breaking all of them.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="actions" data-toc="⑤ Status and ticket">Status and ticket</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/today/failure-triage/actions.png" alt="A Status menu set to Open, a menu labelled File one ticket for this whole group showing Select tracker, a Create ticket button, and an Open latest failing run button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Status</strong> moves the problem to Open, Investigating, Resolved or Ignored. The change is saved straight away, and the problem leaves the tab you are on and appears under its new status.</li>
+          <li><strong>File one ticket for this whole group</strong>: choose an issue tracker (Jira, GitHub or iTop), then press <strong>Create ticket</strong>. TraceIQ files one ticket for the whole problem, titled "[TraceIQ] <em>kind</em>: <em>problem name</em>", with the number of failures, the sample error, and the screenshots, video and trace of the latest failing run (whatever that run recorded). The ticket is created in the background; you'll see "Ticket queued for this cluster".</li>
+          <li><strong>Open latest failing run</strong> takes you to the newest run where the problem happened.</li>
+        </ul>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">No trackers in the list?</strong>
+            <p>The list shows the issue trackers set up in <strong>Setup → Issue trackers</strong>
+            that are switched on. Linear connections are missing on purpose: TraceIQ only imports
+            from Linear and can't create tickets there.</p></div>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/today/failure-triage/page.png" width="1280" height="800">
+              <source src="../media/today/failure-triage/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute and a quarter, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…work through today's failures</h3>
+        <ol class="steps">
+          <li>Make sure the right project is selected at the top of the sidebar.</li>
+          <li>Stay on the <strong>Open</strong> tab. The problem at the top of the first box is the one that has failed most often.</li>
+          <li>Read its <strong>Sample error</strong>, then click a row under <strong>Evidence</strong> to see the screenshots of that run.</li>
+          <li>Set the status to <strong>Investigating</strong>, so colleagues can see someone is on it.</li>
+          <li>Once it is fixed, set it to <strong>Resolved</strong>. Then move on to the next problem.</li>
+        </ol>
+        <h3>…hand a problem to the development team</h3>
+        <ol class="steps">
+          <li>Click the problem in the list.</li>
+          <li>Under <strong>File one ticket for this whole group</strong>, choose your tracker.</li>
+          <li>Press <strong>Create ticket</strong>. One ticket covers every failure in the group, so the team isn't sent the same bug many times.</li>
+          <li>Set the status to <strong>Investigating</strong>.</li>
+        </ol>
+        <h3>…check whether a fixed problem has come back</h3>
+        <ol class="steps">
+          <li>Open the <strong>Resolved</strong> tab.</li>
+          <li>Look at <em>last seen</em> under each problem. If it happened after you marked it resolved, it is back (see <a href="#good-to-know">Good to know</a>).</li>
+          <li>Set it back to <strong>Open</strong> or <strong>Investigating</strong>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>A resolved problem doesn't reopen by itself.</strong> If the same failure happens again, it is added to the existing problem: the count goes up and <em>last seen</em> changes, but the status stays <em>Resolved</em> (or <em>Ignored</em>). Check the Resolved tab now and then.</li>
+          <li><strong>Grouping happens when a run finishes.</strong> Every test that ended <em>Failed</em> or <em>Error</em> is added to a group. Tests that were <em>Cancelled</em> or <em>Timed out</em> are not; nor are the check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>).</li>
+          <li><strong>The test's name doesn't matter, only the message.</strong> Different tests that fail with the same message share one problem. The same test failing with two different messages makes two problems.</li>
+          <li><strong>One project at a time.</strong> Problems belong to a project. Switch project at the top of the sidebar to see another one's.</li>
+          <li><strong>It doesn't update by itself.</strong> Press <strong>Refresh</strong> (top right) to fetch new failures. The page also refreshes when you come back to its browser tab.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Changing a status or filing a ticket needs the <em>editor</em> role; others see "Editor role required".</li>
+          <li><strong>Your clicks feed the reports.</strong> The first time a problem is set to Investigating or Resolved counts as "diagnosed" in the <em>Value report</em>, and the time it is resolved is used to measure how quickly problems get fixed.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Runs</h4><p>Each run's full result: every step, screenshot, video and log, plus AI analysis of what went wrong.</p></div>
+          <div class="mini"><h4>Proposals</h4><p>The next page in this guide: fixes TraceIQ suggests for broken tests, such as a new way to find a button that moved.</p></div>
+          <div class="mini"><h4>Flaky tests</h4><p>Tests that pass and fail without anything changing. They also show up here when they fail, so check there first.</p></div>
+          <div class="mini"><h4>Issue trackers</h4><p>Connect Jira, GitHub or iTop so you can file tickets from this page.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Failure triage page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
