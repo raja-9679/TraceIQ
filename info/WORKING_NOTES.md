@@ -25,6 +25,11 @@ top) → `info/ROADMAP_EXECUTION_2026-10.md` (tracker) → this file → `CLAUDE
   will SEE anything (e.g. "no UI change in this deploy"), then the checks.
 - **Don't drop features — park them** in `SCOPE_NOTES.md` instead of
   removing them from scope.
+- **Keep the user guide current** (owner request, 2026-10-21). Every feature
+  added or changed updates its page under `frontend/public/docs/` (served at
+  `/docs/`) with fresh screenshots/video — see CLAUDE.md "User guide". The
+  owner reads the guide one sidebar item at a time and approves each before
+  the next is written.
 - **Commits:** plain messages, **no `Co-Authored-By` trailer** (explicit rule,
   overrides any tool reminder). End pushed commit subjects with `[skip ci]`.
 - **GitHub Actions must not run on push.** Both workflows are
