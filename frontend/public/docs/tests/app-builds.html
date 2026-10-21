@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App builds · TraceIQ Guide</title>
+  <meta name="description" content="The App builds page: upload the Android or iOS app file that mobile tests install on the phone before they run.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-app-builds.spec.ts. Page: frontend/src/pages/AppBuilds.tsx.
+     API: backend/app/api/app_builds.py (upload/list/get/delete; download link from app/core/storage.py,
+     1 hour); build picker on a suite: frontend/src/pages/SuiteDetails.tsx. -->
+<body data-page="tests/app-builds">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../app-builds"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>App builds</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can upload and delete</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Mobile tests run your real app on a phone (or a phone simulator). This page keeps the
+            app files they install: you upload a version of your Android or iOS app once, then pick
+            it when you start a run.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          A web test opens a web address; a mobile test has to install the app first. Each file you
+          upload here is a <strong>build</strong>: one version of the app, such as "TodoLite 2.4.1
+          for Android". Keeping the builds in TraceIQ answers <strong>"Which version of the app was
+          this run testing?"</strong> and lets you test a new version before it goes to the app
+          stores.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Upload the release candidate and run the mobile suite against it.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Check that a fix works in the real app, on the device the tests use.</p></div>
+          <div class="mini"><h4>Release managers</h4><p>Keep every candidate version in one place, with its version number and upload date.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → App builds</strong>.
+          It shows the project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo has no app builds, so the screenshot shows the page as it first appears in a
+          project: a note that there are no builds, and the upload form. The numbers match the
+          sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/app-builds/page-annotated.png" alt="The App builds page with four numbered parts: 1 the Upload build button, 2 the No builds yet note, 3 the upload form's fields, 4 the Upload build button of the form" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The App builds page in a project without builds. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="upload-button" data-toc="① Upload build">Upload build</h2></div>
+        <p>The button at the top right opens the upload form on the right of the page. When a
+          project has no builds yet, the form is already open below the note.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of builds">The list of builds</h2></div>
+        <p>While there are none, this place says <em>"No builds yet"</em>. Once you have uploaded
+          builds, it becomes a list, boxed into <strong>Android</strong> and <strong>iOS</strong>.
+          Each row shows the app's name, its version, when it was uploaded and the file size.
+          Click a row to see the build on the right:</p>
+        <ul>
+          <li><strong>Version</strong>, <strong>Size</strong> and <strong>Uploaded</strong> (in your own time zone).</li>
+          <li><strong>Package or bundle id</strong>: the app's unique name on the phone, such as <code>com.example.app</code>.</li>
+          <li><strong>Download binary</strong> downloads the exact file that was uploaded. The download link it opens works for one hour.</li>
+          <li><strong>Delete build</strong>, after asking. The file is removed. Runs that were set to use this build no longer get an app to install.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="form" data-toc="③ The upload form">The upload form</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/app-builds/upload-form.png" alt="The Upload a build form: Platform Android (.apk / .aab), Binary file picker, App name (optional) TodoLite, Version (optional) 2.4.1, Package or bundle id (optional) com.example.app, and an Upload build button" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Field</th><th>What to fill in</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Platform</strong></td><td><em>Android</em> takes an <code>.apk</code> or <code>.aab</code> file, <em>iOS</em> an <code>.ipa</code> file. A file whose ending doesn't match the platform is refused.</td></tr>
+              <tr><td><strong>Binary</strong></td><td>The app file itself, as your developers or build system produce it.</td></tr>
+              <tr><td><strong>App name</strong></td><td>Optional. Without it, the file name is used (without its ending).</td></tr>
+              <tr><td><strong>Version</strong></td><td>Optional, for example <code>2.4.1</code>. TraceIQ doesn't read it from the file, so type the version you want to see in the list.</td></tr>
+              <tr><td><strong>Package or bundle id</strong></td><td>Optional. The app's unique name on the phone.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="submit" data-toc="④ Uploading">Uploading</h2></div>
+        <p><strong>Upload build</strong> sends the file to TraceIQ's file storage; a large app can
+          take a while. When it is done, the build appears in the list and is selected.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/app-builds/page.png" width="1280" height="800">
+              <source src="../media/tests/app-builds/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 40 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…test a new version of the app</h3>
+        <ol class="steps">
+          <li>Press <strong>Upload build</strong>, choose the platform and the file, and type the version number.</li>
+          <li>Press <strong>Upload build</strong> in the form and wait for it to appear in the list.</li>
+          <li>Open the mobile suite (<strong>Tests → Suites</strong>). Next to <strong>Run suite</strong>, a menu now offers the project's builds: choose the new one.</li>
+          <li>Press <strong>Run suite</strong>. The build is installed on the device before the tests start.</li>
+        </ol>
+        <h3>…get a copy of a build</h3>
+        <ol class="steps">
+          <li>Click the build in the list.</li>
+          <li>Press <strong>Download binary</strong>. The file opens in a new tab and downloads; the link stops working after an hour, so press the button again later rather than sharing the link.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see and download builds. Uploading and deleting needs the <em>editor</em> role.</li>
+          <li><strong>The build menu on a suite</strong> only appears once the project has at least one build. It holds "No app build (web)" plus every build, and the choice applies to runs started from that page.</li>
+          <li><strong>Mobile tests need a phone to run on.</strong> Your TraceIQ administrator has to set up the mobile test machine (an Android emulator or a device cloud). iOS apps run on a device cloud only.</li>
+          <li><strong>Builds belong to one project.</strong> To use the same app in another project, upload it there too.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Frontend quality</h4><p>The next page in this guide: broken links, page speed and fragile selectors on your website.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where you pick a build next to Run suite.</p></div>
+          <div class="mini"><h4>Environments</h4><p>The addresses and secrets tests use, for web and mobile alike.</p></div>
+          <div class="mini"><h4>Runs</h4><p>The result of every mobile run, with screenshots and a screen recording.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the App builds page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

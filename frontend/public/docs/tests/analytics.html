@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Analytics · TraceIQ Guide</title>
+  <meta name="description" content="The Analytics page: one project's pass rate, open failure groups, time to fix, and which tests fail most, are slowest and flakiest, over 7, 30 or 90 days.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-analytics.spec.ts. Page: frontend/src/pages/Analytics.tsx
+     (+ components/reports/DigestCard.tsx). API: backend/app/api/analytics.py
+     (effectiveness-summary, test-effectiveness); digests: backend/app/api/reports.py + app/tasks/report_tasks.py. -->
+<body data-page="tests/analytics">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../analytics"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Analytics</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors manage digests</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>How one project's tests have done over the last 7, 30 or 90 days: the pass rate, how
+            many problems are still open and how fast they get fixed, and which tests fail most, run
+            slowest or are the least reliable.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          <em>Overview</em> tells you how things are today. Analytics answers
+          <strong>"Which tests earn their keep?"</strong>: a test that fails a lot may be catching
+          real bugs, or may be badly written; a slow test holds every run up; a flaky one makes
+          people stop trusting the results. This page shows where to spend effort.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Find the tests worth repairing, speeding up or retiring.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See which areas of the app break most often.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Follow the pass rate and the time to fix, and get them by email every week.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Analytics</strong>.
+          It shows the project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has five parts. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/analytics/page-annotated.png" alt="The Analytics page with five numbered parts: 1 the 7 / 30 / 90 days switch, 2 four number tiles, 3 three ranked lists Top failing, Slowest and Flakiest, 4 the Per-test effectiveness table, 5 the Quality digest box" loading="lazy" width="1440" height="1500"></div>
+          <figcaption>The Analytics page for the demo's web project, over 30 days. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Time window">Time window</h2></div>
+        <p><strong>7 days</strong>, <strong>30 days</strong> (shown first) or <strong>90 days</strong>,
+          counted back from this moment. Everything below is recounted when you switch, except where
+          the sections below say otherwise.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="tiles" data-toc="② The four tiles">The four tiles</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/analytics/tiles.png" alt="Four tiles: Pass rate 83.3%, Finished runs 60, Open failure groups 4, Mean time to fix —" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Pass rate</strong></td><td>Of the runs in the window that finished with a verdict (passed, failed or error), the share that passed. It turns yellow below 90% and orange below 60%. With no finished runs it shows 0%.</td></tr>
+              <tr><td><strong>Finished runs</strong></td><td>How many runs that is.</td></tr>
+              <tr><td><strong>Open failure groups</strong></td><td>How many problems on the <em>Failure triage</em> page are still <em>Open</em>, whenever they appeared. This tile ignores the time window.</td></tr>
+              <tr><td><strong>Mean time to fix</strong></td><td>For problems marked <em>Resolved</em> during the window: the average number of hours from when each was first seen to when it was resolved. "—" when none was resolved.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="lists" data-toc="③ Top failing, Slowest, Flakiest">Top failing, Slowest, Flakiest</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/tests/analytics/lists.png" alt="Three lists. Top failing: Add a todo 6, Session cookie is HttpOnly 2, Homepage loads 1, No serious accessibility violations 1. Slowest: average times around 5 seconds. Flakiest: Add a todo 40%" loading="lazy"></div>
+        </figure>
+        <p>The five highest tests in each list, with a bar that compares them with the top one.</p>
+        <ul>
+          <li><strong>Top failing</strong>: how many times each test ended <em>Failed</em> or <em>Error</em> in the window.</li>
+          <li><strong>Slowest</strong>: the average time one run of the test takes, in the window.</li>
+          <li><strong>Flakiest</strong>: each test's flakiness score, the chance that it fails without anything having changed (see <em>Flaky tests</em>). This list comes from TraceIQ's flakiness records and does <em>not</em> follow the time window, even though its empty message says "in this window".</li>
+        </ul>
+
+        <div class="part"><span class="num">4</span><h2 id="table" data-toc="④ Per-test effectiveness">Per-test effectiveness</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/tests/analytics/table.png" alt="A table with the columns Test, Runs, Failures, Failure rate, Failure groups found and Average time; Add a todo ran 60 times with 6 failures, a 10% failure rate, 1 failure group and 5.3 s on average" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Runs</strong></td><td>How many times the test ran in the window (a suite run with the test in it counts once per browser and device).</td></tr>
+              <tr><td><strong>Failures</strong>, <strong>Failure rate</strong></td><td>How many of those ended <em>Failed</em> or <em>Error</em>, and what share that is.</td></tr>
+              <tr><td><strong>Failure groups found</strong></td><td>How many different problems on <em>Failure triage</em> this test's failures belong to. A test that surfaced a real problem someone triaged earns its keep.</td></tr>
+              <tr><td><strong>Average time</strong></td><td>How long one run of the test takes on average.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The tests with the most failures come first; up to 50 tests are listed.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="digest" data-toc="⑤ Quality digest">Quality digest</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/analytics/digest-form.png" alt="The Quality digest box with its new-digest form: Name Weekly digest, When 0 9 * * 1, Period covered Last 7 days, Send to Email / Slack / Microsoft Teams, People, Other addresses, Active, and Create digest and Cancel" loading="lazy"></div>
+        </figure>
+        <p>A <strong>digest</strong> is a summary sent on a timer, by email or to the project's chat
+          channel: the pass rate, runs and failures compared with the period before, the top failing
+          tests, open failure groups, flaky tests and release readiness. <strong>New digest</strong>
+          opens the form:</p>
+        <ul>
+          <li><strong>When</strong>: a cron expression in UTC (see <em>Schedules</em>); <code>0 9 * * 1</code> is Mondays at 09:00 UTC.</li>
+          <li><strong>Period covered</strong>: the last 7, 14 or 30 days, compared with the same length of time before it.</li>
+          <li><strong>Send to</strong>: <em>Email</em>, and/or <em>Slack</em> or <em>Microsoft Teams</em>, which post to the chat link set in this project's notification settings.</li>
+          <li><strong>People</strong>: project members to email. Anyone who loses access, or switches this project's emails off for themselves, stops receiving it. <strong>Other addresses</strong>: up to 20 more email addresses.</li>
+        </ul>
+        <p>Saved digests are listed with their timing, channels and recipients, when one was last
+          sent and what happened, and the buttons <strong>Send now</strong>, <strong>Edit</strong> and
+          remove.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/analytics/page.png" width="1280" height="800">
+              <source src="../media/tests/analytics/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 50 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…find the tests worth fixing first</h3>
+        <ol class="steps">
+          <li>Choose <strong>30 days</strong>.</li>
+          <li>In <strong>Per-test effectiveness</strong>, look at the top rows: many failures but <em>0</em> failure groups found usually means a badly behaved test; failures with failure groups mean real problems.</li>
+          <li>Check <strong>Flakiest</strong>: a test there wastes everyone's time even when the app is fine. Open it on the <em>Flaky tests</em> page.</li>
+        </ol>
+        <h3>…speed up the suite</h3>
+        <ol class="steps">
+          <li>Look at <strong>Slowest</strong>.</li>
+          <li>Open the slowest test (<strong>Tests → Suites</strong>) and look for long waits or steps that repeat what another test already does.</li>
+        </ol>
+        <h3>…get this summary every Monday</h3>
+        <ol class="steps">
+          <li>In <strong>Quality digest</strong>, press <strong>New digest</strong>. The defaults are already "Mondays at 09:00 UTC, last 7 days, by email".</li>
+          <li>Tick the people who should get it, and add any other addresses.</li>
+          <li>Press <strong>Create digest</strong>. Use <strong>Send now</strong> once to see what it looks like.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see the page. Creating, changing, sending and removing digests needs the <em>editor</em> role.</li>
+          <li><strong>Tests are counted by name.</strong> Two tests with the same name in different suites are added together in the lists and the table.</li>
+          <li><strong>What is left out.</strong> Runs that are cancelled, timed out, queued or still running have no verdict and don't count towards the pass rate. Re-runs that TraceIQ makes only to check a suggested fix (see <em>Proposals</em>) are left out everywhere.</li>
+          <li><strong>One project at a time.</strong> Switch project at the top of the sidebar.</li>
+          <li><strong>The demo never sends digests</strong>: emails and chat messages are switched off for demo projects.</li>
+          <li><strong>It doesn't update by itself</strong>, but it does refresh when you come back to its browser tab.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Overview</h4><p>How testing is going today, across all your projects.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>The failure groups counted here, one problem at a time.</p></div>
+          <div class="mini"><h4>Flaky tests</h4><p>The scores behind the Flakiest list, and quarantine.</p></div>
+          <div class="mini"><h4>Executive summary</h4><p>A shorter summary for leadership, which can be shared as a link.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Analytics page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

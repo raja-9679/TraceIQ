@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frontend quality · TraceIQ Guide</title>
+  <meta name="description" content="The Frontend quality page: a crawler for broken links and files, page speed budgets, selectors that keep breaking, and tests made from Storybook.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-frontend-quality.spec.ts. Page: frontend/src/pages/FrontendQuality.tsx
+     (+ components/frontend-quality/CrawlerPanel.tsx, BudgetsPanel.tsx, SelectorHealthPanel.tsx, StorybookPanel.tsx).
+     API: backend/app/api/frontend_quality.py; crawl rules: backend/app/services/site_crawl.py;
+     tasks: backend/app/tasks/frontend_quality_tasks.py. -->
+<body data-page="tests/frontend-quality">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../frontend-quality"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Frontend quality</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can set up crawls and generate tests</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Checks on how well your website itself is built, beyond what single tests check:
+            broken links and pictures across the whole site, whether pages stay fast and light, which
+            page elements tests keep failing to find, and tests made straight from a component
+            library.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          A test checks one journey. Frontend quality looks across the site and answers
+          <strong>"What is quietly getting worse?"</strong>: a link to a page that no longer exists,
+          a picture that doesn't load, a page that got twice as heavy last month, a button the tests
+          can only find by luck.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Find broken links and fragile tests before users or the next release do.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See which page got slower or heavier, and which run it started in.</p></div>
+          <div class="mini"><h4>Designers</h4><p>Turn every component in the design system's Storybook into a visual and accessibility check.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Frontend quality</strong>.
+          The page's own heading says <strong>Frontend Quality</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo has no crawls or measurements yet, so the pictures show each tab as it looks
+          before its first result. The numbers match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/frontend-quality/page-annotated.png" alt="The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the list of crawls, empty" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Frontend Quality page for the demo's web project, on its first tab. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="project" data-toc="① Project">Project</h2></div>
+        <p>Which project the page shows. It is the same choice as the project picker at the top of
+          the sidebar: changing it here changes it there too.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="tabs" data-toc="② The four tabs">The four tabs</h2></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Tab</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Link &amp; asset crawler</strong></td><td>Visits your site page by page and checks every link, picture, script and style sheet. Shown first.</td></tr>
+              <tr><td><strong>Page budgets</strong></td><td>Speed and size of pages, measured every time a test with a <em>check-page-budget</em> step runs, against the limits ("budgets") set in that step.</td></tr>
+              <tr><td><strong>Selector health</strong></td><td>The page elements tests keep failing to find, or that TraceIQ keeps having to repair.</td></tr>
+              <tr><td><strong>Storybook</strong></td><td>Makes one test per component story from your Storybook (a catalogue of a site's building blocks).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="crawler" data-toc="③ The crawler">The crawler</h2></div>
+        <p>A <strong>crawl</strong> starts at one address, follows the links it finds to other pages
+          of the same site, and checks everything each page uses. <strong>New crawl</strong> opens its
+          settings:</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/frontend-quality/crawl-form.png" alt="The New crawl form: Name, Start URL with the note Must be one of this project's hosts: example.com, localhost; Max depth 3, Max pages 100, Delay between requests to one host 250, Slow threshold 3000, Also crawl these project hosts, Schedule (cron, UTC, optional), the ticked boxes Respect robots.txt and Check links to other sites, and Save crawl and Cancel" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Setting</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Start URL</strong></td><td>Where to begin. It must be on one of the project's own sites (the hosts of its environments and suites, listed under the field).</td></tr>
+              <tr><td><strong>Max depth</strong>, <strong>Max pages</strong></td><td>How many clicks away from the start page to go (0–10, default 3), and the most pages to visit (1–1000, default 100).</td></tr>
+              <tr><td><strong>Delay between requests</strong></td><td>How long to wait between two requests to the same site, so the crawl doesn't overload it (default 250 ms).</td></tr>
+              <tr><td><strong>Slow threshold</strong></td><td>Anything that takes longer than this to answer is reported as slow (default 3000 ms = 3 seconds).</td></tr>
+              <tr><td><strong>Also crawl these project hosts</strong></td><td>Other sites of the same project to follow links into, such as a blog on its own address.</td></tr>
+              <tr><td><strong>Schedule</strong></td><td>Optional cron expression, in UTC, to repeat the crawl, at most once an hour. See <em>Schedules</em> for how cron works.</td></tr>
+              <tr><td><strong>Respect robots.txt</strong></td><td>Skip the pages the site asks robots not to visit. On by default.</td></tr>
+              <tr><td><strong>Check links to other sites</strong></td><td>Also check that links to other websites still answer. Those sites are only asked for a status, never crawled.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="crawls" data-toc="④ Crawls and their problems">Crawls and their problems</h2></div>
+        <p>Each saved crawl is a box with its start address and limits, <strong>Run now</strong> and
+          <strong>Delete</strong>. After a run, a <strong>Run</strong> menu picks one of its runs and
+          the box shows how many pages were crawled and links checked, then a table of problems with
+          what was wrong, the address, the kind of element, the status, the time it took, and the
+          page it was found on. Tick the problem types or element kinds to filter, or search the
+          addresses. The table shows 100 problems at a time.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Problem</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Broken (4xx/5xx)</strong></td><td>The address answered with an error, such as 404 "not found".</td></tr>
+              <tr><td><strong>Network error</strong></td><td>No answer at all.</td></tr>
+              <tr><td><strong>Slow</strong></td><td>Answered, but slower than the slow threshold.</td></tr>
+              <tr><td><strong>Redirect loop</strong>, <strong>Long redirect chain</strong></td><td>The address sends the browser round in circles, or through many steps before arriving.</td></tr>
+              <tr><td><strong>Mixed content</strong></td><td>A secure (https) page loads something over plain http.</td></tr>
+              <tr><td><strong>Not checked (private address)</strong></td><td>The link points at a private or internal address, which TraceIQ doesn't visit.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="budgets" data-toc="Page budgets">Page budgets</h2>
+        <figure>
+          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: a description and No page-budget samples yet." loading="lazy"></div>
+        </figure>
+        <p>Nothing appears here until a test contains a <strong>check-page-budget</strong> step. Then
+          every run of that test measures the page, and this tab lists the pages measured in the last
+          30 days, those that went over budget first. Click a page to see, for its latest run and as
+          small bars for recent runs:</p>
+        <ul>
+          <li><strong>LCP</strong> (how long the main content takes to appear), <strong>CLS</strong> (how much the layout jumps while loading), <strong>INP</strong> (how quickly the page reacts to a click), <strong>TTFB</strong> (how long the server takes to start answering), <strong>page weight</strong> and <strong>number of requests</strong>. A red bar is a run that went over that budget.</li>
+          <li><strong>Budgets</strong>: each limit set in the step, and whether the page was within it or over.</li>
+          <li><strong>SEO checks</strong>: basic search-engine checks such as a page title. They only fail the test if the step says so.</li>
+        </ul>
+
+        <h2 id="selectors" data-toc="Selector health">Selector health</h2>
+        <figure>
+          <div class="frame"><img src="../media/tests/frontend-quality/selectors.png" alt="The Selector health tab: a description, a Window menu set to Last 90 days, 0 selectors, 0 heals, 0 failures, and No selector trouble in this window." loading="lazy"></div>
+        </figure>
+        <p>A <strong>selector</strong> is the short code a test step uses to find an element on the
+          page. When a page changes, selectors break. This tab lists the ones with the most trouble
+          in the chosen window (30, 90, 180 or 365 days), worst first. For each one: the test and
+          step it belongs to, how often it failed, how often TraceIQ proposed or made a repair, a
+          bar per week, reasons it is fragile, and <strong>sturdier locators</strong> worked out from
+          the page as it was when the step failed, with a <strong>Copy</strong> button. Suggestions are
+          never applied for you: edit the test to use one.</p>
+
+        <h2 id="storybook" data-toc="Storybook">Storybook</h2>
+        <figure>
+          <div class="frame"><img src="../media/tests/frontend-quality/storybook.png" alt="The Storybook tab: a description, a Storybook URL field and a Load stories button" loading="lazy"></div>
+        </figure>
+        <ol class="steps">
+          <li>Enter the address of your Storybook (it must be on one of the project's sites) and press <strong>Load stories</strong>.</li>
+          <li>Tick the stories you want, choose the suite to add the tests to, and whether each test checks the look (<strong>Visual match</strong>), <strong>Accessibility</strong>, or both.</li>
+          <li>Press <strong>Generate</strong>. You get one test per story. Generating again for a story updates its existing test instead of making a second one, and keeps its saved reference picture.</li>
+        </ol>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/frontend-quality/page.png" width="1280" height="800">
+              <source src="../media/tests/frontend-quality/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 50 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check a site for broken links every night</h3>
+        <ol class="steps">
+          <li>On the <strong>Link &amp; asset crawler</strong> tab, press <strong>New crawl</strong>.</li>
+          <li>Give it a name, enter the home page as the <strong>Start URL</strong>, and under <strong>Schedule</strong> type <code>0 3 * * *</code> (3 a.m. UTC every day).</li>
+          <li>Press <strong>Save crawl</strong>, then <strong>Run now</strong> for a first result. The box shows "running…" until it is done.</li>
+          <li>Tick <strong>Broken (4xx/5xx)</strong> to see only the links that need fixing, and the page each was found on.</li>
+        </ol>
+        <h3>…keep a page fast</h3>
+        <ol class="steps">
+          <li>In a test that opens the page, add a <strong>check-page-budget</strong> step with the limits you want, for example how long the main content may take.</li>
+          <li>Run the test. The page appears on the <strong>Page budgets</strong> tab.</li>
+          <li>Check back after a few runs: red bars show the runs that went over.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see every tab. Creating, running and deleting crawls, and generating tests from Storybook, need the <em>editor</em> role.</li>
+          <li><strong>Only your own sites are crawled.</strong> The start address and extra hosts must belong to the project. Links to other websites are only checked for an answer, and private or internal addresses are never visited.</li>
+          <li><strong>Limits.</strong> A project can hold up to 20 crawls, run up to 3 at the same time, and a crawl stops after 15 minutes or 1,000 pages, whatever its settings say ("stopped at a limit").</li>
+          <li><strong>Crawl schedules are in UTC</strong>, unlike suite schedules, which have their own time zone.</li>
+          <li><strong>Re-runs that check a suggested fix don't count.</strong> Page budgets and selector health leave out the check runs TraceIQ makes for proposals.</li>
+          <li><strong>Screen sizes, languages and themes</strong> are not on this page: they are run options on a suite (<em>Screen sizes &amp; locales</em>, see <em>Suites</em>).</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Accessibility</h4><p>The next page in this guide: every accessibility problem the tests found, and waivers for known ones.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Add the check-page-budget step, and run suites on several screen sizes and languages.</p></div>
+          <div class="mini"><h4>Proposals</h4><p>Repairs TraceIQ suggests for broken selectors.</p></div>
+          <div class="mini"><h4>Visual review</h4><p>Where the visual matches of Storybook tests are reviewed.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Frontend quality page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

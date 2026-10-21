@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Test packs · TraceIQ Guide</title>
+  <meta name="description" content="The Test packs page: ready-made suites for single sign-on, SCIM provisioning and webhooks, and how to import one into a project.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-test-packs.spec.ts. Page: frontend/src/pages/TestPacks.tsx
+     (+ components/test-packs/PackImportDialog.tsx, api/solution.ts). API: backend/app/api/test_packs.py;
+     packs: backend/app/packs/*.json; rules: backend/app/services/test_packs.py. -->
+<body data-page="tests/test-packs">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../test-packs"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Test packs</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone can see it</span>
+          <span class="tag t-neutral">Editors can import into their projects</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Ready-made suites that come with TraceIQ, for things many systems have to get right:
+            single sign-on, user provisioning and webhooks. Import one into a project, fill in a few
+            values such as your server's address, and run it against your own system.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Some checks are the same for everyone: "does our sign-in through the company's identity
+          provider really end the session at logout?", "do we send webhooks when we should?". Writing
+          them from scratch takes days. A <strong>test pack</strong> answers
+          <strong>"Is there a good set of tests for this already?"</strong>: a versioned suite whose
+          tests use placeholders for everything specific to you.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Start from a complete, reviewed suite instead of an empty one.</p></div>
+          <div class="mini"><h4>Security and IT</h4><p>Check an SSO or SCIM set-up the way identity providers such as Okta and Entra ID use it.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Prove that the app's webhooks fire and carry the right data.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Test packs</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>One card per pack. The numbers on the screenshot are on the <em>SCIM 2.0 provisioning</em>
+          card; every card has the same parts.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/test-packs/page-annotated.png" alt="The Test packs page with three cards, Outbound webhooks, SCIM 2.0 provisioning and SSO (OpenID Connect). On the SCIM card: 1 the title with its version and category, 2 the counts line, 3 the Show cases button, 4 the Import into a project button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Test packs page. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="title" data-toc="① Title, version, category">Title, version, category</h2></div>
+        <p>The pack's name, its <strong>version</strong> (for example <span class="pill t-neutral">v1.0.0</span>)
+          and its category (<span class="pill t-mint">identity</span> or <span class="pill t-mint">integration</span>),
+          then a description of what it checks and, often, what it doesn't. Read it before importing:
+          it says what your system has to allow, for example that your app must be able to reach
+          TraceIQ for the webhook pack.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Pack</th><th>What it checks</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Outbound webhooks</strong></td><td>That your app sends a webhook (a message to another system) when something happens, and what the message contains. 3 tests.</td></tr>
+              <tr><td><strong>SCIM 2.0 provisioning</strong></td><td>That your system can have users created, found, switched off and deleted automatically by an identity provider, the way Okta and Entra ID do it. 5 tests.</td></tr>
+              <tr><td><strong>SSO (OpenID Connect)</strong></td><td>That your identity provider is set up correctly, and that your app's sign-in through it works and ends properly at logout. 6 tests.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="counts" data-toc="② The counts line">The counts line</h2></div>
+        <p>For example <em>"5 cases · 3 variables (1 secret)"</em>: how many tests the pack holds,
+          how many values you will be asked for when you import it, and how many of those are
+          secrets (passwords or tokens).</p>
+
+        <div class="part"><span class="num">3</span><h2 id="cases" data-toc="③ Show cases">Show cases</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/test-packs/pack-cases.png" alt="The SCIM 2.0 provisioning card with its cases shown: each test's name, a sentence about it, and its step types joined by arrows" loading="lazy"></div>
+        </figure>
+        <p>Lists the pack's tests, grouped by suite: each one's name, a sentence about what it does,
+          and the kinds of steps it uses, in order (for example <em>http-request → http-request</em>).
+          <strong>Hide cases</strong> folds the list again.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="import" data-toc="④ Import into a project">Import into a project</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/test-packs/import-dialog.png" alt="The dialog Import SCIM 2.0 provisioning v1.0.0: Creates the suite SCIM 2.0 provisioning pack v1.0.0 with 5 cases. Fields Project and Environment for the variables, then the variables SCIM_BASE_URL (Required), SCIM_TOKEN (Required, Secret) and SCIM_TEST_DOMAIN, each with a description, and Import pack and Cancel buttons" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Project</strong>: where the pack's suite is created. The project selected in the sidebar is chosen first.</li>
+          <li><strong>Environment for the variables</strong>: which environment of that project receives the values (see <em>Environments</em>). <em>Project default</em> uses the default one, and creates one called "default" if the project has none.</li>
+          <li><strong>Variables</strong>: one field per value the tests need, with a description. <span class="pill t-peach">Required</span> ones must be filled before the tests can work; <span class="pill t-lavender">Secret</span> ones are typed hidden and stored as encrypted project secrets. Some show a default, used when you leave them empty.</li>
+          <li><strong>Import pack</strong> creates a suite named "<em>pack name</em> pack v<em>version</em>" with the pack's tests. A summary then says where the values went, and lists anything <strong>still to fill before running</strong>, with buttons to open the suite or the Environments page.</li>
+        </ul>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/test-packs/page.png" width="1280" height="800">
+              <source src="../media/tests/test-packs/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 45 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check your SCIM set-up</h3>
+        <ol class="steps">
+          <li>On the <strong>SCIM 2.0 provisioning</strong> card, press <strong>Import into a project</strong>.</li>
+          <li>Choose the project and the environment, and fill in <code>SCIM_BASE_URL</code> (your system's SCIM address) and <code>SCIM_TOKEN</code> (the token an identity provider would use).</li>
+          <li>Press <strong>Import pack</strong>, then <strong>Open the suite</strong>.</li>
+          <li>Press <strong>Run suite</strong>. The tests create a temporary user, work with it, and delete it again.</li>
+        </ol>
+        <h3>…fill in a value you skipped</h3>
+        <ol class="steps">
+          <li>Open <strong>Tests → Environments</strong> and click the environment the pack's values went to.</li>
+          <li>Press <strong>Edit</strong> and add the variable with the name the summary listed. For a secret, use <strong>Secrets</strong> instead.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Every signed-in user can browse the packs. Importing needs the <em>editor</em> role in the target project.</li>
+          <li><strong>Importing runs nothing.</strong> No test runs and your system isn't contacted until you run the suite yourself.</li>
+          <li><strong>One copy per version.</strong> Importing the same pack version into a project twice is refused, because the suite name already exists. Rename or delete the first copy to import again.</li>
+          <li><strong>What gets overwritten.</strong> A value you type replaces the same-named value in the chosen environment, and a secret you type replaces the same-named project secret. A <em>default</em> never replaces a value the environment already has.</li>
+          <li><strong>The imported suite is yours.</strong> Change its tests freely; a later version of the pack doesn't update it.</li>
+          <li><strong>Every import is recorded</strong> in the audit log, with the names of the values set (never the secret values).</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Analytics</h4><p>The next page in this guide: which tests fail most, which are slowest, which are flakiest.</p></div>
+          <div class="mini"><h4>Environments</h4><p>Where a pack's values and secrets end up.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where the imported suite appears and is run.</p></div>
+          <div class="mini"><h4>Import Playwright</h4><p>Bring in tests your developers have already written as code.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Test packs page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

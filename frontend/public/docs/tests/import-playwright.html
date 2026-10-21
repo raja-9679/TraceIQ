@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Import Playwright · TraceIQ Guide</title>
+  <meta name="description" content="The Import Playwright page: bring a test written as Playwright code into a suite, and what such a test can and can't do.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-import-playwright.spec.ts. Page: frontend/src/pages/ImportPlaywright.tsx.
+     API: backend/app/api/endpoints/test_cases.py (POST /cases/import-playwright);
+     running: execution-engine/src/worker.ts (executeRawPlaywrightJob, RAW_PLAYWRIGHT_ENABLED) + raw-playwright-runner.ts. -->
+<body data-page="tests/import-playwright">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../import-playwright"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Import Playwright</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to a project can open it</span>
+          <span class="tag t-neutral">Editors can import</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Many development teams already have browser tests written as code with Playwright. This
+            page copies one such file into a suite as a TraceIQ test, so it runs and reports
+            alongside the others, exactly as written.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          <strong>Playwright</strong> is the browser-automation tool TraceIQ itself is built on; its
+          tests are files ending in <code>.spec.ts</code>. Rewriting existing ones as TraceIQ steps
+          takes time. Importing answers <strong>"Can I use the tests we already have, today?"</strong>:
+          the code is stored as one test and run as it is, with its results on the Runs page.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Developers</h4><p>Bring a test from the code repository without rewriting it.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Keep every test's results in one place, whoever wrote it and however.</p></div>
+          <div class="mini"><h4>Administrators</h4><p>Decide whether code tests may run at all, on a separate, locked-down test machine.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Import Playwright</strong>.
+          The page's own heading says <strong>Import a Playwright spec</strong>. The list of suites
+          comes from the project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>One note and one form. In the screenshot the form has been filled in with the built-in
+          sample; nothing was imported. The numbers match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/import-playwright/page-annotated.png" alt="The Import a Playwright spec page with four numbered parts: 1 the note about what imported specs can't do, 2 the Target suite and Case name fields, 3 the Playwright spec text box with a sample test, 4 the Import case button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Import Playwright page, filled in with the sample. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="note" data-toc="① The note">The note</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/import-playwright/note.png" alt="A note: Imported specs can't use step-level AI heal or the trace timeline. Running one executes arbitrary code, so it only happens on a sandboxed worker with RAW_PLAYWRIGHT_ENABLED set. Importing here only stores the script." loading="lazy"></div>
+        </figure>
+        <p>In plain words:</p>
+        <ul>
+          <li>TraceIQ runs the file as a whole and doesn't look inside it, so features that work step by step are not available for it: automatic repair of broken selectors ("AI heal") and the step-by-step trace view.</li>
+          <li>The file is program code and could do anything, so it only runs on a test machine your administrator has set up specially for it (closed off from everything else, with the <code>RAW_PLAYWRIGHT_ENABLED</code> setting). On any other machine, the run ends in <em>Error</em> with the message "raw_playwright execution is disabled on this worker".</li>
+          <li>Importing only stores the file. It doesn't run it.</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="where" data-toc="② Suite and name">Suite and name</h2></div>
+        <p><strong>Target suite</strong>: the suite the new test goes into, from the selected
+          project. Suites that contain sub-modules can't hold tests directly, so TraceIQ refuses
+          those. <strong>Case name</strong>: the name the test will have in the suite, for example
+          <em>checkout-flow.spec</em>.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="script" data-toc="③ The spec">The spec</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/import-playwright/form.png" alt="The form: Target suite Web smoke (demo), Case name homepage-title.spec, a Playwright spec box containing a short test that opens https://example.com and expects the title to contain Example, a character count, and an Import case button" loading="lazy"></div>
+        </figure>
+        <p>Paste the whole contents of the <code>.spec.ts</code> file. <strong>Insert sample</strong>
+          fills in a tiny example (open example.com and check the page title), useful to see the
+          expected shape. The character count under the box shows how much you pasted. The file may
+          contain several Playwright tests; each one's result is reported separately in the run.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="import" data-toc="④ Import case">Import case</h2></div>
+        <p>Becomes available once a suite, a name and some code are there. It creates the test and
+          takes you to the suite. The new test shows <em>0 steps</em> there, because its contents are
+          code rather than steps.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/import-playwright/page.png" width="1280" height="800">
+              <source src="../media/tests/import-playwright/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under 40 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…import a test from your code repository</h3>
+        <ol class="steps">
+          <li>Check with your administrator that a test machine for code tests exists; otherwise the test will be stored but every run of it ends in <em>Error</em>.</li>
+          <li>Choose the <strong>Target suite</strong> and type a <strong>Case name</strong>.</li>
+          <li>Open the <code>.spec.ts</code> file, copy everything, and paste it into <strong>Playwright spec</strong>.</li>
+          <li>Press <strong>Import case</strong>. On the suite page, run it with <strong>Run now</strong>.</li>
+        </ol>
+        <h3>…update a code test</h3>
+        <ol class="steps">
+          <li>Import the new version of the file into the same suite, under a new name.</li>
+          <li>Run it once to check it works.</li>
+          <li>Delete the old test from the suite (its schedules, if any, have to be moved to the new test first).</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone can open the page, but importing needs the <em>editor</em> role in the suite's project.</li>
+          <li><strong>The code can't be seen or edited in TraceIQ afterwards.</strong> To change it, import the new version as a new test and delete the old one. Keep the original file in your code repository.</li>
+          <li><strong><code>{{env.…}}</code> and <code>{{secret.…}}</code> don't work inside the code.</strong> TraceIQ doesn't read the file, so it can't fill in placeholders.</li>
+          <li><strong>The page keeps nothing.</strong> If you leave before pressing Import case, what you typed is gone.</li>
+          <li><strong>Time limit.</strong> A code test is stopped after the same time limit as any other test job.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Test packs</h4><p>The next page in this guide: ready-made suites for common integrations.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where imported tests appear, and where tests made of steps are written.</p></div>
+          <div class="mini"><h4>Schedules</h4><p>Run an imported test automatically, like any other test.</p></div>
+          <div class="mini"><h4>Runs</h4><p>The results of every imported test.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Import Playwright page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

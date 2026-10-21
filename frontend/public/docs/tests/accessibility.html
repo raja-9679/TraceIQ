@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Accessibility · TraceIQ Guide</title>
+  <meta name="description" content="The Accessibility page: every accessibility problem your tests found, how it changes over time, and waivers for known problems.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-accessibility.spec.ts. Page: frontend/src/pages/Accessibility.tsx
+     (+ components/accessibility/a11yModel.ts, ImpactChart.tsx). API: backend/app/api/accessibility.py;
+     register + waivers: backend/app/services/accessibility.py; gate rule: frontend/src/pages/QualityDashboard.tsx. -->
+<body data-page="tests/accessibility">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../accessibility"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Accessibility</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors manage waivers</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A register of every accessibility problem your tests have found: how serious it is,
+            where on the page, whether it is new, and how the numbers move from day to day. Known
+            problems you can't fix yet can be set aside for a limited time with a waiver.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          An <strong>accessibility problem</strong> is something that makes a page hard or impossible
+          to use for some people, for example text with too little contrast, a button a screen reader
+          can't name, or a form field without a label. Tests find them with a
+          <strong>check-accessibility</strong> step, which runs the widely used <em>axe</em> checker on
+          the page. This page answers <strong>"Are we getting better or worse, and what is
+          new?"</strong>
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>See what the latest runs found, and which problems appeared since the run before.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Get the rule, the element and a link to the explanation of how to fix it.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Watch the trend, and keep accepted problems on a deadline instead of ignoring them.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Accessibility</strong>.
+          It shows the project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo has no stored accessibility scans yet, so the screenshot shows the page before
+          its first result. The numbers match the sections below; the parts that appear once there
+          are results are described after them.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/accessibility/page-annotated.png" alt="The Accessibility page with three numbered parts: 1 the Window menu, 2 the note No accessibility scans yet, 3 the Waivers box with a New waiver button" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Accessibility page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Window">Window</h2></div>
+        <p>How far back to look: the last 7, 30 (shown first), 90 or 180 days of runs.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="results" data-toc="② The results">The results</h2></div>
+        <p>Until a test with a <em>check-accessibility</em> step has run in the window, this place
+          says <em>"No accessibility scans yet"</em>. Once there are scans, it fills with four
+          parts:</p>
+        <ul>
+          <li><strong>Five number tiles</strong>: how many <em>critical</em>, <em>serious</em>, <em>moderate</em> and <em>minor</em> problems are open in the latest scans, and how many are <em>waived</em> (with how many are new since the run before).</li>
+          <li><strong>Violations by impact</strong>: a bar per day, stacked by how serious the problems were, with the number of runs and scans it is based on.</li>
+          <li><strong>New per day</strong> and <strong>Fixed per day</strong>: problems that appeared, and problems that went away, compared with the previous run of the same test.</li>
+          <li><strong>Open violations</strong>: a table of the problems in the latest scan of each test (see below).</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Impact</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-pink">critical</span></td><td>Blocks some people from using the page at all.</td></tr>
+              <tr><td><span class="pill t-peach">serious</span></td><td>Makes the page very hard to use for some people.</td></tr>
+              <tr><td><span class="pill t-butter">moderate</span></td><td>Gets in the way, but there is usually a way round it.</td></tr>
+              <tr><td><span class="pill t-neutral">minor</span></td><td>A small annoyance.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each row of <strong>Open violations</strong> shows the impact, the <strong>rule</strong>
+          (click it for the axe explanation of what is wrong and how to fix it), the
+          <strong>target</strong> (the selector of the element, see <em>Suites</em>), the page and
+          test, the number of matching elements ("nodes"), and its status:
+          <span class="pill t-peach">new</span> if the previous scan of that test didn't have it,
+          <span class="pill t-mint">waived</span> if a waiver covers it, otherwise a
+          <strong>Waive</strong> button that opens the waiver form already filled in for that rule
+          and element.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="waivers" data-toc="③ Waivers">Waivers</h2></div>
+        <p>A <strong>waiver</strong> says "we know about this problem and accept it until a set
+          date". While it lasts, matching problems are shown as waived and don't count against the
+          <em>quality gate</em> (see Good to know). <strong>New waiver</strong> opens the form:</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/accessibility/waiver-form.png" alt="The Waivers box with its New waiver form: Rule (color-contrast), Selector pattern (* matches anything) set to *, Reason (Vendor widget, fix scheduled), Length (days, max 90) 30, Owner Me, and Add waiver and Cancel buttons" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Field</th><th>What to fill in</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Rule</strong></td><td>The axe rule name, for example <code>color-contrast</code>.</td></tr>
+              <tr><td><strong>Selector pattern</strong></td><td>Which elements it covers. <code>*</code> matches anything, so <code>*</code> alone covers the rule everywhere and <code>#footer *</code> only inside the footer.</td></tr>
+              <tr><td><strong>Reason</strong></td><td>Required: why it is accepted for now, for example "Vendor widget, fix scheduled".</td></tr>
+              <tr><td><strong>Length</strong></td><td>1 to 90 days (default 30).</td></tr>
+              <tr><td><strong>Owner</strong></td><td>Who is responsible for getting it fixed. You, unless you pick someone else.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each waiver in the list shows its rule and pattern, the reason, the owner, and how many
+          days are left. <strong>Renew 30 days</strong> extends it, <strong>Remove</strong> ends it
+          straight away.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/accessibility/page.png" width="1280" height="800">
+              <source src="../media/tests/accessibility/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 40 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…start checking a page for accessibility</h3>
+        <ol class="steps">
+          <li>Open a test that visits the page (<strong>Tests → Suites</strong>) and press <strong>Edit steps</strong>.</li>
+          <li>After the step that opens the page, add a <strong>check-accessibility</strong> step, and save.</li>
+          <li>Run the test. Its results appear on this page.</li>
+        </ol>
+        <h3>…set a known problem aside</h3>
+        <ol class="steps">
+          <li>In <strong>Open violations</strong>, press <strong>Waive</strong> on its row. The rule and element are filled in.</li>
+          <li>Write the reason, choose how many days, pick an owner, and press <strong>Add waiver</strong>.</li>
+          <li>Before it runs out, either fix the problem or press <strong>Renew 30 days</strong>, if there is still a good reason.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see the register and the waivers. Adding, renewing and removing waivers needs the <em>editor</em> role. Every waiver change is recorded in the audit log.</li>
+          <li><strong>Waivers always run out.</strong> An expired waiver says "Expired — counts again", and its problems count again. TraceIQ never renews one by itself.</li>
+          <li><strong>No page text is stored.</strong> Only the rule, impact, element selector and count are kept, and selectors are trimmed so that values such as web addresses inside them are removed.</li>
+          <li><strong>"New" compares like with like</strong>: the same test, browser and device, in the previous run. The first scan in the window has nothing to compare with, so its problems aren't marked new here.</li>
+          <li><strong>The quality gate can block on new problems.</strong> On the <em>Quality gate</em> page, the rule "No new accessibility violations at serious or above" fails when a run finds a serious or critical problem that wasn't there in the previous comparable run and isn't waived. If a test has never been scanned before, everything it finds counts as new, so waive known problems first.</li>
+          <li><strong>Days are UTC days</strong> in the charts.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Import Playwright</h4><p>The next page in this guide: bring in tests written in Playwright code.</p></div>
+          <div class="mini"><h4>Quality gate</h4><p>Switch on the rule that blocks a release on new serious accessibility problems.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Add the check-accessibility step to a test.</p></div>
+          <div class="mini"><h4>Frontend quality</h4><p>Storybook tests that include an accessibility check per component.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Accessibility page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

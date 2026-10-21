@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Suites · TraceIQ Guide</title>
+  <meta name="description" content="The Suites page: how tests are grouped into suites, what a suite's own page shows, and how a test is made of steps.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-suites.spec.ts. Pages: frontend/src/pages/TestSuites.tsx,
+     frontend/src/pages/SuiteDetails.tsx (+ components/redesign/CaseSplit.tsx, steps.ts), frontend/src/pages/TestBuilder.tsx.
+     API: backend/app/api/endpoints/test_suites.py, test_cases.py, test_runs.py (POST /runs, GET /audit/...);
+     roles: backend/app/core/rbac_init.py; dispatch: backend/app/worker.py. -->
+<body data-page="tests/suites">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../suites"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Suites</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors write and run tests</span>
+          <span class="tag t-neutral">Project admins manage suites</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>The place where your tests live. Tests are grouped into <strong>suites</strong> (folders
+            of related tests). Open a suite to read its tests in plain words, run them, change their
+            steps or adjust the settings they share.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          A <strong>test</strong> is a short list of instructions that TraceIQ carries out in a real
+          browser, such as "open the sign-in page, type a name, press Sign in, check the name
+          appears". A <strong>suite</strong> keeps related tests together, for example everything
+          about signing in, so you can run them in one go and give them the same settings. A large
+          suite can be split into <strong>sub-modules</strong>: suites inside a suite.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Write and organise tests, run a whole suite before a release, or one test after a fix.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Read what a test actually does, step by step, and run it against their change.</p></div>
+          <div class="mini"><h4>Leads</h4><p>See how many tests each area has, and which ones keep failing for no clear reason.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Suites</strong>.
+          The page's own heading says <strong>Tests</strong>. It shows the project selected at the
+          top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>Two screens belong together here: the <strong>list of suites</strong>, and a
+          <strong>suite's own page</strong>, which opens when you click a suite. The numbers on the
+          screenshots match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/page-annotated.png" alt="The list of suites with four numbered parts: 1 the summary line, 2 the Import and New suite buttons, 3 the search box and the Cards / List switch, 4 a suite row" loading="lazy" width="1440" height="560"></div>
+          <figcaption>The list of suites in the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="summary" data-toc="① The summary line">The summary line</h2></div>
+        <p>Under the heading, for example <em>"1 suite · 5 tests · 0 modules in Demo — Todo web
+          app"</em>: how many top-level suites the project has, how many tests they hold between
+          them, and how many sub-modules sit inside them.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="new" data-toc="② Import and New suite">Import and New suite</h2></div>
+        <ul>
+          <li><strong>New suite</strong> opens a panel on the right: a name, how its tests run
+            (see the table below), and an optional description. Nothing is created until you press
+            <strong>Create suite</strong>. Two suites at the same level can't share a name.</li>
+          <li><strong>Import</strong> reads a suite from a JSON file (the kind <em>Export</em>
+            produces, see ④) and adds it to this project, with its tests and sub-modules.</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/new-suite.png" alt="The New suite panel: a Suite name field, a choice between Continuous and Separate, a Description field, and Cancel and Create suite buttons" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">How tests run</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-lavender">Continuous</span></td><td>The default for a new suite. The screen describes it as "one after another in the same browser session"; see <a href="#good-to-know">Good to know</a> for how runs actually behave today.</td></tr>
+              <tr><td><span class="pill t-pink">Separate</span></td><td>Each test starts on its own, from a clean browser. If the suite has sub-modules, the tests of each sub-module run together, one after another.</td></tr>
+              <tr><td><span class="pill t-mint">Parallel</span></td><td>Each test on its own, spread over as many test machines as are free, for the quickest result. Only offered later, in the suite's <a href="#settings">Settings</a>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="search" data-toc="③ Search and layout">Search and layout</h2></div>
+        <p>The search box keeps only the suites whose name or description contains what you type.
+          <strong>Cards</strong> and <strong>List</strong> show the same suites and buttons in two
+          layouts. The page opens in <em>List</em> every time.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="row" data-toc="④ A suite">A suite</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/suite-row.png" alt="One suite row: a folder icon, the name Web smoke (demo) with its description, a pink Separate label, 5 tests · 0 modules, the date Sep 20, 2026, and three buttons: play, download and an arrow" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>The name and description</strong>. Click them to open the suite's own page.</li>
+          <li><strong>The coloured label</strong> says how its tests run (Continuous, Separate or Parallel).</li>
+          <li><strong>5 tests · 0 modules</strong>: the tests and sub-modules it holds, counting everything inside its sub-modules too.</li>
+          <li><strong>The play button</strong> runs every test in the suite and takes you to the <em>Runs</em> page, where the new run appears.</li>
+          <li><strong>The download button</strong> saves the suite, with all its tests, as a JSON file you can import elsewhere. Secret values are never in it.</li>
+        </ul>
+        <p>Only top-level suites are listed here. Sub-modules are shown inside their suite.</p>
+
+        <h2 id="suite-page" data-toc="A suite's own page">A suite's own page</h2>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/suite-annotated.png" alt="A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of tests, 8 the selected test with its steps" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The demo suite "Web smoke (demo)". The heading shows the suite's name, a pencil to rename it (project admins), and its run mode.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">5</span><h2 id="run" data-toc="⑤ Running the suite">Running the suite</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/suite-header.png" alt="The suite heading Web smoke (demo) with a pencil and a Separate label, its description, and the buttons Screen sizes &amp; locales, Default environment, Run suite and More" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Run suite</strong> runs every test in this suite, including its sub-modules, then takes you to <em>Runs</em>.</li>
+          <li><strong>Default environment</strong> chooses where the tests run, for example a test or a live copy of your site (see <em>Environments</em>). It is only shown when the project has environments.</li>
+          <li><strong>Screen sizes &amp; locales</strong> runs the suite once for each screen width, language or colour scheme you pick. The choice is for this page only and isn't saved; to make it permanent, use the suite's Settings.</li>
+          <li>When the project has mobile app builds, a third menu chooses which build the tests install (see <em>App builds</em>).</li>
+          <li><strong>More</strong> holds <em>Schedule this suite</em> (run it on a timer), <em>Export suite (JSON)</em> and <em>Import into this suite</em> (adds the file's suite as a sub-module).</li>
+        </ul>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/more-menu.png" alt="The More menu open: Schedule this suite, Export suite (JSON), Import into this suite" loading="lazy"></div>
+        </figure>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">One press can start several runs</strong>
+            <p>A suite runs once for every browser and device it is set to use, for example Chromium
+            and Firefox on Desktop and Pixel 5 makes four runs. The list comes from the test, else
+            the suite (or the suite above it), else your own default in <em>My settings</em>. Tests
+            that are <em>quarantined</em> (set aside because they are flaky, see <em>Flaky
+            tests</em>) and manual tests are left out of a suite run.</p></div>
+        </div>
+
+        <div class="part"><span class="num">6</span><h2 id="tabs" data-toc="⑥ Tests, Settings, Audit log">Tests, Settings, Audit log</h2></div>
+        <ul>
+          <li><strong>Tests</strong> (with a count) is the list you see when the page opens. If the suite has sub-modules, this tab lists the sub-modules instead, and the count is theirs.</li>
+          <li id="settings"><strong>Settings</strong> are shared by every test in the suite and, unless switched off, passed down to its sub-modules. See the table below.</li>
+          <li><strong>Audit log</strong> lists every change made to this suite and to its own tests: who, when, and what changed from what to what. Changes inside its sub-modules are in their own logs.</li>
+        </ul>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/settings.png" alt="The Settings tab: Module Settings, with the cards Protected module, Execution Mode set to Separate, and Network Archive (HAR)" loading="lazy" width="1440" height="900"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Setting</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Protected module</strong></td><td>Changes that AI agents suggest for tests in here are never applied automatically, and must pass a check run before anyone can accept them.</td></tr>
+              <tr><td><strong>Inherit settings from parent</strong></td><td>Sub-modules only: use the settings of the suite above, or not.</td></tr>
+              <tr><td><strong>Execution mode</strong></td><td>Continuous, Separate or Parallel (see ②). Locked to Separate while the suite has sub-modules.</td></tr>
+              <tr><td><strong>Network archive (HAR)</strong></td><td>Records every network request of a run as a downloadable file. Only kept when the project's data capture level is <em>Full</em>.</td></tr>
+              <tr><td><strong>Retry failed tests</strong></td><td>Try a failed test again, waiting a little longer each time. A test that only passes on a retry is marked flaky.</td></tr>
+              <tr><td><strong>Fail on JavaScript errors</strong></td><td>Fail a test when the page itself reports an error, with a list of messages to ignore.</td></tr>
+              <tr><td><strong>Setup &amp; teardown</strong></td><td>Steps that run before each test (for example, create test data) and after it (clean up). The clean-up runs even when the test failed.</td></tr>
+              <tr><td><strong>Test review</strong></td><td>How often someone should check that each test is still worth having (default every 90 days). See <em>Test review</em>.</td></tr>
+              <tr><td><strong>Execution matrix</strong></td><td>Which browsers (Chromium, Firefox, Webkit) and devices (Desktop, Mobile, iPhone 13, Pixel 5) every run uses.</td></tr>
+              <tr><td><strong>Screen sizes, locales &amp; themes</strong></td><td>The permanent version of the button in ⑤.</td></tr>
+              <tr><td><strong>Custom headers, query parameters, allowed domains, domain-specific overrides</strong></td><td>Extra information sent with every request the tests make, for example a header that lets the test past a login wall, and the sites it may be sent to.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">7</span><h2 id="list" data-toc="⑦ The list of tests">The list of tests</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/test-list.png" alt="A list of five tests, each with its number of steps: Homepage loads, No serious accessibility violations, Sign in as alice, Add a todo with a yellow Flaky 40% label, Session cookie is HttpOnly" loading="lazy"></div>
+        </figure>
+        <p>Every test in the suite with its number of steps. <strong>Click a test</strong> to show it
+          on the right; until you do, the first one is shown. The search box above the list keeps
+          only tests whose name contains what you type.</p>
+        <ul>
+          <li><span class="pill t-butter">Flaky 40%</span>: this test sometimes passes and sometimes fails without anything changing. The percentage is its flakiness score over its recent runs (point at the label to see how many). Only scores of 15% or more are shown.</li>
+          <li><span class="pill t-peach">Quarantined</span>: the test is set aside and skipped by runs until the quarantine ends. <span class="pill t-butter">Quarantine expired</span> means it runs again.</li>
+          <li>The second layout button above the list (cards) also shows each test's owner, its review status and its first three steps.</li>
+        </ul>
+        <p>The <strong>Add</strong> menu next to the search box adds things to the suite:</p>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/add-menu.png" alt="The Add menu open: New sub-module, Import a test (JSON), New manual test, Start manual run" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>New sub-module</strong>: a suite inside this suite. Only works while the suite has no tests of its own.</li>
+          <li><strong>Import a test (JSON)</strong>: a single test exported from another suite.</li>
+          <li><strong>New manual test</strong>: instructions for a <em>person</em> to follow, with what they should see. TraceIQ never runs these itself.</li>
+          <li><strong>Start manual run</strong>: opens the screen where a person works through this suite's manual tests and records what happened.</li>
+        </ul>
+        <p><strong>New test</strong> (the dark button) opens the step editor for a new automated test.</p>
+
+        <div class="part"><span class="num">8</span><h2 id="steps" data-toc="⑧ The selected test">The selected test</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/suites/test-steps.png" alt="The test Add a todo with a Flaky 40% label and seven steps, for example Go to {{env.BASE_URL}}/login, Type a value into #login-username, Type {{secret.ALICE_PASSWORD}} into #login-password, Click #login-submit, Check #todo-list li is visible; below, the buttons Edit steps, Schedule, Export and Delete" loading="lazy"></div>
+        </figure>
+        <p>The test's steps in plain words, in the order they run. The grey label says what kind of
+          step it is (<em>Go</em>, <em>Type</em>, <em>Click</em>…); green <em>Check</em> labels are the
+          steps that decide whether the test passes.</p>
+        <ul>
+          <li><strong>Run now</strong> runs just this test. For a manual test it starts a manual run instead.</li>
+          <li><strong>Edit steps</strong> opens the step editor (below).</li>
+          <li><strong>Schedule</strong> runs this one test on a timer.</li>
+          <li><strong>Export</strong> saves the test as a JSON file.</li>
+          <li><strong>Delete</strong> asks first, then removes the test. A test (or suite) that a schedule still uses can't be deleted; remove it from the schedule first.</li>
+        </ul>
+
+        <h2 id="how-tests-work" data-toc="How a test is made">How a test is made</h2>
+        <p>A test is a list of <strong>steps</strong>. Each step is one thing a person would do or
+          check in the browser. <strong>Edit steps</strong> (or <em>New test</em>) opens the step
+          editor:</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/editor.png" alt="The step editor for the test Add a todo: at the top the name, History, Dataset, Matrix, Auth setup case, Use auth session, Cancel and Update Test; an Ownership and review box; then the steps Navigate {{env.BASE_URL}}/login and Fill Input #login-username alice; at the bottom a dark bar with Step, Navigate, Click, Fill, Assert, API, AMP and Script" loading="lazy" width="1440" height="900"></div>
+        </figure>
+        <p>Every step has up to three parts:</p>
+        <dl class="terms">
+          <dt>The action</dt><dd>What to do: <em>Navigate</em> (open a web address), <em>Click</em>, <em>Fill input</em> (type into a field), <em>Expect visible</em> and other checks, an API request, and many more in the step's drop-down.</dd>
+          <dt>The target</dt><dd>Which element on the page, written as a <strong>selector</strong>: a short code that finds it, such as <code>#login-username</code> (the element named "login-username"). <strong>Pick</strong> opens a picture of the page so you can click the element instead of typing its code.</dd>
+          <dt>The value</dt><dd>What to type, which address to open, or what text to expect.</dd>
+        </dl>
+        <div class="callout tip">
+          <span class="icon">✓</span>
+          <div><strong class="title">Placeholders in double curly brackets</strong>
+            <p>A value such as <code>{{env.BASE_URL}}</code> is filled in when the test runs, from the
+            environment it runs in, so the same test works on a test site and the live site.
+            <code>{{secret.ALICE_PASSWORD}}</code> is a password kept encrypted in the project's
+            environments: the test never contains the password itself. On the suite page, typed
+            values are shown as "a value" unless they are a placeholder, so passwords typed straight
+            into a step are not displayed.</p></div>
+        </div>
+        <ul>
+          <li><strong>The dark bar</strong> at the bottom adds a step: <em>Step</em> (choose the action yourself), or a shortcut for the common ones. Under each step, <em>Up</em>, <em>Down</em>, <em>Add below</em> and <em>Delete</em> rearrange the list.</li>
+          <li><strong>Dataset</strong> runs the test once for every row of a small table of values, and <strong>Matrix</strong> picks browsers and devices for this test only.</li>
+          <li><strong>Auth setup case</strong> marks a test that signs in: when it passes, other tests can start already signed in (<em>Use auth session</em>).</li>
+          <li><strong>History</strong> shows earlier versions of the test and can bring one back.</li>
+          <li><strong>Ownership and review</strong> names who looks after the test (see <em>Test review</em>).</li>
+        </ul>
+        <p>Nothing is saved until you press <strong>Save Test</strong> (or <strong>Update Test</strong>
+          for an existing one). Unsaved changes are kept in your browser for up to an hour, so they
+          are offered back if you leave by accident; <strong>Cancel</strong> asks before leaving them.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/suites/page.png" width="1280" height="800">
+              <source src="../media/tests/suites/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…run a suite before a release</h3>
+        <ol class="steps">
+          <li>Make sure the right project is selected at the top of the sidebar.</li>
+          <li>Click the suite to open it, and choose the environment to test in the <strong>environment</strong> menu.</li>
+          <li>Press <strong>Run suite</strong>. TraceIQ opens <em>Runs</em>; the new run appears at the top and fills in as tests finish.</li>
+        </ol>
+        <h3>…write a new test</h3>
+        <ol class="steps">
+          <li>Open the suite it belongs in and press <strong>New test</strong>.</li>
+          <li>Give it a name that says what it proves, for example "Sign in as alice".</li>
+          <li>Add the steps in order with the dark bar: usually <em>Navigate</em> first, then the clicks and typing, then at least one check (<em>Assert</em>).</li>
+          <li>Press <strong>Save Test</strong>, then <strong>Run now</strong> to see it work.</li>
+        </ol>
+        <h3>…find out what a test checks</h3>
+        <ol class="steps">
+          <li>Open its suite and click the test in the list.</li>
+          <li>Read the steps on the right. The green <em>Check</em> steps are what decides pass or fail.</li>
+        </ol>
+        <h3>…copy a suite to another project</h3>
+        <ol class="steps">
+          <li>On the suite list, press the download button on the suite's row. A JSON file is saved.</li>
+          <li>Switch to the other project at the top of the sidebar and press <strong>Import</strong>.</li>
+          <li>Choose the file. Passwords and other secrets are not in the file: add them to the new project's environments.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the <em>editor</em> role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs <em>project admin</em> (or workspace admin); only <em>Protected module</em> can be switched by editors. Creating a schedule also needs project admin.</li>
+          <li><strong>Continuous runs don't share a browser yet.</strong> Despite the description on screen, a Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a <em>Separate</em> suite run one after another in the same browser.</li>
+          <li><strong>A suite holds tests or sub-modules, not both.</strong> TraceIQ refuses a sub-module in a suite that already has tests. Once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself.</li>
+          <li><strong>Settings flow downwards.</strong> A sub-module uses its parent's settings unless its own <em>Inherit settings</em> is switched off; then it starts fresh from there down.</li>
+          <li><strong>Exports carry no secrets.</strong> Suite and test exports include steps, tags and descriptions, but never the value of a secret.</li>
+          <li><strong>It doesn't update by itself.</strong> Reload the page to see suites or tests that colleagues added meanwhile.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Test review</h4><p>The next page in this guide: who owns each test, and which tests are due for a check.</p></div>
+          <div class="mini"><h4>Schedules</h4><p>Run a suite or a single test automatically, for example every night.</p></div>
+          <div class="mini"><h4>Environments</h4><p>The web addresses, values and secrets that <code>{{env.…}}</code> and <code>{{secret.…}}</code> stand for.</p></div>
+          <div class="mini"><h4>Runs</h4><p>The result of every run, with each step's screenshot and log.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Suites page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

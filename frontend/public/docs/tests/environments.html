@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Environments · TraceIQ Guide</title>
+  <meta name="description" content="The Environments page: where tests run, the values they use, the project's secrets and recorded traffic.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/tests-environments.spec.ts. Page: frontend/src/pages/Environments.tsx
+     (+ components/har/HarFilesDetail.tsx, components/environments/environmentLock.ts).
+     API: backend/app/api/environments.py; locks: backend/app/services/environment_lock.py;
+     HAR files: backend/app/api/har_files.py. -->
+<body data-page="tests/environments">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../environments"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Environments</h1>
+        <div class="meta-row">
+          <span class="tag t-pink">Tests</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>An environment is a place your tests can run against, such as a test copy of your site
+            or the live site. This page holds each environment's web address and values, the
+            project's secrets (passwords and tokens), and recorded network traffic for tests to
+            replay.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          The same test should work on the test site today and the live site tomorrow. Instead of
+          writing the address and the test account's password into every test, the test says
+          <code>{{env.BASE_URL}}</code> and <code>{{secret.ALICE_PASSWORD}}</code>, and the
+          environment fills them in when the test runs. Change the environment, and every test
+          follows.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>Run the same suite against the test site and the live site, without editing a single test.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Add a staging environment and keep its API token out of the tests.</p></div>
+          <div class="mini"><h4>Security</h4><p>See that passwords are kept encrypted and are never shown again once saved.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Tests → Environments</strong>.
+          The page's own heading says <strong>Environments and secrets</strong>. It shows the
+          project selected at the top of the sidebar.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The list is on the left; the environment, secrets or recorded traffic you pick is shown
+          on the right. When the page opens, the default environment is shown. The numbers on the
+          screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/environments/page-annotated.png" alt="The Environments page with six numbered parts: 1 the New environment button, 2 the list of environments, 3 Secrets and Recorded traffic, 4 the selected environment's variables, 5 Exclusive use, 6 the Edit and Delete buttons" loading="lazy" width="1440" height="1100"></div>
+          <figcaption>The Environments page for the demo's web project. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="new" data-toc="① New environment">New environment</h2></div>
+        <p>Opens a form on the right: a <strong>name</strong> (for example "staging"; two
+          environments in a project can't share one), a <strong>base URL</strong>, any number of
+          <strong>variables</strong>, and whether it becomes the default. Nothing is saved until you
+          press <strong>Create environment</strong>.</p>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/new.png" alt="The New environment form: Name, Base URL, Variables with an Add variable button, a Use as the default environment checkbox, and Create environment and Cancel buttons" loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The environments">The environments</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/list.png" alt="A box titled Environments with two rows: local, http://localhost:8080, labelled Default; and public, https://example.com" loading="lazy"></div>
+        </figure>
+        <p>Each row shows the environment's name and base URL. <span class="pill t-butter">Default</span>
+          marks the one used when a run doesn't name an environment. <span class="pill t-lavender">In use</span>
+          replaces it while an <em>exclusive</em> environment is taken by a run (see ⑤).
+          <strong>Click a row</strong> to show it on the right.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="credentials" data-toc="③ Secrets and recorded traffic">Secrets and recorded traffic</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/credentials.png" alt="A box titled Credentials with two rows: Secrets, 2 stored · write-only; and Recorded traffic (HAR), Replayed by har-replay steps" loading="lazy"></div>
+        </figure>
+        <p><strong>Secrets</strong> are passwords, tokens and keys. They belong to the whole project,
+          not to one environment, and are used in a step as <code>{{secret.NAME}}</code>.</p>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/secrets.png" alt="The Secrets panel: How secrets work, an Add or update a secret form with a key and a value field, and Stored secrets ALICE_PASSWORD and BOB_PASSWORD, each with its {{secret.…}} name and the date it was updated" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Write-only.</strong> Once saved, a secret's value is never shown again, to anyone. You can replace it (type the same name and a new value) or delete it, but not read it.</li>
+          <li><strong>Encrypted.</strong> Values are stored encrypted and only unlocked when a run starts, to be handed to the test machine.</li>
+          <li><strong>Names</strong> may contain only letters, numbers and underscores, for example <code>API_TOKEN</code>.</li>
+          <li>Deleting a secret makes every step that uses it fail, so TraceIQ asks first.</li>
+        </ul>
+        <p><strong>Recorded traffic (HAR)</strong> holds files of recorded network requests and
+          answers. A <em>har-replay</em> step in a test answers the page's requests from such a file
+          instead of the real server, for example to test against a fixed set of data. Files are up
+          to 20 MB, and cookies, sign-in headers and secret-looking values are removed from them on
+          upload, before they are stored.</p>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/har.png" alt="The Recorded traffic (HAR) panel: How replay works, a HAR file picker, an optional name, an Upload HAR button and No HAR files yet" loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">4</span><h2 id="values" data-toc="④ Base URL and variables">Base URL and variables</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/values.png" alt="The selected environment local, marked Default: Base URL http://localhost:8080; one variable BASE_URL with the value http://localhost:8080 and the name {{env.BASE_URL}}; the Exclusive use box; and the Edit and Delete buttons" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Base URL</strong>: the start of every web address. A step that opens just <code>/login</code> opens <code>http://localhost:8080/login</code> in this environment. Without a base URL, such steps don't work in this environment.</li>
+          <li><strong>Variables</strong>: named values. Each row shows the name, the value, and how a step writes it, for example <code>{{env.BASE_URL}}</code>.</li>
+        </ul>
+        <div class="callout warn">
+          <span class="icon">!</span>
+          <div><strong class="title">Variables are not secret</strong>
+            <p>Everyone with access to the project can read variable values on this page. Put
+            passwords, tokens and keys under <strong>Secrets</strong>, never in a variable.</p></div>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="exclusive" data-toc="⑤ Exclusive use">Exclusive use</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/environments/exclusive.png" alt="Exclusive use: Runs share this environment. Make it exclusive when runs would interfere with each other, such as a shared test account or database. A Make exclusive button" loading="lazy"></div>
+        </figure>
+        <p>Normally several runs can use an environment at the same time. <strong>Make
+          exclusive</strong> lets only one run use it at a time, which helps when runs would get in
+          each other's way, for example two runs signing in with the same test account. While a run
+          holds it, this box says <em>In use by run #…</em> (click it to open that run), and other
+          runs wait, marked <em>Queued</em>, and start by themselves when it is free.
+          <strong>Allow parallel runs</strong> switches it back.</p>
+        <p><strong>Force release</strong> appears while a run holds the environment. Use it only if
+          a run is stuck: the run keeps going, and the next waiting run starts alongside it.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="buttons" data-toc="⑥ Edit, Set as default, Delete">Edit, Set as default, Delete</h2></div>
+        <ul>
+          <li><strong>Edit</strong> turns the details into the same form as <em>New environment</em>.</li>
+          <li><strong>Set as default</strong> (on environments that aren't the default) makes it the default; the old default stops being one.</li>
+          <li><strong>Delete</strong> removes the environment, after asking. It can't be undone.</li>
+        </ul>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/tests/environments/page.png" width="1280" height="800">
+              <source src="../media/tests/environments/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…add a staging environment</h3>
+        <ol class="steps">
+          <li>Press <strong>New environment</strong>.</li>
+          <li>Name it "staging" and enter its base URL, for example <code>https://staging.example.com</code>.</li>
+          <li>Add the same variables the other environments have, with staging's values, so the tests find them.</li>
+          <li>Press <strong>Create environment</strong>. Choose it in the environment menu of a suite before pressing <em>Run suite</em>.</li>
+        </ol>
+        <h3>…keep a password out of the tests</h3>
+        <ol class="steps">
+          <li>Click <strong>Secrets</strong> on the left.</li>
+          <li>Type a name such as <code>ADMIN_PASSWORD</code> and the password, then press <strong>Save secret</strong>.</li>
+          <li>In the test's step, type <code>{{secret.ADMIN_PASSWORD}}</code> where the password goes.</li>
+        </ol>
+        <h3>…change a password that has changed</h3>
+        <ol class="steps">
+          <li>Click <strong>Secrets</strong>.</li>
+          <li>Type the existing name and the new value. The button now says <strong>Update secret</strong>; press it.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can see the environments, their variables and the <em>names</em> of the secrets. Adding, changing and deleting any of them needs the <em>editor</em> role. The buttons are shown to everyone, but TraceIQ refuses the change for others.</li>
+          <li><strong>Which environment a run uses.</strong> The one chosen in a suite's environment menu; otherwise the default; otherwise none.</li>
+          <li><strong>Exports never contain secrets.</strong> Exporting a suite keeps the <code>{{secret.…}}</code> placeholders but not the values.</li>
+          <li><strong>Exclusive environments refresh by themselves.</strong> When any environment is exclusive, the list refreshes every 15 seconds so the <em>In use</em> labels stay current.</li>
+          <li><strong>The demo's secrets</strong> are sample passwords for the demo's local todo app, made for this guide.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>App builds</h4><p>The next page in this guide: the mobile app files that mobile tests install.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Choose the environment for a run, and use <code>{{env.…}}</code> and <code>{{secret.…}}</code> in steps.</p></div>
+          <div class="mini"><h4>Test packs</h4><p>Ready-made suites whose values are filled into an environment when you import them.</p></div>
+          <div class="mini"><h4>Runs</h4><p>Each run shows which environment it used.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Environments page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
