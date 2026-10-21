@@ -30,6 +30,7 @@ PW_VERSION="$(node -p "require('$ROOT/e2e/package.json').devDependencies['@playw
 # TRACEIQ_DOCS_VOICE=off skips it and records captions only.
 # TRACEIQ_DOCS_VOICE_PACE=1.5 speaks slower (default 1.3, 1 = natural speed).
 # TRACEIQ_DOCS_VIDEO_SPEED=1 keeps the recorded speed (default 1.25, applied by mux.py).
+# TRACEIQ_DOCS_VIDEO=off takes the pictures only (quick runs while writing a page).
 PIPER_DIR="$ROOT/e2e/.cache/piper"
 PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
 VOICE="en_US-kristin-medium"
@@ -65,9 +66,10 @@ docker run --rm --network "$NET" --ipc host \
   -e TRACEIQ_DOCS_BASE_URL="${TRACEIQ_DOCS_BASE_URL:-http://frontend}" \
   -e TRACEIQ_DOCS_VOICE="${TRACEIQ_DOCS_VOICE:-on}" \
   -e TRACEIQ_DOCS_VOICE_PACE="${TRACEIQ_DOCS_VOICE_PACE:-}" \
+  -e TRACEIQ_DOCS_VIDEO="${TRACEIQ_DOCS_VIDEO:-on}" \
   -v "$ROOT":/work -w /work/e2e \
   "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" \
-  sh -c 'npm ci --no-audit --no-fund --silent && npx playwright test -c docs-capture/playwright.config.ts "$@"' sh "$@"
+  sh -c '{ cmp -s package-lock.json node_modules/.traceiq-lock || { npm ci --no-audit --no-fund --silent && cp package-lock.json node_modules/.traceiq-lock; }; } && npx playwright test -c docs-capture/playwright.config.ts "$@"' sh "$@"
 
 rm -rf "$ROOT/frontend/public/docs/media/.tmp-video"
 
@@ -79,4 +81,6 @@ if command -v ffmpeg >/dev/null 2>&1; then
 else
   echo "ffmpeg not found: videos stay WebM, without voice (install ffmpeg and re-run)." >&2
 fi
-echo "Media written under frontend/public/docs/media/"
+# A Markdown copy of every guide page (with its video script), next to the HTML.
+python3 "$ROOT/e2e/docs-capture/export_md.py" "$ROOT" >/dev/null
+echo "Media written under frontend/public/docs/media/; Markdown copies refreshed."

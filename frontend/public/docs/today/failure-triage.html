@@ -82,8 +82,8 @@
             <tbody>
               <tr><td><span class="pill t-peach">Open</span></td><td>New, and nobody has looked at it yet. Every new problem starts here.</td></tr>
               <tr><td><span class="pill t-butter">Investigating</span></td><td>Someone is working out the cause or fixing it.</td></tr>
-              <tr><td><span class="pill t-mint">Resolved</span></td><td>Fixed. TraceIQ notes the time, which the reports use to show how quickly problems get fixed.</td></tr>
-              <tr><td><span class="pill t-neutral">Ignored</span></td><td>Known and accepted, for now. It no longer shows under Open.</td></tr>
+              <tr><td><span class="pill t-mint">Resolved</span></td><td>Fixed. TraceIQ notes the time, which the reports use to show how quickly problems get fixed. If it fails again later, TraceIQ moves it back to <em>Open</em> by itself.</td></tr>
+              <tr><td><span class="pill t-neutral">Ignored</span></td><td>Known and accepted, for now. It no longer shows under Open, and stays Ignored even when it fails again (its count keeps going up).</td></tr>
               <tr><td><strong>All</strong></td><td>Every problem, whatever its status.</td></tr>
             </tbody>
           </table>
@@ -197,7 +197,7 @@
           <span class="icon">i</span>
           <div><strong class="title">No trackers in the list?</strong>
             <p>The list shows the issue trackers set up in <strong>Setup → Issue trackers</strong>
-            that are switched on. Linear connections are missing on purpose: TraceIQ only imports
+            for the workspace this project belongs to, and switched on. Linear connections are missing on purpose: TraceIQ only imports
             from Linear and can't create tickets there.</p></div>
         </div>
 
@@ -230,14 +230,14 @@
         </ol>
         <h3>…check whether a fixed problem has come back</h3>
         <ol class="steps">
-          <li>Open the <strong>Resolved</strong> tab.</li>
-          <li>Look at <em>last seen</em> under each problem. If it happened after you marked it resolved, it is back (see <a href="#good-to-know">Good to know</a>).</li>
-          <li>Set it back to <strong>Open</strong> or <strong>Investigating</strong>.</li>
+          <li>You don't need to look: when a <strong>Resolved</strong> problem fails again, TraceIQ moves it back to the <strong>Open</strong> tab.</li>
+          <li>On the Open tab, a problem whose <em>First seen</em> is long ago but <em>Last seen</em> is recent has usually come back after a fix. Its count includes the failures from before the fix too.</li>
+          <li>Set it to <strong>Investigating</strong> and look at what changed since it was fixed.</li>
         </ol>
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
-          <li><strong>A resolved problem doesn't reopen by itself.</strong> If the same failure happens again, it is added to the existing problem: the count goes up and <em>last seen</em> changes, but the status stays <em>Resolved</em> (or <em>Ignored</em>). Check the Resolved tab now and then.</li>
+          <li><strong>A resolved problem reopens by itself.</strong> If the same failure happens again, it is added to the existing problem and moved back to <em>Open</em>. Ignored and Investigating problems keep their status; only their count and <em>last seen</em> change.</li>
           <li><strong>Grouping happens when a run finishes.</strong> Every test that ended <em>Failed</em> or <em>Error</em> is added to a group. Tests that were <em>Cancelled</em> or <em>Timed out</em> are not; nor are the check runs TraceIQ makes for a suggested fix (see <em>Proposals</em>).</li>
           <li><strong>The test's name doesn't matter, only the message.</strong> Different tests that fail with the same message share one problem. The same test failing with two different messages makes two problems.</li>
           <li><strong>One project at a time.</strong> Problems belong to a project. Switch project at the top of the sidebar to see another one's.</li>

@@ -66,3 +66,23 @@ every picture shows sample data and never a real project. Credentials stay in
    `frontend/public/docs/_assets/nav.js`.
 3. Check every statement against the code (the page component and the API it
    calls), not against what the screen seems to show.
+
+**Markdown copies.** `export_md.py` (run by `run.sh` after every capture, or by
+hand: `python3 e2e/docs-capture/export_md.py .`) writes `<page>.md` next to
+each guide page's HTML: the same text, the same pictures, and at the end the
+page's **video script** — every spoken line, in order, read from the page's
+spec in `pages/`, which it links. The HTML stays the source; the `.md` files
+are regenerated, never edited.
+
+**Working on a page.**
+- `TRACEIQ_DOCS_VIDEO=off e2e/docs-capture/run.sh pages/<spec>` takes the
+  pictures only (about 10 s instead of about 2 min). Record the video once
+  the pictures are right.
+- `e2e/docs-capture/check-page.sh <group>/<page> [shot.png]` renders the guide
+  page straight from disk (no frontend rebuild) and reports console errors,
+  broken pictures, missing alt text, the menu entry, the pager and horizontal
+  scrolling at desktop and phone width; the optional full-page screenshot is
+  for looking it over.
+- Captures take turns (a file lock), so several people or agents can queue
+  runs; a waiting run says so.
+

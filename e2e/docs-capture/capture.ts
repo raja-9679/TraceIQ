@@ -103,6 +103,9 @@ const POINTER = `
  * are deliberate (this is a video for people, not a test), so use `beat()`.
  */
 export async function record(browser: Browser, file: string, script: (page: Page) => Promise<void>) {
+    // TRACEIQ_DOCS_VIDEO=off: pictures only, for quick runs while a page is
+    // being written. The existing MP4 is left as it is.
+    if (process.env.TRACEIQ_DOCS_VIDEO === 'off') return;
     const size = { width: 1280, height: 800 };
     const ctx = await browser.newContext({
         viewport: size,

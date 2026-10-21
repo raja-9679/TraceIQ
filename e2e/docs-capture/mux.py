@@ -42,13 +42,23 @@ def convert(webm: Path, e2e: Path) -> None:
         # loudnorm: speech-level loudness (-16 LUFS) with peaks kept below
         # -1.5 dB, so it neither whispers nor crackles on laptop speakers.
         graph = (f"{delayed}{mixed}amix=inputs={len(lines)}:normalize=0:duration=longest,"
-                 f"atempo={SPEED},loudnorm=I=-16:TP=-1.5:LRA=11,apad[aout];"
-                 f"[0:v]setpts=PTS/{SPEED}[vout]")
-        cmd += ["-filter_complex", graph, "-map", "[vout]", "-map", "[aout]", *video,
+                 "loudnorm=I=-16:TP=-1.5:LRA=11,apad[aout]")
+        cmd += ["-filter_complex", graph, "-map", "0:v", "-map", "[aout]", *video,
                 "-c:a", "aac", "-b:a", "96k", "-ar", "44100", "-shortest", str(mp4)]
     else:
-        cmd += ["-vf", f"setpts=PTS/{SPEED}", *video, "-an", str(mp4)]
+        cmd += [*video, "-an", str(mp4)]
     subprocess.run(cmd, check=True, stdin=subprocess.DEVNULL)
+    if SPEED != 1.0:
+        # A second pass over the finished file. Doing it in the graph above
+        # never ends: apad pads forever and -shortest can't stop a filtered
+        # video stream, so the speed-up works on a file of known length.
+        fast = mp4.with_suffix(".fast.mp4")
+        speed = ["-filter_complex", f"[0:v]setpts=PTS/{SPEED}[v];[0:a]atempo={SPEED}[a]",
+                 "-map", "[v]", "-map", "[a]", "-c:a", "aac", "-b:a", "96k", "-ar", "44100"] if lines \
+            else ["-vf", f"setpts=PTS/{SPEED}", "-an"]
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(mp4), *speed, *video, str(fast)],
+                       check=True, stdin=subprocess.DEVNULL)
+        fast.replace(mp4)
     webm.unlink()
     meta.unlink(missing_ok=True)
     print(f"{mp4.name}: {'narrated, ' + str(len(lines)) + ' lines' if lines else 'silent'}")
