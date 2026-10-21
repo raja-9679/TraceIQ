@@ -1,5 +1,7 @@
 import type { Browser, Locator, Page } from '@playwright/test';
-import { mkdirSync, readFileSync, renameSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 // Helpers shared by the page captures. Pictures land in
@@ -109,12 +111,21 @@ export async function record(browser: Browser, file: string, script: (page: Page
     });
     await ctx.addInitScript(POINTER);
     const page = await ctx.newPage();
+    // The recording starts with the page, so caption times are measured from here.
+    const narration = VOICE.enabled ? new Narration() : null;
+    if (narration) narrations.set(page, narration);
     await script(page);
+    if (narration) await narration.finish();
     await beat(page, 1200);
     const video = page.video();
     await ctx.close();
     if (!video) throw new Error('no video recorded');
     renameSync(await video.path(), out(file));
+    // run.sh mixes the spoken lines into the MP4 at these offsets (mux.py).
+    if (narration) {
+        writeFileSync(out(file).replace(/\.webm$/, '.narration.json'),
+            JSON.stringify({ voice: VOICE.model, lines: narration.lines }, null, 1));
+    }
 }
 
 /** A pause the viewer can follow. */
@@ -128,11 +139,90 @@ export async function pointAt(page: Page, target: Locator, pause = 900) {
     await beat(page, pause);
 }
 
+// ---------- narration ----------
+// Captions are also spoken, by Piper (offline text-to-speech, MIT) with the
+// public-domain LJSpeech voice. run.sh downloads both into e2e/.cache/piper.
+// TRACEIQ_DOCS_VOICE=off records captions only.
+
+const VOICE = {
+    bin: '.cache/piper/piper/piper',
+    model: '.cache/piper/en_US-ljspeech-high.onnx',
+    cache: '.cache/narration',
+    get enabled() {
+        return process.env.TRACEIQ_DOCS_VOICE !== 'off' && existsSync(this.bin) && existsSync(this.model);
+    },
+};
+const GAP_MS = 450; // silence between two spoken lines
+
+/** Seconds of audio in a PCM WAV file (from its header). */
+function wavSeconds(file: string): number {
+    const b = readFileSync(file);
+    const byteRate = b.readUInt32LE(28);
+    let i = 12;
+    while (i + 8 <= b.length) {
+        const id = b.toString('ascii', i, i + 4);
+        const size = b.readUInt32LE(i + 4);
+        if (id === 'data') return size / byteRate;
+        i += 8 + size + (size % 2);
+    }
+    throw new Error(`no data chunk in ${file}`);
+}
+
+/** Speaks `text` into a cached WAV (same text + voice = same file) and returns it. */
+function synthesize(text: string): Promise<{ file: string; seconds: number }> {
+    const key = createHash('sha256').update(`${VOICE.model}\n${text}`).digest('hex').slice(0, 20);
+    const file = join(VOICE.cache, `${key}.wav`);
+    if (existsSync(file)) return Promise.resolve({ file, seconds: wavSeconds(file) });
+    mkdirSync(VOICE.cache, { recursive: true });
+    return new Promise((resolve, reject) => {
+        const p = spawn(VOICE.bin, ['--model', VOICE.model, '--output_file', file, '--sentence_silence', '0.3'],
+            { stdio: ['pipe', 'ignore', 'pipe'] });
+        let err = '';
+        p.stderr.on('data', (d) => { err += d; });
+        p.on('error', reject);
+        p.on('close', (code) => code === 0 && existsSync(file)
+            ? resolve({ file, seconds: wavSeconds(file) })
+            : reject(new Error(`piper failed (${code}): ${err.slice(-400)}`)));
+        p.stdin.end(text);
+    });
+}
+
+class Narration {
+    readonly t0 = Date.now();
+    readonly lines: { at_ms: number; wav: string; seconds: number }[] = [];
+    private pending: Promise<void> = Promise.resolve();
+    private endsAt = 0;
+
+    /** Starts speaking now (synthesis runs while the script goes on). */
+    say(text: string) {
+        const at = Date.now() - this.t0;
+        this.pending = synthesize(text).then(({ file, seconds }) => {
+            this.lines.push({ at_ms: at, wav: file, seconds });
+            this.endsAt = this.t0 + at + seconds * 1000;
+        });
+    }
+
+    /** Waits until the line being spoken has finished, plus a short gap. */
+    async finish() {
+        await this.pending;
+        const wait = this.endsAt + GAP_MS - Date.now();
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+    }
+}
+const narrations = new WeakMap<Page, Narration>();
+
 /**
- * Shows a subtitle at the bottom of the recording ("This tile counts …").
- * Pass '' to hide it. Set it again after a navigation — it lives in the page.
+ * Shows a subtitle at the bottom of the recording and, when narration is on,
+ * speaks it. A new caption first waits for the previous one to be spoken, so
+ * the actions written after a caption (pointing, clicking) happen while it is
+ * being said. Pass '' to hide the caption (also waits). `say` replaces the
+ * spoken words when the written ones read badly aloud ("60–89%").
+ * Set it again after a navigation — the subtitle lives in the page.
  */
-export async function caption(page: Page, text: string, pause = 0) {
+export async function caption(page: Page, text: string, opts: number | { pause?: number; say?: string } = 0) {
+    const { pause = 0, say = text } = typeof opts === 'number' ? { pause: opts } : opts;
+    const n = narrations.get(page);
+    if (n) await n.finish();
     await page.evaluate((t) => {
         let el = document.getElementById('docs-caption');
         if (!el) {
@@ -151,5 +241,6 @@ export async function caption(page: Page, text: string, pause = 0) {
         el.textContent = t;
         el.style.opacity = t ? '1' : '0';
     }, text);
+    if (n && say) n.say(say);
     if (pause) await beat(page, pause);
 }

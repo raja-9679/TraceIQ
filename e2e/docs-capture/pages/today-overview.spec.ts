@@ -49,7 +49,9 @@ test('Today › Overview', async ({ page, browser }) => {
         const m = p.locator('main');
         await caption(p, 'Total runs: every test run you can see, in all your projects.');
         await pointAt(p, m.getByText('Total runs', { exact: true }), 2400);
-        await caption(p, 'Passed, Failed and Running count only the 50 most recent runs.');
+        await caption(p, 'Passed, Failed and Running count only the 50 most recent runs.', {
+            say: 'Passed, Failed and Running count only the fifty most recent runs.',
+        });
         for (const label of ['Passed', 'Failed', 'Running']) {
             await pointAt(p, m.getByText(label, { exact: true }), 1100);
         }
@@ -59,12 +61,16 @@ test('Today › Overview', async ({ page, browser }) => {
         const n = await bars.count();
         await caption(p, 'One bar per day: the share of runs that passed in the selected project.');
         await pointAt(p, bars.nth(Math.max(0, n - 6)), 1600);
-        await caption(p, 'Green = 90% or more passed. Yellow = 60–89%. Orange = under 60%.');
+        await caption(p, 'Green = 90% or more passed. Yellow = 60–89%. Orange = under 60%.', {
+            say: 'Green means ninety percent or more passed. Yellow, sixty to eighty-nine percent. Orange, under sixty percent.',
+        });
         await pointAt(p, bars.nth(Math.max(0, n - 3)), 1400);
         await pointAt(p, bars.nth(n - 1), 1800);
         const rc = m.locator('section[aria-labelledby="recent-h"]');
         await rc.scrollIntoViewIfNeeded();
-        await caption(p, 'Recent runs: the 10 newest. Click one to open its full result.');
+        await caption(p, 'Recent runs: the 10 newest. Click one to open its full result.', {
+            say: 'Recent runs shows the ten newest. Click one to open its full result.',
+        });
         const row = rc.locator('li a').first();
         await pointAt(p, row, 2200);
         // The app changes page without a reload, so the caption would linger.
@@ -72,7 +78,8 @@ test('Today › Overview', async ({ page, browser }) => {
         await row.click();
         await p.waitForURL(/\/runs\/\d+/);
         await settle(p);
-        await caption(p, 'This is the run page: every test, step, screenshot and log of that run.', 3000);
+        await caption(p, 'This is the run page: every test, step, screenshot and log of that run.', 1500);
+        await caption(p, ''); // waits until that line has been spoken
         await p.goBack();
         await settle(p);
         await caption(p, 'All runs opens the complete list, with search and filters.');

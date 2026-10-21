@@ -23,6 +23,23 @@ NET="${TRACEIQ_DOCS_NETWORK:-$(docker inspect "$FRONTEND_C" -f '{{range $k,$v :=
 PW_VERSION="$(node -p "require('$ROOT/e2e/package.json').devDependencies['@playwright/test']" 2>/dev/null \
   || grep -o '"@playwright/test": *"[^"]*"' "$ROOT/e2e/package.json" | grep -o '[0-9][0-9.]*')"
 
+# Narration: Piper (offline text-to-speech, MIT licence) and the LJSpeech
+# voice (public domain). Downloaded once into e2e/.cache/piper (gitignored);
+# TRACEIQ_DOCS_VOICE=off skips it and records captions only.
+PIPER_DIR="$ROOT/e2e/.cache/piper"
+PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz"
+VOICE_URL="https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ljspeech/high"
+VOICE_SHA256="5d4f08ba6a2a48c44592eed3ce56bf85e9de3dd4e20df90541ae68a8310c029a"
+if [ "${TRACEIQ_DOCS_VOICE:-on}" != "off" ] && [ ! -f "$PIPER_DIR/en_US-ljspeech-high.onnx" ]; then
+  echo "Downloading the narration voice (Piper + LJSpeech, ~130 MB, once) ..." >&2
+  mkdir -p "$PIPER_DIR"
+  curl -fsSL "$PIPER_URL" | tar xz -C "$PIPER_DIR"
+  curl -fsSL -o "$PIPER_DIR/en_US-ljspeech-high.onnx.json" "$VOICE_URL/en_US-ljspeech-high.onnx.json"
+  curl -fsSL -o "$PIPER_DIR/en_US-ljspeech-high.onnx.tmp" "$VOICE_URL/en_US-ljspeech-high.onnx"
+  echo "$VOICE_SHA256  $PIPER_DIR/en_US-ljspeech-high.onnx.tmp" | sha256sum -c --quiet -
+  mv "$PIPER_DIR/en_US-ljspeech-high.onnx.tmp" "$PIPER_DIR/en_US-ljspeech-high.onnx"
+fi
+
 if [ -z "$NET" ]; then
   echo "Could not find the stack network (is $FRONTEND_C running?)." >&2
   exit 1
@@ -31,23 +48,19 @@ fi
 docker run --rm --network "$NET" --ipc host \
   --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -e TRACEIQ_DOCS_BASE_URL="${TRACEIQ_DOCS_BASE_URL:-http://frontend}" \
+  -e TRACEIQ_DOCS_VOICE="${TRACEIQ_DOCS_VOICE:-on}" \
   -v "$ROOT":/work -w /work/e2e \
   "mcr.microsoft.com/playwright:v${PW_VERSION}-noble" \
   sh -c 'npm ci --no-audit --no-fund --silent && npx playwright test -c docs-capture/playwright.config.ts "$@"' sh "$@"
 
 rm -rf "$ROOT/frontend/public/docs/media/.tmp-video"
 
-# Playwright records WebM (VP8), which Safari plays only partly, so each video
-# is converted to H.264 MP4. Without ffmpeg the WebM stays (the guide's
-# <video> lists both sources).
+# Playwright records WebM (VP8), which Safari plays only partly: mux.py turns
+# each one into an H.264 MP4 with the spoken captions mixed in. Without ffmpeg
+# the WebM stays (the guide's <video> lists both sources) and is silent.
 if command -v ffmpeg >/dev/null 2>&1; then
-  find "$ROOT/frontend/public/docs/media" -name '*.webm' -newer "$ROOT/e2e/package.json" -print0 |
-    while IFS= read -r -d '' v; do
-      # Keep only the MP4 (plays everywhere) so the repo doesn't carry every video twice.
-      ffmpeg -v error -y -i "$v" -c:v libx264 -pix_fmt yuv420p -crf 26 -preset slow \
-        -movflags +faststart -an "${v%.webm}.mp4" </dev/null && rm -f "$v"
-    done
+  python3 "$ROOT/e2e/docs-capture/mux.py" "$ROOT/frontend/public/docs/media" "$ROOT/e2e"
 else
-  echo "ffmpeg not found: videos are WebM only (install ffmpeg and re-run for MP4)." >&2
+  echo "ffmpeg not found: videos stay WebM, without voice (install ffmpeg and re-run)." >&2
 fi
 echo "Media written under frontend/public/docs/media/"
