@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agents · TraceIQ Guide</title>
+  <meta name="description" content="The Agents page: see what each AI agent did in a workspace, give its sessions a budget, and block it with a kill switch.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-agents.spec.ts. Page: frontend/src/pages/Agents.tsx
+     (+ components/agents/AgentCards.tsx, agentHelpers.ts, api/policies.ts).
+     API: backend/app/api/agents.py; budgets + kill switch: app/services/agent_controls.py, app/services/policy/rules.py;
+     schedule runs named schedule:<id>: app/tasks/schedule_tasks.py. -->
+<body data-page="setup/agents">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../agents"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Agents</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Workspace admins only</span>
+          <span class="tag t-neutral">Admins can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>An agent is a program, often an AI coding assistant, that uses TraceIQ on someone's
+            behalf: it starts runs, writes tests or suggests fixes. This page shows what each agent
+            did in the workspace, lets you limit how much one piece of its work may do, and has a
+            kill switch that stops it changing anything.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Agents answer <strong>"What have the AI tools been doing here, and how do I keep them in
+          bounds?"</strong> An agent can work fast and for a long time without anyone watching. A
+          budget stops a confused agent from starting hundreds of runs; the kill switch stops it
+          completely, at once.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Workspace admins</h4><p>Give every agent sensible limits, and block one that misbehaves.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See exactly which runs, tests and suggestions their assistant produced in one task.</p></div>
+          <div class="mini"><h4>Security and audit</h4><p>Follow what an automated tool changed, and when it was refused.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Agents</strong>.</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Agents and sessions</strong>
+            <ul>
+              <li>An agent names itself with every request it sends (technically, an
+                <code>X-Agent-Id</code> header), for example <code>claude-code</code>. That name is
+                its <strong>agent id</strong>.</li>
+              <li>A <strong>session</strong> is one piece of work by that agent, such as "fix the
+                login test". The agent gives each one its own name (<code>X-Agent-Session-Id</code>).
+                Budgets are counted per session.</li>
+            </ul></div>
+        </div>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>On the left: the agents, a box to set controls for a new agent, and the defaults for
+          all agents. On the right: the agent you open. In the screenshot <code>demo-seed</code>
+          has been opened. The numbers match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/agents/page-annotated.png" alt="The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent demo-seed, 5 its sessions" loading="lazy" width="1440" height="1500"></div>
+          <figcaption>The Agents page for the demo workspace, with demo-seed opened. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>If you belong to more than one workspace, a <strong>Workspace</strong> menu sits under
+          the heading. The page opens on the workspace of the project selected in the sidebar.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="list" data-toc="① Agents">Agents</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/agents/list.png" alt="The Agents card listing schedule:4 and demo-seed, each with 0 sessions, 120 runs, 0 cases, 0 proposals, 0 tokens, a last-seen time, No limits, and an Open button" loading="lazy"></div>
+        </figure>
+        <p>Every agent id that has worked in this workspace, the most recently active first.
+          An agent appears once it has started a run, created a test, filed a proposal, or worked
+          in a budgeted session. For each one:</p>
+        <ul>
+          <li><strong>Its name</strong>, with <span class="pill t-peach">Blocked</span> when the kill switch is on (its own, or the one for all agents) and <span class="pill t-butter">3 refused</span> when its sessions were refused something.</li>
+          <li><strong>What it did</strong>: sessions, runs, tests ("cases") created, proposals filed, and AI tokens used in its sessions.</li>
+          <li><strong>Last seen</strong>, and its limits per session, or <em>No limits</em>.</li>
+          <li><strong>Open</strong> shows the agent on the right.</li>
+        </ul>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Not everything here is an AI</strong>
+            <p>Any run that carries an agent name is counted. Runs started by a TraceIQ
+            <em>schedule</em> or monitor carry the name <code>schedule:</code> plus the schedule's
+            number, so they are listed too. In the demo workspace neither entry is an AI agent:
+            <code>schedule:4</code> is the demo monitor's runs and <code>demo-seed</code> is the
+            program that generated the sample history.</p></div>
+        </div>
+
+        <div class="part"><span class="num">2</span><h2 id="new" data-toc="② Set controls for an agent id">Set controls for an agent id</h2></div>
+        <p>To limit or block an agent <em>before</em> it has done anything here (for example one
+          you are about to give an API key), type its exact agent id and press
+          <strong>Open</strong>. Its controls appear on the right, ready to fill in. Nothing is
+          saved until you press <strong>Save</strong> there.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="defaults" data-toc="③ Defaults for every agent">Defaults for every agent</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/agents/defaults.png" alt="The Defaults for every agent card with a Block all agents (kill switch) checkbox, four empty limit boxes and a Save button" loading="lazy"></div>
+        </figure>
+        <p>The same controls as for one agent (see ④), applied to every agent that has none of its
+          own. <strong>Block all agents (kill switch)</strong> stops <em>every</em> agent in the
+          workspace, including ones that have their own controls. An empty box here takes the
+          server-wide default your administrator set; the grey text in the box says what that is
+          (<em>"inherits: no limit"</em> when there is none).</p>
+
+        <div class="part"><span class="num">4</span><h2 id="controls" data-toc="④ Controls for one agent">Controls for one agent</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/agents/controls.png" alt="The Controls for demo-seed card with a Block this agent (kill switch) checkbox, four limit boxes for runs, LLM tokens, proposals and minutes per session, and a Save button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Block this agent (kill switch)</strong>: tick it and save, and the agent is refused every change it tries in this workspace: no runs, tests, suites or proposals, and its AI calls are skipped. It can still <em>read</em>, so it can report what happened. When ticked, a <strong>Reason</strong> box appears; the agent is shown that text.</li>
+          <li><strong>Four limits per session:</strong></li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">Limit</th><th>What it counts</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Runs per session</strong></td><td>Runs the session may start.</td></tr>
+              <tr><td><strong>LLM tokens per session</strong></td><td>AI text (tokens) used for the session's work, including AI calls made while its runs ran.</td></tr>
+              <tr><td><strong>Proposals per session</strong></td><td>Suggested test changes the session may file.</td></tr>
+              <tr><td><strong>Minutes per session</strong></td><td>Time since the session first did something that counts. After that, everything above is refused for it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Leave a box <strong>empty</strong> to inherit (the agent's own value, then the
+          workspace default, then the server default, in that order). Type <strong>0</strong> for
+          "no limit". Only whole numbers are accepted; anything else shows a message and Save stays
+          greyed out. <strong>Save</strong> applies the controls; <strong>Remove controls</strong>
+          (shown once an agent has saved controls) deletes them, so the agent inherits everything
+          again.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="sessions" data-toc="⑤ Sessions and timeline">Sessions and timeline</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/agents/sessions.png" alt="The Sessions card saying No sessions recorded" loading="lazy"></div>
+        </figure>
+        <p>One row per session of the opened agent, newest first (up to 100): its name,
+          <span class="pill t-peach">Out of runs</span> (or tokens, proposals) when a budget is
+          spent, how much it used against each limit (for example <em>Runs 12 / 50</em>), how many
+          times it was refused, and when it started and last did something. The demo's two entries
+          never send a session name, so it says <em>"No sessions recorded"</em>.</p>
+        <p><strong>Show timeline</strong> opens the <strong>Session timeline</strong> below it:
+          everything that session did, newest first (up to 500 items), each with a coloured label
+          and, where there is one, a link:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Label</th><th>What happened</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-lavender">Run</span></td><td>It started a run (with the run's result).</td></tr>
+              <tr><td><span class="pill t-mint">Case created</span> / <span class="pill t-mint">Suite created</span></td><td>It created a test or a suite.</td></tr>
+              <tr><td><span class="pill t-butter">Case edited</span></td><td>It changed a test during the session.</td></tr>
+              <tr><td><span class="pill t-pink">Proposal</span> / <span class="pill t-pink">Decision</span></td><td>It suggested a change, and what became of it (accepted, rejected or auto-applied).</td></tr>
+              <tr><td><span class="pill t-neutral">LLM</span></td><td>An AI call made for it, with its tokens.</td></tr>
+              <tr><td><span class="pill t-peach">Refused</span></td><td>A rule said no, with the rule's name and the reason.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/agents/page.png" width="1280" height="800">
+              <source src="../media/setup/agents/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing is saved in the video.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…stop an agent immediately</h3>
+        <ol class="steps">
+          <li>Press <strong>Open</strong> next to the agent (or type its id under <strong>Set controls for an agent id</strong>).</li>
+          <li>Tick <strong>Block this agent (kill switch)</strong>, type a reason the agent will see, and press <strong>Save</strong>.</li>
+          <li>Its next change is refused. If the agent might not name itself, also revoke its key in <strong>Setup → API keys</strong>.</li>
+        </ol>
+        <h3>…give every agent a sensible budget</h3>
+        <ol class="steps">
+          <li>In <strong>Defaults for every agent</strong>, type limits, for example 50 runs and 120 minutes per session.</li>
+          <li>Press <strong>Save</strong>. Every agent without its own controls now gets these.</li>
+          <li>For an agent that needs more, open it and type a higher number (or 0 for no limit) in its own box.</li>
+        </ol>
+        <h3>…see what an agent did in one task</h3>
+        <ol class="steps">
+          <li>Press <strong>Open</strong> next to the agent.</li>
+          <li>Under <strong>Sessions</strong>, find the session (the newest is at the top) and press <strong>Show timeline</strong>.</li>
+          <li>Click an item to open the run, test or proposal it points to.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only workspace admins can see this page.</strong> It covers every project in the workspace. Others see <em>"Workspace admins only"</em>.</li>
+          <li><strong>Only people can change controls.</strong> API keys are refused, so an agent can't unblock itself or raise its own budget. Every change is recorded in the <em>Audit log</em>.</li>
+          <li><strong>A limit is reached when the count equals it.</strong> With a limit of 50 runs, the 50th run starts and the 51st is refused. The agent gets a clear "budget exceeded" answer it can act on.</li>
+          <li><strong>Budgets only cover agents that name their session.</strong> Work sent without a session name is not budgeted. They are a safety net for well-behaved tools, not a lock. The kill switch covers any request that names the agent; for a tool that names nothing, revoke its API key.</li>
+          <li><strong>People are never blocked here.</strong> The controls apply to requests that carry an agent name; you working in the app are not affected.</li>
+          <li><strong>Refusals also appear on the Policies page</strong>, under <em>Recent denials</em>, where you can filter by agent id.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Billing</h4><p>The next page in this guide: the workspace's plan and how much of it is used.</p></div>
+          <div class="mini"><h4>Policies</h4><p>Every rule that can refuse an action, and the record of refusals.</p></div>
+          <div class="mini"><h4>API keys</h4><p>The keys agents use to reach TraceIQ, and how to revoke one.</p></div>
+          <div class="mini"><h4>Proposals</h4><p>The changes agents suggest, waiting for a person to accept or reject them.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Agents page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

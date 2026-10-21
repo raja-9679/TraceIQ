@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Webhooks · TraceIQ Guide</title>
+  <meta name="description" content="The Webhooks page: send a signed message to another system every time a test run finishes, and check what was delivered.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-webhooks.spec.ts. Page: frontend/src/pages/Webhooks.tsx
+     (+ components/webhooks/DeliveryLog.tsx, api/webhooks.ts).
+     API: backend/app/api/workspace_webhooks.py; sending: app/tasks/outbound_webhook_tasks.py
+     + app/services/webhook_delivery.py; 30-day sweep: app/tasks/cleanup_tasks.py:purge_webhook_deliveries. -->
+<body data-page="setup/webhooks">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../webhooks"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Webhooks</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Workspace admins only</span>
+          <span class="tag t-neutral">Admins can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A webhook is a message TraceIQ sends to another system the moment a test run
+            finishes: "run 471 failed", with the details. You give TraceIQ a web address, choose
+            which results to send, and the other system (a chat relay, a dashboard, your own
+            service) can react straight away.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Webhooks answer <strong>"How do I let another tool know about a run without anyone
+          having to check TraceIQ?"</strong> Instead of the other tool asking TraceIQ again and
+          again whether something has finished, TraceIQ tells it once, as soon as it happens.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Developers</h4><p>Let a build pipeline or a deployment tool continue, or stop, depending on whether the tests passed.</p></div>
+          <div class="mini"><h4>Team leads</h4><p>Feed results into your own dashboard or chat channel through a small relay service.</p></div>
+          <div class="mini"><h4>Workspace admins</h4><p>See whether each message arrived, and send one again when the receiving system was down.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Webhooks</strong>.</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Two words you will see</strong>
+            <ul>
+              <li>A <strong>run</strong> is one go at running tests: a whole suite (a folder of tests) or a single test.</li>
+              <li>A <strong>delivery</strong> is one message sent to one webhook. If it doesn't arrive, TraceIQ tries again, so one delivery can have several <strong>attempts</strong>.</li>
+            </ul></div>
+        </div>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo workspace has no webhooks yet, so the page shows <em>"No webhooks yet"</em>.
+          The screenshot below shows the form you get after pressing <strong>New webhook</strong>,
+          filled in with example values. The numbers match the sections below. What the page looks
+          like once webhooks exist is described after them, under
+          <a href="#list">The list of webhooks</a>.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/webhooks/page-annotated.png" alt="The Webhooks page with the New webhook form open and seven numbered parts: 1 the workspace picker, 2 the New webhook button, 3 Name, 4 Payload URL, 5 Project scope, 6 Events, 7 the Create webhook and Cancel buttons" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Webhooks page for the demo workspace, with the form open. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>The line under the heading counts the webhooks, for example <em>"2 active of 3"</em>:
+          three webhooks exist and two of them are switched on.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>Webhooks belong to a <strong>workspace</strong>, not to one person. If you belong to
+          more than one workspace, this menu chooses whose webhooks you see. The page opens on the
+          first workspace in your list each time; it doesn't remember your last choice. If you
+          belong to only one workspace, the menu isn't shown.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="new" data-toc="② New webhook">New webhook</h2></div>
+        <p>Opens the form below the heading. Press it again, or press <strong>Cancel</strong>, to
+          close the form without saving.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="name" data-toc="③ Name">Name</h2></div>
+        <p>A name for people, shown in the list, for example <em>ci-relay</em> or <em>Release
+          dashboard</em>. It isn't sent anywhere. It is required.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="url" data-toc="④ Payload URL">Payload URL</h2></div>
+        <p>The web address that should receive the messages. The team that runs the receiving
+          system gives you this. It must start with <code>http://</code> or <code>https://</code>.</p>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Some addresses are refused</strong>
+            <p>For safety, TraceIQ checks the address when you save it and again before every
+            message. Addresses on your own private network (such as <code>192.168…</code> or
+            <code>10…</code>) are refused unless your administrator has allowed them for this
+            server; addresses that lead to a cloud provider's internal services are always
+            refused. If the address is refused, the form shows
+            <em>"Webhook URL rejected"</em> with the reason.</p></div>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="scope" data-toc="⑤ Project scope">Project scope</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/webhooks/scope.png" alt="The Project scope menu open, offering Entire workspace and the two demo projects" loading="lazy"></div>
+        </figure>
+        <p><strong>Entire workspace</strong> (the default) sends a message for runs in every
+          project of the workspace, including projects added later. Choose one project to hear
+          only about that project's runs.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="events" data-toc="⑥ Events">Events</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/webhooks/events.png" alt="Five buttons labelled run.passed, run.failed, run.cancelled, run.timed_out and run.completed; run.failed and run.timed_out are selected" loading="lazy"></div>
+        </figure>
+        <p>An <strong>event</strong> is the kind of result that triggers a message. Click a button
+          to select it (it turns lavender); click again to clear it. <strong>Select none</strong>
+          to receive every finished run.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Event</th><th>Sent when</th></tr></thead>
+            <tbody>
+              <tr><td><code>run.passed</code></td><td>The run finished and <span class="pill t-mint">Passed</span>.</td></tr>
+              <tr><td><code>run.failed</code></td><td>The run finished and <span class="pill t-peach">Failed</span>.</td></tr>
+              <tr><td><code>run.cancelled</code></td><td>Someone stopped the run before it finished (<span class="pill t-neutral">Cancelled</span>).</td></tr>
+              <tr><td><code>run.timed_out</code></td><td>The run went past TraceIQ's time limit (<span class="pill t-butter">Timed out</span>).</td></tr>
+              <tr><td><code>run.completed</code></td><td>Any other ending, mainly <span class="pill t-peach">Error</span> (something went wrong around the tests). If you select it, you <em>also</em> get cancelled and timed-out runs. It does <strong>not</strong> include passed or failed runs.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout tip">
+          <span class="icon">✓</span>
+          <div><strong class="title">"Tell me when something is wrong"</strong>
+            <p>Select <code>run.failed</code> and <code>run.completed</code>. Together they
+            cover failed, error, cancelled and timed-out runs, and leave out the passes.</p></div>
+        </div>
+
+        <div class="part"><span class="num">7</span><h2 id="create" data-toc="⑦ Create or cancel">Create or cancel</h2></div>
+        <p><strong>Create webhook</strong> saves it, switched on. <strong>Cancel</strong> closes
+          the form and nothing is saved.</p>
+        <p>Straight after you create a webhook, a box labelled <span class="pill t-butter">Shown once</span>
+          appears with its <strong>signing secret</strong>: a long random code. The receiving system
+          uses it to check that a message really came from your TraceIQ and wasn't changed on the
+          way. Press <strong>Copy secret</strong> and pass it to whoever looks after the receiving
+          system, then press <strong>Done</strong>.</p>
+        <div class="callout warn">
+          <span class="icon">!</span>
+          <div><strong class="title">The secret is shown only this once</strong>
+            <p>TraceIQ stores the secret encrypted and never shows it again. If it is lost,
+            delete the webhook and create a new one; the new one gets a new secret. Treat it like
+            a password: don't paste it into a chat or a ticket.</p></div>
+        </div>
+
+        <h2 id="list" data-toc="The list of webhooks">The list of webhooks</h2>
+        <p>Once a workspace has webhooks, they are listed on the left, in up to three boxes:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Box</th><th>What is in it</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Failing</strong></td><td>Switched on, but the most recent attempt did not get through. Its icon is peach.</td></tr>
+              <tr><td><strong>Active</strong></td><td>Switched on, and the last attempt got through (or nothing has been sent yet). Its icon is mint.</td></tr>
+              <tr><td><strong>Disabled</strong></td><td>Switched off. Nothing is sent to it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Each row shows the webhook's name, its address and, once something has been sent, the
+          answer code of the last attempt on the right: <span class="pill t-mint">200</span> (or
+          another code in the 200s) means it arrived, a peach code means the receiver refused it,
+          and <span class="pill t-peach">0</span> means no answer came back at all. Click a row to
+          show it on the right. Until you do, the first one in the first box is shown.</p>
+
+        <h2 id="detail" data-toc="The selected webhook">The selected webhook</h2>
+        <ul>
+          <li><strong>Status labels</strong>: <span class="pill t-mint">Active</span> or <span class="pill t-neutral">Disabled</span>, and, if the last attempts failed, how many in a row, for example <span class="pill t-peach">3 consecutive failure(s)</span>. Every attempt counts, retries included; one that gets through sets it back to zero.</li>
+          <li><strong>Scope</strong>: <em>Entire workspace</em> or the project's name. <strong>Last delivery</strong>: the answer code and time of the last attempt, or <em>Never delivered</em>. <strong>Created</strong>: when it was made.</li>
+          <li><strong>Events</strong>: the events it was set up for, or <span class="pill t-neutral">All events</span>.</li>
+          <li><strong>Verifying deliveries</strong>: a reminder for the receiving team of how to check the signature.</li>
+          <li><strong>Recent deliveries</strong>: the delivery log (below).</li>
+          <li><strong>Disable delivery</strong> / <strong>Enable delivery</strong> switches it off or on without losing it. <strong>Delete webhook</strong> asks you to confirm, then removes it and its log for good.</li>
+        </ul>
+
+        <h3>Recent deliveries</h3>
+        <p>One row per attempt, newest first, up to the 50 most recent. <strong>All</strong> and
+          <strong>Failed</strong> at the top filter the list. Each row shows:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Part of the row</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">OK 200</span> / <span class="pill t-peach">Failed</span></td><td>Whether this attempt arrived, with the receiver's answer code. A lavender <span class="pill t-lavender">pending</span> is being sent right now.</td></tr>
+              <tr><td>Event and run</td><td>Which event it was, and a link to the run it was about.</td></tr>
+              <tr><td>attempt 2 · time · 140 ms</td><td>Which try this was (or <em>manual redelivery</em>), when, and how long the receiver took to answer.</td></tr>
+              <tr><td>Reason (peach)</td><td>Why it failed, in a few words, for example <em>HTTP 503</em>, <em>ConnectTimeout</em> or <em>redirect not followed (302)</em>. The receiver's reply itself is never stored or shown.</td></tr>
+              <tr><td>Next automatic retry</td><td>When TraceIQ will try again by itself.</td></tr>
+              <tr><td>8 letters and <strong>Redeliver</strong></td><td>The start of the delivery's ID (the same on every attempt), and a button to send it again now.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/webhooks/page.png" width="1280" height="800">
+              <source src="../media/setup/webhooks/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The video cancels the form, so no webhook is created.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…send failed runs to another system</h3>
+        <ol class="steps">
+          <li>Ask the team that runs the receiving system for the web address to use.</li>
+          <li>Press <strong>New webhook</strong>, type a name and paste the address into <strong>Payload URL</strong>.</li>
+          <li>Under <strong>Project scope</strong>, keep <em>Entire workspace</em> or choose one project.</li>
+          <li>Under <strong>Events</strong>, select <code>run.failed</code> (and <code>run.completed</code> to include errors, cancellations and time-outs).</li>
+          <li>Press <strong>Create webhook</strong>, then <strong>Copy secret</strong>, and hand the secret to the receiving team in a safe way.</li>
+        </ol>
+        <h3>…find out why messages aren't arriving</h3>
+        <ol class="steps">
+          <li>Look in the <strong>Failing</strong> box and click the webhook.</li>
+          <li>Under <strong>Recent deliveries</strong>, choose <strong>Failed</strong> and read the reason on each row.</li>
+          <li>Pass the reason to the receiving team. <em>HTTP 4xx/5xx</em> means their system answered but refused; a word like <em>ConnectTimeout</em> means it didn't answer at all.</li>
+          <li>Once they have fixed it, press <strong>Redeliver</strong> on the messages they missed.</li>
+        </ol>
+        <h3>…pause messages for a while</h3>
+        <ol class="steps">
+          <li>Click the webhook and press <strong>Disable delivery</strong>. It moves to the <strong>Disabled</strong> box.</li>
+          <li>Runs that finish while it is disabled are not sent, not even later. Press <strong>Enable delivery</strong> when you are ready again.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only workspace admins can see this page.</strong> A webhook receives every run of the workspace, and its address often contains a password of its own, so other members see <em>"Workspace admins only"</em>. Creating, switching, deleting and redelivering are recorded in the <em>Audit log</em>.</li>
+          <li><strong>Failed messages are retried by themselves</strong> after 1, 5 and 30 minutes, so up to four attempts in all. There is no retry when the receiver answers <em>410 Gone</em>, when the address is refused for safety, or for a message you redelivered by hand (press it again instead).</li>
+          <li><strong>Redirects are not followed.</strong> If the receiver answers "this has moved" (a 3xx code), the attempt counts as failed. Use the final address.</li>
+          <li><strong>The receiver has 10 seconds</strong> to answer each attempt.</li>
+          <li><strong>A redelivered message is the same message.</strong> It has the same delivery ID as before, so a receiver that already handled it can skip it. Redeliver also works on a disabled webhook, which is handy for testing a receiver before switching it back on.</li>
+          <li><strong>The log keeps 30 days.</strong> Older attempts are removed automatically. The log refreshes every 15 seconds while it is open.</li>
+          <li><strong>What a message contains:</strong> the run's number, result, suite and test names, browser and device, how many tests passed and failed, how long it took, its error message, links to its trace and video, the code version it tested (if it was given one), who or what started it, and the name, result and error of up to 100 tests.</li>
+          <li><strong>The demo workspace never sends anything.</strong> TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see <em>Proposals</em>).</li>
+          <li><strong>The settings can't be edited.</strong> To change a webhook's address, scope or events, create a new one and delete the old one.</li>
+          <li><strong>Not the same as chat notifications.</strong> Messages to Slack or Microsoft Teams are set up for each project in <em>Project settings</em>. Webhooks are for systems your team builds or runs.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Issue trackers</h4><p>The next page in this guide: connect Jira, GitHub or iTop to file a ticket from a failed run.</p></div>
+          <div class="mini"><h4>API keys</h4><p>The other direction: let another system start runs and read results in TraceIQ.</p></div>
+          <div class="mini"><h4>Project settings</h4><p>Email, Slack and Teams notifications for one project.</p></div>
+          <div class="mini"><h4>Audit log</h4><p>Who created, changed, deleted or redelivered a webhook, and when.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Webhooks page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

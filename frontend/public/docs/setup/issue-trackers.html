@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Issue trackers · TraceIQ Guide</title>
+  <meta name="description" content="The Issue trackers page: connect Jira, iTop, GitHub or Linear so you can file a ticket from a failed run, or import requirements.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-issue-trackers.spec.ts. Page: frontend/src/pages/IssueTrackers.tsx
+     (+ api/tickets.ts; used by components/CreateTicketDialog.tsx, pages/Triage.tsx, pages/Requirements.tsx).
+     API: backend/app/api/issue_trackers.py; tickets: app/tasks/ticket_tasks.py + app/services/issue_trackers.py;
+     import: app/api/requirements.py + app/services/tracker_import.py. -->
+<body data-page="setup/issue-trackers">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../issue-trackers"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Issue trackers</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Every workspace member can see it</span>
+          <span class="tag t-neutral">Every workspace member can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>An issue tracker is the tool your team files bugs in, such as Jira or GitHub. Connect
+            it here once, and anyone can turn a failed test run into a ticket in one click, with
+            the screenshots and recordings attached. The same connection can also bring
+            requirements from Jira or Linear into TraceIQ.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          This page answers <strong>"How do failures get from TraceIQ to the people who fix
+          them?"</strong> Without a connection, someone copies the error, downloads the
+          screenshots and writes the ticket by hand. With one, TraceIQ writes the ticket and
+          uploads the evidence itself.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Testers</h4><p>File a bug from the run page or from Failure triage without leaving TraceIQ.</p></div>
+          <div class="mini"><h4>Developers</h4><p>Get tickets with the error message, the code version and the run's trace, video and screenshots already attached.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Import user stories from Jira or Linear so you can see which of them have tests.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Issue trackers</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo workspace has no trackers yet, so the page shows <em>"No trackers yet"</em>.
+          The screenshot shows the form you get after pressing <strong>Add tracker</strong>,
+          filled in with example values (the token box is left empty on purpose). The numbers
+          match the sections below. What the page looks like once a tracker is saved is described
+          after them, under <a href="#list">Your trackers</a>.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/issue-trackers/page-annotated.png" alt="The Issue trackers page with the New tracker form open and six numbered parts: 1 the workspace picker, 2 Provider and Name, 3 Base URL, 4 the account and its token, 5 Settings JSON, 6 the Add tracker and Cancel buttons" loading="lazy" width="1440" height="1000"></div>
+          <figcaption>The Issue trackers page for the demo workspace, with the form open. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>Tracker connections belong to a <strong>workspace</strong> and are shared by everyone
+          in it. This menu chooses whose connections you see. The page opens on the first workspace
+          in your list each time. Next to it, <strong>Add tracker</strong> opens the form; it is
+          hidden while the form is open.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="provider" data-toc="② Provider and name">Provider and name</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/issue-trackers/providers.png" alt="The Provider menu open, offering Jira, iTop, GitHub Issues and Linear (import only)" loading="lazy"></div>
+        </figure>
+        <p><strong>Provider</strong> is the tool you are connecting. <strong>Name</strong> is
+          what people will see in the "choose a tracker" menus, for example <em>Team Jira</em>.
+          Choose a name that says which project or team the tickets go to.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Provider</th><th>What it can do</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Jira</strong></td><td>File tickets (with the files attached) and import requirements.</td></tr>
+              <tr><td><strong>iTop</strong></td><td>File tickets (with the files attached).</td></tr>
+              <tr><td><strong>GitHub Issues</strong></td><td>File issues. GitHub can't take attachments this way, so the issue gets <em>links</em> to the files instead, and those links stop working after <strong>one hour</strong>.</td></tr>
+              <tr><td><strong>Linear (import only)</strong></td><td>Import requirements only. It is never offered for filing tickets.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="url" data-toc="③ Base URL">Base URL</h2></div>
+        <p>The web address of your tracker, for example <code>https://yourcompany.atlassian.net</code>
+          for Jira Cloud. For GitHub type <code>https://api.github.com</code> (or your company's
+          GitHub Enterprise address). For Linear you can leave it empty: TraceIQ uses Linear's
+          standard address.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="account" data-toc="④ Account and token">Account and token</h2></div>
+        <p>How TraceIQ signs in to the tracker. The labels change with the provider:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Provider</th><th>Left box</th><th>Right box</th></tr></thead>
+            <tbody>
+              <tr><td>Jira</td><td>The email address of the Jira account</td><td>An API token for that account</td></tr>
+              <tr><td>iTop</td><td>The iTop username</td><td>Its password</td></tr>
+              <tr><td>GitHub Issues</td><td>Not used (greyed out)</td><td>A personal access token</td></tr>
+              <tr><td>Linear</td><td>Not used (greyed out)</td><td>A Linear API key</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout warn">
+          <span class="icon">!</span>
+          <div><strong class="title">Use an account made for this</strong>
+            <p>Every ticket is created as this account, and anyone in the workspace can file
+            tickets through it. Ask your tracker's administrator for an account (or token) that can
+            create tickets only in the project you want, not your personal one. The token is stored
+            encrypted and is never shown again, not even to you.</p></div>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="settings" data-toc="⑤ Settings JSON">Settings JSON</h2></div>
+        <p>Where the tickets should go, written in a small structured format called JSON. The box
+          starts with an example for Jira; replace the values, keep the quotes and the braces. The
+          hint next to the label lists what each provider needs:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Provider</th><th>What to put in</th></tr></thead>
+            <tbody>
+              <tr><td>Jira</td><td><code>{"project_key": "PROJ", "issue_type": "Bug"}</code>: the short key of the Jira project, and the kind of issue to create (Bug if left out).</td></tr>
+              <tr><td>iTop</td><td><code>{"class": "UserRequest", "org_id": 3}</code>: the kind of ticket (UserRequest if left out) and, if your iTop needs it, the organisation's number.</td></tr>
+              <tr><td>GitHub Issues</td><td><code>{"repo": "owner/name"}</code>: the repository the issues go to.</td></tr>
+              <tr><td>Linear</td><td>Nothing; you can empty the box.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The example stays the Jira one when you switch provider, so change it yourself. If the
+          text isn't valid JSON, saving fails with <em>"Settings must be valid JSON"</em>.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="save" data-toc="⑥ Add or cancel">Add or cancel</h2></div>
+        <p><strong>Add tracker</strong> saves the connection, switched on. It stays greyed out
+          until there is a name, a base URL (except for Linear) and a token. <strong>Cancel</strong>
+          closes the form without saving. TraceIQ doesn't try the connection when you save; the
+          first ticket you file shows whether it works.</p>
+
+        <h2 id="list" data-toc="Your trackers">Your trackers</h2>
+        <p>Once a connection is saved, the left side lists every tracker of the workspace in one
+          box, <strong>Trackers</strong>. Each row shows the name, the provider and the base URL,
+          and <span class="pill t-mint">On</span> or <span class="pill t-neutral">Off</span>. Click
+          a row to see it on the right:</p>
+        <ul>
+          <li><span class="pill t-mint">Enabled</span> or <span class="pill t-neutral">Disabled</span>, the name and the provider.</li>
+          <li><strong>Connection</strong>: the base URL and the account name. The token is never shown.</li>
+          <li><strong>What this does</strong>: a reminder of where the tracker is offered.</li>
+          <li><strong>Disable</strong> / <strong>Enable</strong>: a disabled tracker stays saved but is not offered anywhere until you enable it again.</li>
+          <li><strong>Remove</strong>: deletes the connection <strong>straight away, without asking</strong>. Tickets already filed stay in your tracker. Requirements imported through it stay in TraceIQ but can no longer be refreshed.</li>
+        </ul>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/issue-trackers/page.png" width="1280" height="800">
+              <source src="../media/setup/issue-trackers/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The video cancels the form, so nothing is saved.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…connect Jira</h3>
+        <ol class="steps">
+          <li>In Jira, create an API token for the account TraceIQ should use, and note the key of the project the tickets should go to (the short code in front of its ticket numbers, such as <code>PROJ</code> in PROJ-123).</li>
+          <li>Here, press <strong>Add tracker</strong> and keep <strong>Jira</strong> as the provider. Type a name.</li>
+          <li>Paste your Jira address into <strong>Base URL</strong>, the account's email into <strong>Jira email</strong> and the token into <strong>API token</strong>.</li>
+          <li>In <strong>Settings JSON</strong>, replace <code>PROJ</code> with your project key.</li>
+          <li>Press <strong>Add tracker</strong>.</li>
+        </ol>
+        <h3>…file a ticket from a failed run</h3>
+        <ol class="steps">
+          <li>Open the run (from <em>Runs</em> or <em>Overview</em>) and press <strong>Create ticket</strong>.</li>
+          <li>Choose the tracker. Leave the summary empty to get <em>"[TraceIQ] <span>suite name</span> — failed"</em>, or type your own.</li>
+          <li>Untick <strong>Trace</strong>, <strong>Video</strong> or <strong>Screenshots</strong> if you don't want them attached (all three are on), then create it. TraceIQ files it in the background. The dialog lists the run's tickets with a link to each once it exists, how many files were uploaded, and the reason if it failed.</li>
+        </ol>
+        <p>To file <em>one</em> ticket for a problem that failed many times, use
+          <strong>Failure triage</strong> instead.</p>
+        <h3>…change a tracker's token or settings</h3>
+        <ol class="steps">
+          <li>The page can't edit a saved connection. Press <strong>Add tracker</strong> and create a new one with the new details.</li>
+          <li>Check that it works by filing a ticket.</li>
+          <li>Click the old one and press <strong>Remove</strong>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Everyone in the workspace can add, switch off and remove trackers</strong>, not only admins. Changes on this page are not recorded in the <em>Audit log</em>.</li>
+          <li><strong>Filing a ticket needs the editor role</strong> on the run's project. Viewers can see the run but are refused (<em>"Editor role required"</em>).</li>
+          <li><strong>What a ticket from a run says:</strong> the run number and result, how many tests passed and failed, the error message, and the code version, branch and pull request if the run was given them. Then the trace, video and screenshots, for whichever of those the run recorded.</li>
+          <li><strong>Only switched-on trackers are offered.</strong> The <em>Create ticket</em> menus on runs and in Failure triage list enabled Jira, iTop and GitHub trackers; Requirements lists enabled Jira and Linear ones.</li>
+          <li><strong>The run page asks for a workspace first</strong> if you belong to several. Pick the workspace the run's project belongs to.</li>
+          <li><strong>Failure triage only offers trackers of the project's own workspace</strong>, so a problem can't be filed into another team's tracker by mistake.</li>
+          <li><strong>The demo workspace starts with no trackers.</strong> You can add a test connection to try it, then remove it.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>AI usage</h4><p>The next page in this guide: how much AI TraceIQ used on your behalf, and for what.</p></div>
+          <div class="mini"><h4>Failure triage</h4><p>Failures grouped by cause, with one ticket per problem instead of one per failure.</p></div>
+          <div class="mini"><h4>Runs</h4><p>Each run's full result, and the Create ticket button.</p></div>
+          <div class="mini"><h4>Requirements</h4><p>Import user stories from Jira or Linear and see which of them are tested.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Issue trackers page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

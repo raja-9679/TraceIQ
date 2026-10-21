@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Policies · TraceIQ Guide</title>
+  <meta name="description" content="The Policies page: switch AI off for a workspace, read every rule that can refuse an action, and see what was refused.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-policies.spec.ts. Page: frontend/src/pages/Policies.tsx
+     (+ components/agents/PolicyCards.tsx, agentHelpers.ts, components/compliance/useComplianceWorkspace.ts, api/policies.ts).
+     API: backend/app/api/policies.py; rules: app/services/policy/rules.py; logging: app/services/policy/__init__.py. -->
+<body data-page="setup/policies">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../policies"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Policies</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Every workspace member can see the rules</span>
+          <span class="tag t-neutral">Workspace admins see refusals and can change it</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>TraceIQ has a set of rules that can stop something from happening: a run beyond your
+            plan's limit, an AI agent that has been blocked, a suggested fix nobody has checked.
+            This page lists every one of those rules in plain sight, has the one switch that turns
+            AI off for the whole workspace, and shows what was actually refused, and why.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Policies answers <strong>"Why was this refused, and what could refuse it?"</strong>
+          When a run won't start or a suggestion can't be accepted, the message names a rule. This
+          page explains that rule and where its setting lives, and keeps a record of refusals so
+          you can see a pattern instead of a single error.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Workspace admins</h4><p>Decide whether the workspace may use AI at all, and check what has been refused lately.</p></div>
+          <div class="mini"><h4>Compliance and security</h4><p>Show which controls exist and prove they work: every refusal is recorded with who, what and when.</p></div>
+          <div class="mini"><h4>Anyone refused</h4><p>Look up the rule named in an error message and find out who can change it.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Policies</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has four parts. The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/policies/page-annotated.png" alt="The Policies page with four numbered parts: 1 the workspace menu, 2 the AI use switch, 3 the list of rules, 4 the recent denials with their filters" loading="lazy" width="1440" height="1300"></div>
+          <figcaption>The Policies page for the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>The AI switch and the refusals belong to one <strong>workspace</strong>. The page opens
+          on the workspace of the project selected at the top of the sidebar; this menu picks
+          another. It is only shown if you belong to more than one workspace.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="ai" data-toc="② AI use in this workspace">AI use in this workspace</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/policies/ai.png" alt="A card titled AI use in this workspace with an AI on label, an Allow AI features checkbox that is ticked, and a Save button" loading="lazy"></div>
+        </figure>
+        <p>One switch for the whole workspace. The label at the top right says
+          <span class="pill t-mint">AI on</span> or <span class="pill t-peach">AI off</span>.</p>
+        <ul>
+          <li><strong>Allow AI features</strong> is ticked by default. Untick it and press
+            <strong>Save</strong> to stop every AI call for this workspace: no explanations of
+            failures, no AI-written tests, no automatic repair of tests (neither on the server nor
+            on the test machines), and no answers from <em>Ask TraceIQ</em>. Those features fall
+            back to what they do without AI.</li>
+          <li><strong>Save</strong> only becomes active once you have changed the box. Nothing
+            changes until you press it.</li>
+          <li>Only workspace admins can change it; everyone else sees <em>"Only workspace admins
+            can change this"</em> and a greyed-out box. It can't be changed with an API key, so an
+            AI agent can't switch AI back on for itself.</li>
+          <li>When AI is on, the plan's monthly token limit (see <em>Billing</em>) and each agent's
+            budget (see <em>Agents</em>) still apply.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="rules" data-toc="③ Rules">Rules</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/policies/rules-group.png" alt="The first group of rules, Starting and dispatching runs, with rules such as plan.run_quota labelled Refuses and workspace.max_concurrent_runs labelled Defers, each with a description and a Configured in line" loading="lazy"></div>
+        </figure>
+        <p>Every check TraceIQ makes before it lets certain actions happen, grouped by the action
+          they guard. The list is the same for every workspace: it describes the rules, not your
+          settings. Each rule shows:</p>
+        <ul>
+          <li><strong>Its name</strong>, for example <code>plan.run_quota</code>. Error messages quote this name.</li>
+          <li><strong>What it does</strong> to the action:
+            <span class="pill t-peach">Refuses</span> stops it,
+            <span class="pill t-butter">Defers</span> makes it wait and try again shortly (a run stays <em>Queued</em>),
+            <span class="pill t-lavender">Resolves settings</span> never stops anything but works out a setting the action runs with.</li>
+          <li><strong>When it is checked</strong>, for runs: <em>at create</em> (when someone asks for the run), <em>at admit</em> (just before it starts), <em>at configure</em> (while its settings are put together).</li>
+          <li><strong>A description</strong>, and <strong>Configured in</strong>: the page or setting that controls it. The grey line under it names the program file, for your technical team.</li>
+          <li><span class="pill t-neutral">Enforced inline</span> marks the one rule that is applied directly where it is needed rather than by the rule engine (the network-safety check on addresses TraceIQ visits). It is listed so the picture is complete, and its refusals are not recorded below.</li>
+        </ul>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:28%">Group</th><th>What its rules check, in plain words</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Starting and dispatching runs</strong></td><td>The agent isn't blocked or over budget; the plan's monthly run limit isn't used up; the workspace isn't running its maximum number of runs at once (otherwise the run waits); a test environment marked "one run at a time" is free (otherwise the run waits); and how much the run may record, which addresses it may reach, and whether it may use AI.</td></tr>
+              <tr><td><strong>Using AI (LLM calls)</strong></td><td>The workspace switch above is on; the agent isn't blocked or over its token budget; the plan's monthly AI token limit isn't used up.</td></tr>
+              <tr><td><strong>Agent writes</strong></td><td>A blocked agent can't change anything in the workspace.</td></tr>
+              <tr><td><strong>Filing proposals</strong></td><td>A blocked or over-budget agent can't suggest changes to tests.</td></tr>
+              <tr><td><strong>Accepting proposals</strong></td><td>A suggested fix has passed its check run when that is required, and the person accepting it isn't the one who suggested it when the workspace asks for that.</td></tr>
+              <tr><td><strong>Auto-applying proposals</strong></td><td>Suggestions are never applied automatically to a protected suite, when a check run is required, or when the server has switched auto-apply off.</td></tr>
+              <tr><td><strong>Security scans</strong></td><td>Security testing is allowed for the project and the target.</td></tr>
+              <tr><td><strong>Backend outbound requests</strong></td><td>Addresses TraceIQ's server visits itself (webhooks, API documents, pages it checks) are not on a private network unless your administrator allows that, and never lead to cloud-internal services.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="denials" data-toc="④ Recent denials">Recent denials</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/policies/denials.png" alt="The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period, and the message Nothing was refused in this period" loading="lazy"></div>
+        </figure>
+        <p>A <strong>denial</strong> is one time a rule said no. The list shows them newest first,
+          50 to a page (<strong>Newer</strong> and <strong>Older</strong> move between pages). In
+          the demo workspace nothing has been refused, so it says <em>"Nothing was refused in this
+          period"</em>.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Filter</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Scope</strong></td><td><em>This workspace</em>, or <em>Whole instance</em>: every workspace on the server, for server administrators only. Others get a refusal message instead of a list (see the picture below).</td></tr>
+              <tr><td><strong>Action</strong></td><td>Only refusals of one kind of action (the groups above).</td></tr>
+              <tr><td><strong>Rule</strong></td><td>Only one rule. The menu lists the rules of the chosen action.</td></tr>
+              <tr><td><strong>Agent id</strong></td><td>Only refusals of one agent. Type its exact name.</td></tr>
+              <tr><td><strong>Period</strong></td><td>The last 24 hours, 7, 30 (the default) or 90 days.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/policies/denials-instance.png" alt="Recent denials with the scope set to Whole instance (instance admins), showing the message that this can only be managed by the instance admin" loading="lazy"></div>
+          <figcaption>What someone who isn't a server administrator sees after choosing <em>Whole instance</em>. The message talks about "instance settings", but it applies to this list too.</figcaption>
+        </figure>
+        <p>Each row says <strong>when</strong>, which <strong>rule</strong> (and action), the
+          <strong>reason</strong> TraceIQ gave, <strong>where</strong> (the project, if there was
+          one) and <strong>who</strong>: the agent and its session if an agent asked, and the
+          person's email, or <em>system</em> when TraceIQ itself was acting.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/policies/page.png" width="1280" height="800">
+              <source src="../media/setup/policies/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing is changed or saved in the video.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…turn AI off for a workspace</h3>
+        <ol class="steps">
+          <li>Make sure the right workspace is shown (menu at the top, or the project in the sidebar).</li>
+          <li>Untick <strong>Allow AI features</strong> and press <strong>Save</strong>. The label changes to <span class="pill t-peach">AI off</span>.</li>
+          <li>Runs that start from now on make no AI calls. To allow AI again, tick the box and save.</li>
+        </ol>
+        <h3>…find out why something was refused</h3>
+        <ol class="steps">
+          <li>Note the rule name in the error message, for example <code>plan.run_quota</code>.</li>
+          <li>Find it under <strong>Rules</strong> and read <strong>Configured in</strong>: that is where the limit or switch can be changed, and by whom.</li>
+          <li>Under <strong>Recent denials</strong>, choose that rule to see how often it has happened, and to whom.</li>
+        </ol>
+        <h3>…check what an AI agent was refused</h3>
+        <ol class="steps">
+          <li>Type the agent's name in <strong>Agent id</strong> and choose a period.</li>
+          <li>Read the reasons. For budgets and blocking, go to <strong>Setup → Agents</strong>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only refusals are recorded.</strong> Actions that were allowed leave no row here, and neither do waits (<em>Defers</em>): a run waiting for a free slot isn't a refusal.</li>
+          <li><strong>Repeats within a minute count once.</strong> The same refusal of the same person or agent for the same reason, again within 60 seconds, is normally recorded only the first time, so a retrying script doesn't flood the list.</li>
+          <li><strong>Refusals are kept 90 days</strong> by default, then removed automatically. Your server administrator can change that period.</li>
+          <li><strong>Who sees what.</strong> Every workspace member sees the AI switch and the rules. Recent denials are for workspace admins: others see <em>"Workspace admin access required"</em> in that card. API keys limited to one project can't read them.</li>
+          <li><strong>Switching AI on or off is recorded</strong> in the <em>Audit log</em>, with who did it.</li>
+          <li><strong>The rules list doesn't change with your settings.</strong> A rule appears even when its limit isn't set (for example a plan with no run limit). Whether it can ever refuse depends on the setting named in <em>Configured in</em>.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Agents</h4><p>The next page in this guide: block an AI agent, or give its sessions a budget.</p></div>
+          <div class="mini"><h4>Billing</h4><p>The plan limits that the run and token rules check.</p></div>
+          <div class="mini"><h4>AI usage</h4><p>How much AI the workspace has used, by feature and by provider.</p></div>
+          <div class="mini"><h4>Proposals</h4><p>Suggested test changes, and the review rules for accepting them.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Policies page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

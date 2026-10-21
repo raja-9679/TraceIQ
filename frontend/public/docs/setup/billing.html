@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Billing · TraceIQ Guide</title>
+  <meta name="description" content="The Billing page (Plan and usage): a workspace's plan, how much of this month's allowance is used, and the plans on offer.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-billing.spec.ts. Page: frontend/src/pages/Billing.tsx (+ api/billing.ts).
+     API: backend/app/api/billing.py; counters + quota check: app/services/billing.py;
+     run quota rule: app/services/policy/rules.py (_run_quota); token cap: app/services/llm_usage.py. -->
+<body data-page="setup/billing">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../billing"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Billing</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Every workspace member can see it</span>
+          <span class="tag t-neutral">Workspace admins can change the plan</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Each workspace has a plan, which can set limits such as how many test runs it may
+            start in a month. This page shows the current plan, how much of this month's allowance
+            has been used, and the other plans you could switch to.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Billing answers <strong>"How much have we used this month, and are we about to hit a
+          limit?"</strong> When a run is refused because the month's allowance is spent, this is
+          the page that shows it, and where an admin moves the workspace to a bigger plan.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Workspace admins</h4><p>Keep an eye on the meters and change the plan before the team runs out.</p></div>
+          <div class="mini"><h4>Team members</h4><p>Find out why a run was refused with "Monthly run quota reached".</p></div>
+          <div class="mini"><h4>Budget holders</h4><p>See which plan the workspace is on, and what each plan includes.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Billing</strong>.
+          The page's own heading says <strong>Plan and usage</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The server used for this guide has no plans set up, so the demo workspace shows
+          <em>"No plan (unlimited)"</em>, three meters with no limit, and an empty list of plans.
+          The numbers on the screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/billing/page-annotated.png" alt="The Plan and usage page with five numbered parts: 1 the workspace menu, 2 the current plan line, 3 three usage meters, 4 the list of plans, 5 the note about plan changes" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Plan and usage page for the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>Plans belong to a <strong>workspace</strong>. This menu chooses which one. The page
+          opens on the first workspace in your list each time.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="current" data-toc="② Current plan">Current plan</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/billing/current.png" alt="Current plan: No plan (unlimited), a green label active, and on the right Period 2026-10 · Manual billing (Stripe not configured)" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Current plan</strong>: the plan's name. <em>No plan (unlimited)</em> means the server has no plans at all, so nothing is limited.</li>
+          <li><strong>The green label</strong> is the subscription's state, normally <em>active</em>. With card payments it can also show what the payment service reports, such as <em>canceled</em>.</li>
+          <li><strong>Period</strong>: the month the meters count, as year and month (for example <em>2026-10</em>). Months follow UTC, so in India a new month starts at 5:30 a.m. on the 1st.</li>
+          <li><strong>Manual billing (Stripe not configured)</strong> appears when the server takes no card payments. Then an admin simply switches the plan here.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="meters" data-toc="③ The three meters">The three meters</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/billing/meters.png" alt="Three meters: Runs this month 0 / unlimited, AI generations today 0 / unlimited, LLM tokens this month 0 / unlimited" loading="lazy"></div>
+        </figure>
+        <p>Each meter shows what has been used, against the plan's limit (<em>unlimited</em> when
+          there is none). With a limit, the bar fills up and changes colour:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Bar colour</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="swatch" style="background:#8FD3B6"></span>Green</td><td>Less than 70% of the limit used.</td></tr>
+              <tr><td><span class="swatch" style="background:#E8B84A"></span>Yellow</td><td>70% to 89% used. Plan ahead.</td></tr>
+              <tr><td><span class="swatch" style="background:#E0603A"></span>Orange</td><td>90% or more used. The limit is close.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Meter</th><th>What it counts</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Runs this month</strong></td><td>Runs started this calendar month by people, the API, CI pipelines, benchmarks, access-matrix checks and suggested-fix checks. A request that runs a suite in three browsers counts as three runs. Runs started by <em>schedules</em> and <em>monitors</em> are not counted.</td></tr>
+              <tr><td><strong>AI generations today</strong></td><td>Shown against the plan's daily AI limit. See the note below: on this version it always reads 0.</td></tr>
+              <tr><td><strong>LLM tokens this month</strong></td><td>AI text (tokens) used by the workspace this calendar month. The same number as on <em>AI usage</em>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">Which limits actually stop anything</strong>
+            <p>Two limits are enforced. When <strong>runs per month</strong> is used up, new runs
+            are refused with <em>"Monthly run quota reached"</em> until the next month. When
+            <strong>LLM tokens per month</strong> is used up, AI features are skipped and fall back
+            to their non-AI behaviour. The other limits listed on a plan (seats, concurrent runs,
+            retention and AI generations per day) are shown for information only on this version:
+            nothing checks them, and the AI-generations meter is never counted up. (The number of
+            runs at the same time is limited per workspace, in its own settings, and AI test
+            writing has its own daily limit per workspace.)</p></div>
+        </div>
+
+        <div class="part"><span class="num">4</span><h2 id="plans" data-toc="④ Plans">Plans</h2></div>
+        <p>One card per plan the server offers. On the demo server there are none, so this part
+          is empty. Each card shows:</p>
+        <ul>
+          <li>The plan's name, and <span class="pill t-lavender">Current</span> on the one the workspace is on.</li>
+          <li>Its price per month, <em>Free</em>, or <em>Custom</em> for the enterprise plan.</li>
+          <li>Its limits: runs per month, seats, concurrent runs, retention in days, AI generations per day and LLM tokens per month. <em>Unlimited</em> means no limit.</li>
+          <li>A button: <strong>Current plan</strong> (greyed out) on your plan; <strong>Upgrade</strong> on paid plans when the server takes card payments, which opens the payment page; otherwise <strong>Switch to …</strong>, which changes the plan straight away.</li>
+        </ul>
+
+        <div class="part"><span class="num">5</span><h2 id="note" data-toc="⑤ The note at the bottom">The note at the bottom</h2></div>
+        <p>A reminder that plan changes take effect immediately, how plans are changed on this
+          server (card payment, or an admin assigning them), and that the run limit is checked
+          when a run is created.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/billing/page.png" width="1280" height="800">
+              <source src="../media/setup/billing/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About 45 seconds, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check whether you are close to the run limit</h3>
+        <ol class="steps">
+          <li>Choose the workspace in the menu at the top right.</li>
+          <li>Read <strong>Runs this month</strong>. A yellow or orange bar means it is getting close.</li>
+          <li>Remember that runs in several browsers count once per browser.</li>
+        </ol>
+        <h3>…move the workspace to another plan</h3>
+        <ol class="steps">
+          <li>You need to be a workspace admin.</li>
+          <li>Under <strong>Plans</strong>, press <strong>Upgrade</strong> (card payment) or <strong>Switch to …</strong> on the plan you want.</li>
+          <li>With <em>Switch to</em>, the new limits apply at once and the message "Plan updated" appears. With <em>Upgrade</em>, the plan changes once the payment has gone through.</li>
+        </ol>
+        <h3>…find out why a run was refused</h3>
+        <ol class="steps">
+          <li>If the message says <em>"Monthly run quota reached (50/50)"</em>, the month's runs are used up: the meter here shows the same numbers.</li>
+          <li>Ask a workspace admin to move to a bigger plan, or wait until the 1st of next month (UTC).</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Counters start again every month</strong>, on the 1st at midnight UTC. Unused allowance doesn't carry over.</li>
+          <li><strong>The run limit is checked before a run is created.</strong> While a single run is left, one request that starts several runs (for example in three browsers) still goes through, so the meter can end slightly above the limit.</li>
+          <li><strong>Everyone in the workspace can see this page.</strong> Switching plans needs the workspace admin role; others get <em>"Workspace admin required to change plan"</em>.</li>
+          <li><strong>Without a plan, nothing is limited.</strong> A workspace that was never given a plan is on the <em>free</em> plan if the server has one, and unlimited if it has none.</li>
+          <li><strong>Money for AI and test machines</strong> is on <em>Costs</em> under Reports, not here.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>AI usage</h4><p>Where the month's AI tokens went, by feature and provider.</p></div>
+          <div class="mini"><h4>Policies</h4><p>The rules that refuse runs and AI calls when a plan limit is reached.</p></div>
+          <div class="mini"><h4>Workspace</h4><p>The workspace's own settings, including how many runs may run at once.</p></div>
+          <div class="mini"><h4>Costs</h4><p>What testing and AI cost in money, per project.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Billing page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

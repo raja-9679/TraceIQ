@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI usage · TraceIQ Guide</title>
+  <meta name="description" content="The AI usage page: how many AI calls and tokens TraceIQ used for your workspace, by day, by provider and model, and by feature.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/setup-ai-usage.spec.ts. Page: frontend/src/pages/LLMUsage.tsx (+ api/llmUsage.ts).
+     API: backend/app/api/llm_usage.py; recording + monthly cap: app/services/llm_usage.py;
+     period: app/services/billing.py:current_period; cap rule: app/services/policy/rules.py. -->
+<body data-page="setup/ai-usage">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../ai-usage"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>AI usage</h1>
+        <div class="meta-row">
+          <span class="tag t-neutral">Setup</span>
+          <span class="tag t-neutral">Every workspace member can see it</span>
+          <span class="tag t-neutral">Read-only page</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>TraceIQ uses AI services for a few jobs, such as explaining why a test failed or
+            repairing a test whose button moved. This page counts those calls for one workspace:
+            how many there were, how much text they used, which AI service answered, and which
+            feature asked.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          AI usage answers <strong>"How much AI are we using, and for what?"</strong> AI services
+          charge by the amount of text they read and write, and many plans have a monthly limit,
+          so it helps to know where the usage comes from before the bill or the limit arrives.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Workspace admins</h4><p>See whether the workspace is close to its monthly AI limit, and which feature uses the most.</p></div>
+          <div class="mini"><h4>Leads</h4><p>Compare AI providers and models: how often their answers came back, and how long they took.</p></div>
+          <div class="mini"><h4>Anyone curious</h4><p>Check that AI features are actually being used, or that nothing is calling AI when it shouldn't.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → AI usage</strong>.</p>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">Two words you will see</strong>
+            <ul>
+              <li>A <strong>call</strong> is one question TraceIQ sent to an AI service, and its answer.</li>
+              <li>A <strong>token</strong> is a small piece of text, roughly three-quarters of a word. AI services count, and charge, by tokens. <strong>Input</strong> tokens are what TraceIQ sent (the question, the error, part of the page); <strong>output</strong> tokens are the answer.</li>
+            </ul></div>
+        </div>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo workspace has made no AI calls, so its page shows only the two menus and
+          <em>"No LLM calls in the last 30 days"</em> ("LLM", large language model, is the
+          technical name for these AI services). Part ③ below describes what replaces that message
+          once there are calls.</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/ai-usage/page-annotated.png" alt="The AI usage page with three numbered parts: 1 the time-window menu set to 30 days, 2 the workspace menu set to Demo workspace, 3 the message No LLM calls in the last 30 days" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The AI usage page for the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Time window">Time window</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/ai-usage/window.png" alt="The time-window menu open, offering 7 days, 30 days and 90 days" loading="lazy"></div>
+        </figure>
+        <p>How far back to count: the last <strong>7</strong>, <strong>30</strong> (the default)
+          or <strong>90</strong> days. The window ends now and is counted in hours, not calendar
+          days: "7 days" is the last 7 × 24 hours.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="workspace" data-toc="② Workspace">Workspace</h2></div>
+        <p>AI usage is counted per <strong>workspace</strong>. This menu chooses which one. The
+          page opens on the first workspace in your list each time.</p>
+
+        <div class="part"><span class="num">3</span><h2 id="report" data-toc="③ The usage report">The usage report</h2></div>
+        <p>When the workspace has made AI calls in the window, four parts take the place of the
+          message.</p>
+
+        <h3>The four totals</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Tile</th><th>What the number means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Total tokens</strong></td><td>Input plus output tokens of every call in the window, shortened (for example <em>1.2M</em> for 1.2 million). The exact number is underneath.</td></tr>
+              <tr><td><strong>LLM calls</strong></td><td>How many calls were made, including ones that failed.</td></tr>
+              <tr><td><strong>Input / output</strong></td><td>The same tokens split into what was sent and what came back.</td></tr>
+              <tr><td><strong>Average latency</strong></td><td>How long an answer took on average, in milliseconds (<em>ms</em>) or seconds (<em>s</em>).</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Tokens per day</h3>
+        <p>A bar for each day that had calls; the tallest bar is the busiest day, and the top
+          corner names its total. Days without any calls get no bar at all, so two bars side by
+          side are not always two days in a row: read the dates. Point at a bar to see its date,
+          tokens and number of calls. Days are calendar days in <strong>UTC</strong>, so in India
+          a call made before 5:30 a.m. counts towards the previous day.</p>
+        <p>If the workspace's plan has a monthly AI limit, the top-right corner also shows it, for
+          example <em>"2026-10: 120,000 / 1,000,000 tokens (12%)"</em>. That figure is for the
+          <strong>current calendar month</strong>, whatever time window you picked.</p>
+
+        <h3>By provider and model</h3>
+        <p>One row per AI service (the <strong>provider</strong>, as your administrator named it)
+          and <strong>model</strong> (the particular AI version, such as a "mini" or a "large"
+          one), the most-used first. The columns give calls, input, output and total tokens, and
+          the average wait. <strong>Success</strong> is the share of calls that got an answer; below
+          90% it turns peach, which usually means the service was refusing or timing out.</p>
+
+        <h3>By feature</h3>
+        <p>Which part of TraceIQ asked, with its tokens, calls and a bar showing its share of
+          all tokens, the largest first:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Feature</th><th>What it is</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Failure analysis</strong></td><td>The explanation of why a test failed, on the run page.</td></tr>
+              <tr><td><strong>Selector healing</strong></td><td>Repairing a test whose button or field can no longer be found (the "selector" is how a test finds it), during a run or afterwards as a suggestion.</td></tr>
+              <tr><td><strong>Test generation</strong></td><td>Writing a draft test from a description.</td></tr>
+              <tr><td><code>requirement_generation</code>, <code>incident_regression</code></td><td>Draft tests written from an imported requirement, or from an incident. They are shown with these technical names.</td></tr>
+              <tr><td><code>assistant</code></td><td>Questions asked through <em>Ask TraceIQ</em>.</td></tr>
+              <tr><td><strong>Other</strong></td><td>Calls that didn't say which feature made them.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/setup/ai-usage/page.png" width="1280" height="800">
+              <source src="../media/setup/ai-usage/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>Under a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check how close you are to the monthly limit</h3>
+        <ol class="steps">
+          <li>Choose the workspace in the menu under the heading.</li>
+          <li>Read the top-right corner of <strong>Tokens per day</strong>. If it shows no figure, the plan has no AI limit.</li>
+          <li>To see the plan and its limits, open <strong>Setup → Billing</strong>.</li>
+        </ol>
+        <h3>…find out what is using the most AI</h3>
+        <ol class="steps">
+          <li>Choose <strong>30 days</strong> or <strong>90 days</strong>.</li>
+          <li>Look at <strong>By feature</strong>: the first bar is the biggest user.</li>
+          <li>Look at the tallest bars in <strong>Tokens per day</strong> to see when it happened, for example on a day with many failed runs.</li>
+        </ol>
+        <h3>…switch AI off for a workspace</h3>
+        <ol class="steps">
+          <li>This page only reports. To stop AI use, a workspace admin opens <strong>Setup → Policies</strong> and turns off <strong>Allow AI features</strong>.</li>
+          <li>From then on, no new calls appear here for that workspace.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>When the monthly limit is used up</strong>, TraceIQ stops making AI calls for that workspace until the next calendar month (UTC). The features don't break: they fall back to what they do without AI. The refused calls are listed under <em>Recent denials</em> on the Policies page.</li>
+          <li><strong>Calls made by the test machines count too.</strong> When a test repairs itself during a run, the machine running it makes the call and reports it; it is counted in the run's workspace.</li>
+          <li><strong>Failed calls are counted.</strong> They appear in <em>LLM calls</em> and lower the <em>Success</em> rate, even when they used few or no tokens.</li>
+          <li><strong>No money is shown here.</strong> For costs in your currency, see <em>Costs</em> under Reports (it needs prices set up by your administrator).</li>
+          <li><strong>It doesn't update by itself</strong> while you look at it. It refreshes when you come back to its browser tab, or when you reload.</li>
+          <li><strong>Everyone in the workspace sees the same numbers</strong>, for all projects of the workspace together. There is no per-project split on this page.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Policies</h4><p>The next page in this guide: switch AI off for a workspace, and see what TraceIQ refused and why.</p></div>
+          <div class="mini"><h4>Billing</h4><p>Your plan and its monthly limits, AI tokens included.</p></div>
+          <div class="mini"><h4>Agents</h4><p>AI agents that use TraceIQ, and the token budget each of their sessions may spend.</p></div>
+          <div class="mini"><h4>Costs</h4><p>What testing and AI cost in money, per project, when prices are set up.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the AI usage page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
