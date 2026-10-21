@@ -6,7 +6,7 @@ import { RefreshCw, Ticket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { getWorkspaces } from '@/lib/api';
+import { getProjects } from '@/lib/api';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
 import { triageApi, FailureCluster } from '@/api/triage';
 import { ticketsApi } from '@/api/tickets';
@@ -53,8 +53,10 @@ function ClusterDetail({ cluster }: { cluster: FailureCluster }) {
     const detail = useQuery({ queryKey: ['cluster', cluster.id], queryFn: () => triageApi.get(cluster.id) });
 
     // trackers for the one-ticket-per-cluster action
-    const { data: workspaces } = useQuery({ queryKey: ['workspaces'], queryFn: getWorkspaces });
-    const wsId = workspaces?.[0]?.id ?? null;
+    // The cluster's own workspace, not the user's first one: the backend only
+    // accepts a tracker from the workspace the cluster's project is in.
+    const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
+    const wsId = projects?.find((p) => p.id === cluster.project_id)?.workspace_id ?? null;
     const trackers = useQuery({ queryKey: ['trackers', wsId], queryFn: () => ticketsApi.listConfigs(wsId!), enabled: !!wsId });
     const [trackerId, setTrackerId] = useState('');
 

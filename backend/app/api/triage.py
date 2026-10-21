@@ -104,7 +104,12 @@ async def create_cluster_ticket(cluster_id: int, body: dict = Body(...),
     if not config_id:
         raise HTTPException(status_code=400, detail="config_id is required")
     config = await session.get(IssueTrackerConfig, config_id)
-    if not config:
+    project = await session.get(Project, cluster.project_id)
+    # The tracker must belong to the cluster's own workspace: otherwise a member
+    # of two workspaces could file one workspace's failure (sample error,
+    # screenshots, video) into the other's tracker. 404, not 403, so the call
+    # doesn't confirm that another workspace's config id exists.
+    if not config or not project or config.workspace_id != project.workspace_id:
         raise HTTPException(status_code=404, detail="Tracker config not found")
     member = (await session.exec(select(UserWorkspace).where(
         UserWorkspace.workspace_id == config.workspace_id,
