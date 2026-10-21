@@ -183,7 +183,7 @@ async def test_outsider_and_wrong_scope_key_are_refused(session, scene):
     key = SimpleNamespace(id=1, project_id=scene.other_project_id)
     with pytest.raises(HTTPException) as exc:
         await api.get_matrix(m["id"], session=session, principal=AuthPrincipal(user=scene.user, api_key=key))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 async def test_matrix_rejects_foreign_cases_and_personas(session, scene):

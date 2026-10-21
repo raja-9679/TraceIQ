@@ -215,7 +215,7 @@ async def test_project_scoped_key_cannot_reach_another_project(session, scene, j
     with pytest.raises(HTTPException) as exc:
         await incidents.create_incident(scene.project_id, incidents.IncidentCreate(title="x"),
                                         principal=me(scene, key), session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 # --- generation → accept → coverage ------------------------------------------

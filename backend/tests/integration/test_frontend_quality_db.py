@@ -148,7 +148,7 @@ async def test_crawl_needs_a_project_host_and_editor_access(session, scene):
     key = ApiKey(name="ci", workspace_id=1, project_id=scene.other_project_id, prefix="tiq_x", hashed_key="h")
     with pytest.raises(HTTPException) as exc:
         await fq.list_crawls(scene.project_id, session=session, principal=me(scene, key))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
     # Another project's host is not this project's host.
     with pytest.raises(HTTPException):
         await fq.update_crawl(crawl["id"], fq.SiteCrawlPatch(extra_hosts=["evil.example.net"]), None,

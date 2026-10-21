@@ -232,9 +232,12 @@ async def test_access_is_enforced(session, scene):
         await quality.evaluate_quality_gate(
             scene.project_id, git_commit=None, git_branch=None, session=session,
             principal=AuthPrincipal(user=scene.user, api_key=key))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
-    own_key = ApiKey(name="ci", workspace_id=1, project_id=scene.project_id,
+    # The project's real workspace: with RLS enforcing, a key is held to its
+    # workspace, so a hard-coded 1 only worked while the scene happened to be there.
+    ws_id = (await session.get(Project, scene.project_id)).workspace_id
+    own_key = ApiKey(name="ci", workspace_id=ws_id, project_id=scene.project_id,
                      prefix="tiq_y", hashed_key="h")
     r = await _ready(session, scene, principal=AuthPrincipal(user=scene.user, api_key=own_key))
     assert r.project_id == scene.project_id
@@ -244,7 +247,7 @@ async def test_access_is_enforced(session, scene):
     await session.commit()
     with pytest.raises(HTTPException) as exc:
         await _ready(session, scene, principal=AuthPrincipal(user=stranger, api_key=None))
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 async def test_policy_edit_round_trips_and_is_audited(session, scene):

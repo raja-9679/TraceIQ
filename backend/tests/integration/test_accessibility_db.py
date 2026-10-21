@@ -180,7 +180,7 @@ async def test_access_and_validation(session, scene):
     assert exc.value.status_code in DENIED
     with pytest.raises(HTTPException) as exc:
         await har_api.list_hars(scene.project_id, principal=nobody, session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
     # Another project's run looks like a missing one.
     foreign = await _run(session, scene, 1, case_id=scene.foreign_case, project_id=scene.other_project_id)

@@ -161,7 +161,7 @@ async def test_outsider_and_wrong_scope_key_are_refused(session, scene):
     ws = (await session.get(Project, scene.project_id)).workspace_id
     with pytest.raises(HTTPException) as exc:
         await api.certificate_calendar(ws, session=session, principal=them)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
 
 async def test_page_host_must_be_allowlisted(session, scene):

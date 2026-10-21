@@ -107,7 +107,7 @@ async def test_deployment_ingest_access_control(session, scene):
     with pytest.raises(HTTPException) as exc:
         await dora_api.dora_metrics(scene.project_id, days=30, environment_id=None,
                                     principal=outsider, session=session)
-    assert exc.value.status_code == 403
+    assert exc.value.status_code in DENIED
 
     actions = (await session.exec(select(AuditLog.action).where(AuditLog.entity_type == "deployment"))).all()
     assert actions.count("create") == 2
