@@ -144,7 +144,7 @@ export default function InstanceSettingsSection() {
                 <p className={`flex items-center gap-3 ${warnCalloutClass}`} role="status">
                     <ShieldAlert className="h-5 w-5 shrink-0 text-ink-soft" aria-hidden="true" />
                     {status === 403
-                        ? 'Instance settings can only be managed by a tenant admin.'
+                        ? 'Instance settings can only be managed by the instance admin (being a tenant admin is not enough).'
                         : 'Could not load instance settings.'}
                 </p>
             </SettingsCard>
