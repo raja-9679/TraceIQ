@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Evidence packs · TraceIQ Guide</title>
+  <meta name="description" content="The Evidence packs page: one signed zip file of a workspace's compliance records for a chosen period, and a way to prove it hasn't been changed.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/security-evidence-packs.spec.ts. Page: frontend/src/pages/EvidencePacks.tsx.
+     API: backend/app/api/compliance.py (evidence-packs); contents and signing: app/services/evidence_pack.py;
+     build: app/tasks/compliance_tasks.py. -->
+<body data-page="security/evidence-packs">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../compliance/evidence-packs"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Evidence packs</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Security</span>
+          <span class="tag t-neutral">Workspace admins only</span>
+          <span class="tag t-neutral">Verifying: any member of the pack's workspace</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>One zip file with the records an auditor usually asks for (the audit log, access
+            reviews, controls, data policies, security findings and backup restore tests) for one
+            workspace and one period. Every pack carries a signed list of its files, so anyone can
+            later check that nothing in it was changed.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          During an audit, the auditor asks for <strong>evidence</strong>: proof that what you
+          say you do really happened. Collecting it by hand from several screens takes days, and
+          an auditor can't easily tell whether a spreadsheet was edited afterwards. This page
+          answers <strong>"Can you send us everything for the last quarter, in a form we can
+          trust?"</strong> in a few clicks.
+        </p>
+        <p>
+          The trust comes from a <strong>signed manifest</strong>: a list of every file in the
+          zip with its <em>fingerprint</em> (a SHA-256 value that changes if even one character
+          of the file changes), signed with a key only your TraceIQ server has.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Compliance leads</h4><p>Produce the audit pack for a period in minutes, not days.</p></div>
+          <div class="mini"><h4>Auditors</h4><p>Get the records in one place, and check that they are complete and unchanged.</p></div>
+          <div class="mini"><h4>Security teams</h4><p>Keep a dated copy of the evidence each quarter.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Evidence packs</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page has four parts. The demo workspace has no packs yet. The numbers on the
+          screenshot match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/evidence-packs/page-annotated.png" alt="The Evidence packs page with four numbered parts: 1 the Workspace menu, 2 Build a pack with From and To dates, 3 the Packs list showing No packs yet, 4 Verify a pack with two file pickers" loading="lazy" width="1440" height="1240"></div>
+          <figcaption>The Evidence packs page for the demo workspace. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>A pack covers one workspace. The page shows the workspace of the project selected in the
+          sidebar; pick another here. The menu only appears if you belong to more than one.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="build" data-toc="② Build a pack">Build a pack</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/evidence-packs/build.png" alt="Build a pack: covers this workspace only; From and To date fields; a Build evidence pack button" loading="lazy"></div>
+        </figure>
+        <p>Choose the period: <strong>From</strong> (start of that day, UTC) and
+          <strong>To</strong> (end of that day, UTC). The last 90 days up to today are filled in;
+          the end can't be in the future. Press <strong>Build evidence pack</strong>. Building
+          happens in the background; the pack appears in the list below and the page refreshes
+          by itself until it is ready.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:30%">In the zip</th><th>What it contains</th></tr></thead>
+            <tbody>
+              <tr><td><code>README.txt</code></td><td>What the pack is, for whom and for which period.</td></tr>
+              <tr><td><code>audit/</code></td><td>The workspace's audit log rows for the period, and the result of the chain check (which covers the server's whole audit trail).</td></tr>
+              <tr><td><code>access-reviews/</code></td><td>Today's access report (CSV and printable), plus every access review started or signed off during the period.</td></tr>
+              <tr><td><code>controls/</code></td><td>Every control with its status, and a printable summary.</td></tr>
+              <tr><td><code>data-policies/</code></td><td>What each project's test runs are allowed to record.</td></tr>
+              <tr><td><code>security/</code></td><td>Each project's security findings as a SARIF file, and the workspace's fix-by SLA.</td></tr>
+              <tr><td><code>restore-drills/</code></td><td>Backup restore tests reported during the period (these cover the whole server, since one database serves every workspace).</td></tr>
+              <tr><td><code>manifest.json</code></td><td>The signed list of every file with its size and fingerprint.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="packs" data-toc="③ Packs">Packs</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/evidence-packs/packs.png" alt="Packs: downloads use a link that works for five minutes; every download is recorded in the audit trail. No packs yet." loading="lazy"></div>
+        </figure>
+        <p>Every pack, with its status, period, who asked for it and when, and, once ready, the
+          number of files and the size.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Status</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-neutral">queued</span></td><td>Waiting to be built.</td></tr>
+              <tr><td><span class="pill t-butter">building</span></td><td>Being put together.</td></tr>
+              <tr><td><span class="pill t-mint">ready</span></td><td>Ready to download. <strong>Show contents</strong> lists every file and size, and the zip's and manifest's fingerprints.</td></tr>
+              <tr><td><span class="pill t-peach">failed</span></td><td>It couldn't be built; the reason is shown. A pack still queued or building after 2 hours is shown as failed.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Download pack</strong> fetches it through a link that works for five minutes.
+          Every download is recorded in the <em>Audit log</em>.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="verify" data-toc="④ Verify a pack">Verify a pack</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/evidence-packs/verify.png" alt="Verify a pack: a file picker for the pack (.zip), another for a separate manifest.json (optional), and a Verify pack button" loading="lazy"></div>
+        </figure>
+        <p>Choose a pack's zip file (and, if the manifest was sent separately, its
+          <code>manifest.json</code>) and press <strong>Verify pack</strong>. TraceIQ recalculates
+          every file's fingerprint and checks the signature, then shows
+          <span class="pill t-mint">Verified</span> or <span class="pill t-peach">Not verified</span>
+          with the workspace, period, who generated it and when. Any file changed, added or
+          removed is listed, and an edited manifest fails the signature check.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/security/evidence-packs/page.png" width="1280" height="800">
+              <source src="../media/security/evidence-packs/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…prepare the pack for a quarterly audit</h3>
+        <ol class="steps">
+          <li>Pick the workspace, then set <strong>From</strong> and <strong>To</strong> to the first and last day of the quarter.</li>
+          <li>Press <strong>Build evidence pack</strong> and wait until it is <em>ready</em>.</li>
+          <li>Press <strong>Show contents</strong> to check that everything you expect is there.</li>
+          <li>Press <strong>Download pack</strong> and send the zip to the auditor.</li>
+        </ol>
+        <h3>…check a pack someone sends back</h3>
+        <ol class="steps">
+          <li>Under <strong>Verify a pack</strong>, choose the zip file.</li>
+          <li>Press <strong>Verify pack</strong>.</li>
+          <li><em>Verified</em> means every file is exactly as TraceIQ wrote it. Otherwise the list says which files differ.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>One workspace only.</strong> A pack never contains another workspace's audit rows, findings or project names.</li>
+          <li><strong>One build at a time.</strong> While a pack for the workspace is being built, another is refused.</li>
+          <li><strong>Old keys still verify.</strong> If the server's signing key has been replaced, packs signed with the earlier key still verify, and the result says "an earlier key".</li>
+          <li><strong>Verification is private too.</strong> The result is shown only to members of the workspace the pack belongs to.</li>
+          <li><strong>Who can do what.</strong> Building, listing and downloading packs need the <em>workspace admin</em> role, and a download must be made by a person, not an API key. Packs are deleted with the workspace.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Audit log</h4><p>The next page in this guide: the record of who did what, which every pack includes.</p></div>
+          <div class="mini"><h4>Controls</h4><p>Your compliance promises and their status, all included in the pack.</p></div>
+          <div class="mini"><h4>Access reviews</h4><p>The reviews and access reports the pack contains.</p></div>
+          <div class="mini"><h4>Trust center</h4><p>A public summary for customers, rather than a full pack for an auditor.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Evidence packs page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trust center · TraceIQ Guide</title>
+  <meta name="description" content="The Trust center page: set up a public page for customers with uptime, incident updates, a summary of your security and documents you share on request.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/security-trust-center.spec.ts. Page: frontend/src/pages/TrustCenterSettings.tsx
+     (+ components/trust/*); public page: frontend/src/pages/PublicTrust.tsx. API: backend/app/api/trust_center.py;
+     rules and posture items: app/services/trust_center.py. -->
+<body data-page="security/trust-center">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../trust-center"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Trust center</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Security</span>
+          <span class="tag t-neutral">Workspace admins only</span>
+          <span class="tag t-neutral">The public page: anyone with its link</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>Here a workspace admin sets up a public web page for customers and prospects: whether
+            your services are up, updates during an incident, a few plain statements about your
+            security, and documents (such as an audit report) that people can download only with a
+            link you give them. It is off until you switch it on, and it shows only what you
+            choose.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Before buying, customers' security teams ask the same questions: Do you use single
+          sign-on? Is data encrypted? When was your last audit? Can we see the report? A
+          <strong>trust center</strong> is the page you send them instead of answering by email
+          each time. It answers <strong>"Can we trust this supplier with our data?"</strong>, using
+          facts TraceIQ already knows, kept up to date by themselves.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Security and compliance</h4><p>Answer customer questionnaires with one link, and share audit reports with named people only.</p></div>
+          <div class="mini"><h4>Sales and account teams</h4><p>Send prospects a page that is always current.</p></div>
+          <div class="mini"><h4>Support and operations</h4><p>Post updates for customers while an incident is going on.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Trust center</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The settings are in five boxes. In the demo workspace the trust center has never been
+          set up, so everything is at its starting values. The numbers on the screenshot match
+          the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/trust-center/page-annotated.png" alt="The Trust center page with six numbered parts: 1 the Workspace menu, 2 the Public page box, 3 the Security posture box, 4 the Uptime box, 5 the Gated documents box, 6 the Incident communications box" loading="lazy" width="1440" height="2300"></div>
+          <figcaption>The trust center settings of the demo workspace, never published. Click the picture to see it larger.</figcaption>
+        </figure>
+        <p>Each box has its own <strong>Save</strong> button and saves only its own settings.</p>
+
+        <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
+        <p>Each workspace has its own trust center. The page opens on your <em>first</em>
+          workspace, which may not be the one you want, so check this menu first. It only appears
+          if you belong to more than one workspace.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="public-page" data-toc="② Public page">Public page</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/trust-center/public-page.png" alt="The Public page box, marked Off: Publish the trust center (unticked), Title (Trust center), Security contact email, Introduction, Let visitors request document access (unticked), and Save" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Publish the trust center</strong>: the main switch. Off hides the page and stops every document link at once. The label on the right says <span class="pill t-mint">Published</span> or <span class="pill t-neutral">Off</span>.</li>
+          <li><strong>Title</strong>, <strong>Security contact email</strong> (where people report security problems) and <strong>Introduction</strong> (plain text, shown as written).</li>
+          <li><strong>Let visitors request document access</strong>: adds a short form to the public page. It emails this workspace's admins; you then decide whether to send a link.</li>
+        </ul>
+        <p>After the first save, the box also shows the <strong>public link</strong> with
+          <strong>Copy link</strong>, how many times the page has been viewed, and a
+          <strong>New public link</strong> button. The link contains a long random code, so the
+          page can't be found by guessing. A new link retires the old one: people who have it see
+          "not found".</p>
+
+        <div class="part"><span class="num">3</span><h2 id="posture" data-toc="③ Security posture">Security posture</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/trust-center/posture.png" alt="The Security posture box: a list of statements, each with a tick box, a hint and a Would show line, for example Single sign-on enforced, would show No; Open critical or high security findings, would show None; Last access review completed, hidden: no data yet" loading="lazy"></div>
+        </figure>
+        <p>Short statements TraceIQ works out from its own records. Tick the ones to publish;
+          under each, <strong>Would show</strong> previews what visitors would see today.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:36%">Statement</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Single sign-on enforced</strong></td><td>Yes when the server allows sign-in only through your company's login (OIDC or SAML).</td></tr>
+              <tr><td><strong>MFA for administrators</strong></td><td>Yes when two-step login is required for everyone, or every admin of this workspace has it on.</td></tr>
+              <tr><td><strong>Data encrypted at rest</strong></td><td>Yes when the server encrypts the files it stores (screenshots, videos, reports).</td></tr>
+              <tr><td><strong>Tamper-evident audit log</strong></td><td>The date of the last audit-chain check made with <strong>Verify audit chain now</strong> in this box.</td></tr>
+              <tr><td><strong>Open critical or high security findings</strong></td><td>A band only (None, 1-4, 5-19, 20 or more) across the workspace. Never titles or details.</td></tr>
+              <tr><td><strong>Last access review completed</strong></td><td>The sign-off date of the newest <em>Access review</em>.</td></tr>
+              <tr><td><strong>Last backup restore drill</strong></td><td>The date of the newest passing restore test reported by the server's operator.</td></tr>
+              <tr><td><strong>Compliance controls</strong></td><td>How many of the workspace's <em>Controls</em> are passing. A count only.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>A statement TraceIQ has no data for ("hidden: no data yet") stays off the public page
+          even if ticked; it is never shown as a "No".</p>
+
+        <div class="part"><span class="num">4</span><h2 id="uptime" data-toc="④ Uptime">Uptime</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/trust-center/uptime.png" alt="The Uptime box: No project in this workspace has a status page yet. Create one from a project's monitors." loading="lazy"></div>
+        </figure>
+        <p>Tick the <strong>status pages</strong> (made from a project's monitors, under
+          <em>Watch → Monitors</em>) whose monitors should appear. Visitors see each monitor's name,
+          whether it is up or down, and its uptime over the last 24 hours and 7 days. Never the
+          address it checks or any run details. A status page that is switched off drops out by
+          itself. The demo workspace has none yet.</p>
+
+        <div class="part"><span class="num">5</span><h2 id="documents" data-toc="⑤ Gated documents">Gated documents</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/trust-center/documents.png" alt="The Gated documents box: Save the public page settings first; File, Title, Description, List the title on the public page; Documents: No documents yet; and an Upload button" loading="lazy"></div>
+        </figure>
+        <p>Documents you are willing to share, but only with people you choose, such as a SOC 2
+          report or a penetration-test summary. Upload a <strong>file</strong> (PDF, image, Word,
+          Excel, PowerPoint, text or Markdown, up to 20 MB; the type is checked from the contents,
+          not the name) with a <strong>title</strong> and optional description. <strong>List the
+          title on the public page</strong> lets visitors see that it exists. Uploading needs the
+          public page saved once first.</p>
+        <p>To give someone a document, open <strong>Recipients and links</strong> on it, type who
+          it is for, choose how long the link should work (1, 7, 30 or 90 days) and press
+          <strong>Issue link</strong>. Copy the link straight away: it is shown only once. Links
+          can be revoked, and they stop working if the trust center is switched off or you stop
+          being a workspace admin. Every download is recorded.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="incidents" data-toc="⑥ Incident communications">Incident communications</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/trust-center/incidents.png" alt="The Incident communications box: fields for a new post (title, status, affected components, first update, published) and a Create post button" loading="lazy"></div>
+        </figure>
+        <p>Posts you write for customers when something goes wrong: a title, a status
+          (<span class="pill t-peach">Investigating</span> <span class="pill t-butter">Identified</span>
+          <span class="pill t-lavender">Monitoring</span> <span class="pill t-mint">Resolved</span>),
+          the affected parts of the service, and updates as you learn more. A post is a
+          <em>Draft</em> until you publish it (tick <strong>Publish now</strong>, or press <strong>Publish</strong> on the post); only published posts appear on the
+          public page, the newest 20. Updates may use <code>**bold**</code>,
+          <code>*italic*</code>, <code>`code`</code> and lists starting with <code>- </code>; links
+          and HTML are shown as plain text.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/security/trust-center/page.png" width="1280" height="800">
+              <source src="../media/security/trust-center/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing is saved in the video.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…publish your trust center</h3>
+        <ol class="steps">
+          <li>Choose the workspace. In <strong>Public page</strong>, fill in the title, the security contact email and an introduction, tick <strong>Publish the trust center</strong> and press <strong>Save</strong>.</li>
+          <li>In <strong>Security posture</strong>, tick the statements you are happy to show (check the <em>Would show</em> line) and press <strong>Save</strong>.</li>
+          <li>Optionally tick status pages in <strong>Uptime</strong> and press <strong>Save</strong>.</li>
+          <li>Press <strong>Copy link</strong> (or <strong>Open public page</strong> at the top) and check the page as a visitor would see it.</li>
+        </ol>
+        <h3>…share an audit report with one customer</h3>
+        <ol class="steps">
+          <li>In <strong>Gated documents</strong>, choose the file, give it a title and press <strong>Upload</strong>.</li>
+          <li>Press <strong>Recipients and links</strong>, type the person's name and company, choose an expiry and press <strong>Issue link</strong>.</li>
+          <li>Copy the link and send it to them. Revoke it later from the same list if needed.</li>
+        </ol>
+        <h3>…keep customers informed during an outage</h3>
+        <ol class="steps">
+          <li>In <strong>Incident communications</strong>, write a title, the affected components and the first update, and keep the status at <strong>Investigating</strong>.</li>
+          <li>Tick <strong>Publish now</strong> and press <strong>Create post</strong>, or create it as a draft and press <strong>Publish</strong> on it later.</li>
+          <li>Post an update whenever things change, ending with <strong>Resolved</strong>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Off means gone.</strong> While the trust center is off, its link and every document link answer "not found".</li>
+          <li><strong>Nothing sensitive leaves.</strong> The public page shows only names, states and counts: never finding titles, test addresses, error messages or who did what. Every view is counted on the settings page.</li>
+          <li><strong>No sign-in for visitors.</strong> Anyone with the link can see the page. The access-request form can be sent at most 5 times an hour from one place, and the requester's email isn't written to the audit log.</li>
+          <li><strong>Who can do what.</strong> Only workspace admins can see or change these settings; others see "Workspace admins only". An API key limited to one project is refused.</li>
+          <li><strong>Documents are downloaded through a short-lived link</strong> (one minute) created when the visitor presses download, so the link in your email never points straight at the file.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Monitors</h4><p>Where the status pages behind the Uptime box are made.</p></div>
+          <div class="mini"><h4>Controls</h4><p>The compliance controls the trust center can count.</p></div>
+          <div class="mini"><h4>Access reviews</h4><p>The reviews whose latest sign-off date can be shown.</p></div>
+          <div class="mini"><h4>Audit log</h4><p>The tamper-evident record behind the audit-chain statement.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Trust center page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

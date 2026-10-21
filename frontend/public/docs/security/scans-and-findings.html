@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scans &amp; findings · TraceIQ Guide</title>
+  <meta name="description" content="The Scans &amp; findings page: security scans of your own sites, the register of every security problem found, and how a fix gets confirmed.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/security-scans-and-findings.spec.ts. Page: frontend/src/pages/Security.tsx
+     (+ components/security/FindingsRegister.tsx, findingStatus.ts). API: backend/app/api/security.py;
+     workflow: app/services/finding_lifecycle.py; scans: app/tasks/zap_tasks.py; run checks: app/tasks/security_tasks.py. -->
+<body data-page="security/scans-and-findings">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../security"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Scans &amp; findings</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Security</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors scan and work on findings; admins approve</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A list of the security weaknesses TraceIQ has found in your app, with who is fixing
+            each one and by when. Findings come from security scans you start here, and from
+            checks TraceIQ makes on every finished test run. A fix only counts once a later scan
+            or run no longer finds the problem.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          A <strong>finding</strong> is one security weakness, for example "this page doesn't
+          tell the browser to block scripts from other sites". This page answers
+          <strong>"What security problems do we know about, who owns them, and are they really
+          fixed?"</strong>
+        </p>
+        <p>
+          A <strong>security scan</strong> is an automatic check of a website for known kinds of
+          weakness. TraceIQ uses <em>OWASP ZAP</em>, a free and widely used scanning tool. A
+          <strong>baseline</strong> scan only looks at what the site sends back, so it is safe to
+          run. An <strong>active</strong> scan really tries attacks against the site, which can
+          change or break data, so it needs extra permission and should only point at a test copy
+          of your own site.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Security leads</h4><p>Keep one list of every known weakness, with an owner and a due date for each, and see which ones are late.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See what is wrong, why it matters and how to fix it, then mark it fixed so TraceIQ checks again.</p></div>
+          <div class="mini"><h4>Auditors</h4><p>See that risks were accepted on purpose, by whom, why and until when, and download the list in a standard format.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Scans &amp; findings</strong>.
+          The page's own heading says <strong>Security</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The page shows the project selected at the top of the sidebar. It has two views,
+          <strong>Scans</strong> and <strong>Findings register</strong>. The picture shows the
+          register; the numbers match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/scans-and-findings/page-annotated.png" alt="The Security page on its Findings register view, with five numbered parts: 1 the Scans and Findings register tabs, 2 the Authorization and New scan buttons, 3 the filter, Overdue only and Download SARIF controls, 4 the table of findings, 5 the Remediation SLA box" loading="lazy" width="1440" height="1060"></div>
+          <figcaption>The Findings register for the demo's web project, with one finding. Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="views" data-toc="① Scans and Findings register">Scans and Findings register</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/security/scans-and-findings/view-tabs.png" alt="Two tabs: Scans and Findings register (selected)" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Scans</strong> (shown when the page opens) is about one scan at a time: what it found, and what changed since the scan before.</li>
+          <li><strong>Findings register</strong> is the whole list: every finding the project still has, whatever found it.</li>
+        </ul>
+        <p>Until someone runs a scan, the Scans view only says <em>No scans yet</em>, as in the demo:</p>
+        <figure>
+          <div class="frame"><img src="../media/security/scans-and-findings/page.png" alt="The Security page on its Scans view, showing No scans yet: Set up authorization, then run a scan" loading="lazy" width="1440" height="900"></div>
+        </figure>
+        <p>Once there are scans, the Scans view shows:</p>
+        <ul>
+          <li><strong>Four numbers</strong> for the selected scan: <em>New</em> and <em>Fixed since the previous scan</em> (compared with the last finished scan of the same address; a dash if there is none), <em>Still open</em> and <em>In progress</em>.</li>
+          <li><strong>The scan's findings</strong>, most serious first, on four tabs: <em>Open</em> (open and in progress), <em>Awaiting retest</em>, <em>Waived</em> (accepted risks and false positives) and <em>Verified fixed</em>.</li>
+          <li><strong>A list of the 8 newest scans</strong>, each with its status (<em>pending</em>, <em>running</em>, <em>completed</em> or <em>error</em>), address, kind and how many high, medium and low findings it had. The newest finished scan is selected when the page opens; click another to switch.</li>
+          <li><strong>The selected finding</strong> on the right: its severity, a <em>New since the previous scan</em> label if it is new, <em>Why it matters and how to fix it</em>, the <em>Evidence</em> the scanner saw, and buttons to change its status.</li>
+          <li><strong>SARIF for scan #…</strong> in the top-right corner downloads that scan's findings as a file (see <a href="#register-tools">③</a>).</li>
+        </ul>
+
+        <div class="part"><span class="num">2</span><h2 id="buttons" data-toc="② Authorization and New scan">Authorization and New scan</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/security/scans-and-findings/actions.png" alt="Two buttons: Authorization and New scan" loading="lazy"></div>
+        </figure>
+        <p>Each button opens a box under the heading; press it again to close the box.</p>
+        <p><strong>Authorization</strong> is where a project admin decides what may be scanned at
+          all. TraceIQ refuses every scan until this is set up, so it can't be used against
+          someone else's site.</p>
+        <figure>
+          <div class="frame small"><img src="../media/security/scans-and-findings/authorization.png" alt="The Authorization box: Security scanning enabled, Allow active (attacking) scans for this project, Active scanning enabled for the workspace, Authorized domains (none yet, so every scan will be refused), a field to add a domain, and Save" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Setting</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Security scanning enabled</strong></td><td>The project's main switch. Off means no scan of any kind.</td></tr>
+              <tr><td><strong>Allow active (attacking) scans</strong></td><td>Allows active scans for this project. Baseline scans don't need it.</td></tr>
+              <tr><td><strong>Active scanning enabled for the workspace</strong></td><td>A second switch, for every project in the workspace. Active scans need both this and the project's switch. Only a workspace admin can change it, and <strong>it is saved the moment you click it</strong>, without the Save button. If the server forces it on for everyone, the box says so.</td></tr>
+              <tr><td><strong>Authorized domains</strong></td><td>The sites that may be scanned. A domain also covers its sub-domains: <code>example.com</code> allows <code>staging.example.com</code>. Type one and press Enter or <strong>+</strong>; the <strong>×</strong> next to one removes it.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Changes to the project settings and domains are kept only when you press
+          <strong>Save</strong>, which needs the project <em>admin</em> role.</p>
+        <p><strong>New scan</strong> starts a scan:</p>
+        <figure>
+          <div class="frame small"><img src="../media/security/scans-and-findings/new-scan.png" alt="The New scan box: Target URL, a menu set to Baseline (passive), Use saved session, the opened API import and token auth section with an OpenAPI spec URL field and a Token or header auth menu set to None, the box I am authorized to scan this target, and a Run scan button" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Target URL</strong>: the address to scan. Its site must be on the authorized domains.</li>
+          <li><strong>Baseline (passive)</strong> or <strong>Active (attacking)</strong>: the kind of scan.</li>
+          <li><strong>Use saved session</strong>: scan as a logged-in user, with the login TraceIQ saved from this project's login test. Without it, the scanner only sees what a visitor sees.</li>
+          <li><strong>API import and token auth</strong> (click to open): the address of an API description (an <em>OpenAPI</em> or <em>Swagger</em> file, also on an authorized domain), so the scanner reaches every documented address, not just the ones it finds by following links; and a token sent with every request (<em>Bearer</em>, <em>API key</em> or a header you name). The token is used for this scan only and never shown again.</li>
+          <li><strong>I am authorized to scan this target</strong>: you confirm the site belongs to you or your organisation. <strong>Run scan</strong> stays greyed out until it is ticked.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="register-tools" data-toc="③ Filter and download">Filter and download</h2></div>
+        <p>Above the register:</p>
+        <ul>
+          <li><strong>"1 actionable"</strong> next to the title counts findings that are <em>Open</em> or <em>In progress</em> in the current list, followed by how many of them are overdue, if any.</li>
+          <li><strong>The status filter</strong> chooses which findings to list: <em>Open &amp; in progress</em> (chosen first), <em>Awaiting retest</em>, <em>Accepted / false positive</em>, <em>Verified fixed</em> or <em>All</em>.</li>
+          <li><strong>Overdue only</strong> keeps just the findings past their due date.</li>
+          <li><strong>Download SARIF</strong> saves the project's findings as a <em>SARIF</em> file, a standard format that other security tools (GitHub code scanning, for example) can read. It contains every status, whatever the filter shows; accepted risks and false positives are marked as set aside.</li>
+        </ul>
+
+        <div class="part"><span class="num">4</span><h2 id="register" data-toc="④ The register">The register</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/scans-and-findings/register.png" alt="The Findings register: one row, Medium, Missing Content-Security-Policy header, passive, https://example.com/, owner Unowned, due 01/15/2027, status Open" loading="lazy"></div>
+        </figure>
+        <p>One row per finding, the most serious first and, within a severity, the one due
+          soonest first. The same weakness found again by a later scan or run stays one row: the
+          register shows its newest occurrence, and that row keeps its owner, due date and status.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Severity</strong></td><td>How serious it is: <span class="pill t-pink">Critical</span> <span class="pill t-peach">High</span> <span class="pill t-butter">Medium</span> <span class="pill t-neutral">Low</span> <span class="pill t-neutral">Info</span>.</td></tr>
+              <tr><td><strong>Finding</strong></td><td>Its name, then what found it and where: <em>zap</em> (a scan from this page), <em>passive</em> (the check of a test run's pages), <em>leak</em> (secrets found in a run's responses), <em>access_matrix</em> or <em>estate-…</em> (from the <em>Access matrix</em> and <em>Estate</em> pages), and the address.</td></tr>
+              <tr><td><strong>Owner</strong></td><td>Who is responsible. Choose from the people with editor access to the project, or <em>Unowned</em>.</td></tr>
+              <tr><td><strong>Due</strong></td><td>The date it should be fixed by, set from the SLA (see ⑤). <span class="pill t-peach">Overdue</span> appears under it once the date has passed and it is still Open or In progress. Only a project admin can change the date.</td></tr>
+              <tr><td><strong>Status</strong></td><td>Where it is in the workflow (table below). The menu only offers the moves that are allowed from the current status.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Changing an owner, date or status in the register saves straight away; there is no
+          Save button.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Status</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Open</strong></td><td>Found, and nobody has started on it. Every new finding starts here.</td></tr>
+              <tr><td><strong>In progress</strong></td><td>Someone is working on it.</td></tr>
+              <tr><td><strong>Fixed — awaiting retest</strong></td><td>Someone says it is fixed. TraceIQ now waits for proof. For a scan finding it starts a new scan of the same address straight away (the "retest"); for a finding from a test run, the next run of the same suite that covers it is the check.</td></tr>
+              <tr><td><strong>Verified fixed</strong></td><td>A later scan or run looked and no longer found it. <strong>Nobody can choose this by hand</strong>; only that check can set it.</td></tr>
+              <tr><td><strong>Accepted risk</strong></td><td>Known, and deliberately left for now. Needs a reason, an end date at most a year away, and a project admin, who is recorded as the approver. When the date passes, it goes back to Open by itself.</td></tr>
+              <tr><td><strong>False positive</strong></td><td>Not a real problem (the scanner got it wrong). It stays set aside when it is found again.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout note">
+          <span class="icon">!</span>
+          <div><strong class="title">A fixed finding can come back</strong>
+            <p>If a scan or run finds a weakness again after it was marked fixed (awaiting retest
+            or verified), TraceIQ puts it back to <em>Open</em> by itself. The owner and the
+            original due date stay, so a weakness that keeps coming back doesn't get a fresh
+            deadline each time.</p></div>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="sla" data-toc="⑤ Remediation SLA">Remediation SLA</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/security/scans-and-findings/sla.png" alt="Remediation SLA: days to fix, by severity, counted from first detection, workspace-wide. Critical 7, High 30, Medium 90, Low 180, and a Save SLA button" loading="lazy"></div>
+        </figure>
+        <p>An <strong>SLA</strong> (service-level agreement) here is your own promise of how fast
+          each kind of finding gets fixed. The numbers are days, counted from the day a finding
+          was first found, and they set its due date. The standard values are 7 days for
+          critical, 30 for high, 90 for medium and 180 for low; <em>Info</em> findings get no
+          due date. The SLA is shared by every project in the workspace, and only a workspace
+          admin can change it (others see the numbers greyed out).</p>
+        <p>A new SLA applies to findings found <strong>from then on</strong>. Findings that
+          already have a due date keep it.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/security/scans-and-findings/page.png" width="1280" height="800">
+              <source src="../media/security/scans-and-findings/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…run a first scan of your site</h3>
+        <ol class="steps">
+          <li>A project admin presses <strong>Authorization</strong>, ticks <strong>Security scanning enabled</strong>, adds your site under <strong>Authorized domains</strong> and presses <strong>Save</strong>.</li>
+          <li>Press <strong>New scan</strong> and type the address, preferably of a test copy of your site.</li>
+          <li>Keep <strong>Baseline (passive)</strong> unless you have permission for an active scan and both switches are on.</li>
+          <li>Tick <strong>I am authorized to scan this target</strong> and press <strong>Run scan</strong>. The scan appears in the list as <em>pending</em>, then <em>running</em>; the page checks for news every 15 seconds.</li>
+          <li>When it is <em>completed</em>, read its findings on the Scans view. They are in the register too.</li>
+        </ol>
+        <h3>…work on a finding</h3>
+        <ol class="steps">
+          <li>Open <strong>Findings register</strong>. Tick <strong>Overdue only</strong> to start with the late ones.</li>
+          <li>Pick an <strong>Owner</strong> for the finding.</li>
+          <li>Set its status to <strong>In progress</strong> while it is being fixed.</li>
+          <li>Once the fix is live, set it to <strong>Fixed — awaiting retest</strong>. A message says whether a retest scan was started, or what will check it instead.</li>
+          <li>It moves to <strong>Verified fixed</strong> by itself when the check no longer finds it.</li>
+        </ol>
+        <h3>…accept a risk on purpose</h3>
+        <ol class="steps">
+          <li>Choose <strong>Accepted risk</strong> (in the register's status menu) or press <strong>Accept risk</strong> (on the Scans view).</li>
+          <li>Write why it is acceptable, and choose the date until which it is accepted (at most a year).</li>
+          <li>Press <strong>Accept risk</strong>. You need the project <em>admin</em> role; you are recorded as the approver. TraceIQ reopens it on that date.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Test runs are checked automatically.</strong> When a run finishes, TraceIQ looks at the pages and responses it already recorded, for missing protective headers, unsafe cookies, plain <code>http://</code> pages and secrets (such as cloud keys) in responses. Nothing extra is sent to your site, and no scan settings are needed for this.</li>
+          <li><strong>Scans need the scanning service.</strong> Whoever runs your TraceIQ server has to set up OWASP ZAP for it. Without that, a scan ends in <em>error</em> with "ZAP is not configured".</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look and download. Starting a scan and changing an owner or status needs the <em>editor</em> role. Changing a due date, accepting a risk, and the project's Authorization settings need the project <em>admin</em> role; the SLA and the workspace switch need a <em>workspace admin</em>.</li>
+          <li><strong>Every change is recorded.</strong> Owner, date and status changes, including the ones TraceIQ makes by itself (reopening, verifying), go into the <em>Audit log</em>.</li>
+          <li><strong>A retest isn't always possible.</strong> If the original scan used a token, TraceIQ didn't keep it, so it can't retest by itself; run a new scan with the token. It also won't retest if the scan settings would now refuse the scan.</li>
+          <li><strong>Limits.</strong> The register lists up to 500 findings; the Scans view lists the 8 newest scans.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Access matrix</h4><p>The next page in this guide: check that each kind of user can reach only what they should. Its failures become findings here.</p></div>
+          <div class="mini"><h4>Estate</h4><p>Your public domains and certificates, checked from the outside. Its problems are findings here too.</p></div>
+          <div class="mini"><h4>Runs</h4><p>Each run's full result, including the pages and responses the automatic checks looked at.</p></div>
+          <div class="mini"><h4>Audit log</h4><p>Who changed which finding, when, and what TraceIQ changed by itself.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Scans &amp; findings page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

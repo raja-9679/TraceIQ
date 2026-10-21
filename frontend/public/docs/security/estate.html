@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Estate · TraceIQ Guide</title>
+  <meta name="description" content="The Estate page: every domain your organisation owns, checked from the outside for email spoofing protection, certificates and forgotten DNS records, with a score out of 100 each.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/security-estate.spec.ts. Page: frontend/src/pages/Estate.tsx
+     (+ components/estate/*). API: backend/app/api/estates.py; checks and score: app/services/estate_checks.py;
+     scans: app/tasks/estate_tasks.py; findings + alerts: app/services/estate_findings.py. -->
+<body data-page="security/estate">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../estate"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Estate</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Security</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can add domains and scan</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A list of your organisation's domains (web addresses such as <code>example.com</code>),
+            each checked from the outside and given a score out of 100. It catches the slow,
+            quiet problems: a certificate about to run out, email that anyone could fake in your
+            name, or an old address still pointing at a service you stopped paying for.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          Your <strong>estate</strong> is everything you have on the public internet: the main
+          site, the shop, the help centre, the forgotten marketing site from three years ago. Each
+          of them can let you down in ways that have nothing to do with your app's code. The Estate
+          page answers <strong>"Which of our domains are weak, and what exactly is wrong with
+          each?"</strong>
+        </p>
+        <p>
+          The checks are <strong>passive</strong>: TraceIQ only reads public records and visits
+          each site the way a browser would. It never scans ports or sends attack traffic.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Security leads</h4><p>One score per domain, worst first, with the reason for every point lost.</p></div>
+          <div class="mini"><h4>IT and operations</h4><p>Get warned weeks before a certificate expires, instead of finding out when the site breaks.</p></div>
+          <div class="mini"><h4>Email and marketing</h4><p>See whether others can send email that pretends to come from your domain.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Estate</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo project has no estate yet, so the page first shows an empty list:</p>
+        <figure>
+          <div class="frame"><img src="../media/security/estate/page.png" alt="The Estate page with New estate and Certificate calendar buttons, the line No estates in this project yet, and a Project menu" loading="lazy" width="1440" height="900"></div>
+        </figure>
+        <p>The picture below shows the form behind <strong>New estate</strong>. The numbers match
+          the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/estate/page-annotated.png" alt="The Estate page with four numbered parts: 1 the New estate button, 2 the Certificate calendar button, 3 the Project menu, 4 the New estate form" loading="lazy" width="1440" height="900"></div>
+          <figcaption>Starting a new estate in the demo's web project (not saved). Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="estates" data-toc="① Estates">Estates</h2></div>
+        <p>An <strong>estate</strong> is a named group of domains, for example "Public websites"
+          or "Payment domains". The list on the left shows each one with its
+          <strong>worst domain score</strong> (the coloured number), how many domains it has and
+          their average score. Click one to open it; <strong>New estate</strong> starts one.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="certificates" data-toc="② Certificate calendar">Certificate calendar</h2></div>
+        <p>A <strong>certificate</strong> is what lets a browser show the padlock for a site; it
+          has an end date, and when it passes, visitors get a warning page instead of your site.
+          The calendar lists every certificate seen on every domain, in every estate of the
+          workspace that you can see, the soonest to expire first: the date, the days left, the
+          host, the estate and the project. Seven days or fewer show in red, 30 or fewer in
+          amber. Until a scan has run, it says:</p>
+        <figure>
+          <div class="frame small"><img src="../media/security/estate/certificates-empty.png" alt="No certificates observed yet — scan an estate first." loading="lazy"></div>
+        </figure>
+
+        <div class="part"><span class="num">3</span><h2 id="project" data-toc="③ Project">Project</h2></div>
+        <p>Estates belong to a project. This menu is the same choice as the project picker at
+          the top of the sidebar: changing it here changes it for the whole app.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="form" data-toc="④ The estate's settings">The estate's settings</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/estate/new-estate.png" alt="The New estate form: Name (Public websites), Scan schedule (cron, UTC, at most hourly) 0 3 * * *, Certificate alerts (days before expiry) 30, 14, 7, Extra DKIM selectors, Alert emails, Scheduled scans ticked, Discover subdomains from certificate transparency ticked, and Save estate" loading="lazy"></div>
+        </figure>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Field</th><th>What it does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Name</strong></td><td>Required.</td></tr>
+              <tr><td><strong>Scan schedule</strong></td><td>When to check, written as a <em>cron</em> expression in UTC. The standard <code>0 3 * * *</code> means every day at 03:00 UTC (08:30 in India). It can't be more often than once an hour.</td></tr>
+              <tr><td><strong>Scheduled scans</strong></td><td>Untick to only scan when someone presses <em>Scan now</em>.</td></tr>
+              <tr><td><strong>Certificate alerts</strong></td><td>How many days before a certificate expires to warn you (standard: 30, 14 and 7). One warning per threshold, sent again after the certificate is renewed.</td></tr>
+              <tr><td><strong>Alert emails</strong></td><td>Who gets those warnings by email. They also go to the project's Slack or Teams channel, if it has one.</td></tr>
+              <tr><td><strong>Extra DKIM selectors</strong></td><td>DKIM is a signature on outgoing email. TraceIQ looks for the common names of these keys; add your own if your mail provider uses another name.</td></tr>
+              <tr><td><strong>Discover subdomains</strong></td><td>Every public certificate is written into open logs (<em>certificate transparency</em>). TraceIQ reads them to find more of your sub-domains, such as <code>shop.example.com</code>, and adds those on the project's allowed list (up to 200 per domain).</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Nothing is saved until you press <strong>Save estate</strong>.</p>
+
+        <h3 id="inside">Inside an estate</h3>
+        <p>Once saved, the estate's page has <strong>Scan now</strong>, <strong>Settings</strong>
+          and <strong>Delete estate</strong> (which asks first and also deletes the scan history),
+          and three parts:</p>
+        <ul>
+          <li><strong>The domain table</strong>, lowest score first: the domain (with "from CT logs" if it was discovered, "zone apex" for a main domain), its score, a small trend line of up to 12 recent scores from the last 120 days, and the days left on its certificate. <em>Remove</em> takes a domain out of the estate straight away.</li>
+          <li><strong>Add domains</strong>: paste domains, one per line, comma-separated or the first column of a CSV, then press <strong>Import domains</strong>. Each one must be on the project's allowed list; refused ones are listed with the reason. An estate holds up to 500 domains.</li>
+          <li><strong>A domain's checks</strong>: click a domain to see every check, with what it found, why it matters, and the arithmetic of its score.</li>
+        </ul>
+        <p><strong>Scan history</strong> at the bottom lists every scan: when, whether it was
+          scheduled or manual, how it ended, the average score and the number of domains.</p>
+
+        <h3 id="score">How the score is made</h3>
+        <p>Every domain starts at 100. Each problem found takes off a fixed number of points, and
+          the drill-down shows each line, for example <code>100 start − 10 dmarc_missing … = 78</code>.
+          The score never goes below 0. In the list, 90 or more is green, 75–89 amber, below 75 red.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Family</th><th>What is checked (largest deductions)</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Email</strong></td><td><em>SPF</em>, <em>DKIM</em> and <em>DMARC</em> are DNS records that tell other mail servers which email really comes from you. Missing or weak ones let anyone send email in your name: up to 15 points (SPF that allows every server), 10 for no SPF or no DMARC, 6 for a DMARC that only watches.</td></tr>
+              <tr><td><strong>Certificate</strong></td><td>A certificate browsers don't trust (expired, wrong name, unknown issuer): 25 points. Expiring within 7 / 14 / 30 days: 10 / 5 / 2.</td></tr>
+              <tr><td><strong>HTTPS</strong></td><td>No <em>HSTS</em> header (which tells browsers to always use the secure version): 5; plain <code>http://</code> not sent on to <code>https://</code>: 3.</td></tr>
+              <tr><td><strong>Takeover</strong></td><td>A record pointing at a third-party service you no longer use, which someone else could claim and serve their content on your address: 40 points. A record pointing at a name that doesn't exist: 10.</td></tr>
+              <tr><td><strong>Hygiene</strong></td><td>No <em>CAA</em> record (any certificate authority may issue for you) or no <em>DNSSEC</em>: 2 each.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/security/estate/page.png" width="1280" height="800">
+              <source src="../media/security/estate/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The estate in the video is not saved.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…start watching your domains</h3>
+        <ol class="steps">
+          <li>Ask a project admin to allow security testing and list your domains under <em>Scans &amp; findings → Authorization</em>. Estate refuses domains that aren't on that list.</li>
+          <li>Press <strong>New estate</strong>, give it a name, add the alert email addresses and press <strong>Save estate</strong>.</li>
+          <li>Paste your domains into <strong>Add domains</strong> and press <strong>Import domains</strong>.</li>
+          <li>Press <strong>Scan now</strong>. The page refreshes by itself until the scan has finished.</li>
+          <li>Click the lowest-scoring domain to see what to fix first.</li>
+        </ol>
+        <h3>…see which certificates expire soon</h3>
+        <ol class="steps">
+          <li>Press <strong>Certificate calendar</strong>.</li>
+          <li>The top rows expire first. Red numbers are a week or less away.</li>
+        </ol>
+        <h3>…fix a problem and confirm it</h3>
+        <ol class="steps">
+          <li>Click the domain and read the check's explanation.</li>
+          <li>Fix the record or the certificate with whoever runs your DNS or hosting.</li>
+          <li>Press <strong>Scan now</strong>. When the check passes, its finding is marked verified fixed in <em>Scans &amp; findings</em>.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Only allowed domains are checked.</strong> Every domain must be on the project's allowed list when it is added and again at every scan. A domain removed from the list is skipped, and the estate says so.</li>
+          <li><strong>Problems become findings.</strong> DNS, certificate and takeover problems appear in <em>Scans &amp; findings</em> (as <em>estate-dns</em>, <em>estate-tls</em>, <em>estate-takeover</em>) with an owner, due date and status. One finding per problem is kept up to date; a clean rescan marks it verified fixed.</li>
+          <li><strong>A check that couldn't run proves nothing.</strong> If a DNS lookup fails or the site can't be reached, that family's earlier findings are left as they were rather than marked fixed.</li>
+          <li><strong>Certificates are checked like a browser would.</strong> TraceIQ never skips certificate checks to get through; a failing certificate is reported as untrusted.</li>
+          <li><strong>One scan at a time.</strong> Scan now is refused while a scan of the same estate is running.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Creating, changing and deleting an estate, adding or removing domains and scanning need the <em>editor</em> role. Every change and every manual scan goes into the <em>Audit log</em>.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Script inventory</h4><p>The next page in this guide: every script on your payment pages, each one approved with a reason.</p></div>
+          <div class="mini"><h4>Scans &amp; findings</h4><p>Where the allowed list is set and where estate problems are tracked to a fix.</p></div>
+          <div class="mini"><h4>Monitors</h4><p>Check on a timer that your sites are up, not just correctly set up.</p></div>
+          <div class="mini"><h4>Trust center</h4><p>Show customers a summary of your security, including findings, without the details.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Estate page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>

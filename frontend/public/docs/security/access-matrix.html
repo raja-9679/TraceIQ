@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Access matrix · TraceIQ Guide</title>
+  <meta name="description" content="The Access matrix page: write down who may reach what in your app, then let TraceIQ try it as each kind of user and report anything that gets through.">
+  <link rel="icon" href="../../logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="../_assets/docs.css">
+</head>
+<!-- Pictures: e2e/docs-capture/pages/security-access-matrix.spec.ts. Page: frontend/src/pages/AccessMatrix.tsx
+     (+ components/access-matrix/*). API: backend/app/api/access_matrix.py; verdicts: app/services/access_matrix.py;
+     collection: app/tasks/access_matrix_tasks.py. -->
+<body data-page="security/access-matrix">
+  <header class="topbar">
+    <button class="btn menu-toggle" id="menu-toggle" type="button" aria-label="Open the guide menu"><span data-icon="menu"></span>Menu</button>
+    <a class="brand" href="../"><span class="brand-mark" data-icon="pulse" data-size="18"></span>TraceIQ <small>Guide</small></a>
+    <span class="spacer"></span>
+    <a class="btn btn-dark" href="../../access-matrix"><span data-icon="out" data-size="15"></span><span class="btn-label">Open this page in TraceIQ</span></a>
+  </header>
+
+  <div class="layout">
+    <aside class="sidenav" id="sidenav"></aside>
+
+    <main class="content">
+      <div class="content-inner">
+        <div class="crumbs" id="crumbs"></div>
+        <h1>Access matrix</h1>
+        <div class="meta-row">
+          <span class="tag t-lavender">Security</span>
+          <span class="tag t-neutral">Everyone with access to the project can see it</span>
+          <span class="tag t-neutral">Editors can create, change and run matrices</span>
+        </div>
+
+        <div class="in-short">
+          <div class="label">In short</div>
+          <p>A table that says who may reach what in your app: one row per page or request, one
+            column per kind of user, and in each cell "allow" or "deny". TraceIQ then tries every
+            cell as that user and tells you where reality differs, for example when a visitor who
+            isn't logged in can open an admin page.</p>
+        </div>
+
+        <h2 id="what-for">What it is for</h2>
+        <p>
+          <strong>Access control</strong> is the part of an app that decides who may see or do
+          what. When it is broken, people see things they shouldn't: another customer's orders,
+          an admin screen, someone else's account. It is one of the most common serious security
+          problems, and ordinary tests rarely catch it, because they test what users
+          <em>should</em> be able to do, not what they shouldn't.
+        </p>
+        <p>
+          An access matrix answers <strong>"Can each kind of user reach only what they are meant
+          to?"</strong> You write down the rules once; TraceIQ checks them every time you run the
+          matrix, and turns any rule that was broken into a security finding.
+        </p>
+        <div class="grid-3">
+          <div class="mini"><h4>Security leads</h4><p>Turn an access policy ("only admins see the user list") into a check that runs again and again.</p></div>
+          <div class="mini"><h4>Testers</h4><p>Check every role against every important page in one go, instead of logging in and out by hand.</p></div>
+          <div class="mini"><h4>Developers</h4><p>See exactly which user reached which address and what the server answered, before a release.</p></div>
+        </div>
+        <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Access matrix</strong>.
+          The page's own heading says <strong>Access Matrix</strong>.</p>
+
+        <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
+        <p>The demo project has no matrix yet, so the page first shows only an empty list on the
+          left and "Choose a matrix, or create a new one.":</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/page.png" alt="The Access Matrix page with a New matrix button, the line No matrices in this project yet, and a Project menu at the top right" loading="lazy" width="1440" height="900"></div>
+        </figure>
+        <p>The picture below shows a new matrix being filled in: two rows (the user's own todo
+          list, and an admin-only list of users) checked against two logged-in users and someone
+          who is not logged in. The numbers match the sections below.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/page-annotated.png" alt="The Access Matrix page with a new matrix being written, with six numbered parts: 1 the New matrix button and list, 2 the name, base URL, description and denied-statuses fields, 3 the identities, 4 the grid of rows and Allow or Deny cells, 5 the security-testing prerequisites, 6 the Create matrix button" loading="lazy" width="1440" height="1560"></div>
+          <figcaption>A draft matrix in the demo's web project (not saved). Click the picture to see it larger.</figcaption>
+        </figure>
+
+        <div class="part"><span class="num">1</span><h2 id="list" data-toc="① The list of matrices">The list of matrices</h2></div>
+        <p>The project's matrices, each with its number of rows and identities. Click one to open
+          it; <strong>New matrix</strong> starts an empty one. A saved matrix has two tabs:
+          <strong>Edit grid</strong> (what you see here) and <strong>Runs &amp; results</strong>
+          (see <a href="#results">Reading the results</a>).</p>
+        <p>The <strong>Project</strong> menu at the top right of the page chooses the project.
+          It is the same choice as the project picker at the top of the sidebar: changing it here
+          changes it for the whole app.</p>
+
+        <div class="part"><span class="num">2</span><h2 id="fields" data-toc="② Name and address">Name and address</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/fields.png" alt="Four fields: Name (Todo items: who may see them), Base URL for relative paths (https://app.example.com), Description, and Statuses that count as denied (401, 403, 404 by default)" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Name</strong> (required) and <strong>Description</strong>: for people.</li>
+          <li><strong>Base URL</strong>: the address of the app. Rows can then give just a path, such as <code>/todos</code>.</li>
+          <li><strong>Statuses that count as denied</strong>: when the app refuses someone, it answers with a status number. By default <code>401</code> (not logged in), <code>403</code> (not allowed) and <code>404</code> (not found) count as "denied". Change the list if your app refuses in another way.</li>
+        </ul>
+
+        <div class="part"><span class="num">3</span><h2 id="identities" data-toc="③ Identities (columns)">Identities (columns)</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/security/access-matrix/identities.png" alt="Identities (columns): alice (todolite) and bob (todolite) ticked, and Anonymous column (no session, no credential headers) ticked" loading="lazy"></div>
+        </figure>
+        <p>Each column is one <strong>identity</strong>: who TraceIQ pretends to be. A
+          <strong>persona</strong> is a saved login for a particular user or role, for example a
+          normal customer and an administrator; the list shows the project's personas and the
+          workspace-wide ones. <strong>Anonymous</strong> is someone who is not logged in: TraceIQ
+          sends no login and none of the project's login headers. Choose at least one column; a
+          matrix can have up to 20.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="grid" data-toc="④ The grid">The grid</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/grid.png" alt="The grid. Row My todo list, a Page at /todos: Allow for alice, Allow for bob, Deny for Anonymous. Row Admin user list, a GET request to /api/admin/users: Deny for all three" loading="lazy"></div>
+        </figure>
+        <p>Each row is one thing to try. Press <strong>Add row</strong> for another, and
+          <strong>Remove row</strong> to drop one (up to 200 rows).</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Kind of row</th><th>What TraceIQ does</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Request</strong></td><td>Sends one request (GET, POST, DELETE…) to a URL or path and looks at the answer's status. A <em>Body</em> field appears for methods that send data.</td></tr>
+              <tr><td><strong>Page</strong></td><td>Opens the page in a browser. With an <em>Element selector</em> (a description of one part of the page, such as the admin panel), it also checks whether that part is shown.</td></tr>
+              <tr><td><strong>Test case</strong></td><td>Runs one of your existing tests as each identity. These run as ordinary test runs, so they also appear under <em>Runs</em>.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Click a cell</strong> to change what should happen for that identity. Each
+          click moves on to the next choice:</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Cell</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Allow</span></td><td>This identity should get in. The small <em>Status</em> box can require one exact answer (for example 200); empty means any success.</td></tr>
+              <tr><td><span class="pill t-pink">Deny</span></td><td>This identity should be refused. The <em>+deny</em> box adds one more status that counts as a refusal for this cell.</td></tr>
+              <tr><td><span class="pill t-neutral">Skip</span></td><td>Not checked. Cells start as Skip.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="callout info">
+          <span class="icon">i</span>
+          <div><strong class="title">ID swap: can one user open another user's things?</strong>
+            <p>A common hole is that user B can open user A's order just by changing the number in
+            the address. Tick <strong>ID swap</strong> on a row to test this: TraceIQ first logs
+            in as the <em>owner persona</em>, asks the <em>owner URL</em> for a list of that
+            person's things, takes an ID from the answer (the <em>extractor</em> says where), puts
+            it in place of the placeholder (<code>{id}</code>) in the row's URL, and then tries
+            that address as every identity. Usually you expect Allow for the owner and Deny for
+            everyone else. With two personas from different customer accounts, this checks that
+            one customer can't see another's data.</p></div>
+        </div>
+
+        <div class="part"><span class="num">5</span><h2 id="prerequisites" data-toc="⑤ Security-testing prerequisites">Security-testing prerequisites</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/prerequisites.png" alt="Security-testing prerequisites: Security testing disabled, Authorized domains none, Needs attention: Security testing is disabled for this project, Needs attention: Not on the authorized domain list: https://app.example.com/todos, https://app.example.com/api/admin/users, and an Edit security settings link" loading="lazy"></div>
+        </figure>
+        <p>Request and page rows contact your app directly, so TraceIQ only runs them when the
+          project allows security testing. This box checks your draft against those rules before
+          you run it:</p>
+        <ul>
+          <li><strong>Security testing</strong> must be enabled for the project, and</li>
+          <li>every address must be on the project's <strong>authorized domains</strong>. Both are set under <em>Scans &amp; findings → Authorization</em> (the <strong>Edit security settings</strong> link goes there).</li>
+          <li>A row that <strong>changes data</strong> (any method other than GET, HEAD or OPTIONS, including the owner request of an ID swap) also needs you to tick "I am authorized…" when you run the matrix.</li>
+        </ul>
+        <p>Test-case rows need none of this. The box is only a preview: when you run the matrix,
+          TraceIQ checks again, and if it refuses, its reason is shown word for word.</p>
+
+        <div class="part"><span class="num">6</span><h2 id="save" data-toc="⑥ Create matrix">Create matrix</h2></div>
+        <p><strong>Create matrix</strong> saves a new matrix (it stays greyed out until it has a
+          name); on a saved one the button says <strong>Save changes</strong>, next to
+          <strong>Delete matrix</strong>, which asks first and also deletes all of the matrix's
+          runs. Nothing is saved until you press the button; leaving the page throws the draft
+          away.</p>
+
+        <h3 id="results">Reading the results</h3>
+        <p>On a saved matrix, the <strong>Runs &amp; results</strong> tab has a <strong>Run
+          matrix</strong> button, the <strong>Run history</strong> (newest first) and the results
+          of the selected run: the same grid, with each cell showing what was expected, what was
+          observed, and a verdict. While a run is going, the page refreshes every 3 seconds.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Verdict</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill t-mint">Pass</span></td><td>What happened matches the cell.</td></tr>
+              <tr><td><span class="pill t-pink">Fail — access granted</span></td><td>The cell said Deny, but the identity got in. This is the serious one: TraceIQ records it as a high-severity security finding.</td></tr>
+              <tr><td><span class="pill t-peach">Fail — allow regression</span></td><td>The cell said Allow, but the identity was refused. Something that should work is broken; it is counted, but not a security finding.</td></tr>
+              <tr><td><span class="pill t-butter">Inconclusive</span></td><td>TraceIQ couldn't tell, for example the request timed out, the server had an error, or it was sent somewhere else. It is never counted as a pass.</td></tr>
+              <tr><td><span class="pill t-neutral">Pending</span></td><td>Still waiting for a result.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Click a cell</strong> to see its evidence: the status, the address it ended up
+          on, whether the element was shown, the ID that was swapped in, the response headers and
+          a piece of the response (with secrets removed), a screenshot for page rows, and a link
+          to the test run for test-case rows. Below the results, <strong>Security findings from
+          this matrix</strong> lists the findings it raised, each with a link to the run that
+          showed the problem.</p>
+
+        <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
+        <figure class="video">
+          <div class="frame">
+            <video controls preload="metadata" playsinline poster="../media/security/access-matrix/page.png" width="1280" height="800">
+              <source src="../media/security/access-matrix/walkthrough.mp4" type="video/mp4">
+              Your browser can't play this video.
+            </video>
+          </div>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The matrix in the video is not saved.</figcaption>
+        </figure>
+
+        <h2 id="how-to" data-toc="How to…">How to…</h2>
+        <h3>…check that visitors can't reach admin pages</h3>
+        <ol class="steps">
+          <li>Make sure the project allows security testing and lists your app's domain (<em>Scans &amp; findings → Authorization</em>, project admin).</li>
+          <li>Press <strong>New matrix</strong>, give it a name and your app's <strong>Base URL</strong>.</li>
+          <li>Tick an administrator persona, a normal-user persona and <strong>Anonymous</strong>.</li>
+          <li>Add a row per admin page or address. Set the administrator's cell to <strong>Allow</strong> and the others to <strong>Deny</strong>.</li>
+          <li>Press <strong>Create matrix</strong>, open <strong>Runs &amp; results</strong> and press <strong>Run matrix</strong>.</li>
+          <li>Any red <em>Fail — access granted</em> cell is a hole. Click it for the evidence.</li>
+        </ol>
+        <h3>…check that one customer can't see another's data</h3>
+        <ol class="steps">
+          <li>Use two personas logged in to two different customer accounts, A and B.</li>
+          <li>Add a request row whose URL contains <code>{id}</code>, for example <code>/api/orders/{id}</code>.</li>
+          <li>Tick <strong>ID swap</strong>: owner persona = A, owner URL = the address that lists A's orders, extractor = where the ID is in that answer.</li>
+          <li>Set A's cell to <strong>Allow</strong>, and B's and Anonymous's cells to <strong>Deny</strong>. Save and run.</li>
+        </ol>
+        <h3>…follow up a problem it found</h3>
+        <ol class="steps">
+          <li>On <strong>Runs &amp; results</strong>, look under <strong>Security findings from this matrix</strong>.</li>
+          <li>Press <strong>View evidence in run #…</strong> to see what happened.</li>
+          <li>Give the finding an owner and work on it in <em>Scans &amp; findings → Findings register</em>. After the fix, run the matrix again.</li>
+        </ol>
+
+        <h2 id="good-to-know">Good to know</h2>
+        <ul>
+          <li><strong>Findings look after themselves.</strong> A Deny cell that got through creates one high-severity finding per row and identity, and a later run that gets through again updates the same finding rather than adding another. When a later run denies it again, an <em>Open</em> finding is closed by itself; if access gets through after that, it reopens. A finding marked <em>false positive</em> stays that way. Inconclusive cells change nothing.</li>
+          <li><strong>It only looks.</strong> Request and page rows observe what the app answers; the only data they change is what a row itself sends (which is why those rows need your "I am authorized").</li>
+          <li><strong>Old results keep their labels.</strong> Each run stores a copy of the matrix as it was, so editing the matrix later doesn't relabel past results.</li>
+          <li><strong>A run gives up after 45 minutes.</strong> Cells still waiting then become <em>Inconclusive</em>, never Pass.</li>
+          <li><strong>A failed test is not proof of "denied".</strong> For test-case rows, a Deny cell passes only if the test failed with a refusal status (such as "expected 200 but got 403"). A test that failed for another reason, such as a timeout, is Inconclusive.</li>
+          <li><strong>Runs count towards your plan.</strong> Test-case rows start ordinary test runs, which count towards the monthly run allowance.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look at matrices and results. Creating, changing, deleting and running a matrix needs the <em>editor</em> role.</li>
+          <li><strong>Old run history.</strong> Finished matrix runs and their screenshots are deleted after the project's retention period, like other runs. The matrix itself is kept.</li>
+        </ul>
+
+        <h2 id="related">Related pages</h2>
+        <div class="grid-2">
+          <div class="mini"><h4>Access reviews</h4><p>The next page in this guide: check, by hand and on a schedule, who has access to TraceIQ itself.</p></div>
+          <div class="mini"><h4>Scans &amp; findings</h4><p>Where the project allows security testing, and where this matrix's findings are tracked.</p></div>
+          <div class="mini"><h4>Runs</h4><p>The test runs started by test-case rows, with every step, screenshot and log.</p></div>
+          <div class="mini"><h4>Suites</h4><p>Where the tests used by test-case rows are written.</p></div>
+        </div>
+
+        <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+        <p class="footer-note">Describes the Access matrix page as of October 2026.</p>
+      </div>
+    </main>
+
+    <aside class="toc" id="toc" aria-label="On this page"></aside>
+  </div>
+
+  <script src="../_assets/nav.js"></script>
+  <script src="../_assets/docs.js"></script>
+</body>
+</html>
