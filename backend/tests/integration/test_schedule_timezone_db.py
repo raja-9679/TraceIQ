@@ -54,6 +54,19 @@ async def test_create_refuses_an_unknown_zone(session, scene):
     assert exc.value.status_code == 400
 
 
+async def test_create_ignores_client_set_server_fields(session, scene):
+    # TestScheduleBase is the request body, so these arrive as input; a client
+    # must not be able to backdate a schedule or claim it already ran.
+    sched = await schedules.create_schedule(
+        _base(scene, cron_expression="0 9 * * 1",
+              created_at=datetime(2001, 1, 1), updated_at=datetime(2001, 1, 1),
+              last_run_at=datetime(2001, 1, 2)),
+        session=session, current_user=scene.user)
+    assert sched.last_run_at is None
+    assert sched.created_at.year > 2001 and sched.updated_at.year > 2001
+    assert sched.created_by_id == scene.user.id
+
+
 async def test_changing_only_the_zone_recomputes_next_run(session, scene):
     sched = await schedules.create_schedule(_base(scene, cron_expression="0 9 * * *"),
                                             session=session, current_user=scene.user)

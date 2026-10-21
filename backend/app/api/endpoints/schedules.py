@@ -152,6 +152,13 @@ async def create_schedule(
     schedule.next_run_at = next_run_utc(schedule.cron_expression, schedule.timezone)
 
     new_schedule = TestSchedule.model_validate(schedule)
+    # The request schema is TestScheduleBase, which also carries server-kept
+    # fields. A client-set last_run_at/created_at would fake history (the
+    # schedule page and monitors read them), so they are never taken as input.
+    now = datetime.utcnow()
+    new_schedule.last_run_at = None
+    new_schedule.created_at = now
+    new_schedule.updated_at = now
     new_schedule.created_by_id = current_user.id
     new_schedule.updated_by_id = current_user.id
 
