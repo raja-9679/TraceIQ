@@ -60,9 +60,9 @@ Every imported ticket falls into exactly one of these:
 - **Sync all** fetches every imported ticket again from Jira or Linear, so its title, status, description and acceptance criteria are up to date. A message says how many were synced and how many failed.
 - **Import** opens the import panel (the button then reads **Close import**).
 
-![The import panel, saying No Jira or Linear connection in this workspace yet. Add one on the Issue Trackers page.](../media/releases/requirements/import.png)
+![The import panel, saying Your Jira connection is turned off. Enable it on the Issue trackers page to import from it.](../media/releases/requirements/import.png)
 
-*The demo workspace's Jira connection is switched off, and the panel only offers connections that are switched on, so it says where to add one.*
+*The demo workspace's Jira connection is switched off, and the panel only offers connections that are switched on, so it says where to turn it on. With no connection at all, it says where to add one.*
 
 Once a connection exists (set up on **Setup → Issue trackers**, and switched on), the panel has:
 

@@ -44,6 +44,9 @@ function ImportPanel({ projectId, workspaceId }: { projectId: number; workspaceI
     const qc = useQueryClient();
     const trackers = useQuery({ queryKey: ['trackers', workspaceId], queryFn: () => ticketsApi.listConfigs(workspaceId) });
     const importable = (trackers.data || []).filter((c) => c.enabled && (c.provider === 'jira' || c.provider === 'linear'));
+    // The import API refuses a disabled connection, so those are left out of
+    // the picker, but "no connection" would be wrong when one exists.
+    const disabled = (trackers.data || []).filter((c) => !c.enabled && (c.provider === 'jira' || c.provider === 'linear'));
     const [configId, setConfigId] = useState<number | null>(null);
     const config = importable.find((c) => c.id === configId) || importable[0];
     const [jql, setJql] = useState('');
@@ -76,7 +79,11 @@ function ImportPanel({ projectId, workspaceId }: { projectId: number; workspaceI
     if (!config) {
         return (
             <div className="bg-white border border-slate-200 rounded-2xl p-5 text-sm text-slate-500">
-                No Jira or Linear connection in this workspace yet. Add one on the <Link to="/issue-trackers" className="text-indigo-600 hover:underline">Issue Trackers</Link> page.
+                {disabled.length > 0 ? (
+                    <>Your {disabled.length === 1 ? `${disabled[0].provider === 'linear' ? 'Linear' : 'Jira'} connection is` : 'Jira/Linear connections are'} turned off. Enable {disabled.length === 1 ? 'it' : 'one'} on the <Link to="/issue-trackers" className="text-indigo-600 hover:underline">Issue trackers</Link> page to import from it.</>
+                ) : (
+                    <>No Jira or Linear connection in this workspace yet. Add one on the <Link to="/issue-trackers" className="text-indigo-600 hover:underline">Issue trackers</Link> page.</>
+                )}
             </div>
         );
     }
