@@ -569,15 +569,18 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
             newest[id(cluster)] = run.created_at
             cluster.last_run_id = run.id
 
+    result_rows: List[tuple] = []
     for run, r in run_rows:
         for x in r["results"]:
             case = cases[r["project"]][x["case"]]
             cluster = clusters.get(x["cluster"]) if x["cluster"] else None
-            session.add(TestCaseResult(
+            result = TestCaseResult(
                 test_run_id=run.id, test_name=case.name, test_case_id=case.id,
                 status=TestStatus(x["status"]), duration_ms=x["duration_ms"], error_message=x["error"],
                 is_flaky=x["is_flaky"], retry_count=x["retry_count"],
-                cluster_id=cluster.id if cluster else None, screenshots=[]))
+                cluster_id=cluster.id if cluster else None, screenshots=[])
+            session.add(result)
+            result_rows.append((result, run, x))
             if cluster is not None:
                 last_hit(cluster, run)
     for run, chk in mon_runs:
@@ -602,12 +605,15 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
             severity=f["severity"], title=f["title"], description=f["description"],
             evidence=f["evidence"], target_url=f["target_url"], created_at=f["created_at"],
             status="open", fingerprint=f["fingerprint"], due_at=f["created_at"] + timedelta(days=90)))
+    flake_records: List[Any] = []
     for fl in plan["flakes"]:
         case = cases[fl["project"]][fl["case"]]
-        session.add(FlakeRecord(test_case_id=case.id, flake_score=fl["flake_score"],
-                                sample_count=fl["sample_count"], first_observed_at=plan["runs"][0]["created_at"],
-                                last_observed_at=plan["runs"][-1]["created_at"],
-                                last_failure_message=fl["last_failure_message"], owner_user_id=user.id))
+        flake = FlakeRecord(test_case_id=case.id, flake_score=fl["flake_score"],
+                            sample_count=fl["sample_count"], first_observed_at=plan["runs"][0]["created_at"],
+                            last_observed_at=plan["runs"][-1]["created_at"],
+                            last_failure_message=fl["last_failure_message"], owner_user_id=user.id)
+        session.add(flake)
+        flake_records.append(flake)
     for snap in plan["flake_snapshots"]:
         project = projects[snap["project"]]
         session.add(FlakeDailySnapshot(project_id=project.id, day=snap["day"], flaky_cases=snap["flaky_cases"],
@@ -618,10 +624,23 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
         session.add(FlakeCaseScoreDaily(project_id=project.id, test_case_id=cases[snap["project"]][snap["case"]].id,
                                         day=snap["day"], flake_score=snap["case_score"],
                                         sample_count=snap["results_total"]))
+    deployments: List[Any] = []
     for dep in plan["deployments"]:
-        session.add(Deployment(project_id=projects[dep["project"]].id, environment_id=envs[dep["project"]].id,
-                               version=dep["version"], status=dep["status"], deployed_at=dep["deployed_at"],
-                               source="demo", created_by_id=user.id, created_at=dep["deployed_at"]))
+        deployment = Deployment(project_id=projects[dep["project"]].id, environment_id=envs[dep["project"]].id,
+                                version=dep["version"], status=dep["status"], deployed_at=dep["deployed_at"],
+                                source="demo", created_by_id=user.id, created_at=dep["deployed_at"])
+        session.add(deployment)
+        deployments.append(deployment)
+    await session.flush()
+
+    # Everything the other pages read (members, proposals, sign-offs, security
+    # registers, ...) is layered on by app/services/demo_seed.
+    from app.services.demo_seed import DemoContext, seed_all
+    await seed_all(DemoContext(
+        session=session, user=user, ws=ws, now=now, seed=seed, plan=plan, projects=projects,
+        suites=suites, cases=cases, envs=envs, run_rows=run_rows, mon_runs=mon_runs,
+        result_rows=result_rows, clusters=clusters, schedule=schedule, deployments=deployments,
+        flake_records=flake_records))
 
     await audit_record(session, entity_type="workspace", entity_id=ws.id, action="demo_create",
                        workspace_id=ws.id, user_id=user.id, request=request,
@@ -655,5 +674,13 @@ async def delete_demo_workspace(session: Any, user: Any, request: Any = None) ->
     ws = await find_demo(session, user.id)
     if not ws:
         return None
-    report = await purge_workspace(session, ws.id, actor_id=user.id, request=request)
-    return report.as_dict()
+    ws_id = ws.id
+    report = await purge_workspace(session, ws_id, actor_id=user.id, request=request)
+    # The demo's fake members are users rows, which a workspace purge never
+    # removes (users outlive workspaces).
+    from app.services.demo_seed.setup import delete_members
+    removed = await delete_members(session, ws_id)
+    await session.commit()
+    out = report.as_dict()
+    out["demo_members_deleted"] = removed
+    return out
