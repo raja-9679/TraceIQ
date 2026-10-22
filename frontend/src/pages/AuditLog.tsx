@@ -140,7 +140,7 @@ export default function AuditLog() {
 
             {verdict && (
                 <div className={verdict.verified ? 'rounded-2xl border border-border bg-white px-4 py-3 text-sm text-ink' : warnCalloutClass} role="status">
-                    <Pill tone={verdict.verified ? 'mint' : 'peach'}>{!verdict.verified ? 'Chain broken' : verdict.status === 'partial' ? 'Verified since chaining began' : 'Chain verified'}</Pill>
+                    <Pill tone={verdict.verified ? 'mint' : 'peach'}>{verdict.status === 'unverifiable' ? 'Not verifiable' : !verdict.verified ? 'Chain broken' : verdict.status === 'partial' ? 'Verified since chaining began' : 'Chain verified'}</Pill>
                     <span className="ml-2">{verdict.rows_checked} rows checked. {verdict.detail}</span>
                     {verdict.first_bad_row_id && <span className="block text-xs text-ink-soft">First bad row #{verdict.first_bad_row_id} ({fmtDate(verdict.first_bad_row_timestamp)}){verdict.in_this_workspace ? ', in this workspace' : ''}</span>}
                 </div>
