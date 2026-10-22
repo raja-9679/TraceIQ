@@ -74,7 +74,7 @@ Every check TraceIQ makes before it lets certain actions happen, grouped by the 
 
 ## 4. Recent denials
 
-![The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period (Last 30 days), above a table of refusals with the columns When, Rule, Reason, Where and Who; the newest is agent.budget, Agent session budget exhausted: 20/20 runs](../media/setup/policies/denials.png)
+![The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period (Last 30 days), above a list of refusals, each with its rule and action, when it happened, the reason, and where and who; the newest is agent.budget, Agent session budget exhausted: 20/20 runs](../media/setup/policies/denials.png)
 
 A **denial** is one time a rule said no. The list shows them newest first, 50 to a page (**Newer** and **Older** move between pages). The demo workspace has four from the last month: an agent that ran out of its run budget, a person trying to accept their own proposal, the monthly AI token quota, and AI being switched off. When nothing matches, the card says *"Nothing was refused in this period"*.
 

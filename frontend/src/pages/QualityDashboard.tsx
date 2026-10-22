@@ -323,7 +323,7 @@ export default function QualityDashboard() {
                                                     onSelect={() => setSelectedName(c.name)}
                                                     leading={<KindChip kind={c.passed ? 'pass' : 'block'} size="sm" />}
                                                     title={describe(c).title}
-                                                    trailing={<span className="font-mono text-[13px]">{c.actual}</span>}
+                                                    trailing={<span className="min-w-0 truncate font-mono text-[13px]" title={String(c.actual ?? '')}>{c.actual}</span>}
                                                 />
                                             ))}
                                         </ListGroup>

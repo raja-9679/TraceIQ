@@ -147,40 +147,34 @@ export function DenialsCard({ workspaceId }: { workspaceId: number }) {
             ) : total === 0 ? (
                 <p className="text-sm text-ink-soft">Nothing was refused in this period.</p>
             ) : (
-                <div className="overflow-x-auto">
-                    <table className="w-full min-w-[720px] text-left">
-                        <thead>
-                            <tr className="text-xs uppercase tracking-[0.04em] text-ink-soft">
-                                <th className="py-2 pr-3 font-semibold">When</th>
-                                <th className="py-2 pr-3 font-semibold">Rule</th>
-                                <th className="py-2 pr-3 font-semibold">Reason</th>
-                                <th className="py-2 pr-3 font-semibold">Where</th>
-                                <th className="py-2 font-semibold">Who</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {page.data!.items.map((d) => (
-                                <tr key={d.id} className="border-t border-border align-top">
-                                    <td className="whitespace-nowrap py-2 pr-3 text-xs text-ink-soft">{fmtDate(d.created_at)}</td>
-                                    <td className="py-2 pr-3">
-                                        <span className="block font-mono text-xs font-semibold text-ink">{d.rule}</span>
-                                        <span className="block text-xs text-ink-soft">{d.action}</span>
-                                    </td>
-                                    <td className="max-w-[28rem] py-2 pr-3 text-sm text-ink">{d.reason}</td>
-                                    <td className="py-2 pr-3 text-xs text-ink-soft">
-                                        {d.project_name ?? (d.project_id ? `project ${d.project_id}` : '—')}
-                                        {scope === 'instance' && d.workspace_id && <span className="block">workspace {d.workspace_id}</span>}
-                                    </td>
-                                    <td className="py-2 text-xs text-ink">
-                                        {d.agent_id ? <span className="block font-medium">{d.agent_id}</span> : null}
-                                        {d.agent_session_id && <span className="block font-mono text-ink-soft">{d.agent_session_id}</span>}
-                                        <span className="block text-ink-soft">{d.user_email ?? (d.user_id ? `user ${d.user_id}` : 'system')}</span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                // A stacked list, not a five-column table: this card sits in
+                // half the page width, where the table squeezed the reason
+                // column to one word per line.
+                <ul aria-label="Refused actions" className="flex flex-col">
+                    {page.data!.items.map((d) => {
+                        const where = d.project_name ?? (d.project_id ? `project ${d.project_id}` : null);
+                        const who = d.user_email ?? (d.user_id ? `user ${d.user_id}` : 'system');
+                        return (
+                            <li key={d.id} className="flex flex-col gap-1 border-t border-border py-3 first:border-t-0">
+                                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+                                    <span className="min-w-0 font-mono text-xs font-semibold text-ink [overflow-wrap:anywhere]">
+                                        {d.rule} <span className="font-sans font-normal text-ink-soft">· {d.action}</span>
+                                    </span>
+                                    <span className="whitespace-nowrap text-xs text-ink-soft">{fmtDate(d.created_at)}</span>
+                                </div>
+                                <p className="text-sm text-ink">{d.reason}</p>
+                                <dl className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-ink-soft">
+                                    <div className="flex min-w-0 gap-1"><dt>Where:</dt><dd className="text-ink">{where ?? '—'}{scope === 'instance' && d.workspace_id ? ` · workspace ${d.workspace_id}` : ''}</dd></div>
+                                    <div className="flex min-w-0 gap-1"><dt>Who:</dt><dd className="min-w-0 text-ink [overflow-wrap:anywhere]">
+                                        {d.agent_id ? <span className="font-medium">{d.agent_id}</span> : null}
+                                        {d.agent_session_id ? <span className="font-mono text-ink-soft"> {d.agent_session_id}</span> : null}
+                                        {d.agent_id || d.agent_session_id ? <span className="text-ink-soft"> for {who}</span> : who}
+                                    </dd></div>
+                                </dl>
+                            </li>
+                        );
+                    })}
+                </ul>
             )}
             {total > PAGE && (
                 <div className="flex items-center gap-3">

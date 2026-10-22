@@ -132,11 +132,16 @@ export function ListRow({
             )}
         >
             {leading}
-            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            {/* overflow-wrap:anywhere so an unbroken string (a long email) wraps
+                inside the row instead of running under the trailing pill. */}
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5 [overflow-wrap:anywhere]">
                 <span className={cn('text-sm leading-snug', selected ? 'font-semibold' : 'font-medium')}>{title}</span>
                 {meta && <span className="text-xs text-ink-soft">{meta}</span>}
             </span>
-            {trailing}
+            {/* Never shrinks below its content's width, but capped so a long
+                value can't squeeze the title to one word per line; a trailing
+                value that may be long should truncate itself (min-w-0 truncate). */}
+            {trailing && <span className="flex min-w-0 max-w-[55%] flex-none items-center justify-end">{trailing}</span>}
         </button>
     );
 }

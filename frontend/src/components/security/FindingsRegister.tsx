@@ -90,8 +90,11 @@ function RegisterRow({ f, owners, onUpdate, busy }: {
                 <Pill tone={SEV_TONE[f.severity] ?? 'neutral'} className="capitalize">{f.severity}</Pill>
             </td>
             <td className="min-w-0 py-3 pr-3">
-                <div className={`text-sm font-medium ${muted ? 'text-ink-soft' : 'text-ink'}`}>{f.title}</div>
-                <div className="break-all text-xs text-ink-soft">
+                {/* overflow-wrap:anywhere, not break-words: only "anywhere" lowers the
+                    cell's min-content width, so a 64-char script hash in a title
+                    wraps instead of pushing Owner/Due/Status off screen. */}
+                <div title={f.title} className={`line-clamp-3 text-sm font-medium [overflow-wrap:anywhere] ${muted ? 'text-ink-soft' : 'text-ink'}`}>{f.title}</div>
+                <div className="text-xs text-ink-soft [overflow-wrap:anywhere]">
                     {f.scan_type} · {f.location?.field ? `${f.location.field} · ` : ''}{f.target_url || '—'}
                 </div>
                 {status === 'accepted_risk' && f.risk_justification && (

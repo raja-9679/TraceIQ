@@ -88,7 +88,7 @@ Ready-made settings to give to whoever installs TraceIQ: two lines for the `.env
 
 ## 6. How each number is calculated
 
-![A table with columns Quantity, Formula, With your inputs and Result, one row per calculated number](../media/setup/sizing-calculator/formulas.png)
+![A table with columns Quantity, Formula with your inputs (the formula over the same formula with your figures put in) and Result, one row per calculated number](../media/setup/sizing-calculator/formulas.png)
 
 Every number on the page, in the order it is worked out: the formula, the same formula with your figures put in, and the result. Use it to check the estimate by hand, or to explain it to someone else.
 

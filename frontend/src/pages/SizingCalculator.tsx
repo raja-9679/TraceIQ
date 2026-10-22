@@ -208,21 +208,23 @@ export default function SizingCalculator() {
                             </SettingsCard>
 
                             <SettingsCard title="How each number is calculated" labelledBy="sizing-formulas">
-                                <div className="overflow-x-auto">
-                                    <Table>
-                                        <TableHeader><TableRow><TableHead>Quantity</TableHead><TableHead>Formula</TableHead><TableHead>With your inputs</TableHead><TableHead className="text-right">Result</TableHead></TableRow></TableHeader>
-                                        <TableBody>
-                                            {out.formulas.map((f) => (
-                                                <TableRow key={f.key}>
-                                                    <TableCell className="min-w-[180px] font-medium">{f.label}</TableCell>
-                                                    <TableCell className="min-w-[200px] font-mono text-xs">{f.formula}</TableCell>
-                                                    <TableCell className="min-w-[180px] font-mono text-xs text-ink-soft">{f.substituted}</TableCell>
-                                                    <TableCell className="whitespace-nowrap text-right tabular-nums">{f.value} {f.unit}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                        </TableBody>
-                                    </Table>
-                                </div>
+                                {/* Three columns, formula over its substitution: four columns
+                                    did not fit the half-width card and clipped Result. */}
+                                <Table>
+                                    <TableHeader><TableRow><TableHead>Quantity</TableHead><TableHead>Formula, with your inputs</TableHead><TableHead className="text-right">Result</TableHead></TableRow></TableHeader>
+                                    <TableBody>
+                                        {out.formulas.map((f) => (
+                                            <TableRow key={f.key}>
+                                                <TableCell className="w-[32%] align-top font-medium">{f.label}</TableCell>
+                                                <TableCell className="align-top font-mono text-xs [overflow-wrap:anywhere]">
+                                                    <span className="block text-ink">{f.formula}</span>
+                                                    <span className="mt-1 block text-ink-soft">= {f.substituted}</span>
+                                                </TableCell>
+                                                <TableCell className="whitespace-nowrap text-right align-top tabular-nums">{f.value} {f.unit}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
                             </SettingsCard>
 
                             <SettingsCard title="Assumptions" labelledBy="sizing-assumptions" description="Replace the declared figures with your own measurements where you have them.">
