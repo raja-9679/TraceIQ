@@ -228,3 +228,13 @@ def test_an_unhashed_row_after_chaining_began_is_a_break_not_legacy():
     n = legacy_prefix_length(rows)
     assert n == 2
     assert verify_chain(rows[n:]) == (False, 2)
+
+
+def test_stripping_hashes_from_the_oldest_chained_rows_is_caught():
+    rows = _legacy(2) + _linked(4)
+    for r in rows[2:4]:          # attacker blanks the first two sealed rows
+        r["row_hash"] = None
+    n = legacy_prefix_length(rows)
+    assert n == 4
+    # The next sealed row links to a predecessor, not ROOT -> break.
+    assert verify_chain(rows[n:]) == (False, 0)

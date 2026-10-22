@@ -178,6 +178,18 @@ async def verify_workspace_audit(
         f" {legacy} older row{'s' if legacy != 1 else ''} predate hash chaining and "
         "cannot be verified." if legacy else "")
 
+    if legacy and not chained:
+        # Nothing is chained at all. Indistinguishable from every hash having
+        # been stripped, so it must not read as verified.
+        return {
+            "verified": False,
+            "status": "unverifiable",
+            "rows_checked": 0,
+            "unverifiable_rows": legacy,
+            "detail": (f"None of the {legacy} audit rows carries a hash, so nothing can be "
+                       "verified. Rows written from now on are chained."),
+        }
+
     if ok:
         return {
             "verified": True,
