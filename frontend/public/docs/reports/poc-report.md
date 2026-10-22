@@ -36,7 +36,7 @@ The page is one long report. The numbers on the screenshot match the sections be
 
 *The PoC report for the demo workspace, last 30 days. Click the picture to see it larger.*
 
-The line under the heading names the workspace and the dates, for example *"Demo workspace · 2026-09-22 to 2026-10-21"*.
+The line under the heading names the workspace and the dates, for example *"Demo workspace · 2026-09-23 to 2026-10-22"*.
 
 ## 1. Print or save as PDF
 
@@ -76,7 +76,7 @@ Only tests that finished with a pass or fail count, and only from automated runs
 
 ## 4. The four tiles
 
-![Four tiles: Runs 240 in 30 days, Pass rate 90.4%, Automated case executions 720, Failures caught 23](../media/reports/poc-report/tiles.png)
+![Four tiles: Runs 242 in 30 days, Pass rate 90.1%, Automated case executions 720, Failures caught 25](../media/reports/poc-report/tiles.png)
 
 | Tile | What the number means |
 |---|---|
@@ -91,11 +91,11 @@ What exists in the covered projects *today* (not only what was added during the 
 
 ## 6. Activity
 
-Finished runs and passed runs (as in the tiles), automated and manual case executions, and the browsers and devices that runs used in the date range.
+Finished runs and passed runs (as in the tiles), automated and manual case executions, and the browsers and devices that runs used in the date range. Manual test runs appear among the browsers as "manual".
 
 ## 7. What it found
 
-![What it found: Failing test results 23, Distinct failure causes (clusters) 6, Security findings 1 (critical 0, high 0, medium 1, low 0, info 0), Flaky tests identified 1, Production incidents 0, Incidents linked to a test or failure 0](../media/reports/poc-report/found.png)
+![What it found: Failing test results 25, Distinct failure causes (clusters) 6, Security findings 17 (critical 0, high 2, medium 5, low 8, info 2), Flaky tests identified 1, Production incidents 5, Incidents linked to a test or failure 3](../media/reports/poc-report/found.png)
 
 | Line | What it counts |
 |---|---|

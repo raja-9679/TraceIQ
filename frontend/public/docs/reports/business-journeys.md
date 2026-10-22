@@ -32,9 +32,9 @@ A few words used on this page: a **test** (TraceIQ also calls it a *case*) is on
 
 The page has two views: the **board**, with one card per journey, and the **form** you use to create or change a journey. The numbers on the screenshots match the sections below.
 
-![The Business journeys page with two numbered parts: 1 the New journey button, 2 the board, which says No journeys yet](../media/reports/business-journeys/page-annotated.png)
+![The Business journeys page with two numbered parts: 1 the New journey button, 2 the board with one card, Sign in and manage todos, labelled Flaky](../media/reports/business-journeys/page-annotated.png)
 
-*The board for the demo's web project, which has no journeys yet. Click the picture to see it larger.*
+*The board for the demo's web project, which has one journey. Click the picture to see it larger.*
 
 ## 1. New journey
 
@@ -42,7 +42,11 @@ Opens the form (parts 3 to 6 below) in place of the board. The button is hidden 
 
 ## 2. The board
 
-One card per journey, two cards side by side on a wide screen. **Critical** journeys come first, then high, medium and low; journeys with the same criticality are in alphabetical order. Until the project has a journey, the board says *"No journeys yet"*, as in the picture.
+One card per journey, two cards side by side on a wide screen. **Critical** journeys come first, then high, medium and low; journeys with the same criticality are in alphabetical order. Until the project has a journey, the board says *"No journeys yet"*.
+
+![The card for Sign in and manage todos: labelled Flaky, critical, owner Alex Morgan, 1 passing and 1 flaky, fourteen daily bars, Requirements 2 of 2 covered by its cases (DEMO-101 and DEMO-102), Traffic 56k views through the funnel with 2 of 3 steps tested, and its two tests: Sign in as alice, Passing, and Add a todo, quarantined and Flaky](../media/reports/business-journeys/card.png)
+
+*The demo's journey: it is *Flaky* because one of its two tests, "Add a todo", is quarantined.*
 
 Each card shows, from top to bottom:
 

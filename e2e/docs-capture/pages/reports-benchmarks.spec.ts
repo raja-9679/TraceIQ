@@ -3,8 +3,8 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 
 // Guide page: frontend/public/docs/reports/benchmarks.html
 // Nothing here changes data: the "New benchmark" form is filled in on screen
-// and left with Cancel. "Start benchmark" (which would start runs) is never
-// pressed.
+// and left with Cancel. "Start benchmark" and "Run again" (which would start
+// runs) and "Delete" are never pressed.
 
 const DIR = 'reports/benchmarks';
 const SITES = 'Live | https://www.example.com\nStaging | https://staging.example.com';
@@ -15,18 +15,22 @@ test('Reports › Benchmarks', async ({ page, browser }) => {
     await settle(page);
     const main = page.locator('main');
 
-    // 1. The page as a reader first meets it (the demo has no benchmarks).
+    // 1. The page as a reader first meets it: the demo's benchmark, opened.
+    const detail = main.getByRole('article', { name: /^Benchmark / });
+    await expect(detail.getByRole('table', { name: 'Per-site summary' })).toBeVisible();
+    await settle(page);
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. Its parts, numbered.
     const newBtn = main.getByRole('button', { name: 'New benchmark' });
-    const empty = main.getByText('No benchmarks yet', { exact: true }).locator('xpath=..');
+    const list = main.getByRole('heading', { name: 'Benchmarks', level: 2 }).locator('xpath=../..');
     let clean = await annotate(page, [
         { n: 1, target: newBtn, side: 'right' },
-        { n: 2, target: empty },
+        { n: 2, target: list },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
+    await detail.screenshot({ path: out(`${DIR}/detail.png`) });
 
     // 3. The form, filled in on screen (cancelled afterwards).
     await newBtn.click();
@@ -49,7 +53,7 @@ test('Reports › Benchmarks', async ({ page, browser }) => {
     await clean();
     await form.screenshot({ path: out(`${DIR}/form.png`) });
     await form.getByRole('button', { name: 'Cancel' }).click();
-    await expect(main.getByText('No benchmarks yet', { exact: true })).toBeVisible();
+    await expect(detail).toBeVisible();
 
     // 4. A short walkthrough video, with captions saying what is on screen.
     await record(browser, `${DIR}/walkthrough.webm`, async (p) => {
@@ -88,8 +92,10 @@ test('Reports › Benchmarks', async ({ page, browser }) => {
         await caption(p, '');
         await cancel.click();
         await settle(p);
-        await caption(p, 'Each benchmark then shows a table per site, and every test side by side.');
-        await pointAt(p, m.getByText('No benchmarks yet', { exact: true }), 2600);
+        await caption(p, 'Each benchmark shows a row per site, and every test side by side.');
+        const dt = m.getByRole('article', { name: /^Benchmark / });
+        await pointAt(p, dt.getByRole('table', { name: 'Per-site summary' }), 2400);
+        await pointAt(p, dt.getByRole('table', { name: 'Per-test results by site' }), 2400);
         await caption(p, '');
     });
 });

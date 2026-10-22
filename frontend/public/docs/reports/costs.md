@@ -32,7 +32,7 @@ Two words used on this page: **tokens** are the units AI services count and char
 
 The numbers on the screenshot match the sections below.
 
-![The Costs page for the demo workspace with seven numbered parts: 1 the window, workspace and project pickers, 2 a yellow note saying no currency is set, 3 four tiles all showing not priced, 4 the Token use per day chart, 5 the By model and By feature boxes, 6 the By project table, 7 the Most expensive runs table](../media/reports/costs/page-annotated.png)
+![The Costs page for the demo workspace with seven numbered parts: 1 the window, workspace and project pickers, 2 a yellow note saying no currency is set, 3 four tiles all showing not priced, 4 the Use per day charts of AI tokens and browser-minutes, 5 the By model and By feature boxes, 6 the By project table, 7 the Most expensive runs table](../media/reports/costs/page-annotated.png)
 
 *The Costs page for the demo workspace. This server has no prices set, so every amount says "not priced". Click the picture to see it larger.*
 
@@ -50,7 +50,7 @@ With a currency set, the administrator can give a price per million tokens for e
 
 ## 3. The four tiles
 
-![Four tiles: Total not priced, last 30 days; AI (LLM tokens) not priced, 0 tokens; Workers (browser-minutes) not priced, 33.28 min; Workspace-level AI not priced, LLM calls not tied to a project](../media/reports/costs/tiles.png)
+![Four tiles: Total not priced, last 30 days; AI (LLM tokens) not priced, 767k tokens; Workers (browser-minutes) not priced, 34.4 min; Workspace-level AI not priced, LLM calls not tied to a project](../media/reports/costs/tiles.png)
 
 | Tile | What it shows |
 |---|---|
@@ -61,13 +61,15 @@ With a currency set, the administrator can give a price per million tokens for e
 
 ## 4. Per day
 
-![A box titled Use per day with the line No AI use or test time in this window](../media/reports/costs/trend.png)
+![A box titled Use per day with two bar charts from 2026-09-23 to 2026-10-22: AI tokens, peak 48k tokens a day, and browser-minutes, peak 2.04 minutes a day](../media/reports/costs/trend.png)
 
 One bar per day of the window, oldest on the left. With prices it is called **Spend per day** and the bars are money. Without prices it is called **Use per day** and shows two charts, one for AI tokens and one for browser-minutes (machine time), since they can't share one scale. **Point at a day** to see its numbers. With nothing used in the window it just says "No AI use or test time in this window".
 
 Under the chart, a short note explains how browser-minutes are counted (see [Good to know](#good-to-know)).
 
 ## 5. By model and by feature
+
+![Two boxes. By model: claude-sonnet-4-5 (anthropic), 396k tokens in and 91k out, and qwen2.5-coder:14b (ollama), 246k in and 35k out, both not priced. By feature: Failure analysis 302k, Test generation 246k, Selector healing 128k, assistant 51k, requirement_generation 39k, all not priced](../media/reports/costs/by-model.png)
 
 The AI use split two ways: by **model** (which AI, with its provider, and the tokens sent in and received out) and by **feature** (what TraceIQ used it for, such as Failure analysis, Selector healing or Test generation). The most expensive comes first. When nothing used AI in the window, both say "No AI usage in this window."
 
@@ -79,7 +81,7 @@ Shown when *All my projects* is picked. For each project: the cost in the window
 
 ## 7. Most expensive runs
 
-![Most expensive runs: a table of ten runs such as #468 Web smoke (demo), Demo — Todo web app, 10/17/2026, with Tokens 0, Browser-min 0.48 and Cost not priced](../media/reports/costs/top-runs.png)
+![Most expensive runs: a table of ten runs, starting with #55 API contract (demo), Demo — Public API, 9/23/2026, 23k tokens, 0.08 browser-minutes, not priced, and #145 Web smoke (demo), 19k tokens, 0.44 browser-minutes](../media/reports/costs/top-runs.png)
 
 The ten runs that cost the most in the window, with their tokens, browser-minutes and cost. Without prices they are ranked by tokens, then by minutes. Click a run to open it.
 

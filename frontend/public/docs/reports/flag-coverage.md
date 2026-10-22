@@ -36,9 +36,9 @@ Ask the person who looks after your build pipeline to add the flags when it star
 
 The page has two tabs: **Coverage** (the report) and **Flag catalogue** (the list of flags you expect). The numbers on the screenshots match the sections below.
 
-![The Flag coverage page on the Coverage tab, with four numbered parts: 1 the two tabs, 2 the Window menu set to Last 30 days, 3 four number tiles all showing 0, 4 the message No flags yet](../media/reports/flag-coverage/page-annotated.png)
+![The Flag coverage page on the Coverage tab, with four numbered parts: 1 the two tabs, 2 the Window menu set to Last 30 days, 3 four number tiles: Runs with flags 10, Flags seen or catalogued 2, Catalogue values never tested 2, Flags not in the catalogue 0, 4 the card of the flag checkout_v2](../media/reports/flag-coverage/page-annotated.png)
 
-*The Coverage tab for the demo's web project. None of the demo's runs sent flags, so every number is zero. Click the picture to see it larger.*
+*The Coverage tab for the demo's web project, where ten runs said which flags they ran with. Click the picture to see it larger.*
 
 ## 1. The tabs
 
@@ -50,7 +50,7 @@ How far back to look: the last 7, 30 (the starting value), 90 or 180 days. Only 
 
 ## 3. The four tiles
 
-![Four tiles: Runs with flags 0, last 30 days; Flags seen or catalogued 0; Catalogue values never tested 0; Flags not in the catalogue 0](../media/reports/flag-coverage/tiles.png)
+![Four tiles: Runs with flags 10, last 30 days; Flags seen or catalogued 2; Catalogue values never tested 2; Flags not in the catalogue 0](../media/reports/flag-coverage/tiles.png)
 
 | Tile | What the number means |
 |---|---|
@@ -61,7 +61,13 @@ How far back to look: the last 7, 30 (the starting value), 90 or 180 days. Only 
 
 ## 4. One card per flag
 
-Below the tiles there is one card per flag, in alphabetical order. While no run has sent flags and the catalogue is empty, there is only the message *"No flags yet"*, as in the picture. A card shows:
+Below the tiles there is one card per flag, in alphabetical order. While no run has sent flags and the catalogue is empty, there is only the message *"No flags yet"*.
+
+![The card of checkout_v2, labelled 1 value(s) never tested, with its description New checkout flow (A/B); 'holdout' is the 5 % control, the line Never tested: holdout, and a table: on, 6 runs, 5 cases, 5 passed, 1 failed; off, 4 runs, 5 cases, 3 passed, 1 failed, each with when it was last seen and a run link](../media/reports/flag-coverage/flag-card.png)
+
+*In the demo, runs tried `on` and `off`, but no run has tried the catalogue's third value, `holdout`.*
+
+A card shows:
 
 - **The flag's name**, with labels: not in catalogue when runs sent it but it isn't listed, and 2 value(s) never tested when catalogue values are missing from the runs. The catalogue's description is shown underneath.
 - **Never tested:** the catalogue values no run has used.
@@ -79,13 +85,13 @@ A catalogued flag that no run used shows "No run in this window used this flag."
 
 ### The Flag catalogue tab
 
-![The Flag catalogue tab with two numbered parts: 5 the Add a flag form filled in with checkout_v2, true, false and a description, 6 the Catalogue box saying No flags catalogued yet](../media/reports/flag-coverage/catalogue-annotated.png)
+![The Flag catalogue tab with two numbered parts: 5 the Add a flag form filled in with dark_mode, true, false and a description, 6 the Catalogue box with two flags, checkout_v2 (on, off, holdout) and new_onboarding (true, false), each with Save and Remove](../media/reports/flag-coverage/catalogue-annotated.png)
 
 *The catalogue tab with an example typed in. Add flag was not pressed, so nothing was saved.*
 
 ## 5. Add a flag
 
-![The Add a flag form: Name checkout_v2, Possible values true, false, Description New checkout page, being rolled out, and an Add flag button](../media/reports/flag-coverage/add-flag.png)
+![The Add a flag form: Name dark_mode, Possible values true, false, Description Dark colour scheme, in beta, and an Add flag button](../media/reports/flag-coverage/add-flag.png)
 
 - **Name**: exactly as runs send it, up to 64 letters, digits, `_`, `.` or `-`. Capital letters count: `Checkout` and `checkout` are two flags.
 - **Possible values**: separated by commas, up to 50. Values are compared as text; for an on/off flag, type `true, false`.
@@ -159,7 +165,8 @@ What the walkthrough says, in order. The video and every picture on this page ar
 3. Choose how far back to look: from seven to a hundred and eighty days.
 4. The tiles count the runs that sent flags, and the values no run has tried yet.
 5. Below them, one card per flag: each value, how many runs used it, and how they went.
-6. The Flag catalogue tab lists the flags you have and every value they can take.
-7. Type its name exactly as runs send it, and its possible values.
-8. Add flag would save it. Editors can do this; here we leave it unsaved.
-9. Once it is in the catalogue, values that no run has tried are flagged on the Coverage tab.
+6. A red label counts the catalogue values that no run has tried.
+7. The Flag catalogue tab lists the flags you have and every value they can take.
+8. Type its name exactly as runs send it, and its possible values.
+9. Add flag would save it. Editors can do this; here we leave it unsaved.
+10. Once it is in the catalogue, values that no run has tried are counted on the Coverage tab.

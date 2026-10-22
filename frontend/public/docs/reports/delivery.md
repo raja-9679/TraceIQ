@@ -47,7 +47,7 @@ The page shows the project selected at the top of the sidebar. The numbers on th
 
 ## 2. The four measures
 
-![Four tiles: Deployment frequency 2.33 per week, band High; Lead time for changes —, No band; Change failure rate 30%, band Low; Time to restore —, No band](../media/reports/delivery/tiles.png)
+![Four tiles: Deployment frequency 2.33 per week, band High; Lead time for changes 3.3 h, band Elite, median of 10 from commit time; Change failure rate 50.0%, band Low, 5 of 10 deployments; Time to restore 1.6 h, band High, median of 3 resolved incidents, 1 still open](../media/reports/delivery/tiles.png)
 
 Each tile shows the measure, a coloured **band**, and underneath, what the number is based on. A dash (—) and No band mean there was nothing to measure; the line underneath then says what is missing.
 
@@ -71,13 +71,13 @@ Each tile shows the measure, a coloured **band**, and underneath, what the numbe
 
 ## 3. Inputs used
 
-![Inputs used: 10 deployments, 0 incidents, 10 failed runs, 0 commits matched to test runs, with two notes about how incidents and failed runs are matched](../media/reports/delivery/inputs.png)
+![Inputs used: 10 deployments, 4 incidents, 10 failed runs, 0 commits matched to test runs, with two notes about how incidents and failed runs are matched](../media/reports/delivery/inputs.png)
 
-What the four measures were worked out from, in this window: the deployments, the incidents, the failed test runs on the deployments' environments, and how many deployed versions TraceIQ could match to a test run (for lead time). If a measure looks wrong, start here. The two notes repeat the matching rules: incidents have no environment, so they are matched across the whole project; a failed run counts against the latest deployment to the same environment in the 24 hours before it.
+What the four measures were worked out from, in this window: the deployments, the incidents, the failed test runs on the deployments' environments, and how many deployed versions TraceIQ could match to a test run (for lead time). In the demo, every deployment sent its commit time, so none needed matching to a test run, and the count is 0. If a measure looks wrong, start here. The two notes repeat the matching rules: incidents have no environment, so they are matched across the whole project; a failed run counts against the latest deployment to the same environment in the 24 hours before it.
 
 ## 4. Recent deployments
 
-![A table of deployments with the columns Deployed, Environment, Version / commit, Lead time and Outcome. Most rows say No failure seen; some say Failed run within 24 h or Deployment failed](../media/reports/delivery/deployments.png)
+![A table of ten deployments, versions 1.8.0 to 2.4.0, with the columns Deployed, Environment, Version / commit, Lead time (2.6 h to 27.4 h, from commit time) and Outcome. Five rows say No failure seen; the others say Incident within 24 h, Failed run within 24 h or Deployment failed](../media/reports/delivery/deployments.png)
 
 The deployments in the window, newest first (up to 50):
 

@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../_assets/docs.css">
 </head>
-<!-- Pictures: e2e/docs-capture/pages/reports-journey-coverage.spec.ts (the demo has no traffic import: empty Coverage tab).
+<!-- Pictures: e2e/docs-capture/pages/reports-journey-coverage.spec.ts (the demo has one traffic import on its web project).
      Page: frontend/src/pages/JourneyCoverage.tsx (+ components/journey-reports/). API: backend/app/api/journey_reports.py
      (journey-imports, journey-rules, journey-coverage); rules: app/services/journey_coverage.py. -->
 <body data-page="reports/journey-coverage">
@@ -57,13 +57,13 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Reports → Journey coverage</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The page shows the project selected at the top of the sidebar, in three tabs. The demo
-          projects have no traffic data yet, so the screenshot shows the <strong>Coverage</strong>
-          tab before the first import; <a href="#with-data">When there is data</a> describes the
-          full report. The numbers on the screenshot match the sections below.</p>
+        <p>The page shows the project selected at the top of the sidebar, in three tabs. The
+          <strong>Coverage</strong> tab, which opens first, is the report; it uses the newest
+          traffic file uploaded on the <strong>Imports</strong> tab. The numbers on the screenshot
+          match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/reports/journey-coverage/page-annotated.png" alt="The Journey coverage page with two numbered parts: 1 the tabs Coverage, Imports and Path rules, 2 a box saying No traffic imported yet with an Import traffic data button" loading="lazy" width="1440" height="900"></div>
-          <figcaption>The Journey coverage page for the demo's web project, before any traffic data is imported. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/reports/journey-coverage/page-annotated.png" alt="The Journey coverage page with four numbered parts: 1 the tabs Coverage, Imports and Path rules, 2 four figures: Traffic covered 67.3%, Pages covered 2 / 8, Pages tests visit 3, Journeys 2, 3 Top uncovered pages, led by /todos, 4 Tested, little or no traffic, with /forgot-password" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Coverage tab for the demo's web project, from its sample analytics export. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="tabs" data-toc="① The three tabs">The three tabs</h2></div>
@@ -76,12 +76,51 @@
           <li><strong>Path rules</strong>: tell TraceIQ which addresses are really the same page.</li>
         </ul>
 
-        <div class="part"><span class="num">2</span><h2 id="empty" data-toc="② Before the first import">Before the first import</h2></div>
+        <div class="part"><span class="num">2</span><h2 id="figures" data-toc="② The four figures">The four figures</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/journey-coverage/empty.png" alt="No traffic imported yet. Upload a page-view export (columns: path or url, views; optional journey, step, date) to see coverage. An Import traffic data button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/reports/journey-coverage/tiles.png" alt="Four tiles: Traffic covered 67.3%, 70k of 104k views; Pages covered 2 / 8, after path rules; Pages tests visit 3, distinct goto targets; Journeys 2" loading="lazy"></div>
         </figure>
-        <p>Until someone uploads traffic data, the Coverage tab says so. <strong>Import traffic
-          data</strong> takes you to the Imports tab.</p>
+        <p>Above them, a line names the import the report uses, the period it covers and when it
+          was uploaded.</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:24%">Figure</th><th>What it means</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Traffic covered</strong></td><td>Page views of pages that some test opens, as a share of all page views in the file. The headline number.</td></tr>
+              <tr><td><strong>Pages covered</strong></td><td>How many of the file's pages (after path rules) a test opens, out of how many pages there are.</td></tr>
+              <tr><td><strong>Pages tests visit</strong></td><td>How many different pages your tests open.</td></tr>
+              <tr><td><strong>Journeys</strong></td><td>How many named journeys the file has.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="part"><span class="num">3</span><h2 id="uncovered" data-toc="③ Top uncovered pages">Top uncovered pages</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/pages.png" alt="Two boxes side by side. Top uncovered pages: /todos 20k views 19.1%, /signup 6.4k 6.2%, /pricing, /settings, /todos/archive, /help. Tested, little or no traffic: /forgot-password, 0 views, 0%, visited by Reset password email is sent" loading="lazy"></div>
+        </figure>
+        <p>The busiest pages that no test opens, with their views and share of all views. Start
+          here: in the demo, <code>/todos</code> has a fifth of all visits and no test opens it.
+          Each box below lists up to 50 pages.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="low-traffic" data-toc="④ Tested, little or no traffic">Tested, little or no traffic</h2></div>
+        <p>Pages your tests open that get under 0.5% of views, or none at all, with the names of up
+          to three tests that open each one. Worth checking the test still matters, or that the
+          address is right.</p>
+
+        <h3 id="journeys">Journeys and funnels, and covered pages</h3>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/journeys.png" alt="Journeys and funnels: Sign in and manage todos, 2 of 3 steps tested, 71.5% of 56k views, first gap /todos, with steps / tested, /login tested, /todos untested; Sign up, 1 of 3 steps tested, 54.4% of 12k views, first gap /signup" loading="lazy"></div>
+        </figure>
+        <p>Further down, <strong>Journeys and funnels</strong> shows, for each journey in the file,
+          its steps in order, each labelled <span class="pill t-mint">tested</span> or
+          <span class="pill t-peach">untested</span>, with "N of M steps tested", the share of the
+          journey's views that is tested, and the first untested step ("first gap"). A file
+          without a journey column says so here.</p>
+        <p>Last, <strong>Covered pages</strong> lists the pages tests open, busiest first, with the
+          names of up to three tests that open each one. "(3 paths)" after a page means three
+          different addresses were folded into it by a path rule.</p>
+        <p>Before the first upload, the Coverage tab only says <em>"No traffic imported yet"</em>,
+          with an <strong>Import traffic data</strong> button that takes you to the Imports tab.</p>
 
         <h3 id="imports">The Imports tab</h3>
         <figure>
@@ -91,13 +130,13 @@
           others all can) as a <strong>CSV</strong> or <strong>JSON</strong> file, choose it under
           <strong>File</strong>, optionally give it a <strong>Label</strong> such as the month it
           covers, and press <strong>Upload import</strong>. TraceIQ recognises the columns by name
-          (upper or lower case, spaces allowed):</p>
+          (upper or lower case; spaces and other punctuation count as the same):</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Column</th><th>Names it looks for</th></tr></thead>
             <tbody>
-              <tr><td><strong>The page</strong> (needed)</td><td><code>path</code>, <code>url</code>, <code>page</code>, <code>page path</code>, <code>page url</code>, <code>landing page</code>, <code>page location</code>, <code>pathname</code>, <code>route</code></td></tr>
-              <tr><td><strong>Views</strong></td><td><code>views</code>, <code>pageviews</code>, <code>screenPageViews</code>, <code>count</code>, <code>hits</code>, <code>sessions</code>, <code>visits</code>, <code>users</code>. With none of these, every row counts as one view, and the import shows a warning.</td></tr>
+              <tr><td><strong>The page</strong> (needed)</td><td><code>path</code>, <code>url</code>, <code>page</code>, <code>page path</code>, <code>page url</code>, <code>landing page</code>, <code>page location</code>, <code>pathname</code>, <code>route</code>, and Google Analytics 4's <code>Page path and screen class</code> and <code>Page path + query string</code></td></tr>
+              <tr><td><strong>Views</strong></td><td><code>views</code>, <code>pageviews</code>, <code>page views</code>, <code>screenPageViews</code> (or <code>Screen page views</code>), <code>count</code>, <code>hits</code>, <code>sessions</code>, <code>visits</code>, <code>users</code>. With none of these, every row counts as one view, and the import shows a warning.</td></tr>
               <tr><td><strong>Journey</strong> (optional)</td><td><code>journey</code>, <code>funnel</code>, <code>flow</code>: the name of a journey such as "Checkout".</td></tr>
               <tr><td><strong>Step</strong> (optional)</td><td><code>step</code>, <code>order</code>, <code>position</code>: the page's place in that journey.</td></tr>
               <tr><td><strong>Date</strong> (optional)</td><td><code>date</code>, <code>day</code>, <code>start date</code>, <code>end date</code>: used to show the period the data covers.</td></tr>
@@ -107,11 +146,15 @@
         <div class="callout tip">
           <span class="icon">✓</span>
           <div><strong class="title">Rename a column if it isn't recognised</strong>
-            <p>The names must match one of these, apart from upper/lower case and spaces. An
-            export whose page column is called, say, "Page path and screen class" is refused
-            with "no path column"; rename that column to <code>page path</code> in a
-            spreadsheet and upload again.</p></div>
+            <p>The names must match one of these, apart from upper/lower case, spaces and
+            punctuation. A file whose page column has another name is refused with "no path
+            column"; rename that column to <code>page path</code> in a spreadsheet and upload
+            again. The lines starting with <code>#</code> that Google Analytics 4 puts above the
+            column names are skipped, so a GA4 export can be uploaded as it is.</p></div>
         </div>
+        <figure>
+          <div class="frame"><img src="../media/reports/journey-coverage/import-history.png" alt="Import history with one upload: Last 30 days (demo analytics export), labelled latest, 14 rows, 104k views, period 2026-09-22 to 2026-10-21, with View coverage and Delete buttons" loading="lazy"></div>
+        </figure>
         <p>A file can be up to 5 MB and 50,000 rows. The <strong>Import history</strong> below the
           form lists each upload with its rows, views and period, any warnings (for example rows
           skipped because they had no page), <strong>View coverage</strong> to see the report for
@@ -143,30 +186,6 @@
           traffic <em>and</em> to your tests' addresses, and to every import, old ones included,
           so nothing needs uploading again. <strong>Save rules</strong> keeps them;
           <strong>Discard changes</strong> goes back to the saved ones. Up to 100 rules.</p>
-
-        <h2 id="with-data">When there is data</h2>
-        <p>After an upload, the Coverage tab starts with the import's name, the period it covers and
-          when it was uploaded, then four figures:</p>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th style="width:24%">Figure</th><th>What it means</th></tr></thead>
-            <tbody>
-              <tr><td><strong>Traffic covered</strong></td><td>Page views of pages that some test opens, as a share of all page views in the file. The headline number.</td></tr>
-              <tr><td><strong>Pages covered</strong></td><td>How many of the file's pages (after path rules) a test opens, out of how many pages there are.</td></tr>
-              <tr><td><strong>Pages tests visit</strong></td><td>How many different pages your tests open.</td></tr>
-              <tr><td><strong>Journeys</strong></td><td>How many named journeys the file has.</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p>Then four boxes, each listing up to 50 pages with their views and share of all views:</p>
-        <ul>
-          <li><strong>Top uncovered pages</strong>: the busiest pages that no test opens. Start here.</li>
-          <li><strong>Tested, little or no traffic</strong>: pages your tests open that get under 0.5% of views, or none at all. Worth checking the test still matters, or that the address is right.</li>
-          <li><strong>Journeys and funnels</strong>: for each journey in the file, its steps in order, each labelled <span class="pill t-mint">tested</span> or <span class="pill t-peach">untested</span>, with "N of M steps tested", the share of the journey's views that is tested, and the first untested step ("first gap").</li>
-          <li><strong>Covered pages</strong>: the pages tests open, busiest first, with the names of up to three tests that open each one.</li>
-        </ul>
-        <p>"(3 paths)" after a page means three different addresses were folded into it by a path
-          rule.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">
