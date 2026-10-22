@@ -25,6 +25,25 @@ from app.services import instance_settings as insvc
 router = APIRouter()
 
 
+async def is_instance_admin(session: AsyncSession, user: User) -> bool:
+    """The check behind get_current_instance_admin, without its side effects
+    (no 403, no RLS bypass) — for endpoints that only branch on it."""
+    if user.is_instance_admin:
+        return True
+    first_tenant_id = (await session.exec(
+        select(func.min(Tenant.id)))).one()
+    if first_tenant_id is None:
+        return False
+    return (await session.exec(
+        select(UserSystemRole)
+        .join(Role, Role.id == UserSystemRole.role_id)
+        .where(
+            UserSystemRole.user_id == user.id,
+            UserSystemRole.tenant_id == first_tenant_id,
+            Role.name == "Tenant Admin",
+        ))).first() is not None
+
+
 async def get_current_instance_admin(
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_user),
@@ -37,26 +56,15 @@ async def get_current_instance_admin(
     legacy fallback — admin of the FIRST (oldest) tenant, which on a
     self-hosted install is the first account registered, exactly what
     SELF_HOSTING.md promises.
+
+    The 403 text is generic on purpose: this guards much more than instance
+    settings (fleet, DLQ, instance-wide access reviews and policy decisions).
     """
-    if current_user.is_instance_admin:
-        return current_user
-    first_tenant_id = (await session.exec(
-        select(func.min(Tenant.id)))).one()
-    if first_tenant_id is None:
-        raise HTTPException(status_code=403, detail="No tenants exist yet")
-    is_owner_admin = (await session.exec(
-        select(UserSystemRole)
-        .join(Role, Role.id == UserSystemRole.role_id)
-        .where(
-            UserSystemRole.user_id == current_user.id,
-            UserSystemRole.tenant_id == first_tenant_id,
-            Role.name == "Tenant Admin",
-        ))).first()
-    if not is_owner_admin:
+    if not await is_instance_admin(session, current_user):
         raise HTTPException(
             status_code=403,
-            detail="Instance settings can only be managed by the instance admin "
-                   "(an admin of the first tenant on this deployment)")
+            detail="Only the instance admin can do this (an admin of the first "
+                   "tenant on this deployment; being a tenant admin is not enough)")
     # Operator endpoints read across tenants on purpose (fleet, DLQ, policy
     # decisions, instance-wide reviews): no database tenant scope for them.
     from app.services import rls
