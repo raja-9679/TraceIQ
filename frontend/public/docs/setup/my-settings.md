@@ -30,7 +30,7 @@ My settings answers **"How do I want TraceIQ to behave for me?"** A *run* is one
 
 The list on the left switches between five sections; the cards of the chosen section appear on the right. The numbers on the screenshot match the sections below.
 
-![The My settings page with the section list numbered: 1 General, 2 Runs and recordings, 3 Notifications, 4 Account and API keys, 5 Two-factor sign-in. The General section is open, showing the Display card and the Features in this browser card](../media/setup/my-settings/page-annotated.png)
+![The My settings page with the section list numbered: 1 General, 2 Runs and recordings, 3 Notifications, 4 Account and API keys, 5 Two-factor sign-in. The General section is open, showing the Features in this browser card](../media/setup/my-settings/page-annotated.png)
 
 *My settings, opened on its General section. Click the picture to see it larger.*
 
@@ -39,14 +39,6 @@ The list on the left switches between five sections; the cards of the chosen sec
 > Most cards have their own **Save** button, which saves only that card. It stays grey until you change something; then the card says "Unsaved changes." and a **Discard** button puts the card back as it was. Saving one card never touches another, so you can change one thing at a time. Two places save straight away instead, without a Save button: *Features in this browser* and the *Per project* email choices.
 
 ## 1. General
-
-![The Display card: Theme Light, Timezone UTC, Date format MM/DD/YYYY, and a grey Save button](../media/setup/my-settings/display.png)
-
-**Display** holds a theme (Light, Dark or Auto), a time zone and a date format.
-
-> **These three have no effect yet**
->
-> TraceIQ saves them with your account, but in this version nothing else in the app reads them: changing the theme does not darken the screens, and dates and times are not reformatted.
 
 ![The Features in this browser card with one checkbox: AI test generation](../media/setup/my-settings/features.png)
 
@@ -126,7 +118,7 @@ Two-factor sign-in means that signing in with your password also needs a 6-digit
 
 - **Authenticator app**: set it up (see [How to…](#how-to)).
 - **Recovery codes**: a fresh set of 10 backup codes, for when you don't have your phone. Each code works once. Making a new set needs a current code from the app, and the old set stops working.
-- **Turn off two-factor sign-in**: enter a current code and press **Disable MFA** to go back to password only. Your recovery codes are deleted too.
+- **Turn off two-factor sign-in**: enter a current 6-digit code and press **Disable MFA** (it stays greyed out until the code is complete) to go back to password only. Your recovery codes are deleted too.
 
 > **The page doesn't say whether it is on**
 >
