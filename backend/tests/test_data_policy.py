@@ -21,6 +21,7 @@ from app.services.data_policy import (
     cap_capture_level,
     effective_data_policy,
     normalize_capture_level,
+    validate_data_policy,
 )
 
 
@@ -149,3 +150,14 @@ def test_a_non_dict_project_policy_is_tolerated():
 def test_store_bodies_defaults_true_and_is_respected():
     assert effective_data_policy({}, ceiling="full")["store_bodies"] is True
     assert effective_data_policy({"store_bodies": False}, ceiling="full")["store_bodies"] is False
+
+
+def test_null_redact_patterns_means_the_built_in_set():
+    # What the settings form sends for a project that follows the defaults.
+    patch = validate_data_policy({
+        "capture_level": "full", "store_bodies": True, "redact_patterns": None,
+        "retention_days": 0, "redact_headers": [], "redact_body_fields": [], "mask_selectors": []})
+    assert patch["redact_patterns"] is None
+    assert effective_data_policy({**patch})["redact_patterns"] == effective_data_policy({})["redact_patterns"]
+    # An empty list is still "scan for nothing", not the defaults.
+    assert validate_data_policy({"redact_patterns": []})["redact_patterns"] == []
