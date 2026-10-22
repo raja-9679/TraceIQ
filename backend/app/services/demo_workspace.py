@@ -530,7 +530,7 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
             git_commit=r["git_commit"], git_branch=r["git_branch"],
             git_repo="example/demo" if r["git_commit"] else None,
             selection_mode="full", selection_total=len(r["results"]),
-            agent_id="demo-seed", screenshots=[], execution_log=[], network_events=[])
+            screenshots=[], execution_log=[], network_events=[])
         session.add(run)
         run_rows.append((run, r))
     mon_runs: List[tuple] = []
