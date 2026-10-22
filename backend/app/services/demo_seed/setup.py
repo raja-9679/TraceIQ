@@ -21,6 +21,13 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 MEMBER_DOMAIN = "demo.traceiq.invalid"
+
+
+def is_reserved_demo_email(email: str) -> bool:
+    """True for addresses in the demo members' domain. Nobody may register
+    one: a pre-registered address would make demo creation fail, and the
+    demo's pending invitation is addressed to this domain."""
+    return (email or "").strip().lower().rsplit("@", 1)[-1] == MEMBER_DOMAIN
 AGENT_ID = "claude-code"
 
 _MEMBERS = (
@@ -140,9 +147,11 @@ async def _members_and_team(ctx, rng) -> None:
     s.add(WorkspaceInvitation(
         email=f"priya.demo{ws.id}@{MEMBER_DOMAIN}", workspace_id=ws.id, role="member",
         invited_by_id=ctx.user.id,
-        # Never handed out (a real token is only in the inviting POST's
-        # response), and the address can never sign up.
-        token=f"demo{ctx.ws.id}-{uuid.UUID(int=rng.getrandbits(128)).hex}",
+        # Random, never handed out, and the address can't sign up (the
+        # demo domain is reserved in register_user). It must NOT come from
+        # the seeded rng: the seed is a constant, so a derived token would be
+        # computable and register-with-invite would join this workspace.
+        token=secrets.token_urlsafe(32),
         expires_at=sent + timedelta(days=7), created_at=sent,
         project_id=ctx.projects["web"].id, project_role="viewer"))
 

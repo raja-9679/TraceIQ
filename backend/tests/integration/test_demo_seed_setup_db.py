@@ -144,3 +144,23 @@ async def test_delete_removes_everything_including_the_members(session, owner, m
                  if after[t] != before[t] and t not in KEEP_AFTER_DELETE}
     assert not leftovers, f"demo delete left rows behind: {leftovers}"
     assert await session.get(User, owner_id) is not None
+
+
+@pytest.mark.asyncio(loop_scope="function")
+async def test_demo_invitation_cannot_be_used_to_join(session, owner):
+    """The demo invite token is random (not derived from the constant seed),
+    and nobody can register an address in the demo members' domain."""
+    from fastapi import HTTPException
+    from app.api.auth import UserCreate, register_user
+    from app.models import WorkspaceInvitation
+
+    a = await dw.create_demo_workspace(session, owner)
+    invite = (await session.exec(select(WorkspaceInvitation).where(
+        WorkspaceInvitation.workspace_id == a["workspace_id"]))).one()
+    assert not invite.token.startswith("demo")
+    register = getattr(register_user, "__wrapped__", register_user)  # skip the rate limiter
+    with pytest.raises(HTTPException) as e:
+        await register(SimpleNamespace(), UserCreate(
+            email=invite.email.upper(), password="A-strong-passw0rd!x", full_name="x",
+            invite_token=invite.token), session=session)
+    assert e.value.status_code == 400 and "reserved" in e.value.detail
