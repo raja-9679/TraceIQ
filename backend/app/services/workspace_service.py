@@ -382,7 +382,7 @@ class WorkspaceService:
             
         # 1. Fetch Users in the Tenant (via Workspaces)
         ws_stmt = (
-            select(User.id, User.email, User.full_name, User.last_login_at, User.is_active, UserWorkspace.role, Role.name)
+            select(User.id, User.email, User.full_name, User.last_login_at, User.is_active, UserWorkspace.role, Role.name, Workspace.name)
             .join(UserWorkspace, UserWorkspace.user_id == User.id)
             .join(Workspace, UserWorkspace.workspace_id == Workspace.id)
             .outerjoin(Role, UserWorkspace.role_id == Role.id)
@@ -425,9 +425,12 @@ class WorkspaceService:
                     "last_login_at": m[3],
                     "is_active": m[4],
                     "role": role_name,
-                    "status": "active"
+                    "status": "active" if m[4] else "inactive",
+                    "_workspaces": [m[7]],
                 }
             else:
+                 if m[7] not in unique_users[uid]["_workspaces"]:
+                     unique_users[uid]["_workspaces"].append(m[7])
                  # Update role if higher priority
                  current_p = get_priority(unique_users[uid]["role"])
                  new_p = get_priority(role_name)
@@ -447,7 +450,8 @@ class WorkspaceService:
                     "last_login_at": sm[3],
                     "is_active": sm[4],
                     "role": role_name,
-                    "status": "active"
+                    "status": "active" if sm[4] else "inactive",
+                    "_workspaces": [],
                 }
             else:
                  # Tenant Admin should act as override/highest priority
@@ -458,6 +462,9 @@ class WorkspaceService:
                  if new_p > current_p:
                      unique_users[uid]["role"] = role_name
 
+        for u in unique_users.values():
+            names = sorted(n for n in u.pop("_workspaces") if n)
+            u["workspace"] = ", ".join(names) or None
         return list(unique_users.values())
 
     @staticmethod

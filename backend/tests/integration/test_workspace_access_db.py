@@ -359,3 +359,22 @@ async def test_tenant_admin_assign_changes_an_existing_role(maker, scene, client
     async with maker() as s:
         rows = (await s.exec(select(UserWorkspace).where(UserWorkspace.user_id == scene.editor))).all()
         assert {r.workspace_id: r.role for r in rows} == {scene.ws: "admin", scene.other_ws: "admin"}
+
+
+async def test_tenant_users_list_names_workspaces_and_status(maker, scene, client):
+    r = await client.get("/api/admin/users", headers=ADMIN)
+    assert r.status_code == 200, r.text
+    by_email = {u["email"]: u for u in r.json()}
+    assert by_email["admin@acme.example.com"]["workspace"] == "acme second ws, acme ws"
+    assert by_email["editor@acme.example.com"]["workspace"] == "acme ws"
+    assert by_email["editor@acme.example.com"]["status"] == "active"
+
+
+async def test_me_reports_mfa_state_only_for_the_caller(maker, scene, client):
+    async with maker() as s:
+        u = await s.get(User, scene.admin)
+        u.mfa_enabled = True
+        s.add(u)
+        await s.commit()
+    r = await client.get("/api/auth/me", headers=ADMIN)
+    assert r.status_code == 200 and r.json()["mfa_enabled"] is True

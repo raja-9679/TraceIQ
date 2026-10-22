@@ -765,6 +765,12 @@ class UserRead(SQLModel):
     full_name: str
 
 
+class MeRead(UserRead):
+    """`GET /auth/me` only: facts about the caller that other users must not
+    see through member lists (which use UserRead)."""
+    mfa_enabled: bool = False
+
+
 class UserReadDetailed(UserRead):
     role: Optional[str] = None
     last_login_at: Optional[datetime] = None
