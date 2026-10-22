@@ -201,7 +201,11 @@ def validate_data_policy(payload: Any) -> Dict[str, Any]:
         if field in payload:
             out[field] = _validated_string_list(field, payload[field])
 
-    if "redact_patterns" in payload:
+    if "redact_patterns" in payload and payload["redact_patterns"] is None:
+        # null = "use the built-in set" (what the settings form sends when the
+        # project follows the defaults); distinct from [] = scan for nothing.
+        out["redact_patterns"] = None
+    elif "redact_patterns" in payload:
         patterns = _validated_string_list("redact_patterns", payload["redact_patterns"])
         bad = [p for p in patterns if p.lower() not in AVAILABLE_PATTERNS]
         if bad:
