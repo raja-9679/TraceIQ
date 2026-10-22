@@ -557,7 +557,11 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   covers critical cases, or all cases when none is critical. Checks carry
   `missing_data`; a gate failing ONLY on missing data reads "insufficient
   data", never pass. No commit given → the newest finished run (on the
-  branch) picks the commit. Policy PUT is now audited. UI `/release-readiness`;
+  branch) picks the commit — `GET .../quality-gate` with no commit/branch/run_ids
+  uses the same `resolve_runs` (it used to judge the single newest run with no
+  commit, so the two pages disagreed). "Newest result" is by evidence time,
+  never max(id). Reasons use check titles (`CHECK_TITLES`, twin of
+  `frontend/src/lib/gateChecks.ts`), not ids. Policy PUT is now audited. UI `/release-readiness`;
   MCP `get_release_readiness`; the Action's PR comment shows
   check `detail` (dist rebuilt).
 - **Per-step evidence + failure investigation v2 (2026-10, WP3)** — workers
