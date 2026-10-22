@@ -73,7 +73,7 @@ export default function EstateView({ projectId, estateId, domainId, onSelectDoma
             <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
                 <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-4">
                     <DomainTable domains={e.domains ?? []} selectedId={domainId} onSelect={onSelectDomain}
-                        onRemove={(d) => removeDomain.mutate(d)} canRemove />
+                        onRemove={(d) => { if (window.confirm(`Remove ${d.hostname} from this estate? Its past scan results are deleted too.`)) removeDomain.mutate(d); }} canRemove />
                     <DomainImport estateId={estateId} />
                 </div>
                 <div>

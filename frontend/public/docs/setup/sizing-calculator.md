@@ -59,6 +59,8 @@ The page opens with example figures already filled in (2,000 tests a day, one mi
 - **High availability**: plan for the installation to keep running if one machine fails: one spare worker, two copies of the main services, a standby database.
 - **Android emulators**: add machines for testing Android apps; each emulator needs about 4 GB of memory and a host that supports hardware virtualisation (KVM).
 
+Below it, **Average artifact sizes** lists the size TraceIQ assumes for each kind of file (screenshot, console and network logs, visual diff, video and trace), with the default under each name. Type your own averages, in KB, if you know them; clearing a box goes back to the default.
+
 ## 3. The estimate
 
 ![Four tiles: Browser workers, Object store, Postgres, Whole deployment](../media/setup/sizing-calculator/results.png)
