@@ -62,6 +62,10 @@ class ResultRow(NamedTuple):
     run_id: int
     browser: Optional[str]
     device: Optional[str]
+    # When the result became evidence (evidence_time()). "Newest" means this,
+    # with the id only breaking ties: ids follow insert order, and a result
+    # can be written after an older one finished (imports, backfills).
+    at: Optional[datetime] = None
 
 
 def is_critical(priority: Optional[str]) -> bool:
@@ -88,22 +92,26 @@ def evidence_time():
 # ---------------------------------------------------------------------------
 
 
+def _recency(r: ResultRow) -> tuple:
+    return (r.at or datetime.min, r.result_id)
+
+
 def classify_case(rows: Iterable[ResultRow]) -> Tuple[str, Optional[int], Optional[str]]:
     """(status, run_id, detail) for one case from its results in scope."""
     newest: Dict[tuple, ResultRow] = {}
     for r in rows:
         key = (r.browser or "", r.device or "")
-        if key not in newest or r.result_id > newest[key].result_id:
+        if key not in newest or _recency(r) > _recency(newest[key]):
             newest[key] = r
     if not newest:
         return NOT_RUN, None, None
     bad = [r for r in newest.values() if r.status != TestStatus.PASSED]
     if bad:
-        worst = max(bad, key=lambda r: r.result_id)
+        worst = max(bad, key=_recency)
         where = " / ".join(x for x in (worst.browser, worst.device) if x)
         return FAILED, worst.run_id, f"{worst.status.value} in run {worst.run_id}" + (
             f" ({where})" if where else "")
-    return PASSED, max(newest.values(), key=lambda r: r.result_id).run_id, None
+    return PASSED, max(newest.values(), key=_recency).run_id, None
 
 
 def flaky_cases_check(flaky_names: Sequence[str], limit: int) -> QualityGateCheck:
@@ -190,9 +198,35 @@ def requirement_status(case_statuses: Sequence[str]) -> str:
     return "partial" if passed else "untested"
 
 
+#: Check ids in words, for reasons people read (executive summary, digests,
+#: readiness page). Same titles as frontend/src/lib/gateChecks.ts — keep the
+#: two in step. Machine consumers read gate.checks[].name, never the reasons.
+CHECK_TITLES = {
+    "pass_rate": "Pass rate",
+    "coverage": "Coverage",
+    "security_high_findings": "High-severity security findings",
+    "security_medium_findings": "Medium-severity security findings",
+    "monitors_up": "Monitors are up",
+    "external_tests": "External CI tests",
+    "perf_lcp": "Largest Contentful Paint budget",
+    "perf_cls": "Layout shift budget",
+    "perf_ttfb": "Time to first byte budget",
+    "flaky_cases": "Flaky tests",
+    "critical_passed": "Critical tests passed",
+    "evidence_age": "Evidence age",
+    "manual_signoff": "Release sign-off",
+    "accessibility_new_violations": "New accessibility violations",
+    "api_breaking_changes": "Breaking API changes",
+}
+
+
+def check_title(name: str) -> str:
+    return CHECK_TITLES.get(name) or name.replace("_", " ").capitalize()
+
+
 def verdict_for(gate: QualityGateResult, has_runs: bool) -> Tuple[str, List[str]]:
     failing = [c for c in gate.checks if not c.passed]
-    reasons = [f"{c.name}: {c.actual} (needs {c.threshold})"
+    reasons = [f"{check_title(c.name)}: {c.actual} (needs {c.threshold})"
                + (f" — {c.detail}" if c.detail else "") for c in failing]
     if not has_runs:
         return "insufficient_data", reasons
@@ -200,7 +234,7 @@ def verdict_for(gate: QualityGateResult, has_runs: bool) -> Tuple[str, List[str]
         ok = [f"all {len(gate.checks)} checks passed over "
               f"{len(gate.evaluated_run_ids)} run(s)"]
         partial = [c for c in gate.checks if c.name == "coverage" and c.detail]
-        ok += [f"coverage: {c.actual}" for c in partial]
+        ok += [f"{check_title(c.name)}: {c.actual}" for c in partial]
         return "ready", ok
     if all(c.missing_data for c in failing):
         return "insufficient_data", reasons
@@ -237,7 +271,7 @@ async def results_in_scope(session: AsyncSession, project_id: int,
     """Results per case: every finished run on `git_commit` when given, else
     the given runs. Project-filtered either way."""
     stmt = (select(TestCaseResult.id, TestCaseResult.test_case_id, TestCaseResult.status,
-                   TestRun.id, TestRun.browser, TestRun.device)
+                   TestRun.id, TestRun.browser, TestRun.device, evidence_time())
             .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
             .where(TestRun.project_id == project_id, counted(),
                    TestCaseResult.test_case_id.is_not(None)))
@@ -357,19 +391,26 @@ async def resolve_runs(session: AsyncSession, project_id: int, git_commit: Optio
 
 async def _last_results(session: AsyncSession, project_id: int,
                         case_ids: Sequence[int]) -> Dict[int, tuple]:
-    """Newest result per case anywhere in the project: (status, at, commit)."""
+    """Newest result per case anywhere in the project: (status, at, commit).
+
+    Newest by evidence time, like newest_passes — picking by max(id) let
+    "last result" read older than "last passed" when a result was written
+    after a newer one."""
     if not case_ids:
         return {}
-    newest = (select(func.max(TestCaseResult.id))
+    rank = func.row_number().over(
+        partition_by=TestCaseResult.test_case_id,
+        order_by=(evidence_time().desc(), TestCaseResult.id.desc())).label("rank")
+    ranked = (select(TestCaseResult.test_case_id.label("case_id"),
+                     TestCaseResult.status.label("status"), evidence_time().label("at"),
+                     TestRun.git_commit.label("git_commit"), rank)
               .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
               .where(TestRun.project_id == project_id, counted(),
                      TestCaseResult.test_case_id.in_(list(case_ids)))
-              .group_by(TestCaseResult.test_case_id))
+              .subquery())
     rows = (await session.exec(
-        select(TestCaseResult.test_case_id, TestCaseResult.status, evidence_time(),
-               TestRun.git_commit)
-        .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
-        .where(TestCaseResult.id.in_(newest)))).all()
+        select(ranked.c.case_id, ranked.c.status, ranked.c.at, ranked.c.git_commit)
+        .where(ranked.c.rank == 1))).all()
     return {cid: (st, at, commit) for cid, st, at, commit in rows}
 
 
