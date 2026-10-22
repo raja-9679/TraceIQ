@@ -34,6 +34,8 @@ describe('fmtMinutes', () => {
     it('handles missing, minutes and hours', () => {
         expect(fmtMinutes(null)).toBe('—');
         expect(fmtMinutes(12.4)).toBe('12 min');
+        expect(fmtMinutes(0.4)).toBe('24 s');
+        expect(fmtMinutes(0)).toBe('0 min');
         expect(fmtMinutes(150)).toBe('2.5 h');
     });
 });

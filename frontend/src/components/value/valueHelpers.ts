@@ -11,9 +11,11 @@ export const SIGNAL_LABEL: Record<string, string> = {
     fixed: 'passed again on a new commit',
 };
 
-/** Minutes as "45 min" / "3.2 h" / "—". */
+/** Minutes as "40 s" / "45 min" / "3.2 h" / "—". Under a minute shows
+ *  seconds, so a real saving never reads "0 min". */
 export function fmtMinutes(m: number | null | undefined): string {
     if (m === null || m === undefined) return '—';
+    if (m > 0 && m < 1) return `${Math.max(1, Math.round(m * 60))} s`;
     if (m < 60) return `${Math.round(m)} min`;
     return `${(m / 60).toFixed(1)} h`;
 }
