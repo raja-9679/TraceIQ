@@ -193,10 +193,12 @@ async def build(session, workspace: Any, projects: Sequence[Any], start: date, e
                                      .join(TestRun, TestRun.id == TestCaseResult.test_run_id)
                                      .where(*in_range, TestRun.executor == ExecutorType.MANUAL,
                                             TestCaseResult.status.in_(finished)))
+    # Automated runs only: a manual run's browser column says "manual", and
+    # its executions are already reported as manual_case_executions.
     browsers = sorted({b for b in (await session.exec(
-        select(TestRun.browser).distinct().where(*in_range))).all() if b}) if ids else []
+        select(TestRun.browser).distinct().where(*in_range, automated))).all() if b}) if ids else []
     devices = sorted({d for d in (await session.exec(
-        select(TestRun.device).distinct().where(*in_range))).all() if d}) if ids else []
+        select(TestRun.device).distinct().where(*in_range, automated))).all() if d}) if ids else []
     activity = {
         "runs": runs_total, "passed_runs": passed_runs,
         "pass_rate": round(100.0 * passed_runs / runs_total, 1) if runs_total else None,
