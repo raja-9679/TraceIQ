@@ -6,6 +6,7 @@ import and its access control.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 import socket
 from types import SimpleNamespace
 from typing import NamedTuple
@@ -13,7 +14,7 @@ from typing import NamedTuple
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -140,10 +141,15 @@ async def test_demo_seeds_history_the_reports_can_show(session, scene):
     sched = (await session.exec(select(TestSchedule).where(TestSchedule.project_id == api))).one()
     assert sched.is_monitor is True and sched.is_active is False       # never fires
     checks = (await session.exec(select(MonitorCheck).where(MonitorCheck.schedule_id == sched.id))).all()
-    assert len(checks) == 120 and any(not c.is_up for c in checks)
+    # 30 days x 4 checks, minus today's that are still in the future.
+    assert 117 <= len(checks) <= 120 and any(not c.is_up for c in checks)
+    assert max(c.checked_at for c in checks) <= datetime.utcnow()
     monitor_runs = (await session.exec(select(TestRun).where(
         TestRun.agent_id == f"schedule:{sched.id}"))).all()
-    assert len(monitor_runs) == 120
+    assert len(monitor_runs) == len(checks)
+    newest_run = (await session.exec(select(func.max(TestRun.created_at)).where(
+        TestRun.project_id.in_([web, api])))).one()
+    assert newest_run <= datetime.utcnow()
     secret = (await session.exec(select(ProjectSecret).where(ProjectSecret.project_id == web,
                                                              ProjectSecret.key == "ALICE_PASSWORD"))).one()
     assert secret.value_encrypted != "wonderland" and decrypt_secret(secret.value_encrypted) == "wonderland"

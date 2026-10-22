@@ -158,10 +158,13 @@ _RANDOM_ERRORS = {
 
 
 def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
-                    days: int = HISTORY_DAYS) -> Dict[str, Any]:
-    """Everything the demo contains, as plain data. Deterministic per (seed, today)."""
+                    days: int = HISTORY_DAYS, now: Optional[datetime] = None) -> Dict[str, Any]:
+    """Everything the demo contains, as plain data. Deterministic per (seed, today).
+    Nothing is dated after `now` (default: the end of `today`, else utcnow)."""
     rng = random.Random(seed)
-    today = today or datetime.utcnow().date()
+    if now is None:
+        now = datetime.combine(today, time.max) if today else datetime.utcnow()
+    today = today or now.date()
     first = today - timedelta(days=days - 1)
     projects = [
         {"key": "web", "name": "Demo — Todo web app",
@@ -224,6 +227,7 @@ def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
             for slot, (hour, trigger) in enumerate(((2, "schedule"), (14, "ci"))):
                 at = datetime.combine(day, time(hour, rng.randint(0, 59), rng.randint(0, 59)))
                 commit = "%07x" % rng.getrandbits(28) if trigger == "ci" else None
+                mark = len(flaky_outcomes)
                 results = []
                 for case in suite["cases"]:
                     status, error, flaky, retries = "passed", None, False, 0
@@ -248,6 +252,11 @@ def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
                                     "is_flaky": flaky, "retry_count": retries, "cluster": cluster,
                                     "duration_ms": float(base + rng.randint(0, base // 2)
                                                          + (3000 if cluster else 0))})
+                if at > now:
+                    # Today's later slot hasn't happened yet. Generated (and the
+                    # rng consumed) anyway so the rest of the plan is unchanged.
+                    del flaky_outcomes[mark:]
+                    continue
                 runs.append({"project": proj["key"], "suite": suite["key"], "case": None,
                              "created_at": at, "trigger": trigger, "git_commit": commit,
                              "git_branch": "main" if commit else None, "results": results,
@@ -262,8 +271,10 @@ def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
         for hour in (0, 6, 12, 18):
             at = datetime.combine(day, time(hour, 1, rng.randint(0, 59)))
             up = not (d == outage_day and hour in (6, 12))
-            monitor["checks"].append({"at": at, "up": up,
-                                      "duration_ms": float(600 + rng.randint(0, 400))})
+            duration = float(600 + rng.randint(0, 400))
+            if at > now:
+                continue
+            monitor["checks"].append({"at": at, "up": up, "duration_ms": duration})
 
     cluster_hits = sum(1 for r in runs for x in r["results"] if x["cluster"])
     cluster_times = [r["created_at"] for r in runs if any(x["cluster"] for x in r["results"])]
@@ -318,7 +329,8 @@ def build_demo_plan(seed: int = DEFAULT_SEED, today: Optional[date] = None,
     deployments = [{"project": "web", "deployed_at": datetime.combine(first + timedelta(days=d), time(16, 0)),
                     "version": f"1.{d // 3}.0",
                     "status": "failed" if d == days - 8 else "success"}
-                   for d in range(1, days, 3)]
+                   for d in range(1, days, 3)
+                   if datetime.combine(first + timedelta(days=d), time(16, 0)) <= now]
     return {"seed": seed, "today": today, "first_day": first, "projects": projects, "runs": runs,
             "monitor": monitor, "clusters": clusters, "findings": findings, "flakes": flakes,
             "flake_snapshots": snapshots, "deployments": deployments}
@@ -422,7 +434,7 @@ async def create_demo_workspace(session: Any, user: Any, *, seed: int = DEFAULT_
         raise DemoExists(existing.id)
 
     now = now or datetime.utcnow()
-    plan = build_demo_plan(seed, now.date())
+    plan = build_demo_plan(seed, now.date(), now=now)
     ws = await workspace_service.create_workspace(
         name=DEMO_WORKSPACE_NAME, owner_id=user.id, session=session, commit=False,
         description="DEMO — generated sample data to explore TraceIQ. Delete it any time.",
