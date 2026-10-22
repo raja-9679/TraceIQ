@@ -54,7 +54,7 @@ The coloured box gives the answer, the commit it is about, how many runs were ju
 | Answer | What it means |
 |---|---|
 | Ready to release | Every quality-gate check passed on the runs of this commit. |
-| Not ready | At least one check failed. The reasons say which one, what it found and what it needed, for example *pass_rate: 0.0% (needs &gt;= 100.0%)*. |
+| Not ready | At least one check failed. The reasons say which one, what it found and what it needed, for example *Pass rate: 0.0% (needs &gt;= 100.0%)*. |
 | Insufficient data | Nothing failed, but evidence is missing: there is no finished run, or a required check has nothing to judge (a critical test that didn't run on this commit, no sign-off yet, no report from your build system). Missing evidence never counts as a pass. |
 
 ![A pink box: Not ready, an older commit, 1 run(s) evaluated; At least one gate check failed; pass_rate: 0.0% (needs at least 100.0%)](../media/releases/release-readiness/verdict-not-ready.png)
@@ -67,16 +67,16 @@ When the commit was chosen for you (from *Latest run* or a branch), the line und
 
 ![Gate checks: pass_rate 100.0% needs at least 100.0%, coverage full suite needs informational, security_high_findings 0 needs at most 0, each with a green tick](../media/releases/release-readiness/checks.png)
 
-The checks of the project's **quality gate**, applied to every run in ④. Each line shows the value found, then "needs" and the rule. A green tick means passed, a red cross failed, and an amber dash failed *because evidence was missing*. A grey line under a check gives detail, such as the names of the tests concerned. The checks appear here under their technical names (`pass_rate`, `critical_passed`…); the *Quality gate* page explains each one.
+The checks of the project's **quality gate**, applied to every run in ④. Each line shows the value found, then "needs" and the rule. A green tick means passed, a red cross failed, and an amber dash failed *because evidence was missing*. A grey line under a check gives detail, such as the names of the tests concerned. The checks appear under the same names as on the *Quality gate* page (*Pass rate*, *Critical tests passed*…), which explains each one; point at a name to read a one-line explanation.
 
 Which checks there are depends on the project's rules, which are set on the *Quality gate* page under **Gate rules**. Four of them exist for this page in particular and are off until switched on there:
 
 | Check | What it requires |
 |---|---|
-| `flaky_cases` | No more than N flaky tests: tests that are quarantined now, or have a flake score of 0.4 or more. |
-| `critical_passed` | Every critical test passed on this commit. If the project has no critical test, this check fails: whoever switched it on expected it to protect something. |
-| `evidence_age` | The newest pass of each critical test (of every test, when none is critical) is at most N days old, on any commit. This checks that the evidence is recent, not that this commit passed. |
-| `manual_signoff` | The newest release sign-off for this commit is an approval. See *Release sign-off*. |
+| **Flaky tests** | No more than N flaky tests: tests that are quarantined now, or have a flake score of 0.4 or more. |
+| **Critical tests passed** | Every critical test passed on this commit. If the project has no critical test, this check fails: whoever switched it on expected it to protect something. |
+| **Evidence age** | The newest pass of each critical test (of every test, when none is critical) is at most N days old, on any commit. This checks that the evidence is recent, not that this commit passed. |
+| **Release sign-off** | The newest release sign-off for this commit is an approval. See *Release sign-off*. |
 
 ## 4. Runs considered
 

@@ -58,10 +58,10 @@ Which checks appear depends on the rules. Three are always there:
 | Check | What it looks at |
 |---|---|
 | **Pass rate** | The share of the judged runs that passed. Runs that were cancelled or timed out have no pass/fail answer and are left out. With no finished run at all, this check fails. |
-| **coverage** | For information only, it never blocks. *full suite* means the whole suite ran; *targeted — 4 of 30 cases ran* means only some tests ran, so a pass says less. |
-| **High-severity security findings** | Security problems of high severity found *in the judged runs* by the checks TraceIQ makes on every run's traffic. The rule says how many are allowed (0 by default). |
+| **Coverage** | For information only, it never blocks. *full suite* means the whole suite ran; *targeted — 4 of 30 cases ran* means only some tests ran, so a pass says less. |
+| **High-severity security findings** | Security problems of high severity found *in the judged runs* by the checks TraceIQ makes on every run's traffic (and leak detection), whatever their status: a finding marked fixed or accepted still counts for the run it was found in. Standalone security scans are not counted. The rule says how many are allowed (0 by default). |
 
-Others appear only when a rule switches them on: medium-severity findings, monitors up, external CI tests, the three performance budgets, and the release-readiness checks (flaky tests, critical tests, how fresh the results are, sign-off, accessibility). The newer checks show their technical name, for example *flaky cases* or *critical passed*.
+Others appear only when a rule switches them on: medium-severity findings, monitors up, external CI tests, the three performance budgets, and the release-readiness checks (flaky tests, critical tests, how fresh the results are, sign-off, accessibility) and breaking API changes. Each has a plain name, for example *Flaky tests* or *Critical tests passed*.
 
 ## 3. The selected check
 
@@ -113,6 +113,7 @@ Press **Gate rules** in the heading to open the rules. Anyone can read them; onl
 | **Require monitors up** | Blocks while any of the project's monitors is down (off). |
 | **Require external CI tests green** | The newest report from your build system (for the commit being judged, if there is one) must have no failures. With no report at all, it blocks (off). |
 | **Release readiness** section | Limits on flaky tests, "every critical test passed", how old the newest passing result may be, an approved sign-off, and no new serious accessibility problems. All off until filled in or ticked; *Release readiness* and *Release sign-off* explain them. |
+| **API contract** section | **No breaking changes in the newest OpenAPI spec version**, compared against **the version before it** or **a pinned version** (then give its number). Fewer than two stored versions, or a pinned version that doesn't exist, blocks as missing data (off). |
 | **Performance budgets** | The slowest page-load figure measured in the judged runs (LCP, CLS, TTFB) must stay under the limit. 0 = not checked. If no run measured it, the check passes with "no samples". |
 
 Next to the rules is **CI reporting**, which tells TraceIQ's GitHub Action how to use the gate:

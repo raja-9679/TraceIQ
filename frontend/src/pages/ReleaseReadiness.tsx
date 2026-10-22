@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getProjects } from '@/lib/api';
 import { qualityApi, ReadinessVerdict, QualityGateCheck } from '@/api/quality';
+import { describeGateCheck, labelReason } from '@/lib/gateChecks';
 
 const LATEST = '__latest';
 const errDetail = (e: unknown): string => {
@@ -62,7 +63,7 @@ function CheckRow({ c }: { c: QualityGateCheck }) {
             <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="flex items-center gap-2 min-w-0">
                     <Icon className={`w-4 h-4 shrink-0 ${tone}`} aria-hidden />
-                    <span className="font-semibold text-slate-700">{c.name}</span>
+                    <span className="font-semibold text-slate-700" title={describeGateCheck(c.name).explain || undefined}>{describeGateCheck(c.name).title}</span>
                     <span className="sr-only">{c.passed ? 'passed' : c.missing_data ? 'missing data' : 'failed'}</span>
                 </span>
                 <span className="text-xs text-slate-500 tabular-nums text-right">
@@ -212,7 +213,7 @@ export default function ReleaseReadiness() {
                         <p className="text-sm mt-3">{V.blurb}</p>
                         {r.reasons.length > 0 && (
                             <ul className="mt-2 text-sm list-disc ml-5 space-y-0.5">
-                                {r.reasons.map((x, i) => <li key={i}>{x}</li>)}
+                                {r.reasons.map((x, i) => <li key={i}>{labelReason(x)}</li>)}
                             </ul>
                         )}
                     </div>
