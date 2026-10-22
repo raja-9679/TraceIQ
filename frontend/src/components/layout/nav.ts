@@ -184,3 +184,14 @@ export const isIn = (pathname: string, patterns: string[]) =>
 
 /** A group opens a submenu; anything else (Runs) is a direct link. */
 export const isGroup = (place: Place) => place.children.length > 1;
+
+/** The sub-link to highlight for `pathname`: an exact match, else the longest
+ *  link the path sits under (so /suites/12 lights up "Suites"). */
+export function activeHref(pathname: string, links: { href: string }[]): string | null {
+    let best: string | null = null;
+    for (const { href } of links) {
+        if (pathname === href) return href;
+        if (href !== '/' && pathname.startsWith(`${href}/`) && (!best || href.length > best.length)) best = href;
+    }
+    return best;
+}

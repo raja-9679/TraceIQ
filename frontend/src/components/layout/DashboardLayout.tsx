@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
-import { places, setupLinks, setupTone, toneClass, isIn, isGroup, type SubLink, type Tone } from './nav';
+import { places, setupLinks, setupTone, toneClass, isIn, isGroup, activeHref, type SubLink, type Tone } from './nav';
 
 function initials(name?: string | null, email?: string | null) {
     const src = (name || email || '?').trim();
@@ -126,7 +126,7 @@ function NavGroup({ label, icon, active, open, onToggle, links, pathname }: {
             {open && (
                 <div id={id} className="ml-[22px] mt-1 mb-1 flex flex-col gap-0.5 border-l border-ink/10 pl-3">
                     {links.map((l) => {
-                        const on = pathname === l.href;
+                        const on = l.href === activeHref(pathname, links);
                         return (
                             <Link
                                 key={l.href}
@@ -153,8 +153,8 @@ function RailMenuLinks({ links, pathname }: { links: SubLink[]; pathname: string
     return (
         <>
             {links.map((l) => (
-                <DropdownMenuItem key={l.href} asChild className={pathname === l.href ? "bg-accent" : ""}>
-                    <Link to={l.href} aria-current={pathname === l.href ? 'page' : undefined}>{l.name}</Link>
+                <DropdownMenuItem key={l.href} asChild className={l.href === activeHref(pathname, links) ? "bg-accent" : ""}>
+                    <Link to={l.href} aria-current={l.href === activeHref(pathname, links) ? 'page' : undefined}>{l.name}</Link>
                 </DropdownMenuItem>
             ))}
         </>
