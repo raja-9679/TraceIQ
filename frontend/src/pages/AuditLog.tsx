@@ -115,7 +115,7 @@ export default function AuditLog() {
                         </label>
                         <label className="flex flex-col gap-1 text-xs font-medium text-ink">
                             Action
-                            <Input className="h-10 w-40 rounded-full" placeholder="e.g. login" value={draft.action} onChange={(e) => set('action', e.target.value)} />
+                            <Input className="h-10 w-40 rounded-full" placeholder="e.g. update" value={draft.action} onChange={(e) => set('action', e.target.value)} />
                         </label>
                         <label className="flex flex-col gap-1 text-xs font-medium text-ink">
                             User

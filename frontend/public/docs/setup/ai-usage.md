@@ -81,8 +81,8 @@ Which part of TraceIQ asked, with its tokens, calls and a bar showing its share 
 | **Failure analysis** | The explanation of why a test failed, on the run page. |
 | **Selector healing** | Repairing a test whose button or field can no longer be found (the "selector" is how a test finds it), during a run or afterwards as a suggestion. |
 | **Test generation** | Writing a draft test from a description. |
-| `requirement_generation`, `incident_regression` | Draft tests written from an imported requirement, or from an incident. They are shown with these technical names. |
-| `assistant` | Questions asked through *Ask TraceIQ*. |
+| **Tests from requirements**, **Regression tests from incidents** | Draft tests written from an imported requirement, or from an incident. |
+| **Assistant** | Questions asked through *Ask TraceIQ*. |
 | **Other** | Calls that didn't say which feature made them. |
 
 ## Watch it in use

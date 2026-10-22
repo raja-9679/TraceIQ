@@ -8,6 +8,9 @@ import { getWorkspaces, Workspace } from '@/lib/api';
 import { billingApi, Plan } from '@/api/billing';
 import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
+import { usePermission } from '@/hooks/usePermission';
+import { useIsInstanceAdmin } from '@/hooks/useIsInstanceAdmin';
 
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 const LIMIT_LABELS: [string, string][] = [
@@ -42,7 +45,15 @@ export default function Billing() {
     const qc = useQueryClient();
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
+    // Switching plan and Stripe checkout are workspace-admin only (403 for
+    // members); members just see the plan and usage.
+    const { can } = usePermission();
+    const isAdmin = !!wsId && can('workspace:manage_settings', { workspaceId: wsId });
+    // A workspace admin may switch to a FREE plan only; a paid plan is bought
+    // through Stripe checkout or, without Stripe, assigned by the instance admin.
+    const isInstanceAdmin = useIsInstanceAdmin();
 
     const status = useQuery({ queryKey: ['billing', wsId], queryFn: () => billingApi.status(wsId!), enabled: !!wsId });
     const plans = useQuery({ queryKey: ['plans'], queryFn: () => billingApi.plans() });
@@ -103,7 +114,7 @@ export default function Billing() {
                         </div>
                     </section>
 
-                    <section aria-label="Plans" className="flex flex-col gap-3">
+                    {(plans.data?.length ?? 0) > 0 && <section aria-label="Plans" className="flex flex-col gap-3">
                         <h2 className="px-1 text-[15px] font-semibold text-ink">Plans</h2>
                         <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
                             {(plans.data || []).map((p: Plan) => {
@@ -134,11 +145,13 @@ export default function Billing() {
                                         <div className="mt-auto">
                                             {current ? (
                                                 <Button variant="outline" className="w-full" disabled>Current plan</Button>
-                                            ) : st.stripe_configured && p.price_cents > 0 ? (
+                                            ) : p.price_cents > 0 && st.stripe_configured ? (isAdmin ? (
                                                 <Button className="w-full" onClick={() => checkout.mutate(p.name)} disabled={checkout.isPending}>
                                                     <Zap className="h-3.5 w-3.5" /> Upgrade
                                                 </Button>
-                                            ) : (
+                                            ) : null) : p.price_cents > 0 && !isInstanceAdmin ? (
+                                                isAdmin ? <p className="text-center text-xs text-ink-soft">Ask the instance admin to assign this plan.</p> : null
+                                            ) : !(isAdmin || isInstanceAdmin) ? null : (
                                                 <Button variant="outline" className="w-full" onClick={() => assign.mutate(p.name)} disabled={assign.isPending}>
                                                     Switch to {p.display_name}
                                                 </Button>
@@ -148,10 +161,10 @@ export default function Billing() {
                                 );
                             })}
                         </div>
-                    </section>
+                    </section>}
 
                     <p className="px-1 text-[13px] leading-relaxed text-ink-soft">
-                        Plan changes take effect immediately. {st.stripe_configured ? 'Paid upgrades go through Stripe checkout.' : 'Stripe is not configured, so a workspace admin assigns plans directly.'} Run quota is enforced when a run is created (HTTP 402 when exceeded).
+                        Plan changes take effect immediately. A workspace admin can switch to a free plan. {st.stripe_configured ? 'Paid plans are bought through Stripe checkout.' : 'Stripe is not configured, so paid plans are assigned by the instance admin.'} Run quota is enforced when a run is created (HTTP 402 when exceeded).{!isAdmin && !isInstanceAdmin && ' Changing the plan needs a workspace admin.'}
                     </p>
                 </div>
             )}

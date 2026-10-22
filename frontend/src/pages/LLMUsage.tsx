@@ -19,6 +19,9 @@ const FEATURE_LABELS: Record<string, string> = {
     failure_analysis: 'Failure analysis',
     selector_heal: 'Selector healing',
     case_generation: 'Test generation',
+    assistant: 'Assistant',
+    requirement_generation: 'Tests from requirements',
+    incident_regression: 'Regression tests from incidents',
     unknown: 'Other',
 };
 

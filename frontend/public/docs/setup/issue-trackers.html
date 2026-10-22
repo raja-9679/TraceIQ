@@ -33,7 +33,7 @@
         <div class="meta-row">
           <span class="tag t-neutral">Setup</span>
           <span class="tag t-neutral">Every workspace member can see it</span>
-          <span class="tag t-neutral">Every workspace member can change it</span>
+          <span class="tag t-neutral">Workspace admins can change it</span>
         </div>
 
         <div class="in-short">
@@ -71,9 +71,9 @@
 
         <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
         <p>Tracker connections belong to a <strong>workspace</strong> and are shared by everyone
-          in it. This menu chooses whose connections you see. The page opens on the first workspace
-          in your list each time. Next to it, <strong>Add tracker</strong> opens the form; it is
-          hidden while the form is open.</p>
+          in it. This menu chooses whose connections you see. The page opens on the workspace of the
+          project picked in the sidebar. Next to it, <strong>Add tracker</strong> (workspace admins
+          only) opens the form; it is hidden while the form is open.</p>
 
         <div class="part"><span class="num">2</span><h2 id="provider" data-toc="② Provider and name">Provider and name</h2></div>
         <figure>
@@ -156,7 +156,7 @@
           <li><strong>Connection</strong>: the base URL and the account name. The token is never shown.</li>
           <li><strong>What this does</strong>: a reminder of where the tracker is offered.</li>
           <li><strong>Disable</strong> / <strong>Enable</strong>: a disabled tracker stays saved but is not offered anywhere until you enable it again.</li>
-          <li><strong>Remove</strong>: deletes the connection <strong>straight away, without asking</strong>. Tickets already filed stay in your tracker. Requirements imported through it stay in TraceIQ but can no longer be refreshed.</li>
+          <li><strong>Remove</strong>: deletes the connection after you confirm. Tickets already filed stay in your tracker. Requirements imported through it stay in TraceIQ but can no longer be refreshed.</li>
         </ul>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
@@ -196,7 +196,7 @@
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
-          <li><strong>Everyone in the workspace can add, switch off and remove trackers</strong>, not only admins. Changes on this page are not recorded in the <em>Audit log</em>.</li>
+          <li><strong>Only workspace admins can add, switch off and remove trackers</strong>, because a connection holds a shared account. Other members see the list without the buttons. A tracker address TraceIQ won't connect to (for example an internal address) is refused with the reason shown as-is.</li>
           <li><strong>Filing a ticket needs the editor role</strong> on the run's project. Viewers can see the run but are refused (<em>"Editor role required"</em>).</li>
           <li><strong>What a ticket from a run says:</strong> the run number and result, how many tests passed and failed, the error message, and the code version, branch and pull request if the run was given them. Then the trace, video and screenshots, for whichever of those the run recorded.</li>
           <li><strong>Only switched-on trackers are offered.</strong> The <em>Create ticket</em> menus on runs and in Failure triage list enabled Jira, iTop and GitHub trackers; Requirements lists enabled Jira and Linear ones.</li>

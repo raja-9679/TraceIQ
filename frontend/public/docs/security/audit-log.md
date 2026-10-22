@@ -51,7 +51,7 @@ The chain runs through the whole server's audit trail, not just this workspace, 
 
 ## 3. Filters
 
-![Filters: Entity type, Action (e.g. login), User (Anyone), From and To dates, Apply filters and Clear](../media/security/audit-log/filters.png)
+![Filters: Entity type, Action (e.g. update), User (Anyone), From and To dates, Apply filters and Clear](../media/security/audit-log/filters.png)
 
 - **Entity type**: what kind of thing the entry is about, for example `project`, `case`, `api_key`, `access_review` or `security_finding`. The box suggests common ones as you type.
 - **Action**: what was done, typed exactly, for example `create`, `delete` or `status_change`.
@@ -109,7 +109,7 @@ The table shows 50 entries at a time. **Next page** and **Previous page** move t
 - **Nobody can edit it.** The database itself refuses to change an entry, and refuses to delete one except for the retention clean-up, if your server has one set up (by default entries are kept forever).
 - **Secrets are not written down.** Passwords, tokens and similar values are removed from an entry's details before it is saved.
 - **Entries outlive what they describe.** A deleted project or a removed user still has their entries, so the history stays complete.
-- **Sign-ins are not here.** Sign-in entries aren't tied to a workspace, so this page doesn't show them, even though the Action box suggests `login`. Only changes made in this workspace appear.
+- **Sign-ins are not here.** Sign-in entries aren't tied to a workspace, so this page doesn't show them. Only changes made in this workspace appear.
 - **Who can see it.** Only workspace admins (people allowed to manage the workspace's members). Everyone else is refused, because the log shows who did what across the whole workspace.
 - **It doesn't refresh by itself.** Reload the page, or press Apply filters again, to see new entries.
 

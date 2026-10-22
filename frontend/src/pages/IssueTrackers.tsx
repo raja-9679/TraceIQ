@@ -7,6 +7,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { getWorkspaces, Workspace } from '@/lib/api';
 import { ticketsApi, IssueTrackerConfig, IssueTrackerConfigCreate } from '@/api/tickets';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
+import { usePermission } from '@/hooks/usePermission';
 import {
     DetailCard, EmptyState, Eyebrow, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
@@ -115,7 +117,12 @@ export default function IssueTrackers() {
     const [selectedId, setSelectedId] = useState<number | null>(null);
 
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
-    const workspaceId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    const activeWs = useActiveWorkspaceId();
+    const workspaceId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
+    // Adding, changing and removing a tracker is workspace-admin only (the
+    // connection holds a shared credential); members can only look.
+    const { can } = usePermission();
+    const isAdmin = !!workspaceId && can('workspace:manage_settings', { workspaceId });
 
     const configs = useQuery({
         queryKey: ['trackers', workspaceId],
@@ -150,7 +157,7 @@ export default function IssueTrackers() {
                             </SelectTrigger>
                             <SelectContent>{(workspaces || []).map((w) => <SelectItem key={w.id} value={w.id.toString()}>{w.name}</SelectItem>)}</SelectContent>
                         </Select>
-                        {workspaceId && !adding && (
+                        {workspaceId && isAdmin && !adding && (
                             <Button onClick={() => setAdding(true)}><Plus className="h-4 w-4" /> Add tracker</Button>
                         )}
                     </>
@@ -164,7 +171,9 @@ export default function IssueTrackers() {
                     {[0, 1, 2].map((i) => <div key={i} className="h-[60px] max-w-[440px] animate-pulse rounded-2xl bg-white/70" />)}
                 </div>
             ) : list.length === 0 && !adding ? (
-                <EmptyState title="No trackers yet">Add one to start filing tickets from runs.</EmptyState>
+                <EmptyState title="No trackers yet">
+                    {isAdmin ? 'Add one to start filing tickets from runs.' : 'A workspace admin can add one to start filing tickets from runs.'}
+                </EmptyState>
             ) : (
                 <SplitView
                     list={
@@ -221,7 +230,7 @@ export default function IssueTrackers() {
                                         : 'Turned off. It stays configured but is not offered under "Create ticket" until you enable it again.'}
                                 </Panel>
 
-                                <div className="flex flex-wrap gap-2.5">
+                                {isAdmin ? <div className="flex flex-wrap gap-2.5">
                                     <Button size="lg" variant={selected.enabled ? 'outline' : 'default'} onClick={() => toggle.mutate(selected)} disabled={toggle.isPending}>
                                         {selected.enabled ? 'Disable' : 'Enable'}
                                     </Button>
@@ -229,12 +238,12 @@ export default function IssueTrackers() {
                                         size="lg"
                                         variant="outline"
                                         className="text-pastel-ink-peach hover:bg-pastel-peach hover:text-pastel-ink-peach"
-                                        onClick={() => del.mutate(selected.id)}
+                                        onClick={() => { if (window.confirm(`Remove the tracker "${selected.name}"? Tickets already filed stay in the tracker.`)) del.mutate(selected.id); }}
                                         disabled={del.isPending}
                                     >
                                         <Trash2 className="h-4 w-4" /> Remove
                                     </Button>
-                                </div>
+                                </div> : <p className="text-xs text-ink-soft">Only a workspace admin can change or remove this connection.</p>}
                             </DetailCard>
                         )
                     }

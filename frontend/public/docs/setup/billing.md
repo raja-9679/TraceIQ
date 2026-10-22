@@ -36,7 +36,7 @@ The server used for this guide has no plans set up, so the demo workspace shows 
 
 ## 1. Workspace
 
-Plans belong to a **workspace**. This menu chooses which one. The page opens on the first workspace in your list each time.
+Plans belong to a **workspace**. This menu chooses which one. The page opens on the workspace of the project picked in the sidebar.
 
 ## 2. Current plan
 
@@ -71,16 +71,16 @@ Each meter shows what has been used, against the plan's limit (*unlimited* when 
 
 ## 4. Plans
 
-One card per plan the server offers. On the demo server there are none, so this part is empty. Each card shows:
+One card per plan the server offers. On the demo server there are none, so this part is not shown at all. Each card shows:
 
 - The plan's name, and Current on the one the workspace is on.
 - Its price per month, *Free*, or *Custom* for the enterprise plan.
 - Its limits: runs per month, seats, concurrent runs, retention in days, AI generations per day and LLM tokens per month. *Unlimited* means no limit.
-- A button: **Current plan** (greyed out) on your plan; **Upgrade** on paid plans when the server takes card payments, which opens the payment page; otherwise **Switch to …**, which changes the plan straight away.
+- A button: **Current plan** (greyed out) on your plan; **Upgrade** on paid plans when the server takes card payments, which opens the payment page; otherwise **Switch to …**, which changes the plan straight away. A workspace admin sees *Switch to* on free plans and *Upgrade* on paid ones. Without card payments, a paid plan can only be assigned by the *instance admin* (the person who runs the TraceIQ server); a workspace admin sees "Ask the instance admin to assign this plan" there instead.
 
 ## 5. The note at the bottom
 
-A reminder that plan changes take effect immediately, how plans are changed on this server (card payment, or an admin assigning them), and that the run limit is checked when a run is created.
+A reminder that plan changes take effect immediately, how plans are changed on this server (free plans by a workspace admin; paid plans by card payment or, without it, by the instance admin), and that the run limit is checked when a run is created.
 
 ## Watch it in use
 
@@ -98,20 +98,20 @@ A reminder that plan changes take effect immediately, how plans are changed on t
 
 ### …move the workspace to another plan
 
-1. You need to be a workspace admin.
+1. You need to be a workspace admin (for a paid plan on a server without card payments, the instance admin).
 2. Under **Plans**, press **Upgrade** (card payment) or **Switch to …** on the plan you want.
 3. With *Switch to*, the new limits apply at once and the message "Plan updated" appears. With *Upgrade*, the plan changes once the payment has gone through.
 
 ### …find out why a run was refused
 
 1. If the message says *"Monthly run quota reached (50/50)"*, the month's runs are used up: the meter here shows the same numbers.
-2. Ask a workspace admin to move to a bigger plan, or wait until the 1st of next month (UTC).
+2. Ask a workspace admin to move to a bigger plan (or, without card payments, the instance admin), or wait until the 1st of next month (UTC).
 
 ## Good to know
 
 - **Counters start again every month**, on the 1st at midnight UTC. Unused allowance doesn't carry over.
 - **The run limit is checked before a run is created.** While a single run is left, one request that starts several runs (for example in three browsers) still goes through, so the meter can end slightly above the limit.
-- **Everyone in the workspace can see this page.** Switching plans needs the workspace admin role; others get *"Workspace admin required to change plan"*.
+- **Everyone in the workspace can see this page.** Switching to a free plan and card payment need the workspace admin role; assigning a paid plan without card payment needs the instance admin. Others don't see those buttons.
 - **Without a plan, nothing is limited.** A workspace that was never given a plan is on the *free* plan if the server has one, and unlimited if it has none.
 - **Money for AI and test machines** is on *Costs* under Reports, not here.
 
