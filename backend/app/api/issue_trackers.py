@@ -9,7 +9,7 @@ so writing one is a workspace-admin action (as for outbound webhooks), every
 write is audited (never the secret), and the base URL goes through net_guard
 here and again before every request in app/services/issue_trackers.py.
 """
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
@@ -37,11 +37,10 @@ _PROVIDERS = {"jira", "itop", "github", "linear"}
 OUTBOUND_PROVIDERS = {"jira", "itop", "github"}
 
 
-async def _ensure_workspace_member(workspace_id: int, user_id: int, session: AsyncSession):
-    row = (await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == workspace_id,
-            UserWorkspace.user_id == user_id))).first()
+async def _ensure_workspace_member(workspace_id: int, user_id: int, session: AsyncSession,
+                                   project_id: Optional[int] = None, write: bool = False):
+    row = await access_service.workspace_membership(user_id, workspace_id, session,
+                                                    project_id=project_id, write=write)
     if not row:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
@@ -201,7 +200,8 @@ async def create_ticket(run_id: int, body: IssueTicketCreate,
     # confirm another workspace's config id exists.
     if not config or not project or config.workspace_id != project.workspace_id:
         raise HTTPException(status_code=404, detail="Tracker config not found")
-    await _ensure_workspace_member(config.workspace_id, principal.user.id, session)
+    await _ensure_workspace_member(config.workspace_id, principal.user.id, session,
+                                   project_id=project.id, write=True)
     if body.result_id is not None:
         result = await session.get(TestCaseResult, body.result_id)
         if not result or result.test_run_id != run_id:

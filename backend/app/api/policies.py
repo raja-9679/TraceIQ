@@ -22,6 +22,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.instance_settings import get_current_instance_admin
 from app.api.share_links import _is_workspace_admin
+from app.services.access_service import access_service
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import PolicyDecisionLog, Project, User, UserWorkspace, Workspace
@@ -44,9 +45,10 @@ async def _member(session: AsyncSession, principal: AuthPrincipal, workspace_id:
     ws = await _workspace(session, workspace_id)
     if principal.api_key is not None and principal.api_key.workspace_id != workspace_id:
         raise HTTPException(status_code=403, detail="API key is not scoped to this workspace")
-    if not (await session.exec(select(UserWorkspace).where(
-            UserWorkspace.user_id == principal.user.id,
-            UserWorkspace.workspace_id == workspace_id))).first():
+    # per_project: the AI switch is one workspace flag; a project-scoped key of
+    # this workspace may read it (require_workspace_admin refuses it below).
+    if not await access_service.workspace_membership(principal.user.id, workspace_id, session,
+                                                     per_project=True):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return ws
 

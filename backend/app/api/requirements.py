@@ -99,9 +99,8 @@ async def _require_workspace_member(principal: AuthPrincipal, project: Project,
     """Tracker connections are workspace-wide credentials that can run any JQL
     the connection can see. Project access alone is not enough to wield them:
     a direct project grant can outlive the user's workspace membership."""
-    member = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.user_id == principal.user.id,
-        UserWorkspace.workspace_id == project.workspace_id))).first()
+    member = await access_service.workspace_membership(
+        principal.user.id, project.workspace_id, session, project_id=project.id)
     if member is None:
         raise HTTPException(status_code=403,
                             detail="Only members of this workspace can use its tracker connections")

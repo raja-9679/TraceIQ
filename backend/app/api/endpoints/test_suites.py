@@ -42,7 +42,8 @@ async def create_test_suite(
         team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
         user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
         
-        result = await session.exec(
+        from app.services import key_scope
+        result = await session.exec(key_scope.restrict(
             select(Project)
             .where(
                 or_(
@@ -50,7 +51,7 @@ async def create_test_suite(
                     Project.id.in_(team_stmt),
                     Project.id.in_(user_stmt)
                 )
-            )
+            ), Project.id, session, current_user.id)
             .limit(1)
         )
         default_project = result.first()

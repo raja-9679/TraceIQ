@@ -59,6 +59,8 @@ from app.models import (
 from app.services import audit
 from app.services import compliance as svc
 from app.services.rbac_service import rbac_service
+from app.services import key_scope
+from app.services.access_service import access_service
 
 router = APIRouter()
 
@@ -90,12 +92,13 @@ async def workspace_role(session: AsyncSession, workspace_id: int,
     uid = principal.user.id
     if await rbac_service.has_permission(session, uid, "workspace:manage_users", workspace_id=workspace_id):
         return "admin"
-    member = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.user_id == uid, UserWorkspace.workspace_id == workspace_id))).first()
+    member = await access_service.workspace_membership(uid, workspace_id, session)
     if not member:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
-    # Pre-RBAC memberships carry only the legacy role string.
-    if member.role_id is None and (member.role or "").lower() in ("admin", "owner"):
+    # Pre-RBAC memberships carry only the legacy role string (still capped
+    # by an API key's role).
+    if member.role_id is None and (member.role or "").lower() in ("admin", "owner") \
+            and key_scope.allows_workspace(session, uid, workspace_id, min_level=3):
         return "admin"
     return "member"
 

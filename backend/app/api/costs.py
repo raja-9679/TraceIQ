@@ -33,11 +33,8 @@ MAX_BUDGET = 1_000_000_000
 
 
 async def _is_workspace_admin(session: AsyncSession, user_id: int, workspace_id: int) -> bool:
-    for uw in (await session.exec(select(UserWorkspace).where(
-            UserWorkspace.user_id == user_id, UserWorkspace.workspace_id == workspace_id))).all():
-        if await _workspace_role_level(uw, session) >= _ROLE_MAP["admin"]:
-            return True
-    return False
+    # Held to the caller's API-key scope (see access_service.is_workspace_admin).
+    return await access_service.is_workspace_admin(user_id, workspace_id, session)
 
 
 async def readable_projects(session: AsyncSession, principal: AuthPrincipal,
