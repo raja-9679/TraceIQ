@@ -111,9 +111,8 @@ async def create_cluster_ticket(cluster_id: int, body: dict = Body(...),
     # doesn't confirm that another workspace's config id exists.
     if not config or not project or config.workspace_id != project.workspace_id:
         raise HTTPException(status_code=404, detail="Tracker config not found")
-    member = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.workspace_id == config.workspace_id,
-        UserWorkspace.user_id == principal.user.id))).first()
+    member = await access_service.workspace_membership(
+        principal.user.id, config.workspace_id, session, project_id=project.id, write=True)
     if not member:
         raise HTTPException(status_code=403, detail="Not a member of the tracker's workspace")
     from app.api.issue_trackers import OUTBOUND_PROVIDERS

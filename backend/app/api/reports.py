@@ -72,10 +72,10 @@ async def _workspace(session: AsyncSession, principal: AuthPrincipal, workspace_
     ws = await session.get(Workspace, workspace_id)
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace not found")
-    member = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.workspace_id == workspace_id,
-        UserWorkspace.user_id == principal.user.id))).first()
-    if not member:
+    # Everything behind this gate is narrowed to accessible_projects(), which
+    # applies a project-scoped key's limit itself.
+    if not await access_service.workspace_membership(principal.user.id, workspace_id, session,
+                                                     per_project=True):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return ws
 

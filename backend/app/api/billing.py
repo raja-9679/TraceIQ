@@ -33,9 +33,8 @@ router = APIRouter()
 
 
 async def _member(session: AsyncSession, workspace_id: int, user_id: int) -> UserWorkspace:
-    row = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.workspace_id == workspace_id,
-        UserWorkspace.user_id == user_id))).first()
+    from app.services.access_service import access_service
+    row = await access_service.workspace_membership(user_id, workspace_id, session)
     if not row:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return row
@@ -95,7 +94,11 @@ async def assign_plan(workspace_id: int, body: dict = Body(...),
     checkout + webhook instead."""
     from app.api.instance_settings import is_instance_admin
     from app.api.share_links import _is_workspace_admin
-    instance_admin = await is_instance_admin(session, current_user)
+    from app.services import key_scope
+    # An instance admin's API key still only reaches its own workspace.
+    instance_admin = (await is_instance_admin(session, current_user)
+                      and key_scope.allows_workspace(session, current_user.id, workspace_id,
+                                                     min_level=3))
     if not instance_admin:
         await _member(session, workspace_id, current_user.id)
     # Role via role_id (the RBAC mechanism), not the deprecated

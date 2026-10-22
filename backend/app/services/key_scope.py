@@ -123,6 +123,32 @@ async def permits(session, scope: KeyScope, permission: str,
     return False
 
 
+def allows_workspace(session, user_id: int, workspace_id: Optional[int], *,
+                     min_level: int = 1, project_id: Optional[int] = None,
+                     per_project: bool = False) -> bool:
+    """The key gate for workspace-level checks (membership, workspace admin)
+    made with a query of their own instead of access_service/rbac_service.
+
+    - the workspace must be the key's own;
+    - a project-scoped key passes only on behalf of its own project
+      (`project_id`, which the caller must have taken from a project of this
+      workspace) or where the endpoint narrows what it returns per project
+      itself (`per_project`) - never for a workspace-wide read or an admin check;
+    - `min_level` is the key's role ceiling: 1 read, 2 write, 3 admin.
+    Without a key on the session (JWT, Celery) it allows everything."""
+    ks = for_user(session, user_id)
+    if ks is None:
+        return True
+    if workspace_id is None or ks.workspace_id != workspace_id:
+        return False
+    if ks.project_id is not None:
+        if min_level >= 3:
+            return False
+        if not per_project and ks.project_id != project_id:
+            return False
+    return ks.level >= min_level
+
+
 def restrict(query, project_col, session, user_id: int):
     """Narrow a listing built from the owner's memberships to the key's own
     workspace/project. Listings never go through the per-id checks above."""

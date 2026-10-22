@@ -6,6 +6,8 @@ from app.core.database import get_session
 from app.core.auth import get_current_user
 from app.models import User, Workspace, UserWorkspace, Team, UserTeam, UserRead, Project, Tenant
 from app.services.workspace_service import workspace_service
+from app.services.access_service import access_service
+from app.services import key_scope
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -45,7 +47,12 @@ async def create_workspace(ws_in: WorkspaceCreate, session: AsyncSession = Depen
 
 @router.get("/workspaces", response_model=List[Workspace])
 async def list_workspaces(session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
-    return await workspace_service.get_user_workspaces(current_user.id, session)
+    workspaces = await workspace_service.get_user_workspaces(current_user.id, session)
+    # An API key sees only the workspace it was minted for.
+    ks = key_scope.for_user(session, current_user.id)
+    if ks is not None:
+        workspaces = [w for w in workspaces if w.id == ks.workspace_id]
+    return workspaces
 
 @router.post("/workspaces/{workspace_id}/teams", response_model=Team)
 async def create_team(workspace_id: int, team_in: TeamCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
@@ -72,11 +79,7 @@ async def create_team(workspace_id: int, team_in: TeamCreate, session: AsyncSess
 @router.get("/workspaces/{workspace_id}/teams", response_model=List[Team])
 async def list_teams(workspace_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Check if member of workspace
-    result = await session.exec(
-        select(UserWorkspace)
-        .where(UserWorkspace.user_id == current_user.id, UserWorkspace.workspace_id == workspace_id)
-    )
-    if not result.first():
+    if not await access_service.workspace_membership(current_user.id, workspace_id, session):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
         
     return await workspace_service.get_workspace_teams(workspace_id, session)
@@ -137,11 +140,7 @@ async def link_team_project(project_id: int, team_id: int, access: ProjectAccess
 @router.get("/workspaces/{workspace_id}/users", response_model=List[UserRead])
 async def list_workspace_members(workspace_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Check if user is in workspace
-    result = await session.exec(
-        select(UserWorkspace)
-        .where(UserWorkspace.user_id == current_user.id, UserWorkspace.workspace_id == workspace_id)
-    )
-    if not result.first():
+    if not await access_service.workspace_membership(current_user.id, workspace_id, session):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
         
     return await workspace_service.get_workspace_members(workspace_id, session)
@@ -152,11 +151,7 @@ from app.models import User, Workspace, UserWorkspace, Team, UserTeam, UserRead,
 @router.get("/workspaces/{workspace_id}/members/detailed", response_model=List[UserReadDetailed])
 async def list_workspace_members_detailed(workspace_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Check if user is in workspace
-    result = await session.exec(
-        select(UserWorkspace)
-        .where(UserWorkspace.user_id == current_user.id, UserWorkspace.workspace_id == workspace_id)
-    )
-    if not result.first():
+    if not await access_service.workspace_membership(current_user.id, workspace_id, session):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
         
     return await workspace_service.get_workspace_members_detailed(workspace_id, session, current_user.id)
@@ -188,7 +183,10 @@ async def remove_from_team(team_id: int, user_id: int, session: AsyncSession = D
         
     is_admin = await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=team.workspace_id)
     
-    if not is_admin and current_user.id != user_id:
+    # Leaving a team yourself is a write in that workspace: an API key must
+    # be for this workspace and at least an editor.
+    if not is_admin and (current_user.id != user_id or not key_scope.allows_workspace(
+            session, current_user.id, team.workspace_id, min_level=2)):
         raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
         
     success = await workspace_service.remove_user_from_team(team_id, user_id, session)
@@ -203,11 +201,7 @@ async def list_team_members(team_id: int, session: AsyncSession = Depends(get_se
         raise HTTPException(status_code=404, detail="Team not found")
         
     # Check workspace membership
-    result = await session.exec(
-        select(UserWorkspace)
-        .where(UserWorkspace.user_id == current_user.id, UserWorkspace.workspace_id == team.workspace_id)
-    )
-    if not result.first():
+    if not await access_service.workspace_membership(current_user.id, team.workspace_id, session):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
         
     result = await session.exec(
