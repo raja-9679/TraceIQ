@@ -884,6 +884,14 @@ function MfaSection() {
     const [disableCode, setDisableCode] = useState('');
     const [regenCode, setRegenCode] = useState('');
     const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+    const qc = useQueryClient();
+    // /auth/me is the only place that reports the caller's own MFA state.
+    const me = useQuery({
+        queryKey: ['auth-me'],
+        queryFn: async () => (await api.get<{ mfa_enabled?: boolean }>('/auth/me')).data,
+    });
+    const mfaOn = me.data?.mfa_enabled === true;
+    const refreshMe = () => qc.invalidateQueries({ queryKey: ['auth-me'] });
 
     const start = useMutation({
         mutationFn: () => mfaApi.setup(),
@@ -892,12 +900,12 @@ function MfaSection() {
     });
     const verify = useMutation({
         mutationFn: () => mfaApi.verify(code),
-        onSuccess: (d) => { toast.success('MFA enabled — you\'ll be asked for a code at login'); setSetup(null); setCode(''); setRecoveryCodes(d.recovery_codes); },
+        onSuccess: (d) => { toast.success('MFA enabled — you\'ll be asked for a code at login'); setSetup(null); setCode(''); setRecoveryCodes(d.recovery_codes); refreshMe(); },
         onError: (e: any) => toast.error(e?.response?.data?.detail || 'Invalid code'),
     });
     const disable = useMutation({
         mutationFn: () => mfaApi.disable(disableCode),
-        onSuccess: () => { toast.success('MFA disabled'); setDisableCode(''); setRecoveryCodes(null); },
+        onSuccess: () => { toast.success('MFA disabled'); setDisableCode(''); setRecoveryCodes(null); refreshMe(); },
         onError: (e: any) => toast.error(e?.response?.data?.detail || 'Invalid code'),
     });
     const regen = useMutation({
@@ -915,7 +923,13 @@ function MfaSection() {
                 title="Authenticator app"
                 description="Add a second sign-in step using an authenticator app such as Google Authenticator, Authy or 1Password."
             >
-                {!setup ? (
+                {me.data && (
+                    <p className="flex items-center gap-2 text-sm text-ink-soft">
+                        Status: {mfaOn ? <Pill tone="mint">On</Pill> : <Pill tone="neutral">Off</Pill>}
+                        {mfaOn && <span>You're asked for a code from your app at every password sign-in.</span>}
+                    </p>
+                )}
+                {mfaOn ? null : !setup ? (
                     <Button variant="outline" className="self-start" onClick={() => start.mutate()} disabled={start.isPending}>
                         <KeyRound className="h-4 w-4" /> Set up authenticator
                     </Button>
@@ -942,6 +956,7 @@ function MfaSection() {
                 )}
             </SettingsCard>
 
+            {mfaOn && <>
             <SettingsCard
                 labelledBy="settings-mfa-recovery"
                 title="Recovery codes"
@@ -977,6 +992,7 @@ function MfaSection() {
                     </Button>
                 </div>
             </SettingsCard>
+            </>}
         </>
     );
 }
