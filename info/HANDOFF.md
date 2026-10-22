@@ -15,9 +15,10 @@ it belongs here rather than in a chat history.
 **State.** Both branches committed locally and **NOT pushed yet**
 (`feature/enterprise-auth-ai`, `feature/redesign-a`; push = fast-forward to
 `origin/feature/enterprise-auth-ai-2026-10` / `origin/feature/redesign-a`).
-The local stack on this laptop (`~/traceiq-test`, still MinIO — the RustFS
-switch needs `scripts/migrate_object_store.py` and was not done) runs images
-built from `feature/redesign-a` HEAD. Migration head unchanged
+The local stack on this laptop (`~/traceiq-test`) runs images built from
+`feature/redesign-a` HEAD, and was switched MinIO -> RustFS the same day
+(compose copy replaced by the repo's, `migrate_object_store.py` copied 210
+objects; old `traceiq_minio_data` volume and a tarball backup kept). Migration head unchanged
 (`e152b3c4d616`; no migrations today). Last full verification on the final
 backend: unit 2592 passed; live 3160 passed + `--migrations` ok (before the
 audit-chain fix, which only touched audit.py + unit tests); frontend 257
