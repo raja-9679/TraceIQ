@@ -2,9 +2,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/setup/ai-usage.html
-// Read-only page. The demo workspace has no recorded AI calls (the demo
-// generator writes no LLMUsageEvent rows and the capture stack has no AI
-// provider), so the pictures show the empty state and the two menus.
+// Read-only page. The demo workspace has about 30 days of seeded AI calls
+// (two providers, five features, a few failed calls), so the report is full.
 
 const DIR = 'setup/ai-usage';
 
@@ -16,7 +15,7 @@ async function openDemoWorkspace(p: Page) {
     await p.getByRole('combobox', { name: 'Workspace' }).click();
     await p.getByRole('option', { name: 'Demo workspace' }).click();
     await settle(p);
-    await expect(p.getByText(/No LLM calls in the last \d+ days/)).toBeVisible();
+    await expect(p.locator('main').getByText('Total tokens', { exact: true }).first()).toBeVisible();
 }
 
 /** Screenshot of a Radix select's trigger together with its open list. */
@@ -45,17 +44,31 @@ test('Setup › AI usage', async ({ page, browser }) => {
     // 1. The page as the demo workspace shows it.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
-    // 2. Its parts, numbered.
+    // 2. Its parts, numbered (the full report needs a taller window).
+    await page.setViewportSize({ width: 1440, height: 1500 });
+    await settle(page);
     const windowPicker = main.getByRole('combobox', { name: 'Time window' });
     const wsPicker = main.getByRole('combobox', { name: 'Workspace' });
-    const empty = main.getByText(/No LLM calls in the last/).locator('xpath=..');
+    const totals = main.getByText('Total tokens', { exact: true }).first().locator('xpath=ancestor::div[contains(@class,"grid")][1]');
+    const daily = main.getByRole('region', { name: 'Tokens per day' });
+    const providers = main.getByRole('region', { name: 'By provider and model' });
+    const features = main.getByRole('region', { name: 'By feature' });
     const clean = await annotate(page, [
         { n: 1, target: windowPicker },
         { n: 2, target: wsPicker, side: 'right' },
-        { n: 3, target: empty },
+        { n: 3, target: totals },
+        { n: 4, target: daily },
+        { n: 5, target: providers },
+        { n: 6, target: features },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
+    await totals.screenshot({ path: out(`${DIR}/totals.png`) });
+    await daily.screenshot({ path: out(`${DIR}/daily.png`) });
+    await providers.screenshot({ path: out(`${DIR}/providers.png`) });
+    await features.screenshot({ path: out(`${DIR}/features.png`) });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
 
     // 3. Close-up: the time-window menu.
     await shootOpenSelect(page, windowPicker, `${DIR}/window.png`);
@@ -83,12 +96,12 @@ test('Setup › AI usage', async ({ page, browser }) => {
         await beat(p, 1800);
         await p.getByRole('option', { name: '90 days' }).click();
         await settle(p);
-        await caption(p, 'The demo workspace has made no AI calls, so the page says so.');
-        await pointAt(p, m.getByText(/No LLM calls in the last/), 2200);
-        await caption(p, 'With calls, you would see four totals: tokens, calls, input and output, and the average wait.');
-        await pointAt(p, m.getByRole('heading', { name: 'AI usage', level: 1 }), 2600);
+        await caption(p, 'Four totals: tokens, calls, input and output, and the average wait.');
+        await pointAt(p, m.getByText('Total tokens', { exact: true }).first(), 2400);
         await caption(p, 'Then a bar per day, and tables by AI provider and model, and by feature.');
-        await beat(p, 2400);
+        const pr = m.getByRole('region', { name: 'By provider and model' });
+        await pr.scrollIntoViewIfNeeded();
+        await pointAt(p, pr, 2400);
         await caption(p, 'A token is a small piece of text. AI services count and charge by tokens.');
         await beat(p, 2400);
         await tw.click();

@@ -5,8 +5,9 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 // Nothing here changes data: "Open" only selects an agent on the page, and
 // no Save / Remove controls button, kill-switch box or limit field is touched.
 // The page opens on the workspace of the project selected in the sidebar,
-// which for the docs account is the demo workspace. Its two "agents" are the
-// demo monitor's schedule (schedule:<id>) and the demo generator (demo-seed).
+// which for the docs account is the demo workspace. Its one agent is
+// claude-code, with one session that ran the web suite from a feature branch
+// (schedule:<id> and demo-seed are not agents and are hidden).
 
 /** A <select> wrapped in a <label> whose text starts with `name` (the label's
  * accessible name also contains every option, so getByLabel is ambiguous). */
@@ -20,7 +21,7 @@ test('Setup › Agents', async ({ page, browser }) => {
     await expect(page.getByRole('heading', { name: 'Agents', level: 1 })).toBeVisible();
     const main = page.locator('main');
     const list = main.getByRole('region', { name: 'Agents', exact: true });
-    await expect(list.getByText('demo-seed', { exact: true })).toBeVisible();
+    await expect(list.getByText('claude-code', { exact: true })).toBeVisible();
     await expect(labelled(main, 'Workspace').locator('option:checked')).toHaveText('Demo workspace');
     await settle(page);
 
@@ -28,13 +29,15 @@ test('Setup › Agents', async ({ page, browser }) => {
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. Pick an agent (page state only), then number the parts.
-    const row = list.locator('li').filter({ hasText: 'demo-seed' });
+    const row = list.locator('li').filter({ hasText: 'claude-code' });
     await row.getByRole('button', { name: 'Open' }).click();
     const controls = main.getByRole('region', { name: /Controls for/ });
     const sessions = main.getByRole('region', { name: 'Sessions', exact: true });
     await expect(controls).toBeVisible();
-    await expect(sessions.getByText(/No sessions recorded|Show timeline/).first()).toBeVisible();
-    await page.setViewportSize({ width: 1440, height: 1500 });
+    await sessions.getByRole('button', { name: 'Show timeline' }).first().click();
+    const timeline = main.getByRole('region', { name: 'Session timeline' });
+    await expect(timeline).toBeVisible();
+    await page.setViewportSize({ width: 1440, height: 1900 });
     await settle(page);
     const addAgent = main.getByRole('region', { name: 'Set controls for an agent id' });
     const defaults = main.getByRole('region', { name: 'Defaults for every agent' });
@@ -53,6 +56,7 @@ test('Setup › Agents', async ({ page, browser }) => {
     await defaults.screenshot({ path: out(`${DIR}/defaults.png`) });
     await controls.screenshot({ path: out(`${DIR}/controls.png`) });
     await sessions.screenshot({ path: out(`${DIR}/sessions.png`) });
+    await timeline.screenshot({ path: out(`${DIR}/timeline.png`) });
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 4. A short walkthrough video, with captions saying what is on screen.
@@ -67,9 +71,9 @@ test('Setup › Agents', async ({ page, browser }) => {
         });
         await caption(p, 'This list shows every agent name seen in the workspace, with what it did.');
         await pointAt(p, l.locator('li').first(), 2200);
-        await caption(p, 'In the demo, these two are the monitor schedule and the sample-data generator.');
-        await pointAt(p, l.getByText('demo-seed', { exact: true }), 2200);
-        const r = l.locator('li').filter({ hasText: 'demo-seed' });
+        await caption(p, 'In the demo, claude-code ran the web tests from a feature branch.');
+        await pointAt(p, l.getByText('claude-code', { exact: true }), 2200);
+        const r = l.locator('li').filter({ hasText: 'claude-code' });
         await caption(p, 'Open an agent to see its controls and its sessions.');
         await pointAt(p, r.getByRole('button', { name: 'Open' }), 900);
         await r.getByRole('button', { name: 'Open' }).click();
@@ -84,8 +88,12 @@ test('Setup › Agents', async ({ page, browser }) => {
         await pointAt(p, c.getByRole('textbox').first(), 2200);
         const s = m.getByRole('region', { name: 'Sessions', exact: true });
         await s.scrollIntoViewIfNeeded();
-        await caption(p, 'Sessions appear when an agent sends a session name with its requests.');
-        await pointAt(p, s.getByRole('heading', { name: 'Sessions' }), 2200);
+        await caption(p, 'Each session shows what it used against its limits, and what was refused.');
+        await pointAt(p, s.locator('li').first(), 2200);
+        await caption(p, 'Show timeline lists everything that session did, newest first.');
+        await s.getByRole('button', { name: 'Show timeline' }).first().click();
+        await settle(p);
+        await pointAt(p, m.getByRole('region', { name: 'Session timeline' }), 2400);
         const d = m.getByRole('region', { name: 'Defaults for every agent' });
         await d.scrollIntoViewIfNeeded();
         await caption(p, 'Defaults for every agent apply to any agent without its own controls.');

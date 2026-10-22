@@ -72,17 +72,19 @@
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
         <p>On the left: the agents, a box to set controls for a new agent, and the defaults for
-          all agents. On the right: the agent you open. In the demo workspace no AI agent has worked yet, so the list is empty. The numbers match the sections below.</p>
+          all agents. On the right: the agent you open. In the demo workspace one AI agent,
+          <code>claude-code</code>, has run the web tests from a feature branch and filed a few
+          proposals. The numbers match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/setup/agents/page-annotated.png" alt="The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent demo-seed, 5 its sessions" loading="lazy" width="1440" height="1500"></div>
-          <figcaption>The Agents page for the demo workspace, with demo-seed opened. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/setup/agents/page-annotated.png" alt="The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent claude-code, 5 its sessions; below them the timeline of its one session" loading="lazy" width="1440" height="1900"></div>
+          <figcaption>The Agents page for the demo workspace, with claude-code opened and its session's timeline shown. Click the picture to see it larger.</figcaption>
         </figure>
         <p>If you belong to more than one workspace, a <strong>Workspace</strong> menu sits under
           the heading. The page opens on the workspace of the project selected in the sidebar.</p>
 
         <div class="part"><span class="num">1</span><h2 id="list" data-toc="① Agents">Agents</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/agents/list.png" alt="The Agents card listing schedule:4 and demo-seed, each with 0 sessions, 120 runs, 0 cases, 0 proposals, 0 tokens, a last-seen time, No limits, and an Open button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/agents/list.png" alt="The Agents card listing claude-code with a 1 refused label: 1 session, 5 runs, 0 cases, 7 proposals, 16k tokens, a last-seen time, No limits, and a Selected button" loading="lazy"></div>
         </figure>
         <p>Every agent id that has worked in this workspace, the most recently active first.
           An agent appears once it has started a run, created a test, filed a proposal, or worked
@@ -97,9 +99,9 @@
           <span class="icon">!</span>
           <div><strong class="title">Not everything here is an AI</strong>
             <p>Runs started by a TraceIQ <em>schedule</em> or monitor carry the name
-            <code>schedule:</code> plus the schedule's number, and the demo's sample history
-            carries <code>demo-seed</code>. These are not AI agents, so the list leaves them out,
-            unless someone has set controls for one of those names.</p></div>
+            <code>schedule:</code> plus the schedule's number, and older demo workspaces tagged their
+            sample history <code>demo-seed</code>. These are not AI agents, so the list leaves them
+            out, unless someone has set controls for one of those names.</p></div>
         </div>
 
         <div class="part"><span class="num">2</span><h2 id="new" data-toc="② Set controls for an agent id">Set controls for an agent id</h2></div>
@@ -120,7 +122,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="controls" data-toc="④ Controls for one agent">Controls for one agent</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/agents/controls.png" alt="The Controls for demo-seed card with a Block this agent (kill switch) checkbox, four limit boxes for runs, LLM tokens, proposals and minutes per session, and a Save button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/agents/controls.png" alt="The Controls for claude-code card with a Block this agent (kill switch) checkbox, four limit boxes for runs, LLM tokens, proposals and minutes per session, and a Save button" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Block this agent (kill switch)</strong>: tick it and save, and the agent is refused every change it tries in this workspace: no runs, tests, suites or proposals, and its AI calls are skipped. It can still <em>read</em>, so it can report what happened. When ticked, a <strong>Reason</strong> box appears; the agent is shown that text.</li>
@@ -146,16 +148,21 @@
 
         <div class="part"><span class="num">5</span><h2 id="sessions" data-toc="⑤ Sessions and timeline">Sessions and timeline</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/agents/sessions.png" alt="The Sessions card saying No sessions recorded" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/agents/sessions.png" alt="The Sessions card with one session, demo-4dafe57dd589: Runs 3, proposals 3, tokens 16k, 1 refused, its first and last times, and a Showing timeline button" loading="lazy"></div>
         </figure>
         <p>One row per session of the opened agent, newest first (up to 100): its name,
           <span class="pill t-peach">Out of runs</span> (or tokens, proposals) when a budget is
           spent, how much it used against each limit (for example <em>Runs 12 / 50</em>), how many
-          times it was refused, and when it started and last did something. The demo's two entries
-          never send a session name, so it says <em>"No sessions recorded"</em>.</p>
+          times it was refused, and when it started and last did something. Usage without a limit
+          is shown as a plain count (<em>Runs 3</em>). An agent with no sessions shows
+          <em>"No sessions recorded"</em>.</p>
         <p><strong>Show timeline</strong> opens the <strong>Session timeline</strong> below it:
           everything that session did, newest first (up to 500 items), each with a coloured label
           and, where there is one, a link:</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/agents/timeline.png" alt="The Session timeline of the demo session: three pending proposals, runs of Web smoke (demo) that passed or failed, AI case_generation calls with their tokens, and one Refused item: the agent budget of 20 runs was used up" loading="lazy"></div>
+          <figcaption>The demo session's timeline: runs, AI calls, proposals and one refusal.</figcaption>
+        </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Label</th><th>What happened</th></tr></thead>

@@ -33,7 +33,7 @@ Webhooks answer **"How do I let another tool know about a run without anyone hav
 
 ## A tour of the screen
 
-The demo workspace has no webhooks yet, so the page shows *"No webhooks yet"*. The screenshot below shows the form you get after pressing **New webhook**, filled in with example values. The numbers match the sections below. What the page looks like once webhooks exist is described after them, under [The list of webhooks](#list).
+The demo workspace has one webhook, *CI status (demo)*, switched off, with a log of past deliveries. The screenshot below shows the form you get after pressing **New webhook**, filled in with example values. The numbers match the sections below. The list and the selected webhook are described after them, under [The list of webhooks](#list).
 
 ![The Webhooks page with the New webhook form open and seven numbered parts: 1 the workspace picker, 2 the New webhook button, 3 Name, 4 Payload URL, 5 Project scope, 6 Events, 7 the Create webhook and Cancel buttons](../media/setup/webhooks/page-annotated.png)
 
@@ -97,7 +97,9 @@ Straight after you create a webhook, a box labelled Shown once appears with its 
 
 ## The list of webhooks
 
-Once a workspace has webhooks, they are listed on the left, in up to three boxes:
+![The Disabled box with one webhook, CI status (demo), its address and a green 200 on the right, and below it a note about the signing secret and retries](../media/setup/webhooks/list.png)
+
+A workspace's webhooks are listed on the left, in up to three boxes (a box with nothing in it is left out; with no webhooks at all the page says *"No webhooks yet"*):
 
 | Box | What is in it |
 |---|---|
@@ -108,6 +110,10 @@ Once a workspace has webhooks, they are listed on the left, in up to three boxes
 Each row shows the webhook's name, its address and, once something has been sent, the answer code of the last attempt on the right: 200 (or another code in the 200s) means it arrived, a peach code means the receiver refused it, and 0 means no answer came back at all. Click a row to show it on the right. Until you do, the first one in the first box is shown.
 
 ## The selected webhook
+
+![The details of CI status (demo): Disabled, its address, Scope Entire workspace, Last delivery 200 with its time, Created date, Events run.failed and run.passed, the Verifying deliveries note, Recent deliveries with All and Failed filters and nine attempts (one Failed with HTTP 502 from receiver, retried a minute later and accepted), each with a Redeliver button, and the Enable delivery and Delete webhook buttons](../media/setup/webhooks/detail.png)
+
+*The demo webhook. One delivery failed with a 502 and got through on the second attempt.*
 
 - **Status labels**: Active or Disabled, and, if the last attempts failed, how many in a row, for example 3 consecutive failure(s). Every attempt counts, retries included; one that gets through sets it back to zero.
 - **Scope**: *Entire workspace* or the project's name. **Last delivery**: the answer code and time of the last attempt, or *Never delivered*. **Created**: when it was made.
@@ -166,7 +172,7 @@ One row per attempt, newest first, up to the 50 most recent. **All** and **Faile
 - **A redelivered message is the same message.** It has the same delivery ID as before, so a receiver that already handled it can skip it. Redeliver also works on a disabled webhook, which is handy for testing a receiver before switching it back on.
 - **The log keeps 30 days.** Older attempts are removed automatically. The log refreshes every 15 seconds while it is open.
 - **What a message contains:** the run's number, result, suite and test names, browser and device, how many tests passed and failed, how long it took, its error message, links to its trace and video, the code version it tested (if it was given one), who or what started it, and the name, result and error of up to 100 tests.
-- **The demo workspace never sends anything.** TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see *Proposals*).
+- **The demo workspace never sends anything.** TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see *Proposals*). The demo's delivery log is sample data, and its address ends in `.invalid`, which can't exist: pressing **Redeliver** there only adds a failed attempt.
 - **The settings can't be edited.** To change a webhook's address, scope or events, create a new one and delete the old one.
 - **Not the same as chat notifications.** Messages to Slack or Microsoft Teams are set up for each project in *Project settings*. Webhooks are for systems your team builds or runs.
 
@@ -194,10 +200,10 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. A webhook tells another system, straight away, when a test run has finished.
 2. Webhooks belong to a workspace. Choose the workspace here.
-3. This workspace has none yet. New webhook opens the form.
+3. The demo has one webhook, switched off, with its recent deliveries. New webhook opens the form.
 4. Give it a name, and the web address that should receive the message.
 5. Project scope: every project in the workspace, or just one.
 6. Events: pick which run results to send. Pick none to get them all.
 7. After you create it, the signing secret is shown once. Copy it then.
 8. We will cancel here, so nothing is saved.
-9. Each webhook then appears in a list, with its recent deliveries and a switch to pause it.
+9. Each webhook appears in the list, with its recent deliveries and a switch to pause it.

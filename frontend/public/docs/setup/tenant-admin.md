@@ -28,15 +28,15 @@ The numbers on the screenshot match the sections below.
 
 ![The Tenant users page with four numbered parts: 1 the heading with the number of users and workspaces, 2 the search box and list of people, 3 the selected person's details, 4 the Assign workspaces button](../media/setup/tenant-admin/page-annotated.png)
 
-*The Tenant users page for the guide's own organisation, which has one person. Click the picture to see it larger.*
+*The Tenant users page for the guide's own organisation: the guide's account and the demo workspace's three sample people. Click the picture to see it larger.*
 
 ## 1. The summary line
 
-Under the heading, for example *"1 user across 2 workspaces in your tenant"*: how many people are in the organisation, and how many workspaces it has.
+Under the heading, for example *"4 users across 2 workspaces in your tenant"*: how many people are in the organisation, and how many workspaces it has.
 
 ## 2. The list of people
 
-![A search box above an Active group with one person, Alex Morgan, labelled Tenant Admin](../media/setup/tenant-admin/list.png)
+![A search box above an Active group with four people: Alex Morgan labelled Tenant Admin, Maya Rao (demo) labelled Workspace Admin, and Li Chen (demo) and Sam Okafor (demo) labelled Workspace Member](../media/setup/tenant-admin/list.png)
 
 Everyone who belongs to at least one of the organisation's workspaces, plus its tenant admins, each listed once. Search by name or email. People are grouped into **Active** and **Inactive** (accounts that have been deactivated and can no longer sign in).
 

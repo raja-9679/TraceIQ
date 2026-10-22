@@ -46,25 +46,29 @@ Four tabs, each with a count. The page opens on **Members**.
 
 ### Members
 
-Everyone in the workspace, with their workspace role, and invitations not yet accepted (shown only to admins). This is a read-only view: invite people with the button (③), and remove them on the *Users* page.
+Everyone in the workspace, with their workspace role, and invitations not yet accepted (shown only to admins). Invite people with the button (③), change someone's workspace role in their details (⑤), and remove people on the *Users* page.
 
 ### Teams
 
-![The New team dialog: Team name, Description, and an optional Link to project menu](../media/setup/workspace/team-dialog.png)
+![The selected team card for QA engineers: two members, Maya Rao and Li Chen, each with a remove ×, and the buttons Add member, Link project and Delete team](../media/setup/workspace/team-detail.png)
 
-A team gives several people the same access to a project at once, and new members of the team get that access automatically. The demo workspace has no teams yet, so the tab says "No teams created yet". Once there are teams, pick one to see its members and three buttons:
+A team gives several people the same access to a project at once, and new members of the team get that access automatically. The demo workspace has one team, *QA engineers*, with editor access to the web project. Pick a team to see its members and three buttons (with no teams, the tab says "No teams created yet"):
 
 - **Add member**: add someone already in the workspace, or type an email. Someone with an account is added at once; for an address with no account, TraceIQ keeps an invitation and adds them when they sign up.
 - **Link project**: give the whole team access to a project, as viewer, editor or admin.
 - **Delete team**, after you confirm. The people stay in the workspace, but lose any access they had only through this team.
 
+![The New team dialog: Team name, Description, and an optional Link to project menu](../media/setup/workspace/team-dialog.png)
+
+*The New team dialog, opened with the button on the right of the tabs (③).*
+
 The **×** next to a member takes them out of the team at once, without asking. Making, changing and deleting teams needs a workspace admin; the one exception is that anyone may take themselves out of a team.
 
 ### Projects
 
-![The Projects list: Demo — Todo web app and Demo — Public API, each labelled Admin](../media/setup/workspace/projects-list.png)
+![The Projects list: Demo — Public API (selected) and Demo — Todo web app, each labelled Admin](../media/setup/workspace/projects-list.png)
 
-![The selected project card for Demo — Todo web app: Your access admin, Teams with access (none), Direct members with Alex Morgan as admin, Grant controls, and a Delete project button](../media/setup/workspace/project-access.png)
+![The selected project card for Demo — Public API: Your access Admin, Teams with access: No teams linked, Direct members Alex Morgan (Admin) and Sam Okafor (Viewer), Grant controls, and a Delete project button](../media/setup/workspace/project-access.png)
 
 The workspace's projects that you can see, each with your own access level. Pick one to see who can use it:
 
@@ -87,11 +91,9 @@ Granting and removing access needs a workspace admin or an admin of that project
 
 **Delete workspace** deletes the whole workspace: every team, project, test, run and stored file in it. TraceIQ first shows what would be removed, then asks you to type the workspace's exact name. The audit history is kept.
 
-> **Deleting a workspace is refused in this version**
->
-> The server currently refuses this for everyone, admins included: the dialog shows "Permission denied: workspace:delete_workspace" where the list of what would be removed should be. A demo workspace can still be removed with **Delete demo workspace** on its own card (⑥).
+A demo workspace can also be removed with **Delete demo workspace** on its own card (⑥).
 
-![The Delete workspace dialog for Demo workspace, showing Permission denied: workspace:delete_workspace in red above the box for typing the name](../media/setup/workspace/delete-dialog.png)
+![The Delete workspace dialog for Demo workspace: Will remove 2 projects, 4 suites, 18 test cases, 242 runs, 1 team (1886 records in total). Audit history is kept. Below, a box for typing the workspace name and a pale Delete workspace button](../media/setup/workspace/delete-dialog.png)
 
 ## 3. The tab's button
 
@@ -105,13 +107,13 @@ The button on the right of the tabs changes with the tab:
 
 ## 4. The list
 
-![The Members group with one person, Alex Morgan, labelled Admin](../media/setup/workspace/members-list.png)
+![The Members group with four people, Maya Rao and Alex Morgan labelled Admin, Sam Okafor and Li Chen labelled Member, and below it a Pending invites group with one invitation, marked Invited](../media/setup/workspace/members-list.png)
 
 The people, teams or projects of the current tab. Click one to see it on the right.
 
 ## 5. The details
 
-![The selected member card for Alex Morgan: Workspace role Admin, Status Active, Last active less than a minute ago, a Change workspace role control, and a Changing access note](../media/setup/workspace/member-detail.png)
+![The selected member card for Maya Rao: Workspace role Admin, Status Active, Last active 1 day ago, a Change workspace role control with a Change role button, and a Changing access note](../media/setup/workspace/member-detail.png)
 
 For a person: their workspace role (Admin or Member), status (Active, or Deactivated for a switched-off account) and when they last signed in, with a reminder that project access comes from teams and direct grants. Workspace admins also get **Change workspace role**: pick Member or Admin and press **Change role**. TraceIQ refuses to demote the last admin of a workspace. For a team or a project: the members and controls described under ②.
 
@@ -187,6 +189,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 4. Members: everyone in the workspace, with their role. Click a person to see their details.
 5. Workspace admins invite people with Invite people.
 6. Teams group people, so a whole team can be given access to a project at once.
-7. Projects: choose one to see who can use it.
-8. Access comes from teams, or from a direct grant to one person: viewer, editor or admin.
-9. The danger zone deletes the whole workspace. It asks you to type its name first.
+7. New team makes another one.
+8. Projects: choose one to see who can use it.
+9. Access comes from teams, or from a direct grant to one person: viewer, editor or admin.
+10. The danger zone deletes the whole workspace. It asks you to type its name first.

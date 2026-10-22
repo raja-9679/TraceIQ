@@ -28,9 +28,9 @@ This page answers **"How do failures get from TraceIQ to the people who fix them
 
 ## A tour of the screen
 
-The demo workspace has no trackers yet, so the page shows *"No trackers yet"*. The screenshot shows the form you get after pressing **Add tracker**, filled in with example values (the token box is left empty on purpose). The numbers match the sections below. What the page looks like once a tracker is saved is described after them, under [Your trackers](#list).
+The demo workspace has one tracker, a Jira connection that is switched off, listed on the left. The screenshot shows the form you get after pressing **Add tracker**, filled in with example values (the token box is left empty on purpose). The numbers match the sections below. The list and a saved tracker are described after them, under [Your trackers](#list).
 
-![The Issue trackers page with the New tracker form open and six numbered parts: 1 the workspace picker, 2 Provider and Name, 3 Base URL, 4 the account and its token, 5 Settings JSON, 6 the Add tracker and Cancel buttons](../media/setup/issue-trackers/page-annotated.png)
+![The Issue trackers page with the demo's disabled Jira tracker listed on the left and the New tracker form open on the right, with six numbered parts: 1 the workspace picker, 2 Provider and Name, 3 Base URL, 4 the account and its token, 5 Settings JSON, 6 the Add tracker and Cancel buttons](../media/setup/issue-trackers/page-annotated.png)
 
 *The Issue trackers page for the demo workspace, with the form open. Click the picture to see it larger.*
 
@@ -89,7 +89,11 @@ The example stays the Jira one when you switch provider, so change it yourself. 
 
 ## Your trackers
 
-Once a connection is saved, the left side lists every tracker of the workspace in one box, **Trackers**. Each row shows the name, the provider and the base URL, and On or Off. Click a row to see it on the right:
+![The Trackers box listing Jira (demo, disabled), marked Off, and on the right its details: Disabled, Jira, Connection with Base URL https://demo-team.atlassian.example.invalid and User qa-bot@example.invalid, a What this does note, and Enable and Remove buttons](../media/setup/issue-trackers/trackers.png)
+
+*The demo's tracker, switched off. Nothing reaches the address: it ends in `.invalid`.*
+
+The left side lists every tracker of the workspace in one box, **Trackers**. Each row shows the name, the provider and the base URL, and On or Off. Click a row to see it on the right (the first one is shown until you pick another). A workspace with no trackers shows *"No trackers yet"* instead.
 
 - Enabled or Disabled, the name and the provider.
 - **Connection**: the base URL and the account name. The token is never shown.
@@ -135,7 +139,7 @@ To file *one* ticket for a problem that failed many times, use **Failure triage*
 - **Only switched-on trackers are offered.** The *Create ticket* menus on runs and in Failure triage list enabled Jira, iTop and GitHub trackers; Requirements lists enabled Jira and Linear ones.
 - **The run page asks for a workspace first** if you belong to several. Pick the workspace the run's project belongs to.
 - **Failure triage only offers trackers of the project's own workspace**, so a problem can't be filed into another team's tracker by mistake.
-- **The demo workspace starts with no trackers.** You can add a test connection to try it, then remove it.
+- **The demo's Jira tracker is a placeholder.** Its address can't be reached and its token is not real, so enabling it would only make ticket filing fail. To try the page, add your own test connection, then remove it.
 
 ## Related pages
 
@@ -161,10 +165,10 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Issue trackers connect TraceIQ to the tool your team files bugs in.
 2. Connections belong to a workspace. Choose it here.
-3. This one has no trackers yet. Add tracker opens the form.
+3. The demo has one Jira connection, switched off. Add tracker opens the form for another.
 4. Pick the tool: Jira, iTop, GitHub, or Linear. Linear is for importing only.
 5. Give it a name, and the web address of your tracker.
 6. Then the account TraceIQ signs in with, and its token. The token is stored encrypted.
 7. Settings say where tickets go. For Jira: the project key and the issue type.
 8. Add tracker saves it. We cancel here, so nothing is saved.
-9. Once saved, Create ticket on a run and on Failure triage offers it.
+9. Once saved and enabled, Create ticket on a run and on Failure triage offers it.

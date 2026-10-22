@@ -26,6 +26,9 @@ test('Setup › Policies', async ({ page, browser }) => {
     await expect(labelled(main, 'Workspace')).toHaveValue(/\d+/);
     await expect(labelled(main, 'Workspace').locator('option:checked')).toHaveText('Demo workspace');
     await settle(page);
+    // The instance-admin probe (GET /admin/instance-admins) 403s for the docs
+    // account and the app's global handler toasts it; wait for it to go.
+    await expect(page.getByText('Permission Denied')).toBeHidden({ timeout: 15_000 });
 
     // 1. The page as a reader first meets it.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
@@ -56,12 +59,7 @@ test('Setup › Policies', async ({ page, browser }) => {
                 clip: { x: top.x, y: top.y, width: top.width, height: end.y + end.height - top.y + 24 } });
         }
     };
-    await shootTop(`${DIR}/denials.png`, denials.getByText(/Nothing was refused|Older/).first());
-    // The instance-wide view is for instance admins; the docs account is not one.
-    await labelled(denials, 'Scope').selectOption('instance');
-    await settle(page);
-    await shootTop(`${DIR}/denials-instance.png`, denials.locator('p').last());
-    await labelled(denials, 'Scope').selectOption('workspace');
+    await shootTop(`${DIR}/denials.png`, denials.locator('table').or(denials.getByText(/Nothing was refused/)).first());
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 4. A short walkthrough video, with captions saying what is on screen.
@@ -95,8 +93,8 @@ test('Setup › Policies', async ({ page, browser }) => {
         await labelled(d, 'Period').selectOption('90');
         await settle(p);
         await pointAt(p, labelled(d, 'Period'), 1200);
-        await caption(p, 'Nothing was refused in the demo workspace, so the list is empty.');
-        await pointAt(p, d.getByText(/Nothing was refused/), 2200);
+        await caption(p, 'Each row says when, which rule, the reason given, the project, and who asked.');
+        await pointAt(p, d.locator('tbody tr').first(), 2400);
         await caption(p, '');
     });
 });

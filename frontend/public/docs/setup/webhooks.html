@@ -66,10 +66,10 @@
         </div>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo workspace has no webhooks yet, so the page shows <em>"No webhooks yet"</em>.
-          The screenshot below shows the form you get after pressing <strong>New webhook</strong>,
-          filled in with example values. The numbers match the sections below. What the page looks
-          like once webhooks exist is described after them, under
+        <p>The demo workspace has one webhook, <em>CI status (demo)</em>, switched off, with a
+          log of past deliveries. The screenshot below shows the form you get after pressing
+          <strong>New webhook</strong>, filled in with example values. The numbers match the
+          sections below. The list and the selected webhook are described after them, under
           <a href="#list">The list of webhooks</a>.</p>
         <figure>
           <div class="frame"><img src="../media/setup/webhooks/page-annotated.png" alt="The Webhooks page with the New webhook form open and seven numbered parts: 1 the workspace picker, 2 the New webhook button, 3 Name, 4 Payload URL, 5 Project scope, 6 Events, 7 the Create webhook and Cancel buttons" loading="lazy" width="1440" height="900"></div>
@@ -157,7 +157,11 @@
         </div>
 
         <h2 id="list" data-toc="The list of webhooks">The list of webhooks</h2>
-        <p>Once a workspace has webhooks, they are listed on the left, in up to three boxes:</p>
+        <figure>
+          <div class="frame small"><img src="../media/setup/webhooks/list.png" alt="The Disabled box with one webhook, CI status (demo), its address and a green 200 on the right, and below it a note about the signing secret and retries" loading="lazy"></div>
+        </figure>
+        <p>A workspace's webhooks are listed on the left, in up to three boxes (a box with nothing
+          in it is left out; with no webhooks at all the page says <em>"No webhooks yet"</em>):</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Box</th><th>What is in it</th></tr></thead>
@@ -175,6 +179,10 @@
           show it on the right. Until you do, the first one in the first box is shown.</p>
 
         <h2 id="detail" data-toc="The selected webhook">The selected webhook</h2>
+        <figure>
+          <div class="frame small"><img src="../media/setup/webhooks/detail.png" alt="The details of CI status (demo): Disabled, its address, Scope Entire workspace, Last delivery 200 with its time, Created date, Events run.failed and run.passed, the Verifying deliveries note, Recent deliveries with All and Failed filters and nine attempts (one Failed with HTTP 502 from receiver, retried a minute later and accepted), each with a Redeliver button, and the Enable delivery and Delete webhook buttons" loading="lazy"></div>
+          <figcaption>The demo webhook. One delivery failed with a 502 and got through on the second attempt.</figcaption>
+        </figure>
         <ul>
           <li><strong>Status labels</strong>: <span class="pill t-mint">Active</span> or <span class="pill t-neutral">Disabled</span>, and, if the last attempts failed, how many in a row, for example <span class="pill t-peach">3 consecutive failure(s)</span>. Every attempt counts, retries included; one that gets through sets it back to zero.</li>
           <li><strong>Scope</strong>: <em>Entire workspace</em> or the project's name. <strong>Last delivery</strong>: the answer code and time of the last attempt, or <em>Never delivered</em>. <strong>Created</strong>: when it was made.</li>
@@ -243,7 +251,7 @@
           <li><strong>A redelivered message is the same message.</strong> It has the same delivery ID as before, so a receiver that already handled it can skip it. Redeliver also works on a disabled webhook, which is handy for testing a receiver before switching it back on.</li>
           <li><strong>The log keeps 30 days.</strong> Older attempts are removed automatically. The log refreshes every 15 seconds while it is open.</li>
           <li><strong>What a message contains:</strong> the run's number, result, suite and test names, browser and device, how many tests passed and failed, how long it took, its error message, links to its trace and video, the code version it tested (if it was given one), who or what started it, and the name, result and error of up to 100 tests.</li>
-          <li><strong>The demo workspace never sends anything.</strong> TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see <em>Proposals</em>).</li>
+          <li><strong>The demo workspace never sends anything.</strong> TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see <em>Proposals</em>). The demo's delivery log is sample data, and its address ends in <code>.invalid</code>, which can't exist: pressing <strong>Redeliver</strong> there only adds a failed attempt.</li>
           <li><strong>The settings can't be edited.</strong> To change a webhook's address, scope or events, create a new one and delete the old one.</li>
           <li><strong>Not the same as chat notifications.</strong> Messages to Slack or Microsoft Teams are set up for each project in <em>Project settings</em>. Webhooks are for systems your team builds or runs.</li>
         </ul>

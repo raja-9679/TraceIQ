@@ -113,13 +113,15 @@ Both checkboxes save the moment you click them. Showing the server's side also n
 
 ## 4. OpenAPI spec
 
-![The OpenAPI spec card: No spec stored for this project, a Choose file button and an Or fetch from a URL field with a Fetch and save button](../media/setup/project-settings/openapi.png)
+![The OpenAPI spec card of Demo — Public API: Demo public API (httpbin) v1.1.0, 5 operations, from https://httpbin.org/spec.json, the operation list, Choose file, Or fetch from a URL, Remove spec, then Version history comparing v1 (1.0.0) with v2 (1.1.0, current): 2 breaking, 1 compatible, with GET /ip Operation removed and POST /anything Request property became required](../media/setup/project-settings/openapi.png)
 
 An *OpenAPI spec* is a file that describes an API: its addresses and what each answer should look like. Store your API's spec here, and API tests can check that every answer matches it, instead of each test spelling out the expected shape.
 
 - **Choose file** uploads a JSON file; **Fetch and save** downloads it from an address.
 - Once stored, the card shows its title, version and the first 12 of its operations, and a **Remove spec** button.
-- Every new upload is kept as a numbered version. With two or more, the card lists them and shows what changed between two versions, **breaking changes first**, naming the project's tests that use each changed operation.
+- Every new upload is kept as a numbered version. With two or more, a **Version history** appears: pick two versions under **Compare from (older)** and **To (newer)** to see what changed for the API's users, grouped by operation, naming the project's tests that use each changed operation. Only **breaking** changes are listed until you tick **Show compatible changes**; **Export SARIF** downloads the comparison for code-scanning tools.
+
+The picture shows the demo's *Public API* project, whose spec has two versions: version 1.1.0 removed `GET /ip` and made a request field required, two breaking changes. A project with no spec, like the demo's web project, says "No spec stored for this project".
 
 Editors can change the spec, not only project admins. Tests created from an OpenAPI file (through TraceIQ's API, by a CI script or an AI agent) also store the spec here.
 

@@ -74,9 +74,9 @@ Every check TraceIQ makes before it lets certain actions happen, grouped by the 
 
 ## 4. Recent denials
 
-![The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period, and the message Nothing was refused in this period](../media/setup/policies/denials.png)
+![The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period (Last 30 days), above a table of refusals with the columns When, Rule, Reason, Where and Who; the newest is agent.budget, Agent session budget exhausted: 20/20 runs](../media/setup/policies/denials.png)
 
-A **denial** is one time a rule said no. The list shows them newest first, 50 to a page (**Newer** and **Older** move between pages). In the demo workspace nothing has been refused, so it says *"Nothing was refused in this period"*.
+A **denial** is one time a rule said no. The list shows them newest first, 50 to a page (**Newer** and **Older** move between pages). The demo workspace has four from the last month: an agent that ran out of its run budget, a person trying to accept their own proposal, the monthly AI token quota, and AI being switched off. When nothing matches, the card says *"Nothing was refused in this period"*.
 
 | Filter | What it does |
 |---|---|
@@ -152,4 +152,4 @@ What the walkthrough says, in order. The video and every picture on this page ar
 6. Refuses stops the action. Defers makes it wait. Resolves settings only adjusts it.
 7. Recent denials lists what was actually refused, newest first.
 8. Narrow it down by action, rule, agent or period.
-9. Nothing was refused in the demo workspace, so the list is empty.
+9. Each row says when, which rule, the reason given, the project, and who asked.

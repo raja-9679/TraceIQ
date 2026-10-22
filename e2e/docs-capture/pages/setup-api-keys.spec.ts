@@ -4,7 +4,9 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 // Guide page: frontend/public/docs/setup/api-keys.html
 // NEVER creates or revokes a key. The New API key form is opened and
 // cancelled; nothing is typed into it except in the picture of the form,
-// where a name is typed and then the form is cancelled.
+// where a name is typed and then the form is cancelled. The demo workspace
+// has two dead keys (one expired, one revoked); selecting one only changes
+// what the page shows.
 
 const DIR = 'setup/api-keys';
 
@@ -28,17 +30,24 @@ test('Setup › API keys', async ({ page, browser }) => {
     // 2. Its parts, numbered.
     const picker = page.getByRole('combobox', { name: 'Workspace' });
     const newKey = main.getByRole('button', { name: 'New API key' });
-    const empty = main.getByText('No API keys yet').locator('xpath=..');
+    const list = main.locator('section').filter({ has: page.getByRole('heading', { name: 'Expired' }) });
+    const detail = main.getByRole('article', { name: 'Selected API key' });
+    await expect(list.getByRole('heading', { name: 'Revoked' })).toBeVisible();
+    await expect(detail).toBeVisible();
     const clean = await annotate(page, [
         { n: 1, target: picker },
         { n: 2, target: newKey, side: 'right' },
-        { n: 3, target: empty },
+        { n: 3, target: list },
+        { n: 4, target: detail, side: 'right' },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
 
     // 3. Close-ups.
-    await empty.screenshot({ path: out(`${DIR}/empty.png`) });
+    await list.screenshot({ path: out(`${DIR}/list.png`) });
+    await list.getByRole('button', { name: /GitHub Actions/ }).click();
+    await expect(detail.getByText('Revoked', { exact: true }).first()).toBeVisible();
+    await detail.screenshot({ path: out(`${DIR}/detail-revoked.png`) });
     await newKey.click();
     await expect(page.getByLabel('Name', { exact: true })).toBeVisible();
     await page.getByLabel('Name', { exact: true }).fill('ci-regression-bot');
@@ -62,8 +71,8 @@ test('Setup › API keys', async ({ page, browser }) => {
         });
         await caption(p, 'Keys belong to a workspace. Pick the workspace here.');
         await pointAt(p, p.getByRole('combobox', { name: 'Workspace' }), 2000);
-        await caption(p, 'This workspace has no keys yet, so the list is empty.');
-        await pointAt(p, m.getByText('No API keys yet'), 2000);
+        await caption(p, 'Keys are listed as active, expired or revoked. The demo has one expired and one revoked key.');
+        await pointAt(p, m.getByRole('heading', { name: 'Expired' }), 2200);
         await caption(p, 'New API key opens a short form.');
         const nk = m.getByRole('button', { name: 'New API key' });
         await pointAt(p, nk, 900);
@@ -75,15 +84,15 @@ test('Setup › API keys', async ({ page, browser }) => {
         await caption(p, 'You can let it expire after a number of days, and accept it only from certain addresses.');
         await pointAt(p, p.getByLabel('Expires in (days)'), 1400);
         await pointAt(p, p.getByLabel('Allowed source IPs (optional)'), 1600);
-        await caption(p, 'The Role is saved with the key, but a key always acts with its creator\u2019s own access.');
-        await pointAt(p, p.getByRole('combobox', { name: 'Role' }), 2200);
+        await caption(p, 'The role limit caps what the key may do. It never gets more than its creator\u2019s own access.');
+        await pointAt(p, p.getByRole('combobox', { name: 'Role limit' }), 2200);
         await caption(p, 'After Create key, the full key is shown once. Copy it then: it can never be shown again.');
         await pointAt(p, m.getByRole('button', { name: 'Create key' }), 2600);
         await caption(p, '');
         await m.getByRole('button', { name: 'Cancel' }).click();
         await beat(p, 600);
-        await caption(p, 'Each key in the list shows when it was last used, and has a Revoke button to switch it off at once.');
-        await pointAt(p, m.getByText('No API keys yet'), 2400);
+        await caption(p, 'Click a key to see when it was last used. An active key also has a Revoke button.');
+        await pointAt(p, m.getByRole('article', { name: 'Selected API key' }), 2400);
         await caption(p, '');
     });
 });

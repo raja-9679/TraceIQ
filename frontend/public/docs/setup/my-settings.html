@@ -151,7 +151,7 @@
           <li><strong>Email me about</strong>: <em>All runs</em>, or <em>Failed runs only</em>, which skips runs that passed.</li>
         </ul>
         <figure>
-          <div class="frame small"><img src="../media/setup/my-settings/per-project.png" alt="The Per project card: three projects (My first project, Demo — Todo web app, Demo — Public API), each set to My default" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/my-settings/per-project.png" alt="The Per project card: three projects (My first project, Demo — Public API, Demo — Todo web app), each set to My default" loading="lazy"></div>
         </figure>
         <p><strong>Per project</strong> lists every project you can see, and lets you override
           your default for one of them: <em>My default</em> (follow the card above), <em>All
@@ -167,7 +167,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="account" data-toc="④ Account and API keys">Account and API keys</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/my-settings/profile.png" alt="The Profile card: Full name Alex Morgan, Email docs-guide-92886b@example.com" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/my-settings/profile.png" alt="The Profile card: Full name Alex Morgan, Email docs-guide-7d3e41@example.com" loading="lazy"></div>
         </figure>
         <p><strong>Profile</strong> shows the name and email address TraceIQ has for you. You can't
           change them here; ask your workspace administrator.</p>
@@ -185,24 +185,25 @@
 
         <div class="part"><span class="num">5</span><h2 id="two-factor" data-toc="⑤ Two-factor sign-in">Two-factor sign-in</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/my-settings/two-factor.png" alt="The Two-factor sign-in section: an Authenticator app card with a Set up authenticator button, a Recovery codes card, and a Turn off two-factor sign-in card" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/my-settings/two-factor.png" alt="The Two-factor sign-in section: the Authenticator app card with Status: Off and a Set up authenticator button" loading="lazy"></div>
         </figure>
         <p>Two-factor sign-in means that signing in with your password also needs a 6-digit code
           from an <em>authenticator app</em> on your phone (Google Authenticator, Authy,
           1Password and similar). Someone who learns your password still can't get in.</p>
+        <p>The <strong>Authenticator app</strong> card starts with a <strong>Status</strong> line:
+          <span class="pill t-neutral">Off</span> or <span class="pill t-mint">On</span>. What
+          else appears depends on it:</p>
         <ul>
-          <li><strong>Authenticator app</strong>: set it up (see <a href="#how-to">How to…</a>).</li>
-          <li><strong>Recovery codes</strong>: a fresh set of 10 backup codes, for when you don't have your phone. Each code works once. Making a new set needs a current code from the app, and the old set stops working.</li>
-          <li><strong>Turn off two-factor sign-in</strong>: enter a current 6-digit code and press <strong>Disable MFA</strong> (it stays greyed out until the code is complete) to go back to password only. Your recovery codes are deleted too.</li>
+          <li><strong>Off</strong>: only <strong>Set up authenticator</strong> (see <a href="#how-to">How to…</a>).</li>
+          <li><strong>On</strong>: the card says you're asked for a code at every password sign-in, and two more cards appear.
+            <ul>
+              <li><strong>Recovery codes</strong>: a fresh set of 10 backup codes, for when you don't have your phone. Each code works once. Making a new set needs a current code from the app, and the old set stops working.</li>
+              <li><strong>Turn off two-factor sign-in</strong>: enter a current 6-digit code and press <strong>Disable MFA</strong> (it stays greyed out until the code is complete) to go back to password only. Your recovery codes are deleted too.</li>
+            </ul>
+          </li>
         </ul>
-        <div class="callout note">
-          <span class="icon">!</span>
-          <div><strong class="title">The page doesn't say whether it is on</strong>
-            <p>All three cards are always shown, whether or not you have two-factor sign-in.
-            If you press <strong>Set up authenticator</strong> when it is already on, TraceIQ
-            refuses with "MFA is already enabled"; to move to a new phone, turn it off first with
-            a code from the old one, then set it up again.</p></div>
-        </div>
+        <p>To move to a new phone, turn it off with a code from the old one, then set it up
+          again.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">

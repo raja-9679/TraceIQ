@@ -28,9 +28,9 @@ Billing answers **"How much have we used this month, and are we about to hit a l
 
 ## A tour of the screen
 
-The server used for this guide has no plans set up, so the demo workspace shows *"No plan (unlimited)"*, three meters with no limit, and an empty list of plans. The numbers on the screenshot match the sections below.
+The server used for this guide has no plans set up, so the demo workspace shows *"No plan (unlimited)"* and its usage this month, and no list of plans. The numbers on the screenshot match the sections below.
 
-![The Plan and usage page with five numbered parts: 1 the workspace menu, 2 the current plan line, 3 three usage meters, 4 the list of plans, 5 the note about plan changes](../media/setup/billing/page-annotated.png)
+![The Plan and usage page with four numbered parts: 1 the workspace menu, 2 the current plan line, 3 three usage meters, 4 the note about plan changes](../media/setup/billing/page-annotated.png)
 
 *The Plan and usage page for the demo workspace. Click the picture to see it larger.*
 
@@ -49,7 +49,7 @@ Plans belong to a **workspace**. This menu chooses which one. The page opens on 
 
 ## 3. The three meters
 
-![Three meters: Runs this month 0 / unlimited, AI generations today 0 / unlimited, LLM tokens this month 0 / unlimited](../media/setup/billing/meters.png)
+![Three meters: Runs this month 172 / unlimited, AI generations today 0 / 100, LLM tokens this month 536,363 / unlimited](../media/setup/billing/meters.png)
 
 Each meter shows what has been used, against the plan's limit (*unlimited* when there is none). With a limit, the bar fills up and changes colour:
 
@@ -62,25 +62,25 @@ Each meter shows what has been used, against the plan's limit (*unlimited* when 
 | Meter | What it counts |
 |---|---|
 | **Runs this month** | Runs started this calendar month by people, the API, CI pipelines, benchmarks, access-matrix checks and suggested-fix checks. A request that runs a suite in three browsers counts as three runs. Runs started by *schedules* and *monitors* are not counted. |
-| **AI generations today** | Shown against the plan's daily AI limit. See the note below: on this version it always reads 0. |
+| **AI generations today** | Draft tests written by AI today (UTC), against the workspace's own daily limit for AI test writing (100 unless changed). When it is reached, more drafts are refused until UTC midnight. |
 | **LLM tokens this month** | AI text (tokens) used by the workspace this calendar month. The same number as on *AI usage*. |
 
 > **Which limits actually stop anything**
 >
-> Two limits are enforced. When **runs per month** is used up, new runs are refused with *"Monthly run quota reached"* until the next month. When **LLM tokens per month** is used up, AI features are skipped and fall back to their non-AI behaviour. The other limits listed on a plan (seats, concurrent runs, retention and AI generations per day) are shown for information only on this version: nothing checks them, and the AI-generations meter is never counted up. (The number of runs at the same time is limited per workspace, in its own settings, and AI test writing has its own daily limit per workspace.)
+> Two limits are enforced. When **runs per month** is used up, new runs are refused with *"Monthly run quota reached"* until the next month. When **LLM tokens per month** is used up, AI features are skipped and fall back to their non-AI behaviour. The workspace's daily limit on AI test writing (the middle meter) is enforced too. The other limits listed on a plan (seats, concurrent runs, retention and AI generations per day) are shown for information only on this version: nothing checks them. (The number of runs at the same time is limited per workspace, in its own settings.)
 
-## 4. Plans
+## 4. The note at the bottom
 
-One card per plan the server offers. On the demo server there are none, so this part is not shown at all. Each card shows:
+A reminder that plan changes take effect immediately, how plans are changed on this server (free plans by a workspace admin; paid plans by card payment or, without it, by the instance admin), and that the run limit is checked when a run is created.
+
+## Plans
+
+When the server offers plans, a **Plans** section appears between the meters and the note, with one card per plan. The server used for this guide has none, so the section is not shown in the pictures. Each card shows:
 
 - The plan's name, and Current on the one the workspace is on.
 - Its price per month, *Free*, or *Custom* for the enterprise plan.
 - Its limits: runs per month, seats, concurrent runs, retention in days, AI generations per day and LLM tokens per month. *Unlimited* means no limit.
 - A button: **Current plan** (greyed out) on your plan; **Upgrade** on paid plans when the server takes card payments, which opens the payment page; otherwise **Switch to …**, which changes the plan straight away. A workspace admin sees *Switch to* on free plans and *Upgrade* on paid ones. Without card payments, a paid plan can only be assigned by the *instance admin* (the person who runs the TraceIQ server); a workspace admin sees "Ask the instance admin to assign this plan" there instead.
-
-## 5. The note at the bottom
-
-A reminder that plan changes take effect immediately, how plans are changed on this server (free plans by a workspace admin; paid plans by card payment or, without it, by the instance admin), and that the run limit is checked when a run is created.
 
 ## Watch it in use
 
@@ -143,5 +143,5 @@ What the walkthrough says, in order. The video and every picture on this page ar
 4. The month the counters cover, and how billing works on this server.
 5. Three meters: runs this month, AI generations, and AI tokens this month.
 6. With a limit, the bar fills up and turns yellow, then orange, as it gets close.
-7. Plans lists the plans on offer, with their limits and a button to switch.
-8. This server has no plans set up, so the list is empty.
+7. When the server offers plans, they are listed below, with a button to switch.
+8. This server has no plans set up, so only the note about plan changes follows.
