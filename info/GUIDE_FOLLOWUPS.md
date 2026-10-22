@@ -133,7 +133,7 @@ Fixed this round (seen in the new pictures):
 - Page-budget trend bars and Dependencies errors line now fill their card.
 
 Still open / new this round:
-- Audit log "Verify chain" shows the peach "Chain broken" pill for rows that predate hash chaining (AuditLog.tsx ~143 only checks `verified`); CLAUDE.md says such rows should read as unverifiable. media/security/audit-log/verify.png.
+- ~~Audit log "Verify chain" shows "Chain broken" for rows that predate hash chaining~~ (fixed 0c82ee5 backend + UI: leading unhashed rows are counted as `unverifiable_rows`, the rest is verified, status verified|partial|broken; picture recaptured a36c65a).
 - Seeded audit rows carry the seeding time; control History "No history."; script inventory change history has no approval entries.
 - Page budgets says "8 over budget" but no trend bar is red (media/tests/frontend-quality/budgets.png).
 - Step editor crowds the title ("Add a t") next to Priority / auth checkboxes (media/tests/suites/editor.png).
