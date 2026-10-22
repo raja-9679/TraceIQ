@@ -45,11 +45,11 @@ Each workspace has its own log. The page shows the workspace of the project sele
 - **Export CSV** downloads the entries that match the current filters as a spreadsheet file, oldest first, for an auditor or a security monitoring tool. It contains every matching entry, not just the 50 on screen.
 - **Verify chain** checks every link of the chain and shows the result above the table:
 
-![Chain broken, 153 rows checked: This row predates hash chaining, so the trail cannot be verified from here backwards. Rows written after the upgrade are covered. First bad row #1 (7/30/2026)](../media/security/audit-log/verify.png)
+![Verified since chaining began, 124 rows checked: Every chained audit row is intact and correctly linked to its predecessor. 37 older rows predate hash chaining and cannot be verified.](../media/security/audit-log/verify.png)
 
-*The server these pictures come from was in use before the chain was introduced, so the check stops at its oldest entry and says so. On a server installed with the chain, an intact trail shows *Chain verified* and "Every audit row is intact and correctly linked to its predecessor."*
+*The server these pictures come from was in use before the chain was introduced. Its oldest entries have no hash and cannot be checked, so the result is *Verified since chaining began*: every entry written since is checked, and the older ones are counted separately. On a server installed with the chain, an intact trail shows *Chain verified*.*
 
-The chain runs through the whole server's audit trail, not just this workspace, so the number of rows checked is larger than the number of entries you can see. If the check fails it shows Chain broken, the first bad entry and whether it is in this workspace. Entries written before the chain was introduced can't be checked, and it says so.
+The chain runs through the whole server's audit trail, not just this workspace, so the number of rows checked is larger than the number of entries you can see. If the check fails it shows Chain broken, the first bad entry and whether it is in this workspace. Entries written before the chain was introduced can't be checked; they are counted separately and the rest of the trail is still checked (Verified since chaining began).
 
 ## 3. Filters
 
