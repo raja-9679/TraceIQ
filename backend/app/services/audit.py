@@ -357,7 +357,11 @@ def legacy_prefix_length(rows: Sequence[Any]) -> int:
     history written before chaining was installed. The first sealed row
     links to ROOT_HASH (sealing looks up the newest row WITH a hash), so the
     chain can be verified from there on. An unhashed row AFTER a hashed one
-    is not legacy; verify_chain reports it as a break."""
+    is not legacy; verify_chain reports it as a break. Stripping the hashes
+    of only some early rows is caught too: the first remaining sealed row
+    then links to a predecessor hash instead of ROOT_HASH. A log with NO
+    sealed rows must be reported as unverifiable by the caller, never as
+    verified."""
     n = 0
     for row in rows:
         stored = row.get("row_hash") if isinstance(row, dict) else getattr(row, "row_hash", None)
