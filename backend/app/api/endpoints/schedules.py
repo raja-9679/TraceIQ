@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_
-from sqlalchemy import func
+from sqlalchemy import delete as sa_delete, func
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import get_current_user
@@ -216,6 +216,8 @@ async def list_schedules(
         if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
             raise HTTPException(status_code=403, detail="Access denied to this project")
         query = query.where(TestSchedule.project_id == project_id)
+    from app.services import key_scope
+    query = key_scope.restrict(query, TestSchedule.project_id, session, current_user.id)
         
     result = await session.exec(query)
     return result.all()
@@ -258,6 +260,8 @@ async def list_monitors(
         if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
             raise HTTPException(status_code=403, detail="Access denied to this project")
         query = query.where(TestSchedule.project_id == project_id)
+    from app.services import key_scope
+    query = key_scope.restrict(query, TestSchedule.project_id, session, current_user.id)
 
     monitors = (await session.exec(query)).all()
     return [await _build_monitor_status(m, session) for m in monitors]
@@ -329,7 +333,12 @@ async def update_schedule(
     # Re-evaluate next run if the cron expression or its timezone changed
     new_cron = update_data.get("cron_expression", db_schedule.cron_expression)
     new_tz = update_data.get("timezone", db_schedule.timezone)
-    if new_cron != db_schedule.cron_expression or new_tz != db_schedule.timezone:
+    # Resuming also recomputes it: the stored value is the slot that was due
+    # when the schedule was paused, so keeping it would fire a stale run the
+    # moment it resumes (and a NULL one would never fire at all).
+    resuming = update_data.get("is_active") is True and not db_schedule.is_active
+    if (new_cron != db_schedule.cron_expression or new_tz != db_schedule.timezone
+            or resuming or db_schedule.next_run_at is None):
         if not croniter.is_valid(new_cron):
             raise HTTPException(status_code=400, detail="Invalid cron expression")
         db_schedule.next_run_at = next_run_utc(new_cron, new_tz)
@@ -373,6 +382,11 @@ async def delete_schedule(
     if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=db_schedule.project_id):
         raise HTTPException(status_code=403, detail="Permission denied to delete schedules in this project")
 
+    # A monitor's checks are its uptime history (`monitorcheck.schedule_id` is
+    # NOT NULL with no ON DELETE): they go with it, before it, or the delete
+    # FK-fails for every monitor that has ever checked. The runs they point at
+    # stay — those are ordinary run history.
+    await session.exec(sa_delete(MonitorCheck).where(MonitorCheck.schedule_id == schedule_id))
     await session.delete(db_schedule)
     
     audit = AuditLog(

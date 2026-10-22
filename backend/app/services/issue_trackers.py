@@ -5,6 +5,11 @@ config. Each provider can `create_issue` and (where supported) `attach_file`, so
 TraceIQ can file a ticket from a failing run and upload its trace/video/
 screenshots. Payload builders are pure (unit-tested); the HTTP calls need a live
 tracker instance.
+
+The base URL is user-supplied, so every request goes through `_post`: net_guard
+before each call (DNS can change after the config was saved) and redirects are
+never followed — requests would re-send the credentials and the run's evidence
+to wherever a 307 pointed.
 """
 import base64
 import json
@@ -12,9 +17,22 @@ from typing import Any, Dict, Optional
 
 import requests
 
+from app.core.net_guard import UnsafeUrlError, validate_outbound_url_sync
+
 
 class IssueTrackerError(Exception):
     pass
+
+
+def _guarded_post(url: str, **kwargs) -> requests.Response:
+    try:
+        validate_outbound_url_sync(url)
+    except UnsafeUrlError as exc:
+        raise IssueTrackerError(f"Tracker URL refused by network policy: {exc}")
+    r = requests.post(url, allow_redirects=False, **kwargs)
+    if 300 <= r.status_code < 400:
+        raise IssueTrackerError(f"Tracker answered with a redirect ({r.status_code}); not followed")
+    return r
 
 
 class BaseProvider:
@@ -53,7 +71,7 @@ class JiraProvider(BaseProvider):
     def create_issue(self, summary, description, priority=None):
         if not self.project_key:
             raise IssueTrackerError("Jira config missing settings.project_key")
-        r = requests.post(f"{self.base}/rest/api/2/issue",
+        r = _guarded_post(f"{self.base}/rest/api/2/issue",
                           json=self.build_issue_payload(summary, description, priority),
                           auth=self.auth, timeout=30)
         if not r.ok:
@@ -63,7 +81,7 @@ class JiraProvider(BaseProvider):
         return {"key": key, "url": f"{self.base}/browse/{key}"}
 
     def attach_file(self, filename, content, content_type):
-        r = requests.post(f"{self.base}/rest/api/2/issue/{self._issue_key}/attachments",
+        r = _guarded_post(f"{self.base}/rest/api/2/issue/{self._issue_key}/attachments",
                           headers={"X-Atlassian-Token": "no-check"}, auth=self.auth,
                           files={"file": (filename, content, content_type)}, timeout=120)
         if not r.ok:
@@ -86,7 +104,7 @@ class ItopProvider(BaseProvider):
     def _post(self, json_data: dict) -> dict:
         data = {"version": "1.3", "auth_user": self.user, "auth_pwd": self.password,
                 "json_data": json.dumps(json_data)}
-        r = requests.post(f"{self.base}/webservices/rest.php", data=data, timeout=30)
+        r = _guarded_post(f"{self.base}/webservices/rest.php", data=data, timeout=30)
         if not r.ok:
             raise IssueTrackerError(f"iTop HTTP {r.status_code}: {r.text[:300]}")
         res = r.json()
@@ -140,7 +158,7 @@ class GithubProvider(BaseProvider):
     def create_issue(self, summary, description, priority=None):
         if not self.repo:
             raise IssueTrackerError("GitHub config missing settings.repo (owner/name)")
-        r = requests.post(f"{self.base}/repos/{self.repo}/issues",
+        r = _guarded_post(f"{self.base}/repos/{self.repo}/issues",
                           json=self.build_issue_payload(summary, description),
                           headers={"Authorization": f"Bearer {self.token}",
                                    "Accept": "application/vnd.github+json"}, timeout=30)

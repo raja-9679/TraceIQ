@@ -27,6 +27,7 @@ from sqlmodel import Session, create_engine, select
 
 from app.core.celery_app import celery_app
 from app.core.config import db_url_for, settings
+from app.services.demo_workspace import is_demo_project_sync
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,8 @@ def due_estates(session, now: datetime) -> List[int]:
         session.add(est)
         if first or nxt is None:
             continue   # just scheduled (or unschedulable): don't scan on enable
+        if is_demo_project_sync(session, est.project_id):
+            continue   # a demo workspace never calls out on a schedule
         live = session.exec(select(EstateScan.id).where(
             EstateScan.estate_id == est.id, EstateScan.status.in_(("pending", "running")),
             EstateScan.created_at > now - STALE_SCAN)).first()
@@ -489,7 +492,8 @@ def due_pages(session, now: datetime) -> List[int]:
         first = page.next_check_at is None
         page.next_check_at = next_run(page.cron_expression, now)
         session.add(page)
-        if not first and page.next_check_at is not None:
+        if (not first and page.next_check_at is not None
+                and not is_demo_project_sync(session, page.project_id)):   # demos never call out
             out.append(page.id)
     session.commit()
     return out

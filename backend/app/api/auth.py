@@ -556,6 +556,9 @@ async def register_user(
     session: AsyncSession = Depends(get_session)
 ) -> Any:
     _validate_password_strength(user_in.password)
+    from app.services.demo_seed.setup import is_reserved_demo_email
+    if is_reserved_demo_email(user_in.email):
+        raise HTTPException(status_code=400, detail="This email domain is reserved")
     result = await session.exec(select(User).where(User.email == user_in.email))
     existing_user = result.first()
     if existing_user:

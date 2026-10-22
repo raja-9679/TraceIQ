@@ -18,6 +18,19 @@ from app.services.schedule_time import next_run_utc
 async def _process_schedules_async():
     async with get_session_context() as session:
         now = datetime.utcnow()
+        # An active schedule with no next_run_at (written before it was set on
+        # create, or by a direct insert) is never "due" under `<= now` and so
+        # would never run. Give it its next slot rather than firing at once.
+        unset = (await session.exec(select(TestSchedule).where(
+            TestSchedule.is_active == True,  # noqa: E712
+            TestSchedule.next_run_at == None))).all()  # noqa: E711
+        for schedule in unset:
+            try:
+                schedule.next_run_at = next_run_utc(
+                    schedule.cron_expression, schedule.timezone, after=now)
+                session.add(schedule)
+            except Exception as e:  # noqa: BLE001 — an invalid cron stays unset
+                print(f"Schedule {schedule.id} has no usable next run: {e}")
         # Find active schedules that are due
         query = select(TestSchedule).where(
             TestSchedule.is_active == True,
@@ -26,7 +39,16 @@ async def _process_schedules_async():
         result = await session.exec(query)
         schedules = result.all()
 
+        demo_projects = await _demo_project_ids(session, {s.project_id for s in schedules})
         for schedule in schedules:
+            if schedule.project_id in demo_projects:
+                # A demo workspace never dispatches (its history is generated
+                # and nothing in it may call out). The schedule still moves on
+                # so it is not re-selected every tick.
+                schedule.next_run_at = next_run_utc(
+                    schedule.cron_expression, schedule.timezone, after=now)
+                session.add(schedule)
+                continue
             try:
                 # 1. Dispatch the run
                 await _dispatch_schedule(schedule, session)
@@ -43,6 +65,18 @@ async def _process_schedules_async():
                 traceback.print_exc()
 
         await session.commit()
+
+async def _demo_project_ids(session, project_ids) -> set:
+    """The subset of `project_ids` that live in a demo workspace."""
+    from app.models import Project, Workspace
+    ids = [p for p in project_ids if p]
+    if not ids:
+        return set()
+    rows = (await session.exec(
+        select(Project.id).join(Workspace, Workspace.id == Project.workspace_id)
+        .where(Project.id.in_(ids), Workspace.is_demo == True))).all()  # noqa: E712
+    return set(rows)
+
 
 async def _dispatch_schedule(schedule: TestSchedule, session):
     created_runs = []

@@ -240,3 +240,25 @@ async def test_run_creation_never_loads_full_case_rows_for_the_scope(session, sc
     assert {r.selection_total for r in full} == {4}
     picked = await _create(session, scene, case_ids=[scene.child_cases[0]], browser=["chromium"])
     assert [r.test_case_id for r in picked] == [scene.child_cases[0]]
+
+
+async def test_run_search_is_case_insensitive_and_literal(session, scene):
+    session.add_all([
+        TestRun(project_id=scene.project_id, test_suite_id=scene.root_id,
+                suite_name="Checkout Flow", test_case_name="Pay_by card"),
+        TestRun(project_id=scene.project_id, test_suite_id=scene.root_id,
+                suite_name="Search", test_case_name="PayXby card"),
+    ])
+    await session.commit()
+
+    async def names(q):
+        out = await test_runs.get_runs(project_id=scene.project_id, search=q, limit=50,
+                                       offset=0, status=None, browser=None, device=None,
+                                       git_commit=None, git_branch=None, triggered_by=None,
+                                       agent_id=None, session=session, current_user=scene.user)
+        return sorted(r.test_case_name for r in out["runs"])
+
+    assert await names("checkout") == ["Pay_by card"]
+    assert await names("PAY") == ["PayXby card", "Pay_by card"]
+    # `_` is a literal underscore, not LIKE's any-character wildcard.
+    assert await names("pay_by") == ["Pay_by card"]

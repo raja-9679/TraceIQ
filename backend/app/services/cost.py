@@ -37,8 +37,8 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 APPROXIMATION_NOTE = (
-    "Browser-minutes are the summed execution time of automated test cases "
-    "(TestCaseResult.duration_ms). They approximate worker cost: worker idle "
+    "Browser-minutes are the summed execution time of automated test cases, "
+    "as recorded on each test result. They approximate worker cost: worker idle "
     "time, browser start-up and retry back-off are not included. Manual runs "
     "and runs on a local worker are excluded.")
 

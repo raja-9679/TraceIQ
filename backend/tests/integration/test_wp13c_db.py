@@ -6,6 +6,7 @@ import and its access control.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 import socket
 from types import SimpleNamespace
 from typing import NamedTuple
@@ -13,7 +14,7 @@ from typing import NamedTuple
 import pytest
 import pytest_asyncio
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel import Session, select
 from sqlmodel.ext.asyncio.session import AsyncSession
@@ -117,11 +118,13 @@ async def test_demo_seeds_history_the_reports_can_show(session, scene):
     assert len(timeout) == 1 and timeout[0].occurrence_count >= 4
     assert await triage.list_clusters(web, status=None, category=None, session=session,
                                       current_user=scene.user)
-    # Every failing demo result is in a cluster, and each count is its results.
+    # Every failing automated demo result is in a cluster, and each count is
+    # its results. Manual results are a tester's verdict: triage never groups them.
     from app.models import FailureCluster, TestCaseResult, TestRun, TestStatus
     failed = (await session.exec(select(TestCaseResult).join(TestRun, TestRun.id == TestCaseResult.test_run_id)
                                  .where(TestRun.project_id.in_([web, api]),
-                                        TestCaseResult.status == TestStatus.FAILED))).all()
+                                        TestCaseResult.status == TestStatus.FAILED,
+                                        TestCaseResult.result_kind.is_distinct_from("manual")))).all()
     assert failed and all(r.cluster_id for r in failed)
     rows = (await session.exec(select(FailureCluster).where(FailureCluster.project_id.in_([web, api])))).all()
     assert {c.id: c.occurrence_count for c in rows} == {
@@ -131,19 +134,25 @@ async def test_demo_seeds_history_the_reports_can_show(session, scene):
         web, days=30, top=8, principal=AuthPrincipal(user=scene.user, api_key=None), session=session)
     assert flake["daily"] and flake["cases"] and flake["missing"] is None
 
-    findings = (await session.exec(select(SecurityFinding).where(SecurityFinding.project_id == web))).all()
+    findings = (await session.exec(select(SecurityFinding).where(SecurityFinding.project_id == web,
+                                                                 SecurityFinding.scan_type == "passive"))).all()
     assert len(findings) == 1 and findings[0].run_id is not None
     assert (await session.exec(select(FlakeRecord))).all()
     reqs = (await session.exec(select(Requirement).where(Requirement.project_id.in_([web, api])))).all()
-    assert len(reqs) == 3
+    assert len(reqs) >= 3          # the core three, plus demo_seed's coverage examples
     assert len((await session.exec(select(Persona).where(Persona.workspace_id == ws.id))).all()) == 2
     sched = (await session.exec(select(TestSchedule).where(TestSchedule.project_id == api))).one()
     assert sched.is_monitor is True and sched.is_active is False       # never fires
     checks = (await session.exec(select(MonitorCheck).where(MonitorCheck.schedule_id == sched.id))).all()
-    assert len(checks) == 120 and any(not c.is_up for c in checks)
+    # 30 days x 4 checks, minus today's that are still in the future.
+    assert 117 <= len(checks) <= 120 and any(not c.is_up for c in checks)
+    assert max(c.checked_at for c in checks) <= datetime.utcnow()
     monitor_runs = (await session.exec(select(TestRun).where(
         TestRun.agent_id == f"schedule:{sched.id}"))).all()
-    assert len(monitor_runs) == 120
+    assert len(monitor_runs) == len(checks)
+    newest_run = (await session.exec(select(func.max(TestRun.created_at)).where(
+        TestRun.project_id.in_([web, api])))).one()
+    assert newest_run <= datetime.utcnow()
     secret = (await session.exec(select(ProjectSecret).where(ProjectSecret.project_id == web,
                                                              ProjectSecret.key == "ALICE_PASSWORD"))).one()
     assert secret.value_encrypted != "wonderland" and decrypt_secret(secret.value_encrypted) == "wonderland"

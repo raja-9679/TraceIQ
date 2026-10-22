@@ -257,6 +257,19 @@ async def _can_own(user_id: int, project_id: int, session: AsyncSession) -> bool
         user_id, project_id, session, min_role="editor"))
 
 
+def _auto_verify_reason(scan_type: Optional[str]) -> str:
+    """How a finding that gets no queued retest is verified — it depends on
+    what produced it (only run-sourced findings come from a suite)."""
+    st = scan_type or ""
+    if st == "access_matrix":
+        return "verified automatically by the next run of the access matrix that found it"
+    if st.startswith("estate-"):
+        return "verified automatically by the next scan of the estate that found it"
+    if st.startswith("page-"):
+        return "verified automatically by the next check of the monitored page that found it"
+    return "verified automatically by the next run of the suite that found it"
+
+
 async def _queue_retest(session: AsyncSession, finding: SecurityFinding,
                         requested_by: User) -> dict:
     """Retest-on-fix. ZAP findings get a targeted rescan of the same target and
@@ -264,8 +277,7 @@ async def _queue_retest(session: AsyncSession, finding: SecurityFinding,
     leak) are verified by the next run of the suite that produced them —
     re-running a whole suite on someone's behalf is not ours to decide."""
     if finding.scan_type != "zap" or not finding.scan_id:
-        return {"queued": False,
-                "reason": "verified automatically by the next run of the suite that found it"}
+        return {"queued": False, "reason": _auto_verify_reason(finding.scan_type)}
     source = await session.get(SecurityScan, finding.scan_id)
     project = await session.get(Project, finding.project_id) if finding.project_id else None
     if not source or not project:

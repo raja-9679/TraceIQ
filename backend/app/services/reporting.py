@@ -379,7 +379,10 @@ async def open_findings(session: AsyncSession, project_ids: Sequence[int]) -> Di
     rows = (await session.exec(
         select(SecurityFinding.project_id, func.count(SecurityFinding.id))
         .where(SecurityFinding.project_id.in_(list(project_ids)),
-               SecurityFinding.status == "open")
+               SecurityFinding.status == "open",
+               # One finding per fingerprint, like the Security register: an
+               # older occurrence keeps its "open" status once superseded.
+               SecurityFinding.superseded_by_id == None)  # noqa: E711
         .group_by(SecurityFinding.project_id))).all()
     return {pid: int(n) for pid, n in rows}
 

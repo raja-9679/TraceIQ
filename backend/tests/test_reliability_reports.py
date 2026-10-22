@@ -275,8 +275,18 @@ def test_summarise_merges_days_and_computes_correlation():
     assert [d["date"] for d in s["daily"]] == ["2026-10-01", "2026-10-02"]
     c = s["correlation"]
     assert c["failed_with_vendor_errors_pct"] == 75.0 and c["passed_with_vendor_errors_pct"] == 5.0
-    assert c["lift"] == 15.0
+    assert c["lift"] == 15.0 and c["lift_is_lower_bound"] is False
     assert out[1]["correlation"]["lift"] is None
+
+
+def test_lift_when_only_failing_results_saw_errors():
+    # 6 of 8 failing results saw the vendor erroring, none of 50 passing ones:
+    # the strongest signal, which used to come back as None ("not enough data").
+    lift, floor = vendor_health._lift(6, 8, 0, 50)
+    assert floor is True and lift == 75.0          # 0.75 / (0.5 / 50)
+    assert vendor_health._lift(0, 8, 0, 50) == (None, False)   # no errors anywhere
+    assert vendor_health._lift(3, 8, 0, 0) == (None, False)    # no passing results
+    assert vendor_health._lift(0, 8, 2, 50) == (0.0, False)
 
 
 def test_run_outcomes():

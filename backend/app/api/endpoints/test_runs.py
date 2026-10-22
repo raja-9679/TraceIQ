@@ -565,12 +565,16 @@ async def get_runs(
         if not await access_service.has_project_access(current_user.id, project_id, session):
             raise HTTPException(status_code=403, detail="Access denied")
         query = query.where(TestRun.project_id == project_id)
+    from app.services import key_scope
+    query = key_scope.restrict(query, TestRun.project_id, session, current_user.id)
 
     # Apply filters
     if search:
+        # Case-insensitive plain substring (ILIKE with the wildcards escaped).
+        needle = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         query = query.where(
-            (TestRun.suite_name.contains(search)) |
-            (TestRun.test_case_name.contains(search))
+            (TestRun.suite_name.ilike(needle, escape="\\")) |
+            (TestRun.test_case_name.ilike(needle, escape="\\"))
         )
     if status:
         query = query.where(TestRun.status == status)
@@ -795,14 +799,15 @@ async def delete_runs(
         team_stmt = select(Project.id).join(TeamProjectAccess, TeamProjectAccess.project_id == Project.id).join(UserTeam, UserTeam.team_id == TeamProjectAccess.team_id).where(UserTeam.user_id == current_user.id)
         user_stmt = select(Project.id).join(UserProjectAccess, UserProjectAccess.project_id == Project.id).where(UserProjectAccess.user_id == current_user.id)
 
-        result = await session.exec(
+        from app.services import key_scope
+        result = await session.exec(key_scope.restrict(
             select(TestRun).where(
                 or_(
                     TestRun.project_id.in_(org_stmt),
                     TestRun.project_id.in_(team_stmt),
                     TestRun.project_id.in_(user_stmt),
                 )
-            )
+            ), TestRun.project_id, session, current_user.id)
         )
         runs = result.all()
         # Membership scoping above limits the blast radius; still require the

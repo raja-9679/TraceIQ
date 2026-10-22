@@ -81,7 +81,9 @@ async def list_projects(workspace_id: Optional[int] = None, session: AsyncSessio
     
     if workspace_id:
         combined_query = combined_query.where(Project.workspace_id == workspace_id)
-        
+    from app.services import key_scope
+    combined_query = key_scope.restrict(combined_query, Project.id, session, current_user.id)
+
     result = await session.exec(combined_query)
     projects = result.all()
     

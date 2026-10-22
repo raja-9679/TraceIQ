@@ -27,6 +27,22 @@ def test_history_spans_thirty_days_ending_today():
     assert len(plan["monitor"]["checks"]) == 30 * 4
 
 
+def test_nothing_is_dated_after_now():
+    from datetime import datetime
+    now = datetime(2026, 10, 16, 10, 0)
+    plan = dw.build_demo_plan(dw.DEFAULT_SEED, TODAY, now=now)
+    stamps = ([r["created_at"] for r in plan["runs"]] + [c["at"] for c in plan["monitor"]["checks"]]
+              + [d["deployed_at"] for d in plan["deployments"]])
+    assert max(stamps) <= now
+    today_runs = [r for r in plan["runs"] if r["created_at"].date() == TODAY]
+    assert len(today_runs) == 2 and {r["trigger"] for r in today_runs} == {"schedule"}  # 02:xx only
+    assert sum(1 for c in plan["monitor"]["checks"] if c["at"].date() == TODAY) == 2  # 00:01, 06:01
+    # Earlier days are exactly what the full-day plan has.
+    full = dw.build_demo_plan(dw.DEFAULT_SEED, TODAY)
+    before = lambda p: [r for r in p["runs"] if r["created_at"].date() < TODAY]  # noqa: E731
+    assert before(plan) == before(full)
+
+
 def test_history_is_mostly_green_with_the_story_reports_need():
     plan = dw.build_demo_plan(dw.DEFAULT_SEED, TODAY)
     results = [x for r in plan["runs"] for x in r["results"]]

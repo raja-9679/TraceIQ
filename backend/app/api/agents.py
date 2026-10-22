@@ -41,6 +41,13 @@ TIMELINE_LIMIT = 500
 _LIMIT_MAX = 1_000_000_000
 
 
+def _is_pseudo_agent(agent_id: str) -> bool:
+    """TestRun.agent_id values that are not agents: scheduled runs are tagged
+    `schedule:<id>` (monitor_tasks reads that back), and demo workspaces
+    seeded before 2026-10-22 tagged their runs `demo-seed`."""
+    return agent_id.startswith("schedule:") or agent_id == "demo-seed"
+
+
 def _projects(workspace_id: int):
     return select(Project.id).where(Project.workspace_id == workspace_id)
 
@@ -86,6 +93,8 @@ async def list_agents(workspace_id: int, session: AsyncSession = Depends(get_ses
             TestRun.agent_id, func.count(), func.max(TestRun.created_at))
             .where(TestRun.project_id.in_(projects), TestRun.agent_id.is_not(None))
             .group_by(TestRun.agent_id))).all():
+        if _is_pseudo_agent(agent_id):
+            continue
         entry = slot(agent_id)
         entry["runs"] = n
         seen(entry, last)

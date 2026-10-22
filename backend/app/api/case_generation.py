@@ -65,19 +65,19 @@ async def _check_and_consume_ai_budget(workspace_id: int, session: AsyncSession)
     workspace = await session.get(Workspace, workspace_id)
     if not workspace:
         return
+    # Counted even when unlimited: the billing page reports today's count.
     limit = workspace.ai_generation_limit_daily or 0
-    if limit <= 0:
-        return  # unlimited
     try:
         import redis.asyncio as redis
         from app.core.config import settings as _settings
+        from app.services.billing import ai_generation_key
         r = redis.from_url(_settings.CELERY_BROKER_URL, decode_responses=True)
-        key = f"workspace:{workspace_id}:ai_gen:{datetime.utcnow():%Y-%m-%d}"
+        key = ai_generation_key(workspace_id)
         used = await r.incr(key)
         if used == 1:
             await r.expire(key, 60 * 60 * 36)  # 36h TTL covers day boundary
         await r.close()
-        if used > limit:
+        if limit > 0 and used > limit:
             raise HTTPException(
                 status_code=429,
                 detail=f"Workspace daily AI generation cap reached ({limit}). "

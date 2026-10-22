@@ -275,6 +275,10 @@ async def get_current_principal(
             api_key_raw, session, agent_id, client_addr=client_ip(request))
         if principal:
             principal.agent_session_id = agent_session_id
+            # The key's workspace/project/role limits, applied by every
+            # access check made about its owner in this request.
+            from app.services import key_scope
+            await key_scope.bind(session, principal)
             await _bind_tenant_scope(session, principal, request)
             await _agent_gate(request, session, principal)
             return principal
@@ -288,6 +292,8 @@ async def get_current_principal(
                 agent_id=agent_id,
                 agent_session_id=agent_session_id,
             )
+            from app.services import key_scope
+            await key_scope.bind(session, principal)
             await _bind_tenant_scope(session, principal, request)
             await _agent_gate(request, session, principal)
             return principal

@@ -121,7 +121,7 @@ def test_saving_uses_the_newest_comparable_full_run():
     other = vr.group_batches([run(20, h(15), "full", 9, [1, 2, 3, 4], 999999)])
     targeted = vr.group_batches([run(30, h(20), "targeted", 4, [1], 30000)])
     m = vr.targeted_savings(targeted, full_old + full_new + other)
-    assert m["kind"] == vr.ESTIMATED and "1 − cases_ran / cases_total" in m["formula"]
+    assert m["kind"] == vr.ESTIMATED and "1 − cases ran ÷ cases in the suite" in m["formula"]
     v = m["value"]
     # baseline = 4 × 2 min = 8 browser minutes; 3 of 4 cases skipped → 6
     assert v["saved_browser_minutes"] == 6.0

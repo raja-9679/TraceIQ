@@ -243,10 +243,15 @@ def canonical_key(path: str, rules: Sequence[CompiledRule]) -> str:
 # Parsing
 # ---------------------------------------------------------------------------
 
+# GA4's report export names its dimension "Page path and screen class" (or
+# "Page path + query string") and its metric "Views"; the API and Explorations
+# call the metric "Screen page views". Headers are compared after _norm_header.
 _PATH_COLS = ("path", "url", "page", "page_path", "pagepath", "page_url", "landing_page",
-              "page_location", "pathname", "route")
-_VIEW_COLS = ("views", "pageviews", "page_views", "screenpageviews", "count", "hits",
-              "sessions", "visits", "users")
+              "page_location", "pathname", "route", "page_path_and_screen_class",
+              "page_path___query_string", "page_path___query_string_and_screen_class",
+              "pagepathplusquerystring")
+_VIEW_COLS = ("views", "pageviews", "page_views", "screenpageviews", "screen_page_views",
+              "count", "hits", "sessions", "visits", "users")
 _JOURNEY_COLS = ("journey", "funnel", "journey_name", "funnel_name", "flow")
 _STEP_COLS = ("step", "step_order", "order", "position", "step_number", "funnel_step")
 _FROM_COLS = ("date", "day", "date_from", "start_date", "period_start", "from")
@@ -335,7 +340,18 @@ def _detect_format(data: bytes, fmt: Optional[str], filename: Optional[str]) -> 
     return "json" if head[:1] in (b"[", b"{") else "csv"
 
 
+def _strip_preamble(text: str) -> str:
+    """GA4 exports open with `#` comment lines (report name, property, date
+    range) and a blank line before the header row; drop them."""
+    lines = text.split("\n")
+    i = 0
+    while i < len(lines) and (not lines[i].strip() or lines[i].lstrip().startswith("#")):
+        i += 1
+    return "\n".join(lines[i:])
+
+
 def _records_from_csv(text: str) -> Tuple[List[Dict[str, Any]], List[str]]:
+    text = _strip_preamble(text)
     first = text.split("\n", 1)[0]
     delim = max((",", "\t", ";"), key=first.count)
     reader = csv.reader(io.StringIO(text), delimiter=delim)

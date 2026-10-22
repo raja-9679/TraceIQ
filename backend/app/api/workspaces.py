@@ -113,10 +113,13 @@ async def add_user_to_team(team_id: int, user_id: int, session: AsyncSession = D
         
     if not await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=team.workspace_id):
          raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
-        
-    ut = UserTeam(user_id=user_id, team_id=team_id)
-    session.add(ut)
-    await session.commit()
+
+    await workspace_service.require_team_workspace_member(team_id, user_id, session)
+    existing = (await session.exec(select(UserTeam).where(
+        UserTeam.user_id == user_id, UserTeam.team_id == team_id))).first()
+    if not existing:
+        session.add(UserTeam(user_id=user_id, team_id=team_id))
+        await session.commit()
     return {"status": "success"}
 
 @router.post("/projects/{project_id}/teams/{team_id}/access")
@@ -247,8 +250,11 @@ async def delete_workspace(
     that first. Audit history is deliberately retained (see
     `app/services/purge.py`).
     """
-    if not await rbac_service.has_permission(session, current_user.id, "workspace:delete_workspace", workspace_id=workspace_id):
-        raise HTTPException(status_code=403, detail="Permission denied: workspace:delete_workspace")
+    # `workspace:delete` is the name rbac_init grants (Tenant/Workspace Admin).
+    # This used to ask for `workspace:delete_workspace`, which no role has, so
+    # nobody — not even a tenant admin — could delete a workspace.
+    if not await rbac_service.has_permission(session, current_user.id, "workspace:delete", workspace_id=workspace_id):
+        raise HTTPException(status_code=403, detail="Permission denied: workspace:delete")
 
     from app.models import Workspace
     from app.services.purge import purge_workspace
@@ -273,15 +279,36 @@ async def delete_workspace(
     return {"status": "dry-run" if dry_run else "success", **report.as_dict()}
 
 @router.delete("/workspaces/{workspace_id}/users/{user_id}")
-async def remove_user_from_workspace(workspace_id: int, user_id: int, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+async def remove_user_from_workspace(workspace_id: int, user_id: int, request: Request, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """Remove a member and everything they hold in this workspace: team
+    memberships, direct project grants, per-case overrides and their API keys
+    for it. 409 when they are the last workspace admin."""
     if not await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=workspace_id):
         raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
-    
-    success = await workspace_service.remove_user_from_workspace(workspace_id, user_id, session)
+
+    success = await workspace_service.remove_user_from_workspace(
+        workspace_id, user_id, session, actor_id=current_user.id, request=request)
     if not success:
         raise HTTPException(status_code=404, detail="User not found in workspace")
-        
+
     return {"status": "success"}
+
+
+class WorkspaceRoleUpdate(BaseModel):
+    role: str  # 'admin' | 'member'
+
+
+@router.put("/workspaces/{workspace_id}/users/{user_id}/role")
+async def set_workspace_member_role(workspace_id: int, user_id: int, body: WorkspaceRoleUpdate, request: Request, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
+    """Change an existing member's workspace role. Inviting/assigning only ever
+    ADDS a membership, so before this there was no way to promote or demote
+    anyone. Audited; refuses (409) to demote the last admin."""
+    if not await rbac_service.has_permission(session, current_user.id, "workspace:manage_users", workspace_id=workspace_id):
+        raise HTTPException(status_code=403, detail="Permission denied: workspace:manage_users")
+    out = await workspace_service.set_workspace_role(
+        workspace_id, user_id, body.role, session, actor_id=current_user.id, request=request)
+    await session.commit()
+    return out
 
 from app.models import Role
 
