@@ -64,7 +64,7 @@ A **service** is a web domain, such as `stripe.com`. Well-known ones get a reada
 | **Error rate** | The share of those responses that were errors (an HTTP status of 400 or more, or no status at all), with the number of errors and of runs that had at least one. |
 | **Latency p50 / p95** | How long its responses took. *p50*: half were quicker than this; *p95*: 95% were. These are approximate: TraceIQ sorts times into ranges (up to 25 ms, up to 50 ms, … up to 30 s) and shows the top of the range. |
 | **Errors per day** | A small line of the number of errors each day in the window. |
-| **Does it line up with failing tests?** | Two bars: of the *failed* test results, the share whose run saw an error from this service; and the same for *passed* results. Then one sentence: If failing results saw its errors more than 1.5 times as often as passing ones: "Worth a look". Otherwise: "It is unlikely to be the cause". "Not enough data on both sides to compare" when either side has nothing to compare. |
+| **Does it line up with failing tests?** | Two bars: of the *failed* test results, the share whose run saw an error from this service; and the same for *passed* results. Then one sentence: If failing results saw its errors more than 1.5 times as often as passing ones: "Worth a look". When no passing result saw an error at all, the figure is a minimum and reads "at least N×". Otherwise: "It is unlikely to be the cause". "Not enough data on both sides to compare" when either side has nothing to compare. |
 | **Hosts seen** | The exact server names used under that domain, for example `js.stripe.com` and `api.stripe.com` (up to 20). |
 
 At the bottom, **How this is built** repeats the rules in short (see [Good to know](#good-to-know)).

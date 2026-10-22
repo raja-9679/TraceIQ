@@ -153,6 +153,8 @@ export interface VendorHealth {
         passed_results: number;
         passed_with_vendor_errors_pct: number | null;
         lift: number | null;
+        /** True when no passing result saw vendor errors, so `lift` is a floor ("at least N×"). */
+        lift_is_lower_bound?: boolean;
     };
 }
 
