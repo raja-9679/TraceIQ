@@ -131,7 +131,8 @@ class WorkspaceService:
         user = result.first()
         if not user:
             return False
-            
+        await WorkspaceService.require_team_workspace_member(team_id, user.id, session)
+
         # Check if already in team
         existing = await session.exec(select(UserTeam).where(UserTeam.user_id == user.id, UserTeam.team_id == team_id))
         if existing.first():
@@ -141,6 +142,25 @@ class WorkspaceService:
         session.add(ut)
         await session.commit()
         return True
+
+    @staticmethod
+    async def require_team_workspace_member(team_id: int, user_id: int, session: AsyncSession) -> None:
+        """A team is a set of people in ONE workspace, and team membership is
+        how project grants reach people. Adding an outsider to a team would
+        hand them that workspace's team-granted projects without ever making
+        them a member (and without the workspace's member list showing them)."""
+        from fastapi import HTTPException
+        from app.models import Team, UserWorkspace
+        team = await session.get(Team, team_id)
+        if not team:
+            raise HTTPException(status_code=404, detail="Team not found")
+        member = (await session.exec(select(UserWorkspace).where(
+            UserWorkspace.user_id == user_id,
+            UserWorkspace.workspace_id == team.workspace_id))).first()
+        if not member:
+            raise HTTPException(
+                status_code=400,
+                detail="User is not a member of this team's workspace. Add them to the workspace first.")
 
     @staticmethod
     async def link_team_to_project(team_id: int, project_id: int, access_level: str, session: AsyncSession) -> bool:
@@ -607,10 +627,9 @@ class WorkspaceService:
             await session.commit()
 
     @staticmethod
-    async def remove_user_from_workspace(workspace_id: int, user_id: int, session: AsyncSession) -> bool:
-        from app.models import UserWorkspace, UserTeam, Team
-        
-        # 1. Check/Get the UserWorkspace record
+    async def remove_user_from_workspace(workspace_id: int, user_id: int, session: AsyncSession,
+                                         actor_id: Optional[int] = None, request=None) -> bool:
+        from app.models import UserWorkspace
         result = await session.exec(
             select(UserWorkspace)
             .where(UserWorkspace.workspace_id == workspace_id, UserWorkspace.user_id == user_id)
@@ -618,30 +637,120 @@ class WorkspaceService:
         uw = result.first()
         if not uw:
             return False
-            
-        # 2. Get all teams in this workspace
-        teams = await session.exec(select(Team).where(Team.workspace_id == workspace_id))
-        team_ids = [t.id for t in teams.all()]
-        
-        # 3. Remove user from all teams in this workspace
-        if team_ids:
-            # This deletes all UserTeam records for this user where team_id is in the workspace's teams
-            # Note: SQLModel doesn't support .where(UserTeam.team_id.in_(team_ids)) nicely with async delete sometimes,
-            # so iterating or a raw delete is safer. Let's do a bulk delete via statement if possible or iterate.
-            # Iterating is safer for now to ensure hooks/session state is clean.
-            user_teams = await session.exec(
-                select(UserTeam)
-                .where(UserTeam.user_id == user_id)
-                .where(UserTeam.team_id.in_(team_ids)) # type: ignore
-            )
-            for ut in user_teams.all():
-                await session.delete(ut)
-        
-        # 4. Remove UserWorkspace record
-        await session.delete(uw)
-        
+        await WorkspaceService.require_other_admin(workspace_id, uw, session)
+        removed = await WorkspaceService.revoke_workspace_access(workspace_id, user_id, session)
+        from app.services.audit import record
+        user = await session.get(User, user_id)
+        await record(session, entity_type="workspace", entity_id=workspace_id,
+                     action="role_revoke", user_id=actor_id, workspace_id=workspace_id,
+                     request=request,
+                     changes={"user_id": user_id, "email": user.email if user else None,
+                              "scope": "workspace", "scope_id": workspace_id,
+                              "role": await WorkspaceService.workspace_role_name(uw, session),
+                              "removed": removed})
         await session.commit()
         return True
+
+    @staticmethod
+    async def revoke_workspace_access(workspace_id: int, user_id: int, session: AsyncSession) -> dict:
+        """Take away everything a person holds in one workspace. Removing only
+        the UserWorkspace row left their direct project grants, per-case
+        overrides and team memberships in place — access checks read those
+        directly, so a "removed" member kept every project they had been given.
+        Their API keys for this workspace go too: a key acts as its owner.
+        Caller commits."""
+        from sqlalchemy import delete
+        from app.models import (ApiKey, Team, TestCase, UserProjectAccess,
+                                UserTeam, UserTestCaseAccess, UserWorkspace)
+        team_ids = select(Team.id).where(Team.workspace_id == workspace_id)
+        project_ids = select(Project.id).where(Project.workspace_id == workspace_id)
+        case_ids = select(TestCase.id).where(TestCase.project_id.in_(project_ids))
+        out = {}
+        out["teams"] = (await session.exec(delete(UserTeam).where(
+            UserTeam.user_id == user_id, UserTeam.team_id.in_(team_ids)))).rowcount
+        out["project_grants"] = (await session.exec(delete(UserProjectAccess).where(
+            UserProjectAccess.user_id == user_id,
+            UserProjectAccess.project_id.in_(project_ids)))).rowcount
+        out["case_overrides"] = (await session.exec(delete(UserTestCaseAccess).where(
+            UserTestCaseAccess.user_id == user_id,
+            UserTestCaseAccess.test_case_id.in_(case_ids)))).rowcount
+        keys = (await session.exec(select(ApiKey).where(
+            ApiKey.workspace_id == workspace_id, ApiKey.created_by_id == user_id,
+            ApiKey.revoked_at == None))).all()  # noqa: E711
+        for key in keys:
+            key.revoked_at = datetime.utcnow()
+            session.add(key)
+        out["api_keys_revoked"] = len(keys)
+        await session.exec(delete(UserWorkspace).where(
+            UserWorkspace.user_id == user_id, UserWorkspace.workspace_id == workspace_id))
+        return out
+
+    @staticmethod
+    async def workspace_role_name(uw, session: AsyncSession) -> str:
+        from app.models import Role
+        if uw.role_id is not None:
+            role = await session.get(Role, uw.role_id)
+            if role:
+                return role.name
+        return "Workspace Admin" if uw.role == "admin" else "Workspace Member"
+
+    @staticmethod
+    async def _is_workspace_admin_row(uw, session: AsyncSession) -> bool:
+        from app.services.access_service import _workspace_role_level, _ROLE_MAP
+        return await _workspace_role_level(uw, session) >= _ROLE_MAP["admin"]
+
+    @staticmethod
+    async def require_other_admin(workspace_id: int, uw, session: AsyncSession) -> None:
+        """Refuse to remove/demote `uw` when it is the workspace's last admin:
+        nobody could manage the workspace's members afterwards."""
+        from fastapi import HTTPException
+        from app.models import UserWorkspace
+        if not await WorkspaceService._is_workspace_admin_row(uw, session):
+            return
+        others = (await session.exec(select(UserWorkspace).where(
+            UserWorkspace.workspace_id == workspace_id,
+            UserWorkspace.user_id != uw.user_id))).all()
+        for other in others:
+            if await WorkspaceService._is_workspace_admin_row(other, session):
+                return
+        raise HTTPException(status_code=409,
+                            detail="This is the workspace's last admin. Make someone else an admin first.")
+
+    @staticmethod
+    async def set_workspace_role(workspace_id: int, user_id: int, role: str, session: AsyncSession,
+                                 actor_id: Optional[int] = None, request=None) -> dict:
+        """Change an existing member's workspace role ('admin' | 'member').
+        Audited as a role_grant (what the access-review report and the
+        admin-granted alert read). Caller commits."""
+        from fastapi import HTTPException
+        from app.models import UserWorkspace
+        from app.services.rbac_service import rbac_service
+        if role not in ("admin", "member"):
+            raise HTTPException(status_code=422, detail="role must be 'admin' or 'member'")
+        uw = (await session.exec(select(UserWorkspace).where(
+            UserWorkspace.workspace_id == workspace_id,
+            UserWorkspace.user_id == user_id))).first()
+        if not uw:
+            raise HTTPException(status_code=404, detail="User not found in workspace")
+        before = await WorkspaceService.workspace_role_name(uw, session)
+        new_name = "Workspace Admin" if role == "admin" else "Workspace Member"
+        if before == new_name and uw.role == role:
+            return {"status": "unchanged", "role": role, "previous_role": before}
+        if role == "member":
+            await WorkspaceService.require_other_admin(workspace_id, uw, session)
+        rbac_role = await rbac_service.get_role_by_name(session, new_name)
+        uw.role = role
+        uw.role_id = rbac_role.id if rbac_role else None
+        session.add(uw)
+        from app.services.audit import record
+        user = await session.get(User, user_id)
+        await record(session, entity_type="workspace", entity_id=workspace_id,
+                     action="role_grant", user_id=actor_id, workspace_id=workspace_id,
+                     request=request,
+                     changes={"user_id": user_id, "email": user.email if user else None,
+                              "scope": "workspace", "scope_id": workspace_id,
+                              "role": new_name, "previous_role": before})
+        return {"status": "updated", "role": role, "previous_role": before}
 
     @staticmethod
     async def process_pending_invitations(email: str, user_id: int, session: AsyncSession):

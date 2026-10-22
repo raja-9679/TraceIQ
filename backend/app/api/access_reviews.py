@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
-from sqlmodel import delete, select
+from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.api.audit import _require_workspace_admin
@@ -30,8 +30,7 @@ from app.api.instance_settings import get_current_instance_admin
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import (
-    AccessReviewCampaign, AccessReviewItem, ApiKey, Project, RefreshToken, Team,
-    User, UserProjectAccess, UserTeam, UserWorkspace, Workspace,
+    AccessReviewCampaign, AccessReviewItem, ApiKey, RefreshToken, User, Workspace,
 )
 from app.services import access_review, audit
 
@@ -327,17 +326,10 @@ async def _revoke_user(session: AsyncSession, campaign: AccessReviewCampaign, us
             t.revoked_at = datetime.utcnow()
             session.add(t)
         return "deactivated (sessions revoked)"
-    ws = campaign.workspace_id
-    team_ids = (await session.exec(select(Team.id).where(Team.workspace_id == ws))).all()
-    project_ids = (await session.exec(select(Project.id).where(Project.workspace_id == ws))).all()
-    if team_ids:
-        await session.exec(delete(UserTeam).where(UserTeam.user_id == user_id,
-                                                  UserTeam.team_id.in_(team_ids)))
-    if project_ids:
-        await session.exec(delete(UserProjectAccess).where(UserProjectAccess.user_id == user_id,
-                                                           UserProjectAccess.project_id.in_(project_ids)))
-    await session.exec(delete(UserWorkspace).where(UserWorkspace.user_id == user_id,
-                                                   UserWorkspace.workspace_id == ws))
+    # Same removal as DELETE /workspaces/{id}/users/{uid}: teams, project
+    # grants, per-case overrides, the member's keys for this workspace.
+    from app.services.workspace_service import workspace_service
+    await workspace_service.revoke_workspace_access(campaign.workspace_id, user_id, session)
     return "removed from workspace, its teams and projects"
 
 
