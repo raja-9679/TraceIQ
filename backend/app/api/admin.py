@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select
 from app.core.database import get_session
@@ -74,14 +74,17 @@ async def list_tenant_workspaces(
 
 @router.post("/users/{user_id}/assignments")
 async def assign_user_to_workspaces(
-    user_id: int, 
+    user_id: int,
     assignment: WorkspaceAssignment,
+    request: Request,
     session: AsyncSession = Depends(get_session),
     current_user: User = Depends(get_current_tenant_admin)
 ):
     """
     Bulk assign a user to multiple workspaces.
     """
+    if assignment.role not in ("admin", "member"):
+        raise HTTPException(status_code=422, detail="role must be 'admin' or 'member'")
     target_user = await session.get(User, user_id)
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -109,22 +112,34 @@ async def assign_user_to_workspaces(
              results.append({"workspace_id": workspace_id, "status": "error", "message": "Workspace does not belong to your tenant"})
              continue
 
-        # Add User to Workspace (using Service or Direct)
-        # Note: 'role' here is string "admin" or "member". Service handles RBAC mapping.
+        # Already a member: Assign means "this role in this workspace", so it
+        # changes the role. It used to report success and change nothing.
+        existing = (await session.exec(select(UserWorkspace).where(
+            UserWorkspace.workspace_id == workspace_id,
+            UserWorkspace.user_id == user_id))).first()
+        if existing:
+            try:
+                out = await workspace_service.set_workspace_role(
+                    workspace_id, user_id, assignment.role, session,
+                    actor_id=current_user.id, request=request)
+                await session.commit()
+            except HTTPException as exc:
+                await session.rollback()
+                results.append({"workspace_id": workspace_id, "status": "error",
+                                "message": str(exc.detail)})
+                continue
+            results.append({"workspace_id": workspace_id, "status": out["status"],
+                            "role": out["role"], "previous_role": out["previous_role"]})
+            continue
+
+        # New member: the service adds an existing user directly (audited).
         await workspace_service.invite_user_to_workspace(
             email=target_user.email,
-            workspace_id=workspace_id, 
+            workspace_id=workspace_id,
             invited_by_id=current_user.id,
-            role=assignment.role, 
+            role=assignment.role,
             session=session
         )
-        # Auto-accept since admin is forcing assignment?
-        # Service creates an invite if not strictly adding. 
-        # But 'assign' implies immediate addition usually.
-        # The service `invite_user_to_workspace` logic:
-        # If user exists, it ADDS them directly (check workspace_service code).
-        # Yes: "if user: ... uw = UserWorkspace(...)".
-        
         results.append({"workspace_id": workspace_id, "status": "success"})
         
     return {"results": results}

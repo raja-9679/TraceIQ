@@ -65,6 +65,22 @@ async def create_api_key(
 
     await _ensure_workspace_member(workspace_id, principal.user.id, session)
 
+    # Both limits are enforced on every request (app/services/key_scope.py), so
+    # they must name something real: a project in THIS workspace that the
+    # creator can reach, and an existing role.
+    if body.project_id is not None:
+        from app.models import Project
+        from app.services.access_service import access_service
+        project = await session.get(Project, body.project_id)
+        if (project is None or project.workspace_id != workspace_id
+                or not await access_service.has_project_access(
+                    principal.user.id, project.id, session)):
+            raise HTTPException(status_code=400, detail="project_id is not a project in this workspace")
+    if body.role_id is not None:
+        from app.models import Role
+        if await session.get(Role, body.role_id) is None:
+            raise HTTPException(status_code=400, detail="role_id does not name a role")
+
     try:
         allowed_cidrs = normalize_cidrs(body.allowed_cidrs)
     except ValueError as exc:

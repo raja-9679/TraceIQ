@@ -216,6 +216,8 @@ async def list_schedules(
         if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
             raise HTTPException(status_code=403, detail="Access denied to this project")
         query = query.where(TestSchedule.project_id == project_id)
+    from app.services import key_scope
+    query = key_scope.restrict(query, TestSchedule.project_id, session, current_user.id)
         
     result = await session.exec(query)
     return result.all()
@@ -258,6 +260,8 @@ async def list_monitors(
         if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
             raise HTTPException(status_code=403, detail="Access denied to this project")
         query = query.where(TestSchedule.project_id == project_id)
+    from app.services import key_scope
+    query = key_scope.restrict(query, TestSchedule.project_id, session, current_user.id)
 
     monitors = (await session.exec(query)).all()
     return [await _build_monitor_status(m, session) for m in monitors]
