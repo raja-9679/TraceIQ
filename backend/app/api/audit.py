@@ -31,7 +31,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import AuditLog, AuditLogRead, UserWorkspace
-from app.services.audit import verify_chain
+from app.services.audit import legacy_prefix_length, verify_chain
 from app.services.rbac_service import rbac_service
 
 router = APIRouter()
@@ -168,28 +168,38 @@ async def verify_workspace_audit(
 
     result = await session.exec(select(AuditLog).order_by(AuditLog.id))
     rows = result.all()
-    ok, broken_index = verify_chain(rows)
+    # History written before chaining was installed can't be verified, but
+    # it must not stop the check of everything written since — nor be shown
+    # as tampering. It is reported separately as `unverifiable_rows`.
+    legacy = legacy_prefix_length(rows)
+    chained = rows[legacy:]
+    ok, broken_index = verify_chain(chained)
+    legacy_note = (
+        f" {legacy} older row{'s' if legacy != 1 else ''} predate hash chaining and "
+        "cannot be verified." if legacy else "")
 
     if ok:
         return {
             "verified": True,
-            "rows_checked": len(rows),
-            "detail": "Every audit row is intact and correctly linked to its predecessor.",
+            "status": "partial" if legacy else "verified",
+            "rows_checked": len(chained),
+            "unverifiable_rows": legacy,
+            "detail": ("Every chained audit row is intact and correctly linked to its "
+                       "predecessor." + legacy_note) if legacy else
+                      "Every audit row is intact and correctly linked to its predecessor.",
         }
 
-    broken = rows[broken_index] if broken_index is not None and broken_index < len(rows) else None
-    unverifiable = broken is not None and not broken.row_hash
+    broken = chained[broken_index] if broken_index is not None and broken_index < len(chained) else None
     return {
         "verified": False,
-        "rows_checked": len(rows),
+        "status": "broken",
+        "rows_checked": len(chained),
+        "unverifiable_rows": legacy,
         "first_bad_row_id": getattr(broken, "id", None),
         "first_bad_row_timestamp": getattr(broken, "timestamp", None),
         "in_this_workspace": getattr(broken, "workspace_id", None) == workspace_id,
         "detail": (
-            "This row predates hash chaining, so the trail cannot be verified from "
-            "here backwards. Rows written after the upgrade are covered."
-            if unverifiable else
             "The chain breaks at this row: it was modified, deleted, or reordered "
-            "after being written. Every row after it is also unverifiable."
+            "after being written. Every row after it is also unverifiable." + legacy_note
         ),
     }

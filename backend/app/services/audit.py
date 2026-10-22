@@ -352,6 +352,21 @@ def install_chain_listener() -> None:
             prev = entry.row_hash
 
 
+def legacy_prefix_length(rows: Sequence[Any]) -> int:
+    """How many rows at the START (ascending id) carry no `row_hash` — the
+    history written before chaining was installed. The first sealed row
+    links to ROOT_HASH (sealing looks up the newest row WITH a hash), so the
+    chain can be verified from there on. An unhashed row AFTER a hashed one
+    is not legacy; verify_chain reports it as a break."""
+    n = 0
+    for row in rows:
+        stored = row.get("row_hash") if isinstance(row, dict) else getattr(row, "row_hash", None)
+        if stored:
+            break
+        n += 1
+    return n
+
+
 def verify_chain(rows: Sequence[Any]) -> Tuple[bool, Optional[int]]:
     """Check a chain in ascending id order.
 
