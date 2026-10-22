@@ -531,3 +531,79 @@ async def test_a_projectless_root_cannot_cascade_into_a_project(session, scene):
         await cascade_delete(session, "testsuite", [d.child_suite_id])
     await _resync(session)
     assert await session.get(TestCase, d.case_id) is not None
+
+
+# --- deletes that bypassed the cascade ------------------------------------------
+
+async def test_accepting_a_delete_proposal_for_a_case_with_history(session, scene):
+    """Accepting a DELETE proposal used `session.delete(case)`, which hit the
+    first FK into the case (results, revisions, the proposal itself) and 500'd
+    for any case that had ever run."""
+    from app.api.agent_ownership import accept_proposal
+    from app.core.auth import AuthPrincipal
+
+    d = scene.doomed
+    proposal = CaseProposal(project_id=d.project_id, action=CaseProposalAction.DELETE,
+                            target_case_id=d.case_id, payload={},
+                            created_by_id=scene.admin.id, rationale="obsolete")
+    session.add(proposal)
+    await session.commit()
+    pid = proposal.id
+
+    out = await accept_proposal(pid, note="ok", session=session,
+                                principal=AuthPrincipal(user=scene.admin, api_key=None))
+    assert out.status == "accepted"
+    await _resync(session)
+    assert await session.get(TestCase, d.case_id) is None
+    # Same cascade as the case delete endpoint: the case run goes, the suite
+    # run stays with its result de-linked.
+    assert await session.get(TestRun, d.case_run_id) is None
+    assert await session.get(TestRun, d.run_id) is not None
+    # The accepted proposal is the record of the decision; it must survive.
+    kept = await session.get(CaseProposal, pid)
+    assert kept is not None and kept.status == "accepted"
+    assert kept.target_case_id is None
+    assert kept.payload.get("deleted_case_id") == d.case_id
+    await _assert_tree_intact(session, scene.sibling)
+
+
+async def test_accepting_a_delete_proposal_409s_on_a_schedule(session, scene):
+    from app.api.agent_ownership import accept_proposal
+    from app.core.auth import AuthPrincipal
+
+    d = scene.doomed
+    session.add(TestSchedule(name="nightly", project_id=d.project_id,
+                             test_case_id=d.case_id, cron_expression="0 2 * * *"))
+    proposal = CaseProposal(project_id=d.project_id, action=CaseProposalAction.DELETE,
+                            target_case_id=d.case_id, payload={},
+                            created_by_id=scene.admin.id)
+    session.add(proposal)
+    await session.commit()
+    pid = proposal.id
+    with pytest.raises(HTTPException) as exc:
+        await accept_proposal(pid, note=None, session=session,
+                              principal=AuthPrincipal(user=scene.admin, api_key=None))
+    assert exc.value.status_code == 409
+    await _resync(session)
+    assert await session.get(TestCase, d.case_id) is not None
+    assert (await session.get(CaseProposal, pid)).status == "pending"
+
+
+async def test_deleting_a_monitor_with_checks_succeeds(session, scene):
+    """`monitorcheck.schedule_id` is NOT NULL with no ON DELETE: deleting a
+    monitor that had ever checked FK-failed."""
+    from sqlmodel import select
+    from app.api.endpoints.schedules import delete_schedule
+
+    d = scene.doomed
+    sched = (await session.exec(select(TestSchedule).where(
+        TestSchedule.project_id == d.project_id))).one()
+    out = await delete_schedule(schedule_id=sched.id, session=session,
+                                current_user=scene.admin)
+    assert out["status"] == "success"
+    await _resync(session)
+    assert await session.get(TestSchedule, sched.id) is None
+    assert await session.get(MonitorCheck, d.monitor_check_id) is None
+    # The run the check pointed at is history, not part of the monitor.
+    assert await session.get(TestRun, d.run_id) is not None
+    assert await session.get(MonitorCheck, scene.sibling.monitor_check_id) is not None

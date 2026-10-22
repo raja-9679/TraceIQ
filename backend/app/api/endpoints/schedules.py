@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_
-from sqlalchemy import func
+from sqlalchemy import delete as sa_delete, func
 from sqlalchemy.orm import selectinload
 from app.core.database import get_session
 from app.core.auth import get_current_user
@@ -373,6 +373,11 @@ async def delete_schedule(
     if not await rbac_service.has_permission(session, current_user.id, "project:create_suite", project_id=db_schedule.project_id):
         raise HTTPException(status_code=403, detail="Permission denied to delete schedules in this project")
 
+    # A monitor's checks are its uptime history (`monitorcheck.schedule_id` is
+    # NOT NULL with no ON DELETE): they go with it, before it, or the delete
+    # FK-fails for every monitor that has ever checked. The runs they point at
+    # stay — those are ordinary run history.
+    await session.exec(sa_delete(MonitorCheck).where(MonitorCheck.schedule_id == schedule_id))
     await session.delete(db_schedule)
     
     audit = AuditLog(
