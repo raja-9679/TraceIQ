@@ -189,12 +189,12 @@ export default function TodayInbox() {
 
         (proposals.data ?? []).forEach((p: CaseProposal) => {
             const name = p.payload?.name;
-            const verb = { create: 'add', update: 'change', delete: 'delete', move: 'move' }[p.action];
+            const verb = { create: 'add', update: 'change', delete: 'delete', move: 'move', update_suite_settings: 'change the settings of' }[p.action];
             out.push({
                 key: `proposal-${p.id}`,
                 kind: 'review',
                 group: 'review',
-                title: `${p.agent_id || 'An agent'} proposed to ${verb} ${name ? `“${name}”` : 'a test'}`,
+                title: `${p.agent_id || 'An agent'} proposed to ${verb} ${name ? `“${name}”` : p.action === 'update_suite_settings' ? `suite #${p.test_suite_id ?? '—'}` : 'a test'}`,
                 when: ago(p.created_at),
                 happened: p.rationale || `A ${p.action} proposal is waiting for a person to decide.`,
                 read: <>Accepting needs a person other than whoever proposed it, when your workspace requires it.</>,

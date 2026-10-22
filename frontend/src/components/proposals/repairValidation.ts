@@ -70,9 +70,18 @@ export function caseValidatable(p: { action: string; target_case_id: number | nu
         && ('steps' in p.payload || !!p.payload.executor);
 }
 
-/** API errors carry a string detail, or (new policy rules) an object with `message`. */
+/** API errors carry a string detail, or (new policy rules) an object with
+ *  `message`, or (accepting a DELETE a schedule still uses, 409) one with
+ *  `error` + `remedy`. */
 export function detailText(detail: unknown, fallback = 'Request failed'): string {
     if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object') {
+        const d = detail as { error?: unknown; remedy?: unknown };
+        if (typeof d.remedy === 'string') {
+            // `error` may be a sentence or a machine code; only a sentence reads well.
+            return typeof d.error === 'string' && d.error.includes(' ') ? `${d.error} ${d.remedy}` : d.remedy;
+        }
+    }
     if (detail && typeof detail === 'object' && typeof (detail as { message?: unknown }).message === 'string') {
         return (detail as { message: string }).message;
     }

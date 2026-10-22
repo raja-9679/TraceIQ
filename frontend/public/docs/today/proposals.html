@@ -110,11 +110,12 @@
 
         <div class="part"><span class="num">3</span><h2 id="policy" data-toc="③ The review policy">The review policy</h2></div>
         <figure>
-          <div class="frame"><img src="../media/today/proposals/policy.png" alt="Three settings side by side: Auto-apply Off, every proposal waits here for a person, with an Edit button; Second approver Not required, with a Require a second person button; Validate before accept Optional (protected suites always), with a Require a validation run button" loading="lazy"></div>
+          <div class="frame"><img src="../media/today/proposals/policy.png" alt="Three settings, one under the other on most screens: Auto-apply Off, every proposal waits here for a person, with an Edit button; Second approver Not required, with a Require a second person button; Validate before accept Optional (protected suites always), with a Require a validation run button" loading="lazy"></div>
         </figure>
         <p>Three rules for the whole <strong>workspace</strong> the selected project belongs to.
-          Everyone can read them; only a <strong>workspace admin</strong> can change them (others
-          get an error when they try). The two buttons on the right save as soon as you press them.</p>
+          Everyone can read them; only a <strong>workspace admin</strong> can change them, and only admins see the buttons.
+          They sit one under the other, side by side only on very wide screens. The second and
+          third buttons save as soon as you press them.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Rule</th><th>What it does</th></tr></thead>
@@ -138,11 +139,11 @@
         </div>
 
         <div class="part"><span class="num">4</span><h2 id="queue" data-toc="④ The queue">The queue</h2></div>
-        <p>When there is nothing to show you see a message such as <em>"No waiting for review
-          test proposals"</em>. Otherwise the list is on the left and the proposal you pick is
+        <p>When there is nothing to show you see a message such as <em>"No test proposals
+          waiting for review"</em>. Otherwise the list is on the left and the proposal you pick is
           shown in detail on the right (the first one is shown until you pick another).</p>
         <figure>
-          <div class="frame"><img src="../media/today/proposals/selector-fixes.png" alt="The Selector fixes tab with four status buttons and the message No waiting for review heal proposals" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/today/proposals/selector-fixes.png" alt="The Selector fixes tab with four status buttons and the message No heal proposals waiting for review" loading="lazy" width="1440" height="900"></div>
           <figcaption>The Selector fixes tab in the demo workspace, also empty.</figcaption>
         </figure>
 
@@ -224,7 +225,7 @@
         <ul>
           <li><strong>Who can do what.</strong> Anyone with access to the project can look. Accepting, rejecting and starting a validation run need the <em>editor</em> role. An API key (an agent) can never accept or reject; that is the point of the queue.</li>
           <li><strong>Some selector fixes are refused.</strong> TraceIQ won't change the selector of a <em>checking</em> step (one that expects something to be visible, or to have some text), because that could turn a check that should fail into one that passes; fix those in the test editor. A fix is also refused if the step has been edited since the fix was suggested; reject it and the next run will suggest again.</li>
-          <li><strong>A deletion is permanent.</strong> Accepting a Delete removes the test. Agents can only <em>propose</em> deletions; none is ever applied by auto-apply.</li>
+          <li><strong>A deletion is permanent.</strong> Accepting a Delete removes the test. Agents can only <em>propose</em> deletions; none is ever applied by auto-apply. A test that a schedule still runs can't be deleted: accepting is refused with a message saying which schedule to delete or change first.</li>
           <li><strong>Changes to a suite's shared settings</strong> (the headers, sign-in details and so on every test in a suite uses) always need a person, even with auto-apply on, because they are sent to your app.</li>
           <li><strong>The lists show the newest.</strong> Up to 100 test changes and 200 selector fixes are shown, newest first.</li>
           <li><strong>It doesn't update by itself</strong>, except while a validation run is going. It fetches new proposals when you come back to its browser tab, or when you reload it.</li>

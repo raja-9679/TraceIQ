@@ -42,6 +42,9 @@ describe('helpers', () => {
         expect(detailText('nope')).toBe('nope');
         expect(detailText({ error: 'validation_required', message: 'Run it first' })).toBe('Run it first');
         expect(detailText(undefined, 'x')).toBe('x');
+        expect(detailText({ error: 'Case is used by schedules', schedule_ids: [3], remedy: 'Delete or retarget schedule 3 first.' }))
+            .toBe('Case is used by schedules Delete or retarget schedule 3 first.');
+        expect(detailText({ error: 'referenced_by_schedule', remedy: 'Delete schedule 3 first.' })).toBe('Delete schedule 3 first.');
     });
     it('detects running validations', () => {
         expect(anyValidating([{ validation_status: 'validating' }])).toBe(true);

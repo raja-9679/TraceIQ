@@ -63,9 +63,9 @@ Shows one status at a time. **Waiting** is chosen when the page opens and every 
 
 ## 3. The review policy
 
-![Three settings side by side: Auto-apply Off, every proposal waits here for a person, with an Edit button; Second approver Not required, with a Require a second person button; Validate before accept Optional (protected suites always), with a Require a validation run button](../media/today/proposals/policy.png)
+![Three settings, one under the other on most screens: Auto-apply Off, every proposal waits here for a person, with an Edit button; Second approver Not required, with a Require a second person button; Validate before accept Optional (protected suites always), with a Require a validation run button](../media/today/proposals/policy.png)
 
-Three rules for the whole **workspace** the selected project belongs to. Everyone can read them; only a **workspace admin** can change them (others get an error when they try). The two buttons on the right save as soon as you press them.
+Three rules for the whole **workspace** the selected project belongs to. Everyone can read them; only a **workspace admin** can change them, and only admins see the buttons. They sit one under the other, side by side only on very wide screens. The second and third buttons save as soon as you press them.
 
 | Rule | What it does |
 |---|---|
@@ -83,9 +83,9 @@ Three rules for the whole **workspace** the selected project belongs to. Everyon
 
 ## 4. The queue
 
-When there is nothing to show you see a message such as *"No waiting for review test proposals"*. Otherwise the list is on the left and the proposal you pick is shown in detail on the right (the first one is shown until you pick another).
+When there is nothing to show you see a message such as *"No test proposals waiting for review"*. Otherwise the list is on the left and the proposal you pick is shown in detail on the right (the first one is shown until you pick another).
 
-![The Selector fixes tab with four status buttons and the message No waiting for review heal proposals](../media/today/proposals/selector-fixes.png)
+![The Selector fixes tab with four status buttons and the message No heal proposals waiting for review](../media/today/proposals/selector-fixes.png)
 
 *The Selector fixes tab in the demo workspace, also empty.*
 
@@ -148,7 +148,7 @@ For an edit to a test's steps, or a selector fix, **Validate** runs that test **
 
 - **Who can do what.** Anyone with access to the project can look. Accepting, rejecting and starting a validation run need the *editor* role. An API key (an agent) can never accept or reject; that is the point of the queue.
 - **Some selector fixes are refused.** TraceIQ won't change the selector of a *checking* step (one that expects something to be visible, or to have some text), because that could turn a check that should fail into one that passes; fix those in the test editor. A fix is also refused if the step has been edited since the fix was suggested; reject it and the next run will suggest again.
-- **A deletion is permanent.** Accepting a Delete removes the test. Agents can only *propose* deletions; none is ever applied by auto-apply.
+- **A deletion is permanent.** Accepting a Delete removes the test. Agents can only *propose* deletions; none is ever applied by auto-apply. A test that a schedule still runs can't be deleted: accepting is refused with a message saying which schedule to delete or change first.
 - **Changes to a suite's shared settings** (the headers, sign-in details and so on every test in a suite uses) always need a person, even with auto-apply on, because they are sent to your app.
 - **The lists show the newest.** Up to 100 test changes and 200 selector fixes are shown, newest first.
 - **It doesn't update by itself**, except while a validation run is going. It fetches new proposals when you come back to its browser tab, or when you reload it.
