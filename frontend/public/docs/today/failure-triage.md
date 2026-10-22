@@ -87,7 +87,7 @@ Problems are boxed by **kind** (see the table below). The box with the most fail
 
 ## 3. The selected problem
 
-![Labels Open and Selector, the heading page.waitForSelector: Timeout &lt;n&gt; exceeded, and the line Last seen 3 days ago in run #156](../media/today/failure-triage/detail-header.png)
+![Labels Open and Selector, the heading page.waitForSelector: Timeout &lt;n&gt; exceeded, and the line Last seen 3 days ago in run #398](../media/today/failure-triage/detail-header.png)
 
 At the top: the problem's status and kind, its name, and the last run it happened in. Then three facts:
 
@@ -107,7 +107,7 @@ At the top: the problem's status and kind, its name, and the last run it happene
 
 ## 4. Evidence
 
-![A list of rows, each with a run number such as run #156 and the test name Add a todo](../media/today/failure-triage/evidence.png)
+![A list of rows, each with a run number such as run #398 and the test name Add a todo](../media/today/failure-triage/evidence.png)
 
 One row per failure in the group, newest first: the run it happened in, and the name of the test that failed. **Click a row** to open that run, with its screenshots, step-by-step results and logs. The list shows up to the **50 newest** failures; *Times it failed* counts all of them.
 

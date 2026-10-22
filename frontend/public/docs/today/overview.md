@@ -36,7 +36,7 @@ The page has four parts. The numbers on the screenshot match the sections below.
 
 ## 1. The four tiles
 
-![Four tiles: Total runs 242, Passed 45 with 100% pass rate today, Failed 5, Running 0](../media/today/overview/tiles.png)
+![Four tiles: Total runs 252, Passed 47 with 100.0% pass rate today, Failed 3, Running 0](../media/today/overview/tiles.png)
 
 | Tile | What the number means |
 |---|---|
@@ -47,7 +47,7 @@ The page has four parts. The numbers on the screenshot match the sections below.
 
 > **Why Passed + Failed doesn't add up to Total**
 >
-> *Total runs* counts all of history, but *Passed*, *Failed* and *Running* only look at the newest 50 runs. In the screenshot, 242 runs exist in total; of the newest 50, 45 passed and 5 failed. Read the three smaller tiles as "lately", not "ever".
+> *Total runs* counts all of history, but *Passed*, *Failed* and *Running* only look at the newest 50 runs. In the screenshot, 252 runs exist in total; of the newest 50, 47 passed and 3 failed. Read the three smaller tiles as "lately", not "ever".
 >
 > Also, *Failed* counts only runs marked Failed. Runs that ended in Error or Timed out are not in that number, so check the list of recent runs too.
 
