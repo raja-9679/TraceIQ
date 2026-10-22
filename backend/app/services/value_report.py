@@ -329,13 +329,13 @@ def targeted_savings(targeted: Sequence[Batch], full: Sequence[Batch],
             "saved_browser_minutes": round(base.duration_ms * share / 60000.0, 2),
             "saved_wall_minutes": round(wall * share / 60000.0, 2) if wall is not None else None,
         })
-    definition = ("For each targeted run (a POST /runs with case_ids), the newest earlier full run of "
+    definition = ("For each targeted run (one that ran only selected test cases), the newest earlier full run of "
                   "the same suite size and browsers that ran every selected case is the baseline; "
                   "saving = baseline duration × (1 − cases ran ÷ cases in the suite). An estimate: "
                   "the skipped cases are assumed to cost the baseline's average.")
-    formula = "saved = baseline_duration × (1 − cases_ran / cases_total)"
+    formula = "saved = baseline duration × (1 − cases ran ÷ cases in the suite)"
     source = ("Targeted and full runs (validation and manual runs excluded): run durations, "
-              "selection_total, case ids; baseline within the 30 days before.")
+              "how many cases each run selected and which; baseline within the 30 days before.")
     targeted_n = len(targeted)
     if targeted_n == 0:
         value, missing = None, "No targeted run in this window."
@@ -434,7 +434,8 @@ def proposal_outcomes(case_rows: Sequence[Tuple[str, bool]], heal_rows: Sequence
                   "reviewer. Reverted = a later revision of the case put back the steps from before "
                   "the accepted change (update and heal proposals only; create/delete/move are not "
                   "measured).")
-    source = "Case proposals, selector-heal proposals, test-case revisions, repair outcomes (WP16c)."
+    source = ("Case proposals, selector-heal proposals, test-case revisions, and the results of "
+              "validation runs for proposed fixes.")
     value = None
     missing = None
     if case_c["total"] + heal_c["total"] == 0 and validations == 0:

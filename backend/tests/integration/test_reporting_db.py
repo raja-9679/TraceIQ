@@ -340,3 +340,22 @@ async def test_erasure_revokes_the_persons_links(session, scene):
     with pytest.raises(HTTPException) as exc:
         await _view(session, made["token"])
     assert exc.value.status_code == 404
+
+
+async def test_open_findings_counts_each_finding_once(session, scene):
+    """Superseded occurrences keep their old status; counting them made the
+    Portfolio show more open findings than the Security register."""
+    from app.models import SecurityFinding
+    newest = SecurityFinding(project_id=scene.project_id, category="missing-header",
+                             severity="low", title="csp", fingerprint="fp", status="open")
+    session.add(newest)
+    await session.flush()
+    session.add_all([
+        SecurityFinding(project_id=scene.project_id, category="missing-header", severity="low",
+                        title="csp", fingerprint="fp", status="open",
+                        superseded_by_id=newest.id),
+        SecurityFinding(project_id=scene.project_id, category="cookie", severity="low",
+                        title="flags", fingerprint="fp2", status="verified_fixed"),
+    ])
+    await session.commit()
+    assert await reporting.open_findings(session, [scene.project_id]) == {scene.project_id: 1}

@@ -568,9 +568,11 @@ async def get_runs(
 
     # Apply filters
     if search:
+        # Case-insensitive plain substring (ILIKE with the wildcards escaped).
+        needle = "%" + search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         query = query.where(
-            (TestRun.suite_name.contains(search)) |
-            (TestRun.test_case_name.contains(search))
+            (TestRun.suite_name.ilike(needle, escape="\\")) |
+            (TestRun.test_case_name.ilike(needle, escape="\\"))
         )
     if status:
         query = query.where(TestRun.status == status)

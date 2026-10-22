@@ -734,7 +734,7 @@ async def accept_proposal(
     # UI a second later, which is a review queue in name only.
     await _enforce_separation(proposal, principal.user.id, session)
 
-    await _apply_proposal(proposal, principal.user.id, session)
+    delete_report = await _apply_proposal(proposal, principal.user.id, session)
     proposal.status = "accepted"
     proposal.decided_at = datetime.utcnow()
     proposal.decided_by_id = principal.user.id
@@ -744,6 +744,10 @@ async def accept_proposal(
     await repair_validation.record_decision(session, repair_validation.CASE, proposal, "accepted",
                                             proposal.project_id, principal.user.id)
     await session.commit()
+    if delete_report is not None:
+        # Artifacts only after the rows are committed (as DELETE /cases/{id}).
+        from app.services.entity_delete import delete_objects
+        delete_objects(delete_report)
     await session.refresh(proposal)
     return _proposal_read(proposal)
 
@@ -1011,9 +1015,10 @@ def _proposed_suite_settings(existing: dict, payload: dict) -> dict:
     return validate_suite_settings(proposed)
 
 
-async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSession) -> None:
+async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSession):
     """Apply an accepted proposal: create/update/delete/move the test case,
-    or update the target suite's settings blob."""
+    or update the target suite's settings blob. Returns the DeleteReport of a
+    DELETE (the caller deletes its artifacts after committing), else None."""
     from app.services.test_service import normalize_steps
 
     payload = proposal.payload or {}
@@ -1117,7 +1122,7 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         await record_revision(session, case, "proposal", user_id=user_id,
                               agent_id=proposal.agent_id)
     elif proposal.action == CaseProposalAction.DELETE:
-        await session.delete(case)
+        return await _delete_proposed_case(proposal, case, user_id, session)
     elif proposal.action == CaseProposalAction.MOVE:
         new_suite_id = payload.get("new_test_suite_id")
         if not new_suite_id:
@@ -1132,6 +1137,44 @@ async def _apply_proposal(proposal: CaseProposal, user_id: int, session: AsyncSe
         from app.services.case_revisions import record_revision
         await record_revision(session, case, "proposal", user_id=user_id,
                               agent_id=proposal.agent_id)
+
+
+async def _delete_proposed_case(proposal: CaseProposal, case: TestCase, user_id: int,
+                                session: AsyncSession):
+    """Same delete as `DELETE /cases/{id}`: 409 on a referencing schedule, then
+    the FK-graph cascade. A plain `session.delete` failed on the first row that
+    referenced the case (results, revisions, auth sessions...), i.e. for any
+    case that had ever run. Returns the DeleteReport; the caller removes its
+    artifacts after committing."""
+    from app.models import TestSchedule
+    from app.services.entity_delete import cascade_delete
+
+    schedule_ids = (await session.exec(
+        select(TestSchedule.id).where(TestSchedule.test_case_id == case.id))).all()
+    if schedule_ids:
+        raise HTTPException(status_code=409, detail={
+            "error": "Cannot delete: test case is referenced by one or more schedules",
+            "schedule_ids": list(schedule_ids),
+            "remedy": "Delete or update the schedule(s) to remove the reference, then retry.",
+        })
+    # `caseproposal.target_case_id` is a DELETE edge (a pending proposal for a
+    # case that is gone is moot), which would take this accepted proposal —
+    # the record of the decision — with it. Detach it first; the id stays in
+    # the payload.
+    case_id = case.id
+    proposal.payload = {**(proposal.payload or {}), "deleted_case_id": case_id}
+    proposal.target_case_id = None
+    session.add(proposal)
+    await session.flush()
+    report = await cascade_delete(session, "testcase", [case_id])
+    # Bulk statements bypass the identity map; reload what they may have
+    # nullified (e.g. validation_run_id) before the caller writes the proposal.
+    await session.refresh(proposal)
+    session.expunge(case)
+    session.add(AuditLog(entity_type="case", entity_id=case_id, action="delete",
+                         user_id=user_id, changes={"proposal_id": proposal.id,
+                                                   "agent_id": proposal.agent_id}))
+    return report
 
 
 def _proposal_read(p: CaseProposal) -> CaseProposalRead:
