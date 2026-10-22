@@ -5,9 +5,13 @@ Works in two modes:
   assigns a plan directly. No Stripe needed.
 - **Stripe** (when STRIPE_SECRET_KEY is set): checkout + webhook drive the
   subscription. The endpoints are present but return 501 until configured.
-  A workspace admin can then only assign a FREE plan directly — otherwise
-  "assign" is a way round paying; a paid plan goes through checkout, and only
-  the instance admin (the operator, e.g. comping a customer) can set one.
+  A paid plan then goes through checkout.
+
+In BOTH modes a workspace admin can only assign a FREE plan directly; a paid
+plan's limits are what the operator sells, so letting a workspace admin pick
+one would let any tenant raise its own quotas. Only the instance admin (the
+operator, e.g. comping a customer) assigns a paid or inactive plan, and does
+not need to be a member of the workspace to do it.
 """
 from datetime import datetime
 from typing import List
@@ -52,6 +56,10 @@ _NO_PLAN = PlanRead(id=0, name="unlimited", display_name="No plan (unlimited)",
 async def workspace_billing(workspace_id: int, session: AsyncSession = Depends(get_session),
                             current_user: User = Depends(get_current_user)):
     await _member(session, workspace_id, current_user.id)
+    return await _billing_status(session, workspace_id)
+
+
+async def _billing_status(session: AsyncSession, workspace_id: int) -> BillingStatus:
     plan, sub = await billing_svc.resolve_plan(session, workspace_id)
     # No plan rows is a valid install (self-hosted, or any database built
     # since the 2026-09 migration squash, which dropped the legacy plan seed):
@@ -87,8 +95,9 @@ async def assign_plan(workspace_id: int, body: dict = Body(...),
     checkout + webhook instead."""
     from app.api.instance_settings import is_instance_admin
     from app.api.share_links import _is_workspace_admin
-    await _member(session, workspace_id, current_user.id)
     instance_admin = await is_instance_admin(session, current_user)
+    if not instance_admin:
+        await _member(session, workspace_id, current_user.id)
     # Role via role_id (the RBAC mechanism), not the deprecated
     # UserWorkspace.role string.
     if not instance_admin and not await _is_workspace_admin(session, current_user.id, workspace_id):
@@ -97,9 +106,11 @@ async def assign_plan(workspace_id: int, body: dict = Body(...),
     plan = (await session.exec(select(Plan).where(Plan.name == plan_name))).first()
     if not plan or (not plan.is_active and not instance_admin):
         raise HTTPException(status_code=404, detail=f"Unknown plan '{plan_name}'")
-    if settings.STRIPE_SECRET_KEY and (plan.price_cents or 0) > 0 and not instance_admin:
-        raise HTTPException(status_code=403,
-                            detail="Paid plans are bought through checkout on this deployment")
+    if (plan.price_cents or 0) > 0 and not instance_admin:
+        raise HTTPException(status_code=403, detail=(
+            "Paid plans are bought through checkout on this deployment"
+            if settings.STRIPE_SECRET_KEY else
+            "Only the instance admin can assign a paid plan"))
 
     sub = (await session.exec(select(WorkspaceSubscription).where(
         WorkspaceSubscription.workspace_id == workspace_id))).first()
@@ -118,7 +129,7 @@ async def assign_plan(workspace_id: int, body: dict = Body(...),
                                 "previous_plan_id": previous_plan_id,
                                 "as_instance_admin": instance_admin})
     await session.commit()
-    return await workspace_billing(workspace_id, session, current_user)
+    return await _billing_status(session, workspace_id)
 
 
 @router.post("/billing/stripe/checkout")

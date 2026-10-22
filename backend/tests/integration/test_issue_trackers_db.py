@@ -247,9 +247,20 @@ async def test_plan_assignment_with_stripe_configured(session, scene, monkeypatc
 
 
 @pytest.mark.asyncio(loop_scope="function")
-async def test_without_a_payment_provider_a_workspace_admin_assigns_any_plan(session, scene, monkeypatch, no_redis):
+async def test_without_a_payment_provider_paid_plans_still_need_the_instance_admin(session, scene, monkeypatch, no_redis):
     await _plans(session)
     monkeypatch.setattr(billing_api.settings, "STRIPE_SECRET_KEY", "")
-    await billing_api.assign_plan(scene.ws, {"plan_name": "pro"}, session=session,
-                                  current_user=await session.get(User, scene.users["admin"]))
+    admin = await session.get(User, scene.users["admin"])
+    # A workspace admin raising their own quotas is the hole: refused.
+    with pytest.raises(HTTPException) as e:
+        await billing_api.assign_plan(scene.ws, {"plan_name": "pro"}, session=session, current_user=admin)
+    assert e.value.status_code == 403
+    await billing_api.assign_plan(scene.ws, {"plan_name": "free"}, session=session, current_user=admin)
+    assert await _plan_of(session, scene.ws) == "free"
+    # The operator needs no membership to comp a plan.
+    op = await session.get(User, scene.users["owner"])
+    op.is_instance_admin = True
+    session.add(op)
+    await session.commit()
+    await billing_api.assign_plan(scene.ws, {"plan_name": "pro"}, session=session, current_user=op)
     assert await _plan_of(session, scene.ws) == "pro"
