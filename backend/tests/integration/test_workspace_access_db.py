@@ -382,6 +382,10 @@ async def test_me_reports_mfa_state_only_for_the_caller(maker, scene, client):
         await s.commit()
     r = await client.get("/api/auth/me", headers=ADMIN)
     assert r.status_code == 200 and r.json()["mfa_enabled"] is True
+    # The first tenant's Tenant Admin is the instance admin; a member is not.
+    assert r.json()["is_instance_admin"] is True
+    editor = (await client.get("/api/auth/me", headers=_bearer("editor@acme.example.com"))).json()
+    assert editor["is_instance_admin"] is False and editor["mfa_enabled"] is False
 
 
 # ---------------------------------------------------------------------------

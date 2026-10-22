@@ -769,6 +769,7 @@ class MeRead(UserRead):
     """`GET /auth/me` only: facts about the caller that other users must not
     see through member lists (which use UserRead)."""
     mfa_enabled: bool = False
+    is_instance_admin: bool = False
 
 
 class UserReadDetailed(UserRead):

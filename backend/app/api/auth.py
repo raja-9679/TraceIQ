@@ -662,9 +662,16 @@ async def register_user(
 
 @router.get("/me", response_model=MeRead)
 async def read_users_me(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> Any:
-    return current_user
+    # is_instance_admin lets the UI decide what to offer without probing an
+    # admin-only endpoint (whose 403 would raise the app-wide error toast).
+    from app.api.instance_settings import is_instance_admin
+    return MeRead(id=current_user.id, email=current_user.email,
+                  full_name=current_user.full_name,
+                  mfa_enabled=bool(current_user.mfa_enabled),
+                  is_instance_admin=await is_instance_admin(session, current_user))
 
 
 def _send_email(to_email: str, subject: str, html: str, text: str):
