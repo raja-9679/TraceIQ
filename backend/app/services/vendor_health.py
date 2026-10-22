@@ -258,6 +258,22 @@ def _share(part: int, whole: int) -> Optional[float]:
     return round(100.0 * part / whole, 1) if whole else None
 
 
+def _lift(failed_err: int, failed: int, passed_err: int,
+          passed: int) -> Tuple[Optional[float], bool]:
+    """(lift, is_lower_bound). When failing results saw errors and NO passing
+    result did, the plain ratio divides by zero — yet that is the strongest
+    signal there is, so it must not read as "not enough data". Credit the
+    passing side with half an error instead (the usual continuity correction):
+    the result is a floor on the real ratio, and grows with the evidence."""
+    if not failed or not passed:
+        return None, False
+    if passed_err == 0:
+        if failed_err == 0:
+            return None, False
+        return round((failed_err / failed) / (0.5 / passed), 2), True
+    return round((failed_err / failed) / (passed_err / passed), 2), False
+
+
 def summarise(rows: Iterable[Any]) -> List[Dict[str, Any]]:
     """Merge daily rows (VendorHealthDaily-like objects) into one entry per
     vendor with a daily series, sorted by errors then requests."""
@@ -291,15 +307,20 @@ def summarise(rows: Iterable[Any]) -> List[Dict[str, Any]]:
         v["latency_p95_ms"] = hist_percentile(hist, 95)
         failed_share = _share(v["failed_results_vendor_errors"], v["failed_results"])
         passed_share = _share(v["passed_results_vendor_errors"], v["passed_results"])
+        lift, lower_bound = _lift(v["failed_results_vendor_errors"], v["failed_results"],
+                                  v["passed_results_vendor_errors"], v["passed_results"])
         v["correlation"] = {
             "failed_results": v["failed_results"],
             "failed_with_vendor_errors_pct": failed_share,
             "passed_results": v["passed_results"],
             "passed_with_vendor_errors_pct": passed_share,
             # How much more often failing results saw this vendor erroring than
-            # passing ones did. None when either side has no data.
-            "lift": (round(failed_share / passed_share, 2) if failed_share is not None
-                     and passed_share else None),
+            # passing ones did. None when either side has no results, or when
+            # no result on either side saw an error (nothing to compare).
+            "lift": lift,
+            # True when no passing result saw an error: the ratio is then
+            # infinite, so `lift` is a conservative "at least" figure.
+            "lift_is_lower_bound": lower_bound,
         }
         out.append(v)
     out.sort(key=lambda v: (v["errors"], v["requests"]), reverse=True)
