@@ -42,7 +42,7 @@ The line under the heading counts the project's monitors and how many are down. 
 
 ## 2. The list of monitors
 
-![A box titled Paused with one row: Public API health (demo, paused), 120 checks, last checked, and 100% on the right](../media/watch/monitors/list.png)
+![A box titled Paused with one row: Public API health (demo, paused), 118 checks, last checked, and 100% on the right](../media/watch/monitors/list.png)
 
 Monitors are boxed by state, the most urgent first:
 
@@ -166,5 +166,5 @@ What the walkthrough says, in order. The video and every picture on this page ar
 5. Each bar is one check, oldest on the left. Green means the test passed.
 6. Uptime over the last day and week, and how many checks failed in a row.
 7. Each check is a real test run. Click one to open its result.
-8. Edit schedule opens the Schedules page, where its timer can be changed or paused.
+8. Edit monitor opens its schedule form, where its timer and alerts can be changed.
 9. A project can also have a public status page, built from its monitors.

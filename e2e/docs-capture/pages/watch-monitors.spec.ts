@@ -88,8 +88,8 @@ test('Watch › Monitors', async ({ page, browser }) => {
         await ev.scrollIntoViewIfNeeded();
         await caption(p, 'Each check is a real test run. Click one to open its result.');
         await pointAt(p, d.locator('ul li').first(), 2400);
-        await caption(p, 'Edit schedule opens the Schedules page, where its timer can be changed or paused.');
-        await pointAt(p, d.getByRole('link', { name: 'Edit schedule' }), 2200);
+        await caption(p, 'Edit monitor opens its schedule form, where its timer and alerts can be changed.');
+        await pointAt(p, d.getByRole('button', { name: 'Edit monitor' }), 2200);
         await caption(p, 'A project can also have a public status page, built from its monitors.');
         await pointAt(p, m.getByText('Public status page'), 2400);
         await caption(p, '');
