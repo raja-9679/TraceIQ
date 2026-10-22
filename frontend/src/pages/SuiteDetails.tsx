@@ -461,13 +461,18 @@ export default function SuiteDetails() {
         : [];
 
     const tabs: { id: typeof activeTab; label: string; count?: number }[] = [
-        { id: 'tests', label: 'Tests', count: (suite.total_sub_modules || 0) > 0 ? suite.total_sub_modules : suite.total_test_cases || 0 },
+        { id: 'tests', label: 'Tests', count: suite.total_test_cases || 0 },
         { id: 'settings', label: 'Settings' },
         { id: 'audit', label: 'Audit log' },
     ];
-    const showCases = (suite.total_sub_modules || 0) === 0;
+    // A suite can hold its own tests AND sub-modules; both are listed.
+    const hasSubModules = (suite.sub_modules?.length || 0) > 0;
+    const ownCases = suite.test_cases || [];
     const canManage = can("project:manage", { projectId, workspaceId });
     const canCreateTest = can("test:create", { projectId, workspaceId });
+    // The API refuses new tests in a suite that has sub-modules (they go in
+    // a sub-module); existing ones are still listed and runnable.
+    const canAddCases = canCreateTest && !hasSubModules;
     const canExecute = can("project:execute_test", { projectId, workspaceId });
     // POST/PUT/DELETE /schedules check project:create_suite, which only
     // project and workspace admins hold — editors would just get a 403.
@@ -589,7 +594,7 @@ export default function SuiteDetails() {
                         <label className="flex h-10 w-full items-center gap-2 rounded-full border border-input bg-white px-3.5 sm:w-56">
                             <Search className="h-4 w-4 flex-none text-ink-soft" />
                             <span className="sr-only">Search this suite</span>
-                            <input type="search" placeholder={showCases ? 'Search tests' : 'Search sub-modules'} value={searchTerm}
+                            <input type="search" placeholder={hasSubModules ? 'Search tests and sub-modules' : 'Search tests'} value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)} className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none" />
                         </label>
                         <div role="group" aria-label="View" className="flex gap-0.5 rounded-full bg-[#EFEDE7] p-1">
@@ -606,21 +611,21 @@ export default function SuiteDetails() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="w-56">
                                 <DropdownMenuItem onClick={() => setShowSubModuleDialog(true)}><FolderOpen className="mr-2 h-4 w-4" /> New sub-module</DropdownMenuItem>
-                                {showCases && canCreateTest && (
+                                {canAddCases && (
                                     <DropdownMenuItem onClick={() => importCaseRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Import a test (JSON)</DropdownMenuItem>
                                 )}
-                                {showCases && canCreateTest && (
+                                {canAddCases && (
                                     <DropdownMenuItem onClick={() => navigate(`/suites/${suiteId}/manual/new`)}><FileText className="mr-2 h-4 w-4" /> New manual test</DropdownMenuItem>
                                 )}
                                 {canCreateTest && (
                                     <DropdownMenuItem onClick={() => startManualRun.mutate(undefined)}><Play className="mr-2 h-4 w-4" /> Start manual run</DropdownMenuItem>
                                 )}
-                                {showCases && canCreateTest && aiGenerationEnabled && (
+                                {canAddCases && aiGenerationEnabled && (
                                     <DropdownMenuItem onClick={() => setShowGenerateDialog(true)}><Sparkles className="mr-2 h-4 w-4" /> Generate tests with AI</DropdownMenuItem>
                                 )}
                             </DropdownMenuContent>
                         </DropdownMenu>
-                        {showCases && canCreateTest && (
+                        {canAddCases && (
                             <Button onClick={() => navigate(`/suites/${suiteId}/builder`)}><Plus className="h-4 w-4" /> New test</Button>
                         )}
                     </div>
@@ -682,8 +687,12 @@ export default function SuiteDetails() {
                                 )}
 
                                 {/* ── Test cases ── */}
-                                {showCases && (
-                                    !suite.test_cases || suite.test_cases.length === 0 ? (
+                                {(ownCases.length > 0 || !hasSubModules) && (
+                                <section aria-label="Tests in this suite" className="flex flex-col gap-2">
+                                    {hasSubModules && (
+                                        <h2 className="px-1 text-xs font-semibold uppercase tracking-[0.06em] text-ink-soft">Tests in this suite · {filteredTestCases.length}</h2>
+                                    )}
+                                    {ownCases.length === 0 ? (
                                         <div className="flex flex-col items-center gap-3 rounded-3xl border border-border bg-white px-6 py-14 text-center">
                                             <p className="text-lg font-semibold text-ink">No tests in this suite yet</p>
                                             <p className="max-w-[46ch] text-sm text-ink-soft">Build one step by step, import a JSON export, or split this suite into sub-modules.</p>
@@ -741,7 +750,8 @@ export default function SuiteDetails() {
                                             onExport={(tc) => handleExportCase(tc.id, tc.name)}
                                             onDelete={(tc) => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }}
                                         />
-                                    )
+                                    )}
+                                </section>
                                 )}
                             </motion.div>
                         ) : activeTab === 'settings' ? (

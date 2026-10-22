@@ -91,7 +91,7 @@ Only top-level suites are listed here. Sub-modules are shown inside their suite.
 
 ## 6. Tests, Settings, Audit log
 
-- **Tests** (with a count) is the list you see when the page opens. If the suite has sub-modules, this tab lists the sub-modules instead, and the count is theirs.
+- **Tests** (with a count) is the list you see when the page opens. If the suite has sub-modules, they are listed first, then the suite's own tests under *Tests in this suite*. The count is every test, including those inside sub-modules. New tests go into a sub-module once a suite has them, so **New test** is offered only in suites without sub-modules.
 - **Settings** are shared by every test in the suite and, unless switched off, passed down to its sub-modules. See the table below.
 - **Audit log** lists every change made to this suite and to its own tests: who, when, and what changed from what to what. Changes inside its sub-modules are in their own logs.
 
