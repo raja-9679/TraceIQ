@@ -329,7 +329,12 @@ async def update_schedule(
     # Re-evaluate next run if the cron expression or its timezone changed
     new_cron = update_data.get("cron_expression", db_schedule.cron_expression)
     new_tz = update_data.get("timezone", db_schedule.timezone)
-    if new_cron != db_schedule.cron_expression or new_tz != db_schedule.timezone:
+    # Resuming also recomputes it: the stored value is the slot that was due
+    # when the schedule was paused, so keeping it would fire a stale run the
+    # moment it resumes (and a NULL one would never fire at all).
+    resuming = update_data.get("is_active") is True and not db_schedule.is_active
+    if (new_cron != db_schedule.cron_expression or new_tz != db_schedule.timezone
+            or resuming or db_schedule.next_run_at is None):
         if not croniter.is_valid(new_cron):
             raise HTTPException(status_code=400, detail="Invalid cron expression")
         db_schedule.next_run_at = next_run_utc(new_cron, new_tz)

@@ -107,3 +107,52 @@ async def test_beat_task_advances_in_the_schedule_zone(session, scene, monkeypat
     assert (sched.next_run_at.hour, sched.next_run_at.minute) == (3, 30)
     assert sched.next_run_at == next_run_utc("0 9 * * *", "Asia/Kolkata",
                                              after=sched.last_run_at)
+
+
+async def test_resuming_a_paused_schedule_recomputes_next_run(session, scene):
+    sched = await schedules.create_schedule(_base(scene, cron_expression="0 9 * * *"),
+                                            session=session, current_user=scene.user)
+    await schedules.update_schedule(sched.id, TestScheduleUpdate(is_active=False),
+                                    session=session, current_user=scene.user)
+    # Paused long enough for the stored slot to be in the past.
+    sched.next_run_at = datetime(2000, 1, 1)
+    session.add(sched)
+    await session.commit()
+
+    resumed = await schedules.update_schedule(sched.id, TestScheduleUpdate(is_active=True),
+                                              session=session, current_user=scene.user)
+    assert resumed.is_active
+    assert resumed.next_run_at > datetime.utcnow()
+    assert (resumed.next_run_at.hour, resumed.next_run_at.minute) == (9, 0)
+
+
+async def test_beat_task_gives_an_unset_schedule_its_next_slot(session, scene, monkeypatch):
+    from contextlib import asynccontextmanager
+    from app.tasks import schedule_tasks
+
+    sched = TestSchedule(name="unset", project_id=scene.project_id,
+                         test_case_id=scene.root_cases[0], cron_expression="0 9 * * *",
+                         next_run_at=None)
+    paused = TestSchedule(name="paused", project_id=scene.project_id,
+                          test_case_id=scene.root_cases[0], cron_expression="0 9 * * *",
+                          next_run_at=None, is_active=False)
+    session.add_all([sched, paused])
+    await session.commit()
+
+    dispatched = []
+
+    async def _dispatch(schedule, s):
+        dispatched.append(schedule.id)
+    monkeypatch.setattr(schedule_tasks, "_dispatch_schedule", _dispatch)
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session
+    monkeypatch.setattr(schedule_tasks, "get_session_context", _ctx)
+
+    await schedule_tasks._process_schedules_async()
+    await session.refresh(sched)
+    await session.refresh(paused)
+    assert dispatched == []                       # not fired at once
+    assert sched.next_run_at is not None and sched.next_run_at > datetime.utcnow()
+    assert paused.next_run_at is None             # paused ones are left alone

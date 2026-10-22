@@ -18,6 +18,19 @@ from app.services.schedule_time import next_run_utc
 async def _process_schedules_async():
     async with get_session_context() as session:
         now = datetime.utcnow()
+        # An active schedule with no next_run_at (written before it was set on
+        # create, or by a direct insert) is never "due" under `<= now` and so
+        # would never run. Give it its next slot rather than firing at once.
+        unset = (await session.exec(select(TestSchedule).where(
+            TestSchedule.is_active == True,  # noqa: E712
+            TestSchedule.next_run_at == None))).all()  # noqa: E711
+        for schedule in unset:
+            try:
+                schedule.next_run_at = next_run_utc(
+                    schedule.cron_expression, schedule.timezone, after=now)
+                session.add(schedule)
+            except Exception as e:  # noqa: BLE001 — an invalid cron stays unset
+                print(f"Schedule {schedule.id} has no usable next run: {e}")
         # Find active schedules that are due
         query = select(TestSchedule).where(
             TestSchedule.is_active == True,
