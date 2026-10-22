@@ -49,10 +49,8 @@ test('Security › Scans & findings', async ({ page, browser }) => {
     await expect(register.locator('tbody tr').first()).toBeVisible();
     const toolbar = register.getByLabel('Filter findings by status').locator('xpath=..');
     const table = register.locator('table');
-    // One demo finding is an inline script named by its 64-character hash, which
-    // doesn't wrap and pushes Due and Status off the right edge at 1440 px
-    // (app layout bug, see info/GUIDE_FOLLOWUPS.md); a wider window shows them.
-    await page.setViewportSize({ width: 1920, height: 1500 });
+    // Tall enough for the whole register and the SLA card.
+    await page.setViewportSize({ width: 1440, height: 1600 });
     await settle(page);
     const clean = await annotate(page, [
         { n: 1, target: viewTabs },

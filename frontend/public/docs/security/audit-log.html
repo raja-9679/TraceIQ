@@ -82,7 +82,8 @@
           <li><strong>Verify chain</strong> checks every link of the chain and shows the result above the table:</li>
         </ul>
         <figure>
-          <div class="frame"><img src="../media/security/audit-log/verify.png" alt="Chain verified, the number of rows checked, and: Every audit row is intact and correctly linked to its predecessor." loading="lazy"></div>
+          <div class="frame"><img src="../media/security/audit-log/verify.png" alt="Chain broken, 153 rows checked: This row predates hash chaining, so the trail cannot be verified from here backwards. Rows written after the upgrade are covered. First bad row #1 (7/30/2026)" loading="lazy"></div>
+          <figcaption>The server these pictures come from was in use before the chain was introduced, so the check stops at its oldest entry and says so. On a server installed with the chain, an intact trail shows <em>Chain verified</em> and "Every audit row is intact and correctly linked to its predecessor."</figcaption>
         </figure>
         <p>The chain runs through the whole server's audit trail, not just this workspace, so the
           number of rows checked is larger than the number of entries you can see. If the check
@@ -105,7 +106,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="table" data-toc="④ The entries">The entries</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/audit-log/table.png" alt="The first rows of the table, with columns When, Who, Action, Entity, IP and a Details button: demo_create and compliance_load_soc2 on the workspace by the capture account; verified_fixed on three security findings by finding-lifecycle, marked system; approve on three page scripts by the capture account" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/audit-log/table.png" alt="The first rows of the table, with columns When, Who, Action, Entity, IP and a Details button: demo_create and compliance_load_soc2 on the workspace by the capture account; verified_fixed on two security findings by finding-lifecycle, marked system; approve on three page scripts by the capture account; and verified_fixed on a third finding" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
@@ -121,7 +122,7 @@
           </table>
         </div>
         <figure>
-          <div class="frame"><img src="../media/security/audit-log/details.png" alt="An opened entry showing its changes as text: seed 1307, runs 236" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/audit-log/details.png" alt="An opened entry showing its changes as text: seed 1307, runs 237" loading="lazy"></div>
         </figure>
 
         <div class="part"><span class="num">5</span><h2 id="paging" data-toc="⑤ Pages">Pages</h2></div>

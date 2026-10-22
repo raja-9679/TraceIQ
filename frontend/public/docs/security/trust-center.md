@@ -77,7 +77,7 @@ Tick the **status pages** (made from a project's monitors, under *Watch → Moni
 
 ## 5. Gated documents
 
-![The Gated documents box: Save the public page settings first; File, Title, Description, List the title on the public page; Documents: No documents yet; and an Upload button](../media/security/trust-center/documents.png)
+![The Gated documents box: File (Choose File), Title (empty, with the example SOC 2 Type II report 2026), Description, List the title on the public page (ticked); Documents: No documents yet; and an Upload button, greyed out until a file and a title are given](../media/security/trust-center/documents.png)
 
 Documents you are willing to share, but only with people you choose, such as a SOC 2 report or a penetration-test summary. Upload a **file** (PDF, image, Word, Excel, PowerPoint, text or Markdown, up to 20 MB; the type is checked from the contents, not the name) with a **title** and optional description. **List the title on the public page** lets visitors see that it exists. Uploading needs the public page saved once first.
 

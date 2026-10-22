@@ -111,7 +111,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="grid" data-toc="④ The grid">The grid</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/grid.png" alt="The grid of the demo matrix. Row List my todos (API), a GET request to /api/todos: Allow with status 200 for alice and bob, Deny for Anonymous. Row Admin panel, a Page at /admin with the element selector #admin-panel: Allow for alice, Deny for bob and Anonymous. Row Read alice's todo by id, a GET request to /api/todos/{id} with ID swap ticked, owner persona alice, owner URL /api/todos, extractor 0.id: Allow for alice, Deny for bob and Anonymous" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-matrix/grid.png" alt="The grid of the demo matrix. Row List my todos (API), a GET request to /api/todos: Allow with status 200 for alice and bob, Deny for Anonymous. Row Admin panel, a Page at /admin with the element selector #admin-panel: Allow for alice, Deny for bob and Anonymous. Row Read alice's todo by id, a GET request to /api/todos/{id} with ID swap ticked, owner persona alice, placeholder {id}, owner URL /api/todos, extractor 0.id: Allow for alice, Deny for bob and Anonymous" loading="lazy"></div>
         </figure>
         <p>Each row is one thing to try. Press <strong>Add row</strong> for another, and
           <strong>Remove row</strong> to drop one (up to 200 rows).</p>
@@ -180,7 +180,7 @@
           of the selected run: the same grid, with each cell showing what was expected, what was
           observed, and a verdict. While a run is going, the page refreshes every 3 seconds.</p>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/results.png" alt="Run history with Run #1, completed: Pass 7, Fail 1, Inconclusive 1. Results of run #1: Pass 7, Fail 1, Inconclusive 1, 1 access granted that should be denied. In the grid every cell passes except Admin panel as bob, Fail — access granted (expected deny, observed 200, element visible), and Admin panel as Anonymous, Inconclusive (expected deny, observed timeout)" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-matrix/results.png" alt="Run history with Run #2, completed: Pass 7, Fail 1, Inconclusive 1. Results of run #2: Pass 7, Fail 1, Inconclusive 1, 1 access granted that should be denied. In the grid every cell passes except Admin panel as bob, Fail — access granted (expected deny, observed 200, element visible), and Admin panel as Anonymous, Inconclusive (expected deny, observed timeout)" loading="lazy"></div>
           <figcaption>The demo run: bob, a plain user, could open the admin panel, and the visit as Anonymous timed out.</figcaption>
         </figure>
         <div class="table-wrap">
@@ -206,7 +206,7 @@
         <p>Below the results, <strong>Security findings from this matrix</strong> lists the
           findings it raised, each with its status and a link to the run that showed the problem.</p>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/findings.png" alt="Security findings from this matrix: one Open finding, Access granted that should be denied: Admin panel as bob (todolite), with a View evidence in run #1 link" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-matrix/findings.png" alt="Security findings from this matrix: one Open finding, Access granted that should be denied: Admin panel as bob (todolite), with a View evidence in run #2 link" loading="lazy"></div>
         </figure>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>

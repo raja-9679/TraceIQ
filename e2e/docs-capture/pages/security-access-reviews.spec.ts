@@ -17,10 +17,6 @@ async function open(p: Page) {
     await p.getByLabel('Review scope').selectOption({ label: 'Demo workspace' });
     await settle(p);
     await expect(p.getByText('Q4 demo workspace access review')).toBeVisible();
-    // The page probes /admin/instance-admins to decide whether to offer the
-    // whole-instance scope; for anyone else that 403 pops a "Permission Denied"
-    // toast (an app bug, see info/GUIDE_FOLLOWUPS.md). Wait for it to go.
-    await expect(p.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 12_000 });
 }
 
 test('Security › Access reviews', async ({ page, browser }) => {

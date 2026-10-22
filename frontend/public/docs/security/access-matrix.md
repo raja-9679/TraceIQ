@@ -62,7 +62,7 @@ Each column is one **identity**: who TraceIQ pretends to be. A **persona** is a 
 
 ## 4. The grid
 
-![The grid of the demo matrix. Row List my todos (API), a GET request to /api/todos: Allow with status 200 for alice and bob, Deny for Anonymous. Row Admin panel, a Page at /admin with the element selector #admin-panel: Allow for alice, Deny for bob and Anonymous. Row Read alice's todo by id, a GET request to /api/todos/{id} with ID swap ticked, owner persona alice, owner URL /api/todos, extractor 0.id: Allow for alice, Deny for bob and Anonymous](../media/security/access-matrix/grid.png)
+![The grid of the demo matrix. Row List my todos (API), a GET request to /api/todos: Allow with status 200 for alice and bob, Deny for Anonymous. Row Admin panel, a Page at /admin with the element selector #admin-panel: Allow for alice, Deny for bob and Anonymous. Row Read alice's todo by id, a GET request to /api/todos/{id} with ID swap ticked, owner persona alice, placeholder {id}, owner URL /api/todos, extractor 0.id: Allow for alice, Deny for bob and Anonymous](../media/security/access-matrix/grid.png)
 
 Each row is one thing to try. Press **Add row** for another, and **Remove row** to drop one (up to 200 rows).
 
@@ -104,7 +104,7 @@ On a saved matrix, **Save changes** saves your edits; it sits next to **Delete m
 
 On a saved matrix, the **Runs & results** tab has a **Run matrix** button, the **Run history** (newest first) and the results of the selected run: the same grid, with each cell showing what was expected, what was observed, and a verdict. While a run is going, the page refreshes every 3 seconds.
 
-![Run history with Run #1, completed: Pass 7, Fail 1, Inconclusive 1. Results of run #1: Pass 7, Fail 1, Inconclusive 1, 1 access granted that should be denied. In the grid every cell passes except Admin panel as bob, Fail — access granted (expected deny, observed 200, element visible), and Admin panel as Anonymous, Inconclusive (expected deny, observed timeout)](../media/security/access-matrix/results.png)
+![Run history with Run #2, completed: Pass 7, Fail 1, Inconclusive 1. Results of run #2: Pass 7, Fail 1, Inconclusive 1, 1 access granted that should be denied. In the grid every cell passes except Admin panel as bob, Fail — access granted (expected deny, observed 200, element visible), and Admin panel as Anonymous, Inconclusive (expected deny, observed timeout)](../media/security/access-matrix/results.png)
 
 *The demo run: bob, a plain user, could open the admin panel, and the visit as Anonymous timed out.*
 
@@ -124,7 +124,7 @@ On a saved matrix, the **Runs & results** tab has a **Run matrix** button, the *
 
 Below the results, **Security findings from this matrix** lists the findings it raised, each with its status and a link to the run that showed the problem.
 
-![Security findings from this matrix: one Open finding, Access granted that should be denied: Admin panel as bob (todolite), with a View evidence in run #1 link](../media/security/access-matrix/findings.png)
+![Security findings from this matrix: one Open finding, Access granted that should be denied: Admin panel as bob (todolite), with a View evidence in run #2 link](../media/security/access-matrix/findings.png)
 
 ## Watch it in use
 
