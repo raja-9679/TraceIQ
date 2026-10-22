@@ -469,17 +469,22 @@ export default function SuiteDetails() {
     const canManage = can("project:manage", { projectId, workspaceId });
     const canCreateTest = can("test:create", { projectId, workspaceId });
     const canExecute = can("project:execute_test", { projectId, workspaceId });
+    // POST/PUT/DELETE /schedules check project:create_suite, which only
+    // project and workspace admins hold — editors would just get a 403.
+    const canSchedule = can("project:create_suite", { projectId, workspaceId });
 
     // Row/card actions for a sub-module (schedule, run, delete, open).
     const SubModuleActions = ({ sub }: { sub: { id: number; name: string } }) => (
         <div className="flex flex-none items-center gap-1">
-            <button type="button" aria-label={`Schedule ${sub.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
-                className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>
+            {canSchedule && (
+                <button type="button" aria-label={`Schedule ${sub.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(sub.id), name: sub.name }); setIsScheduleModalOpen(true); }}
+                    className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>
+            )}
             {canManage && (
                 <button type="button" aria-label={`Delete ${sub.name}`} title="Delete" onClick={() => { setSuiteToDelete({ id: sub.id, name: sub.name }); setShowDeleteSuiteDialog(true); }}
                     className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-pastel-ink-peach"><Trash2 className="h-4 w-4" /></button>
             )}
-            <Button size="sm" onClick={() => runMutation.mutate(sub.id)} disabled={runMutation.isPending}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>
+            {canExecute && <Button size="sm" onClick={() => runMutation.mutate(sub.id)} disabled={runMutation.isPending}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>}
             <Link to={`/suites/${sub.id}`} aria-label={`Open ${sub.name}`} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><ChevronRight className="h-4 w-4" /></Link>
         </div>
     );
@@ -556,7 +561,7 @@ export default function SuiteDetails() {
                                     <Button variant="outline" aria-label="More suite actions"><MoreHorizontal className="h-4 w-4" /> More</Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-56">
-                                    {canExecute && (
+                                    {canSchedule && (
                                         <DropdownMenuItem onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), name: suite.name }); setIsScheduleModalOpen(true); }}><CalendarClock className="mr-2 h-4 w-4" /> Schedule this suite</DropdownMenuItem>
                                     )}
                                     <DropdownMenuItem onClick={handleExportSuite}><Download className="mr-2 h-4 w-4" /> Export suite (JSON)</DropdownMenuItem>
@@ -716,11 +721,11 @@ export default function SuiteDetails() {
                                                         </ol>
                                                     )}
                                                     <div className="mt-auto flex items-center gap-1.5 border-t border-[#F0EEE8] pt-3">
-                                                        <button type="button" aria-label={`Schedule ${tc.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>
+                                                        {canSchedule && <button type="button" aria-label={`Schedule ${tc.name}`} title="Schedule" onClick={() => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><CalendarClock className="h-4 w-4" /></button>}
                                                         {canCreateTest && <button type="button" aria-label={`Edit ${tc.name}`} title="Edit" onClick={() => navigate(editPath(tc))} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Edit className="h-4 w-4" /></button>}
                                                         <button type="button" aria-label={`Export ${tc.name}`} title="Export" onClick={() => handleExportCase(tc.id, tc.name)} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-ink"><Download className="h-4 w-4" /></button>
                                                         {canCreateTest && <button type="button" aria-label={`Delete ${tc.name}`} title="Delete" onClick={() => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }} className="flex h-9 w-9 items-center justify-center rounded-full text-ink-soft hover:bg-secondary hover:text-pastel-ink-peach"><Trash2 className="h-4 w-4" /></button>}
-                                                        <Button size="sm" className="ml-auto" onClick={() => handleRunTestCase(tc.id)}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>
+                                                        {canExecute && <Button size="sm" className="ml-auto" onClick={() => handleRunTestCase(tc.id)}><Play className="h-3 w-3" fill="currentColor" /> Run</Button>}
                                                     </div>
                                                 </div>
                                             ))}
@@ -730,9 +735,9 @@ export default function SuiteDetails() {
                                             cases={filteredTestCases}
                                             badge={(tc) => flakeByCaseId.has(tc.id) ? <FlakinessBadge flake={flakeByCaseId.get(tc.id)!} /> : null}
                                             canEdit={canCreateTest}
-                                            onRun={(tc) => handleRunTestCase(tc.id)}
-                                            onSchedule={(tc) => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); }}
-                                            onEdit={(tc) => navigate(`/suites/${suiteId}/cases/${tc.id}/edit`)}
+                                            onRun={canExecute ? (tc) => handleRunTestCase(tc.id) : undefined}
+                                            onSchedule={canSchedule ? (tc) => { setScheduleTarget({ suiteId: Number(suiteId), caseId: tc.id, name: tc.name }); setIsScheduleModalOpen(true); } : undefined}
+                                            onEdit={(tc) => navigate(editPath(tc))}
                                             onExport={(tc) => handleExportCase(tc.id, tc.name)}
                                             onDelete={(tc) => { setTestCaseToDelete({ id: tc.id, name: tc.name }); setShowDeleteTestCaseDialog(true); }}
                                         />

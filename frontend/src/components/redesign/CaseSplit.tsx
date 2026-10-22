@@ -18,8 +18,10 @@ export function CaseSplit({
     cases: CaseLike[];
     badge?: (c: CaseLike) => ReactNode;
     canEdit: boolean;
-    onRun: (c: CaseLike) => void;
-    onSchedule: (c: CaseLike) => void;
+    /** Omitted when the viewer may not run tests — the button is hidden. */
+    onRun?: (c: CaseLike) => void;
+    /** Omitted when the viewer may not create schedules (project admin). */
+    onSchedule?: (c: CaseLike) => void;
     onEdit: (c: CaseLike) => void;
     onExport: (c: CaseLike) => void;
     onDelete: (c: CaseLike) => void;
@@ -71,7 +73,7 @@ export function CaseSplit({
                             <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.name}</h2>
                             {badge?.(selected) && <div>{badge(selected)}</div>}
                         </div>
-                        <Button size="lg" onClick={() => onRun(selected)}><Play className="h-4 w-4" fill="currentColor" /> Run now</Button>
+                        {onRun && <Button size="lg" onClick={() => onRun(selected)}><Play className="h-4 w-4" fill="currentColor" /> Run now</Button>}
                     </div>
 
                     <div className="flex flex-col gap-2">
@@ -102,7 +104,7 @@ export function CaseSplit({
 
                     <div className="flex flex-wrap gap-2.5">
                         {canEdit && <Button variant="outline" size="lg" onClick={() => onEdit(selected)}><Edit className="h-4 w-4" /> Edit steps</Button>}
-                        <Button variant="outline" size="lg" onClick={() => onSchedule(selected)}><CalendarClock className="h-4 w-4" /> Schedule</Button>
+                        {onSchedule && <Button variant="outline" size="lg" onClick={() => onSchedule(selected)}><CalendarClock className="h-4 w-4" /> Schedule</Button>}
                         <Button variant="outline" size="lg" onClick={() => onExport(selected)}><Download className="h-4 w-4" /> Export</Button>
                         {canEdit && (
                             <Button variant="outline" size="lg" className="sm:ml-auto" onClick={() => onDelete(selected)}>

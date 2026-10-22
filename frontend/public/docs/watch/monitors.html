@@ -32,7 +32,7 @@
         <div class="meta-row">
           <span class="tag t-sky">Watch</span>
           <span class="tag t-neutral">Everyone with access to the project can see it</span>
-          <span class="tag t-neutral">Editors change monitors</span>
+          <span class="tag t-neutral">Project admins change monitors</span>
         </div>
 
         <div class="in-short">
@@ -73,8 +73,9 @@
         </figure>
         <p>The line under the heading counts the project's monitors and how many are down. The
           page fetches new checks every 30 seconds by itself; <strong>Refresh</strong> fetches
-          them now. <strong>New monitor</strong> opens the <em>Schedules</em> page, because a
-          monitor is a schedule with monitor mode switched on (see <a href="#how-to">How to set up a monitor</a>).</p>
+          them now. <strong>New monitor</strong> opens the schedule form with <em>Run as a monitor</em>
+          already ticked, because a monitor is a schedule with monitor mode switched on (see
+          <a href="#how-to">How to set up a monitor</a>). It is only shown to project admins.</p>
 
         <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of monitors">The list of monitors</h2></div>
         <figure>
@@ -108,7 +109,8 @@
           <li><strong>Turn off</strong> / <strong>Turn on</strong> hides or shows it again under the same address.</li>
           <li><strong>Rotate link</strong> gives the page a new address; the old link stops working.</li>
         </ul>
-        <p>These buttons save straight away and need the <em>editor</em> role.</p>
+        <p>These buttons save straight away and need the <em>editor</em> role. Viewers see only
+          <strong>Copy link</strong> while the page is on.</p>
 
         <div class="part"><span class="num">4</span><h2 id="checks" data-toc="④ Recent checks">Recent checks</h2></div>
         <figure>
@@ -158,8 +160,9 @@
         <p>The 5 most recent checks, each with its result and time. Every check is a run, so
           <strong>click one</strong> to open its full result: the steps, the error and any
           screenshots. <strong>Open latest check</strong> does the same for the newest one, and
-          <strong>Edit schedule</strong> opens the Schedules page, where the monitor's timer and
-          regions are changed, and where it can be paused.</p>
+          <strong>Edit monitor</strong> (project admins only) opens the schedule form, where the
+          monitor's timer, alert settings and regions are changed. Pausing it is done on the
+          <em>Schedules</em> page.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">
@@ -175,8 +178,8 @@
         <h2 id="how-to" data-toc="How to…">How to…</h2>
         <h3>…set up a monitor</h3>
         <ol class="steps">
-          <li>Create a schedule for the test that checks the live site, on <em>Tests → Schedules</em> (<strong>New monitor</strong> takes you there), and choose how often it runs.</li>
-          <li>Have monitor mode switched on for that schedule. The Schedules page has no switch for it yet, so this is done through TraceIQ's API (a developer or an AI agent can do it), together with how many failed checks in a row count as down (1 unless set) and who gets an email.</li>
+          <li>Press <strong>New monitor</strong>, pick the suite that checks the live site under <strong>Suite to run</strong>, and choose how often it runs.</li>
+          <li>Under <strong>Run as a monitor</strong> (already ticked), set how many failed checks in a row count as down (1 alerts on the first failure), whether to send a recovery alert, and who gets an email. Press <strong>Create monitor</strong>. An existing schedule becomes a monitor by ticking the same box in its form.</li>
           <li>Come back here. The monitor waits under <strong>No checks yet</strong> until its first check.</li>
         </ol>
         <h3>…find out why a monitor is down</h3>
@@ -199,7 +202,7 @@
           <li><strong>Several regions.</strong> A monitor can check from several places at once. Each region keeps its own streak and alerts; the monitor is Down if any region is down.</li>
           <li><strong>Checks are ordinary runs.</strong> They also appear on the <em>Runs</em> page, started "by schedule".</li>
           <li><strong>The demo never alerts.</strong> Its monitor is paused and its history was generated; no one is ever notified from a demo workspace.</li>
-          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Creating or changing a monitor, and the status page buttons, need the <em>editor</em> role.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Creating or changing a monitor needs <em>project admin</em> (or workspace admin), like any schedule; the status page buttons need the <em>editor</em> role.</li>
         </ul>
 
         <h2 id="related">Related pages</h2>

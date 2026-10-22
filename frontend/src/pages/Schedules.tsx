@@ -2,13 +2,14 @@ import { useState, useMemo } from 'react';
 import { useDebounce, cn } from '@/lib/utils';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Calendar, PauseCircle, PlayCircle, Trash2, Pen, FolderTree, FileText, Search,
+  Calendar, PauseCircle, PlayCircle, Trash2, Pen, FolderTree, FileText, Search, Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { schedulesApi, TestSchedule } from '@/api/schedules';
 import { ScheduleModal } from '@/components/ScheduleModal';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { useProjectAccess } from '@/hooks/useProjectAccess';
 import {
   DetailCard, EmptyState, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
@@ -44,6 +45,10 @@ export default function Schedules() {
   const projectId = useActiveProjectId();
 
   const [editTarget, setEditTarget] = useState<TestSchedule | null>(null);
+  const [creating, setCreating] = useState(false);
+  // Create/update/delete all check project:create_suite (project or
+  // workspace admins); editors and viewers only read this page.
+  const canManage = useProjectAccess(projectId).can('project:create_suite');
   const [viewMode, setViewMode] = useState<'card' | 'list'>('list');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -112,7 +117,7 @@ export default function Schedules() {
   const target = (s: TestSchedule) => (s.test_case_id ? `Test case #${s.test_case_id}` : `Module #${s.test_suite_id}`);
   const env = (s: TestSchedule) => [s.browser, s.device].filter(Boolean).join(' · ');
 
-  const actions = (s: TestSchedule, size: 'default' | 'lg' = 'default') => (
+  const actions = (s: TestSchedule, size: 'default' | 'lg' = 'default') => !canManage ? null : (
     <>
       <Button size={size} variant={s.is_active ? 'outline' : 'default'} onClick={() => handleToggle(s)}>
         {s.is_active ? <><PauseCircle className="h-4 w-4" /> Pause</> : <><PlayCircle className="h-4 w-4" /> Resume</>}
@@ -121,14 +126,12 @@ export default function Schedules() {
         <Pen className="h-4 w-4" /> Edit
       </Button>
       <Button
-        size="icon"
-        variant="ghost"
+        size={size}
+        variant="outline"
         onClick={() => handleDelete(s.id)}
-        className={cn('text-ink-soft hover:bg-pastel-peach hover:text-pastel-ink-peach', size === 'lg' && 'h-11 w-11')}
-        title="Delete schedule"
         aria-label={`Delete schedule ${s.name}`}
       >
-        <Trash2 className="h-4 w-4" />
+        <Trash2 className="h-4 w-4" /> Delete
       </Button>
     </>
   );
@@ -139,11 +142,15 @@ export default function Schedules() {
         title="Schedules"
         subtitle={
           !projectId ? 'Pick a project in the sidebar.'
-            : schedules ? `${total} schedule${total === 1 ? '' : 's'} · ${activeCount} active · times are in UTC`
+            : schedules ? `${total} schedule${total === 1 ? '' : 's'} · ${activeCount} active · times shown in your timezone`
               : 'Tests that run on their own, on a timer.'
         }
-        actions={projectId && total > 0 ? (
+        actions={projectId && (total > 0 || canManage) ? (
           <>
+            {canManage && (
+              <Button onClick={() => setCreating(true)}><Plus className="h-4 w-4" /> New schedule</Button>
+            )}
+            {total > 0 && <>
             <label className="relative block w-full sm:w-64">
               <span className="sr-only">Search schedules</span>
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
@@ -161,6 +168,7 @@ export default function Schedules() {
               onChange={setViewMode}
               options={[{ id: 'list', label: 'List' }, { id: 'card', label: 'Cards' }]}
             />
+            </>}
           </>
         ) : undefined}
       />
@@ -173,7 +181,9 @@ export default function Schedules() {
         <EmptyState title="Couldn't load schedules">{(error as Error).message}</EmptyState>
       ) : total === 0 ? (
         <EmptyState title="No schedules yet">
-          Schedules run tests automatically. Open any suite or test case to create the first one.
+          {canManage
+            ? 'Schedules run tests automatically. Use New schedule, or open any suite or test case and pick Schedule.'
+            : 'Schedules run tests automatically. A project admin can create them.'}
         </EmptyState>
       ) : filteredSchedules.length === 0 ? (
         <EmptyState title="No matches">No schedules matched "{searchQuery}".</EmptyState>
@@ -186,7 +196,10 @@ export default function Schedules() {
                 <div className="flex min-w-0 flex-1 flex-col gap-1">
                   <div className="flex items-start justify-between gap-3">
                     <h2 className={cn('truncate text-base font-semibold', schedule.is_active ? 'text-ink' : 'text-ink-soft')}>{schedule.name}</h2>
-                    <Pill tone={schedule.is_active ? 'mint' : 'neutral'} className="flex-none">{schedule.is_active ? 'Active' : 'Paused'}</Pill>
+                    <span className="flex flex-none gap-1.5">
+                      {schedule.is_monitor && <Pill tone="lavender">Monitor</Pill>}
+                      <Pill tone={schedule.is_active ? 'mint' : 'neutral'}>{schedule.is_active ? 'Active' : 'Paused'}</Pill>
+                    </span>
                   </div>
                   <p className="line-clamp-2 text-sm text-ink-soft">
                     {schedule.description || <span className="italic">No description</span>}
@@ -226,7 +239,10 @@ export default function Schedules() {
           detail={selected && (
             <DetailCard label="Selected schedule">
               <div className="flex flex-col gap-2">
-                <Pill tone={selected.is_active ? 'mint' : 'neutral'} className="self-start">{selected.is_active ? 'Active' : 'Paused'}</Pill>
+                <span className="flex gap-1.5 self-start">
+                  <Pill tone={selected.is_active ? 'mint' : 'neutral'}>{selected.is_active ? 'Active' : 'Paused'}</Pill>
+                  {selected.is_monitor && <Pill tone="lavender">Monitor</Pill>}
+                </span>
                 <h2 className="text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{selected.name}</h2>
                 <span className="text-sm text-ink-soft">{selected.description || 'No description'}</span>
               </div>
@@ -250,6 +266,15 @@ export default function Schedules() {
               <div className="flex flex-wrap gap-2.5">{actions(selected, 'lg')}</div>
             </DetailCard>
           )}
+        />
+      )}
+
+      {creating && projectId && (
+        <ScheduleModal
+          isOpen={creating}
+          onClose={() => setCreating(false)}
+          projectId={projectId}
+          targetName=""
         />
       )}
 

@@ -6,6 +6,9 @@ import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
+import { useProjectAccess } from '@/hooks/useProjectAccess';
+import { schedulesApi, type TestSchedule } from '@/api/schedules';
+import { ScheduleModal } from '@/components/ScheduleModal';
 import { monitorsApi, type MonitorStatus } from '@/api/monitors';
 import {
     DetailCard, EmptyState, EvidenceList, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
@@ -44,7 +47,7 @@ function RegionPills({ regions }: { regions: NonNullable<MonitorStatus['regions'
     );
 }
 
-function StatusPageCard({ projectId }: { projectId: number }) {
+function StatusPageCard({ projectId, canEdit }: { projectId: number; canEdit: boolean }) {
     const qc = useQueryClient();
     const page = useQuery({
         queryKey: ['status-page', projectId],
@@ -70,6 +73,13 @@ function StatusPageCard({ projectId }: { projectId: number }) {
             ) : (
                 <p className="text-[13px] leading-relaxed text-ink-soft">An unauthenticated page built from this project's monitors. It shows names and uptime only.</p>
             )}
+            {!canEdit ? (
+                p?.enabled && publicUrl ? (
+                    <div className="flex flex-wrap gap-2">
+                        <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(publicUrl); toast.success('Link copied'); }}>Copy link</Button>
+                    </div>
+                ) : <p className="text-xs text-ink-muted">A project editor can turn it on.</p>
+            ) : (
             <div className="flex flex-wrap gap-2">
                 {!p ? (
                     <Button size="sm" onClick={() => save.mutate({ enabled: true })} disabled={save.isPending}>Create page</Button>
@@ -85,6 +95,7 @@ function StatusPageCard({ projectId }: { projectId: number }) {
                     </>
                 )}
             </div>
+            )}
         </div>
     );
 }
@@ -133,6 +144,19 @@ function meaning(m: MonitorStatus) {
 export default function Monitors() {
     const projectId = useActiveProjectId();
     const [selectedId, setSelectedId] = useState<number | null>(null);
+    const [creating, setCreating] = useState(false);
+    const [editing, setEditing] = useState<TestSchedule | null>(null);
+    const access = useProjectAccess(projectId);
+    // Monitors are schedules: creating/editing one needs project:create_suite
+    // (project or workspace admin). The status page needs editor.
+    const canManage = access.can('project:create_suite');
+    const openEditor = async (scheduleId: number) => {
+        try {
+            setEditing(await schedulesApi.get(scheduleId));
+        } catch (e) {
+            toast.error(errDetail(e));
+        }
+    };
 
     const { data: monitors, isLoading, error, refetch, isFetching } = useQuery({
         queryKey: ['monitors', projectId],
@@ -167,7 +191,7 @@ export default function Monitors() {
                             <RefreshCw className={cn('h-4 w-4', isFetching && 'animate-spin')} />
                             Refresh
                         </Button>
-                        <Button asChild><Link to="/schedules">New monitor</Link></Button>
+                        {projectId && canManage && <Button onClick={() => setCreating(true)}>New monitor</Button>}
                     </>
                 }
             />
@@ -183,9 +207,10 @@ export default function Monitors() {
             ) : list.length === 0 ? (
                 <div className="flex flex-col gap-4">
                     <EmptyState title="No monitors yet">
-                        Turn on monitor mode for a schedule to make its recurring run a production health check, with uptime and failure-streak alerts.
+                        A monitor runs a suite on a timer as a production health check, with uptime and failure-streak alerts.
+                        {canManage ? ' Use New monitor to create one, or tick “Run as a monitor” when editing a schedule.' : ' A project admin can create one.'}
                     </EmptyState>
-                    <div className="max-w-[440px]"><StatusPageCard projectId={projectId} /></div>
+                    <div className="max-w-[440px]"><StatusPageCard projectId={projectId} canEdit={access.canEdit} /></div>
                 </div>
             ) : (
                 <SplitView
@@ -206,7 +231,7 @@ export default function Monitors() {
                                     ))}
                                 </ListGroup>
                             ))}
-                            <StatusPageCard projectId={projectId} />
+                            <StatusPageCard projectId={projectId} canEdit={access.canEdit} />
                         </>
                     }
                     detail={selected && (
@@ -250,11 +275,21 @@ export default function Monitors() {
                                 {selected.recent_checks[0]?.run_id && (
                                     <Button asChild size="lg"><Link to={`/runs/${selected.recent_checks[0].run_id}`}>Open latest check</Link></Button>
                                 )}
-                                <Button asChild size="lg" variant="outline"><Link to="/schedules">Edit schedule</Link></Button>
+                                {canManage && (
+                                    <Button size="lg" variant="outline" onClick={() => openEditor(selected.schedule_id)}>Edit monitor</Button>
+                                )}
                             </div>
                         </DetailCard>
                     )}
                 />
+            )}
+
+            {projectId && creating && (
+                <ScheduleModal isOpen={creating} onClose={() => setCreating(false)} projectId={projectId} targetName="" monitor />
+            )}
+            {projectId && editing && (
+                <ScheduleModal isOpen={!!editing} onClose={() => setEditing(null)} projectId={projectId}
+                    targetName={editing.name} scheduleToEdit={editing} />
             )}
         </div>
     );

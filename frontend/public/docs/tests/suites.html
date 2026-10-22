@@ -285,7 +285,7 @@
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
-          <li><strong>Who can do what.</strong> Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the <em>editor</em> role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs <em>project admin</em> (or workspace admin); only <em>Protected module</em> can be switched by editors. Creating a schedule also needs project admin.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the <em>editor</em> role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs <em>project admin</em> (or workspace admin); only <em>Protected module</em> can be switched by editors. Creating a schedule also needs project admin. Buttons you can't use (Run, Schedule, Edit, Delete) are not shown.</li>
           <li><strong>Continuous runs don't share a browser yet.</strong> Despite the description on screen, a Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a <em>Separate</em> suite run one after another in the same browser.</li>
           <li><strong>A suite holds tests or sub-modules, not both.</strong> TraceIQ refuses a sub-module in a suite that already has tests. Once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself.</li>
           <li><strong>Settings flow downwards.</strong> A sub-module uses its parent's settings unless its own <em>Inherit settings</em> is switched off; then it starts fresh from there down.</li>

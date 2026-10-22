@@ -38,7 +38,7 @@ interface ComparisonData {
     diffUrl: string | null;
 }
 
-function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; caseName: string }) {
+function ComparisonPanel({ baseline, caseName, canEdit }: { baseline: VisualBaseline; caseName: string; canEdit: boolean }) {
     const queryClient = useQueryClient();
     const [kept, setKept] = useState(false);
 
@@ -134,9 +134,10 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
 
             <Panel title="What to do" callout>
                 If the change is intentional, accept the latest screenshot as the new baseline. If it is a regression, keep the current baseline and fix the page. Your decision is recorded either way.
+                {!canEdit && ' Deciding needs editor access to this project.'}
             </Panel>
 
-            <div className="flex flex-wrap items-center gap-2.5">
+            {canEdit && <div className="flex flex-wrap items-center gap-2.5">
                 <Button
                     size="lg"
                     disabled={!data.artifacts?.candidateKey || acceptMutation.isPending}
@@ -154,9 +155,9 @@ function ComparisonPanel({ baseline, caseName }: { baseline: VisualBaseline; cas
                 >
                     <ShieldCheck className="h-4 w-4" /> {kept ? 'Baseline kept' : 'Keep baseline'}
                 </Button>
-            </div>
+            </div>}
 
-            <BaselineHistory baseline={baseline} />
+            <BaselineHistory baseline={baseline} canEdit={canEdit} />
         </div>
     );
 }
@@ -167,7 +168,7 @@ const HISTORY_LABEL: Record<string, string> = {
     rollback: 'Rolled back',
 };
 
-function BaselineHistory({ baseline }: { baseline: VisualBaseline }) {
+function BaselineHistory({ baseline, canEdit }: { baseline: VisualBaseline; canEdit: boolean }) {
     const queryClient = useQueryClient();
     const [open, setOpen] = useState(false);
     const { data: entries = [], isLoading } = useQuery<BaselineHistoryEntry[]>({
@@ -213,7 +214,7 @@ function BaselineHistory({ baseline }: { baseline: VisualBaseline }) {
                                     {e.actor_label && <span className="text-ink-soft">by {e.actor_label}</span>}
                                     {e.run_id && <span className="text-ink-soft">· run #{e.run_id}</span>}
                                     {e.is_current && e.action !== 'keep' && <Pill tone="mint">Current</Pill>}
-                                    {e.action !== 'keep' && e.previous_image && (
+                                    {canEdit && e.action !== 'keep' && e.previous_image && (
                                         <Button
                                             size="sm"
                                             variant="outline"
@@ -239,7 +240,7 @@ function BaselineHistory({ baseline }: { baseline: VisualBaseline }) {
 // Baseline detail
 // ---------------------------------------------------------------------------
 
-function BaselineDetail({ baseline, caseInfo }: { baseline: VisualBaseline; caseInfo?: TestCaseInfo }) {
+function BaselineDetail({ baseline, caseInfo, canEdit }: { baseline: VisualBaseline; caseInfo?: TestCaseInfo; canEdit: boolean }) {
     const queryClient = useQueryClient();
     const caseName = caseInfo?.name || `Case #${baseline.test_case_id}`;
 
@@ -272,9 +273,9 @@ function BaselineDetail({ baseline, caseInfo }: { baseline: VisualBaseline; case
                 </span>
             </div>
 
-            <ComparisonPanel baseline={baseline} caseName={caseName} />
+            <ComparisonPanel baseline={baseline} caseName={caseName} canEdit={canEdit} />
 
-            <div className="flex flex-col gap-2 border-t border-border pt-4">
+            {canEdit && <div className="flex flex-col gap-2 border-t border-border pt-4">
                 <Eyebrow>Remove</Eyebrow>
                 <div className="flex flex-wrap items-center gap-3">
                     <Button
@@ -290,7 +291,7 @@ function BaselineDetail({ baseline, caseInfo }: { baseline: VisualBaseline; case
                     </Button>
                     <span className="text-xs text-ink-soft">Later runs will have nothing to compare this step against.</span>
                 </div>
-            </div>
+            </div>}
         </DetailCard>
     );
 }
@@ -299,7 +300,7 @@ function BaselineDetail({ baseline, caseInfo }: { baseline: VisualBaseline; case
 // Pinned baselines (the original view)
 // ---------------------------------------------------------------------------
 
-function BaselinesTab() {
+function BaselinesTab({ canEdit }: { canEdit: boolean }) {
     const projectId = useActiveProjectId();
     const [selectedId, setSelectedId] = useState<number | null>(null);
 
@@ -385,7 +386,7 @@ function BaselinesTab() {
                             ))}
                         </ListGroup>
                     ))}
-                    detail={selected && <BaselineDetail key={selected.id} baseline={selected} caseInfo={casesById.get(selected.test_case_id)} />}
+                    detail={selected && <BaselineDetail key={selected.id} baseline={selected} caseInfo={casesById.get(selected.test_case_id)} canEdit={canEdit} />}
                 />
             )}
         </div>
@@ -425,7 +426,7 @@ export default function VisualReview() {
                     <EmptyState title="Choose a project">Visual changes are reviewed per project. Pick one in the sidebar.</EmptyState>
                 )
             ) : (
-                <BaselinesTab />
+                <BaselinesTab canEdit={canEdit} />
             )}
         </div>
     );

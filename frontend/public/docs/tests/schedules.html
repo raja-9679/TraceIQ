@@ -66,15 +66,16 @@
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="counts" data-toc="① The counts line">The counts line</h2></div>
-        <p>Under the heading, for example <em>"1 schedule · 0 active · times are in UTC"</em>: how
-          many schedules the project has, and how many of them are running on their timer. (The
-          "times are in UTC" part is misleading: see <a href="#good-to-know">Good to know</a>.)</p>
+        <p>Under the heading, for example <em>"1 schedule · 0 active · times shown in your timezone"</em>: how
+          many schedules the project has, and how many of them are running on their timer. Project
+          admins also get a <strong>New schedule</strong> button on the right, which opens the
+          schedule form with a <strong>Suite to run</strong> picker.</p>
 
         <div class="part"><span class="num">2</span><h2 id="search" data-toc="② Search and layout">Search and layout</h2></div>
         <p>The search box keeps only schedules whose name, description or timing contains what you
           type. <strong>List</strong> and <strong>Cards</strong> switch between the list-and-details
           view and a grid of cards with the same information and buttons. Both only appear once the
-          project has a schedule.</p>
+          project has a schedule. A schedule that is a monitor carries a <strong>Monitor</strong> label.</p>
 
         <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list">The list</h2></div>
         <figure>
@@ -126,13 +127,14 @@
 
         <div class="part"><span class="num">6</span><h2 id="actions" data-toc="⑥ Pause, Edit, Delete">Pause, Edit, Delete</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/tests/schedules/actions.png" alt="Three buttons: Resume, Edit and a bin icon" loading="lazy"></div>
+          <div class="frame small"><img src="../media/tests/schedules/actions.png" alt="Three buttons: Resume, Edit and Delete" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Pause</strong> stops new runs but keeps the schedule and its settings; a run that has already started carries on. On a paused schedule the button says <strong>Resume</strong>.</li>
           <li><strong>Edit</strong> opens the schedule form (below). Nothing changes until you press <em>Save changes</em>.</li>
-          <li><strong>The bin</strong> deletes the schedule, after asking.</li>
+          <li><strong>Delete</strong> deletes the schedule, after asking.</li>
         </ul>
+        <p>These buttons are only shown to project admins.</p>
         <figure>
           <div class="frame small"><img src="../media/tests/schedules/form.png" alt="The Edit schedule form: Name, Description, How often, Timezone, Browser, Device and Regions, with Cancel and Save changes" loading="lazy"></div>
           <figcaption>The schedule form. It is the same form <em>Schedule</em> opens on a suite or a test.</figcaption>
@@ -145,6 +147,7 @@
               <tr><td><strong>How often</strong></td><td>Every hour, every day at midnight, every Monday at 9 a.m., every Friday at 5 p.m., or <em>Custom</em> to type your own cron expression.</td></tr>
               <tr><td><strong>Timezone</strong></td><td>The time zone <em>How often</em> is read in. New schedules start with your browser's time zone.</td></tr>
               <tr><td><strong>Browser</strong>, <strong>Device</strong></td><td>One browser (Chromium, Firefox or WebKit) and one device for every run.</td></tr>
+              <tr><td><strong>Run as a monitor</strong></td><td>Makes every run a production health check on <em>Watch → Monitors</em>. When ticked: <strong>Alert after this many failed checks in a row</strong> (1 = the first failure), <strong>Send a recovery alert when it passes again</strong>, and <strong>Alert emails</strong> (comma-separated).</td></tr>
               <tr><td><strong>Regions</strong></td><td>Optional, for organisations with test machines in several places: one run per region each time. Leave empty unless your administrator has set regions up.</td></tr>
             </tbody>
           </table>
@@ -182,12 +185,12 @@
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
-          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Creating, pausing, editing and deleting schedules needs <em>project admin</em> (or workspace admin). The buttons are shown to everyone, but for others TraceIQ refuses the change with an error.</li>
-          <li><strong>Which time is which.</strong> <em>Next run</em> and <em>Last run</em> are shown in your browser's time zone; the cron expression is read in the schedule's own time zone. The line at the top says "times are in UTC", but that is not what the facts below it use.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look. Creating, pausing, editing and deleting schedules needs <em>project admin</em> (or workspace admin). Others don't see the buttons.</li>
+          <li><strong>Which time is which.</strong> <em>Next run</em> and <em>Last run</em> are shown in your browser's time zone; the cron expression is read in the schedule's own time zone.</li>
           <li><strong>Up to a minute late.</strong> TraceIQ checks for due schedules once a minute, so a run can start up to about a minute after its time.</li>
           <li><strong>One browser per schedule.</strong> A suite set to run on several browsers in its settings still runs on the one browser and device chosen in the schedule. Make one schedule per browser if you need several. Screen sizes and locales from the suite's settings are still applied.</li>
           <li><strong>Missed runs aren't repeated.</strong> If TraceIQ was down at the scheduled time, it runs once when it is back and then carries on with the next regular time.</li>
-          <li><strong>Monitors appear here too.</strong> A <em>monitor</em> (see <em>Watch → Monitors</em>) is a schedule that checks a live site; it is listed here like the demo's "Public API health" and can be paused here.</li>
+          <li><strong>Monitors appear here too.</strong> A <em>monitor</em> (see <em>Watch → Monitors</em>) is a schedule that checks a live site; it is listed here like the demo's "Public API health", with a <em>Monitor</em> label, and can be paused here.</li>
           <li><strong>A schedule protects what it runs.</strong> A suite or test that a schedule uses can't be deleted until the schedule is deleted or changed.</li>
           <li><strong>It doesn't update by itself.</strong> Reload the page to see a new <em>Last run</em>.</li>
         </ul>

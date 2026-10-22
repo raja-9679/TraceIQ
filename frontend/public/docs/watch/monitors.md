@@ -2,7 +2,7 @@
 
 # Monitors
 
-Watch · Everyone with access to the project can see it · Editors change monitors
+Watch · Everyone with access to the project can see it · Project admins change monitors
 
 > **In short**
 >
@@ -38,7 +38,7 @@ The page shows the monitors of the project selected at the top of the sidebar. T
 
 ![The heading Watch, the line 1 monitor · 0 down · refreshes every 30 seconds, and the buttons Refresh and New monitor](../media/watch/monitors/header.png)
 
-The line under the heading counts the project's monitors and how many are down. The page fetches new checks every 30 seconds by itself; **Refresh** fetches them now. **New monitor** opens the *Schedules* page, because a monitor is a schedule with monitor mode switched on (see [How to set up a monitor](#how-to)).
+The line under the heading counts the project's monitors and how many are down. The page fetches new checks every 30 seconds by itself; **Refresh** fetches them now. **New monitor** opens the schedule form with *Run as a monitor* already ticked, because a monitor is a schedule with monitor mode switched on (see [How to set up a monitor](#how-to)). It is only shown to project admins.
 
 ## 2. The list of monitors
 
@@ -65,7 +65,7 @@ A web page anyone with the link can open without signing in, for example your cu
 - **Turn off** / **Turn on** hides or shows it again under the same address.
 - **Rotate link** gives the page a new address; the old link stops working.
 
-These buttons save straight away and need the *editor* role.
+These buttons save straight away and need the *editor* role. Viewers see only **Copy link** while the page is on.
 
 ## 4. Recent checks
 
@@ -100,7 +100,7 @@ The state in plain words. For a healthy monitor that was up less than 99% of the
 
 ![A list of five checks, each tagged up, with the result passed and how long ago it ran](../media/watch/monitors/evidence.png)
 
-The 5 most recent checks, each with its result and time. Every check is a run, so **click one** to open its full result: the steps, the error and any screenshots. **Open latest check** does the same for the newest one, and **Edit schedule** opens the Schedules page, where the monitor's timer and regions are changed, and where it can be paused.
+The 5 most recent checks, each with its result and time. Every check is a run, so **click one** to open its full result: the steps, the error and any screenshots. **Open latest check** does the same for the newest one, and **Edit monitor** (project admins only) opens the schedule form, where the monitor's timer, alert settings and regions are changed. Pausing it is done on the *Schedules* page.
 
 ## Watch it in use
 
@@ -112,8 +112,8 @@ The 5 most recent checks, each with its result and time. Every check is a run, s
 
 ### …set up a monitor
 
-1. Create a schedule for the test that checks the live site, on *Tests → Schedules* (**New monitor** takes you there), and choose how often it runs.
-2. Have monitor mode switched on for that schedule. The Schedules page has no switch for it yet, so this is done through TraceIQ's API (a developer or an AI agent can do it), together with how many failed checks in a row count as down (1 unless set) and who gets an email.
+1. Press **New monitor**, pick the suite that checks the live site under **Suite to run**, and choose how often it runs.
+2. Under **Run as a monitor** (already ticked), set how many failed checks in a row count as down (1 alerts on the first failure), whether to send a recovery alert, and who gets an email. Press **Create monitor**. An existing schedule becomes a monitor by ticking the same box in its form.
 3. Come back here. The monitor waits under **No checks yet** until its first check.
 
 ### …find out why a monitor is down
@@ -135,7 +135,7 @@ The 5 most recent checks, each with its result and time. Every check is a run, s
 - **Several regions.** A monitor can check from several places at once. Each region keeps its own streak and alerts; the monitor is Down if any region is down.
 - **Checks are ordinary runs.** They also appear on the *Runs* page, started "by schedule".
 - **The demo never alerts.** Its monitor is paused and its history was generated; no one is ever notified from a demo workspace.
-- **Who can do what.** Anyone with access to the project can look. Creating or changing a monitor, and the status page buttons, need the *editor* role.
+- **Who can do what.** Anyone with access to the project can look. Creating or changing a monitor needs *project admin* (or workspace admin), like any schedule; the status page buttons need the *editor* role.
 
 ## Related pages
 

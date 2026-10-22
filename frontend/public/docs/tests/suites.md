@@ -210,7 +210,7 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 
 ## Good to know
 
-- **Who can do what.** Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the *editor* role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs *project admin* (or workspace admin); only *Protected module* can be switched by editors. Creating a schedule also needs project admin.
+- **Who can do what.** Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the *editor* role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs *project admin* (or workspace admin); only *Protected module* can be switched by editors. Creating a schedule also needs project admin. Buttons you can't use (Run, Schedule, Edit, Delete) are not shown.
 - **Continuous runs don't share a browser yet.** Despite the description on screen, a Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a *Separate* suite run one after another in the same browser.
 - **A suite holds tests or sub-modules, not both.** TraceIQ refuses a sub-module in a suite that already has tests. Once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself.
 - **Settings flow downwards.** A sub-module uses its parent's settings unless its own *Inherit settings* is switched off; then it starts fresh from there down.
