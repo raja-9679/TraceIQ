@@ -67,6 +67,11 @@ async def test_security_pages_have_data(session, owner):
     # Access matrix: a finished run with pass, a granted deny and an inconclusive cell.
     matrices = await access_matrix.list_matrices(web, session=session, principal=p)
     assert len(matrices) == 1
+    # Rows read back as the API writes them: the swap row names its placeholder.
+    from app.models import AccessMatrix
+    stored = await session.get(AccessMatrix, matrices[0]["id"])
+    swap = next(r for r in stored.rows if r.get("swap"))
+    assert swap["swap"]["placeholder"] == "{id}" and "{id}" in swap["url"]
     runs = await access_matrix.list_matrix_runs(matrices[0]["id"], limit=20, session=session, principal=p)
     assert len(runs) == 1 and runs[0]["status"] == "completed"
     run = await access_matrix.get_matrix_run(runs[0]["id"], session=session, principal=p)

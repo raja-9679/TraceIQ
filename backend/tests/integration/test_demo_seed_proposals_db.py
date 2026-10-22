@@ -91,6 +91,28 @@ async def test_proposals_and_investigation_reach_their_pages(session, owner):
     vr = await value_report.project_value_report(web, start=None, end=None, session=session, principal=p)
     metrics = {m["key"]: m for m in vr["metrics"]}
     assert metrics["targeted_time_saved"]["value"] is not None, metrics["targeted_time_saved"]
+    # Enough targeted batches that the saving reads as minutes, not "0 min".
+    assert metrics["targeted_time_saved"]["value"]["saved_browser_minutes"] >= 1.5
+
+    # Agents: every agent run and proposal sits in a session whose counters
+    # and dates are what is linked to it, so the list and the sessions agree.
+    from app.api import agents
+    from app.models import AgentSession
+    from app.services.demo_seed.proposals_ai import DEFAULT_AGENT
+    listed = await agents.list_agents(out["workspace_id"], session=session, principal=p)
+    [agent] = [a for a in listed["agents"] if a["agent_id"] == DEFAULT_AGENT]
+    sessions = (await session.exec(select(AgentSession).where(
+        AgentSession.workspace_id == out["workspace_id"]))).all()
+    assert agent["runs"] == sum(x.runs for x in sessions)
+    assert agent["proposals"] == sum(x.proposals for x in sessions)
+    for x in sessions:
+        linked_runs = (await session.exec(select(TestRun).where(
+            TestRun.agent_session_id == x.agent_session_id))).all()
+        linked = (await session.exec(select(CaseProposal).where(
+            CaseProposal.agent_session_id == x.agent_session_id))).all()
+        assert (len(linked_runs), len(linked)) == (x.runs, x.proposals)
+        times = [r.created_at for r in linked_runs] + [c.created_at for c in linked]
+        assert x.first_seen_at <= min(times) and max(times) <= x.last_seen_at
     assert metrics["proposal_outcomes"]["value"] is not None, metrics["proposal_outcomes"]
     wvr = await value_report.workspace_value_report(out["workspace_id"], start=None, end=None,
                                                     project_ids=None, session=session, principal=p)

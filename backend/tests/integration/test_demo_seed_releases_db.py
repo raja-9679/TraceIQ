@@ -95,15 +95,38 @@ async def test_journeys_releases_and_requirements(session, owner):
     assert len(runs) == 2
 
     assert (await session.exec(select(GatePolicyVersion).where(GatePolicyVersion.project_id == web))).all()
-    assert len((await session.exec(select(ExternalTestReport).where(
-        ExternalTestReport.project_id == web))).all()) == 2
+    reports = (await session.exec(select(ExternalTestReport).where(
+        ExternalTestReport.project_id == web))).all()
+    assert len(reports) == 3
     flakes = (await session.exec(select(FlakeRecord))).all()
     assert any(flake_policy.is_active(f) for f in flakes)
 
+    # The default view (newest run's commit) is ready, and the Quality gate
+    # judges exactly the same evidence.
     readiness = await quality.release_readiness_view(web, git_commit=None, git_branch=None,
                                                      session=session, principal=p)
-    verdict = readiness.verdict if hasattr(readiness, "verdict") else readiness["verdict"]
-    assert verdict != "ready"
+    assert readiness.verdict == "ready", readiness.reasons
+    gate = await quality.evaluate_quality_gate(web, git_commit=None, git_branch=None,
+                                               session=session, principal=p)
+    assert gate.passed and gate.git_commit == readiness.git_commit
+    assert [(c.name, c.passed) for c in gate.checks] == [(c.name, c.passed) for c in readiness.gate.checks]
+    flaky = next(c for c in gate.checks if c.name == "flaky_cases")
+    assert flaky.actual == "1 flaky"                     # the quarantine still shows
+    # An older commit whose CI report failed is not ready; one with no report
+    # at all is insufficient data — both states stay demoable.
+    failing = next(r.git_commit for r in reports if r.failures)
+    older = await quality.release_readiness_view(web, git_commit=failing, git_branch=None,
+                                                 session=session, principal=p)
+    assert older.verdict == "not_ready", older.reasons
+    assert any(x.startswith("External CI tests: ") for x in older.reasons)
+    commits = [c.git_commit for c in readiness.recent_commits]
+    unreported = next(c for c in commits if c not in {r.git_commit for r in reports})
+    bare = await quality.release_readiness_view(web, git_commit=unreported, git_branch=None,
+                                                session=session, principal=p)
+    assert bare.verdict in ("insufficient_data", "not_ready")
+    # Critical rows: the newest result is never older than the newest pass.
+    for row in readiness.critical_cases:
+        assert row.last_at and row.last_passed_at and row.last_at >= row.last_passed_at
 
     listed = await requirements.list_imported(web, principal=p, session=session)
     states = {r["external_key"]: r["coverage"]["status"] for r in listed["requirements"]}
