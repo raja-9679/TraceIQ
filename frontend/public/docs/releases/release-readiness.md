@@ -105,7 +105,7 @@ A *case* is one test. The tests whose priority is set to **critical** are the on
 > - Results are matched to the test itself, never by its name, so renaming a test doesn't lose its history.
 > - Each browser and device is judged separately, using its newest result. A green re-run replaces an earlier red one, but a pass in Chrome doesn't hide a failure in Firefox.
 >
-> "Critical" is matched without regard to capitals or spaces. For manual tests, the priority is chosen in the manual test editor. Automated tests get theirs when they are imported (suite import, Git sync) or created by an AI assistant; the editor for automated tests has no priority field yet.
+> "Critical" is matched without regard to capitals or spaces. For manual tests, the priority is chosen in the manual test editor; for automated tests, with **Priority** at the top of the step editor. Imports (suite import, Git sync) and AI assistants can set it too.
 
 ## 6. Active quarantines
 

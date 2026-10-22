@@ -170,6 +170,7 @@ What to type, which address to open, or what text to expect.
 
 - **The dark bar** at the bottom adds a step: *Step* (choose the action yourself), or a shortcut for the common ones. Under each step, *Up*, *Down*, *Add below* and *Delete* rearrange the list.
 - **Dataset** runs the test once for every row of a small table of values, and **Matrix** picks browsers and devices for this test only.
+- **Priority** (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.
 - **Auth setup case** marks a test that signs in: when it passes, other tests can start already signed in (*Use auth session*).
 - **History** shows earlier versions of the test and can bring one back.
 - **Ownership and review** names who looks after the test (see *Test review*).
