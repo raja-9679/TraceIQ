@@ -21,6 +21,7 @@ from datetime import datetime
 from app.services.audit import (
     ROOT_HASH,
     chain_hash,
+    legacy_prefix_length,
     verify_chain,
 )
 
@@ -201,3 +202,29 @@ def test_derived_actor_still_wins_when_no_override_is_given():
     entry = build_entry(session=None, entity_type="case", entity_id=1,
                         action="update", user_id=3)
     assert entry.actor_type == "user"
+
+
+# --------------------------------------------------------------------------
+# History that predates chaining
+# --------------------------------------------------------------------------
+
+def _legacy(count: int):
+    return [dict(_entry(entity_id=100 + i, prev_hash=None), row_hash=None) for i in range(count)]
+
+
+def test_rows_before_chaining_are_a_separate_prefix():
+    rows = _legacy(3) + _linked(4)
+    n = legacy_prefix_length(rows)
+    assert n == 3
+    # The chain after the prefix verifies on its own (first sealed row links to ROOT).
+    assert verify_chain(rows[n:]) == (True, None)
+    # The whole list still does not: an unverifiable row is not an intact one.
+    assert verify_chain(rows)[0] is False
+
+
+def test_an_unhashed_row_after_chaining_began_is_a_break_not_legacy():
+    rows = _legacy(2) + _linked(3)
+    rows.insert(4, dict(_entry(entity_id=999, prev_hash=None), row_hash=None))
+    n = legacy_prefix_length(rows)
+    assert n == 2
+    assert verify_chain(rows[n:]) == (False, 2)
