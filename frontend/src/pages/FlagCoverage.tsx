@@ -25,7 +25,7 @@ export default function FlagCoverage() {
         <div className="flex flex-col gap-6">
             <PageHeader
                 title="Flag coverage"
-                subtitle={<>Runs declare the flags and variants they exercised (<code>flags</code> in the <code>POST /api/runs</code> body, from CI or the API); steps can read them as <code>{'{{flag.NAME}}'}</code>.</>}
+                subtitle={<>Which feature flags and variants your test runs exercised. Runs started from CI or the API say which flags they ran with; tests can read them as <code>{'{{flag.NAME}}'}</code>.</>}
                 toolbar={projectId ? (
                     <PanelTabs label="Flag coverage views" value={tab} onChange={setTab}
                         tabs={[{ id: 'coverage', label: 'Coverage' }, { id: 'catalog', label: 'Flag catalogue' }]} />

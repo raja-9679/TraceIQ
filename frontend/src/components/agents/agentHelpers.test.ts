@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { draftErrors, draftFrom, draftToInput, groupRules, limitSummary, parseLimit, usageLabel } from './agentHelpers';
+import { draftErrors, draftFrom, draftToInput, groupRules, limitSummary, parseLimit, realAgents, usageLabel } from './agentHelpers';
 import type { PolicyRule } from '@/api/policies';
 
 describe('agent control drafts', () => {
@@ -45,5 +45,13 @@ describe('inheritance', () => {
         expect(inheritedLimits({ agent_id: '*', blocked: false, blocked_reason: null, max_runs: 0,
             max_llm_tokens: null, max_proposals: 2, max_minutes: null }, inst))
             .toEqual({ max_runs: 0, max_llm_tokens: 1000, max_proposals: 2, max_minutes: 60 });
+    });
+});
+
+describe('pseudo agents', () => {
+    it('hides schedule and demo-seed ids unless they carry controls', () => {
+        const a = (agent_id: string, control: unknown = null) => ({ agent_id, control });
+        expect(realAgents([a('claude-code'), a('schedule:12'), a('demo-seed'), a('schedule:3', { blocked: true })])
+            .map((x) => x.agent_id)).toEqual(['claude-code', 'schedule:3']);
     });
 });

@@ -47,7 +47,7 @@ How far back to count: the last **7**, **30** (the default) or **90** days. The 
 
 ## 2. Workspace
 
-AI usage is counted per **workspace**. This menu chooses which one. The page opens on the first workspace in your list each time.
+AI usage is counted per **workspace**. This menu chooses which one. The page opens on the workspace of the project picked in the sidebar.
 
 ## 3. The usage report
 

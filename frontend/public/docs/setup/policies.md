@@ -80,15 +80,11 @@ A **denial** is one time a rule said no. The list shows them newest first, 50 to
 
 | Filter | What it does |
 |---|---|
-| **Scope** | *This workspace*, or *Whole instance*: every workspace on the server, for server administrators only. Others get a refusal message instead of a list (see the picture below). |
+| **Scope** | *This workspace*, or *Whole instance*: every workspace on the server. Only offered to server administrators (instance admins). |
 | **Action** | Only refusals of one kind of action (the groups above). |
 | **Rule** | Only one rule. The menu lists the rules of the chosen action. |
 | **Agent id** | Only refusals of one agent. Type its exact name. |
 | **Period** | The last 24 hours, 7, 30 (the default) or 90 days. |
-
-![Recent denials with the scope set to Whole instance (instance admins), showing the message that this can only be managed by the instance admin](../media/setup/policies/denials-instance.png)
-
-*What someone who isn't a server administrator sees after choosing *Whole instance*. The message talks about "instance settings", but it applies to this list too.*
 
 Each row says **when**, which **rule** (and action), the **reason** TraceIQ gave, **where** (the project, if there was one) and **who**: the agent and its session if an agent asked, and the person's email, or *system* when TraceIQ itself was acting.
 

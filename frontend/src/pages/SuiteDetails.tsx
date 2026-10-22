@@ -803,7 +803,7 @@ export default function SuiteDetails() {
                                             </h3>
                                             <p className="text-sm text-slate-500">
                                                 {suite.execution_mode === 'continuous'
-                                                    ? "Tests run sequentially in a single browser session. Slowest, but most stable for consecutive actions."
+                                                    ? "The default mode. Each test is currently dispatched as its own job, from a clean browser, like Separate; a shared browser session is not implemented yet."
                                                     : suite.execution_mode === 'parallel'
                                                         ? "Tests run in parallel across multiple worker nodes. Fastest execution, optimized for resource usage."
                                                         : "Each test runs in a completely separate, clean browser session. Medium speed, highly isolated."}

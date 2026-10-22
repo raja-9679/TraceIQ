@@ -72,7 +72,7 @@
         <div class="part"><span class="num">1</span><h2 id="pickers" data-toc="① The pickers">The pickers</h2></div>
         <ul>
           <li><strong>Window</strong>: the last 7, 30 (the starting value), 90 or 365 days, counted in whole UTC days up to now.</li>
-          <li><strong>Workspace</strong>: the page opens on your first workspace; choose another here.</li>
+          <li><strong>Workspace</strong>: the page opens on the workspace of the project picked in the sidebar; choose another here.</li>
           <li><strong>Project</strong>: <em>All my projects</em>, or one project. Choosing one project also shows its monthly budget (part 8).</li>
         </ul>
 
@@ -104,13 +104,14 @@
 
         <div class="part"><span class="num">4</span><h2 id="trend" data-toc="④ Per day">Per day</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/costs/trend.png" alt="A chart titled Token use per day from 2026-09-22 to 2026-10-21, with no bars" loading="lazy"></div>
+          <div class="frame"><img src="../media/reports/costs/trend.png" alt="A box titled Use per day with the line No AI use or test time in this window" loading="lazy"></div>
         </figure>
         <p>One bar per day of the window, oldest on the left. With prices it is called
           <strong>Spend per day</strong> and the bars are money. Without prices it is called
-          <strong>Token use per day</strong> and the bars are AI tokens only, so machine time
-          doesn't appear in the bars. <strong>Point at a day</strong> to see its numbers,
-          including that day's browser-minutes. The demo has no AI use, so its chart is empty.</p>
+          <strong>Use per day</strong> and shows two charts, one for AI tokens and one for
+          browser-minutes (machine time), since they can't share one scale. <strong>Point at a
+          day</strong> to see its numbers. With nothing used in the window it just says
+          "No AI use or test time in this window".</p>
         <p>Under the chart, a short note explains how browser-minutes are counted (see
           <a href="#good-to-know">Good to know</a>).</p>
 

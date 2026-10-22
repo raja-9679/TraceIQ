@@ -40,7 +40,7 @@ The page opens on the list of reviews. The numbers on the screenshot match the s
 
 ![The toolbar: Scope menu (Demo workspace), Current access (CSV), Printable report, a Review name field and a Start review button](../media/security/access-reviews/toolbar.png)
 
-What to review. Choose one of your workspaces, or **Whole instance (instance admins)** for every account on the TraceIQ server. When the page opens it picks your first workspace, which may not be the one you want, so check this first.
+What to review. Choose one of your workspaces, or (instance admins only) **Whole instance** for every account on the TraceIQ server. When the page opens it picks the workspace of the project selected in the sidebar.
 
 Reviewing a workspace needs the *workspace admin* role there. The whole-server review needs an *instance admin* (someone who runs the server); everyone else sees a refusal in the list instead:
 

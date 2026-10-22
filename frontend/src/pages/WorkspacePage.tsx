@@ -53,6 +53,7 @@ import {
 } from '@/components/redesign/primitives';
 import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { cn } from '@/lib/utils';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 interface ProjectTeam {
     id: number;
@@ -138,7 +139,9 @@ export default function WorkspacePage() {
     });
 
     // First workspace until the user picks one (derived, not set in an effect).
-    const selectedWorkspaceId = pickedWorkspaceId ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const selectedWorkspaceId = pickedWorkspaceId ?? activeWs ?? workspaces?.[0]?.id ?? null;
 
     const { data: teams, isLoading: teamsLoading } = useQuery<Team[]>({
         queryKey: ['teams', selectedWorkspaceId],

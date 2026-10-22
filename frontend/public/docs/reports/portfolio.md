@@ -38,7 +38,7 @@ The page is one table. The numbers on the screenshot match the sections below.
 
 ![A menu labelled Workspace, set to Demo workspace](../media/reports/portfolio/workspace.png)
 
-The table shows one workspace at a time. If you belong to more than one, this menu picks which; otherwise it isn't shown. When the page opens, the first workspace in your list is chosen. It does *not* follow the project selected in the sidebar.
+The table shows one workspace at a time. If you belong to more than one, this menu picks which; otherwise it isn't shown. When the page opens, the workspace of the project selected in the sidebar is chosen.
 
 ## 2. Sorting
 

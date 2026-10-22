@@ -33,7 +33,7 @@ Agents answer **"What have the AI tools been doing here, and how do I keep them 
 
 ## A tour of the screen
 
-On the left: the agents, a box to set controls for a new agent, and the defaults for all agents. On the right: the agent you open. In the screenshot `demo-seed` has been opened. The numbers match the sections below.
+On the left: the agents, a box to set controls for a new agent, and the defaults for all agents. On the right: the agent you open. In the demo workspace no AI agent has worked yet, so the list is empty. The numbers match the sections below.
 
 ![The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent demo-seed, 5 its sessions](../media/setup/agents/page-annotated.png)
 
@@ -54,7 +54,7 @@ Every agent id that has worked in this workspace, the most recently active first
 
 > **Not everything here is an AI**
 >
-> Any run that carries an agent name is counted. Runs started by a TraceIQ *schedule* or monitor carry the name `schedule:` plus the schedule's number, so they are listed too. In the demo workspace neither entry is an AI agent: `schedule:4` is the demo monitor's runs and `demo-seed` is the program that generated the sample history.
+> Runs started by a TraceIQ *schedule* or monitor carry the name `schedule:` plus the schedule's number, and the demo's sample history carries `demo-seed`. These are not AI agents, so the list leaves them out, unless someone has set controls for one of those names.
 
 ## 2. Set controls for an agent id
 

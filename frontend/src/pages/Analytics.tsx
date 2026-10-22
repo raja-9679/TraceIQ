@@ -100,7 +100,7 @@ export default function Analytics() {
                             rows={s.slowest_tests.map((t) => ({ name: t.test_name, value: t.avg_duration_ms ?? 0, label: fmtMs(t.avg_duration_ms) }))}
                         />
                         <RankedList
-                            title="Flakiest" empty="No flaky tests in this window." color={BAR.warn}
+                            title="Flakiest" empty="No flaky tests." color={BAR.warn}
                             rows={s.flakiest_tests.map((t) => ({ name: t.test_name, value: t.flake_score, label: `${Math.round(t.flake_score * 100)}%` }))}
                         />
                     </div>

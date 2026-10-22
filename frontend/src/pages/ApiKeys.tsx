@@ -16,6 +16,7 @@ import type { Tone } from '@/components/redesign/kinds';
 import { Facts, Field, FormCard, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { cn } from '@/lib/utils';
 import { parseCidrList } from '@/lib/fleet';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 interface ApiError extends Error {
   response?: { data?: { detail?: string } };
@@ -240,7 +241,9 @@ export default function ApiKeys() {
 
   // Default to the first workspace until the user explicitly picks one — derived
   // rather than set via an effect to avoid a cascading render.
-  const workspaceId = selectedWorkspaceId ?? workspaces?.[0]?.id ?? null;
+  // Default to the sidebar project's workspace, not whichever is listed first.
+  const activeWs = useActiveWorkspaceId();
+  const workspaceId = selectedWorkspaceId ?? activeWs ?? workspaces?.[0]?.id ?? null;
 
   const { data: keys, isLoading, error } = useQuery({
     queryKey: ['api-keys', workspaceId],

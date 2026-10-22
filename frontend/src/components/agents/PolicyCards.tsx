@@ -11,6 +11,7 @@ import { fmtDate } from '@/components/compliance/helpers';
 import { errDetail } from '@/lib/errors';
 import { policiesApi, type AiPolicy, type DenialFilters, type PolicyRule } from '@/api/policies';
 import { ACTION_LABELS, OUTCOME_META, groupRules } from './agentHelpers';
+import { useIsInstanceAdmin } from '@/hooks/useIsInstanceAdmin';
 
 export function AiPolicyCard({ policy }: { policy: AiPolicy }) {
     const qc = useQueryClient();
@@ -84,6 +85,9 @@ const PAGE = 50;
 
 export function DenialsCard({ workspaceId }: { workspaceId: number }) {
     const [scope, setScope] = useState<'workspace' | 'instance'>('workspace');
+    // Only offered to instance admins: for anyone else the shared guard's 403
+    // talks about instance settings, which reads like a different page broke.
+    const isInstanceAdmin = useIsInstanceAdmin();
     const [action, setAction] = useState('');
     const [rule, setRule] = useState('');
     const [agent, setAgent] = useState('');
@@ -110,7 +114,7 @@ export function DenialsCard({ workspaceId }: { workspaceId: number }) {
                 <label className="flex flex-col gap-1 text-xs font-medium text-ink-soft">Scope
                     <select className={selectClass} value={scope} onChange={(e) => { setScope(e.target.value as 'workspace' | 'instance'); reset(); }}>
                         <option value="workspace">This workspace</option>
-                        <option value="instance">Whole instance (instance admins)</option>
+                        {isInstanceAdmin && <option value="instance">Whole instance</option>}
                     </select>
                 </label>
                 <label className="flex flex-col gap-1 text-xs font-medium text-ink-soft">Action

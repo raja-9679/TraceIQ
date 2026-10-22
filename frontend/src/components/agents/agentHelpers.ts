@@ -130,3 +130,14 @@ export function inheritedLimits(workspaceDefault: AgentControl | null | undefine
     }
     return out;
 }
+
+/** Ids TraceIQ stamps on its own runs, not AI agents: scheduled runs carry
+ *  `schedule:<id>` (schedule_tasks) and the demo seeder `demo-seed`. They are
+ *  hidden from the Agents list unless someone has set controls for them. */
+export function isPseudoAgent(agentId: string): boolean {
+    return /^schedule:\d+$/.test(agentId) || agentId === 'demo-seed';
+}
+
+export function realAgents<T extends { agent_id: string; control: unknown }>(agents: T[]): T[] {
+    return agents.filter((a) => !isPseudoAgent(a.agent_id) || a.control != null);
+}

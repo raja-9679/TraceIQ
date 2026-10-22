@@ -72,8 +72,7 @@
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
         <p>On the left: the agents, a box to set controls for a new agent, and the defaults for
-          all agents. On the right: the agent you open. In the screenshot <code>demo-seed</code>
-          has been opened. The numbers match the sections below.</p>
+          all agents. On the right: the agent you open. In the demo workspace no AI agent has worked yet, so the list is empty. The numbers match the sections below.</p>
         <figure>
           <div class="frame"><img src="../media/setup/agents/page-annotated.png" alt="The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent demo-seed, 5 its sessions" loading="lazy" width="1440" height="1500"></div>
           <figcaption>The Agents page for the demo workspace, with demo-seed opened. Click the picture to see it larger.</figcaption>
@@ -97,11 +96,10 @@
         <div class="callout note">
           <span class="icon">!</span>
           <div><strong class="title">Not everything here is an AI</strong>
-            <p>Any run that carries an agent name is counted. Runs started by a TraceIQ
-            <em>schedule</em> or monitor carry the name <code>schedule:</code> plus the schedule's
-            number, so they are listed too. In the demo workspace neither entry is an AI agent:
-            <code>schedule:4</code> is the demo monitor's runs and <code>demo-seed</code> is the
-            program that generated the sample history.</p></div>
+            <p>Runs started by a TraceIQ <em>schedule</em> or monitor carry the name
+            <code>schedule:</code> plus the schedule's number, and the demo's sample history
+            carries <code>demo-seed</code>. These are not AI agents, so the list leaves them out,
+            unless someone has set controls for one of those names.</p></div>
         </div>
 
         <div class="part"><span class="num">2</span><h2 id="new" data-toc="② Set controls for an agent id">Set controls for an agent id</h2></div>

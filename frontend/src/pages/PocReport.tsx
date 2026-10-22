@@ -13,6 +13,7 @@ import { CheckRow, FieldRow, SettingsCard, inputClass } from '@/components/redes
 import { CreatedLink, ExpirySelect, LinkRows } from '@/components/reports/ShareLinks';
 import { PocReportView } from '@/components/poc/PocReportView';
 import { assumptionError, defaultRange, normaliseCurrency } from '@/components/poc/pocHelpers';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
@@ -25,7 +26,9 @@ export default function PocReport() {
     const qc = useQueryClient();
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
 
     const initial = defaultRange();
     const [start, setStart] = useState(initial.start);

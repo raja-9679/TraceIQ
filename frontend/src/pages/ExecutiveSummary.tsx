@@ -9,6 +9,7 @@ import { EmptyState, PageHeader } from '@/components/redesign/primitives';
 import { Segmented, SkeletonRows } from '@/components/redesign-local/groupB/bits';
 import { SummaryView } from '@/components/reports/SummaryView';
 import { ShareLinksCard } from '@/components/reports/ShareLinks';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 type Scope = 'project' | 'workspace';
 type Days = '7' | '30' | '90';
@@ -21,7 +22,9 @@ export default function ExecutiveSummary() {
     const [days, setDays] = useState<Days>('30');
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces, enabled: scope === 'workspace' });
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
     const n = parseInt(days);
 
     const summary = useQuery({

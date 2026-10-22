@@ -36,7 +36,7 @@ The list on the left switches between five sections. The numbers on the screensh
 
 > **Looking is open to all, changing is not**
 >
-> Anyone with access to the project can open every section. If you are not a project admin, a line at the top says "You can see these settings; changing them needs the project admin role", and the cards say "Only project admins can change this." Two exceptions: your own email choice (the first card) is yours to change, and the OpenAPI spec can be changed by editors as well.
+> Anyone with access to the project can open every section. If you are not a project admin, a line at the top says "You can see these settings; changing them needs the project admin role", and the cards say "Only project admins can change this." Two exceptions: your own email choice (the first card) is yours to change, and the OpenAPI spec can be changed by editors as well; its section says so instead. The line is not shown under "Members and other policies".
 
 ## 1. Notifications
 

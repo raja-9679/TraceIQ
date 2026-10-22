@@ -52,7 +52,7 @@ export function TraceCorrelationSection({ projectId, canEdit }: { projectId: num
                         <p className={warnCalloutClass}>
                             No trace backend is configured on this instance yet. Headers are still sent when this is on,
                             but spans can only be shown once an instance admin sets the Jaeger or Tempo URL in
-                            Settings → Instance (Admin) → Observability.
+                            Setup → Instance settings → Observability.
                         </p>
                     )}
                     <div className="flex flex-col">
