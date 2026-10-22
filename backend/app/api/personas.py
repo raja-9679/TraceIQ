@@ -45,14 +45,12 @@ class PersonaPatch(BaseModel):
     refresh_after_hours: Optional[int] = None
 
 
-async def _ensure_member(workspace_id: int, user_id: int, session: AsyncSession) -> UserWorkspace:
-    res = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == workspace_id,
-            UserWorkspace.user_id == user_id,
-        )
-    )
-    m = res.first()
+async def _ensure_member(workspace_id: int, user_id: int, session: AsyncSession,
+                         write: bool = False) -> UserWorkspace:
+    # Personas are workspace-level: an API key must be for this workspace and
+    # not narrowed to a project.
+    from app.services.access_service import access_service
+    m = await access_service.workspace_membership(user_id, workspace_id, session, write=write)
     if not m:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return m
@@ -63,7 +61,9 @@ async def _ensure_editor(workspace_id: int, user_id: int, session: AsyncSession)
     saved storage-state is live session cookies/tokens for the customer's app,
     so a read-only member must not be able to exfiltrate or overwrite it."""
     from app.services.access_service import _workspace_role_level
-    m = await _ensure_member(workspace_id, user_id, session)
+    # write=True: editor+ also caps an API key at its role (the saved session
+    # is a credential, so even reading it is held to the editor ceiling).
+    m = await _ensure_member(workspace_id, user_id, session, write=True)
     if await _workspace_role_level(m, session) < 2:  # 2 == editor
         raise HTTPException(status_code=403, detail="Editor access required")
     return m

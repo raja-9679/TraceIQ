@@ -30,9 +30,8 @@ router = APIRouter()
 
 
 async def _member(session: AsyncSession, workspace_id: int, user_id: int) -> UserWorkspace:
-    row = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.workspace_id == workspace_id,
-        UserWorkspace.user_id == user_id))).first()
+    from app.services.access_service import access_service
+    row = await access_service.workspace_membership(user_id, workspace_id, session)
     if not row:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return row

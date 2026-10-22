@@ -90,6 +90,10 @@ def _bearer(email: str) -> dict:
 
 ADMIN = _bearer("admin@acme.example.com")
 
+# Refused. With RLS enforcing (TRACEIQ_RLS_MODE=enforce) a row outside the
+# key's scope is invisible before the access check runs, so it reads as 404.
+DENIED = (403, 404)
+
 
 async def _project(s, ws_id: int, name: str):
     p = Project(name=name, workspace_id=ws_id)
@@ -233,15 +237,15 @@ async def test_project_scoped_key_stays_in_its_project(maker, scene, client):
 
     # The other project in the same workspace — the owner can see it, the key not.
     assert (await client.get(f"/api/suites/{scene.s2}", headers=ADMIN)).status_code == 200
-    assert (await client.get(f"/api/suites/{scene.s2}", headers=key)).status_code == 403
-    assert (await client.get(f"/api/cases/{scene.c2}", headers=key)).status_code == 403
-    assert (await client.get(f"/api/cases?project_id={scene.p2}", headers=key)).status_code == 403
+    assert (await client.get(f"/api/suites/{scene.s2}", headers=key)).status_code in DENIED
+    assert (await client.get(f"/api/cases/{scene.c2}", headers=key)).status_code in DENIED
+    assert (await client.get(f"/api/cases?project_id={scene.p2}", headers=key)).status_code in DENIED
     r = await client.put(f"/api/cases/{scene.c2}", json={"name": "pwned"}, headers=key)
-    assert r.status_code == 403
+    assert r.status_code in DENIED
     r = await client.post(f"/api/suites/{scene.s2}/cases", json={"name": "x", "steps": []}, headers=key)
-    assert r.status_code == 403
-    assert (await client.delete(f"/api/cases/{scene.c2}", headers=key)).status_code == 403
-    assert (await client.delete(f"/api/suites/{scene.s2}", headers=key)).status_code == 403
+    assert r.status_code in DENIED
+    assert (await client.delete(f"/api/cases/{scene.c2}", headers=key)).status_code in DENIED
+    assert (await client.delete(f"/api/suites/{scene.s2}", headers=key)).status_code in DENIED
 
     r = await client.get("/api/suites", headers=key)
     assert r.status_code == 200
@@ -251,14 +255,14 @@ async def test_project_scoped_key_stays_in_its_project(maker, scene, client):
 
     # Workspace-level administration is outside a project-scoped key.
     r = await client.delete(f"/api/workspaces/{scene.ws}/users/{scene.editor}", headers=key)
-    assert r.status_code == 403
+    assert r.status_code in DENIED
 
 
 async def test_key_stays_in_its_workspace(maker, scene, client):
     key = await _key(maker, owner=scene.admin, ws=scene.ws)
     assert (await client.get(f"/api/cases/{scene.c2}", headers=key)).status_code == 200
     assert (await client.get(f"/api/cases/{scene.other_case}", headers=ADMIN)).status_code == 200
-    assert (await client.get(f"/api/cases/{scene.other_case}", headers=key)).status_code == 403
+    assert (await client.get(f"/api/cases/{scene.other_case}", headers=key)).status_code in DENIED
     r = await client.get("/api/suites", headers=key)
     assert scene.other_p not in {x["project_id"] for x in r.json()}
 
@@ -359,3 +363,147 @@ async def test_tenant_admin_assign_changes_an_existing_role(maker, scene, client
     async with maker() as s:
         rows = (await s.exec(select(UserWorkspace).where(UserWorkspace.user_id == scene.editor))).all()
         assert {r.workspace_id: r.role for r in rows} == {scene.ws: "admin", scene.other_ws: "admin"}
+
+
+# ---------------------------------------------------------------------------
+# 6. Endpoints that check workspace membership with their own query
+#    (access_service.workspace_membership / is_workspace_admin) are held to
+#    the key's workspace, project scope and role too.
+# ---------------------------------------------------------------------------
+
+# Workspace-level reads, one (or more) per module that used to query
+# UserWorkspace itself. The owner (admin) is a member/admin of BOTH workspaces.
+_WS_READS = [
+    "/api/workspaces/{ws}/users",                 # workspaces
+    "/api/workspaces/{ws}/members/detailed",      # workspaces
+    "/api/workspaces/{ws}/teams",                 # workspaces
+    "/api/workspaces/{ws}/proposal-policy",       # agent_ownership
+    "/api/workspaces/{ws}/audit",                 # audit
+    "/api/workspaces/{ws}/ai-policy",             # policies
+    "/api/workspaces/{ws}/policy-decisions",      # policies (admin)
+    "/api/workspaces/{ws}/portfolio",             # reports
+    "/api/workspaces/{ws}/executive-summary",     # reports
+    "/api/workspaces/{ws}/api-keys",              # api_keys
+    "/api/workspaces/{ws}/billing",               # billing
+    "/api/workspaces/{ws}/llm-usage",             # llm_usage
+    "/api/workspaces/{ws}/personas",              # personas
+    "/api/workspaces/{ws}/issue-trackers",        # issue_trackers
+    "/api/workspaces/{ws}/security",              # security
+    "/api/workspaces/{ws}/finding-sla",           # security
+    "/api/workspaces/{ws}/compliance/members",    # compliance
+    "/api/costs/workspaces/{ws}",                 # costs (admin view)
+]
+
+
+async def test_workspace_reads_stay_in_the_keys_workspace(maker, scene, client):
+    key = await _key(maker, owner=scene.admin, ws=scene.ws)
+    for path in _WS_READS:
+        own = await client.get(path.format(ws=scene.ws), headers=key)
+        assert own.status_code == 200, (path, own.status_code, own.text)
+        # The owner reaches the other workspace; the key minted for ws does not.
+        assert (await client.get(path.format(ws=scene.other_ws), headers=ADMIN)).status_code == 200, path
+        other = await client.get(path.format(ws=scene.other_ws), headers=key)
+        assert other.status_code in DENIED, (path, other.status_code)
+
+    r = await client.get("/api/workspaces", headers=key)
+    assert [w["id"] for w in r.json()] == [scene.ws]
+    r = await client.get("/api/workspaces", headers=ADMIN)
+    assert {w["id"] for w in r.json()} == {scene.ws, scene.other_ws}
+
+
+async def test_project_scoped_key_fails_workspace_wide_checks(maker, scene, client):
+    key = await _key(maker, owner=scene.admin, ws=scene.ws, project=scene.p1)
+    for path in ("/api/workspaces/{ws}/users", "/api/workspaces/{ws}/proposal-policy",
+                 "/api/workspaces/{ws}/audit", "/api/workspaces/{ws}/policy-decisions",
+                 "/api/workspaces/{ws}/api-keys", "/api/workspaces/{ws}/billing",
+                 "/api/workspaces/{ws}/personas", "/api/workspaces/{ws}/issue-trackers",
+                 "/api/workspaces/{ws}/security", "/api/workspaces/{ws}/llm-usage"):
+        r = await client.get(path.format(ws=scene.ws), headers=key)
+        assert r.status_code == 403, (path, r.status_code)
+    # Not an admin view: the cost report falls back to the key's own project.
+    r = await client.get(f"/api/costs/workspaces/{scene.ws}", headers=key)
+    assert r.status_code == 200
+    # Reports are narrowed per project, so the key sees its own project only.
+    r = await client.get(f"/api/workspaces/{scene.ws}/portfolio", headers=key)
+    assert r.status_code == 200, r.text
+    assert {p["project_id"] for p in r.json()["projects"]} == {scene.p1}
+    # Creating a project / the sample project is workspace-wide.
+    r = await client.post("/api/projects", headers=key,
+                          json={"name": "new", "workspace_id": scene.ws})
+    assert r.status_code == 403
+    r = await client.post("/api/onboarding/sample-project", headers=key,
+                          json={"workspace_id": scene.ws})
+    assert r.status_code == 403
+
+
+async def test_workspace_writes_respect_the_keys_workspace_and_role(maker, scene, client):
+    key = await _key(maker, owner=scene.admin, ws=scene.ws)
+    viewer = await _key(maker, owner=scene.admin, ws=scene.ws, role="Project Viewer")
+
+    # projects / onboarding: creating in another workspace, or as a viewer key.
+    r = await client.post("/api/projects", headers=key,
+                          json={"name": "elsewhere 2", "workspace_id": scene.other_ws})
+    assert r.status_code == 403
+    r = await client.post("/api/projects", headers=viewer,
+                          json={"name": "viewer made", "workspace_id": scene.ws})
+    assert r.status_code == 403
+    r = await client.post("/api/projects", headers=key,
+                          json={"name": "made by key", "workspace_id": scene.ws})
+    assert r.status_code == 200, r.text
+    r = await client.post("/api/onboarding/sample-project", headers=key,
+                          json={"workspace_id": scene.other_ws})
+    assert r.status_code == 403
+    r = await client.post("/api/onboarding/sample-project", headers=viewer,
+                          json={"workspace_id": scene.ws})
+    assert r.status_code == 403
+
+    # security: workspace admin settings, admin-only — not for a viewer key.
+    r = await client.get(f"/api/workspaces/{scene.ws}/security", headers=viewer)
+    assert r.status_code == 200 and r.json()["can_edit"] is False
+    r = await client.put(f"/api/workspaces/{scene.ws}/security", headers=viewer,
+                         json={"active_scan_enabled": True})
+    assert r.status_code == 403
+    r = await client.put(f"/api/workspaces/{scene.ws}/finding-sla", headers=viewer,
+                         json={"sla_days": {"high": 5}})
+    assert r.status_code == 403
+    r = await client.put(f"/api/workspaces/{scene.other_ws}/security", headers=key,
+                         json={"active_scan_enabled": True})
+    assert r.status_code == 403
+    # policies: the admin-only decision log refuses the viewer key (role ceiling).
+    r = await client.get(f"/api/workspaces/{scene.ws}/policy-decisions", headers=viewer)
+    assert r.status_code == 403
+    # personas: editor+ (session state is a credential) — a viewer key is not.
+    r = await client.post(f"/api/workspaces/{scene.ws}/personas", headers=viewer,
+                          json={"workspace_id": scene.ws, "name": "p"})
+    assert r.status_code == 403
+
+    # projects listing reports the key's level, not the owner's.
+    r = await client.get("/api/projects", headers=viewer)
+    assert r.status_code == 200
+    assert r.json() and {p["access_level"] for p in r.json()} == {"viewer"}
+
+    # workspaces: leaving a team yourself is a write in that workspace.
+    ed_viewer = await _key(maker, owner=scene.editor, ws=scene.ws, role="Project Viewer")
+    r = await client.delete(f"/api/teams/{scene.team}/users/{scene.editor}", headers=ed_viewer)
+    assert r.status_code == 403
+    async with maker() as s:
+        assert (await s.exec(select(UserTeam).where(UserTeam.user_id == scene.editor))).first()
+
+
+async def test_project_gated_tracker_paths_stay_in_the_keys_workspace(maker, scene, client):
+    """requirements + triage: the tracker is wielded on behalf of a project, so
+    a key for ws cannot reach the other workspace's project."""
+    from app.models import FailureCluster
+    async with maker() as s:
+        cluster = FailureCluster(project_id=scene.other_p, signature="sig", title="t",
+                                 category="other")
+        s.add(cluster)
+        await s.commit()
+        cluster_id = cluster.id
+    key = await _key(maker, owner=scene.admin, ws=scene.ws)
+    r = await client.post(f"/api/failure-clusters/{cluster_id}/ticket", headers=key,
+                          json={"config_id": 1})
+    assert r.status_code in DENIED
+    r = await client.post(f"/api/projects/{scene.other_p}/requirements/search", headers=key,
+                          json={"config_id": 1, "query": "x"})
+    assert r.status_code in DENIED

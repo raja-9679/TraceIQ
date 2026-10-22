@@ -86,12 +86,11 @@ async def create_sample_project(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> Dict[str, Any]:
-    membership = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == body.workspace_id,
-            UserWorkspace.user_id == current_user.id,
-        ))
-    if not membership.first():
+    # Creates a project: a workspace-wide write (key: own workspace, no
+    # project scope, editor or above).
+    from app.services.access_service import access_service
+    if not await access_service.workspace_membership(current_user.id, body.workspace_id,
+                                                     session, write=True):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
 
     # Idempotency: one sample project per workspace is plenty.

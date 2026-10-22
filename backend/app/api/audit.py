@@ -54,13 +54,8 @@ async def _require_workspace_admin(
     more than an editor needs and exactly what an attacker with a stolen editor
     session would want in order to find out what they can get away with.
     """
-    membership = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.user_id == principal.user.id,
-            UserWorkspace.workspace_id == workspace_id,
-        )
-    )
-    if not membership.first():
+    from app.services.access_service import access_service
+    if not await access_service.workspace_membership(principal.user.id, workspace_id, session):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     if not await rbac_service.has_permission(
         session, principal.user.id, "workspace:manage_users", workspace_id=workspace_id

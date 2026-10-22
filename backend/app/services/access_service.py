@@ -200,4 +200,46 @@ class AccessService:
             
         return await AccessService.has_project_access(user_id, case.project_id, session, min_role)
 
+    # --- workspace-level checks -------------------------------------------
+    # Endpoints that gate on "is the caller a member / admin of this
+    # workspace" use these instead of querying UserWorkspace themselves, so an
+    # API key's workspace / project / role limits (app/services/key_scope.py)
+    # apply to them as they do to project checks.
+
+    @staticmethod
+    async def workspace_membership(user_id: int, workspace_id: Optional[int],
+                                   session: AsyncSession, *, project_id: Optional[int] = None,
+                                   per_project: bool = False,
+                                   write: bool = False) -> Optional[UserWorkspace]:
+        """The caller's UserWorkspace row, or None when they are not a member
+        or their API key does not reach this workspace (see
+        key_scope.allows_workspace for `project_id` / `per_project`). `write`
+        applies the key's role ceiling for a write (editor or above)."""
+        if workspace_id is None:
+            return None
+        if not key_scope.allows_workspace(session, user_id, workspace_id,
+                                          min_level=2 if write else 1,
+                                          project_id=project_id, per_project=per_project):
+            return None
+        return (await session.exec(select(UserWorkspace).where(
+            UserWorkspace.user_id == user_id,
+            UserWorkspace.workspace_id == workspace_id))).first()
+
+    @staticmethod
+    async def is_workspace_admin(user_id: int, workspace_id: Optional[int],
+                                 session: AsyncSession) -> bool:
+        """Workspace admin by membership role (role_id first, then the legacy
+        role string). An API key passes only when it is workspace-wide, for
+        this workspace, and its role (if any) is an admin role."""
+        if workspace_id is None:
+            return False
+        if not key_scope.allows_workspace(session, user_id, workspace_id, min_level=3):
+            return False
+        for uw in (await session.exec(select(UserWorkspace).where(
+                UserWorkspace.user_id == user_id,
+                UserWorkspace.workspace_id == workspace_id))).all():
+            if await _workspace_role_level(uw, session) >= _ROLE_MAP["admin"]:
+                return True
+        return False
+
 access_service = AccessService()

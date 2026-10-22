@@ -637,12 +637,17 @@ async def security_scan_diff(
 
 
 async def _workspace_role(session: AsyncSession, workspace_id: int, user_id: int) -> str:
-    row = (await session.exec(select(UserWorkspace).where(
-        UserWorkspace.workspace_id == workspace_id,
-        UserWorkspace.user_id == user_id))).first()
+    # Workspace-level settings: an API key must be for this workspace and not
+    # narrowed to a project; its role caps what it may change.
+    from app.services import key_scope
+    row = await access_service.workspace_membership(user_id, workspace_id, session)
     if not row:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
-    return (row.role or "").lower()
+    role = (row.role or "").lower()
+    if role in ("admin", "owner") and not key_scope.allows_workspace(
+            session, user_id, workspace_id, min_level=3):
+        return "member"
+    return role
 
 
 @router.get("/workspaces/{workspace_id}/security")

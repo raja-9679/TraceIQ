@@ -916,13 +916,9 @@ async def get_proposal_policy(
     principal: AuthPrincipal = Depends(get_current_principal),
     session: AsyncSession = Depends(get_session),
 ):
-    from app.models import UserWorkspace, Workspace
-    membership = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == workspace_id,
-            UserWorkspace.user_id == principal.user.id,
-        ))
-    if not membership.first():
+    from app.models import Workspace
+    from app.services.access_service import access_service
+    if not await access_service.workspace_membership(principal.user.id, workspace_id, session):
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     workspace = await session.get(Workspace, workspace_id)
     if not workspace:

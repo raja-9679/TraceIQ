@@ -35,13 +35,10 @@ router = APIRouter()
 
 
 async def _ensure_workspace_member(workspace_id: int, user_id: int, session: AsyncSession) -> UserWorkspace:
-    res = await session.exec(
-        select(UserWorkspace).where(
-            UserWorkspace.workspace_id == workspace_id,
-            UserWorkspace.user_id == user_id,
-        )
-    )
-    membership = res.first()
+    # Key management is workspace-wide: a calling API key must be for this
+    # workspace and not narrowed to a project.
+    from app.services.access_service import access_service
+    membership = await access_service.workspace_membership(user_id, workspace_id, session)
     if not membership:
         raise HTTPException(status_code=403, detail="Not a member of this workspace")
     return membership

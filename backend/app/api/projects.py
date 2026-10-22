@@ -23,11 +23,11 @@ class AccessUpdate(BaseModel):
 @router.post("/projects", response_model=Project)
 async def create_project(project_in: ProjectCreate, session: AsyncSession = Depends(get_session), current_user: User = Depends(get_current_user)):
     # Check workspace access
-    result = await session.exec(
-        select(UserWorkspace)
-        .where(UserWorkspace.user_id == current_user.id, UserWorkspace.workspace_id == project_in.workspace_id)
-    )
-    if not result.first():
+    # A workspace-wide write: an API key must be for this workspace, not
+    # narrowed to a project, and at least an editor.
+    from app.services.access_service import access_service
+    if not await access_service.workspace_membership(current_user.id, project_in.workspace_id,
+                                                     session, write=True):
         raise HTTPException(status_code=403, detail="User is not a member of this workspace")
         
     return await workspace_service.create_project(
@@ -126,10 +126,15 @@ async def list_projects(workspace_id: Optional[int] = None, session: AsyncSessio
                 if not current_role or role_map.get(ta_role, 0) > role_map.get(current_role, 0):
                     project_roles[ta_pid] = ta_role
 
+    # The level reported to an API key is its own, capped at the key's role.
+    ks = key_scope.for_user(session, current_user.id)
     resp_projects = []
     for p in projects:
         pr = ProjectReadWithAccess.model_validate(p)
         pr.access_level = project_roles.get(p.id)
+        if ks is not None and pr.access_level and \
+                {"admin": 3, "editor": 2, "viewer": 1}.get(pr.access_level, 0) > ks.level:
+            pr.access_level = key_scope.LEVEL_NAMES[ks.level]
         resp_projects.append(pr)
         
     return resp_projects
