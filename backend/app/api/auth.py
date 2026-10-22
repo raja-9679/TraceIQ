@@ -22,7 +22,7 @@ from app.core.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
-from app.models import RefreshToken, User, UserRead, Role, Permission, RolePermission, AccountToken, MfaRecoveryCode
+from app.models import RefreshToken, User, UserRead, MeRead, Role, Permission, RolePermission, AccountToken, MfaRecoveryCode
 from app.core.auth import hash_refresh_token as _hash_token
 from app.core.auth import SECRET_KEY, ALGORITHM
 from app.core.config import settings as app_settings
@@ -660,7 +660,7 @@ async def register_user(
     await session.refresh(user)
     return user
 
-@router.get("/me", response_model=UserRead)
+@router.get("/me", response_model=MeRead)
 async def read_users_me(
     current_user: User = Depends(get_current_user)
 ) -> Any:
