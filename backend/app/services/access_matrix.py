@@ -356,27 +356,43 @@ def summarize(cells: Iterable[Any]) -> Dict[str, Any]:
 
 
 def apply_findings(session, matrix, matrix_run, cells, persona_names: Dict[str, str]) -> Dict[str, int]:
-    """Create/update/resolve `access_control` findings for a finished run (sync
-    session). Same lifecycle as scan findings: identity is the fingerprint;
-    a false_positive verdict sticks; a fixed cell resolves its finding; a
-    resolved finding that regresses reopens. Inconclusive cells change nothing.
+    """Create/refresh/reopen/verify `access_control` findings for a finished
+    run (sync session; caller commits).
+
+    One row per fingerprint, refreshed in place (as estate findings are), on
+    WP7's workflow from app/services/finding_lifecycle.py so the rules cannot
+    drift: a new finding opens with the workspace-SLA due date; a granted DENY
+    on a fixed finding, or on a lapsed risk acceptance, reopens it (audited);
+    false_positive and an unexpired accepted_risk stick; a DENY that now holds
+    moves an open/in-progress/fixed-pending finding to `verified_fixed` — the
+    matrix run is the evidence. Inconclusive cells change nothing.
     """
     from datetime import datetime
 
     from sqlmodel import select
 
     from app.models import SecurityFinding
+    from app.services.finding_lifecycle import (
+        _audit, _workspace_for_project, carry_forward, due_date, normalize_status, resolve_sla,
+    )
 
+    stats = {"created": 0, "updated": 0, "reopened": 0, "resolved": 0}
     rows = {r.get("key"): r for r in (matrix_run.snapshot or {}).get("rows", [])}
     fps = {finding_fingerprint(matrix.id, c.row_key, c.persona_key): c
            for c in cells if c.expect == "deny" and c.verdict in ("pass", "fail")}
     if not fps:
-        return {"created": 0, "updated": 0, "resolved": 0}
-    existing = {f.fingerprint: f for f in session.exec(select(SecurityFinding).where(
-        SecurityFinding.project_id == matrix.project_id,
-        SecurityFinding.scan_type == FINDING_SCAN_TYPE,
-        SecurityFinding.fingerprint.in_(list(fps)))).all()}
-    created = updated = resolved = 0
+        return stats
+    existing: Dict[str, Any] = {}
+    for f in session.exec(select(SecurityFinding).where(
+            SecurityFinding.project_id == matrix.project_id,
+            SecurityFinding.scan_type == FINDING_SCAN_TYPE,
+            SecurityFinding.fingerprint.in_(list(fps)),
+            SecurityFinding.superseded_by_id == None,  # noqa: E711
+    ).order_by(SecurityFinding.id)).all():
+        existing[f.fingerprint] = f                    # newest wins
+    workspace = _workspace_for_project(session, matrix.project_id)
+    ws_id = workspace.id if workspace else None
+    sla = resolve_sla(workspace.finding_sla_days if workspace else None)
     now = datetime.utcnow()
     for fp, cell in fps.items():
         found = existing.get(fp)
@@ -392,25 +408,39 @@ def apply_findings(session, matrix, matrix_run, cells, persona_names: Dict[str, 
             desc = (f"Access matrix '{matrix.name}' (run #{matrix_run.id}) expects "
                     f"{who} to be denied {row.get('method', 'GET')} "
                     f"{obs.get('url') or row.get('url') or ''}, but access was granted.")
-            if found:
-                found.title, found.evidence, found.description = title[:300], evidence, desc
-                found.target_url = obs.get("url") or found.target_url
-                if found.status == "resolved":
-                    found.status, found.resolved_at = "open", None
-                session.add(found)
-                updated += 1
-            else:
+            if found is None:
                 session.add(SecurityFinding(
                     project_id=matrix.project_id, scan_type=FINDING_SCAN_TYPE,
                     category=FINDING_CATEGORY, severity="high", title=title[:300],
                     description=desc, evidence=evidence, target_url=obs.get("url"),
-                    fingerprint=fp, status="open"))
-                created += 1
-        elif found and found.status in ("open", "acknowledged"):
-            found.status, found.resolved_at = "resolved", now
+                    fingerprint=fp, status="open", due_at=due_date(now, "high", sla)))
+                stats["created"] += 1
+                continue
+            found.title, found.evidence, found.description = title[:300], evidence, desc
+            found.target_url = obs.get("url") or found.target_url
+            before = normalize_status(found.status)
+            carry = carry_forward(found, now)
+            if carry.reopened:
+                found.status, found.resolved_at, found.verified_at = "open", None, None
+                for name, value in carry.fields.items():
+                    setattr(found, name, value)
+                stats["reopened"] += 1
+                _audit(session, found, "reopen", {"from": before, "to": "open", "reason": carry.reopened,
+                                                  "fingerprint": fp}, ws_id)
+            elif found.status != before:
+                found.status = before                  # legacy acknowledged/resolved spelling
             session.add(found)
-            resolved += 1
-    return {"created": created, "updated": updated, "resolved": resolved}
+            stats["updated"] += 1
+        elif found is not None:
+            before = normalize_status(found.status)
+            if before in ("open", "in_progress", "fixed_pending_verification"):
+                found.status, found.resolved_at, found.verified_at = "verified_fixed", now, now
+                session.add(found)
+                stats["resolved"] += 1
+                _audit(session, found, "verified_fixed",
+                       {"from": before, "to": "verified_fixed",
+                        "reason": f"access matrix run #{matrix_run.id} denied the access"}, ws_id)
+    return stats
 
 
 # ---------------------------------------------------------------------------

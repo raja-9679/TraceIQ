@@ -327,15 +327,40 @@ async def test_findings_dedupe_reopen_and_resolve_across_reruns(session, scene):
     await _execute(session, scene, m["id"], granted)
     (f,) = findings()                                 # same fingerprint → one finding
     assert f.status == "open"
+    assert f.due_at is not None                       # WP7 SLA due date (high)
 
     await _execute(session, scene, m["id"], timeout)  # inconclusive changes nothing
     assert findings()[0].status == "open"
 
+    # WP7 vocabulary (it used to write the legacy "resolved"): the matrix run
+    # that now denies is the verification.
     await _execute(session, scene, m["id"], denied)
-    assert findings()[0].status == "resolved"
+    (f,) = findings()
+    assert f.status == "verified_fixed" and f.verified_at is not None
 
     await _execute(session, scene, m["id"], granted)  # regression reopens
-    assert findings()[0].status == "open"
+    (f,) = findings()
+    assert f.status == "open" and f.verified_at is None and f.resolved_at is None
+    engine = _sync()
+    with Session(engine) as s:
+        from app.models import AuditLog
+        actions = [a.action for a in s.exec(select(AuditLog).where(
+            AuditLog.entity_type == "security_finding", AuditLog.entity_id == f.id)).all()]
+    engine.dispose()
+    assert "verified_fixed" in actions and "reopen" in actions
+
+    # An unexpired risk acceptance sticks through a granted run.
+    from datetime import datetime, timedelta
+    engine = _sync()
+    with Session(engine) as s:
+        row = s.get(SecurityFinding, f.id)
+        row.status, row.risk_expires_at = "accepted_risk", datetime.utcnow() + timedelta(days=30)
+        row.risk_justification = "internal-only endpoint"
+        s.add(row)
+        s.commit()
+    engine.dispose()
+    await _execute(session, scene, m["id"], granted)
+    assert findings()[0].status == "accepted_risk"
 
     engine = _sync()
     with Session(engine) as s:
