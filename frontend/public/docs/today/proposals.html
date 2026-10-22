@@ -72,7 +72,7 @@
           demo's web project three test changes are waiting: an edit to a test and two new
           tests.</p>
         <figure>
-          <div class="frame"><img src="../media/today/proposals/page-annotated.png" alt="The Proposals page with four numbered parts: 1 the Test changes and Selector fixes tabs, 2 the status filter Waiting, Accepted, Rejected, 3 the review policy with Auto-apply, Second approver and Validate before accept, 4 the queue: on the left an Update box with Case #42 and a Create box with two new tests, on the right the selected edit" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/today/proposals/page-annotated.png" alt="The Proposals page with four numbered parts: 1 the Test changes and Selector fixes tabs, 2 the status filter Waiting, Accepted, Rejected, 3 the review policy with Auto-apply, Second approver and Validate before accept, 4 the queue: on the left an Update box titled with the name of the test it changes and a Create box with two new tests, on the right the selected edit" loading="lazy" width="1440" height="900"></div>
           <figcaption>The Proposals page in the demo workspace, with three test changes waiting. Click the picture to see it larger.</figcaption>
         </figure>
 
@@ -149,9 +149,10 @@
           <strong>Move</strong>, then <strong>Other</strong> (changes to a suite's shared
           settings). Each row shows the test's name, the agent that sent it and how long ago, and
           the agent's confidence on the right, from 0% to 100%. An edit that doesn't rename the
-          test is listed by its number, such as <em>Case #42</em>.</p>
+          test is listed by the test's current name (or by its number, such as <em>Case #42</em>,
+          if the test has since been deleted).</p>
         <figure>
-          <div class="frame small"><img src="../media/today/proposals/test-change.png" alt="A waiting Update proposal for Case #42 at 82% confidence: claude-code wants to change an existing test; its reason; the current and proposed steps side by side, the last step's selector changed from #current-user to a data-testid; the project and source run; Validation run Not validated with a Validate button; a review note and the Accept and apply and Reject buttons" loading="lazy"></div>
+          <div class="frame small"><img src="../media/today/proposals/test-change.png" alt="A waiting Update proposal, titled with the name of the test it changes, at 82% confidence: claude-code wants to change an existing test; its reason; the current and proposed steps side by side, the last step's selector changed from #current-user to a data-testid; the project and source run; Validation run Not validated with a Validate button; a review note and the Accept and apply and Reject buttons" loading="lazy"></div>
           <figcaption>An edit proposed by an agent: the last step's selector changes, the rest stays.</figcaption>
         </figure>
         <p>The detail shows, from top to bottom:</p>

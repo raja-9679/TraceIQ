@@ -435,20 +435,50 @@ function ProposalBody({ proposal }: { proposal: CaseProposal }) {
 const caseIdOf = (proposal: CaseProposal): number | null =>
     proposal.target_case_id ?? proposal.payload?.deleted_case_id ?? null;
 
-const proposalTitle = (proposal: CaseProposal) => {
+/** Titles a proposal. An UPDATE that doesn't rename its test carries no
+ *  name, so the target case's current name (looked up by the caller) comes
+ *  next; the bare id is the last resort (e.g. the case was deleted). */
+const proposalTitle = (proposal: CaseProposal, caseNames?: Map<number, string>) => {
     if (proposal.action === 'create') return proposal.payload?.name || 'New test case';
     if (proposal.action === 'update_suite_settings') {
         return proposal.test_suite_id != null ? `Settings of suite #${proposal.test_suite_id}` : 'Suite settings';
     }
     const id = caseIdOf(proposal);
-    return proposal.payload?.name || (id != null ? `Case #${id}` : 'Test case');
+    return proposal.payload?.name || (id != null ? caseNames?.get(id) || `Case #${id}` : 'Test case');
 };
+
+/** Current names of these test cases, sharing the ['case', id] cache with the
+ *  diff and heal views. Missing (deleted, no access) ids are simply absent. */
+function useCaseNames(ids: number[]): Map<number, string> {
+    const queries = useQueries({
+        queries: ids.map((id) => ({
+            queryKey: ['case', id],
+            queryFn: () => getTestCaseInfo(id),
+            staleTime: 60_000,
+            retry: false,
+        })),
+    });
+    const key = queries.map((q) => q.data?.name ?? '').join('\u0000');
+    return useMemo(() => {
+        const map = new Map<number, string>();
+        queries.forEach((q, i) => { if (q.data?.name) map.set(ids[i], q.data.name); });
+        return map;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `queries` is a new array every render; `key` captures what matters
+    }, [key, ids]);
+}
+
+/** Case ids whose name a proposal title needs (no name in the payload). */
+const unnamedCaseIds = (proposals: CaseProposal[]): number[] =>
+    Array.from(new Set(proposals
+        .filter((p) => p.action !== 'create' && p.action !== 'update_suite_settings' && !p.payload?.name)
+        .map((p) => p.target_case_id)
+        .filter((id): id is number => id != null)));
 
 // ---------------------------------------------------------------------------
 // Test-proposal detail card
 // ---------------------------------------------------------------------------
 
-function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
+function ProposalDetail({ proposal, caseNames }: { proposal: CaseProposal; caseNames?: Map<number, string> }) {
     const queryClient = useQueryClient();
     const [note, setNote] = useState('');
 
@@ -494,7 +524,7 @@ function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
                     <Pill tone={st.tone}>{st.label}</Pill>
                     <ConfidenceBadge value={proposal.ai_confidence} />
                 </div>
-                <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{proposalTitle(proposal)}</h2>
+                <h2 className="break-words text-[26px] font-bold leading-tight tracking-[-0.02em] text-ink">{proposalTitle(proposal, caseNames)}</h2>
                 <span className="flex flex-wrap items-center gap-1.5 text-sm text-ink-soft">
                     <Bot className="h-4 w-4" aria-hidden="true" />
                     {proposal.agent_id || 'An agent'} wants to {actionStyle.verb} · {formatDate(proposal.created_at)}
@@ -557,6 +587,8 @@ function CaseProposalsView({ proposals }: { proposals: CaseProposal[] }) {
         .concat([{ action: 'other', items: proposals.filter((p) => !ACTION_ORDER.includes(p.action)) }])
         .filter((g) => g.items.length > 0);
     const selected = proposals.find((p) => p.id === selectedId) ?? groups[0]?.items[0] ?? null;
+    const caseIds = useMemo(() => unnamedCaseIds(proposals), [proposals]);
+    const caseNames = useCaseNames(caseIds);
 
     return (
         <SplitView
@@ -568,14 +600,14 @@ function CaseProposalsView({ proposals }: { proposals: CaseProposal[] }) {
                             selected={selected?.id === p.id}
                             onSelect={() => setSelectedId(p.id)}
                             leading={<KindChip kind={p.status === 'accepted' ? 'pass' : p.status === 'rejected' ? 'skip' : 'review'} size="sm" />}
-                            title={<span className="line-clamp-2 break-words">{proposalTitle(p)}</span>}
+                            title={<span className="line-clamp-2 break-words">{proposalTitle(p, caseNames)}</span>}
                             meta={`${p.agent_id || 'agent'} · ${ago(p.created_at)}`}
                             trailing={<span className="font-mono text-xs tabular-nums text-ink-soft" title="Agent confidence">{Math.round(p.ai_confidence * 100)}%</span>}
                         />
                     ))}
                 </ListGroup>
             ))}
-            detail={selected && <ProposalDetail key={selected.id} proposal={selected} />}
+            detail={selected && <ProposalDetail key={selected.id} proposal={selected} caseNames={caseNames} />}
         />
     );
 }

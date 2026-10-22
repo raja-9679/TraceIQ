@@ -35,7 +35,7 @@ Proposals answers **"What do agents and TraceIQ want to change in my tests, and 
 
 The page has four parts. The numbers on the screenshot match the sections below. In the demo's web project three test changes are waiting: an edit to a test and two new tests.
 
-![The Proposals page with four numbered parts: 1 the Test changes and Selector fixes tabs, 2 the status filter Waiting, Accepted, Rejected, 3 the review policy with Auto-apply, Second approver and Validate before accept, 4 the queue: on the left an Update box with Case #42 and a Create box with two new tests, on the right the selected edit](../media/today/proposals/page-annotated.png)
+![The Proposals page with four numbered parts: 1 the Test changes and Selector fixes tabs, 2 the status filter Waiting, Accepted, Rejected, 3 the review policy with Auto-apply, Second approver and Validate before accept, 4 the queue: on the left an Update box titled with the name of the test it changes and a Create box with two new tests, on the right the selected edit](../media/today/proposals/page-annotated.png)
 
 *The Proposals page in the demo workspace, with three test changes waiting. Click the picture to see it larger.*
 
@@ -87,9 +87,9 @@ The list is on the left and the proposal you pick is shown in detail on the righ
 
 ### A test change
 
-The list is boxed by what the change would do, the riskiest first: **Delete**, **Update**, **Create**, **Move**, then **Other** (changes to a suite's shared settings). Each row shows the test's name, the agent that sent it and how long ago, and the agent's confidence on the right, from 0% to 100%. An edit that doesn't rename the test is listed by its number, such as *Case #42*.
+The list is boxed by what the change would do, the riskiest first: **Delete**, **Update**, **Create**, **Move**, then **Other** (changes to a suite's shared settings). Each row shows the test's name, the agent that sent it and how long ago, and the agent's confidence on the right, from 0% to 100%. An edit that doesn't rename the test is listed by the test's current name (or by its number, such as *Case #42*, if the test has since been deleted).
 
-![A waiting Update proposal for Case #42 at 82% confidence: claude-code wants to change an existing test; its reason; the current and proposed steps side by side, the last step's selector changed from #current-user to a data-testid; the project and source run; Validation run Not validated with a Validate button; a review note and the Accept and apply and Reject buttons](../media/today/proposals/test-change.png)
+![A waiting Update proposal, titled with the name of the test it changes, at 82% confidence: claude-code wants to change an existing test; its reason; the current and proposed steps side by side, the last step's selector changed from #current-user to a data-testid; the project and source run; Validation run Not validated with a Validate button; a review note and the Accept and apply and Reject buttons](../media/today/proposals/test-change.png)
 
 *An edit proposed by an agent: the last step's selector changes, the rest stays.*
 
