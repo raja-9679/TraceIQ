@@ -40,7 +40,7 @@ The page has five parts. The numbers on the screenshot match the sections below.
 
 ## 2. The four tiles
 
-![Four tiles: Pass rate 83.1%, Finished runs 65, Open failure groups 4, Mean time to fix —](../media/tests/analytics/tiles.png)
+![Four tiles: Pass rate 85.3%, Finished runs 75, Open failure groups 4, Mean time to fix —](../media/tests/analytics/tiles.png)
 
 | Tile | What the number means |
 |---|---|
@@ -51,7 +51,7 @@ The page has five parts. The numbers on the screenshot match the sections below.
 
 ## 3. Top failing, Slowest, Flakiest
 
-![Three lists. Top failing: Add a todo 6, Session cookie is HttpOnly 2, then Homepage loads, Upgrade to Pro with a test card and No serious accessibility violations with 1 each. Slowest: the manual tests Todo list is usable on a phone (600 s), Upgrade to Pro with a test card (480 s), Sign-in works with a screen reader and Declined card keeps the free plan (420 s), then Add a todo (5.3 s). Flakiest: Add a todo 41%](../media/tests/analytics/lists.png)
+![Three lists. Top failing: Add a todo 6, Session cookie is HttpOnly 2, then Homepage loads, Upgrade to Pro with a test card and No serious accessibility violations with 1 each. Slowest: the manual tests Todo list is usable on a phone (600 s), Upgrade to Pro with a test card (480 s), Sign-in works with a screen reader and Declined card keeps the free plan (420 s), then Add a todo (5.4 s). Flakiest: Add a todo 41%](../media/tests/analytics/lists.png)
 
 The five highest tests in each list, with a bar that compares them with the top one.
 
@@ -61,7 +61,7 @@ The five highest tests in each list, with a bar that compares them with the top 
 
 ## 4. Per-test effectiveness
 
-![A table with the columns Test, Runs, Failures, Failure rate, Failure groups found and Average time; Add a todo ran 62 times with 6 failures, a 9.7% failure rate, 1 failure group and 5.3 s on average; below it the other tests, including the manual release-checklist tests with one or two runs each](../media/tests/analytics/table.png)
+![A table with the columns Test, Runs, Failures, Failure rate, Failure groups found and Average time; Add a todo ran 65 times with 6 failures, a 9.2% failure rate, 1 failure group and 5.4 s on average; below it the other tests, including the manual release-checklist tests with one or two runs each](../media/tests/analytics/table.png)
 
 | Column | What it means |
 |---|---|

@@ -81,7 +81,9 @@ test('Tests › Suites', async ({ page, browser }) => {
 
     await top.screenshot({ path: out(`${DIR}/suite-header.png`) });
     await list.screenshot({ path: out(`${DIR}/test-list.png`) });
-    // A test with a "Flaky" label and a {{secret}} in its steps.
+    // The demo suite also holds a sub-module, listed above its own tests.
+    await main.getByRole('region', { name: 'Sub-modules' }).screenshot({ path: out(`${DIR}/sub-modules.png`) });
+    // A quarantined test with a {{secret}} in its steps.
     await list.getByRole('button', { name: /Add a todo/ }).click();
     await expect(detail.getByRole('heading', { name: 'Add a todo' })).toBeVisible();
     await detail.screenshot({ path: out(`${DIR}/test-steps.png`) });
@@ -142,7 +144,7 @@ test('Tests › Suites', async ({ page, browser }) => {
         await r.getByRole('link').first().click();
         await p.waitForURL(/\/suites\/\d+$/);
         await settle(p);
-        await caption(p, "This is the suite's own page. Its tests are listed on the left.", 1600);
+        await caption(p, "This is the suite's own page. Sub-modules come first, then the suite's own tests.", 1600);
         const l = m.locator('section').filter({ has: p.getByRole('button', { pressed: true }) }).first();
         const d = m.getByRole('article', { name: 'Selected test' });
         await caption(p, 'Click a test to read its steps on the right, in plain words.');
@@ -150,8 +152,8 @@ test('Tests › Suites', async ({ page, browser }) => {
         await l.getByRole('button', { name: /Add a todo/ }).click();
         await beat(p, 900);
         await pointAt(p, d.locator('ol li').nth(4), 1600);
-        await caption(p, 'A yellow Flaky label means the test sometimes fails for no clear reason.');
-        await pointAt(p, l.getByText(/^Flaky/), 2200);
+        await caption(p, 'Quarantined means the test is flaky and set aside: suite runs skip it for now.');
+        await pointAt(p, l.getByText('Quarantined', { exact: true }), 2200);
         await caption(p, 'Run suite runs every test here. Run now runs only the test you picked.');
         await pointAt(p, m.getByRole('button', { name: 'Run suite' }), 1600);
         await pointAt(p, d.getByRole('button', { name: 'Run now' }), 1600);

@@ -110,7 +110,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="crawls" data-toc="④ Crawls and their problems">Crawls and their problems</h2></div>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/crawl.png" alt="The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #2, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/crawl.png" alt="The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #4, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked" loading="lazy"></div>
           <figcaption>The demo's crawl, on its latest run.</figcaption>
         </figure>
         <p>Each saved crawl is a box with its start address and limits, <strong>Run now</strong> and
@@ -135,7 +135,7 @@
 
         <h2 id="budgets" data-toc="Page budgets">Page budgets</h2>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: the page https://example.com/ on the left (59 samples, 8 over budget); on the right its latest run: LCP 2032 ms, CLS 0.016, INP no data, TTFB 216 ms, page weight 837 KB, 23 requests; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: the page https://example.com/ on the left (60 samples, 8 over budget); on the right its latest run: LCP 1749 ms, CLS 0.044, INP no data, TTFB 141 ms, page weight 884 KB, 23 requests, each with small bars for recent runs; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description" loading="lazy"></div>
         </figure>
         <p>In the demo, the test <em>Homepage loads</em> measures example.com's home page. Nothing
           appears here until a test contains a <strong>check-page-budget</strong> step. Then

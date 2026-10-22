@@ -32,11 +32,11 @@ Two screens belong together here: the **list of suites**, and a **suite's own pa
 
 ![The list of suites with four numbered parts: 1 the summary line, 2 the Import and New suite buttons, 3 the search box and the Cards / List switch, 4 a suite row](../media/tests/suites/page-annotated.png)
 
-*The list of suites in the demo's web project. Click the picture to see it larger.*
+*The list of suites in the demo's web project: the automated Web smoke suite and a manual Release checklist. Click the picture to see it larger.*
 
 ## 1. The summary line
 
-Under the heading, for example *"1 suite · 5 tests · 0 modules in Demo — Todo web app"*: how many top-level suites the project has, how many tests they hold between them, and how many sub-modules sit inside them.
+Under the heading, for example *"2 suites · 13 tests · 1 module in Demo — Todo web app"*: how many top-level suites the project has, how many tests they hold between them, and how many sub-modules sit inside them.
 
 ## 2. Import and New suite
 
@@ -57,11 +57,11 @@ The search box keeps only the suites whose name or description contains what you
 
 ## 4. A suite
 
-![One suite row: a folder icon, the name Web smoke (demo) with its description, a pink Separate label, 5 tests · 0 modules, the date Sep 20, 2026, and three buttons: play, download and an arrow](../media/tests/suites/suite-row.png)
+![One suite row: a folder icon, the name Web smoke (demo) with its description, a pink Separate label, 9 tests · 1 module, the date Sep 21, 2026, and three buttons: play, download and an arrow](../media/tests/suites/suite-row.png)
 
 - **The name and description**. Click them to open the suite's own page.
 - **The coloured label** says how its tests run (Continuous, Separate or Parallel).
-- **5 tests · 0 modules**: the tests and sub-modules it holds, counting everything inside its sub-modules too.
+- **9 tests · 1 module**: the tests and sub-modules it holds, counting everything inside its sub-modules too (Web smoke has 7 tests of its own and 2 in its sub-module).
 - **The play button** runs every test in the suite and takes you to the *Runs* page, where the new run appears.
 - **The download button** saves the suite, with all its tests, as a JSON file you can import elsewhere. Secret values are never in it.
 
@@ -69,7 +69,7 @@ Only top-level suites are listed here. Sub-modules are shown inside their suite.
 
 ## A suite's own page
 
-![A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of tests, 8 the selected test with its steps](../media/tests/suites/suite-annotated.png)
+![A suite's page with four numbered parts: 5 the run controls, 6 the Tests, Settings and Audit log tabs, 7 the list of the suite's own tests under its sub-module Todo editing (demo), 8 the selected test Sign in as alice with its steps](../media/tests/suites/suite-annotated.png)
 
 *The demo suite "Web smoke (demo)". The heading shows the suite's name, a pencil to rename it (project admins), and its run mode.*
 
@@ -113,9 +113,13 @@ Only top-level suites are listed here. Sub-modules are shown inside their suite.
 
 ## 7. The list of tests
 
-![A list of five tests, each with its number of steps: Homepage loads, No serious accessibility violations, Sign in as alice, Add a todo with a yellow Flaky 40% label, Session cookie is HttpOnly](../media/tests/suites/test-list.png)
+![Tests in this suite · 7: Sign in as alice, Regression: two todos stay in the list, Reset password email is sent, No serious accessibility violations, Session cookie is HttpOnly, Add a todo with a peach Quarantined label, and Homepage loads, each with its number of steps](../media/tests/suites/test-list.png)
 
-Every test in the suite with its number of steps. **Click a test** to show it on the right; until you do, the first one is shown. The search box above the list keeps only tests whose name contains what you type.
+When a suite has sub-modules, they are listed first, under *Sub-modules*. Each row shows the sub-module's name, how many tests and sub-modules it holds, its description and how its tests run; the buttons schedule it (project admins), delete it (project admins), **Run** it on its own, and the arrow opens its page, which looks like this one.
+
+![Sub-modules · 1: Todo editing (demo), 2 tests · 0 sub-modules, Sub-module: completing and renaming todos once signed in, a pink Separate label, schedule and delete icons, a Run button and an arrow](../media/tests/suites/sub-modules.png)
+
+Then come the suite's own tests, under *Tests in this suite* (without that heading when there are no sub-modules), each with its number of steps. **Click a test** to show it on the right; until you do, the first one is shown. The search box above the list keeps only tests whose name contains what you type.
 
 - Flaky 40%: this test sometimes passes and sometimes fails without anything changing. The percentage is its flakiness score over its recent runs (point at the label to see how many). Only scores of 15% or more are shown.
 - Quarantined: the test is set aside and skipped by runs until the quarantine ends. Quarantine expired means it runs again.
@@ -123,18 +127,18 @@ Every test in the suite with its number of steps. **Click a test** to show it on
 
 The **Add** menu next to the search box adds things to the suite:
 
-![The Add menu open: New sub-module, Import a test (JSON), New manual test, Start manual run](../media/tests/suites/add-menu.png)
+![The Add menu open on the Web smoke suite, which has a sub-module: only New sub-module and Start manual run](../media/tests/suites/add-menu.png)
 
-- **New sub-module**: a suite inside this suite. Only works while the suite has no tests of its own.
+- **New sub-module**: a suite inside this suite. TraceIQ refuses it while the suite has tests of its own.
 - **Import a test (JSON)**: a single test exported from another suite.
 - **New manual test**: instructions for a *person* to follow, with what they should see. TraceIQ never runs these itself.
 - **Start manual run**: opens the screen where a person works through this suite's manual tests and records what happened.
 
-**New test** (the dark button) opens the step editor for a new automated test.
+**New test** (the dark button) opens the step editor for a new automated test. *New test*, *Import a test (JSON)* and *New manual test* are offered only in a suite without sub-modules, which is why the picture above, taken in Web smoke, shows just two entries.
 
 ## 8. The selected test
 
-![The test Add a todo with a Flaky 40% label and seven steps, for example Go to {{env.BASE_URL}}/login, Type a value into #login-username, Type {{secret.ALICE_PASSWORD}} into #login-password, Click #login-submit, Check #todo-list li is visible; below, the buttons Edit steps, Schedule, Export and Delete](../media/tests/suites/test-steps.png)
+![The test Add a todo with a Quarantined label and seven steps, for example Go to {{env.BASE_URL}}/login, Type a value into #login-username, Type {{secret.ALICE_PASSWORD}} into #login-password, Click #login-submit, Check #todo-list li is visible; below, the buttons Edit steps, Schedule, Export and Delete](../media/tests/suites/test-steps.png)
 
 The test's steps in plain words, in the order they run. The grey label says what kind of step it is (*Go*, *Type*, *Click*…); green *Check* labels are the steps that decide whether the test passes.
 
@@ -148,7 +152,7 @@ The test's steps in plain words, in the order they run. The grey label says what
 
 A test is a list of **steps**. Each step is one thing a person would do or check in the browser. **Edit steps** (or *New test*) opens the step editor:
 
-![The step editor for the test Add a todo: at the top the name, History, Dataset, Matrix, Auth setup case, Use auth session, Cancel and Update Test; an Ownership and review box; then the steps Navigate {{env.BASE_URL}}/login and Fill Input #login-username alice; at the bottom a dark bar with Step, Navigate, Click, Fill, Assert, API, AMP and Script](../media/tests/suites/editor.png)
+![The step editor for the test Add a todo: at the top the name, History, Dataset, Matrix, Priority set to High, Auth setup case, Use auth session ticked, Cancel and Update Test; an Ownership and review box (owner Maya Rao, backup Li Chen, reviewed); then the steps Navigate {{env.BASE_URL}}/login and Fill Input #login-username alice; at the bottom a dark bar with Step, Navigate, Click, Fill, Assert, API, AMP and Script](../media/tests/suites/editor.png)
 
 Every step has up to three parts:
 
@@ -213,7 +217,7 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 
 - **Who can do what.** Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the *editor* role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs *project admin* (or workspace admin); only *Protected module* can be switched by editors. Creating a schedule also needs project admin. Buttons you can't use (Run, Schedule, Edit, Delete) are not shown.
 - **Continuous runs don't share a browser yet.** A Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a *Separate* suite run one after another in the same browser.
-- **A suite holds tests or sub-modules, not both.** TraceIQ refuses a sub-module in a suite that already has tests. Once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself.
+- **New tests go into sub-modules.** TraceIQ refuses a sub-module in a suite that already has tests, and a new test in a suite that has sub-modules: once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself. A suite that holds both (like the demo's Web smoke, or one imported that way) lists and runs both.
 - **Settings flow downwards.** A sub-module uses its parent's settings unless its own *Inherit settings* is switched off; then it starts fresh from there down.
 - **Exports carry no secrets.** Suite and test exports include steps, tags and descriptions, but never the value of a secret.
 - **It doesn't update by itself.** Reload the page to see suites or tests that colleagues added meanwhile.
@@ -243,9 +247,9 @@ What the walkthrough says, in order. The video and every picture on this page ar
 1. Suites is where your tests are kept, grouped into suites.
 2. Each row is one suite: its name, how its tests run, and how many tests it holds.
 3. The play button runs every test in the suite.
-4. This is the suite's own page. Its tests are listed on the left.
+4. This is the suite's own page. Sub-modules come first, then the suite's own tests.
 5. Click a test to read its steps on the right, in plain words.
-6. A yellow Flaky label means the test sometimes fails for no clear reason.
+6. Quarantined means the test is flaky and set aside: suite runs skip it for now.
 7. Run suite runs every test here. Run now runs only the test you picked.
 8. Edit steps opens the step editor.
 9. Each step is one action, such as opening a page, clicking or typing.

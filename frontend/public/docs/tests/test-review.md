@@ -65,7 +65,7 @@ Tests are boxed in this order: **Owner no longer has access**, **Review overdue*
 
 ## 4. The selected test
 
-![A Never reviewed label, the test name Add a draft todo, and the line Todo editing (demo) · Case #57 · Open the test](../media/tests/test-review/detail-header.png)
+![A Never reviewed label, the test name Add a draft todo, and the line Todo editing (demo) · Case #75 · Open the test](../media/tests/test-review/detail-header.png)
 
 The status, the test's name, its suite and number, and **Open the test**, which opens it in the step editor so you can read what it does before deciding.
 

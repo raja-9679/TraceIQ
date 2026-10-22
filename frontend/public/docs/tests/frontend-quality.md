@@ -66,7 +66,7 @@ A **crawl** starts at one address, follows the links it finds to other pages of 
 
 ## 4. Crawls and their problems
 
-![The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #2, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked](../media/tests/frontend-quality/crawl.png)
+![The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #4, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked](../media/tests/frontend-quality/crawl.png)
 
 *The demo's crawl, on its latest run.*
 
@@ -83,7 +83,7 @@ Each saved crawl is a box with its start address and limits, **Run now** and **D
 
 ## Page budgets
 
-![The Page budgets tab: the page https://example.com/ on the left (59 samples, 8 over budget); on the right its latest run: LCP 2032 ms, CLS 0.016, INP no data, TTFB 216 ms, page weight 837 KB, 23 requests; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description](../media/tests/frontend-quality/budgets.png)
+![The Page budgets tab: the page https://example.com/ on the left (60 samples, 8 over budget); on the right its latest run: LCP 1749 ms, CLS 0.044, INP no data, TTFB 141 ms, page weight 884 KB, 23 requests, each with small bars for recent runs; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description](../media/tests/frontend-quality/budgets.png)
 
 In the demo, the test *Homepage loads* measures example.com's home page. Nothing appears here until a test contains a **check-page-budget** step. Then every run of that test measures the page, and this tab lists the pages measured in the last 30 days, those that went over budget first. Click a page to see, for its latest run and as small bars for recent runs:
 

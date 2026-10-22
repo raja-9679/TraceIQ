@@ -46,7 +46,7 @@ How far back to look: the last 7, 30 (shown first), 90 or 180 days of runs.
 - **Violations by impact**: a bar per day, stacked by how serious the problems were, with the number of runs and scans it is based on.
 - **New per day** and **Fixed per day**: problems that appeared, and problems that went away, compared with the previous run of the same test.
 
-![The Violations by impact chart: a bar per day for 30 days, mostly moderate (yellow), one day with a serious problem (orange) as well, and the line 59 runs, 59 scans in the last 30 days](../media/tests/accessibility/trend.png)
+![The Violations by impact chart: a bar per day for 30 days, mostly moderate (yellow), one day with a serious problem (orange) as well, and the line 60 runs, 60 scans in the last 30 days](../media/tests/accessibility/trend.png)
 
 *In the demo, one run found a serious problem (orange) as well as the usual moderate ones; the next run no longer had it.*
 
