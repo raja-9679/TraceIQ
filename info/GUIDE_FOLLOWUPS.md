@@ -118,3 +118,32 @@ New, seen in the screenshots:
 - Redeliver on a demo webhook really tries to send (outbound_webhook_tasks._send_follow_up has no demo check).
 - Demo data: claude-code session last seen 10/18 but its proposals are 10/22, list totals ≠ session totals (Agents); seeded audit rows carry the seeding time, so sign_off/verified_fixed/approve events dated weeks earlier appear as today; control History "No history."; access-matrix swap row has an empty "Placeholder in URL" (Save would likely be refused); Benchmarks warns 2 tests open a full address yet seeded times differ per site.
 - Layout nits: Users/Tenant admin long demo emails run under the role/Pending label; Sizing calculator formula table clipped on the right at 1440; Quality gate "Evidence age" value collides with its label; crawl issue "Not checked (private address)" vs detail "external host not checked"; trust-center public link shows the capture network host http://frontend/.
+
+### Round 2 (demo workspace recreated on 204f256, whole guide recaptured again, pictures only)
+Fixed this round (seen in the new pictures):
+- Suites page lists a suite's own tests next to its sub-modules; tests-suites.spec.ts passes again (f997020).
+- Permission Denied toast on Billing / Access reviews / Policies gone — instance-admin flag read from /auth/me (97ad437, fe7d0ed); the specs' toast waits are removed.
+- Readiness reasons in words, AI feature names readable, per-day charts span their card (b16ea75); Executive summary and Costs "By feature" fixed by the same.
+- Gate and readiness judge the same commit; newest result by time ("Last result" older than "Last passed" gone) (64dc8b6, 4f3f2ce).
+- Newest demo commit is "Ready to release"; agent sessions add up; targeted batches give believable time saved (4e47c9f).
+- Value report shows seconds under a minute (5fab04c, 204f256). Manual runs left out of browser breakdowns (f8382c1).
+- Update proposals titled with the test's name, not "Case #42" (4629890). Requirements import says the connection is turned off (772c300).
+- Findings register wraps long titles at 1440 px; long emails wrap (Users, Tenant admin, Workspace); Quality gate values truncate; sizing table no longer clipped; Policies denials are a stacked list (d4ef21c).
+- Access-matrix swap row has the {id} placeholder (4e47c9f). Demo Redeliver / tracker calls refused in demo workspaces (bf79887) — guide text updated.
+- Page-budget trend bars and Dependencies errors line now fill their card.
+
+Still open / new this round:
+- Audit log "Verify chain" shows the peach "Chain broken" pill for rows that predate hash chaining (AuditLog.tsx ~143 only checks `verified`); CLAUDE.md says such rows should read as unverifiable. media/security/audit-log/verify.png.
+- Seeded audit rows carry the seeding time; control History "No history."; script inventory change history has no approval entries.
+- Page budgets says "8 over budget" but no trend bar is red (media/tests/frontend-quality/budgets.png).
+- Step editor crowds the title ("Add a t") next to Priority / auth checkboxes (media/tests/suites/editor.png).
+- Analytics per-test table omits tests with no runs in the window (sub-module tests, new Web smoke tests).
+- Crawl issue label "Not checked (private address)" vs detail "external host not checked".
+- Dependencies: Stripe "10 errors · 10 runs affected" doesn't match 50% of 10 failed + 15.8% of 285 passed results.
+- Flake trends "1 flaky cases, 0 quarantined" while "Add a todo" is quarantined elsewhere; the quarantined "Add a todo" also ran and passed in #532.
+- No demo commit has a failed critical test now, so the guide can't show that state (text doesn't claim it).
+- Benchmarks warns 2 tests use absolute URLs yet seeded times differ per site.
+- Delivery dates use a different format ("10/21/2026, 4:00:00 PM") from other pages.
+- Cosmetic: long emails wrap mid-word; badge ① clips "PROJECT" (Incidents, Release readiness) and ⑦ covers "R" of Runs breadcrumb; focus ring on the sidebar workspace switcher in Monitors/Workspace/API keys pictures; agents sessions close-up is 1094 px tall; trust-center public link shows http://frontend/.
+- Visual review, App builds, Evidence packs, On-call stay empty (nothing seeded).
+- Walkthrough MP4s still not re-recorded (no ffmpeg); edited record() blocks unrun.
