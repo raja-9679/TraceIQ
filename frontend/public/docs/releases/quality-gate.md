@@ -30,16 +30,16 @@ The quality gate answers **"Can we release this, by the rules we agreed?"** Inst
 
 The verdict and its checks are at the top; the project's general health is underneath; the rules open from a button in the heading. The numbers on the screenshot match the sections below.
 
-![The Quality gate page with five numbered parts: 1 the heading with the verdict and buttons, 2 the summary and list of checks, 3 the selected check, 4 the project health tiles, 5 the daily pass-rate chart and external CI results, 6 the Gate rules button](../media/releases/quality-gate/page-annotated.png)
+![The Quality gate page with six numbered parts: 1 the heading with the verdict and buttons, 2 the summary and list of checks, 3 the selected check, 4 the project health tiles, 5 the daily pass-rate chart and external CI results, 6 the Gate rules button](../media/releases/quality-gate/page-annotated.png)
 
 *The Quality gate page for the demo's web project. Click the picture to see it larger.*
 
 ## 1. The verdict
 
-![The heading Releases with a green label Ready to ship, the line Gate evaluated on run #484 · rules v1, and two buttons, Gate rules and Re-evaluate](../media/releases/quality-gate/header.png)
+![The heading Releases with a label Not ready · 2 blockers, the line Gate evaluated on run #291 · rules v1, and two buttons, Gate rules and Re-evaluate](../media/releases/quality-gate/header.png)
 
 - **The label next to the heading** is the verdict: Ready to ship when every check passes, or Not ready · 2 blockers with the number of checks that fail.
-- **The line underneath** says what was judged: the run number (for example *run #484*), its branch and commit if the run recorded them, and the version of the rules used (*rules v1*). If runs were left out because they were cancelled or timed out, it says how many.
+- **The line underneath** says what was judged: the run number (for example *run #291*), its branch and commit if the run recorded them, and the version of the rules used (*rules v1*). If runs were left out because they were cancelled or timed out, it says how many.
 - **Gate rules** (⑥) opens the rules below the heading (see [Gate rules](#rules)). Press it again to close them.
 - **Re-evaluate** checks the gate again, for example after a new run has finished.
 
@@ -49,9 +49,11 @@ The verdict and its checks are at the top; the project's general health is under
 
 ## 2. The checks
 
-![A ring showing 3/3 with the text Every check passes, and a list headed Passing with three rows: Pass rate 100.0%, coverage full suite, High-severity security findings 0](../media/releases/quality-gate/checks.png)
+![A ring showing 5/7 with the text 2 checks blocking the release, a list headed Blocking with Flaky tests 1 flaky and Critical tests passed 0 of 2 passed, and a list headed Passing with Pass rate 100.0%, Coverage targeted — 1 of 5 cases ran, High-severity security findings 0, External CI tests 0 failed of 5, Evidence age oldest 0.2d (Homepage loads)](../media/releases/quality-gate/checks.png)
 
 The ring counts the checks that pass out of all checks. Below it, the checks are split into **Blocking** (failing, shown first) and **Passing**. Each row shows the check's name and, on the right, the value it found. Click a row to show it in detail on the right.
+
+In the demo the newest run (#291) ran only one of the five tests, so *Critical tests passed* blocks (neither critical test ran in it), and *Flaky tests* blocks because the demo's rules allow no flaky test and *Add a todo* is quarantined.
 
 Which checks appear depends on the rules. Three are always there:
 
@@ -65,7 +67,7 @@ Others appear only when a rule switches them on: medium-severity findings, monit
 
 ## 3. The selected check
 
-![The selected check Pass rate, labelled Passing: Now 100.0%, Rule at least 100.0%, a box What this check looks at, and an Evidence list with See the evaluated runs and Group the failures](../media/releases/quality-gate/detail.png)
+![The selected check Flaky tests, labelled Blocking: Now 1 flaky, Rule &lt;= 0, a box What this check looks at naming Add a todo, and an Evidence link Open Flaky tests](../media/releases/quality-gate/detail.png)
 
 - **Passing / Blocking**: whether this check meets its rule.
 - **Now** is the value found; **Rule** is what it must be (`>=` means "at least", `<=` means "at most").
@@ -76,7 +78,7 @@ When the page opens, the first blocking check is shown; if nothing blocks, the f
 
 ## 4. Project health
 
-![Project health with a 7 days menu and five tiles: Pass rate 73.33% (11 of 15 finished runs), Runs 15, Flaky tests 1 (0 quarantined), Monitors down 0 of 0, Security findings 0 high (1 medium, 0 low); below, a daily pass-rate chart and an empty External CI results box](../media/releases/quality-gate/health.png)
+![Project health with a 7 days menu and five tiles: Pass rate 75% (15 of 20 finished runs), Runs 20, Flaky tests 1 (1 quarantined), Monitors down 0 of 0, Security findings 1 high (5 medium, 8 low); below, a daily pass-rate chart and External CI results listing two web unit tests (vitest) reports: 5 tests all green, and 5 tests 1 failed](../media/releases/quality-gate/health.png)
 
 The wider picture, separate from the verdict. The menu on the right chooses the period: the last **7**, **14** or **30 days**.
 
@@ -98,13 +100,13 @@ The wider picture, separate from the verdict. The menu on the right chooses the 
 | Yellow | Between 60% and 89% passed. |
 | Orange | Less than 60% passed. A day where nothing passed still shows a thin orange stub. |
 
-**External CI results** lists the five newest test reports your own build system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each with its number of tests and failures. Until one arrives it says "None yet". These reports count towards the verdict only when the rule *Require external CI tests green* is on.
+**External CI results** lists the five newest test reports your own build system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each with its number of tests and failures (the demo has two). Until one arrives it says "None yet". These reports count towards the verdict only when the rule *Require external CI tests green* is on.
 
 ## 6. Gate rules
 
-Press **Gate rules** in the heading to open the rules. Anyone can read them; only *editors* can save changes.
+Press **Gate rules** in the heading to open the rules. Anyone can read them; only *editors* can save changes. The demo's web project has a stricter set than the defaults listed below: 90% pass rate, external CI tests required, no flaky tests, every critical test passed and results no older than 7 days.
 
-![The Gate rules form: Minimum pass rate 100, Maximum high findings 0, Maximum medium findings blank, checkboxes for monitors and external CI tests, a Release readiness section, a Performance budgets section, and a Save rules button](../media/releases/quality-gate/rules.png)
+![The Gate rules form as the demo project sets it: Minimum pass rate 90, Maximum high findings 0, Maximum medium findings blank, Require monitors up unticked, Require external CI tests green ticked; Release readiness: Maximum flaky cases 0, Require every critical case passed ticked, Maximum evidence age 7 days, sign-off and accessibility unticked; an API contract section; Performance budgets all 0; and a Save rules button](../media/releases/quality-gate/rules.png)
 
 | Rule | What it does (default) |
 |---|---|
@@ -125,7 +127,7 @@ Next to the rules is **CI reporting**, which tells TraceIQ's GitHub Action how t
 
 Below that is **Rule history**:
 
-![Rule history with one entry: v1, a date and time, recorded at evaluation, and a short code](../media/releases/quality-gate/history.png)
+![Rule history with one entry: v1, a date and time, saved by a person, and a short code](../media/releases/quality-gate/history.png)
 
 Every set of rules that has ever judged the project is kept unchanged, numbered v1, v2 and so on (the 10 newest are listed). *saved by a person* means someone changed the rules; *recorded at evaluation* means TraceIQ stored the rules in force when it first used them. Because each verdict names its version, an old verdict can be explained later with the rules of that day.
 

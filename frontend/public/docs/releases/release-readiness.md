@@ -43,21 +43,23 @@ The controls are at the top, the answer below them, and the evidence underneath.
 - **Branch (latest commit on it)**: type a branch name, such as `main`, and press **Use branch** to judge the commit of the newest finished run on that branch.
 - **Re-evaluate** works the answer out again, for example after a new run.
 
-![The Commit menu open: Latest run, then commits such as f4bfd81 · main · 1 run(s)](../media/releases/release-readiness/commit-menu.png)
+![The Commit menu open: Latest run, then commits such as 8025cea · feature/todo-routes · 2 run(s) and 00237be · main · 3 run(s)](../media/releases/release-readiness/commit-menu.png)
 
 ## 2. The answer
 
-![A green box: Ready to release, commit f4bfd81, 1 run(s) evaluated, chosen from the latest run; Every gate check passed on the evidence below; all 3 checks passed over 1 run(s)](../media/releases/release-readiness/verdict-ready.png)
+![A pink box: Not ready, commit 8025cea, 2 run(s) evaluated, chosen from the latest run; At least one gate check failed; External CI tests: no report (needs 0 failures); Flaky tests: 1 flaky (needs &lt;= 0) — Add a todo; Critical tests passed: 1 of 2 passed (needs all critical passed) — no result for commit 8025cea: Homepage loads](../media/releases/release-readiness/verdict-latest.png)
 
-The coloured box gives the answer, the commit it is about, how many runs were judged, and the reasons as a list.
+*The demo's newest commit. Its two runs passed, but the demo project's gate also asks for a report from the build system, no flaky tests, and every critical test passed on this commit.*
+
+The coloured box gives the answer, the commit it is about, how many runs were judged, and the reasons as a list. The demo project's rules are strict on purpose (no flaky test at all, a build-system report on every commit), so no demo commit is ready to release.
 
 | Answer | What it means |
 |---|---|
 | Ready to release | Every quality-gate check passed on the runs of this commit. |
-| Not ready | At least one check failed. The reasons say which one, what it found and what it needed, for example *Pass rate: 0.0% (needs &gt;= 100.0%)*. |
+| Not ready | At least one check failed. The reasons say which one, what it found and what it needed, for example *Pass rate: 0.0% (needs &gt;= 90.0%)*. |
 | Insufficient data | Nothing failed, but evidence is missing: there is no finished run, or a required check has nothing to judge (a critical test that didn't run on this commit, no sign-off yet, no report from your build system). Missing evidence never counts as a pass. |
 
-![A pink box: Not ready, an older commit, 1 run(s) evaluated; At least one gate check failed; pass_rate: 0.0% (needs at least 100.0%)](../media/releases/release-readiness/verdict-not-ready.png)
+![A pink box: Not ready, an older commit, 1 run(s) evaluated; At least one gate check failed; Pass rate: 0.0% (needs &gt;= 90.0%), External CI tests: no report, Flaky tests: 1 flaky, Critical tests passed: 1 of 2 passed — failed: Homepage loads](../media/releases/release-readiness/verdict-not-ready.png)
 
 *An older demo commit whose only run failed. The critical-cases table below shows which test it was.*
 
@@ -65,9 +67,9 @@ When the commit was chosen for you (from *Latest run* or a branch), the line und
 
 ## 3. Gate checks
 
-![Gate checks: pass_rate 100.0% needs at least 100.0%, coverage full suite needs informational, security_high_findings 0 needs at most 0, each with a green tick](../media/releases/release-readiness/checks.png)
+![Gate checks on the newest commit: Pass rate 100.0% needs &gt;= 90.0%, Coverage targeted — 2 of 5 cases ran (informational), High-severity security findings 0 needs &lt;= 0, Evidence age oldest 0.2d needs &lt;= 7d, each with a green tick; External CI tests no report and Critical tests passed 1 of 2, each with an amber dash; Flaky tests 1 flaky needs &lt;= 0 with a red cross](../media/releases/release-readiness/checks.png)
 
-The checks of the project's **quality gate**, applied to every run in ④. Each line shows the value found, then "needs" and the rule. A green tick means passed, a red cross failed, and an amber dash failed *because evidence was missing*. A grey line under a check gives detail, such as the names of the tests concerned. The checks appear under the same names as on the *Quality gate* page (*Pass rate*, *Critical tests passed*…), which explains each one; point at a name to read a one-line explanation.
+The checks of the project's **quality gate**, applied to every run in ④. Each line shows the value found, then "needs" and the rule. A green tick means passed, a red cross failed, and an amber dash failed *because evidence was missing*. A grey line under a check gives detail, such as the names of the tests concerned. In the demo, *External CI tests* and *Critical tests passed* are amber (no report arrived, and *Homepage loads* didn't run on this commit), and *Flaky tests* is red because *Add a todo* is quarantined. The checks appear under the same names as on the *Quality gate* page (*Pass rate*, *Critical tests passed*…), which explains each one; point at a name to read a one-line explanation.
 
 Which checks there are depends on the project's rules, which are set on the *Quality gate* page under **Gate rules**. Four of them exist for this page in particular and are off until switched on there:
 
@@ -80,13 +82,13 @@ Which checks there are depends on the project's rules, which are set on the *Qua
 
 ## 4. Runs considered
 
-![Runs considered: Every finished run on f4bfd81. One row: #484 Web smoke (demo) · chromium, 5/5, a date and time, PASSED](../media/releases/release-readiness/runs.png)
+![Runs considered: Every finished run on 8025cea. Two rows, #291 and #290 Web smoke (demo) · chromium · targeted, each 1/1, a date and time, PASSED](../media/releases/release-readiness/runs.png)
 
 Every finished run on the commit (passed, failed or error), newest first: the run number, the suite, the browser, and "targeted" or "case" when only part of the suite ran. On the right: tests passed out of tests run, when it started, and its result. Click a run to open it.
 
 ## 5. Critical cases
 
-![Critical cases table with two tests, Homepage loads and Sign in as alice, both PASSED on this commit and as last result, with dates, commit f4bfd81 and last passed time](../media/releases/release-readiness/critical.png)
+![Critical cases table with two tests: Homepage loads, NO RESULT on this commit (no run for this commit), and Sign in as alice, PASSED; both PASSED as last result, with dates and last passed time](../media/releases/release-readiness/critical.png)
 
 A *case* is one test. The tests whose priority is set to **critical** are the ones a release depends on, and each gets a row:
 
@@ -96,7 +98,7 @@ A *case* is one test. The tests whose priority is set to **critical** are the on
 | **Last result**, **When**, **Commit** | The newest result of the test anywhere in the project, whatever the commit. Useful when it didn't run on this one. |
 | **Last passed** | When it last passed, on any commit. |
 
-![Critical cases on the older commit: Homepage loads is FAILED on this commit (failed in run 420, chromium) although its last result anywhere is PASSED](../media/releases/release-readiness/critical-not-ready.png)
+![Critical cases on the older commit: Homepage loads is FAILED on this commit (failed in run 105, chromium) although its last result anywhere is PASSED](../media/releases/release-readiness/critical-not-ready.png)
 
 *On that older commit a critical test failed; its newest result anywhere has since passed.*
 
@@ -109,13 +111,13 @@ A *case* is one test. The tests whose priority is set to **critical** are the on
 
 ## 6. Active quarantines
 
-![Active quarantines: No active quarantines, and a link Manage flaky tests](../media/releases/release-readiness/quarantines.png)
+![Active quarantines: Add a todo, score 0.41, manual; Owner Alex Morgan, an expiry date; Times out waiting for the list to refresh; tracked in DEMO-102. Below it a link Manage flaky tests](../media/releases/release-readiness/quarantines.png)
 
-Tests that are *quarantined* right now: flaky tests that TraceIQ leaves out of runs for a while. Because they didn't run, they are no evidence for this release. Each one shows its flake score, whether it was quarantined automatically or by a person, its owner, when the quarantine ends, and the reason given. **Manage flaky tests** opens the *Flaky tests* page. In the demo there are none, so the box says "No active quarantines".
+Tests that are *quarantined* right now: flaky tests that TraceIQ leaves out of runs for a while. Because they didn't run, they are no evidence for this release. Each one shows its flake score, whether it was quarantined automatically or by a person, its owner, when the quarantine ends, and the reason given. **Manage flaky tests** opens the *Flaky tests* page. In the demo, *Add a todo* was quarantined by hand, with an owner and a reason. When nothing is quarantined, the box says "No active quarantines".
 
 ## 7. Requirements
 
-![Requirements: DEMO-101 A user can sign in, PASSING (Sign in as alice: passed); DEMO-102 A user can add a todo, PASSING (Add a todo: passed); and a link Manage requirement links](../media/releases/release-readiness/requirements.png)
+![Requirements: DEMO-103, DEMO-104 and PRD-Security-3, each UNTESTED with their tests showing no result; DEMO-101 A user can sign in, PASSING (Sign in as alice: passed); DEMO-102 A user can add a todo, PASSING (Add a todo: passed); and a link Manage requirement links](../media/releases/release-readiness/requirements.png)
 
 Requirements (such as a ticket `DEMO-101`) that have tests linked to them, judged on the same commit as the critical tests. Under each one: its linked tests and their result on this commit. The ticket number links to the ticket when an address was saved with the link.
 

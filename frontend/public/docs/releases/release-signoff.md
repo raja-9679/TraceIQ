@@ -28,7 +28,7 @@ Some checks are done by people, not by machines: a tester follows written steps 
 
 ## A tour of the screen
 
-The page has three cards, from top to bottom. The numbers on the screenshot match the sections below. The demo projects have no manual tests, so the cards are empty here.
+The page has three cards, from top to bottom. The numbers on the screenshot match the sections below. In the demo's web project, release 2.4.0 was tested by hand twice: rejected after the first run, approved after the second.
 
 ![The Release sign-off page with three numbered cards: 1 Manual runs, 2 Sign off, 3 Sign-off history](../media/releases/release-signoff/page-annotated.png)
 
@@ -36,7 +36,7 @@ The page has three cards, from top to bottom. The numbers on the screenshot matc
 
 ## 1. Manual runs
 
-![The Manual runs card: Choose the runs this release was tested with. Start a manual run from a suite that has manual tests. No manual runs in this project yet.](../media/releases/release-signoff/runs.png)
+![The Manual runs card with two runs of Release checklist (manual), both for 2.4.0: #289, 1 passed, 0 failed or blocked of 1, labelled passed; #288, 2 passed, 2 failed or blocked of 4, labelled failed; each with an Open link](../media/releases/release-signoff/runs.png)
 
 The 50 most recent manual runs of the project, newest first. Each row has:
 
@@ -67,11 +67,11 @@ Once recorded, a message confirms it ("Approved 2.4.0"), the ticks and note are 
 
 ## 3. Sign-off history
 
-![The Sign-off history card, showing No sign-offs yet](../media/releases/release-signoff/history.png)
+![The Sign-off history card with two sign-offs of 2.4.0 by Alex Morgan: Approved, covering runs #288 and #289, with the note Upgrade re-tested and passing; and, a day earlier, Rejected, covering run #288, with the note Both payment checks failed](../media/releases/release-signoff/history.png)
 
 The 50 most recent sign-offs, newest first. Each one shows Approved or Rejected, the release name, who signed and when, the runs it covered (*runs #12, #14*), the commit if there was one, and the note.
 
-A sign-off can't be edited or deleted. If a decision changes, record a new one: the newest sign-off is the one that counts.
+A sign-off can't be edited or deleted. If a decision changes, record a new one: the newest sign-off is the one that counts. That is what the demo shows: 2.4.0 was first rejected because both payment checks failed, then approved a day later once they were re-tested.
 
 ## Watch it in use
 
@@ -132,7 +132,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Release sign-off records a person approving or rejecting a release.
 2. The approval rests on manual runs: tests that a person carried out by hand.
-3. Tick the runs this release was tested with. Here there are none yet.
+3. Tick the runs this release was tested with. Each shows its counts and whether it passed.
 4. Then name the release, for example its version number.
 5. Choose Approve or Reject, and add a note about anything you accepted.
 6. The button stays greyed out until the form is complete. The message says what is missing.

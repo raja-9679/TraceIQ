@@ -64,20 +64,20 @@
         <p>The verdict and its checks are at the top; the project's general health is underneath;
           the rules open from a button in the heading. The numbers on the screenshot match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/releases/quality-gate/page-annotated.png" alt="The Quality gate page with five numbered parts: 1 the heading with the verdict and buttons, 2 the summary and list of checks, 3 the selected check, 4 the project health tiles, 5 the daily pass-rate chart and external CI results, 6 the Gate rules button" loading="lazy" width="1440" height="1100"></div>
+          <div class="frame"><img src="../media/releases/quality-gate/page-annotated.png" alt="The Quality gate page with six numbered parts: 1 the heading with the verdict and buttons, 2 the summary and list of checks, 3 the selected check, 4 the project health tiles, 5 the daily pass-rate chart and external CI results, 6 the Gate rules button" loading="lazy" width="1440" height="1100"></div>
           <figcaption>The Quality gate page for the demo's web project. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="verdict" data-toc="① The verdict">The verdict</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/quality-gate/header.png" alt="The heading Releases with a green label Ready to ship, the line Gate evaluated on run #484 · rules v1, and two buttons, Gate rules and Re-evaluate" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/quality-gate/header.png" alt="The heading Releases with a label Not ready · 2 blockers, the line Gate evaluated on run #291 · rules v1, and two buttons, Gate rules and Re-evaluate" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>The label next to the heading</strong> is the verdict:
             <span class="pill t-mint">Ready to ship</span> when every check passes, or
             <span class="pill t-peach">Not ready · 2 blockers</span> with the number of checks that fail.</li>
           <li><strong>The line underneath</strong> says what was judged: the run number (for
-            example <em>run #484</em>), its branch and commit if the run recorded them, and the
+            example <em>run #291</em>), its branch and commit if the run recorded them, and the
             version of the rules used (<em>rules v1</em>). If runs were left out because they were
             cancelled or timed out, it says how many.</li>
           <li><strong>Gate rules</strong> (⑥) opens the rules below the heading (see
@@ -96,12 +96,16 @@
 
         <div class="part"><span class="num">2</span><h2 id="checks" data-toc="② The checks">The checks</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/quality-gate/checks.png" alt="A ring showing 3/3 with the text Every check passes, and a list headed Passing with three rows: Pass rate 100.0%, coverage full suite, High-severity security findings 0" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/quality-gate/checks.png" alt="A ring showing 5/7 with the text 2 checks blocking the release, a list headed Blocking with Flaky tests 1 flaky and Critical tests passed 0 of 2 passed, and a list headed Passing with Pass rate 100.0%, Coverage targeted — 1 of 5 cases ran, High-severity security findings 0, External CI tests 0 failed of 5, Evidence age oldest 0.2d (Homepage loads)" loading="lazy"></div>
         </figure>
         <p>The ring counts the checks that pass out of all checks. Below it, the checks are split
           into <strong>Blocking</strong> (failing, shown first) and <strong>Passing</strong>. Each
           row shows the check's name and, on the right, the value it found. Click a row to show it
           in detail on the right.</p>
+        <p>In the demo the newest run (#291) ran only one of the five tests, so <em>Critical
+          tests passed</em> blocks (neither critical test ran in it), and <em>Flaky tests</em>
+          blocks because the demo's rules allow no flaky test and <em>Add a todo</em> is
+          quarantined.</p>
         <p>Which checks appear depends on the rules. Three are always there:</p>
         <div class="table-wrap">
           <table>
@@ -121,7 +125,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="selected" data-toc="③ The selected check">The selected check</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/quality-gate/detail.png" alt="The selected check Pass rate, labelled Passing: Now 100.0%, Rule at least 100.0%, a box What this check looks at, and an Evidence list with See the evaluated runs and Group the failures" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/quality-gate/detail.png" alt="The selected check Flaky tests, labelled Blocking: Now 1 flaky, Rule &lt;= 0, a box What this check looks at naming Add a todo, and an Evidence link Open Flaky tests" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Passing / Blocking</strong>: whether this check meets its rule.</li>
@@ -139,7 +143,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="health" data-toc="④ Project health">Project health</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/quality-gate/health.png" alt="Project health with a 7 days menu and five tiles: Pass rate 73.33% (11 of 15 finished runs), Runs 15, Flaky tests 1 (0 quarantined), Monitors down 0 of 0, Security findings 0 high (1 medium, 0 low); below, a daily pass-rate chart and an empty External CI results box" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/quality-gate/health.png" alt="Project health with a 7 days menu and five tiles: Pass rate 75% (15 of 20 finished runs), Runs 20, Flaky tests 1 (1 quarantined), Monitors down 0 of 0, Security findings 1 high (5 medium, 8 low); below, a daily pass-rate chart and External CI results listing two web unit tests (vitest) reports: 5 tests all green, and 5 tests 1 failed" loading="lazy"></div>
         </figure>
         <p>The wider picture, separate from the verdict. The menu on the right chooses the period:
           the last <strong>7</strong>, <strong>14</strong> or <strong>30 days</strong>.</p>
@@ -173,15 +177,17 @@
         </div>
         <p><strong>External CI results</strong> lists the five newest test reports your own build
           system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each
-          with its number of tests and failures. Until one arrives it says "None yet". These
+          with its number of tests and failures (the demo has two). Until one arrives it says "None yet". These
           reports count towards the verdict only when the rule <em>Require external CI tests
           green</em> is on.</p>
 
         <div class="part"><span class="num">6</span><h2 id="rules" data-toc="⑥ Gate rules">Gate rules</h2></div>
         <p>Press <strong>Gate rules</strong> in the heading to open the rules. Anyone can read them;
-          only <em>editors</em> can save changes.</p>
+          only <em>editors</em> can save changes. The demo's web project has a stricter set than the
+          defaults listed below: 90% pass rate, external CI tests required, no flaky tests, every
+          critical test passed and results no older than 7 days.</p>
         <figure>
-          <div class="frame small"><img src="../media/releases/quality-gate/rules.png" alt="The Gate rules form: Minimum pass rate 100, Maximum high findings 0, Maximum medium findings blank, checkboxes for monitors and external CI tests, a Release readiness section, a Performance budgets section, and a Save rules button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/quality-gate/rules.png" alt="The Gate rules form as the demo project sets it: Minimum pass rate 90, Maximum high findings 0, Maximum medium findings blank, Require monitors up unticked, Require external CI tests green ticked; Release readiness: Maximum flaky cases 0, Require every critical case passed ticked, Maximum evidence age 7 days, sign-off and accessibility unticked; an API contract section; Performance budgets all 0; and a Save rules button" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
@@ -208,7 +214,7 @@
         </ul>
         <p>Below that is <strong>Rule history</strong>:</p>
         <figure>
-          <div class="frame"><img src="../media/releases/quality-gate/history.png" alt="Rule history with one entry: v1, a date and time, recorded at evaluation, and a short code" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/quality-gate/history.png" alt="Rule history with one entry: v1, a date and time, saved by a person, and a short code" loading="lazy"></div>
         </figure>
         <p>Every set of rules that has ever judged the project is kept unchanged, numbered v1, v2
           and so on (the 10 newest are listed). <em>saved by a person</em> means someone changed
