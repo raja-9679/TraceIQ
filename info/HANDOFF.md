@@ -1,7 +1,7 @@
 # Handoff — resuming the regulated-readiness work
 
 Written 2026-08-07, rewritten 2026-08-10, updated 2026-09-07, status corrected
-2026-09-08, latest resume section 2026-10-21. Branch `feature/enterprise-auth-ai`.
+2026-09-08, latest resume section 2026-10-22. Branch `feature/enterprise-auth-ai`.
 
 This file is deliberately self-contained: it lives in git, so it travels to any
 machine. Assistant session memory does **not** — it sits in
@@ -10,7 +10,83 @@ it belongs here rather than in a chat history.
 
 ---
 
-## Resume here (2026-10-21 evening, home laptop) — read this first
+## Resume here (2026-10-22, office laptop) — read this first
+
+**State.** Both branches committed locally and **NOT pushed yet**
+(`feature/enterprise-auth-ai`, `feature/redesign-a`; push = fast-forward to
+`origin/feature/enterprise-auth-ai-2026-10` / `origin/feature/redesign-a`).
+The local stack on this laptop (`~/traceiq-test`, still MinIO — the RustFS
+switch needs `scripts/migrate_object_store.py` and was not done) runs images
+built from `feature/redesign-a` HEAD. Migration head unchanged
+(`e152b3c4d616`; no migrations today). Last full verification on the final
+backend: unit 2592 passed; live 3160 passed + `--migrations` ok (before the
+audit-chain fix, which only touched audit.py + unit tests); frontend 257
+passed, tsc clean.
+
+**Done today — everything in `info/GUIDE_FOLLOWUPS.md` piles 1 and 2**, in
+fix branches merged into enterprise (backend) / redesign (UI):
+- Access control: workspace delete permission name; removing a member drops
+  teams, project grants, case overrides and their keys (audited, last-admin
+  409); team add refuses non-members; `PUT /workspaces/{id}/users/{uid}/role`;
+  tenant-admin Assign changes existing roles. **API keys are now held to their
+  workspace, project and role** (`app/services/key_scope.py`, applied in
+  access_service / rbac_service / `access_service.workspace_membership` /
+  `is_workspace_admin`; listings narrowed by `key_scope.restrict`). Behaviour
+  change: a key used across several workspaces gets 403 outside its own; a
+  key with a role is capped at it (Default = owner's access as before).
+- Trackers: base_url through net_guard at save and send, admin-only and
+  audited writes, run tickets only to the run's workspace's tracker. Billing:
+  paid plans only by the instance admin (with or without Stripe), audited.
+  Access-matrix findings use finding_lifecycle. Demo workspaces never send
+  outbound HTTP (redeliver, tickets, tracker import, paging test → 409).
+- Backend bugs: DELETE proposals use cascade_delete; monitor delete with
+  checks; schedule resume recomputes next_run_at; open_findings excludes
+  superseded; vendor lift lower bound; GA4 headers; case-insensitive run
+  search; gate and readiness share the default scope (`resolve_runs`);
+  "newest" result by time; manual runs out of browser breakdowns; audit
+  verify checks the chain AFTER pre-chaining rows (`unverifiable_rows`,
+  status verified|partial|broken; trust center stays strict).
+- `/auth/me` returns `mfa_enabled` and `is_instance_admin` (MeRead, only
+  there — member lists don't disclose them). The UI's `useMe()` /
+  `useIsInstanceAdmin()` read it; never probe an admin endpoint for a flag
+  (its 403 raises the global toast).
+- Demo workspace: `app/services/demo_seed/` (5 area modules) seeds ~25
+  previously empty pages; nothing is future-dated; scheduler skips demo
+  workspaces; demo member users (`*.demo<ws>@demo.traceiq.invalid`) are
+  deleted with the demo; that domain is refused by register and the demo
+  invite token is random (it used to be derived from the constant seed —
+  anyone could join another user's demo).
+- UI: monitor creation, role-gated controls, gate check labels, gate API
+  contract fields, case priority, requirement unlink, workspace role control,
+  invitation link shown on create, MFA status, suites with tests + sub-modules,
+  charts, layout fixes, many label/text fixes.
+- Guide: whole guide re-captured twice (pictures only) against a recreated
+  demo; text updated; GUIDE_FOLLOWUPS.md marks every fixed item with its sha
+  and lists what is still open.
+
+**Next — small, the owner chooses:**
+1. Videos: ffmpeg isn't installed on the office laptop (`sudo apt install
+   ffmpeg`), so no MP4 was re-recorded and many walkthroughs still show old /
+   empty data; the edited `record()` blocks have never run. Run
+   `e2e/docs-capture/run.sh` (with video) and fix what breaks.
+2. The "Still open / new this round" list at the end of GUIDE_FOLLOWUPS.md
+   (page-budget red bars, step-editor title crowding, analytics omits
+   no-run tests, demo-data nits, cosmetic badge placement).
+3. Not redesigned yet: ReleaseReadiness, Requirements, Incidents,
+   AccessMatrix, Estate, ScriptInventory, FrontendQuality, TestBuilder.
+
+**Traps found today.**
+- RLS enforce turns cross-workspace 403s into 404s — key-scope tests accept
+  either (`DENIED`).
+- `register_user` is wrapped by the rate limiter; call
+  `register_user.__wrapped__` in direct-call tests.
+- In live tests the scene's first tenant's Tenant Admin IS the instance
+  admin (first-tenant fallback) — test "not instance admin" with a member.
+- Fix branches/worktrees used today: `fix/guide-{access,trackers,backend,seed,
+  keyscope,me,round2-backend}`, `fix/guide-{ui,round2-ui}`,
+  `docs/guide-recapture`, `integrate/guide-fixes` — all merged.
+
+## Resume here (2026-10-21 evening, home laptop)
 
 **State.** Both branches pushed (fast-forward): `feature/enterprise-auth-ai`
 → `origin/feature/enterprise-auth-ai-2026-10`, `feature/redesign-a` →
