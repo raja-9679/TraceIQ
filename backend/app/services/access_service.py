@@ -1,6 +1,7 @@
 from typing import Optional
 from sqlmodel.ext.asyncio.session import AsyncSession
 from sqlmodel import select, or_, and_
+from app.services import key_scope
 from app.models import (
     User, UserWorkspace, Workspace, Project, Team, Role,
     UserProjectAccess, TeamProjectAccess, TestCase, UserTestCaseAccess
@@ -45,6 +46,12 @@ class AccessService:
         # 1. Check if user is Workspace Admin
         project = await session.get(Project, project_id)
         if not project:
+            return False
+
+        # An API key never reaches past its workspace/project or above its role.
+        ks = key_scope.for_user(session, user_id)
+        if ks is not None and (not ks.allows_project(project.id, project.workspace_id)
+                               or min_val > ks.level):
             return False
 
         ws_rows = await session.exec(
@@ -92,6 +99,20 @@ class AccessService:
 
     @staticmethod
     async def get_project_role(user_id: int, project_id: int, session: AsyncSession) -> Optional[str]:
+        role = await AccessService._owner_project_role(user_id, project_id, session)
+        ks = key_scope.for_user(session, user_id)
+        if role is None or ks is None:
+            return role
+        project = await session.get(Project, project_id)
+        if not ks.allows_project(project_id, project.workspace_id if project else None):
+            return None
+        # Capped at the key's role: a viewer key of an admin is a viewer.
+        if _ROLE_MAP.get(role, 0) > ks.level:
+            return key_scope.LEVEL_NAMES[ks.level]
+        return role
+
+    @staticmethod
+    async def _owner_project_role(user_id: int, project_id: int, session: AsyncSession) -> Optional[str]:
         from app.models import UserTeam
         project = await session.get(Project, project_id)
         if not project:
@@ -138,6 +159,22 @@ class AccessService:
 
     @staticmethod
     async def has_test_case_access(user_id: int, test_case_id: int, session: AsyncSession, min_role: str = "viewer") -> bool:
+        # An API key is held to its project scope, so the per-case override
+        # below must not let it through first: go straight to the project
+        # check, which applies the key's limits.
+        if key_scope.for_user(session, user_id) is not None:
+            case = await session.get(TestCase, test_case_id)
+            if not case:
+                return False
+            project_id = case.project_id
+            if not project_id and case.test_suite_id:
+                from app.models import TestSuite
+                suite = await session.get(TestSuite, case.test_suite_id)
+                project_id = suite.project_id if suite else None
+            if not project_id:
+                return False
+            return await AccessService.has_project_access(user_id, project_id, session, min_role)
+
         # Overrides logic: Check TestCase level first
         tc_access = await session.exec(
             select(UserTestCaseAccess)

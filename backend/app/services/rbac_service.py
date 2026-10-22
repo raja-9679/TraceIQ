@@ -54,6 +54,14 @@ class RBACService:
         Format: "scope:action" (e.g. "workspace:create_project")
         """
         req_scope, req_action = permission.split(":")
+
+        # API-key limits (workspace/project scope, role ceiling) — see
+        # app/services/key_scope.py. Only for checks about the key's owner.
+        from app.services import key_scope
+        ks = key_scope.for_user(session, user_id)
+        if ks is not None and not await key_scope.permits(
+                session, ks, permission, workspace_id, project_id):
+            return False
         
         # 1. Tenant Admin Check (Global Override for most things, or specific tenant scope)
         # Fix: Resolve Tenant ID from Workspace or Project

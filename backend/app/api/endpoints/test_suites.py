@@ -179,6 +179,11 @@ async def list_test_suites(
         if not await rbac_service.has_permission(session, current_user.id, "project:view", project_id=project_id):
             raise HTTPException(status_code=403, detail="Access denied to this project")
         query = query.where(TestSuite.project_id == project_id)
+
+    # An API key lists only its own workspace (and project, when narrowed);
+    # the membership subqueries above are about its owner, who may see more.
+    from app.services import key_scope
+    query = key_scope.restrict(query, TestSuite.project_id, session, current_user.id)
         
     result = await session.exec(
         query.options(
