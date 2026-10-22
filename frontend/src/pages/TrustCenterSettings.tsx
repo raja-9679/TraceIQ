@@ -10,13 +10,16 @@ import { TrustGeneralCard, TrustPostureCard, TrustStatusCard } from '@/component
 import { TrustIncidentsCard } from '@/components/trust/TrustIncidentsCard';
 import { TrustDocumentsCard } from '@/components/trust/TrustDocumentsCard';
 import { errDetail } from '@/components/trust/trustHelpers';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 // Workspace admins configure the public trust center (/trust/:slug):
 // uptime, incident posts, aggregate posture and gated documents.
 export default function TrustCenterSettings() {
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
     const cfg = useQuery({ queryKey: ['trust-center', wsId], queryFn: () => trustApi.get(wsId!), enabled: !!wsId, retry: false });
     const c = cfg.data;
 

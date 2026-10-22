@@ -8,6 +8,7 @@ import { getWorkspaces, Workspace } from '@/lib/api';
 import { llmUsageApi, LLMUsageSummary } from '@/api/llmUsage';
 import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 const fmtTokens = (n: number) => {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -19,6 +20,9 @@ const FEATURE_LABELS: Record<string, string> = {
     failure_analysis: 'Failure analysis',
     selector_heal: 'Selector healing',
     case_generation: 'Test generation',
+    assistant: 'Assistant',
+    requirement_generation: 'Tests from requirements',
+    incident_regression: 'Regression tests from incidents',
     unknown: 'Other',
 };
 
@@ -47,6 +51,8 @@ function Card({ title, right, children }: { title: string; right?: React.ReactNo
 function DailyTrend({ daily }: { daily: LLMUsageSummary['daily'] }) {
     const max = Math.max(...daily.map((d) => d.total_tokens), 1);
     const total = daily.reduce((s, d) => s + d.total_tokens, 0);
+    // Nothing used: an empty axis read "peak 1 tokens/day".
+    if (total === 0) return <p className="text-sm text-ink-soft">No AI tokens used in this window.</p>;
     return (
         <div>
             <div className="mb-1 flex justify-between text-xs text-ink-soft tabular-nums">
@@ -82,7 +88,9 @@ export default function LLMUsage() {
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
     const [days, setDays] = useState(30);
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
 
     const usage = useQuery({
         queryKey: ['llm-usage', wsId, days],

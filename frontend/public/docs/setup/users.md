@@ -42,13 +42,13 @@ The line under the heading counts what is shown, for example *"1 member · 0 pen
 
 The menu chooses the workspace whose people are listed. If you are a *tenant admin* (an administrator of the whole organisation, see *Tenant admin*), it has one more choice, **All workspaces**, and starts there. Everyone else starts on their first workspace.
 
-**All workspaces** lists each person in the organisation once, with their highest role anywhere in it (for example *Tenant Admin*). It doesn't list pending invitations, and to remove someone you first pick a single workspace. Its **Workspace** box shows only a dash in this version.
+**All workspaces** lists each person in the organisation once, with their highest role anywhere in it (for example *Tenant Admin*). It doesn't list pending invitations, and to remove someone you first pick a single workspace.
 
-![A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Workspace -, Last active, and the note Pick a single workspace in the scope menu to remove people from it](../media/setup/users/all-detail.png)
+![A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Last active, and the note Pick a single workspace in the scope menu to remove people from it](../media/setup/users/all-detail.png)
 
 ## 2. Invite people
 
-![The Invite people dialog: Email address, Invite to Workspace, Workspace Current: Demo workspace, Role Member, and Cancel and Send invitation buttons](../media/setup/users/invite-dialog.png)
+![The Invite people dialog: Email address, Invite to Workspace, Workspace Current: Demo workspace, Role Member, and Cancel and Create invitation buttons](../media/setup/users/invite-dialog.png)
 
 Only shown to people who may manage the workspace's members (workspace admins and tenant admins). The dialog asks:
 
@@ -65,10 +65,10 @@ Only shown to people who may manage the workspace's members (workspace admins an
 | **Editor** | Can also create, change and run tests. |
 | **Project Admin** | Can also manage the project's members, settings, and delete things. |
 
-> **What "Send invitation" really does**
+> **What "Create invitation" does**
 >
 > - **If the person already has a TraceIQ account** with that email, they are added straight away. Nothing to accept.
-> - **If not**, TraceIQ keeps a pending invitation, listed under *Pending invites*. In this version **no email is sent**, so tell them yourself. When they sign up with exactly that address, they join with the role you chose.
+> - **If not**, TraceIQ keeps a pending invitation, listed under *Pending invites*. **No email is sent**: the dialog shows the **invitation link** with **Copy invitation link**, once, for you to send. When they sign up from it with exactly that address, they join with the role you chose.
 > - A project admin who is not a workspace admin can only invite people who are already in the workspace.
 
 ## 3. The list
@@ -105,7 +105,7 @@ Click someone in the list to see them here: their **role**, their **status**, an
 1. Ask them to sign up to TraceIQ with their work email (or do the next steps first; they join when they sign up).
 2. Pick the workspace in the menu, then press **Invite people**.
 3. Type their email, set **Invite to** to **Project**, and choose the project.
-4. Choose **Viewer**, **Editor** or **Project Admin**, and press **Send invitation**.
+4. Choose **Viewer**, **Editor** or **Project Admin**, and press **Create invitation**. Send them the link it shows.
 
 ### …remove someone who has left
 

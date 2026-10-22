@@ -567,12 +567,18 @@ export const getWorkspaceMembersDetailed = async (wsId: number): Promise<Detaile
     return response.data;
 };
 
-export const inviteUserToWorkspace = async (wsId: number, email: string, role: string): Promise<void> => {
-    await api.post(`/workspaces/${wsId}/invitations`, { email, role });
+/** `token` comes back only when a NEW invitation was created (status
+ *  "invited"); it is never listed again, and no email is sent. */
+export interface WorkspaceInviteResult { status: 'success' | 'invited' | 'exists'; message: string; token?: string }
+
+export const inviteUserToWorkspace = async (wsId: number, email: string, role: string): Promise<WorkspaceInviteResult> => {
+    const response = await api.post(`/workspaces/${wsId}/invitations`, { email, role });
+    return response.data;
 };
 
-export const inviteUserToProject = async (projectId: number, email: string, role: string): Promise<void> => {
-    await api.post(`/projects/${projectId}/invitations`, { email, role });
+export const inviteUserToProject = async (projectId: number, email: string, role: string): Promise<WorkspaceInviteResult> => {
+    const response = await api.post(`/projects/${projectId}/invitations`, { email, role });
+    return response.data;
 };
 
 export const getWorkspaceInvitations = async (wsId: number): Promise<DetailedMember[]> => {
@@ -706,5 +712,13 @@ export const forceCompleteRun = async (
         status,
         error_message: errorMessage
     });
+    return response.data;
+};
+
+export interface WorkspaceRoleChange { status: 'updated' | 'unchanged'; role: string; previous_role: string | null }
+
+/** Workspace admin only; 409 when it would remove the last admin. */
+export const setWorkspaceMemberRole = async (wsId: number, userId: number, role: 'admin' | 'member'): Promise<WorkspaceRoleChange> => {
+    const response = await api.put(`/workspaces/${wsId}/users/${userId}/role`, { role });
     return response.data;
 };

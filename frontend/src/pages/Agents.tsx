@@ -9,7 +9,7 @@ import { SkeletonRows } from '@/components/redesign-local/groupB/bits';
 import { WorkspacePicker } from '@/components/compliance/WorkspacePicker';
 import { useComplianceWorkspace } from '@/components/compliance/useComplianceWorkspace';
 import { AgentList, ControlForm, SessionsCard, TimelineCard } from '@/components/agents/AgentCards';
-import { WILDCARD, inheritedLimits } from '@/components/agents/agentHelpers';
+import { WILDCARD, inheritedLimits, realAgents } from '@/components/agents/agentHelpers';
 import { errDetail } from '@/lib/errors';
 import { agentsApi } from '@/api/policies';
 
@@ -46,7 +46,7 @@ export default function Agents() {
             ) : (
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                     <div className="flex flex-col gap-5">
-                        <AgentList agents={data.agents} selected={selected} onSelect={pick} />
+                        <AgentList agents={realAgents(data.agents)} selected={selected} onSelect={pick} />
                         <SettingsCard
                             labelledBy="add-agent"
                             icon={<Plus className="h-4 w-4" />}

@@ -2,7 +2,7 @@
 
 # Issue trackers
 
-Setup · Every workspace member can see it · Every workspace member can change it
+Setup · Every workspace member can see it · Workspace admins can change it
 
 > **In short**
 >
@@ -36,7 +36,7 @@ The demo workspace has no trackers yet, so the page shows *"No trackers yet"*. T
 
 ## 1. Workspace
 
-Tracker connections belong to a **workspace** and are shared by everyone in it. This menu chooses whose connections you see. The page opens on the first workspace in your list each time. Next to it, **Add tracker** opens the form; it is hidden while the form is open.
+Tracker connections belong to a **workspace** and are shared by everyone in it. This menu chooses whose connections you see. The page opens on the workspace of the project picked in the sidebar. Next to it, **Add tracker** (workspace admins only) opens the form; it is hidden while the form is open.
 
 ## 2. Provider and name
 
@@ -95,7 +95,7 @@ Once a connection is saved, the left side lists every tracker of the workspace i
 - **Connection**: the base URL and the account name. The token is never shown.
 - **What this does**: a reminder of where the tracker is offered.
 - **Disable** / **Enable**: a disabled tracker stays saved but is not offered anywhere until you enable it again.
-- **Remove**: deletes the connection **straight away, without asking**. Tickets already filed stay in your tracker. Requirements imported through it stay in TraceIQ but can no longer be refreshed.
+- **Remove**: deletes the connection after you confirm. Tickets already filed stay in your tracker. Requirements imported through it stay in TraceIQ but can no longer be refreshed.
 
 ## Watch it in use
 
@@ -129,7 +129,7 @@ To file *one* ticket for a problem that failed many times, use **Failure triage*
 
 ## Good to know
 
-- **Everyone in the workspace can add, switch off and remove trackers**, not only admins. Changes on this page are not recorded in the *Audit log*.
+- **Only workspace admins can add, switch off and remove trackers**, because a connection holds a shared account. Other members see the list without the buttons. A tracker address TraceIQ won't connect to (for example an internal address) is refused with the reason shown as-is.
 - **Filing a ticket needs the editor role** on the run's project. Viewers can see the run but are refused (*"Editor role required"*).
 - **What a ticket from a run says:** the run number and result, how many tests passed and failed, the error message, and the code version, branch and pull request if the run was given them. Then the trace, video and screenshots, for whichever of those the run recorded.
 - **Only switched-on trackers are offered.** The *Create ticket* menus on runs and in Failure triage list enabled Jira, iTop and GitHub trackers; Requirements lists enabled Jira and Linear ones.

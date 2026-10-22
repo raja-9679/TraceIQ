@@ -55,9 +55,13 @@ export default function ProjectSettings() {
                         <SectionNav label="Project settings sections" sections={SECTIONS} active={section} onChange={setSection} />
                     </aside>
                     <div className="flex min-w-0 flex-1 flex-col gap-5">
-                        {project && !canEdit && (
+                        {project && !canEdit && section !== 'more' && (
                             <p className="rounded-2xl border border-border bg-white px-4 py-3 text-sm text-ink-soft">
-                                You can see these settings; changing them needs the project admin role.
+                                {section === 'api'
+                                    ? (project.access_level === 'editor'
+                                        ? 'Editors can upload and remove the OpenAPI spec.'
+                                        : 'You can see this; uploading a spec needs the editor role.')
+                                    : 'You can see these settings; changing them needs the project admin role.'}
                             </p>
                         )}
                         {section === 'notifications' && <ProjectNotificationsSection projectId={projectId} canEdit={canEdit} />}

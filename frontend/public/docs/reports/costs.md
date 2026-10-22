@@ -39,7 +39,7 @@ The numbers on the screenshot match the sections below.
 ## 1. The pickers
 
 - **Window**: the last 7, 30 (the starting value), 90 or 365 days, counted in whole UTC days up to now.
-- **Workspace**: the page opens on your first workspace; choose another here.
+- **Workspace**: the page opens on the workspace of the project picked in the sidebar; choose another here.
 - **Project**: *All my projects*, or one project. Choosing one project also shows its monthly budget (part 8).
 
 ## 2. When there are no prices
@@ -61,9 +61,9 @@ With a currency set, the administrator can give a price per million tokens for e
 
 ## 4. Per day
 
-![A chart titled Token use per day from 2026-09-22 to 2026-10-21, with no bars](../media/reports/costs/trend.png)
+![A box titled Use per day with the line No AI use or test time in this window](../media/reports/costs/trend.png)
 
-One bar per day of the window, oldest on the left. With prices it is called **Spend per day** and the bars are money. Without prices it is called **Token use per day** and the bars are AI tokens only, so machine time doesn't appear in the bars. **Point at a day** to see its numbers, including that day's browser-minutes. The demo has no AI use, so its chart is empty.
+One bar per day of the window, oldest on the left. With prices it is called **Spend per day** and the bars are money. Without prices it is called **Use per day** and shows two charts, one for AI tokens and one for browser-minutes (machine time), since they can't share one scale. **Point at a day** to see its numbers. With nothing used in the window it just says "No AI use or test time in this window".
 
 Under the chart, a short note explains how browser-minutes are counted (see [Good to know](#good-to-know)).
 

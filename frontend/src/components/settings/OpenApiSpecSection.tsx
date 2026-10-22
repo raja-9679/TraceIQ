@@ -108,7 +108,7 @@ export function OpenApiSpecSection({ projectId }: { projectId: number }) {
             )}
 
             <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1.5">
+                <div className="flex flex-col items-start gap-1.5">
                     <Label htmlFor={`openapi-file-${projectId}`}>Upload a JSON file</Label>
                     <input
                         ref={fileRef}
@@ -126,7 +126,7 @@ export function OpenApiSpecSection({ projectId }: { projectId: number }) {
                     className="flex min-w-0 flex-1 flex-wrap items-end gap-2"
                     onSubmit={(e) => { e.preventDefault(); if (url.trim()) save.mutate({ url: url.trim() }); }}
                 >
-                    <div className="min-w-[220px] flex-1 space-y-1.5">
+                    <div className="flex min-w-[220px] flex-1 flex-col gap-1.5">
                         <Label htmlFor={`openapi-url-${projectId}`}>Or fetch from a URL</Label>
                         <Input
                             id={`openapi-url-${projectId}`}

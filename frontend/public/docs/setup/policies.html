@@ -135,7 +135,7 @@
           <table>
             <thead><tr><th style="width:24%">Filter</th><th>What it does</th></tr></thead>
             <tbody>
-              <tr><td><strong>Scope</strong></td><td><em>This workspace</em>, or <em>Whole instance</em>: every workspace on the server, for server administrators only. Others get a refusal message instead of a list (see the picture below).</td></tr>
+              <tr><td><strong>Scope</strong></td><td><em>This workspace</em>, or <em>Whole instance</em>: every workspace on the server. Only offered to server administrators (instance admins).</td></tr>
               <tr><td><strong>Action</strong></td><td>Only refusals of one kind of action (the groups above).</td></tr>
               <tr><td><strong>Rule</strong></td><td>Only one rule. The menu lists the rules of the chosen action.</td></tr>
               <tr><td><strong>Agent id</strong></td><td>Only refusals of one agent. Type its exact name.</td></tr>
@@ -143,10 +143,6 @@
             </tbody>
           </table>
         </div>
-        <figure>
-          <div class="frame small"><img src="../media/setup/policies/denials-instance.png" alt="Recent denials with the scope set to Whole instance (instance admins), showing the message that this can only be managed by the instance admin" loading="lazy"></div>
-          <figcaption>What someone who isn't a server administrator sees after choosing <em>Whole instance</em>. The message talks about "instance settings", but it applies to this list too.</figcaption>
-        </figure>
         <p>Each row says <strong>when</strong>, which <strong>rule</strong> (and action), the
           <strong>reason</strong> TraceIQ gave, <strong>where</strong> (the project, if there was
           one) and <strong>who</strong>: the agent and its session if an agent asked, and the

@@ -13,7 +13,8 @@ import {
 import { cn } from '@/lib/utils';
 
 const pctOf = (score: number) => Math.round(Math.max(0, Math.min(1, score)) * 100);
-const barColour = (score: number) => (score >= 0.66 ? 'bg-[#E0603A]' : score >= 0.33 ? 'bg-[#F2C94C]' : 'bg-[#8FD3B6]');
+const FLAKY_SCORE = 0.33;
+const barColour = (score: number) => (score >= 0.66 ? 'bg-[#E0603A]' : score >= FLAKY_SCORE ? 'bg-[#F2C94C]' : 'bg-[#8FD3B6]');
 
 // ---------------------------------------------------------------------------
 // Flake score bar — 0.0 stable → 1.0 pure flake
@@ -51,7 +52,7 @@ function meaning(e: FlakinessEntry) {
     if (e.flake_score >= 0.66) {
         return 'This test passes and fails under the same conditions most of the time. Its result tells you little. Quarantine it so it stops blocking runs, then fix the timing or data it depends on.';
     }
-    if (e.flake_score >= 0.33) {
+    if (e.flake_score >= FLAKY_SCORE) {
         return 'This test sometimes fails for no reason the code explains. Keep an eye on it; quarantine it if it starts blocking releases.';
     }
     return 'Mostly stable. It has wobbled a little, but not enough to stop trusting it.';
@@ -171,6 +172,10 @@ export default function FlakyTests() {
     ].filter((g) => g.items.length > 0);
     const selected = list.find((e) => e.test_case_id === selectedId) ?? groups[0]?.items[0] ?? null;
     const quarantined = list.filter((e) => e.quarantine_state === 'active').length;
+    // The list includes every test with history, stable ones too. Count as
+    // flaky the same line the bars and Flake trends use (score >= 0.33,
+    // flake_patterns.FLAKY_SCORE; the gate's 0.4 is a separate, stricter line).
+    const flakyCount = list.filter((e) => e.flake_score >= FLAKY_SCORE).length;
 
     return (
         <div className="flex flex-col gap-5">
@@ -178,7 +183,7 @@ export default function FlakyTests() {
                 title="Flaky tests"
                 subtitle={
                     !projectId ? 'Pick a project in the sidebar.'
-                        : entries ? `${list.length} test${list.length === 1 ? '' : 's'} pass and fail under the same conditions · ${quarantined} quarantined`
+                        : entries ? `${flakyCount} of ${list.length} test${list.length === 1 ? '' : 's'} pass and fail under the same conditions (score ≥ ${Math.round(FLAKY_SCORE * 100)}%) · ${quarantined} quarantined`
                             : 'Tests that pass and fail under the same conditions. Quarantine them so they stop blocking runs.'
                 }
             />

@@ -11,6 +11,7 @@ import { LabelledSelect } from '@/components/reports/ReportControls';
 import { ValueLinks, ValueMetricCard } from '@/components/value/ValueMetricCard';
 import { defaultRange } from '@/components/poc/pocHelpers';
 import { errorDetail } from '@/components/flakes/flakeHelpers';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 type Scope = 'project' | 'workspace';
 
@@ -22,7 +23,9 @@ export default function ValueReport() {
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
     const [scope, setScope] = useState<Scope>('project');
     const [wsPick, setWsPick] = useState<number | null>(null);
-    const wsId = wsPick ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const wsId = wsPick ?? activeWs ?? workspaces?.[0]?.id ?? null;
     const initial = defaultRange();
     const [start, setStart] = useState(initial.start);
     const [end, setEnd] = useState(initial.end);

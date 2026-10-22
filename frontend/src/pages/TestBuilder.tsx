@@ -12,6 +12,8 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { newId } from '@/lib/ids';
 
+const CASE_PRIORITIES = ['', 'critical', 'high', 'medium', 'low'];
+
 // Helper to get draft key for localStorage
 const getDraftKey = (suiteId: string | undefined, caseId: string | undefined) => {
     return caseId ? `testBuilder_draft_edit_${caseId}` : `testBuilder_draft_new_${suiteId}`;
@@ -66,6 +68,9 @@ export default function TestBuilder() {
     const [matrixBrowsers, setMatrixBrowsers] = useState<string[]>([]);
     const [matrixDevices, setMatrixDevices] = useState<string[]>([]);
     const [showMatrix, setShowMatrix] = useState(false);
+    // TestCase.priority: "critical" cases drive the release-readiness and
+    // quality-gate critical-case rules, so automated cases need it too.
+    const [priority, setPriority] = useState('');
     const [isDirty, setIsDirty] = useState(false);
     const [originalData, setOriginalData] = useState<{ testName: string; steps: TestStep[] } | null>(null);
     const initialLoadDone = useRef(false);
@@ -94,6 +99,7 @@ export default function TestBuilder() {
             setOriginalData({ testName: serverData.name, steps: serverData.steps || [] });
             setIsAuthSetup(!!serverData.is_auth_setup);
             setUseAuthSession(serverData.use_auth_session !== false);
+            setPriority(serverData.priority || '');
             if (serverData.dataset && Array.isArray(serverData.dataset) && serverData.dataset.length > 0) {
                 setDatasetText(JSON.stringify(serverData.dataset, null, 2));
                 setShowDataset(true);
@@ -282,6 +288,7 @@ export default function TestBuilder() {
                 is_auth_setup: isAuthSetup,
                 use_auth_session: useAuthSession,
                 dataset: dataset,
+                priority: priority || null,
                 run_matrix: (matrixBrowsers.length || matrixDevices.length)
                     ? { browsers: matrixBrowsers, devices: matrixDevices }
                     : null
@@ -366,6 +373,17 @@ export default function TestBuilder() {
                     >
                         Matrix{(matrixBrowsers.length || matrixDevices.length) ? ' ✓' : ''}
                     </button>
+                    <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600" title="Critical cases count for release readiness and the quality gate's critical-case rule.">
+                        Priority
+                        <select
+                            aria-label="Priority"
+                            value={priority}
+                            onChange={(e) => { setPriority(e.target.value); setIsDirty(true); }}
+                            className="h-8 rounded-full border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700"
+                        >
+                            {CASE_PRIORITIES.map((p) => <option key={p} value={p}>{p ? p[0].toUpperCase() + p.slice(1) : 'None'}</option>)}
+                        </select>
+                    </label>
                     <label className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 cursor-pointer select-none" title="A passing run of this case captures the logged-in session (cookies + storage) and stores it for the project. Other cases then start already logged in.">
                         <input type="checkbox" checked={isAuthSetup} onChange={(e) => { setIsAuthSetup(e.target.checked); setIsDirty(true); }} className="rounded accent-indigo-600" />
                         Auth setup case

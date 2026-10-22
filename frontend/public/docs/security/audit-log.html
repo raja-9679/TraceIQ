@@ -92,7 +92,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="filters" data-toc="③ Filters">Filters</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/audit-log/filters.png" alt="Filters: Entity type, Action (e.g. login), User (Anyone), From and To dates, Apply filters and Clear" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/audit-log/filters.png" alt="Filters: Entity type, Action (e.g. update), User (Anyone), From and To dates, Apply filters and Clear" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Entity type</strong>: what kind of thing the entry is about, for example <code>project</code>, <code>case</code>, <code>api_key</code>, <code>access_review</code> or <code>security_finding</code>. The box suggests common ones as you type.</li>
@@ -164,7 +164,7 @@
           <li><strong>Nobody can edit it.</strong> The database itself refuses to change an entry, and refuses to delete one except for the retention clean-up, if your server has one set up (by default entries are kept forever).</li>
           <li><strong>Secrets are not written down.</strong> Passwords, tokens and similar values are removed from an entry's details before it is saved.</li>
           <li><strong>Entries outlive what they describe.</strong> A deleted project or a removed user still has their entries, so the history stays complete.</li>
-          <li><strong>Sign-ins are not here.</strong> Sign-in entries aren't tied to a workspace, so this page doesn't show them, even though the Action box suggests <code>login</code>. Only changes made in this workspace appear.</li>
+          <li><strong>Sign-ins are not here.</strong> Sign-in entries aren't tied to a workspace, so this page doesn't show them. Only changes made in this workspace appear.</li>
           <li><strong>Who can see it.</strong> Only workspace admins (people allowed to manage the workspace's members). Everyone else is refused, because the log shows who did what across the whole workspace.</li>
           <li><strong>It doesn't refresh by itself.</strong> Reload the page, or press Apply filters again, to see new entries.</li>
         </ul>

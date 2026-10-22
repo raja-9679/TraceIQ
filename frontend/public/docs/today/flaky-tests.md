@@ -36,7 +36,7 @@ The page shows the project selected at the top of the sidebar. The tests are lis
 
 ## 1. The summary line
 
-Under the heading, for example *"1 test pass and fail under the same conditions · 0 quarantined"*: how many tests are in the list, and how many of them are quarantined right now.
+Under the heading, for example *"1 of 3 tests pass and fail under the same conditions (score ≥ 33%) · 0 quarantined"*: how many of the tests in the list are flaky (a flake score of 33% or more, the same line as *Flake trends*; mostly stable tests are listed too), and how many are quarantined right now.
 
 ## 2. The list of tests
 

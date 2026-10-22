@@ -57,7 +57,7 @@ The five highest tests in each list, with a bar that compares them with the top 
 
 - **Top failing**: how many times each test ended *Failed* or *Error* in the window.
 - **Slowest**: the average time one run of the test takes, in the window.
-- **Flakiest**: each test's flakiness score, the chance that it fails without anything having changed (see *Flaky tests*). This list comes from TraceIQ's flakiness records and does *not* follow the time window, even though its empty message says "in this window".
+- **Flakiest**: each test's flakiness score, the chance that it fails without anything having changed (see *Flaky tests*). This list comes from TraceIQ's flakiness records and does *not* follow the time window.
 
 ## 4. Per-test effectiveness
 

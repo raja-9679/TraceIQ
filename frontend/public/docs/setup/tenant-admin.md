@@ -58,11 +58,11 @@ Click someone in the list to see their name, email, role and status. Until you d
 
 ![The Assign workspaces dialog: Role Member, a list of workspaces with checkboxes (Docs Guide, Demo workspace), and Cancel and Assign buttons](../media/setup/tenant-admin/assign-dialog.png)
 
-Adds the selected person to one or more of the organisation's workspaces at once. Pick the **Role** (*Member* or *Admin*), tick the workspaces, and press **Assign**. They are added straight away; there is nothing for them to accept.
+Adds the selected person to one or more of the organisation's workspaces at once. Pick the **Role** (*Member* or *Admin*), tick the workspaces, and press **Assign**. They are added straight away; there is nothing for them to accept. When a ticked workspace already has them, the dialog stays open and lists what happened in each one: added, role changed (for example *Member → Admin*), unchanged, or the reason it was refused. **Done** closes it.
 
-> **It only adds**
+> **It never removes anyone**
 >
-> Workspaces the person already belongs to are left exactly as they are, including their role there. So Assign can't promote a member to admin of a workspace they are already in, and it never removes anyone. To take someone out of a workspace, use *Users*.
+> For a workspace the person already belongs to, Assign sets their role there to the one you picked, and reports it. It never takes anyone out of a workspace; to do that, use *Users*. Demoting the last admin of a workspace is refused.
 
 ## Watch it in use
 

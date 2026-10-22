@@ -36,11 +36,11 @@ The list of schedules is on the left; the one you pick is shown on the right. Th
 
 ## 1. The counts line
 
-Under the heading, for example *"1 schedule · 0 active · times are in UTC"*: how many schedules the project has, and how many of them are running on their timer. (The "times are in UTC" part is misleading: see [Good to know](#good-to-know).)
+Under the heading, for example *"1 schedule · 0 active · times shown in your timezone"*: how many schedules the project has, and how many of them are running on their timer. Project admins also get a **New schedule** button on the right, which opens the schedule form with a **Suite to run** picker.
 
 ## 2. Search and layout
 
-The search box keeps only schedules whose name, description or timing contains what you type. **List** and **Cards** switch between the list-and-details view and a grid of cards with the same information and buttons. Both only appear once the project has a schedule.
+The search box keeps only schedules whose name, description or timing contains what you type. **List** and **Cards** switch between the list-and-details view and a grid of cards with the same information and buttons. Both only appear once the project has a schedule. A schedule that is a monitor carries a **Monitor** label.
 
 ## 3. The list
 
@@ -77,11 +77,13 @@ The times are read in the schedule's own **timezone**, shown next to the express
 
 ## 6. Pause, Edit, Delete
 
-![Three buttons: Resume, Edit and a bin icon](../media/tests/schedules/actions.png)
+![Three buttons: Resume, Edit and Delete](../media/tests/schedules/actions.png)
 
 - **Pause** stops new runs but keeps the schedule and its settings; a run that has already started carries on. On a paused schedule the button says **Resume**.
 - **Edit** opens the schedule form (below). Nothing changes until you press *Save changes*.
-- **The bin** deletes the schedule, after asking.
+- **Delete** deletes the schedule, after asking.
+
+These buttons are only shown to project admins.
 
 ![The Edit schedule form: Name, Description, How often, Timezone, Browser, Device and Regions, with Cancel and Save changes](../media/tests/schedules/form.png)
 
@@ -93,6 +95,7 @@ The times are read in the schedule's own **timezone**, shown next to the express
 | **How often** | Every hour, every day at midnight, every Monday at 9 a.m., every Friday at 5 p.m., or *Custom* to type your own cron expression. |
 | **Timezone** | The time zone *How often* is read in. New schedules start with your browser's time zone. |
 | **Browser**, **Device** | One browser (Chromium, Firefox or WebKit) and one device for every run. |
+| **Run as a monitor** | Makes every run a production health check on *Watch → Monitors*. When ticked: **Alert after this many failed checks in a row** (1 = the first failure), **Send a recovery alert when it passes again**, and **Alert emails** (comma-separated). |
 | **Regions** | Optional, for organisations with test machines in several places: one run per region each time. Leave empty unless your administrator has set regions up. |
 
 ## Watch it in use
@@ -122,12 +125,12 @@ The times are read in the schedule's own **timezone**, shown next to the express
 
 ## Good to know
 
-- **Who can do what.** Anyone with access to the project can look. Creating, pausing, editing and deleting schedules needs *project admin* (or workspace admin). The buttons are shown to everyone, but for others TraceIQ refuses the change with an error.
-- **Which time is which.** *Next run* and *Last run* are shown in your browser's time zone; the cron expression is read in the schedule's own time zone. The line at the top says "times are in UTC", but that is not what the facts below it use.
+- **Who can do what.** Anyone with access to the project can look. Creating, pausing, editing and deleting schedules needs *project admin* (or workspace admin). Others don't see the buttons.
+- **Which time is which.** *Next run* and *Last run* are shown in your browser's time zone; the cron expression is read in the schedule's own time zone.
 - **Up to a minute late.** TraceIQ checks for due schedules once a minute, so a run can start up to about a minute after its time.
 - **One browser per schedule.** A suite set to run on several browsers in its settings still runs on the one browser and device chosen in the schedule. Make one schedule per browser if you need several. Screen sizes and locales from the suite's settings are still applied.
 - **Missed runs aren't repeated.** If TraceIQ was down at the scheduled time, it runs once when it is back and then carries on with the next regular time.
-- **Monitors appear here too.** A *monitor* (see *Watch → Monitors*) is a schedule that checks a live site; it is listed here like the demo's "Public API health" and can be paused here.
+- **Monitors appear here too.** A *monitor* (see *Watch → Monitors*) is a schedule that checks a live site; it is listed here like the demo's "Public API health", with a *Monitor* label, and can be paused here.
 - **A schedule protects what it runs.** A suite or test that a schedule uses can't be deleted until the schedule is deleted or changed.
 - **It doesn't update by itself.** Reload the page to see a new *Last run*.
 

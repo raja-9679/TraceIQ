@@ -44,7 +44,7 @@ function Tiles({ r }: { r: DoraReport }) {
                 <Thresholds t={r.thresholds.lead_time} />
             </MetricTile>
             <MetricTile label="Change failure rate" value={fmtPct(c.percent)} pill={<BandPill band={c.band} />}>
-                <span>{c.failed_deployments} of {c.deployments} deployments · {c.causes.incident} by incident, {c.causes.failed_run} by failed run, {c.causes.deployment_failed} failed deploys</span>
+                <span>{c.failed_deployments} of {c.deployments} deployments · {c.causes.incident} by incident, {c.causes.failed_run} by failed run, {c.causes.deployment_failed} failed deploy{c.causes.deployment_failed === 1 ? '' : 's'}</span>
                 {c.missing && <span className="text-ink">{c.missing}</span>}
                 <Thresholds t={r.thresholds.change_failure_rate} />
             </MetricTile>
@@ -122,7 +122,7 @@ function HowToSend({ projectId }: { projectId: number }) {
     return (
         <Panel title="How to send deployments">
             <p className="text-sm text-ink-soft">
-                Call this from your CI pipeline after each deployment, with an API key scoped to this project. A repeated
+                Call this from your CI pipeline after each deployment, with an API key of this project's workspace (a key scoped to this project works too). A repeated
                 <span className="font-mono"> external_id </span> updates the earlier record instead of counting twice. Send
                 <span className="font-mono"> commit_at </span> if you know when the change was committed; otherwise lead time starts at the first test run with that commit.
             </p>

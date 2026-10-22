@@ -48,7 +48,7 @@ Opens your browser's print window. The sidebar, the assumptions form and the sha
 
 | Field | What it does |
 |---|---|
-| **Workspace** | Shown only if you belong to more than one. The page starts on your first workspace, so pick the trial's one. Changing it reloads the report at once. |
+| **Workspace** | Shown only if you belong to more than one. The page starts on the workspace of the project picked in the sidebar. Changing it reloads the report at once. |
 | **From** / **To** | The trial's dates, both days included, at most 366 days. The last 30 days to begin with. Days are UTC days. |
 | **Minutes per manual execution** | How long a person would take to carry out one test by hand. 5 to begin with; anything above 0 and up to 480. |
 | **Hourly rate** and **Currency code** | Optional. With both, the estimate also gives an amount of money. The code is three letters, such as EUR or INR; a rate without a code is refused. |

@@ -123,14 +123,11 @@ export default function Settings() {
     const [activeSection, setActiveSection] = useState<SectionId>('general');
 
     // General Settings
-    const [theme, setTheme] = useState('light');
     // UI feature flags — persisted to localStorage immediately (per-browser),
     // independent of the Save button.
     const [aiGeneration, setAiGeneration] = useState(
         () => localStorage.getItem('traceiq.ui.aiGeneration') === 'on'
     );
-    const [timezone, setTimezone] = useState('UTC');
-    const [dateFormat, setDateFormat] = useState('MM/DD/YYYY');
 
     // Test Execution Defaults
     const [defaultBrowser, setDefaultBrowser] = useState('chromium');
@@ -164,9 +161,6 @@ export default function Settings() {
     // Update state when settings are loaded
     useEffect(() => {
         if (settings) {
-            setTheme(settings.theme);
-            setTimezone(settings.timezone);
-            setDateFormat(settings.date_format);
             setDefaultBrowser(settings.default_browser);
             setDefaultDevice(settings.default_device);
             setMultiBrowserEnabled(settings.multi_browser_enabled);
@@ -215,8 +209,6 @@ export default function Settings() {
         );
     };
 
-    const displayPatch = { theme, timezone, date_format: dateFormat };
-    const resetDisplay = () => { if (settings) { setTheme(settings.theme); setTimezone(settings.timezone); setDateFormat(settings.date_format); } };
     const runDefaultsPatch = { default_browser: defaultBrowser, default_device: defaultDevice };
     const resetRunDefaults = () => { if (settings) { setDefaultBrowser(settings.default_browser); setDefaultDevice(settings.default_device); } };
     const browsersPatch = { multi_browser_enabled: multiBrowserEnabled, selected_browsers: selectedBrowsers };
@@ -265,54 +257,9 @@ export default function Settings() {
                     {/* General Settings */}
                     {activeSection === 'general' && (
                         <>
-                            <SettingsCard
-                                labelledBy="settings-display"
-                                title="Display"
-                                description="How TraceIQ looks and how it shows times and dates."
-                                footer={cardFooter(displayPatch, resetDisplay)}
-                            >
-                                <div className="flex flex-col">
-                                    <FieldRow label="Theme" htmlFor="set-theme">
-                                        <Select value={theme} onValueChange={dirty(setTheme)}>
-                                            <SelectTrigger id="set-theme" className={selectTriggerClass}>
-                                                <SelectValue placeholder="Select theme" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="light">Light</SelectItem>
-                                                <SelectItem value="dark">Dark</SelectItem>
-                                                <SelectItem value="auto">Auto (System)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </FieldRow>
-                                    <FieldRow label="Timezone" htmlFor="set-timezone">
-                                        <Select value={timezone} onValueChange={dirty(setTimezone)}>
-                                            <SelectTrigger id="set-timezone" className={selectTriggerClass}>
-                                                <SelectValue placeholder="Select timezone" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="UTC">UTC</SelectItem>
-                                                <SelectItem value="America/New_York">Eastern Time</SelectItem>
-                                                <SelectItem value="America/Chicago">Central Time</SelectItem>
-                                                <SelectItem value="America/Los_Angeles">Pacific Time</SelectItem>
-                                                <SelectItem value="Asia/Kolkata">India Standard Time</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </FieldRow>
-                                    <FieldRow label="Date format" htmlFor="set-date-format">
-                                        <Select value={dateFormat} onValueChange={dirty(setDateFormat)}>
-                                            <SelectTrigger id="set-date-format" className={selectTriggerClass}>
-                                                <SelectValue placeholder="Select date format" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="MM/DD/YYYY">MM/DD/YYYY</SelectItem>
-                                                <SelectItem value="DD/MM/YYYY">DD/MM/YYYY</SelectItem>
-                                                <SelectItem value="YYYY-MM-DD">YYYY-MM-DD</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </FieldRow>
-                                </div>
-                            </SettingsCard>
-
+                            {/* Theme, timezone and date format used to be offered here, but
+                                nothing read them (the app is light-only and shows times in the
+                                browser's zone), so the card is hidden until they are wired. */}
                             <SettingsCard
                                 labelledBy="settings-features"
                                 title="Features in this browser"
@@ -1023,7 +970,7 @@ function MfaSection() {
                     <Button
                         variant="outline"
                         onClick={() => disable.mutate()}
-                        disabled={disable.isPending}
+                        disabled={disable.isPending || disableCode.length !== 6}
                         className="border-destructive/50 text-destructive hover:bg-destructive/5 hover:text-destructive"
                     >
                         Disable MFA

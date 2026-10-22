@@ -43,7 +43,7 @@ The line under the heading counts the webhooks, for example *"2 active of 3"*: t
 
 ## 1. Workspace
 
-Webhooks belong to a **workspace**, not to one person. If you belong to more than one workspace, this menu chooses whose webhooks you see. The page opens on the first workspace in your list each time; it doesn't remember your last choice. If you belong to only one workspace, the menu isn't shown.
+Webhooks belong to a **workspace**, not to one person. If you belong to more than one workspace, this menu chooses whose webhooks you see. The page opens on the workspace of the project picked in the sidebar. If you belong to only one workspace, the menu isn't shown.
 
 ## 2. New webhook
 

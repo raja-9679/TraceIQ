@@ -294,7 +294,7 @@ export default function TestSuites() {
 
                         <fieldset className="flex flex-col gap-2">
                             <legend className="mb-1.5 text-[13px] font-semibold text-ink">How tests run</legend>
-                            {modeOption('continuous', 'Continuous', 'Tests run one after another in the same browser session.')}
+                            {modeOption('continuous', 'Continuous', 'The default. Today each test still runs on its own, as with Separate.')}
                             {modeOption('separate', 'Separate', 'Each test runs on its own, from a clean state.')}
                         </fieldset>
 

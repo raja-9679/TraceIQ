@@ -20,6 +20,18 @@ const LEVELS: { id: CaptureLevel; label: string }[] = [
     { id: 'full', label: 'Full — + trace, video on failure' },
 ];
 
+// Keys of sizing.ARTIFACT_SIZE_KB, in words. Unknown keys from a newer
+// backend still get a field, under their raw name.
+const ARTIFACT_LABELS: Record<string, string> = {
+    screenshot: 'Screenshot',
+    console_log: 'Console log (per run of a test)',
+    network_log: 'Network log (per run of a test)',
+    visual_diff: 'Visual diff',
+    video_per_min: 'Video, per minute',
+    trace_base: 'Trace, fixed part',
+    trace_per_min: 'Trace, per minute',
+};
+
 function NumberField({ id, label, hint, value, onChange, step = 1, min = 0, suffix }: {
     id: string; label: string; hint?: string; value: number; onChange: (v: number) => void;
     step?: number; min?: number; suffix?: string;
@@ -126,6 +138,24 @@ export default function SizingCalculator() {
                             )}
                         </RowGroup>
                     </SettingsCard>
+                    {out?.defaults?.artifact_sizes_kb && (
+                        <SettingsCard title="Average artifact sizes" labelledBy="sizing-artifacts"
+                            description="Replace the defaults with your own averages (KB). Clear a box to go back to the default.">
+                            <div className="flex flex-col">
+                                {Object.entries(out.defaults.artifact_sizes_kb).map(([key, def]) => (
+                                    <NumberField key={key} id={`sz-art-${key}`} label={ARTIFACT_LABELS[key] ?? key} suffix="KB"
+                                        hint={`Default ${def} KB`}
+                                        value={input.artifact_sizes_kb?.[key] ?? def}
+                                        onChange={(v) => setInput((p) => {
+                                            const sizes = { ...(p.artifact_sizes_kb ?? {}) };
+                                            // An empty or invalid box drops the override (the default applies).
+                                            if (Number.isFinite(v) && v !== def) sizes[key] = v; else delete sizes[key];
+                                            return { ...p, artifact_sizes_kb: Object.keys(sizes).length ? sizes : null };
+                                        })} />
+                                ))}
+                            </div>
+                        </SettingsCard>
+                    )}
                 </div>
 
                 <div className="flex min-w-0 flex-[999_1_480px] flex-col gap-5">

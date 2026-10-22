@@ -9,6 +9,7 @@ import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
 import { SkeletonRows } from '@/components/redesign-local/groupB/bits';
 import { fmtPct, sortPortfolio, verdictOf, type PortfolioKey } from '@/components/reports/reportHelpers';
 import { isNoVerdict, statusLabel } from '@/lib/runStatus';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 const COLUMNS: { key: PortfolioKey; label: string; numeric?: boolean }[] = [
     { key: 'project_name', label: 'Project' },
@@ -32,7 +33,9 @@ export default function Portfolio() {
     const [selectedWs, setSelectedWs] = useState<number | null>(null);
     const [sort, setSort] = useState<{ key: PortfolioKey; dir: 'asc' | 'desc' }>({ key: 'pass_rate_7d', dir: 'asc' });
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
     const portfolio = useQuery({ queryKey: ['portfolio', wsId], queryFn: () => reportsApi.portfolio(wsId!), enabled: !!wsId });
     const rows: PortfolioRow[] = portfolio.data ? sortPortfolio(portfolio.data.projects, sort.key, sort.dir) : [];
 

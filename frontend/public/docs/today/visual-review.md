@@ -138,7 +138,7 @@ Every approved screenshot of the project, boxed by browser and device. Each row 
 
 ## Good to know
 
-- **Who can do what.** Anyone with access to the project can look. Accepting, keeping, restoring, deleting and commenting need the *editor* role; on the Changes by run tab, people without it see a note instead of the buttons.
+- **Who can do what.** Anyone with access to the project can look. Accepting, keeping, restoring, deleting and commenting need the *editor* role; people without it see a note instead of the buttons on both tabs.
 - **Every decision is recorded**, including "keep", in the audit log, with who made it and for which run. The decision then shows on the change as Accepted or Kept baseline.
 - **Grouping happens within one run.** The same change in two different runs is not grouped.
 - **Accepting copies the picture.** The baseline keeps working after the run and its files are cleaned up.

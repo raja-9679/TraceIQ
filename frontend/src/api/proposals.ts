@@ -14,8 +14,8 @@ export interface ProposedStep {
     params?: Record<string, unknown> | null;
 }
 
-export type CaseProposalAction = 'create' | 'update' | 'delete' | 'move';
-export type ProposalStatus = 'pending' | 'accepted' | 'rejected';
+export type CaseProposalAction = 'create' | 'update' | 'delete' | 'move' | 'update_suite_settings';
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'auto_applied';
 
 export interface CaseProposalPayload {
     name?: string;
@@ -24,6 +24,8 @@ export interface CaseProposalPayload {
     intent?: string;
     reason?: string;
     new_test_suite_id?: number;
+    /** Set when a DELETE was applied (target_case_id is then null). */
+    deleted_case_id?: number;
     [key: string]: unknown;
 }
 

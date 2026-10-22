@@ -64,7 +64,7 @@ If no test is linked to anything yet, the box says "No requirements linked yet".
 - **The label** is its status from the table above.
 - **The reference**, and its title if one was saved with the link. When the link carries an address, the reference opens the ticket in a new tab.
 - **Tests, Passing, Failing, Not run yet**: the counts behind the status.
-- **Covered by**: the names of the linked tests.
+- **Covered by**: the names of the linked tests. Editors see each one with **Remove link**, which unlinks that test from the requirement after asking.
 
 ## 4. Untraced tests
 
@@ -101,7 +101,7 @@ Every test of the project that isn't linked to anything, with the number in the 
 
 - **Results are matched by test name here.** This page takes each test's newest result *with the same name* in the project, whatever version of the app it ran on. After a test is renamed, it shows as not run until it runs again under its new name. The *Requirements* and *Release readiness* pages match results to the test itself instead, so their numbers can differ.
 - **The reference must match exactly.** For an imported ticket to count a link on the *Requirements* page, the reference must be written the same way as its key. `demo-101` and `DEMO-101` are two different references.
-- **Links can't be removed from this page.** There is no button for it; a link can only be removed through TraceIQ's API.
+- **Removing a link** needs the *editor* role: select the requirement and press **Remove link** next to the test. A requirement with no tests left disappears from the list.
 - **Other ways links are made.** Accepting a test that was generated from an imported requirement links it automatically.
 - **It doesn't update by itself.** Come back to the browser tab or reload to see newer results.
 - **Check runs don't count.** The runs TraceIQ makes to check a suggested fix are left out.

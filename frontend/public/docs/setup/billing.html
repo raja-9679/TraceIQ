@@ -67,7 +67,7 @@
 
         <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
         <p>Plans belong to a <strong>workspace</strong>. This menu chooses which one. The page
-          opens on the first workspace in your list each time.</p>
+          opens on the workspace of the project picked in the sidebar.</p>
 
         <div class="part"><span class="num">2</span><h2 id="current" data-toc="② Current plan">Current plan</h2></div>
         <figure>
@@ -121,17 +121,18 @@
 
         <div class="part"><span class="num">4</span><h2 id="plans" data-toc="④ Plans">Plans</h2></div>
         <p>One card per plan the server offers. On the demo server there are none, so this part
-          is empty. Each card shows:</p>
+          is not shown at all. Each card shows:</p>
         <ul>
           <li>The plan's name, and <span class="pill t-lavender">Current</span> on the one the workspace is on.</li>
           <li>Its price per month, <em>Free</em>, or <em>Custom</em> for the enterprise plan.</li>
           <li>Its limits: runs per month, seats, concurrent runs, retention in days, AI generations per day and LLM tokens per month. <em>Unlimited</em> means no limit.</li>
-          <li>A button: <strong>Current plan</strong> (greyed out) on your plan; <strong>Upgrade</strong> on paid plans when the server takes card payments, which opens the payment page; otherwise <strong>Switch to …</strong>, which changes the plan straight away.</li>
+          <li>A button: <strong>Current plan</strong> (greyed out) on your plan; <strong>Upgrade</strong> on paid plans when the server takes card payments, which opens the payment page; otherwise <strong>Switch to …</strong>, which changes the plan straight away. A workspace admin sees <em>Switch to</em> on free plans and <em>Upgrade</em> on paid ones. Without card payments, a paid plan can only be assigned by the <em>instance admin</em> (the person who runs the TraceIQ server); a workspace admin sees "Ask the instance admin to assign this plan" there instead.</li>
         </ul>
 
         <div class="part"><span class="num">5</span><h2 id="note" data-toc="⑤ The note at the bottom">The note at the bottom</h2></div>
         <p>A reminder that plan changes take effect immediately, how plans are changed on this
-          server (card payment, or an admin assigning them), and that the run limit is checked
+          server (free plans by a workspace admin; paid plans by card payment or, without it, by
+          the instance admin), and that the run limit is checked
           when a run is created.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
@@ -154,21 +155,21 @@
         </ol>
         <h3>…move the workspace to another plan</h3>
         <ol class="steps">
-          <li>You need to be a workspace admin.</li>
+          <li>You need to be a workspace admin (for a paid plan on a server without card payments, the instance admin).</li>
           <li>Under <strong>Plans</strong>, press <strong>Upgrade</strong> (card payment) or <strong>Switch to …</strong> on the plan you want.</li>
           <li>With <em>Switch to</em>, the new limits apply at once and the message "Plan updated" appears. With <em>Upgrade</em>, the plan changes once the payment has gone through.</li>
         </ol>
         <h3>…find out why a run was refused</h3>
         <ol class="steps">
           <li>If the message says <em>"Monthly run quota reached (50/50)"</em>, the month's runs are used up: the meter here shows the same numbers.</li>
-          <li>Ask a workspace admin to move to a bigger plan, or wait until the 1st of next month (UTC).</li>
+          <li>Ask a workspace admin to move to a bigger plan (or, without card payments, the instance admin), or wait until the 1st of next month (UTC).</li>
         </ol>
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
           <li><strong>Counters start again every month</strong>, on the 1st at midnight UTC. Unused allowance doesn't carry over.</li>
           <li><strong>The run limit is checked before a run is created.</strong> While a single run is left, one request that starts several runs (for example in three browsers) still goes through, so the meter can end slightly above the limit.</li>
-          <li><strong>Everyone in the workspace can see this page.</strong> Switching plans needs the workspace admin role; others get <em>"Workspace admin required to change plan"</em>.</li>
+          <li><strong>Everyone in the workspace can see this page.</strong> Switching to a free plan and card payment need the workspace admin role; assigning a paid plan without card payment needs the instance admin. Others don't see those buttons.</li>
           <li><strong>Without a plan, nothing is limited.</strong> A workspace that was never given a plan is on the <em>free</em> plan if the server has one, and unlimited if it has none.</li>
           <li><strong>Money for AI and test machines</strong> is on <em>Costs</em> under Reports, not here.</li>
         </ul>

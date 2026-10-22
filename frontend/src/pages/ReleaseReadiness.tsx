@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getProjects } from '@/lib/api';
 import { qualityApi, ReadinessVerdict, QualityGateCheck } from '@/api/quality';
+import { describeGateCheck, labelReason } from '@/lib/gateChecks';
 
 const LATEST = '__latest';
 const errDetail = (e: unknown): string => {
@@ -62,7 +63,7 @@ function CheckRow({ c }: { c: QualityGateCheck }) {
             <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="flex items-center gap-2 min-w-0">
                     <Icon className={`w-4 h-4 shrink-0 ${tone}`} aria-hidden />
-                    <span className="font-semibold text-slate-700">{c.name}</span>
+                    <span className="font-semibold text-slate-700" title={describeGateCheck(c.name).explain || undefined}>{describeGateCheck(c.name).title}</span>
                     <span className="sr-only">{c.passed ? 'passed' : c.missing_data ? 'missing data' : 'failed'}</span>
                 </span>
                 <span className="text-xs text-slate-500 tabular-nums text-right">
@@ -124,8 +125,10 @@ export default function ReleaseReadiness() {
     return (
         <div className="max-w-[1200px] mx-auto pb-16">
             <div className="pt-2 pb-6 mb-6 border-b border-slate-200/60">
-                <div className="flex flex-col lg:flex-row lg:items-end gap-4">
-                    <div>
+                {/* Side by side only when there is room: at 1440 the three pickers
+                    squeezed the intro into a narrow column. */}
+                <div className="flex flex-col 2xl:flex-row 2xl:items-end gap-4">
+                    <div className="min-w-0 flex-1">
                         <h1 className="text-4xl font-extrabold tracking-tight text-slate-900">Release readiness</h1>
                         <p className="text-slate-500 max-w-2xl text-base leading-relaxed mt-2">
                             One go/no-go per release, with the reasons: gate checks, critical cases, active
@@ -133,7 +136,7 @@ export default function ReleaseReadiness() {
                             <Link to="/quality" className="text-indigo-600 hover:underline">Quality gate policy</Link>.
                         </p>
                     </div>
-                    <div className="lg:ml-auto flex flex-wrap items-end gap-3 shrink-0">
+                    <div className="2xl:ml-auto flex flex-wrap items-end gap-3 shrink-0">
                         <div>
                             <Label htmlFor="rr-project" className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">Project</Label>
                             <Select value={projectId?.toString() ?? ''} onValueChange={selectProject}>
@@ -212,7 +215,7 @@ export default function ReleaseReadiness() {
                         <p className="text-sm mt-3">{V.blurb}</p>
                         {r.reasons.length > 0 && (
                             <ul className="mt-2 text-sm list-disc ml-5 space-y-0.5">
-                                {r.reasons.map((x, i) => <li key={i}>{x}</li>)}
+                                {r.reasons.map((x, i) => <li key={i}>{labelReason(x)}</li>)}
                             </ul>
                         )}
                     </div>

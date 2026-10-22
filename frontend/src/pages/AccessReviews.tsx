@@ -10,6 +10,8 @@ import { getWorkspaces } from '@/lib/api';
 import { downloadFromApi, openHtmlFromApi } from '@/lib/download';
 import { accessReviewApi, type ReviewCampaign, type ReviewItem, type RevocationPlan } from '@/api/securityOps';
 import { accessSummary, fmtDate } from '@/components/access-review/summary';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
+import { useIsInstanceAdmin } from '@/hooks/useIsInstanceAdmin';
 
 
 const INSTANCE = 'instance';
@@ -186,8 +188,12 @@ export default function AccessReviews() {
     const [chosenScope, setScope] = useState<string>('');
     const [name, setName] = useState('');
     const [openId, setOpenId] = useState<number | null>(null);
-    // Default to the first workspace until the user picks a scope.
-    const scope = chosenScope || (workspaces.data?.length ? String(workspaces.data[0].id) : '');
+    // Default to the sidebar project's workspace (else the first one) until
+    // the user picks a scope.
+    const activeWs = useActiveWorkspaceId();
+    // Instance scope is offered to instance admins only (see PolicyCards).
+    const isInstanceAdmin = useIsInstanceAdmin();
+    const scope = chosenScope || (activeWs ? String(activeWs) : workspaces.data?.length ? String(workspaces.data[0].id) : '');
     const workspaceId = scope === INSTANCE ? null : scope ? Number(scope) : undefined;
 
     const campaigns = useQuery({
@@ -229,7 +235,7 @@ export default function AccessReviews() {
                             <select aria-label="Review scope" className="block mt-1 h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm text-slate-700 normal-case tracking-normal font-normal"
                                 value={scope} onChange={(e) => setScope(e.target.value)}>
                                 {(workspaces.data || []).map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-                                <option value={INSTANCE}>Whole instance (instance admins)</option>
+                                {isInstanceAdmin && <option value={INSTANCE}>Whole instance</option>}
                             </select>
                         </label>
                         <Button variant="outline" size="sm" className="h-9" onClick={() => report('csv')} disabled={workspaceId === undefined}>

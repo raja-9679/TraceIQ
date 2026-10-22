@@ -5,6 +5,7 @@ import {
     getWorkspaceMembersDetailed,
     getWorkspaceInvitations,
     inviteUserToWorkspace,
+    type WorkspaceInviteResult,
     createWorkspace,
     removeUserFromWorkspace,
     getAdminUsers,
@@ -45,17 +46,18 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Trash2, Search, UserPlus } from 'lucide-react';
+import { Copy, Trash2, Search, UserPlus } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import {
     DetailCard, EmptyState, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/groupE/bits';
+import { invitationLink, isWorkspaceAdminRole } from '@/lib/roles';
 
 // The tenant-wide ("all") listing adds the workspace name to each row.
 const workspaceOf = (m: DetailedMember): string | undefined => (m as DetailedMember & { workspace?: string }).workspace;
-const isAdminRole = (role?: string) => role === 'Workspace Admin' || role === 'admin';
+const isAdminRole = isWorkspaceAdminRole;
 const inputCls = 'h-10 rounded-full px-4';
 
 export default function UsersPage() {
@@ -70,6 +72,7 @@ export default function UsersPage() {
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [showInviteDialog, setShowInviteDialog] = useState(false);
+    const [createdInvite, setCreatedInvite] = useState<{ email: string; link: string } | null>(null);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRole, setInviteRole] = useState('member'); // Default fall back
     const [inviteTargetWorkspaceId, setInviteTargetWorkspaceId] = useState<string>('current');
@@ -148,6 +151,7 @@ export default function UsersPage() {
 
         try {
             let targetWorkspaceId: number;
+            let result: WorkspaceInviteResult | undefined;
 
             // Handle "Create New" or "Switch Workspace" logic
             if (inviteTargetWorkspaceId === 'new') {
@@ -178,15 +182,18 @@ export default function UsersPage() {
                     toast.error("Please select a project.");
                     return;
                 }
-                await inviteUserToProject(parseInt(inviteProjectId), inviteEmail, inviteProjectRole);
+                result = await inviteUserToProject(parseInt(inviteProjectId), inviteEmail, inviteProjectRole);
             } else {
-                await inviteUserToWorkspace(targetWorkspaceId, inviteEmail, inviteRole);
+                result = await inviteUserToWorkspace(targetWorkspaceId, inviteEmail, inviteRole);
             }
 
             queryClient.invalidateQueries({ queryKey: ['workspaceInvitations', targetWorkspaceId] });
             queryClient.invalidateQueries({ queryKey: ['workspaceMembersDetailed', targetWorkspaceId] });
 
-            setShowInviteDialog(false);
+            // The token comes back only from this POST and no email is sent:
+            // keep the dialog open on the link.
+            if (result?.token) setCreatedInvite({ email: inviteEmail, link: invitationLink(result.token) });
+            else setShowInviteDialog(false);
             setInviteEmail('');
             setNewWorkspaceName('');
             setInviteTargetWorkspaceId('current');
@@ -194,7 +201,7 @@ export default function UsersPage() {
             setInviteScope('workspace');
             setInviteProjectId('');
 
-            toast.success(inviteScope === 'project' ? 'Project invitation sent!' : 'Workspace invitation sent!');
+            if (!result?.token) toast.success(result?.message || 'Invitation saved');
 
         } catch (error: any) {
             toast.error('Failed to process invitation: ' + (error.response?.data?.detail || error.message));
@@ -270,7 +277,7 @@ export default function UsersPage() {
                             </SelectContent>
                         </Select>
                         {canManageUsers && (
-                            <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+                            <Dialog open={showInviteDialog} onOpenChange={(o) => { setShowInviteDialog(o); if (!o) setCreatedInvite(null); }}>
                                 <DialogTrigger asChild>
                                     <Button>
                                         <UserPlus className="h-4 w-4" />
@@ -278,10 +285,28 @@ export default function UsersPage() {
                                     </Button>
                                 </DialogTrigger>
                                 <DialogContent>
+                                    {createdInvite ? (<>
+                                    <DialogHeader>
+                                        <DialogTitle>Invitation created</DialogTitle>
+                                        <DialogDescription>
+                                            TraceIQ doesn't email invitations. Send this link to {createdInvite.email} yourself;
+                                            it is shown only now and works for 7 days.
+                                        </DialogDescription>
+                                    </DialogHeader>
+                                    <Field id="invite-link" label="Invitation link">
+                                        <Input id="invite-link" className={`${inputCls} font-mono text-xs`} readOnly value={createdInvite.link} onFocus={(e) => e.currentTarget.select()} />
+                                    </Field>
+                                    <DialogFooter>
+                                        <Button type="button" variant="outline" onClick={() => { setShowInviteDialog(false); setCreatedInvite(null); }}>Done</Button>
+                                        <Button type="button" onClick={() => { navigator.clipboard.writeText(createdInvite.link); toast.success('Invitation link copied'); }}>
+                                            <Copy className="h-4 w-4" /> Copy invitation link
+                                        </Button>
+                                    </DialogFooter>
+                                    </>) : (<>
                                     <DialogHeader>
                                         <DialogTitle>Invite people</DialogTitle>
                                         <DialogDescription>
-                                            Send an invitation to join a workspace or a single project.
+                                            Invite someone to a workspace or a single project. You get a link to send them.
                                         </DialogDescription>
                                     </DialogHeader>
                                     <form onSubmit={handleInvite} className="flex flex-col gap-4 pt-2">
@@ -391,9 +416,10 @@ export default function UsersPage() {
                                         </Field>
                                         <DialogFooter>
                                             <Button type="button" variant="outline" onClick={() => setShowInviteDialog(false)}>Cancel</Button>
-                                            <Button type="submit">Send invitation</Button>
+                                            <Button type="submit">Create invitation</Button>
                                         </DialogFooter>
                                     </form>
+                                    </>)}
                                 </DialogContent>
                             </Dialog>
                         )}
@@ -431,7 +457,7 @@ export default function UsersPage() {
                                                     onSelect={() => setSelectedKey(memberKey(m))}
                                                     leading={<Avatar name={m.full_name || m.email} />}
                                                     title={m.full_name || 'Unknown name'}
-                                                    meta={isAll ? `${m.email} · ${workspaceOf(m) || '-'}` : m.email}
+                                                    meta={isAll && workspaceOf(m) ? `${m.email} · ${workspaceOf(m)}` : m.email}
                                                     trailing={
                                                         <Pill tone={isAdminRole(m.role) ? 'lavender' : 'neutral'} className="capitalize">
                                                             {m.role?.replace('Workspace ', '')}
@@ -479,7 +505,8 @@ export default function UsersPage() {
                                         label: 'Status',
                                         value: <Pill tone={member.is_active ? 'mint' : 'neutral'} className="capitalize">{member.status}</Pill>,
                                     },
-                                    ...(isAll ? [{ label: 'Workspace', value: workspaceOf(member) || '-' }] : []),
+                                    // /admin/users doesn't fill `workspace` yet; show it only when present.
+                                    ...(isAll && workspaceOf(member) ? [{ label: 'Workspace', value: workspaceOf(member) }] : []),
                                     {
                                         label: 'Last active',
                                         value: member.last_login_at

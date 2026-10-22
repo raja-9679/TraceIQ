@@ -11,6 +11,7 @@ import { warnCalloutClass } from '@/components/redesign-local/groupD/settingsFor
 import CostTrend from '@/components/costs/CostTrend';
 import BudgetEditor from '@/components/costs/BudgetEditor';
 import { budgetTone, formatMoney, formatTokens, NOT_PRICED } from '@/components/costs/costFormat';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
 
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
     return (
@@ -45,7 +46,8 @@ export default function Costs() {
     const [projectId, setProjectId] = useState<number | null>(null);
     const [days, setDays] = useState(30);
     const { data: workspaces } = useQuery<Workspace[]>({ queryKey: ['workspaces'], queryFn: getWorkspaces });
-    const wsId = selectedWs ?? workspaces?.[0]?.id ?? null;
+    const activeWs = useActiveWorkspaceId();
+    const wsId = selectedWs ?? activeWs ?? workspaces?.[0]?.id ?? null;
     const projects = useQuery({ queryKey: ['projects', wsId], queryFn: () => getProjects(wsId!), enabled: !!wsId });
 
     const report = useQuery({
@@ -117,11 +119,16 @@ export default function Costs() {
                             : <Stat label="Projects covered" value={r.projects.length} />}
                     </div>
 
-                    <Card title={r.priced ? 'Spend per day' : 'Token use per day'}>
+                    <Card title={r.priced ? 'Spend per day' : 'Use per day'}>
                         <CostTrend report={r} />
                     </Card>
 
-                    <p className="text-xs text-ink-soft">{r.browser.note}</p>
+                    {/* r.browser.note names a database column; say the same in words. */}
+                    <p className="text-xs text-ink-soft">
+                        Browser-minutes are the summed run time of automated tests. They approximate worker cost: idle
+                        workers, browser start-up and retry waits are not included. Manual runs and runs on a local worker
+                        are left out.
+                    </p>
 
                     <div className="grid gap-5 lg:grid-cols-2">
                         <Card title="By model">

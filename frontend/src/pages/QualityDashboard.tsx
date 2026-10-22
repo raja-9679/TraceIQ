@@ -15,41 +15,13 @@ import {
     DetailCard, EmptyState, EvidenceList, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Panel, Pill, SplitView,
 } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
+import { describeGateCheck } from '@/lib/gateChecks';
 import { OpenApiSpecSection } from '@/components/settings/OpenApiSpecSection';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const errDetail = (e: any): string => e?.response?.data?.detail || e?.message || 'Unknown error';
 
-// The gate's check ids (backend/app/api/endpoints/quality.py), in words a
-// release manager reads, with where the evidence for each one lives.
-const CHECKS: Record<string, { title: string; explain: string; links: { tag: string; text: string; to: string }[] }> = {
-    pass_rate: {
-        title: 'Pass rate', explain: 'Share of finished runs that passed among the runs this gate evaluated. Cancelled and timed-out runs carry no verdict and are not counted.',
-        links: [{ tag: 'runs', text: 'See the evaluated runs', to: '/runs' }, { tag: 'triage', text: 'Group the failures', to: '/triage' }],
-    },
-    security_high_findings: {
-        title: 'High-severity security findings', explain: 'Open high findings across recent scans of this project.',
-        links: [{ tag: 'security', text: 'Open Security', to: '/security' }],
-    },
-    security_medium_findings: {
-        title: 'Medium-severity security findings', explain: 'Open medium findings across recent scans of this project.',
-        links: [{ tag: 'security', text: 'Open Security', to: '/security' }],
-    },
-    monitors_up: {
-        title: 'Monitors are up', explain: 'Every active production monitor must be up.',
-        links: [{ tag: 'watch', text: 'Open Watch', to: '/monitors' }],
-    },
-    external_tests: {
-        title: 'External CI tests', explain: 'The latest JUnit report pushed from CI must be green.',
-        links: [],
-    },
-    perf_lcp: { title: 'Largest Contentful Paint budget', explain: 'Worst LCP across the evaluated runs.', links: [{ tag: 'runs', text: 'See the runs', to: '/runs' }] },
-    perf_cls: { title: 'Layout shift budget', explain: 'Worst CLS across the evaluated runs.', links: [{ tag: 'runs', text: 'See the runs', to: '/runs' }] },
-    perf_ttfb: { title: 'Time to first byte budget', explain: 'Worst TTFB across the evaluated runs.', links: [{ tag: 'runs', text: 'See the runs', to: '/runs' }] },
-};
-
-const describe = (c: QualityGateCheck) =>
-    CHECKS[c.name] ?? { title: c.name.replace(/_/g, ' '), explain: '', links: [] };
+const describe = (c: QualityGateCheck) => describeGateCheck(c.name);
 
 // --- policy + CI (unchanged behaviour, restyled) -------------------------------------
 
@@ -107,6 +79,28 @@ function PolicyForm({ projectId, initial }: { projectId: number; initial: Qualit
                 <CheckRow label="No new accessibility violations at serious or above (waived ones excluded)"
                     checked={policy.block_new_accessibility_violations ?? false}
                     onChange={(v) => setPolicy({ ...policy, block_new_accessibility_violations: v })} />
+            </div>
+            <div className="mt-3 border-t border-border pt-3">
+                <Eyebrow>API contract</Eyebrow>
+                <CheckRow label="No breaking changes in the newest OpenAPI spec version"
+                    checked={policy.require_no_breaking_api_changes ?? false}
+                    onChange={(v) => setPolicy({ ...policy, require_no_breaking_api_changes: v })} />
+                <label className="flex min-h-11 items-center justify-between gap-3 text-sm">
+                    <span>Compare against</span>
+                    <select
+                        className="h-9 rounded-full border border-input bg-white px-3 text-sm"
+                        value={policy.api_baseline ?? 'previous'}
+                        onChange={(e) => setPolicy({ ...policy, api_baseline: e.target.value as 'previous' | 'pinned' })}
+                    >
+                        <option value="previous">The version before it</option>
+                        <option value="pinned">A pinned version</option>
+                    </select>
+                </label>
+                {(policy.api_baseline ?? 'previous') === 'pinned' && (
+                    <NumberRow label="Pinned spec version" min={1} value={policy.api_baseline_version ?? ''}
+                        onChange={(v) => setPolicy({ ...policy, api_baseline_version: v === '' ? null : Math.max(1, parseInt(v) || 1) })} />
+                )}
+                <p className="text-xs text-ink-soft">Spec versions are stored under OpenAPI spec on this page. Fewer than two versions, or a pinned version that doesn't exist, fails as missing data.</p>
             </div>
             <div className="mt-3 border-t border-border pt-3">
                 <Eyebrow>Performance budgets (0 = off)</Eyebrow>

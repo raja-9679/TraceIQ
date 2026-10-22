@@ -90,7 +90,7 @@
           <table>
             <thead><tr><th style="width:24%">How tests run</th><th>What it means</th></tr></thead>
             <tbody>
-              <tr><td><span class="pill t-lavender">Continuous</span></td><td>The default for a new suite. The screen describes it as "one after another in the same browser session"; see <a href="#good-to-know">Good to know</a> for how runs actually behave today.</td></tr>
+              <tr><td><span class="pill t-lavender">Continuous</span></td><td>The default for a new suite. Today each test still runs on its own, like Separate (the screen says so); see <a href="#good-to-know">Good to know</a>.</td></tr>
               <tr><td><span class="pill t-pink">Separate</span></td><td>Each test starts on its own, from a clean browser. If the suite has sub-modules, the tests of each sub-module run together, one after another.</td></tr>
               <tr><td><span class="pill t-mint">Parallel</span></td><td>Each test on its own, spread over as many test machines as are free, for the quickest result. Only offered later, in the suite's <a href="#settings">Settings</a>.</td></tr>
             </tbody>
@@ -238,6 +238,7 @@
         <ul>
           <li><strong>The dark bar</strong> at the bottom adds a step: <em>Step</em> (choose the action yourself), or a shortcut for the common ones. Under each step, <em>Up</em>, <em>Down</em>, <em>Add below</em> and <em>Delete</em> rearrange the list.</li>
           <li><strong>Dataset</strong> runs the test once for every row of a small table of values, and <strong>Matrix</strong> picks browsers and devices for this test only.</li>
+          <li><strong>Priority</strong> (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.</li>
           <li><strong>Auth setup case</strong> marks a test that signs in: when it passes, other tests can start already signed in (<em>Use auth session</em>).</li>
           <li><strong>History</strong> shows earlier versions of the test and can bring one back.</li>
           <li><strong>Ownership and review</strong> names who looks after the test (see <em>Test review</em>).</li>
@@ -285,8 +286,8 @@
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
-          <li><strong>Who can do what.</strong> Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the <em>editor</em> role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs <em>project admin</em> (or workspace admin); only <em>Protected module</em> can be switched by editors. Creating a schedule also needs project admin.</li>
-          <li><strong>Continuous runs don't share a browser yet.</strong> Despite the description on screen, a Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a <em>Separate</em> suite run one after another in the same browser.</li>
+          <li><strong>Who can do what.</strong> Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the <em>editor</em> role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs <em>project admin</em> (or workspace admin); only <em>Protected module</em> can be switched by editors. Creating a schedule also needs project admin. Buttons you can't use (Run, Schedule, Edit, Delete) are not shown.</li>
+          <li><strong>Continuous runs don't share a browser yet.</strong> A Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a <em>Separate</em> suite run one after another in the same browser.</li>
           <li><strong>A suite holds tests or sub-modules, not both.</strong> TraceIQ refuses a sub-module in a suite that already has tests. Once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself.</li>
           <li><strong>Settings flow downwards.</strong> A sub-module uses its parent's settings unless its own <em>Inherit settings</em> is switched off; then it starts fresh from there down.</li>
           <li><strong>Exports carry no secrets.</strong> Suite and test exports include steps, tags and descriptions, but never the value of a secret.</li>

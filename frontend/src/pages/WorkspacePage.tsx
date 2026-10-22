@@ -10,7 +10,7 @@ import {
     removeUserFromTeam, getProjectTeams, getProjectMembers,
     unlinkTeamFromProject, removeUserProjectAccess,
     addTeamToProject, addUserProjectAccess,
-    getWorkspaceMembersDetailed, inviteUserToWorkspace, getWorkspaceInvitations,
+    getWorkspaceMembersDetailed, inviteUserToWorkspace, getWorkspaceInvitations, setWorkspaceMemberRole,
 } from '@/lib/api';
 import type { DetailedMember } from '@/lib/api';
 import WorkspaceDeleteDialog from '@/components/WorkspaceDeleteDialog';
@@ -53,6 +53,9 @@ import {
 } from '@/components/redesign/primitives';
 import { Avatar, Facts, Field, ListSkeleton } from '@/components/redesign-local/groupE/bits';
 import { cn } from '@/lib/utils';
+import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
+import { invitationLink, isWorkspaceAdminRole, workspaceRoleLabel } from '@/lib/roles';
+import { usePermission } from '@/hooks/usePermission';
 
 interface ProjectTeam {
     id: number;
@@ -118,6 +121,10 @@ export default function WorkspacePage() {
     const [newName, setNewName] = useState('');
     const [newDesc, setNewDesc] = useState('');
     const [inviteEmail, setInviteEmail] = useState('');
+    // The invite token is returned once, by the POST that creates it (the
+    // list never carries it, and no email is sent), so the link is shown
+    // right there in the dialog.
+    const [createdInvite, setCreatedInvite] = useState<{ email: string; link: string } | null>(null);
     const [linkProjectId, setLinkProjectId] = useState<string>('');
     const [linkAccessLevel, setLinkAccessLevel] = useState<string>('editor');
 
@@ -138,7 +145,9 @@ export default function WorkspacePage() {
     });
 
     // First workspace until the user picks one (derived, not set in an effect).
-    const selectedWorkspaceId = pickedWorkspaceId ?? workspaces?.[0]?.id ?? null;
+    // Default to the sidebar project's workspace, not whichever is listed first.
+    const activeWs = useActiveWorkspaceId();
+    const selectedWorkspaceId = pickedWorkspaceId ?? activeWs ?? workspaces?.[0]?.id ?? null;
 
     const { data: teams, isLoading: teamsLoading } = useQuery<Team[]>({
         queryKey: ['teams', selectedWorkspaceId],
@@ -345,14 +354,33 @@ export default function WorkspacePage() {
         }
     });
 
+    const { can } = usePermission();
+    const canManageMembers = !!selectedWorkspaceId && can('workspace:manage_users', { workspaceId: selectedWorkspaceId });
+    const [roleDraft, setRoleDraft] = useState<'admin' | 'member' | ''>('');
+    const changeRoleMutation = useMutation({
+        mutationFn: ({ userId, role }: { userId: number; role: 'admin' | 'member' }) =>
+            setWorkspaceMemberRole(selectedWorkspaceId!, userId, role),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ['workspaceMembersDetailed', selectedWorkspaceId] });
+            setRoleDraft('');
+            toast.success(res.status === 'unchanged' ? 'Role unchanged' : `Role changed to ${workspaceRoleLabel(res.role)}`);
+        },
+        // 409 = would leave the workspace without an admin; the detail says so.
+        onError: (error: unknown) => toast.error(errDetail(error, 'Could not change the role')),
+    });
+
     const inviteWorkspaceMemberMutation = useMutation({
         mutationFn: () => inviteUserToWorkspace(selectedWorkspaceId!, workspaceInviteEmail, workspaceInviteRole),
-        onSuccess: (data: unknown) => {
+        onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ['workspaceInvitations', selectedWorkspaceId] });
             queryClient.invalidateQueries({ queryKey: ['workspaceMembersDetailed', selectedWorkspaceId] });
+            if (data?.token) {
+                setCreatedInvite({ email: workspaceInviteEmail, link: invitationLink(data.token) });
+            } else {
+                setShowInviteWorkspaceMember(false);
+                toast.success(data?.message || 'Invitation sent');
+            }
             setWorkspaceInviteEmail('');
-            setShowInviteWorkspaceMember(false);
-            toast.success((data as { message?: string } | undefined)?.message || 'Invitation sent');
         },
         onError: (error: unknown) => {
             toast.error(errDetail(error, 'Failed to send invitation'));
@@ -422,11 +450,11 @@ export default function WorkspacePage() {
                                         <ListRow
                                             key={memberKey(m)}
                                             selected={!!shownMember && memberKey(shownMember) === memberKey(m)}
-                                            onSelect={() => setPickedMemberKey(memberKey(m))}
+                                            onSelect={() => { setPickedMemberKey(memberKey(m)); setRoleDraft(''); }}
                                             leading={<Avatar name={m.full_name || m.email} />}
                                             title={m.full_name}
                                             meta={m.email}
-                                            trailing={<Pill tone={m.role === 'admin' ? 'lavender' : 'neutral'} className="capitalize">{m.role}</Pill>}
+                                            trailing={<Pill tone={isWorkspaceAdminRole(m.role) ? 'lavender' : 'neutral'}>{workspaceRoleLabel(m.role)}</Pill>}
                                         />
                                     ))}
                                 </ListGroup>
@@ -459,8 +487,8 @@ export default function WorkspacePage() {
                             </div>
                             <Facts
                                 items={[
-                                    { label: 'Workspace role', value: <Pill tone={shownMember.role === 'admin' ? 'lavender' : 'neutral'} className="capitalize">{shownMember.role}</Pill> },
-                                    { label: 'Status', value: <Pill tone="mint">Active</Pill> },
+                                    { label: 'Workspace role', value: <Pill tone={isWorkspaceAdminRole(shownMember.role) ? 'lavender' : 'neutral'}>{workspaceRoleLabel(shownMember.role)}</Pill> },
+                                    { label: 'Status', value: shownMember.is_active === false ? <Pill tone="neutral">Deactivated</Pill> : <Pill tone="mint">Active</Pill> },
                                     {
                                         label: 'Last active',
                                         value: shownMember.last_login_at
@@ -469,6 +497,29 @@ export default function WorkspacePage() {
                                     },
                                 ]}
                             />
+                            {canManageMembers && (
+                                <div className="flex flex-wrap items-end gap-2.5">
+                                    <Field id="ws-member-role" label="Change workspace role">
+                                        <Select
+                                            value={roleDraft || (isWorkspaceAdminRole(shownMember.role) ? 'admin' : 'member')}
+                                            onValueChange={(v) => setRoleDraft(v as 'admin' | 'member')}
+                                        >
+                                            <SelectTrigger id="ws-member-role" className={`${inputCls} w-40`}><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="member">Member</SelectItem>
+                                                <SelectItem value="admin">Admin</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </Field>
+                                    <Button
+                                        variant="outline"
+                                        disabled={!roleDraft || changeRoleMutation.isPending}
+                                        onClick={() => roleDraft && changeRoleMutation.mutate({ userId: shownMember.id, role: roleDraft })}
+                                    >
+                                        Change role
+                                    </Button>
+                                </div>
+                            )}
                             <Panel title="Changing access" callout>
                                 Project access comes from teams and direct grants — see the Teams and Projects sections.
                                 To remove someone from the workspace, use the <Link to="/users" className="font-semibold underline underline-offset-2">Users</Link> page.
@@ -483,26 +534,12 @@ export default function WorkspacePage() {
                                     <span className="text-sm text-ink-soft">Sent {formatDistanceToNow(new Date(shownInvite.created_at), { addSuffix: true })}</span>
                                 )}
                             </div>
-                            <Facts items={[{ label: 'Workspace role', value: <span className="capitalize">{shownInvite.role}</span> }]} />
+                            <Facts items={[{ label: 'Workspace role', value: workspaceRoleLabel(shownInvite.role) }]} />
                             <Panel title="What happens next" callout>
-                                They join with this role once they sign up from the invitation link.
-                                {shownInvite.token ? ' You can copy the link and send it yourself.' : ''}
+                                They join with this role once they sign up from the invitation link. TraceIQ
+                                doesn't email it: the link is shown once, right after the invitation is created,
+                                for you to send. It can't be shown again here.
                             </Panel>
-                            {shownInvite.token && (
-                                <div className="flex flex-wrap gap-2.5">
-                                    <Button
-                                        size="lg"
-                                        variant="outline"
-                                        onClick={() => {
-                                            const url = `${window.location.origin}/signup?token=${shownInvite.token}`;
-                                            navigator.clipboard.writeText(url);
-                                            toast.success("Invitation link copied to clipboard");
-                                        }}
-                                    >
-                                        <Copy className="h-4 w-4" /> Copy invitation link
-                                    </Button>
-                                </div>
-                            )}
                         </DetailCard>
                     ) : null}
                 />
@@ -1005,8 +1042,26 @@ export default function WorkspacePage() {
             </Dialog>
 
             {/* Invite Workspace Member Dialog */}
-            <Dialog open={showInviteWorkspaceMember} onOpenChange={setShowInviteWorkspaceMember}>
+            <Dialog open={showInviteWorkspaceMember} onOpenChange={(o) => { setShowInviteWorkspaceMember(o); if (!o) setCreatedInvite(null); }}>
                 <DialogContent className="sm:max-w-md">
+                    {createdInvite ? (<>
+                    <DialogHeader>
+                        <DialogTitle>Invitation created</DialogTitle>
+                        <DialogDescription>
+                            TraceIQ doesn't email invitations. Send this link to {createdInvite.email} yourself;
+                            it is shown only now and works for 7 days.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <Field id="ws-invite-link" label="Invitation link">
+                        <Input id="ws-invite-link" className={`${inputCls} font-mono text-xs`} readOnly value={createdInvite.link} onFocus={(e) => e.currentTarget.select()} />
+                    </Field>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setShowInviteWorkspaceMember(false); setCreatedInvite(null); }}>Done</Button>
+                        <Button onClick={() => { navigator.clipboard.writeText(createdInvite.link); toast.success('Invitation link copied'); }}>
+                            <Copy className="h-4 w-4" /> Copy invitation link
+                        </Button>
+                    </DialogFooter>
+                    </>) : (<>
                     <DialogHeader>
                         <DialogTitle>Invite to workspace</DialogTitle>
                         <DialogDescription>Give a new person access to the whole workspace.</DialogDescription>
@@ -1045,9 +1100,10 @@ export default function WorkspacePage() {
                             disabled={!workspaceInviteEmail || inviteWorkspaceMemberMutation.isPending}
                         >
                             {inviteWorkspaceMemberMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
-                            Send invitation
+                            Create invitation
                         </Button>
                     </DialogFooter>
+                    </>)}
                 </DialogContent>
             </Dialog>
 

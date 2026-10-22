@@ -69,7 +69,7 @@ export default function ServerMetricsPanel({ runId, resultId }: { runId: number 
                 </p>
             ) : !data ? null : !data.configured ? (
                 <p className="text-xs text-slate-500">
-                    Set the Prometheus URL in Settings → Instance (Admin) → Observability to see server-side series here.
+                    An instance admin sets the Prometheus URL in Setup → Instance settings → Observability to see server-side series here.
                 </p>
             ) : data.queries_defined === 0 ? (
                 <p className="text-xs text-slate-500">

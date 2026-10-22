@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import appSource from '../../App.tsx?raw';
 import guideNav from '../../../public/docs/_assets/nav.js?raw';
-import { places, setupLinks, setupTone, isIn, isGroup } from './nav';
+import { places, setupLinks, setupTone, isIn, isGroup, activeHref } from './nav';
 import DashboardLayout from './DashboardLayout';
 
 // ---- Navigation config -----------------------------------------------------
@@ -65,6 +65,15 @@ describe('sidebar information architecture', () => {
             ...setupLinks.map((l) => l.href),
         ];
         for (const h of hrefs) expect(routes, `no <Route> for ${h}`).toContain(h);
+    });
+
+    it('highlights the sub-link a nested page belongs to', () => {
+        const links = place('Tests').children;
+        expect(activeHref('/suites', links)).toBe('/suites');
+        expect(activeHref('/suites/12', links)).toBe('/suites');
+        expect(activeHref('/suites/12/cases/3/edit', links)).toBe('/suites');
+        expect(activeHref('/schedules', links)).toBe('/schedules');
+        expect(activeHref('/runs/7', links)).toBe(null);
     });
 
     it('counts nested pages as inside their place', () => {

@@ -97,7 +97,7 @@
             <thead><tr><th style="width:26%">Answer</th><th>What it means</th></tr></thead>
             <tbody>
               <tr><td><span class="pill t-mint">Ready to release</span></td><td>Every quality-gate check passed on the runs of this commit.</td></tr>
-              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>pass_rate: 0.0% (needs &gt;= 100.0%)</em>.</td></tr>
+              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>Pass rate: 0.0% (needs &gt;= 100.0%)</em>.</td></tr>
               <tr><td><span class="pill t-butter">Insufficient data</span></td><td>Nothing failed, but evidence is missing: there is no finished run, or a required check has nothing to judge (a critical test that didn't run on this commit, no sign-off yet, no report from your build system). Missing evidence never counts as a pass.</td></tr>
             </tbody>
           </table>
@@ -119,8 +119,9 @@
           ④. Each line shows the value found, then "needs" and the rule. A green tick means
           passed, a red cross failed, and an amber dash failed <em>because evidence was
           missing</em>. A grey line under a check gives detail, such as the names of the tests
-          concerned. The checks appear here under their technical names (<code>pass_rate</code>,
-          <code>critical_passed</code>…); the <em>Quality gate</em> page explains each one.</p>
+          concerned. The checks appear under the same names as on the <em>Quality gate</em> page
+          (<em>Pass rate</em>, <em>Critical tests passed</em>…), which explains each one; point at a
+          name to read a one-line explanation.</p>
         <p>Which checks there are depends on the project's rules, which are set on the
           <em>Quality gate</em> page under <strong>Gate rules</strong>. Four of them exist for
           this page in particular and are off until switched on there:</p>
@@ -128,10 +129,10 @@
           <table>
             <thead><tr><th style="width:28%">Check</th><th>What it requires</th></tr></thead>
             <tbody>
-              <tr><td><code>flaky_cases</code></td><td>No more than N flaky tests: tests that are quarantined now, or have a flake score of 0.4 or more.</td></tr>
-              <tr><td><code>critical_passed</code></td><td>Every critical test passed on this commit. If the project has no critical test, this check fails: whoever switched it on expected it to protect something.</td></tr>
-              <tr><td><code>evidence_age</code></td><td>The newest pass of each critical test (of every test, when none is critical) is at most N days old, on any commit. This checks that the evidence is recent, not that this commit passed.</td></tr>
-              <tr><td><code>manual_signoff</code></td><td>The newest release sign-off for this commit is an approval. See <em>Release sign-off</em>.</td></tr>
+              <tr><td><strong>Flaky tests</strong></td><td>No more than N flaky tests: tests that are quarantined now, or have a flake score of 0.4 or more.</td></tr>
+              <tr><td><strong>Critical tests passed</strong></td><td>Every critical test passed on this commit. If the project has no critical test, this check fails: whoever switched it on expected it to protect something.</td></tr>
+              <tr><td><strong>Evidence age</strong></td><td>The newest pass of each critical test (of every test, when none is critical) is at most N days old, on any commit. This checks that the evidence is recent, not that this commit passed.</td></tr>
+              <tr><td><strong>Release sign-off</strong></td><td>The newest release sign-off for this commit is an approval. See <em>Release sign-off</em>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -173,9 +174,9 @@
               <li>Each browser and device is judged separately, using its newest result. A green re-run replaces an earlier red one, but a pass in Chrome doesn't hide a failure in Firefox.</li>
             </ul>
             <p>"Critical" is matched without regard to capitals or spaces. For manual tests, the
-            priority is chosen in the manual test editor. Automated tests get theirs when they are
-            imported (suite import, Git sync) or created by an AI assistant; the editor for
-            automated tests has no priority field yet.</p></div>
+            priority is chosen in the manual test editor; for automated tests, with
+            <strong>Priority</strong> at the top of the step editor. Imports (suite import, Git
+            sync) and AI assistants can set it too.</p></div>
         </div>
 
         <div class="part"><span class="num">6</span><h2 id="quarantines" data-toc="⑥ Active quarantines">Active quarantines</h2></div>

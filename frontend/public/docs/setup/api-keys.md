@@ -44,13 +44,13 @@ Keys belong to a *workspace*, not to a person. If you are in more than one works
 
 Opens the form for a new key:
 
-![The New API key form: Name (filled in as ci-regression-bot), Project scope Entire workspace, Role Default, Expires in (days) never, Allowed source IPs, and the Create key and Cancel buttons](../media/setup/api-keys/new-key-form.png)
+![The New API key form: Name (filled in as ci-regression-bot), Project scope Entire workspace, Role limit Default, Expires in (days) never, Allowed source IPs, and the Create key and Cancel buttons](../media/setup/api-keys/new-key-form.png)
 
 | Field | What it does |
 |---|---|
 | **Name** | Required. Say who uses the key, such as "ci-regression-bot" or "claude-code", so it can be recognised later. |
 | **Project scope** | *Entire workspace*, or one project. Limit it to one project whenever you can: a key for one project is refused for other projects' runs, results, reports and quality gates. (In this version that limit is not yet applied everywhere, for example not to reading suites and tests, so don't rely on it alone.) |
-| **Role** | Saved with the key, but in this version it does not change what the key can do (see below). |
+| **Role limit** | Optional cap on what the key may do: Project Viewer, Editor or Admin, or Workspace Member or Admin. *Default* means no extra cap. It never gives the key more than its creator has (see below). |
 | **Expires in (days)** | After this many days the key stops working by itself. Empty means it never expires. |
 | **Allowed source IPs** | Optional. Network addresses (written like `203.0.113.0/24`, separated by commas) the key may be used from. A request from anywhere else is refused and recorded in the audit log. Empty means any address. |
 
@@ -60,9 +60,9 @@ Opens the form for a new key:
 
 Press **Create key**. A yellow box marked Shown once then shows the whole key, which starts with `tiq_`, with a **Copy key** button. **This is the only time the full key is ever shown.** Copy it into the place that needs it (for example your CI system's secret settings) before pressing **Done**. If it is lost, revoke it and make a new one.
 
-> **A key can do what its creator can do**
+> **A key never does more than its creator can**
 >
-> A key always acts with the access of the person who created it: the projects they can see, and their role in each. The **Role** you pick in the form is stored, but it does not reduce that. To limit a key, use **Project scope**, an expiry and source IPs. If the creator's account is deactivated, their keys stop working too.
+> A key acts with the access of the person who created it, and no more: the projects they can see, and their role in each. The **Role limit** lowers that further (a key limited to Project Viewer can only read, even if you are an admin), and a key only works in the workspace it was made for. **Project scope**, an expiry and source IPs narrow it more. If the creator's account is deactivated, their keys stop working too.
 
 ## 3. The list of keys
 

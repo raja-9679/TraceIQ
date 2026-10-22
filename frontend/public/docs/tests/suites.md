@@ -47,7 +47,7 @@ Under the heading, for example *"1 suite · 5 tests · 0 modules in Demo — Tod
 
 | How tests run | What it means |
 |---|---|
-| Continuous | The default for a new suite. The screen describes it as "one after another in the same browser session"; see [Good to know](#good-to-know) for how runs actually behave today. |
+| Continuous | The default for a new suite. Today each test still runs on its own, like Separate (the screen says so); see [Good to know](#good-to-know). |
 | Separate | Each test starts on its own, from a clean browser. If the suite has sub-modules, the tests of each sub-module run together, one after another. |
 | Parallel | Each test on its own, spread over as many test machines as are free, for the quickest result. Only offered later, in the suite's [Settings](#settings). |
 
@@ -170,6 +170,7 @@ What to type, which address to open, or what text to expect.
 
 - **The dark bar** at the bottom adds a step: *Step* (choose the action yourself), or a shortcut for the common ones. Under each step, *Up*, *Down*, *Add below* and *Delete* rearrange the list.
 - **Dataset** runs the test once for every row of a small table of values, and **Matrix** picks browsers and devices for this test only.
+- **Priority** (None, Critical, High, Medium, Low): critical tests count for release readiness and the quality gate's critical-test rule.
 - **Auth setup case** marks a test that signs in: when it passes, other tests can start already signed in (*Use auth session*).
 - **History** shows earlier versions of the test and can bring one back.
 - **Ownership and review** names who looks after the test (see *Test review*).
@@ -210,8 +211,8 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 
 ## Good to know
 
-- **Who can do what.** Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the *editor* role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs *project admin* (or workspace admin); only *Protected module* can be switched by editors. Creating a schedule also needs project admin.
-- **Continuous runs don't share a browser yet.** Despite the description on screen, a Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a *Separate* suite run one after another in the same browser.
+- **Who can do what.** Anyone with access to the project can look and export. Writing, editing, deleting and running tests needs the *editor* role. Creating, renaming, deleting and changing the settings of suites and sub-modules needs *project admin* (or workspace admin); only *Protected module* can be switched by editors. Creating a schedule also needs project admin. Buttons you can't use (Run, Schedule, Edit, Delete) are not shown.
+- **Continuous runs don't share a browser yet.** A Continuous suite currently runs each test on its own, like Separate. Only the tests of a sub-module inside a *Separate* suite run one after another in the same browser.
 - **A suite holds tests or sub-modules, not both.** TraceIQ refuses a sub-module in a suite that already has tests. Once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself.
 - **Settings flow downwards.** A sub-module uses its parent's settings unless its own *Inherit settings* is switched off; then it starts fresh from there down.
 - **Exports carry no secrets.** Suite and test exports include steps, tags and descriptions, but never the value of a secret.

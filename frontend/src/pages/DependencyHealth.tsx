@@ -47,8 +47,8 @@ function VendorDetail({ v, note }: { v: VendorHealth; note: string }) {
                     {c.lift === null
                         ? 'Not enough data on both sides to compare.'
                         : c.lift > 1.5
-                            ? `Failing results saw errors from this vendor ${c.lift}× as often as passing ones. Worth a look.`
-                            : `Failing and passing results saw its errors about as often (${c.lift}×). It is unlikely to be the cause.`}
+                            ? `Failing results saw errors from this vendor ${c.lift_is_lower_bound ? 'at least ' : ''}${c.lift}× as often as passing ones. Worth a look.`
+                            : `Failing and passing results saw its errors about as often (${c.lift_is_lower_bound ? 'at least ' : ''}${c.lift}×). It is unlikely to be the cause.`}
                 </span>
             </div>
 

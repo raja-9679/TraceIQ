@@ -362,7 +362,7 @@ export default function TestMatrix() {
                             {runToDelete
                                 ? "This will permanently delete this test run and all its execution logs. This action cannot be undone."
                                 : isDeletingAll
-                                    ? "This will permanently delete ALL test runs across the system. This cannot be undone."
+                                    ? "This will permanently delete every test run in the projects where you are an editor. This cannot be undone."
                                     : `This will permanently delete ${selectedRuns.length} selected test runs. This cannot be undone.`}
                         </AlertDialogDescription>
                     </AlertDialogHeader>

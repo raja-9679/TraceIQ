@@ -20,6 +20,7 @@ import {
 } from '@/components/redesign/primitives';
 import type { Tone } from '@/components/redesign/kinds';
 import { cn } from '@/lib/utils';
+import { usePermission } from '@/hooks/usePermission';
 
 // ---------------------------------------------------------------------------
 // Auto-apply policy — workspace-level threshold above which agent CREATE /
@@ -33,6 +34,7 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
 
     const { data: projects } = useQuery({ queryKey: ['projects'], queryFn: () => getProjects() });
     const workspaceId = projects?.find((p) => p.id === projectId)?.workspace_id;
+    const { can } = usePermission();
 
     const { data: policy } = useQuery({
         queryKey: ['proposal-policy', workspaceId],
@@ -61,6 +63,8 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
     });
 
     if (!workspaceId) return null;
+    // PUT proposal-policy needs workspace:manage_settings (workspace admin).
+    const canChange = can('workspace:manage_settings', { workspaceId });
     const threshold: number | null = policy?.auto_apply_threshold ?? null;
     const autoApplyOff = policy?.auto_apply_disabled_by_instance === true;
     const enabled = !!threshold && threshold > 0 && !autoApplyOff;
@@ -75,7 +79,9 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
     const validationForced = validationEnforced && !validationStored;
 
     return (
-        <section aria-label="Review policy" className="flex flex-col gap-3 rounded-2xl border border-border bg-white px-5 py-4 lg:flex-row lg:items-center lg:gap-6">
+        // Three controls side by side only on very wide screens: at 1280-1440
+        // the row squashed the first one and the buttons overlapped.
+        <section aria-label="Review policy" className="flex flex-col gap-3 rounded-2xl border border-border bg-white px-5 py-4 2xl:flex-row 2xl:items-center 2xl:gap-6">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
                 <span className="text-sm font-semibold text-ink">Auto-apply</span>
                 {editing ? (
@@ -114,18 +120,18 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
                             <span className="text-[13px] text-ink-soft">Off. Every proposal waits here for a person.</span>
                         )}
                         <span className="text-[13px] text-ink-soft">Creates and updates only; every change is snapshotted.</span>
-                        <Button
+                        {canChange && <Button
                             size="sm"
                             variant="outline"
                             className="h-10 px-4"
                             onClick={() => { setValue(threshold ? String(threshold) : ''); setEditing(true); }}
                         >
                             Edit
-                        </Button>
+                        </Button>}
                     </>
                 )}
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 2xl:border-l 2xl:border-t-0 2xl:pl-6 2xl:pt-0">
                 <span className="text-sm font-semibold text-ink">Second approver</span>
                 {separationEnforced ? (
                     <Pill tone="mint">Required</Pill>
@@ -135,7 +141,7 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
                 {forcedByInstance && (
                     <span className="text-[13px] text-ink-soft">Enforced for the whole instance</span>
                 )}
-                {!forcedByInstance && (
+                {!forcedByInstance && canChange && (
                     <Button
                         size="sm"
                         variant="outline"
@@ -147,7 +153,7 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
                     </Button>
                 )}
             </div>
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border pt-3 2xl:border-l 2xl:border-t-0 2xl:pl-6 2xl:pt-0">
                 <span className="text-sm font-semibold text-ink">Validate before accept</span>
                 {validationEnforced ? (
                     <Pill tone="mint">Required</Pill>
@@ -157,7 +163,7 @@ function AutoApplyPolicyCard({ projectId }: { projectId: number }) {
                 {validationForced && (
                     <span className="text-[13px] text-ink-soft">Enforced for the whole instance</span>
                 )}
-                {!validationForced && (
+                {!validationForced && canChange && (
                     <Button
                         size="sm"
                         variant="outline"
@@ -238,6 +244,7 @@ const ACTION_STYLES: Record<string, { label: string; tone: Tone; verb: string }>
     update: { label: 'Update', tone: 'lavender', verb: 'change an existing test' },
     delete: { label: 'Delete', tone: 'peach', verb: 'delete a test' },
     move: { label: 'Move', tone: 'butter', verb: 'move a test to another suite' },
+    update_suite_settings: { label: 'Suite settings', tone: 'lavender', verb: 'change a suite\'s settings' },
 };
 // Risk first: a delete is the change most worth a second look.
 const ACTION_ORDER = ['delete', 'update', 'create', 'move'];
@@ -380,7 +387,7 @@ function DeleteDetail({ proposal }: { proposal: CaseProposal }) {
                 <KindChip kind="failure" size="sm" />
                 <div className="min-w-0">
                     <p className="text-sm font-semibold text-ink">
-                        {isLoading ? 'Loading case…' : targetCase ? `"${targetCase.name}"` : `Case #${proposal.target_case_id}`} will be permanently deleted
+                        {isLoading ? 'Loading case…' : targetCase ? `"${targetCase.name}"` : `Case #${caseIdOf(proposal) ?? '—'}`} {proposal.status === 'accepted' || proposal.status === 'auto_applied' ? 'was deleted' : 'will be permanently deleted'}
                     </p>
                     {targetCase && (
                         <p className="mt-1 text-xs text-ink-soft">{targetCase.steps?.length || 0} steps · suite #{targetCase.test_suite_id ?? '—'}</p>
@@ -423,10 +430,19 @@ function ProposalBody({ proposal }: { proposal: CaseProposal }) {
     }
 }
 
-const proposalTitle = (proposal: CaseProposal) =>
-    proposal.action === 'create'
-        ? proposal.payload?.name || 'New test case'
-        : proposal.payload?.name || `Case #${proposal.target_case_id}`;
+// An accepted DELETE clears target_case_id (the case is gone) and keeps the
+// id in payload.deleted_case_id.
+const caseIdOf = (proposal: CaseProposal): number | null =>
+    proposal.target_case_id ?? proposal.payload?.deleted_case_id ?? null;
+
+const proposalTitle = (proposal: CaseProposal) => {
+    if (proposal.action === 'create') return proposal.payload?.name || 'New test case';
+    if (proposal.action === 'update_suite_settings') {
+        return proposal.test_suite_id != null ? `Settings of suite #${proposal.test_suite_id}` : 'Suite settings';
+    }
+    const id = caseIdOf(proposal);
+    return proposal.payload?.name || (id != null ? `Case #${id}` : 'Test case');
+};
 
 // ---------------------------------------------------------------------------
 // Test-proposal detail card
@@ -446,8 +462,8 @@ function ProposalDetail({ proposal }: { proposal: CaseProposal }) {
             queryClient.invalidateQueries({ queryKey: ['case', proposal.target_case_id] });
             toast.success(vars.decision === 'accept' ? 'Proposal accepted and applied' : 'Proposal rejected');
         },
-        onError: (err: Error & { response?: { data?: { detail?: unknown } } }) =>
-            toast.error(`Failed to update proposal: ${detailText(err.response?.data?.detail, err.message)}`),
+        onError: (err: Error & { response?: { data?: { detail?: unknown } & Record<string, unknown> } }) =>
+            toast.error(`Failed to update proposal: ${detailText(err.response?.data?.detail ?? err.response?.data, err.message)}`),
     });
     const validateMutation = useMutation({
         mutationFn: () => caseProposalsApi.validate(proposal.id),
@@ -761,7 +777,7 @@ function HealProposalsTab({ status }: { status: string }) {
     }
     if (!proposals || proposals.length === 0) {
         return (
-            <EmptyState title={`No ${status ? `${statusStyle(status).label.toLowerCase()} ` : ''}heal proposals`}>
+            <EmptyState title={`No heal proposals${status ? ` ${statusStyle(status).label.toLowerCase()}` : ''}`}>
                 After successful runs, TraceIQ compares stored selectors with the captured page and suggests fixes for the ones that drifted.
             </EmptyState>
         );
@@ -879,7 +895,7 @@ export default function Proposals() {
             ) : error ? (
                 <EmptyState title="Couldn't load proposals">{(error as Error).message}</EmptyState>
             ) : !caseProposals || caseProposals.length === 0 ? (
-                <EmptyState title={`No ${statusStyle(status).label.toLowerCase()} test proposals`}>
+                <EmptyState title={`No test proposals ${statusStyle(status).label.toLowerCase()}`}>
                     When AI agents propose creating, updating or deleting tests, they land here for your review.
                 </EmptyState>
             ) : (
