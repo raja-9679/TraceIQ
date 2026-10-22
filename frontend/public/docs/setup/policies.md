@@ -74,7 +74,7 @@ Every check TraceIQ makes before it lets certain actions happen, grouped by the 
 
 ## 4. Recent denials
 
-![The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period (Last 30 days), above a list of refusals, each with its rule and action, when it happened, the reason, and where and who; the newest is agent.budget, Agent session budget exhausted: 20/20 runs](../media/setup/policies/denials.png)
+![The Recent denials card with five filters, Scope, Action, Rule, Agent id and Period (Last 30 days), above a list of refusals, each with its rule and action, when it happened, the reason, and where and who; the newest is agent.budget, Agent session budget exhausted: 3/3 runs](../media/setup/policies/denials.png)
 
 A **denial** is one time a rule said no. The list shows them newest first, 50 to a page (**Newer** and **Older** move between pages). The demo workspace has four from the last month: an agent that ran out of its run budget, a person trying to accept their own proposal, the monthly AI token quota, and AI being switched off. When nothing matches, the card says *"Nothing was refused in this period"*.
 
@@ -86,7 +86,7 @@ A **denial** is one time a rule said no. The list shows them newest first, 50 to
 | **Agent id** | Only refusals of one agent. Type its exact name. |
 | **Period** | The last 24 hours, 7, 30 (the default) or 90 days. |
 
-Each row says **when**, which **rule** (and action), the **reason** TraceIQ gave, **where** (the project, if there was one) and **who**: the agent and its session if an agent asked, and the person's email, or *system* when TraceIQ itself was acting.
+Each refusal is one entry in the list. Its first line names the **rule** (and the action it guarded) and **when** it happened; under it come the **reason** TraceIQ gave, **where** (the project, if there was one) and **who**: the agent and its session if an agent asked, and the person's email, or *system* when TraceIQ itself was acting.
 
 ## Watch it in use
 
@@ -152,4 +152,4 @@ What the walkthrough says, in order. The video and every picture on this page ar
 6. Refuses stops the action. Defers makes it wait. Resolves settings only adjusts it.
 7. Recent denials lists what was actually refused, newest first.
 8. Narrow it down by action, rule, agent or period.
-9. Each row says when, which rule, the reason given, the project, and who asked.
+9. Each refusal says which rule, when, the reason given, where, and who asked.

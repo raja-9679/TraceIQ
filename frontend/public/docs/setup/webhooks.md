@@ -172,7 +172,7 @@ One row per attempt, newest first, up to the 50 most recent. **All** and **Faile
 - **A redelivered message is the same message.** It has the same delivery ID as before, so a receiver that already handled it can skip it. Redeliver also works on a disabled webhook, which is handy for testing a receiver before switching it back on.
 - **The log keeps 30 days.** Older attempts are removed automatically. The log refreshes every 15 seconds while it is open.
 - **What a message contains:** the run's number, result, suite and test names, browser and device, how many tests passed and failed, how long it took, its error message, links to its trace and video, the code version it tested (if it was given one), who or what started it, and the name, result and error of up to 100 tests.
-- **The demo workspace never sends anything.** TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see *Proposals*). The demo's delivery log is sample data, and its address ends in `.invalid`, which can't exist: pressing **Redeliver** there only adds a failed attempt.
+- **The demo workspace never sends anything.** TraceIQ skips webhooks for demo data, and for the check runs it makes to try out a suggested fix (see *Proposals*). The demo's delivery log is sample data, and its address ends in `.invalid`, which can't exist. Pressing **Redeliver** there is refused with *"This is a demo workspace: it never contacts outside services"*.
 - **The settings can't be edited.** To change a webhook's address, scope or events, create a new one and delete the old one.
 - **Not the same as chat notifications.** Messages to Slack or Microsoft Teams are set up for each project in *Project settings*. Webhooks are for systems your team builds or runs.
 

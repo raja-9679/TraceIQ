@@ -139,7 +139,7 @@ To file *one* ticket for a problem that failed many times, use **Failure triage*
 - **Only switched-on trackers are offered.** The *Create ticket* menus on runs and in Failure triage list enabled Jira, iTop and GitHub trackers; Requirements lists enabled Jira and Linear ones.
 - **The run page asks for a workspace first** if you belong to several. Pick the workspace the run's project belongs to.
 - **Failure triage only offers trackers of the project's own workspace**, so a problem can't be filed into another team's tracker by mistake.
-- **The demo's Jira tracker is a placeholder.** Its address can't be reached and its token is not real, so enabling it would only make ticket filing fail. To try the page, add your own test connection, then remove it.
+- **The demo's Jira tracker is a placeholder.** Its address can't be reached and its token is not real, and a demo workspace never contacts outside services: filing a ticket or importing requirements through it is refused even if it is switched on. To try the page, add your own test connection, then remove it.
 
 ## Related pages
 

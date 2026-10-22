@@ -35,7 +35,7 @@ AI usage answers **"How much AI are we using, and for what?"** AI services charg
 
 The demo workspace has about a month of AI calls, made through two AI services. The numbers on the screenshot match the sections below. ("LLM", large language model, is the technical name for these AI services.)
 
-![The AI usage page with six numbered parts: 1 the time-window menu set to 30 days, 2 the workspace menu set to Demo workspace, 3 four totals (772k tokens, 181 calls, 645k in and 127k out, 5.1 s average), 4 the tokens-per-day bars, 5 the table by provider and model, 6 the bars by feature](../media/setup/ai-usage/page-annotated.png)
+![The AI usage page with six numbered parts: 1 the time-window menu set to 30 days, 2 the workspace menu set to Demo workspace, 3 four totals (779k tokens, 182 calls, 651k in and 128k out, 5.1 s average), 4 the tokens-per-day bars, 5 the table by provider and model, 6 the bars by feature](../media/setup/ai-usage/page-annotated.png)
 
 *The AI usage page for the demo workspace. Click the picture to see it larger.*
 
@@ -53,7 +53,7 @@ When the workspace has made no AI calls in the window, the page shows only these
 
 ## 3. The four totals
 
-![Four tiles: Total tokens 772k (772,290 in 30d), LLM calls 181, Input / output 645k / 127k, Average latency 5.1s](../media/setup/ai-usage/totals.png)
+![Four tiles: Total tokens 779k (779,006 in 30d), LLM calls 182, Input / output 651k / 128k, Average latency 5.1s](../media/setup/ai-usage/totals.png)
 
 | Tile | What the number means |
 |---|---|
@@ -64,15 +64,15 @@ When the workspace has made no AI calls in the window, the page shows only these
 
 ## 4. Tokens per day
 
-![A bar chart of tokens per day from 2026-09-22 to 2026-10-21, with the peak day at 48k tokens](../media/setup/ai-usage/daily.png)
+![A bar chart of tokens per day from 2026-09-22 to 2026-10-22, with the peak day at 48k tokens](../media/setup/ai-usage/daily.png)
 
-A bar for each day that had calls; the tallest bar is the busiest day, and the top corner names its total. Days without any calls get no bar at all, so two bars side by side are not always two days in a row: read the dates. Point at a bar to see its date, tokens and number of calls. Days are calendar days in **UTC**, so in India a call made before 5:30 a.m. counts towards the previous day.
+One slot for every day of the window, from the first date on the left to today on the right; the tallest bar is the busiest day, and the top corner names its total. A day without any calls leaves its slot empty. Point at a bar to see its date, tokens and number of calls. Days are calendar days in **UTC**, so in India a call made before 5:30 a.m. counts towards the previous day.
 
 If the workspace's plan has a monthly AI limit, the top-right corner also shows it, for example *"2026-10: 120,000 / 1,000,000 tokens (12%)"*. That figure is for the **current calendar month**, whatever time window you picked.
 
 ## 5. By provider and model
 
-![The By provider and model table: anthropic claude-sonnet-4-5 with 100 calls and 93% success, ollama qwen2.5-coder:14b with 81 calls and 98% success](../media/setup/ai-usage/providers.png)
+![The By provider and model table: anthropic claude-sonnet-4-5 with 100 calls and 93% success, ollama qwen2.5-coder:14b with 82 calls and 98% success](../media/setup/ai-usage/providers.png)
 
 One row per AI service (the **provider**, as your administrator named it) and **model** (the particular AI version, such as a "mini" or a "large" one), the most-used first. The columns give calls, input, output and total tokens, and the average wait. **Success** is the share of calls that got an answer; below 90% it turns peach, which usually means the service was refusing or timing out.
 

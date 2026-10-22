@@ -93,7 +93,7 @@ Granting and removing access needs a workspace admin or an admin of that project
 
 A demo workspace can also be removed with **Delete demo workspace** on its own card (⑥).
 
-![The Delete workspace dialog for Demo workspace: Will remove 2 projects, 4 suites, 18 test cases, 242 runs, 1 team (1886 records in total). Audit history is kept. Below, a box for typing the workspace name and a pale Delete workspace button](../media/setup/workspace/delete-dialog.png)
+![The Delete workspace dialog for Demo workspace: Will remove 2 projects, 4 suites, 18 test cases, 252 runs, 1 team (1927 records in total). Audit history is kept. Below, a box for typing the workspace name and a pale Delete workspace button](../media/setup/workspace/delete-dialog.png)
 
 ## 3. The tab's button
 

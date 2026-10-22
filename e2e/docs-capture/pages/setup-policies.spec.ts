@@ -22,13 +22,10 @@ test('Setup › Policies', async ({ page, browser }) => {
     const rules = main.getByRole('region', { name: 'Rules', exact: true });
     const denials = main.getByRole('region', { name: 'Recent denials' });
     await expect(rules.getByText('plan.run_quota')).toBeVisible();
-    await expect(denials.getByText(/Nothing was refused|When/).first()).toBeVisible();
+    await expect(denials.getByRole('list', { name: 'Refused actions' }).or(denials.getByText(/Nothing was refused/)).first()).toBeVisible();
     await expect(labelled(main, 'Workspace')).toHaveValue(/\d+/);
     await expect(labelled(main, 'Workspace').locator('option:checked')).toHaveText('Demo workspace');
     await settle(page);
-    // The instance-admin probe (GET /admin/instance-admins) 403s for the docs
-    // account and the app's global handler toasts it; wait for it to go.
-    await expect(page.getByText('Permission Denied')).toBeHidden({ timeout: 15_000 });
 
     // 1. The page as a reader first meets it.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
@@ -59,7 +56,7 @@ test('Setup › Policies', async ({ page, browser }) => {
                 clip: { x: top.x, y: top.y, width: top.width, height: end.y + end.height - top.y + 24 } });
         }
     };
-    await shootTop(`${DIR}/denials.png`, denials.locator('table').or(denials.getByText(/Nothing was refused/)).first());
+    await shootTop(`${DIR}/denials.png`, denials.getByRole('list', { name: 'Refused actions' }).or(denials.getByText(/Nothing was refused/)).first());
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 4. A short walkthrough video, with captions saying what is on screen.
@@ -93,8 +90,8 @@ test('Setup › Policies', async ({ page, browser }) => {
         await labelled(d, 'Period').selectOption('90');
         await settle(p);
         await pointAt(p, labelled(d, 'Period'), 1200);
-        await caption(p, 'Each row says when, which rule, the reason given, the project, and who asked.');
-        await pointAt(p, d.locator('tbody tr').first(), 2400);
+        await caption(p, 'Each refusal says which rule, when, the reason given, where, and who asked.');
+        await pointAt(p, d.getByRole('list', { name: 'Refused actions' }).getByRole('listitem').first(), 2400);
         await caption(p, '');
     });
 });

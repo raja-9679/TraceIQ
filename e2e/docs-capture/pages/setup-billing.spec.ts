@@ -18,10 +18,6 @@ async function openDemoWorkspace(p: Page) {
     await p.getByRole('option', { name: 'Demo workspace' }).click();
     await settle(p);
     await expect(p.getByText(/Current plan:/)).toBeVisible();
-    // The page asks /admin/instance-admins to learn whether the viewer is the
-    // instance admin; for anyone else that 403 pops a "Permission Denied"
-    // toast (an app bug, reported). Let it time out before taking pictures.
-    await expect(p.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 15_000 });
 }
 
 test('Setup › Billing', async ({ page, browser }) => {

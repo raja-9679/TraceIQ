@@ -71,7 +71,7 @@ test('Setup › Agents', async ({ page, browser }) => {
         });
         await caption(p, 'This list shows every agent name seen in the workspace, with what it did.');
         await pointAt(p, l.locator('li').first(), 2200);
-        await caption(p, 'In the demo, claude-code ran the web tests from a feature branch.');
+        await caption(p, 'In the demo, claude-code worked in thirteen sessions, each allowed three runs.');
         await pointAt(p, l.getByText('claude-code', { exact: true }), 2200);
         const r = l.locator('li').filter({ hasText: 'claude-code' });
         await caption(p, 'Open an agent to see its controls and its sessions.');
