@@ -81,7 +81,7 @@
 
         <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The environments">The environments</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/tests/environments/list.png" alt="A box titled Environments with two rows: local, http://localhost:8080, labelled Default; and public, https://example.com" loading="lazy"></div>
+          <div class="frame small"><img src="../media/tests/environments/list.png" alt="A box titled Environments with three rows: local, http://localhost:8080, labelled Default; public, https://example.com; and shared-staging, https://example.com" loading="lazy"></div>
         </figure>
         <p>Each row shows the environment's name and base URL. <span class="pill t-butter">Default</span>
           marks the one used when a run doesn't name an environment. <span class="pill t-lavender">In use</span>
@@ -136,7 +136,8 @@
           each other's way, for example two runs signing in with the same test account. While a run
           holds it, this box says <em>In use by run #…</em> (click it to open that run), and other
           runs wait, marked <em>Queued</em>, and start by themselves when it is free.
-          <strong>Allow parallel runs</strong> switches it back.</p>
+          <strong>Allow parallel runs</strong> switches it back. In the demo, <em>shared-staging</em> is
+          exclusive.</p>
         <p><strong>Force release</strong> appears while a run holds the environment. Use it only if
           a run is stuck: the run keeps going, and the next waiting run starts alongside it.</p>
 

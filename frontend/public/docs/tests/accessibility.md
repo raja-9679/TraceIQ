@@ -28,9 +28,9 @@ An **accessibility problem** is something that makes a page hard or impossible t
 
 ## A tour of the screen
 
-The demo has no stored accessibility scans yet, so the screenshot shows the page before its first result. The numbers match the sections below; the parts that appear once there are results are described after them.
+The demo's web project runs an accessibility check on its landing page in every run, so the page shows a month of results. The numbers on the screenshot match the sections below.
 
-![The Accessibility page with three numbered parts: 1 the Window menu, 2 the note No accessibility scans yet, 3 the Waivers box with a New waiver button](../media/tests/accessibility/page-annotated.png)
+![The Accessibility page with four numbered parts: 1 the Window menu set to Last 30 days, 2 the five number tiles (critical, serious, moderate and minor all 0, waived 1), followed by the Violations by impact chart and the New per day and Fixed per day strips, 3 the Open violations table with one waived moderate problem, 4 the Waivers box with one waiver and a New waiver button](../media/tests/accessibility/page-annotated.png)
 
 *The Accessibility page for the demo's web project. Click the picture to see it larger.*
 
@@ -38,14 +38,19 @@ The demo has no stored accessibility scans yet, so the screenshot shows the page
 
 How far back to look: the last 7, 30 (shown first), 90 or 180 days of runs.
 
-## 2. The results
+## 2. The numbers and charts
 
-Until a test with a *check-accessibility* step has run in the window, this place says *"No accessibility scans yet"*. Once there are scans, it fills with four parts:
+![Five tiles: Critical 0, Serious 0, Moderate 0, Minor 0, each open in the latest scans, and Waived 1, 0 new since the previous run](../media/tests/accessibility/tiles.png)
 
-- **Five number tiles**: how many *critical*, *serious*, *moderate* and *minor* problems are open in the latest scans, and how many are *waived* (with how many are new since the run before).
+- **Five number tiles**: how many *critical*, *serious*, *moderate* and *minor* problems are open in the latest scans, and how many are *waived* (with how many are new since the run before). A waived problem counts under Waived, not under its impact.
 - **Violations by impact**: a bar per day, stacked by how serious the problems were, with the number of runs and scans it is based on.
 - **New per day** and **Fixed per day**: problems that appeared, and problems that went away, compared with the previous run of the same test.
-- **Open violations**: a table of the problems in the latest scan of each test (see below).
+
+![The Violations by impact chart: a bar per day for 30 days, mostly moderate (yellow), one day with a serious problem (orange) as well, and the line 59 runs, 59 scans in the last 30 days](../media/tests/accessibility/trend.png)
+
+*In the demo, one run found a serious problem (orange) as well as the usual moderate ones; the next run no longer had it.*
+
+Until a test with a *check-accessibility* step has run in the window, this part of the page only says *"No accessibility scans yet"*.
 
 | Impact | What it means |
 |---|---|
@@ -54,13 +59,21 @@ Until a test with a *check-accessibility* step has run in the window, this place
 | moderate | Gets in the way, but there is usually a way round it. |
 | minor | A small annoyance. |
 
-Each row of **Open violations** shows the impact, the **rule** (click it for the axe explanation of what is wrong and how to fix it), the **target** (the selector of the element, see *Suites*), the page and test, the number of matching elements ("nodes"), and its status: new if the previous scan of that test didn't have it, waived if a waiver covers it, otherwise a **Waive** button that opens the waiver form already filled in for that rule and element.
+## 3. Open violations
 
-## 3. Waivers
+![The Open violations table with one row: impact moderate, rule region, target body &gt; div &gt; p, page https://example.com/ and the test No serious accessibility violations, 2 nodes, status waived](../media/tests/accessibility/open-violations.png)
 
-A **waiver** says "we know about this problem and accept it until a set date". While it lasts, matching problems are shown as waived and don't count against the *quality gate* (see Good to know). **New waiver** opens the form:
+The problems in the latest scan of each test. Each row shows the impact, the **rule** (click it for the axe explanation of what is wrong and how to fix it), the **target** (the selector of the element, see *Suites*), the page and test, the number of matching elements ("nodes"), and its status: new if the previous scan of that test didn't have it, waived if a waiver covers it, otherwise a **Waive** button that opens the waiver form already filled in for that rule and element.
 
-![The Waivers box with its New waiver form: Rule (color-contrast), Selector pattern (* matches anything) set to *, Reason (Vendor widget, fix scheduled), Length (days, max 90) 30, Owner Me, and Add waiver and Cancel buttons](../media/tests/accessibility/waiver-form.png)
+## 4. Waivers
+
+A **waiver** says "we know about this problem and accept it until a set date". While it lasts, matching problems are shown as waived and don't count against the *quality gate* (see Good to know).
+
+![The Waivers box: a New waiver button, a note on what waivers do, and one waiver, region on body &gt; div *, with its reason, owner Alex Morgan, 40 days left, and Renew 30 days and Remove buttons](../media/tests/accessibility/waivers.png)
+
+**New waiver** opens the form. Once there are scans it opens above the Open violations table; before the first scan, inside the Waivers box.
+
+![The New waiver form: Rule (example color-contrast), Selector pattern (* matches anything) set to *, Reason (example Vendor widget, fix scheduled), Length (days, max 90) 30, Owner Me, the note Rule must be an axe rule id, and Add waiver (greyed out) and Cancel buttons](../media/tests/accessibility/waiver-form.png)
 
 | Field | What to fill in |
 |---|---|
@@ -125,8 +138,10 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Accessibility collects every problem the accessibility checks in your tests have found.
 2. A problem is something that makes the page hard to use, for example with a screen reader.
-3. Results appear once a test has a check accessibility step, and has run.
+3. The tiles count the open problems in the latest scans, by how serious they are.
 4. The window chooses how many days of scans to look at.
-5. A waiver sets a known problem aside for up to ninety days, so that it doesn’t block a release.
-6. It names the rule, which elements it covers, a reason, how long, and an owner.
-7. Cancel closes the form without adding anything.
+5. Open violations lists each problem: its rule, the element, and the test that found it.
+6. This one is waived: set aside for a limited time, so it doesn’t block a release.
+7. A waiver lasts up to ninety days. New waiver adds one.
+8. It names the rule, which elements it covers, a reason, how long, and an owner.
+9. Cancel closes the form without adding anything.

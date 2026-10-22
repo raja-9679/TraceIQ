@@ -2,8 +2,8 @@ import { expect, test } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/tests/frontend-quality.html
-// The demo has no crawls, page-budget samples or selector trouble yet, so the
-// tabs show their empty states. Nothing here changes data: the "New crawl"
+// The demo's web project has a crawl with two runs, a month of page-budget
+// samples and failed steps for Selector health. Nothing here changes data: the "New crawl"
 // form is opened and closed with Cancel, nothing is loaded from Storybook,
 // and the project picker is not touched.
 
@@ -15,7 +15,8 @@ test('Tests › Frontend quality', async ({ page, browser }) => {
     await settle(page);
     const main = page.locator('main');
     const tabs = main.getByRole('tablist', { name: 'Frontend quality views' });
-    await expect(main.getByText('No crawls yet.')).toBeVisible();
+    const crawl = main.getByRole('tabpanel').locator('section').filter({ has: page.getByRole('button', { name: 'Run now' }) }).first();
+    await expect(crawl.locator('table')).toBeVisible();
 
     // 1. The whole page as a reader first meets it.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
@@ -27,10 +28,11 @@ test('Tests › Frontend quality', async ({ page, browser }) => {
         { n: 1, target: picker, side: 'right' },
         { n: 2, target: tabs },
         { n: 3, target: panel.locator('xpath=./div/div[1]') },
-        { n: 4, target: main.getByText('No crawls yet.') },
+        { n: 4, target: crawl },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
+    await crawl.screenshot({ path: out(`${DIR}/crawl.png`) });
 
     // 3. Close-ups: the crawl form, then each tab.
     await main.getByRole('button', { name: 'New crawl' }).click();
@@ -42,14 +44,18 @@ test('Tests › Frontend quality', async ({ page, browser }) => {
     await expect(form).toBeHidden();
 
     for (const [name, file, wait] of [
-        ['Page budgets', 'budgets', 'No page-budget samples yet.'],
-        ['Selector health', 'selectors', 'No selector trouble in this window.'],
+        ['Page budgets', 'budgets', /lcp_ms over the last/],
+        ['Selector health', 'selectors', /failures?/],
         ['Storybook', 'storybook', 'Storybook URL'],
     ] as const) {
         await tabs.getByRole('tab', { name }).click();
-        await expect(main.getByRole('tabpanel').getByText(wait).first()).toBeVisible();
+        await expect(typeof wait === 'string' || name !== 'Page budgets'
+            ? main.getByRole('tabpanel').getByText(wait).first()
+            : main.getByRole('tabpanel').getByRole('img', { name: wait })).toBeVisible();
         await settle(page);
+        await page.setViewportSize({ width: 1440, height: 1600 });
         await main.getByRole('tabpanel').screenshot({ path: out(`${DIR}/${file}.png`) });
+        await page.setViewportSize({ width: 1440, height: 900 });
     }
     await tabs.getByRole('tab', { name: 'Link & asset crawler' }).click();
 
@@ -83,7 +89,6 @@ test('Tests › Frontend quality', async ({ page, browser }) => {
         await caption(p, 'Storybook turns each story of a component library into a test.');
         await t.getByRole('tab', { name: 'Storybook' }).click();
         await pointAt(p, t.getByRole('tab', { name: 'Storybook' }), 2200);
-        await caption(p, 'The demo has no results yet, so each tab shows its empty state.', 1800);
         await caption(p, '');
     });
 });

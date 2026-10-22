@@ -64,12 +64,12 @@
           the screenshot match the sections below.</p>
         <figure>
           <div class="frame"><img src="../media/tests/test-review/page-annotated.png" alt="The Test review page with five numbered parts: 1 the counts line, 2 the tabs Needs review, Mine to review and All tests, 3 the list of tests grouped by status, 4 the selected test's name and status, 5 the Ownership and review box" loading="lazy" width="1440" height="900"></div>
-          <figcaption>The Test review page for the demo's web project, where no test has been reviewed yet. Click the picture to see it larger.</figcaption>
+          <figcaption>The Test review page for the demo's web project, where three tests were reviewed recently and the rest never have been. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="counts" data-toc="① The counts line">The counts line</h2></div>
-        <p>Under the heading, for example <em>"0 overdue · 5 never reviewed · 0 with an owner who
-          lost access · 5 unowned"</em>. It counts the tests of the whole project (on <em>Mine to
+        <p>Under the heading, for example <em>"0 overdue · 10 never reviewed · 0 with an owner who
+          lost access · 9 unowned"</em>. It counts the tests of the whole project (on <em>Mine to
           review</em>: only your own), whichever tab you are on.</p>
         <div class="table-wrap">
           <table>
@@ -93,13 +93,13 @@
           <li><strong>All tests</strong>: every test in the project, whatever its status.</li>
         </ul>
         <figure>
-          <div class="frame"><img src="../media/tests/test-review/mine-empty.png" alt="The Mine to review tab showing Nothing to review: every test is within its review interval" loading="lazy" width="1440" height="900"></div>
-          <figcaption>Mine to review for someone who owns no tests that are due.</figcaption>
+          <div class="frame"><img src="../media/tests/test-review/mine-empty.png" alt="The Mine to review tab with one test, No serious accessibility violations, owned by Alex Morgan and never reviewed; the counts line now reads 0 overdue · 1 never reviewed · 0 with an owner who lost access · 0 unowned" loading="lazy" width="1440" height="900"></div>
+          <figcaption>Mine to review: the one due test the demo account owns. The counts line now counts only your own tests. When none of yours is due, the tab says <em>Nothing to review</em>.</figcaption>
         </figure>
 
         <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list">The list</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/tests/test-review/list.png" alt="A box titled Never reviewed with five tests, each with the line Web smoke (demo) · Unowned and Never reviewed · every 90 days" loading="lazy"></div>
+          <div class="frame small"><img src="../media/tests/test-review/list.png" alt="A box titled Never reviewed with ten tests, each with its suite (Todo editing, Release checklist or Web smoke), its owner or Unowned, and Never reviewed · every 90 days" loading="lazy"></div>
         </figure>
         <p>Tests are boxed in this order: <strong>Owner no longer has access</strong>, <strong>Review
           overdue</strong>, <strong>Never reviewed</strong> and, on <em>All tests</em>, <strong>Up to
@@ -109,7 +109,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="selected" data-toc="④ The selected test">The selected test</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/tests/test-review/detail-header.png" alt="A Never reviewed label, the test name Add a todo, and the line Web smoke (demo) · Case #16 · Open the test" loading="lazy"></div>
+          <div class="frame small"><img src="../media/tests/test-review/detail-header.png" alt="A Never reviewed label, the test name Add a draft todo, and the line Todo editing (demo) · Case #57 · Open the test" loading="lazy"></div>
         </figure>
         <p>The status, the test's name, its suite and number, and <strong>Open the test</strong>,
           which opens it in the step editor so you can read what it does before deciding.</p>
