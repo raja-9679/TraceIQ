@@ -195,6 +195,11 @@ def _send_follow_up(row_id: int, *, manual: bool) -> Dict[str, Any]:
         webhook = session.get(WorkspaceWebhook, prev.webhook_id)
         if webhook is None or webhook.workspace_id != prev.workspace_id:
             return {"skipped": "webhook gone"}
+        from app.services.demo_workspace import is_demo_workspace_sync
+        if is_demo_workspace_sync(session, webhook.workspace_id):
+            # Same rule as dispatch_run_webhooks: a demo never calls out, also
+            # not on a retry or a redeliver of a seeded delivery.
+            return {"skipped": "demo workspace"}
         if not webhook.is_active and not manual:
             return {"skipped": "webhook disabled"}
         if not manual:

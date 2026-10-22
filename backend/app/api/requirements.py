@@ -87,6 +87,9 @@ async def _tracker(config_id: Optional[int], project: Project,
                             detail=f"Requirements can be imported from Jira or Linear, not {config.provider}")
     if not config.enabled:
         raise HTTPException(status_code=400, detail="Tracker connection is disabled")
+    from app.services.demo_workspace import DEMO_NO_OUTBOUND, is_demo_workspace
+    if await is_demo_workspace(session, config.workspace_id):
+        raise HTTPException(status_code=409, detail=DEMO_NO_OUTBOUND)
     try:
         secret = decrypt_secret(config.auth_secret_encrypted)
     except Exception:  # noqa: BLE001

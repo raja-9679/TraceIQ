@@ -389,6 +389,21 @@ def is_demo_project_sync(session: Any, project_id: Optional[int]) -> bool:
     return isinstance(workspace_id, int) and is_demo_workspace_sync(session, workspace_id)
 
 
+#: Refusal shown when someone asks a demo workspace to contact the outside
+#: world (redeliver a webhook, file a ticket, page, import from a tracker).
+DEMO_NO_OUTBOUND = ("This is a demo workspace: it never contacts outside services "
+                    "(webhooks, issue trackers, paging). Use a real workspace for that.")
+
+
+async def is_demo_workspace(session: Any, workspace_id: Optional[int]) -> bool:
+    """Async twin of is_demo_workspace_sync, for request handlers."""
+    if not workspace_id or session is None:
+        return False
+    from app.models import Workspace
+    ws = await session.get(Workspace, workspace_id)
+    return ws is not None and getattr(ws, "is_demo", False) is True
+
+
 # ---------------------------------------------------------------------------
 # Writer
 # ---------------------------------------------------------------------------

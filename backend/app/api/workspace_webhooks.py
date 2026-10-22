@@ -237,6 +237,9 @@ async def redeliver(
     if (not webhook or webhook.workspace_id != workspace_id or row is None
             or row.webhook_id != webhook_id or row.workspace_id != workspace_id):
         raise HTTPException(status_code=404, detail="Delivery not found")
+    from app.services.demo_workspace import DEMO_NO_OUTBOUND, is_demo_workspace
+    if await is_demo_workspace(session, workspace_id):
+        raise HTTPException(status_code=409, detail=DEMO_NO_OUTBOUND)
     await audit_record(session, entity_type="workspace_webhook", entity_id=webhook_id,
                        action="redeliver", workspace_id=workspace_id, principal=principal,
                        request=request,

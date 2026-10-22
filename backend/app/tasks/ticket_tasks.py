@@ -82,6 +82,10 @@ def create_issue_ticket(self, ticket_id: int, description: str = "", priority: s
         config = s.get(IssueTrackerConfig, ticket.config_id)
         if not config:
             ticket.status = "error"; ticket.error = "Tracker config not found"; s.add(ticket); s.commit(); return
+        from app.services.demo_workspace import DEMO_NO_OUTBOUND, is_demo_workspace_sync
+        if is_demo_workspace_sync(s, config.workspace_id):
+            # The endpoints refuse first; this covers a ticket queued another way.
+            ticket.status = "error"; ticket.error = DEMO_NO_OUTBOUND; s.add(ticket); s.commit(); return
 
         try:
             secret = decrypt_secret(config.auth_secret_encrypted)

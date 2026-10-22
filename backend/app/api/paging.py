@@ -188,8 +188,11 @@ async def test_channel(project_id: int, channel_id: int,
     the test proves the key works without leaving an incident open."""
     import asyncio
     from app.core.secrets import decrypt_secret
-    await _project(project_id, principal, session, "admin")
+    project = await _project(project_id, principal, session, "admin")
     channel = await _channel(project_id, channel_id, session)
+    from app.services.demo_workspace import DEMO_NO_OUTBOUND, is_demo_workspace
+    if await is_demo_workspace(session, project.workspace_id):
+        raise HTTPException(status_code=409, detail=DEMO_NO_OUTBOUND)
     key = f"traceiq:test:{channel.id}:{int(datetime.utcnow().timestamp())}"
     secret = decrypt_secret(channel.secret_encrypted)
     try:
