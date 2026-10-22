@@ -30,9 +30,9 @@ Flaky tests answers **"Which tests can't I trust, and what are we doing about th
 
 The page shows the project selected at the top of the sidebar. The tests are listed on the left; the one you pick is shown in detail on the right. The numbers on the screenshot match the sections below.
 
-![The Flaky tests page with seven numbered parts: 1 the summary line, 2 the list of tests, 3 the flake score bar, 4 runs sampled and recent failures, 5 the owner, 6 what this means, 7 the Quarantine button](../media/today/flaky-tests/page-annotated.png)
+![The Flaky tests page with seven numbered parts: 1 the summary line, 2 the list of tests, 3 the flake score bar, 4 runs sampled and recent failures, 5 the owner, 6 what this means, 7 the Release back into runs button](../media/today/flaky-tests/page-annotated.png)
 
-*The Flaky tests page for the demo's web project, which has one flaky test. Click the picture to see it larger.*
+*The Flaky tests page for the demo's web project, which has one flaky test, already quarantined. Click the picture to see it larger.*
 
 ## 1. The summary line
 
@@ -40,7 +40,7 @@ Under the heading, for example *"1 of 3 tests pass and fail under the same condi
 
 ## 2. The list of tests
 
-![A box titled Still in runs with one row: Add a todo, 6 recent failures, 60 runs sampled, Owner: Alex Morgan, a yellow bar and 40%](../media/today/flaky-tests/list.png)
+![A box titled Quarantined with one row: Add a todo, 6 recent failures, 20 runs sampled, Owner: Alex Morgan, a yellow bar and 41%](../media/today/flaky-tests/list.png)
 
 Tests are boxed by what is happening to them, highest score first in each box:
 
@@ -54,7 +54,7 @@ Each row shows the test's name, its failures in the last 30 days, how many resul
 
 ## 3. The flake score
 
-![Flake score 40%, a bar filled to 40% in yellow, labelled 0% stable on the left and 100% pure flake on the right](../media/today/flaky-tests/score.png)
+![Flake score 41%, a bar filled to 41% in yellow, labelled 0% stable on the left and 100% pure flake on the right](../media/today/flaky-tests/score.png)
 
 How often the test's result **flipped** between pass and fail over its most recent results. TraceIQ looks at the last 20 results of the test (in this project), counts how many times the result changed from one to the next, and divides by the number of chances it had to change.
 
@@ -72,11 +72,11 @@ The score is recalculated each time a run that includes the test finishes.
 
 ## 4. Runs sampled and recent failures
 
-![Two boxes: Runs sampled 60, Recent failures 6](../media/today/flaky-tests/facts.png)
+![Two boxes: Runs sampled 20, Recent failures 6](../media/today/flaky-tests/facts.png)
 
 | Fact | What it tells you |
 |---|---|
-| **Runs sampled** | How many results the score is based on (at most the last 20 in a real project; the demo's made-up history says 60). With only a handful, the score is a rough guess. |
+| **Runs sampled** | How many results the score is based on (at most the last 20). With only a handful, the score is a rough guess. |
 | **Recent failures** | How many times a test with this name ended *Failed* or *Error* in this project in the last 30 days. |
 
 ## 5. The owner
@@ -87,7 +87,7 @@ The person who will fix the test. Pick someone from the menu (or *Unowned*); the
 
 ## 6. What this means, and the last failure
 
-![What this means: This test sometimes fails for no reason the code explains. Keep an eye on it; quarantine it if it starts blocking releases.](../media/today/flaky-tests/meaning.png)
+![What this means: Quarantined: it is skipped when runs are dispatched, so it no longer blocks regressions. The quarantine ends on its own; release it sooner once the cause is fixed.](../media/today/flaky-tests/meaning.png)
 
 **What this means** puts the score, or the quarantine, into plain words and suggests what to do. Below it, **Last failure** is the error message from the most recent failure among the results the score was based on.
 
@@ -97,7 +97,7 @@ In the demo the test waited 5 seconds for the new item to appear in the list. A 
 
 ## 7. Quarantine and release
 
-![A Quarantine button, with the note A quarantine needs a reason and ends on its own (14 days by default, at most 90)](../media/today/flaky-tests/actions.png)
+![A Release back into runs button, with the note A quarantine needs a reason and ends on its own (14 days by default, at most 90)](../media/today/flaky-tests/actions.png)
 
 A **quarantined** test is left out of every run while the quarantine lasts, so its random failures stop blocking your results. It is not deleted, and its steps don't change.
 
@@ -109,7 +109,13 @@ A **quarantined** test is left out of every run while the quarantine lasts, so i
 
 *The quarantine form. The Quarantine button stays grey until you type a reason.*
 
-Once quarantined, the detail shows Quarantined and a line such as *"Until 4 Nov 2026 · races the payment mock"*. A quarantine that has ended shows Quarantine expired; a test that is not quarantined shows Still running.
+Once quarantined, the detail shows Quarantined and a **Quarantine** line with the end date and the reason:
+
+![Quarantine: Until Nov 2, 2026 · Times out waiting for the list to refresh; tracked in DEMO-102.](../media/today/flaky-tests/quarantine.png)
+
+*The demo's flaky test, quarantined until 2 November.*
+
+A quarantine that has ended shows Quarantine expired; a test that is not quarantined shows Still running.
 
 ## Watch it in use
 
@@ -175,6 +181,5 @@ What the walkthrough says, in order. The video and every picture on this page ar
 4. How many results the score is based on, and how many failed in the last thirty days.
 5. The owner is the person who will fix it.
 6. What this means explains the score in plain words. Below it is the last error.
-7. Quarantine takes it out of runs for a while, so it stops blocking your results.
-8. You give a reason and a number of days. It comes back on its own when they are up.
-9. We cancel here, so nothing changes.
+7. This test is quarantined: it is left out of runs until the date shown, then comes back on its own.
+8. Release back into runs ends the quarantine early, once the cause is fixed.

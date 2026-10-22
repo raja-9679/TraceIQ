@@ -19,14 +19,15 @@ test('Today › Flaky tests', async ({ page, browser }) => {
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. Its parts, numbered (the guide explains each number).
-    const subtitle = main.getByText(/pass and fail under the same conditions ·/);
+    const subtitle = main.getByText(/pass and fail under the same conditions.*·/);
     const list = main.locator('section').filter({ has: page.getByRole('button', { pressed: true }) }).first();
     const score = detail.getByText('Flake score', { exact: true }).locator('xpath=ancestor::div[contains(@class,"flex-col")][1]');
     const facts = detail.getByText('Runs sampled', { exact: true }).locator('xpath=ancestor::div[contains(@class,"grid")][1]');
     const owner = detail.getByText('Owner', { exact: true }).locator('xpath=ancestor::div[contains(@class,"flex-col")][1]');
     const meaning = detail.getByText('What this means', { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+    const quarantine = detail.getByText('Quarantine', { exact: true }).locator('xpath=ancestor::div[contains(@class,"flex-col")][1]');
     const lastFailure = detail.getByText('Last failure', { exact: true }).locator('xpath=ancestor::div[contains(@class,"flex-col")][1]');
-    const actions = detail.getByRole('button', { name: /Quarantine/ }).locator('xpath=ancestor::div[contains(@class,"border-t")][1]');
+    const actions = detail.getByRole('button', { name: /Quarantine|Release back into runs/ }).locator('xpath=ancestor::div[contains(@class,"border-t")][1]');
     await page.setViewportSize({ width: 1440, height: 1000 });
     await settle(page);
     const clean = await annotate(page, [
@@ -49,14 +50,21 @@ test('Today › Flaky tests', async ({ page, browser }) => {
     await meaning.screenshot({ path: out(`${DIR}/meaning.png`) });
     await lastFailure.screenshot({ path: out(`${DIR}/last-failure.png`) });
     await actions.screenshot({ path: out(`${DIR}/actions.png`) });
-    // The quarantine dialog, opened and cancelled (nothing is saved).
-    await detail.getByRole('button', { name: 'Quarantine' }).click();
-    const dialog = page.getByRole('dialog');
-    await expect(dialog.getByLabel('Reason')).toBeVisible();
-    await beat(page, 400);
-    await dialog.screenshot({ path: out(`${DIR}/quarantine-dialog.png`) });
-    await dialog.getByRole('button', { name: 'Cancel' }).click();
-    await expect(dialog).toBeHidden();
+    // The demo's flaky test is quarantined: show its quarantine line.
+    if (await quarantine.count()) await quarantine.first().screenshot({ path: out(`${DIR}/quarantine.png`) });
+    // The quarantine dialog, opened and cancelled (nothing is saved). The
+    // demo's only flaky test is already quarantined, so there is no
+    // Quarantine button; the existing picture is then kept.
+    const qButton = detail.getByRole('button', { name: /^Quarantine/ });
+    if (await qButton.count()) {
+        await qButton.click();
+        const dialog = page.getByRole('dialog');
+        await expect(dialog.getByLabel('Reason')).toBeVisible();
+        await beat(page, 400);
+        await dialog.screenshot({ path: out(`${DIR}/quarantine-dialog.png`) });
+        await dialog.getByRole('button', { name: 'Cancel' }).click();
+        await expect(dialog).toBeHidden();
+    }
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 4. A short walkthrough video, with captions saying what is on screen.
@@ -84,20 +92,12 @@ test('Today › Flaky tests', async ({ page, browser }) => {
         await caption(p, 'What this means explains the score in plain words. Below it is the last error.');
         await pointAt(p, d.getByText('What this means', { exact: true }), 1600);
         await pointAt(p, lf, 1600);
-        const q = d.getByRole('button', { name: 'Quarantine' });
-        await q.scrollIntoViewIfNeeded();
-        await caption(p, 'Quarantine takes it out of runs for a while, so it stops blocking your results.');
-        await pointAt(p, q, 1000);
-        await q.click();
-        const dlg = p.getByRole('dialog');
-        await expect(dlg.getByLabel('Reason')).toBeVisible();
-        await caption(p, 'You give a reason and a number of days. It comes back on its own when they are up.');
-        await pointAt(p, dlg.getByLabel('Reason'), 1400);
-        await pointAt(p, dlg.getByLabel('Days'), 1600);
-        await caption(p, 'We cancel here, so nothing changes.');
-        await pointAt(p, dlg.getByRole('button', { name: 'Cancel' }), 900);
-        await dlg.getByRole('button', { name: 'Cancel' }).click();
-        await expect(dlg).toBeHidden();
+        await caption(p, 'This test is quarantined: it is left out of runs until the date shown, then comes back on its own.');
+        await pointAt(p, d.getByText('Quarantine', { exact: true }), 2400);
+        const rel = d.getByRole('button', { name: 'Release back into runs' });
+        await rel.scrollIntoViewIfNeeded();
+        await caption(p, 'Release back into runs ends the quarantine early, once the cause is fixed.');
+        await pointAt(p, rel, 2200);
         await caption(p, '');
     });
 });
