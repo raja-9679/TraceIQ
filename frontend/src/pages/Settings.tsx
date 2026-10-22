@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { api, getSettings, updateSettings, getWorkspaces, type Workspace } from '@/lib/api';
 import { mfaApi } from '@/api/mfa';
+import { useMe } from '@/hooks/useIsInstanceAdmin';
 import { QRCodeSVG } from 'qrcode.react';
 import { useAuth } from '@/context/AuthContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -886,10 +887,7 @@ function MfaSection() {
     const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
     const qc = useQueryClient();
     // /auth/me is the only place that reports the caller's own MFA state.
-    const me = useQuery({
-        queryKey: ['auth-me'],
-        queryFn: async () => (await api.get<{ mfa_enabled?: boolean }>('/auth/me')).data,
-    });
+    const me = useMe();
     const mfaOn = me.data?.mfa_enabled === true;
     const refreshMe = () => qc.invalidateQueries({ queryKey: ['auth-me'] });
 
