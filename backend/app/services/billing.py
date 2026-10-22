@@ -79,6 +79,27 @@ async def check_quota(session: AsyncSession, workspace_id: int, metric: str) -> 
     return allowed, used, limit
 
 
+def ai_generation_key(workspace_id: int, day: Optional[datetime] = None) -> str:
+    """Redis counter of today's AI generations (UTC day). The daily cap in
+    app/api/case_generation.py is enforced on it; it is not a UsageRecord
+    because those are monthly."""
+    return f"workspace:{workspace_id}:ai_gen:{(day or datetime.utcnow()):%Y-%m-%d}"
+
+
+async def ai_generations_today(workspace_id: int) -> int:
+    """Today's count, 0 when Redis is unreachable (display only)."""
+    try:
+        import redis.asyncio as redis
+        from app.core.config import settings as _settings
+        r = redis.from_url(_settings.CELERY_BROKER_URL, decode_responses=True)
+        try:
+            return int(await r.get(ai_generation_key(workspace_id)) or 0)
+        finally:
+            await r.close()
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 async def workspace_id_for_project(session: AsyncSession, project_id: Optional[int]) -> Optional[int]:
     if not project_id:
         return None

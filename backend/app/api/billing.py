@@ -5,6 +5,9 @@ Works in two modes:
   assigns a plan directly. No Stripe needed.
 - **Stripe** (when STRIPE_SECRET_KEY is set): checkout + webhook drive the
   subscription. The endpoints are present but return 501 until configured.
+  A workspace admin can then only assign a FREE plan directly — otherwise
+  "assign" is a way round paying; a paid plan goes through checkout, and only
+  the instance admin (the operator, e.g. comping a customer) can set one.
 """
 from datetime import datetime
 from typing import List
@@ -17,6 +20,7 @@ from app.core.database import get_session
 from app.core.auth import get_current_user
 from app.core.config import settings
 from app.services import billing as billing_svc
+from app.services.audit import record as audit_record
 from app.models import (
     User, UserWorkspace, Plan, PlanRead, WorkspaceSubscription, BillingStatus,
 )
@@ -54,10 +58,17 @@ async def workspace_billing(workspace_id: int, session: AsyncSession = Depends(g
     # nothing is capped then, so report that rather than a 500.
     plan_read = PlanRead(**plan.model_dump()) if plan else _NO_PLAN
     period = billing_svc.current_period()
-    limits = (plan.limits if plan else {}) or {}
+    limits = dict((plan.limits if plan else {}) or {})
+    # "AI generations today": the daily counter the generation cap is enforced
+    # on (Redis, per UTC day) and that cap — the workspace's
+    # ai_generation_limit_daily. A plan's `ai_daily` was never enforced, so
+    # showing it as the limit would misstate what actually stops a call.
+    from app.models import Workspace
+    ws = await session.get(Workspace, workspace_id)
+    limits["ai_daily"] = int((ws.ai_generation_limit_daily if ws else 0) or 0)
     usage = {
         "runs": await billing_svc.get_usage(session, workspace_id, "runs", period),
-        "ai_generations": await billing_svc.get_usage(session, workspace_id, "ai_generations", period),
+        "ai_generations": await billing_svc.ai_generations_today(workspace_id),
         "llm_tokens": await billing_svc.get_usage(session, workspace_id, "llm_tokens", period),
     }
     return BillingStatus(
@@ -74,16 +85,25 @@ async def assign_plan(workspace_id: int, body: dict = Body(...),
                       current_user: User = Depends(get_current_user)):
     """Manually assign a plan to a workspace (admin). The Stripe path uses
     checkout + webhook instead."""
-    member = await _member(session, workspace_id, current_user.id)
-    if (member.role or "").lower() not in ("admin", "owner"):
+    from app.api.instance_settings import is_instance_admin
+    from app.api.share_links import _is_workspace_admin
+    await _member(session, workspace_id, current_user.id)
+    instance_admin = await is_instance_admin(session, current_user)
+    # Role via role_id (the RBAC mechanism), not the deprecated
+    # UserWorkspace.role string.
+    if not instance_admin and not await _is_workspace_admin(session, current_user.id, workspace_id):
         raise HTTPException(status_code=403, detail="Workspace admin required to change plan")
     plan_name = body.get("plan_name")
     plan = (await session.exec(select(Plan).where(Plan.name == plan_name))).first()
-    if not plan:
+    if not plan or (not plan.is_active and not instance_admin):
         raise HTTPException(status_code=404, detail=f"Unknown plan '{plan_name}'")
+    if settings.STRIPE_SECRET_KEY and (plan.price_cents or 0) > 0 and not instance_admin:
+        raise HTTPException(status_code=403,
+                            detail="Paid plans are bought through checkout on this deployment")
 
     sub = (await session.exec(select(WorkspaceSubscription).where(
         WorkspaceSubscription.workspace_id == workspace_id))).first()
+    previous_plan_id = sub.plan_id if sub else None
     if sub:
         sub.plan_id = plan.id
         sub.status = "active"
@@ -91,6 +111,12 @@ async def assign_plan(workspace_id: int, body: dict = Body(...),
     else:
         sub = WorkspaceSubscription(workspace_id=workspace_id, plan_id=plan.id, status="active")
     session.add(sub)
+    await session.flush()
+    await audit_record(session, entity_type="workspace_subscription", entity_id=sub.id,
+                       action="assign_plan", workspace_id=workspace_id, user_id=current_user.id,
+                       changes={"plan": plan.name, "plan_id": plan.id,
+                                "previous_plan_id": previous_plan_id,
+                                "as_instance_admin": instance_admin})
     await session.commit()
     return await workspace_billing(workspace_id, session, current_user)
 
@@ -103,6 +129,9 @@ async def stripe_checkout(body: dict = Body(...), session: AsyncSession = Depend
     workspace_id = body.get("workspace_id")
     plan_name = body.get("plan_name")
     await _member(session, workspace_id, current_user.id)
+    from app.api.share_links import _is_workspace_admin
+    if not await _is_workspace_admin(session, current_user.id, workspace_id):
+        raise HTTPException(status_code=403, detail="Workspace admin required to change plan")
     plan = (await session.exec(select(Plan).where(Plan.name == plan_name))).first()
     if not plan or not plan.stripe_price_id:
         raise HTTPException(status_code=400, detail="Plan has no Stripe price configured")
