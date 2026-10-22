@@ -13,6 +13,11 @@ const MONITOR = /^SLO for /;
 async function pickApiProject(p: Page) {
     await p.getByRole('button', { name: /^Project: / }).first().click();
     await p.getByRole('menuitem', { name: /Demo — Public API/ }).click();
+    // The menu hands focus back to the switcher once it has closed, and the
+    // switcher's focus ring would show in every picture.
+    await p.waitForTimeout(400);
+    await p.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await p.mouse.move(800, 860);
 }
 
 test('Reports › SLOs', async ({ page, browser }) => {

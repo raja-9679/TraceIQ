@@ -44,7 +44,7 @@ When the page opens it shows the project selected at the top of the sidebar, ove
 
 ## 2. The headline
 
-![Demo — Todo web app, last 30 days, generated 10/22/2026. 83.1% of 65 runs passed in the last 30 days. The latest build is not ready to release. Watch: 4 open failure groups, 1 flaky test, 1 escaped defect. Release readiness: Not ready, with three reasons: no external CI report for the commit, 1 flaky test (Add a todo) where 0 are allowed, and 1 of 2 critical tests passed](../media/reports/executive-summary/headline.png)
+![Demo — Todo web app, last 30 days, generated 10/22/2026. 85.3% of 75 runs passed in the last 30 days. The latest build is ready to release. Watch: 4 open failure groups, 1 flaky test, 1 escaped defect. Release readiness: Ready, with the reason: all 7 checks passed over 1 run](../media/reports/executive-summary/headline.png)
 
 The top line names the project, the period and when the summary was made. Then TraceIQ writes one to three sentences from the numbers:
 
@@ -62,7 +62,7 @@ If readiness can't be worked out at all, the label is left out.
 
 ## 3. The six tiles
 
-![Six tiles: Pass rate 83.1%, Runs 65 (+65 vs previous), Failing results 12 (+12 vs previous), Flaky tests 1, Open failure groups 4, Escaped defects 1](../media/reports/executive-summary/tiles.png)
+![Six tiles: Pass rate 85.3%, Runs 75 (+75 vs previous), Failing results 12 (+12 vs previous), Flaky tests 1, Open failure groups 4, Escaped defects 1](../media/reports/executive-summary/tiles.png)
 
 | Tile | What the number means |
 |---|---|
@@ -118,11 +118,11 @@ The **Print or save as PDF** button opens your browser's print window. The sideb
 
 With **Whole workspace** chosen, the numbers add up all the projects you can see in that workspace. The headline then counts projects by readiness instead of showing one label:
 
-![Demo workspace, last 30 days, generated 10/22/2026. 90.1% of 242 runs passed in the last 30 days. Watch: 5 open failure groups, 1 flaky test, 1 escaped defect. 1 of 2 projects are not ready to release. Release readiness by project: 1 ready, 1 not ready, 0 not enough data](../media/reports/executive-summary/workspace-headline.png)
+![Demo workspace, last 30 days, generated 10/22/2026. 90.5% of 252 runs passed in the last 30 days. Watch: 5 open failure groups, 1 flaky test, 1 escaped defect. Every project is ready to release. Release readiness by project: 2 ready, 0 not ready, 0 not enough data](../media/reports/executive-summary/workspace-headline.png)
 
 Below the chart, a **Projects** table gives each project's pass rate, the change in points against the period before, its runs, its flaky tests and its readiness label:
 
-![A table of two projects: Demo — Public API 92.7%, 177 runs, 0 flaky, Ready; Demo — Todo web app 83.1%, 65 runs, 1 flaky, Not ready](../media/reports/executive-summary/workspace-projects.png)
+![A table of two projects: Demo — Public API 92.7%, 177 runs, 0 flaky, Ready; Demo — Todo web app 85.3%, 75 runs, 1 flaky, Ready](../media/reports/executive-summary/workspace-projects.png)
 
 A line under the page says how many projects it covers.
 

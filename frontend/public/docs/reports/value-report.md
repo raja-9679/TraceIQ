@@ -30,7 +30,7 @@ The Value report answers **"Is TraceIQ actually helping, and how do we know?"** 
 
 The numbers on the screenshot match the sections below.
 
-![The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.6 h median, 4 AI failure-analysis accuracy with too few ratings (3 of the 5 needed), 5 CI time saved by targeted runs, 0 min from 1 targeted run, 6 Proposal outcomes 66.7% of decided proposals applied, 7 Reported elsewhere](../media/reports/value-report/page-annotated.png)
+![The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.6 h median, 4 AI failure-analysis accuracy with too few ratings (3 of the 5 needed), 5 CI time saved by targeted runs, 3 min from 8 targeted runs (an estimate), 6 Proposal outcomes 66.7% of decided proposals applied, 7 Reported elsewhere](../media/reports/value-report/page-annotated.png)
 
 *The Value report for the demo's web project, last 30 days. Click the picture to see it larger.*
 
@@ -48,7 +48,7 @@ One line naming the project (or the workspace and how many projects), the dates,
 
 ### How every card is built
 
-![The Time to diagnosis card: a green Measured label, 24.6 h median, Sample: 3 diagnosed failure clusters, 90th percentile 25.2 days, 1 cluster not diagnosed yet, First signal case quarantined: 1, First signal passed again on a new commit: 2, then Definition and Data source](../media/reports/value-report/time-to-diagnosis.png)
+![The Time to diagnosis card: a green Measured label, 24.6 h median, Sample: 3 diagnosed failure clusters, 90th percentile 25.3 days, 1 cluster not diagnosed yet, First signal case quarantined: 1, First signal passed again on a new commit: 2, then Definition and Data source](../media/reports/value-report/time-to-diagnosis.png)
 
 - **The label** top right: Measured means counted from what happened; Estimate means worked out from assumptions.
 - **The big number**, with what it is ("median", for instance). If there isn't enough data, a grey box says why instead, such as "No targeted run in this window". It never shows 0 for "no data".
@@ -78,7 +78,7 @@ An **estimate**. A *targeted* run carries out only the tests affected by a chang
 
 **saved = full run's test time × (1 − tests run ÷ tests in the suite)**
 
-The big number is browser time saved; underneath are the wall-clock time saved (also an estimate) and the counts it rests on, including targeted runs that had no full run to compare with. Manual runs are left out. Times under an hour are rounded to whole minutes: the demo's one targeted run skipped 3 of 5 tests of a suite that takes well under a minute, so its saving reads *0 min*.
+The big number is browser time saved; underneath are the wall-clock time saved (also an estimate) and the counts it rests on, including targeted runs that had no full run to compare with. Manual runs are left out. Times under a minute are shown in seconds, times under an hour in whole minutes. In the demo, 8 targeted runs ran 11 tests and skipped 29, which comes to about 3 minutes of browser time saved.
 
 ## 6. Proposal outcomes
 

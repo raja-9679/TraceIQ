@@ -25,7 +25,7 @@ test('Reports › Value report', async ({ page, browser }) => {
     const saved = main.locator('section[aria-label="CI time saved by targeted runs"]');
     const props = main.locator('section[aria-label="Proposal outcomes"]');
     const links = main.locator('section[aria-label="Related reports"]');
-    await page.setViewportSize({ width: 1440, height: 1500 });
+    await page.setViewportSize({ width: 1440, height: 1900 });
     await settle(page);
     const clean = await annotate(page, [
         { n: 1, target: controls },

@@ -122,7 +122,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="summary" data-toc="④ Patterns summary">Patterns summary</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/flake-trends/summary.png" alt="Patterns, last 30 days: 9 of 312 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more." loading="lazy"></div>
+          <div class="frame"><img src="../media/reports/flake-trends/summary.png" alt="Patterns, last 30 days: 9 of 321 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more." loading="lazy"></div>
         </figure>
         <p>How many of the period's finished test results were flaky. In the boxes below, every
           figure is a <strong>rate</strong> within its group, so a browser that runs ten times
@@ -130,13 +130,13 @@
 
         <div class="part"><span class="num">5</span><h2 id="patterns" data-toc="⑤ Where flakiness gathers">Where flakiness gathers</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/flake-trends/patterns.png" alt="Four boxes. By browser: chromium 2.9% flaky, 9/307, 3.3% failed; manual 0.0% flaky, 0/5, 40.0% failed. By environment: local with the chromium figures, and default (no environment) with the manual ones. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: expect-visible 6 failed, expect-cookie-flags 2, check-accessibility 1, expect-text 1, and unknown (no per-step evidence) 9 flaky, 2 failed" loading="lazy"></div>
+          <div class="frame"><img src="../media/reports/flake-trends/patterns.png" alt="Four boxes. By browser: chromium 2.8% flaky, 9/321, 3.1% failed. By environment: local, with the same figures. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: expect-visible 6 failed, expect-cookie-flags 2, check-accessibility 1, expect-text 1, and unknown (no per-step evidence) 9 flaky, 0 failed" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Box</th><th>What it shows</th></tr></thead>
             <tbody>
-              <tr><td><strong>By browser</strong></td><td>One row per browser, the flakiest first: "2.9% flaky · 9/307 · 3.3% failed" means 9 of its 307 results were flaky (2.9%), and 3.3% failed or ended in error. Results of manual test runs (see <em>Release sign-off</em>) are grouped as "manual".</td></tr>
+              <tr><td><strong>By browser</strong></td><td>One row per browser, the flakiest first: "2.8% flaky · 9/321 · 3.1% failed" means 9 of its 321 results were flaky (2.8%), and 3.1% failed or ended in error. Manual test runs (see <em>Release sign-off</em>) are left out of every pattern: a person's pass or fail says nothing about flakiness.</td></tr>
               <tr><td><strong>By environment</strong></td><td>The same per environment. Runs without an environment are grouped as "default (no environment)".</td></tr>
               <tr><td><strong>By time of day (UTC)</strong></td><td>24 bars, one per hour of the day in UTC, by when the run started. The taller the bar, the higher that hour's flaky rate. A grey stub means no run started in that hour.</td></tr>
               <tr><td><strong>By failing step type</strong></td><td>For flaky and failed results: the kind of step that failed first (for example a click, or an expected text). The bar is the total; the text splits it into flaky and failed. "unknown (no per-step evidence)" counts results that didn't record their steps, or flaky ones that passed in the end and so have no failed step.</td></tr>

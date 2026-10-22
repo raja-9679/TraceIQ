@@ -53,7 +53,7 @@ The order isn't remembered: it goes back to the worst 7-day pass rate the next t
 
 ## 3. The project rows
 
-![A table of two projects. Demo — Todo web app: 75% over 7 days, 83.1% over 30 days, 20 runs, last run Passed, Not ready, 1 flaky test, 10 open findings. Demo — Public API: 88.1%, 92.7%, 42 runs, Passed, Ready, 0, 0](../media/reports/portfolio/table.png)
+![A table of two projects. Demo — Todo web app: 80% over 7 days, 85.3% over 30 days, 25 runs, last run Passed, Ready, 1 flaky test, 10 open findings. Demo — Public API: 88.1%, 92.7%, 42 runs, Passed, Ready, 0, 0](../media/reports/portfolio/table.png)
 
 | Column | What it shows |
 |---|---|

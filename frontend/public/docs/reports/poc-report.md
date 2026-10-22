@@ -58,15 +58,15 @@ Typing doesn't change the report: press **Update report** when you are done. If 
 
 ## 3. The estimate
 
-![ESTIMATE: Estimated 60 hours of manual testing replaced (720 automated case executions x 5 min each). Estimate from your assumptions, not a measurement.](../media/reports/poc-report/estimate.png)
+![ESTIMATE: Estimated 61.2 hours of manual testing replaced (734 automated case executions x 5 min each). Estimate from your assumptions, not a measurement.](../media/reports/poc-report/estimate.png)
 
 The hours of manual testing the automated tests replaced, worked out as:
 
 **hours = automated case executions × minutes per manual execution ÷ 60**
 
-In the demo, 720 case executions × 5 minutes = 3,600 minutes = 60 hours. With a rate and a currency there is a second line, hours × rate:
+In the demo, 734 case executions × 5 minutes = 3,670 minutes ≈ 61.2 hours. With a rate and a currency there is a second line, hours × rate:
 
-![The estimate with a rate: Estimated 60 hours of manual testing replaced, and Estimated EUR 2,400.00 at EUR 40.00 per hour](../media/reports/poc-report/estimate-money.png)
+![The estimate with a rate: Estimated 61.2 hours of manual testing replaced, and Estimated EUR 2,448.00 at EUR 40.00 per hour](../media/reports/poc-report/estimate-money.png)
 
 > **It is an estimate, and says so**
 >
@@ -76,7 +76,7 @@ Only tests that finished with a pass or fail count, and only from automated runs
 
 ## 4. The four tiles
 
-![Four tiles: Runs 242 in 30 days, Pass rate 90.1%, Automated case executions 720, Failures caught 25](../media/reports/poc-report/tiles.png)
+![Four tiles: Runs 252 in 30 days, Pass rate 90.5%, Automated case executions 734, Failures caught 25](../media/reports/poc-report/tiles.png)
 
 | Tile | What the number means |
 |---|---|
@@ -91,7 +91,7 @@ What exists in the covered projects *today* (not only what was added during the 
 
 ## 6. Activity
 
-Finished runs and passed runs (as in the tiles), automated and manual case executions, and the browsers and devices that runs used in the date range. Manual test runs appear among the browsers as "manual".
+Finished runs and passed runs (as in the tiles), automated and manual case executions, and the browsers and devices that automated runs used in the date range. Manual test runs are counted only as manual case executions, never as a browser.
 
 ## 7. What it found
 

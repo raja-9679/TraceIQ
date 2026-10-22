@@ -72,17 +72,17 @@ Up to 8 tests with the highest flakiness score in the latest snapshot (tests sco
 
 ## 4. Patterns summary
 
-![Patterns, last 30 days: 9 of 312 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more.](../media/reports/flake-trends/summary.png)
+![Patterns, last 30 days: 9 of 321 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more.](../media/reports/flake-trends/summary.png)
 
 How many of the period's finished test results were flaky. In the boxes below, every figure is a **rate** within its group, so a browser that runs ten times as often doesn't look ten times as flaky.
 
 ## 5. Where flakiness gathers
 
-![Four boxes. By browser: chromium 2.9% flaky, 9/307, 3.3% failed; manual 0.0% flaky, 0/5, 40.0% failed. By environment: local with the chromium figures, and default (no environment) with the manual ones. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: expect-visible 6 failed, expect-cookie-flags 2, check-accessibility 1, expect-text 1, and unknown (no per-step evidence) 9 flaky, 2 failed](../media/reports/flake-trends/patterns.png)
+![Four boxes. By browser: chromium 2.8% flaky, 9/321, 3.1% failed. By environment: local, with the same figures. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: expect-visible 6 failed, expect-cookie-flags 2, check-accessibility 1, expect-text 1, and unknown (no per-step evidence) 9 flaky, 0 failed](../media/reports/flake-trends/patterns.png)
 
 | Box | What it shows |
 |---|---|
-| **By browser** | One row per browser, the flakiest first: "2.9% flaky · 9/307 · 3.3% failed" means 9 of its 307 results were flaky (2.9%), and 3.3% failed or ended in error. Results of manual test runs (see *Release sign-off*) are grouped as "manual". |
+| **By browser** | One row per browser, the flakiest first: "2.8% flaky · 9/321 · 3.1% failed" means 9 of its 321 results were flaky (2.8%), and 3.1% failed or ended in error. Manual test runs (see *Release sign-off*) are left out of every pattern: a person's pass or fail says nothing about flakiness. |
 | **By environment** | The same per environment. Runs without an environment are grouped as "default (no environment)". |
 | **By time of day (UTC)** | 24 bars, one per hour of the day in UTC, by when the run started. The taller the bar, the higher that hour's flaky rate. A grey stub means no run started in that hour. |
 | **By failing step type** | For flaky and failed results: the kind of step that failed first (for example a click, or an expected text). The bar is the total; the text splits it into flaky and failed. "unknown (no per-step evidence)" counts results that didn't record their steps, or flaky ones that passed in the end and so have no failed step. |

@@ -50,7 +50,7 @@ With a currency set, the administrator can give a price per million tokens for e
 
 ## 3. The four tiles
 
-![Four tiles: Total not priced, last 30 days; AI (LLM tokens) not priced, 767k tokens; Workers (browser-minutes) not priced, 34.4 min; Workspace-level AI not priced, LLM calls not tied to a project](../media/reports/costs/tiles.png)
+![Four tiles: Total not priced, last 30 days; AI (LLM tokens) not priced, 767k tokens; Workers (browser-minutes) not priced, 35.54 min; Workspace-level AI not priced, LLM calls not tied to a project](../media/reports/costs/tiles.png)
 
 | Tile | What it shows |
 |---|---|
@@ -81,7 +81,7 @@ Shown when *All my projects* is picked. For each project: the cost in the window
 
 ## 7. Most expensive runs
 
-![Most expensive runs: a table of ten runs, starting with #55 API contract (demo), Demo — Public API, 9/23/2026, 23k tokens, 0.08 browser-minutes, not priced, and #145 Web smoke (demo), 19k tokens, 0.44 browser-minutes](../media/reports/costs/top-runs.png)
+![Most expensive runs: a table of ten runs, starting with #387 Web smoke (demo), Demo — Todo web app, 10/16/2026, 25k tokens, 0.44 browser-minutes, not priced, and #297 API contract (demo), Demo — Public API, 23k tokens, 0.08 browser-minutes](../media/reports/costs/top-runs.png)
 
 The ten runs that cost the most in the window, with their tokens, browser-minutes and cost. Without prices they are ranked by tokens, then by minutes. Click a run to open it.
 
