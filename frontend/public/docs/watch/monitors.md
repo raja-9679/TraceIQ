@@ -69,7 +69,7 @@ These buttons save straight away and need the *editor* role. Viewers see only **
 
 ## 4. Recent checks
 
-![A grey Paused label, the name Public API health (demo, paused), and the line Schedule #4 · last checked](../media/watch/monitors/detail-top.png)
+![A grey Paused label, the name Public API health (demo, paused), and the line Schedule #3 · last checked](../media/watch/monitors/detail-top.png)
 
 At the top: the monitor's state, its name, its schedule number and when it last checked. A monitor that checks from several regions also shows one label per region, for example *eu · down (2 in a row)*.
 
@@ -79,7 +79,7 @@ One bar per check, for the latest 20, oldest on the left. Green means the check'
 
 ## 5. The four numbers
 
-![Four boxes: 24-hour uptime 100%, 7-day uptime 100%, Failures in a row 0, Checks recorded 120](../media/watch/monitors/stats.png)
+![Four boxes: 24-hour uptime 100%, 7-day uptime 100%, Failures in a row 0, Checks recorded 118](../media/watch/monitors/stats.png)
 
 | Number | What it means |
 |---|---|
