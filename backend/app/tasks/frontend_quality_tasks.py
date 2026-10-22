@@ -161,6 +161,7 @@ def process_due_crawls() -> Dict[str, Any]:
     from sqlalchemy import func, text
     from app.models import SiteCrawlRun
     from app.services.site_crawl import MAX_ACTIVE_RUNS_PER_PROJECT, RUN_START_LOCK_NAMESPACE
+    from app.services.demo_workspace import is_demo_project_sync
 
     now = datetime.utcnow()
     started = []
@@ -178,7 +179,9 @@ def process_due_crawls() -> Dict[str, Any]:
             active = session.exec(select(func.count()).select_from(SiteCrawlRun).where(
                 SiteCrawlRun.project_id == crawl.project_id,
                 SiteCrawlRun.status.in_(("pending", "running")))).one()
-            if not busy and active < MAX_ACTIVE_RUNS_PER_PROJECT:
+            # A demo workspace never calls out on a schedule (it still advances).
+            demo = is_demo_project_sync(session, crawl.project_id)
+            if not busy and not demo and active < MAX_ACTIVE_RUNS_PER_PROJECT:
                 run = start_crawl_run(session, crawl, trigger="schedule", user_id=crawl.created_by_id)
                 session.flush()
                 started.append(run.id)

@@ -26,7 +26,16 @@ async def _process_schedules_async():
         result = await session.exec(query)
         schedules = result.all()
 
+        demo_projects = await _demo_project_ids(session, {s.project_id for s in schedules})
         for schedule in schedules:
+            if schedule.project_id in demo_projects:
+                # A demo workspace never dispatches (its history is generated
+                # and nothing in it may call out). The schedule still moves on
+                # so it is not re-selected every tick.
+                schedule.next_run_at = next_run_utc(
+                    schedule.cron_expression, schedule.timezone, after=now)
+                session.add(schedule)
+                continue
             try:
                 # 1. Dispatch the run
                 await _dispatch_schedule(schedule, session)
@@ -43,6 +52,18 @@ async def _process_schedules_async():
                 traceback.print_exc()
 
         await session.commit()
+
+async def _demo_project_ids(session, project_ids) -> set:
+    """The subset of `project_ids` that live in a demo workspace."""
+    from app.models import Project, Workspace
+    ids = [p for p in project_ids if p]
+    if not ids:
+        return set()
+    rows = (await session.exec(
+        select(Project.id).join(Workspace, Workspace.id == Project.workspace_id)
+        .where(Project.id.in_(ids), Workspace.is_demo == True))).all()  # noqa: E712
+    return set(rows)
+
 
 async def _dispatch_schedule(schedule: TestSchedule, session):
     created_runs = []
