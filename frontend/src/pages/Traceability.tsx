@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 import { useActiveProjectId } from '@/hooks/useActiveProject';
-import { traceApi, RequirementCoverage } from '@/api/traceability';
+import { traceApi, linksForRef, RequirementCoverage, type RefLink } from '@/api/traceability';
+import { useProjectAccess } from '@/hooks/useProjectAccess';
 import {
     DetailCard, EmptyState, Eyebrow, KindChip, ListGroup, ListRow, PageHeader, Pill, SplitView,
 } from '@/components/redesign/primitives';
@@ -32,8 +33,25 @@ function Count({ label, value }: { label: string; value: number }) {
     );
 }
 
-function RequirementDetail({ c }: { c: RequirementCoverage }) {
+function RequirementDetail({ c, projectId, canEdit }: { c: RequirementCoverage; projectId: number; canEdit: boolean }) {
     const S = look(c.status);
+    const qc = useQueryClient();
+    // Only editors can unlink, so only they pay for resolving the link ids.
+    const links = useQuery({
+        queryKey: ['ref-links', projectId, c.ref, c.test_names],
+        queryFn: () => linksForRef(projectId, c.ref, c.test_names),
+        enabled: canEdit && c.test_names.length > 0,
+    });
+    const unlink = useMutation({
+        mutationFn: (l: RefLink) => traceApi.removeLink(l.caseId, l.linkId),
+        onSuccess: () => {
+            toast.success('Link removed');
+            qc.invalidateQueries({ queryKey: ['requirements', projectId] });
+            qc.invalidateQueries({ queryKey: ['trace-gaps', projectId] });
+            qc.invalidateQueries({ queryKey: ['ref-links', projectId, c.ref] });
+        },
+        onError: (e) => toast.error(errDetail(e)),
+    });
     return (
         <DetailCard label="Selected requirement">
             <div className="flex flex-col gap-2">
@@ -57,6 +75,18 @@ function RequirementDetail({ c }: { c: RequirementCoverage }) {
                 <Eyebrow>Covered by</Eyebrow>
                 {c.test_names.length === 0 ? (
                     <p className="text-sm text-ink-soft">No tests linked.</p>
+                ) : canEdit && links.data ? (
+                    <ul className="overflow-hidden rounded-2xl border border-border">
+                        {links.data.map((l, i) => (
+                            <li key={l.linkId} className={`flex min-h-12 items-center gap-3 px-4 py-2 ${i > 0 ? 'border-t border-[#F0EEE8]' : ''}`}>
+                                <span className="min-w-0 flex-1 truncate text-sm text-ink">{l.caseName}</span>
+                                <Button size="sm" variant="outline" disabled={unlink.isPending}
+                                    onClick={() => { if (window.confirm(`Remove the link between "${l.caseName}" and ${c.ref}?`)) unlink.mutate(l); }}>
+                                    Remove link
+                                </Button>
+                            </li>
+                        ))}
+                    </ul>
                 ) : (
                     <ul className="flex flex-wrap gap-1.5">
                         {c.test_names.map((n) => (
@@ -73,6 +103,7 @@ export default function Traceability() {
     const qc = useQueryClient();
     const projectId = useActiveProjectId();
     const [selectedRef, setSelectedRef] = useState<string | null>(null);
+    const { canEdit } = useProjectAccess(projectId);
 
     const reqs = useQuery({ queryKey: ['requirements', projectId], queryFn: () => traceApi.requirements(projectId!), enabled: !!projectId });
     const gaps = useQuery({ queryKey: ['trace-gaps', projectId], queryFn: () => traceApi.gaps(projectId!), enabled: !!projectId });
@@ -141,7 +172,7 @@ export default function Traceability() {
                                     ))}
                                 </ListGroup>
                             ))}
-                            detail={selected && <RequirementDetail c={selected} />}
+                            detail={selected && projectId && <RequirementDetail key={selected.ref} c={selected} projectId={projectId} canEdit={canEdit} />}
                         />
                     )}
 
