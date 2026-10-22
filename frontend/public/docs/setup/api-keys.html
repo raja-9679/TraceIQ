@@ -75,7 +75,7 @@
         <div class="part"><span class="num">2</span><h2 id="new-key" data-toc="② New API key">New API key</h2></div>
         <p>Opens the form for a new key:</p>
         <figure>
-          <div class="frame small"><img src="../media/setup/api-keys/new-key-form.png" alt="The New API key form: Name (filled in as ci-regression-bot), Project scope Entire workspace, Role Default, Expires in (days) never, Allowed source IPs, and the Create key and Cancel buttons" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/api-keys/new-key-form.png" alt="The New API key form: Name (filled in as ci-regression-bot), Project scope Entire workspace, Role limit Default, Expires in (days) never, Allowed source IPs, and the Create key and Cancel buttons" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
@@ -83,7 +83,7 @@
             <tbody>
               <tr><td><strong>Name</strong></td><td>Required. Say who uses the key, such as "ci-regression-bot" or "claude-code", so it can be recognised later.</td></tr>
               <tr><td><strong>Project scope</strong></td><td><em>Entire workspace</em>, or one project. Limit it to one project whenever you can: a key for one project is refused for other projects' runs, results, reports and quality gates. (In this version that limit is not yet applied everywhere, for example not to reading suites and tests, so don't rely on it alone.)</td></tr>
-              <tr><td><strong>Role</strong></td><td>Saved with the key, but in this version it does not change what the key can do (see below).</td></tr>
+              <tr><td><strong>Role limit</strong></td><td>Optional cap on what the key may do: Project Viewer, Editor or Admin, or Workspace Member or Admin. <em>Default</em> means no extra cap. It never gives the key more than its creator has (see below).</td></tr>
               <tr><td><strong>Expires in (days)</strong></td><td>After this many days the key stops working by itself. Empty means it never expires.</td></tr>
               <tr><td><strong>Allowed source IPs</strong></td><td>Optional. Network addresses (written like <code>203.0.113.0/24</code>, separated by commas) the key may be used from. A request from anywhere else is refused and recorded in the audit log. Empty means any address.</td></tr>
             </tbody>
@@ -100,12 +100,13 @@
           <strong>Done</strong>. If it is lost, revoke it and make a new one.</p>
         <div class="callout note">
           <span class="icon">!</span>
-          <div><strong class="title">A key can do what its creator can do</strong>
-            <p>A key always acts with the access of the person who created it: the projects
-            they can see, and their role in each. The <strong>Role</strong> you pick in the
-            form is stored, but it does not reduce that. To limit a key, use <strong>Project
-            scope</strong>, an expiry and source IPs. If the creator's account is deactivated,
-            their keys stop working too.</p></div>
+          <div><strong class="title">A key never does more than its creator can</strong>
+            <p>A key acts with the access of the person who created it, and no more: the projects
+            they can see, and their role in each. The <strong>Role limit</strong> lowers that
+            further (a key limited to Project Viewer can only read, even if you are an admin), and
+            a key only works in the workspace it was made for. <strong>Project scope</strong>, an
+            expiry and source IPs narrow it more. If the creator's account is deactivated, their
+            keys stop working too.</p></div>
         </div>
 
         <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list of keys">The list of keys</h2></div>

@@ -95,25 +95,25 @@ Granting and removing access needs a workspace admin or an admin of that project
 
 ## 3. The tab's button
 
-![The Invite to workspace dialog: Email address, Workspace role Member, and Cancel and Send invitation buttons](../media/setup/workspace/invite-dialog.png)
+![The Invite to workspace dialog: Email address, Workspace role Member, and Cancel and Create invitation buttons](../media/setup/workspace/invite-dialog.png)
 
 The button on the right of the tabs changes with the tab:
 
-- **Invite people** (Members): an email address and a workspace role, *Member* or *Admin*. Someone who already has an account is added at once. For a new address, TraceIQ keeps a pending invitation; no email is sent in this version, so tell the person, and they join when they sign up with exactly that address. Needs a workspace admin.
+- **Invite people** (Members): an email address and a workspace role, *Member* or *Admin*. Someone who already has an account is added at once. For a new address, **Create invitation** keeps a pending invitation and shows its **invitation link**, with **Copy invitation link**. No email is sent, so send the link yourself: it is shown only then (it can't be shown again later) and works for 7 days. Needs a workspace admin.
 - **New team** (Teams): a name, a description, and optionally a first project to link it to.
 - **New project** (Projects): a name and a description. Any member of the workspace can create one, and becomes its admin.
 
 ## 4. The list
 
-![The Members group with one person, Alex Morgan, labelled Workspace Admin](../media/setup/workspace/members-list.png)
+![The Members group with one person, Alex Morgan, labelled Admin](../media/setup/workspace/members-list.png)
 
 The people, teams or projects of the current tab. Click one to see it on the right.
 
 ## 5. The details
 
-![The selected member card for Alex Morgan: Workspace role Workspace Admin, Status Active, Last active less than a minute ago, and a Changing access note](../media/setup/workspace/member-detail.png)
+![The selected member card for Alex Morgan: Workspace role Admin, Status Active, Last active less than a minute ago, a Change workspace role control, and a Changing access note](../media/setup/workspace/member-detail.png)
 
-For a person: their workspace role, status and when they last signed in, with a reminder that project access comes from teams and direct grants. For a team or a project: the members and controls described under ②.
+For a person: their workspace role (Admin or Member), status (Active, or Deactivated for a switched-off account) and when they last signed in, with a reminder that project access comes from teams and direct grants. Workspace admins also get **Change workspace role**: pick Member or Admin and press **Change role**. TraceIQ refuses to demote the last admin of a workspace. For a team or a project: the members and controls described under ②.
 
 ## 6. Demo workspace
 

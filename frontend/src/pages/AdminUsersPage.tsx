@@ -29,6 +29,7 @@ import {
 } from "@/components/redesign/primitives";
 import type { Tone } from "@/components/redesign/kinds";
 import { Avatar, Facts, ListSkeleton } from "@/components/redesign-local/groupE/bits";
+import { assignmentOutcomes, describeOutcome, type AssignmentOutcome } from '@/lib/assignments';
 
 const roleTone = (role?: string): Tone => {
     const r = (role || "").toLowerCase();
@@ -41,6 +42,10 @@ export default function AdminUsersPage() {
     const [search, setSearch] = useState("");
     const [selectedUser, setSelectedUser] = useState<User | null>(null);
     const [isAssignOpen, setIsAssignOpen] = useState(false);
+    // Per-workspace outcomes of the last Assign (existing members can come
+    // back "unchanged" or as an error), shown in the dialog instead of a
+    // blanket success toast.
+    const [outcomes, setOutcomes] = useState<AssignmentOutcome[]>([]);
     const [focusedUserId, setFocusedUserId] = useState<number | null>(null);
 
     // Assignment state
@@ -60,10 +65,15 @@ export default function AdminUsersPage() {
     const assignMutation = useMutation({
         mutationFn: (data: { userId: number; workspaceIds: number[]; role: string }) =>
             assignUserToWorkspaces(data.userId, data.workspaceIds, data.role),
-        onSuccess: () => {
-            toast.success("User assigned to workspaces");
-            setIsAssignOpen(false);
+        onSuccess: (data) => {
+            const list = assignmentOutcomes(data);
             setSelectedWorkspaces([]);
+            if (list.length) {
+                setOutcomes(list);
+            } else {
+                toast.success("User assigned to workspaces");
+                setIsAssignOpen(false);
+            }
         },
         onError: (error: { response?: { data?: { detail?: string } } }) => {
             toast.error(error.response?.data?.detail || "Failed to assign user");
@@ -184,11 +194,21 @@ export default function AdminUsersPage() {
                 />
             )}
 
-            <Dialog open={isAssignOpen} onOpenChange={setIsAssignOpen}>
+            <Dialog open={isAssignOpen} onOpenChange={(o) => { setIsAssignOpen(o); if (!o) setOutcomes([]); }}>
                 <DialogContent className="sm:max-w-[425px]">
                     <DialogHeader>
                         <DialogTitle>Assign workspaces{selectedUser ? ` to ${selectedUser.full_name || selectedUser.email}` : ""}</DialogTitle>
                     </DialogHeader>
+                    {outcomes.length > 0 && (
+                        <ul aria-label="Assignment results" className="overflow-hidden rounded-2xl border border-border">
+                            {outcomes.map((o, i) => (
+                                <li key={i} className="flex min-h-11 items-center justify-between gap-3 border-b border-[#F0EEE8] px-4 py-2 text-sm last:border-b-0">
+                                    <span className="text-ink">{workspaces?.find((w) => w.id === o.workspace_id)?.name ?? (o.workspace_id ? `Workspace #${o.workspace_id}` : 'Workspace')}</span>
+                                    <span className={o.status === 'error' ? 'text-pastel-ink-peach' : 'text-ink-soft'}>{describeOutcome(o)}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
                     <div className="grid gap-4 py-4">
                         <div className="flex flex-col gap-1.5">
                             <label htmlFor="assign-role" className="text-[13px] font-semibold text-ink">Role</label>
@@ -230,8 +250,8 @@ export default function AdminUsersPage() {
                         </fieldset>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsAssignOpen(false)}>
-                            Cancel
+                        <Button variant="outline" onClick={() => { setIsAssignOpen(false); setOutcomes([]); }}>
+                            {outcomes.length ? 'Done' : 'Cancel'}
                         </Button>
                         <Button
                             onClick={handleAssignSubmit}

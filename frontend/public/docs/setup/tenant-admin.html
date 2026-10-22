@@ -104,14 +104,15 @@
         <p>Adds the selected person to one or more of the organisation's workspaces at once. Pick
           the <strong>Role</strong> (<em>Member</em> or <em>Admin</em>), tick the workspaces, and
           press <strong>Assign</strong>. They are added straight away; there is nothing for them
-          to accept.</p>
+          to accept. When a ticked workspace already has them, the dialog stays open and lists
+          what happened in each one: added, role changed (for example <em>Member → Admin</em>),
+          unchanged, or the reason it was refused. <strong>Done</strong> closes it.</p>
         <div class="callout note">
           <span class="icon">!</span>
-          <div><strong class="title">It only adds</strong>
-            <p>Workspaces the person already belongs to are left exactly as they are, including
-            their role there. So Assign can't promote a member to admin of a workspace they are
-            already in, and it never removes anyone. To take someone out of a workspace, use
-            <em>Users</em>.</p></div>
+          <div><strong class="title">It never removes anyone</strong>
+            <p>For a workspace the person already belongs to, Assign sets their role there to the
+            one you picked, and reports it. It never takes anyone out of a workspace; to do that,
+            use <em>Users</em>. Demoting the last admin of a workspace is refused.</p></div>
         </div>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>

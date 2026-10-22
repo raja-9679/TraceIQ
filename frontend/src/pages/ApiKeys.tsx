@@ -101,6 +101,9 @@ function SecretReveal({ created, onDismiss }: { created: ApiKeyCreateResponse; o
 // ---------------------------------------------------------------------------
 
 const NO_SCOPE = 'workspace';
+// The key's role is a ceiling on what it can do (the backend refuses other
+// roles with a 400); tenant-level roles are never offered.
+const KEY_ROLE_CEILINGS = ['Project Viewer', 'Project Editor', 'Project Admin', 'Workspace Member', 'Workspace Admin'];
 const NO_ROLE = 'default';
 
 function CreateKeyForm({
@@ -171,14 +174,14 @@ function CreateKeyForm({
             </SelectContent>
           </Select>
         </Field>
-        <Field id="key-role" label="Role">
+        <Field id="key-role" label="Role limit" hint="Caps the key's access — never more than yours.">
           <Select value={roleId} onValueChange={setRoleId}>
             <SelectTrigger id="key-role" className="h-10 rounded-full px-4">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={NO_ROLE}>Default</SelectItem>
-              {roles.map((r) => (
+              {roles.filter((r) => KEY_ROLE_CEILINGS.includes(r.name)).map((r) => (
                 <SelectItem key={r.id} value={r.id.toString()}>{r.name}</SelectItem>
               ))}
             </SelectContent>
