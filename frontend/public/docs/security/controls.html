@@ -63,12 +63,13 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Controls</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo workspace has no controls yet, so the page first shows "No controls yet":</p>
+        <p>The page opens on the list of controls, with "Pick a control" on the right. The demo
+          workspace has the 17 controls of the SOC 2 starter set (see ②):</p>
         <figure>
-          <div class="frame"><img src="../media/security/controls/page.png" alt="The Controls page with a Workspace menu, a Load SOC 2 starter set button, a New control button, and the message No controls yet" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/security/controls/page.png" alt="The Controls page: the heading with the counts 5 failing, 1 stale, 2 not assessed, 1 excepted, 8 passing; a Workspace menu set to Demo workspace, Load SOC 2 starter set and New control buttons; Framework, Status and Owner filters; the list of 17 controls, failing first; and Pick a control on the right" loading="lazy" width="1440" height="900"></div>
         </figure>
-        <p>The picture below shows a new control being written. The numbers match the sections
-          below.</p>
+        <p>The picture below shows a new control being written above the list. The numbers match
+          the sections below.</p>
         <figure>
           <div class="frame"><img src="../media/security/controls/page-annotated.png" alt="The Controls page with the New control form open and five numbered parts: 1 the Workspace menu, 2 Load SOC 2 starter set, 3 New control, 4 the control's fields, 5 the automated evidence sources" loading="lazy" width="1440" height="1700"></div>
           <figcaption>A control being written in the demo workspace (not saved). Click the picture to see it larger.</figcaption>
@@ -133,7 +134,10 @@
         </div>
 
         <h3 id="status">Statuses</h3>
-        <p>Once there are controls, the list shows each with its reference, title, framework and
+        <figure>
+          <div class="frame small"><img src="../media/security/controls/counts.png" alt="The Controls heading with the counts 5 failing, 1 stale, 2 not assessed, 1 excepted, 8 passing, and the line Each control's status is worked out live from TraceIQ's own records" loading="lazy"></div>
+        </figure>
+        <p>The list shows each with its reference, title, framework and
           owner, <strong>failing first</strong>, then stale, then not assessed. The heading shows
           how many controls have each status, and the toolbar filters by framework, status and
           owner. A control's status is worked out every time you look; it is never stored:</p>
@@ -152,13 +156,21 @@
 
         <h3 id="detail">A control's page</h3>
         <p>Click a control to open it on the right:</p>
+        <figure>
+          <div class="frame"><img src="../media/security/controls/detail.png" alt="The control SOC 2 CC7.2 Security monitoring, owner and freshness SLA 90 days, with Edit control and Delete control buttons. Status Failing: the newest manual evidence records a failure. Automated evidence: no automated sources, this control relies on manual evidence. Manual evidence: Fail, Alert rules not yet routed to the on-call rota, with a Remove button, and a form to add evidence (Shows it works or Shows a failure, a note and an optional file). Exceptions: none, with a form to request one. History" loading="lazy"></div>
+          <figcaption>A failing control in the demo: the newest evidence a person added records a failure.</figcaption>
+        </figure>
         <ul>
           <li><strong>Status</strong>, with the reason in words (for example which source failed).</li>
           <li><strong>Automated evidence</strong>: each source with <em>Pass</em>, <em>Fail</em> or <em>Unknown</em>, and why.</li>
           <li><strong>Manual evidence</strong>: notes and files people added, each marked <em>Shows it works</em> or <em>Shows a failure</em>, with who added it, when, and the file's fingerprint (SHA-256). Files may be PDF, images, text, CSV, JSON or Office files up to 10 MB.</li>
-          <li><strong>Exceptions</strong>: a time-limited waiver, with a reason, an optional compensating control (what reduces the risk meanwhile) and an end date at most 365 days away.</li>
+          <li><strong>Exceptions</strong>: a time-limited waiver, with a reason, an optional compensating control (what reduces the risk meanwhile) and an end date at most 365 days away. A second admin, not the person who asked, must approve it.</li>
           <li><strong>History</strong>: every change to the control, its evidence and exceptions, from the audit log.</li>
         </ul>
+        <figure>
+          <div class="frame"><img src="../media/security/controls/exception.png" alt="The Exceptions card of the control Single sign-on enforced: an approved exception requested by a team member, expiring 2027-01-10 and approved by the owner, with its reason, the compensating control MFA required for every admin; access review every quarter, the approver's note, and a Revoke exception button; below it the form to request another exception" loading="lazy"></div>
+          <figcaption>The demo's one approved exception, which is why <em>Single sign-on enforced</em> shows as Excepted.</figcaption>
+        </figure>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">

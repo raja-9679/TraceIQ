@@ -67,8 +67,8 @@
         <p>The page opens on the list of reviews. The numbers on the screenshot match the sections
           below.</p>
         <figure>
-          <div class="frame"><img src="../media/security/access-reviews/page-annotated.png" alt="The Access Reviews page with four numbered parts: 1 the Scope menu set to Demo workspace, 2 the Current access (CSV) and Printable report buttons, 3 the review name field and Start review button, 4 the Reviews list, empty" loading="lazy" width="1440" height="900"></div>
-          <figcaption>Access reviews for the demo workspace, which has none yet. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/security/access-reviews/page-annotated.png" alt="The Access Reviews page with four numbered parts: 1 the Scope menu set to Demo workspace, 2 the Current access (CSV) and Printable report buttons, 3 the review name field and Start review button, 4 the Reviews list with the Q4 review in review and the Q3 review signed off" loading="lazy" width="1440" height="900"></div>
+          <figcaption>Access reviews for the demo workspace, with two reviews. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="scope" data-toc="① Scope">Scope</h2></div>
@@ -79,11 +79,8 @@
           <strong>Whole instance</strong> for every account on the TraceIQ server. When the page
           opens it picks the workspace of the project selected in the sidebar.</p>
         <p>Reviewing a workspace needs the <em>workspace admin</em> role there. The whole-server
-          review needs an <em>instance admin</em> (someone who runs the server); everyone else
-          sees a refusal in the list instead:</p>
-        <figure>
-          <div class="frame small"><img src="../media/security/access-reviews/instance-scope.png" alt="The Reviews box showing the refusal: Instance settings can only be managed by the instance admin (an admin of the first tenant on this deployment)" loading="lazy"></div>
-        </figure>
+          review needs an <em>instance admin</em> (someone who runs the server), and only they see
+          the <strong>Whole instance</strong> choice.</p>
 
         <div class="part"><span class="num">2</span><h2 id="current" data-toc="② Current access">Current access</h2></div>
         <p>Two buttons give today's list for the chosen scope, without starting a review:</p>
@@ -107,7 +104,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="reviews" data-toc="④ Reviews">Reviews</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/security/access-reviews/reviews.png" alt="The Reviews box, saying No reviews yet for this scope" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-reviews/reviews.png" alt="The Reviews box with two reviews: Q4 demo workspace access review, started 10/20/2026, 5 items, 4 undecided, 0 revoke, in review; and Q3 demo workspace access review, started 9/5/2026, 5 items, 0 undecided, 1 revoke, signed off" loading="lazy"></div>
         </figure>
         <p>Past and current reviews for the chosen scope, each with its name, when it was started
           and by whom, the number of items, how many are undecided and how many are marked
@@ -116,6 +113,10 @@
 
         <h3 id="inside">Inside a review</h3>
         <p>An open review is a table with one row per item:</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-reviews/review-open.png" alt="The Q4 demo workspace access review: 1 keep, 0 revoke, 4 undecided; a Sign-off note field, a greyed-out Sign off review button and the words Decide every item first; then a table of five items: four people with their workspace, team and project roles, how they sign in, MFA and last login, and one API key, each with a Note field and Keep and Revoke buttons. The first person is already marked Keep" loading="lazy" width="1440" height="1100"></div>
+          <figcaption>The demo's Q4 review, still in review: one item decided, four to go.</figcaption>
+        </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Column</th><th>What it shows</th></tr></thead>
@@ -128,7 +129,18 @@
           </table>
         </div>
         <p>Above the table: keep / revoke / undecided counts, the <strong>CSV</strong> and
-          <strong>Printable report</strong> buttons for this review, and the sign-off.</p>
+          <strong>Printable report</strong> buttons for this review, and the sign-off.
+          <strong>Sign off review</strong> stays greyed out until every item is decided
+          ("Decide every item first."); a sign-off note is optional. <strong>All reviews</strong>
+          goes back to the list.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-reviews/review-signed.png" alt="The Q3 demo workspace access review, signed off on 9/8/2026: 4 keep, 1 revoke, 0 undecided, with the line Revoke decisions are not applied until you confirm them here, and a Preview revocations button" loading="lazy"></div>
+          <figcaption>A signed-off review whose Revoke decision has not been applied yet.</figcaption>
+        </figure>
+        <p>After sign-off, Revoke decisions still change nothing until someone applies them.
+          <strong>Preview revocations</strong> lists what would be removed, and
+          <strong>Confirm and revoke</strong> then removes it (<strong>Cancel</strong> leaves
+          everything as it is).</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">

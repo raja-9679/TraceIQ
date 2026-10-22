@@ -30,15 +30,15 @@ An access matrix answers **"Can each kind of user reach only what they are meant
 
 ## A tour of the screen
 
-The demo project has no matrix yet, so the page first shows only an empty list on the left and "Choose a matrix, or create a new one.":
+When the page opens, the list on the left shows the project's matrices and the right says "Choose a matrix, or create a new one.". The demo's web project has one matrix:
 
-![The Access Matrix page with a New matrix button, the line No matrices in this project yet, and a Project menu at the top right](../media/security/access-matrix/page.png)
+![The Access Matrix page with a New matrix button, one matrix in the list (Todo app roles (demo), 3 rows, 3 identities), the line Choose a matrix, or create a new one, and a Project menu at the top right](../media/security/access-matrix/page.png)
 
-The picture below shows a new matrix being filled in: two rows (the user's own todo list, and an admin-only list of users) checked against two logged-in users and someone who is not logged in. The numbers match the sections below.
+The picture below shows that matrix opened on its **Edit grid** tab: three rows (the todo list as a request, the admin panel as a page, and one user's todo read by its ID) checked against two logged-in users, alice and bob, and someone who is not logged in. The numbers match the sections below.
 
-![The Access Matrix page with a new matrix being written, with six numbered parts: 1 the New matrix button and list, 2 the name, base URL, description and denied-statuses fields, 3 the identities, 4 the grid of rows and Allow or Deny cells, 5 the security-testing prerequisites, 6 the Create matrix button](../media/security/access-matrix/page-annotated.png)
+![The Access Matrix page with the demo matrix open, with six numbered parts: 1 the New matrix button and list, 2 the name, base URL, description and denied-statuses fields, 3 the identities, 4 the grid of rows and Allow or Deny cells, 5 the security-testing prerequisites, 6 the Save changes button](../media/security/access-matrix/page-annotated.png)
 
-*A draft matrix in the demo's web project (not saved). Click the picture to see it larger.*
+*The demo matrix in the web project. Click the picture to see it larger.*
 
 ## 1. The list of matrices
 
@@ -48,10 +48,10 @@ The **Project** menu at the top right of the page chooses the project. It is the
 
 ## 2. Name and address
 
-![Four fields: Name (Todo items: who may see them), Base URL for relative paths (https://app.example.com), Description, and Statuses that count as denied (401, 403, 404 by default)](../media/security/access-matrix/fields.png)
+![Four fields: Name (Todo app roles (demo)), Base URL for relative paths (http://localhost:8080), Description, and Statuses that count as denied (401, 403, 404, the default)](../media/security/access-matrix/fields.png)
 
 - **Name** (required) and **Description**: for people.
-- **Base URL**: the address of the app. Rows can then give just a path, such as `/todos`.
+- **Base URL**: the address of the app. Rows can then give just a path, such as `/api/todos`.
 - **Statuses that count as denied**: when the app refuses someone, it answers with a status number. By default `401` (not logged in), `403` (not allowed) and `404` (not found) count as "denied". Change the list if your app refuses in another way.
 
 ## 3. Identities (columns)
@@ -62,7 +62,7 @@ Each column is one **identity**: who TraceIQ pretends to be. A **persona** is a 
 
 ## 4. The grid
 
-![The grid. Row My todo list, a Page at /todos: Allow for alice, Allow for bob, Deny for Anonymous. Row Admin user list, a GET request to /api/admin/users: Deny for all three](../media/security/access-matrix/grid.png)
+![The grid of the demo matrix. Row List my todos (API), a GET request to /api/todos: Allow with status 200 for alice and bob, Deny for Anonymous. Row Admin panel, a Page at /admin with the element selector #admin-panel: Allow for alice, Deny for bob and Anonymous. Row Read alice's todo by id, a GET request to /api/todos/{id} with ID swap ticked, owner persona alice, owner URL /api/todos, extractor 0.id: Allow for alice, Deny for bob and Anonymous](../media/security/access-matrix/grid.png)
 
 Each row is one thing to try. Press **Add row** for another, and **Remove row** to drop one (up to 200 rows).
 
@@ -86,7 +86,7 @@ Each row is one thing to try. Press **Add row** for another, and **Remove row** 
 
 ## 5. Security-testing prerequisites
 
-![Security-testing prerequisites: Security testing disabled, Authorized domains none, Needs attention: Security testing is disabled for this project, Needs attention: Not on the authorized domain list: https://app.example.com/todos, https://app.example.com/api/admin/users, and an Edit security settings link](../media/security/access-matrix/prerequisites.png)
+![Security-testing prerequisites: Security testing enabled, Authorized domains example.com, localhost, OK: Security testing is enabled for this project, OK: All targets are on the authorized domain list, and an Edit security settings link](../media/security/access-matrix/prerequisites.png)
 
 Request and page rows contact your app directly, so TraceIQ only runs them when the project allows security testing. This box checks your draft against those rules before you run it:
 
@@ -94,15 +94,19 @@ Request and page rows contact your app directly, so TraceIQ only runs them when 
 - every address must be on the project's **authorized domains**. Both are set under *Scans & findings → Authorization* (the **Edit security settings** link goes there).
 - A row that **changes data** (any method other than GET, HEAD or OPTIONS, including the owner request of an ID swap) also needs you to tick "I am authorized…" when you run the matrix.
 
-Test-case rows need none of this. The box is only a preview: when you run the matrix, TraceIQ checks again, and if it refuses, its reason is shown word for word.
+In the demo project both are in order, so the box shows two green *OK* lines; otherwise each problem is listed under *Needs attention*. Test-case rows need none of this. The box is only a preview: when you run the matrix, TraceIQ checks again, and if it refuses, its reason is shown word for word.
 
-## 6. Create matrix
+## 6. Save changes
 
-**Create matrix** saves a new matrix (it stays greyed out until it has a name); on a saved one the button says **Save changes**, next to **Delete matrix**, which asks first and also deletes all of the matrix's runs. Nothing is saved until you press the button; leaving the page throws the draft away.
+On a saved matrix, **Save changes** saves your edits; it sits next to **Delete matrix**, which asks first and also deletes all of the matrix's runs. For a new matrix the button says **Create matrix** (greyed out until it has a name). Nothing is saved until you press the button; leaving the page throws your changes away.
 
 ### Reading the results
 
 On a saved matrix, the **Runs & results** tab has a **Run matrix** button, the **Run history** (newest first) and the results of the selected run: the same grid, with each cell showing what was expected, what was observed, and a verdict. While a run is going, the page refreshes every 3 seconds.
+
+![Run history with Run #1, completed: Pass 7, Fail 1, Inconclusive 1. Results of run #1: Pass 7, Fail 1, Inconclusive 1, 1 access granted that should be denied. In the grid every cell passes except Admin panel as bob, Fail — access granted (expected deny, observed 200, element visible), and Admin panel as Anonymous, Inconclusive (expected deny, observed timeout)](../media/security/access-matrix/results.png)
+
+*The demo run: bob, a plain user, could open the admin panel, and the visit as Anonymous timed out.*
 
 | Verdict | What it means |
 |---|---|
@@ -112,13 +116,21 @@ On a saved matrix, the **Runs & results** tab has a **Run matrix** button, the *
 | Inconclusive | TraceIQ couldn't tell, for example the request timed out, the server had an error, or it was sent somewhere else. It is never counted as a pass. |
 | Pending | Still waiting for a result. |
 
-**Click a cell** to see its evidence: the status, the address it ended up on, whether the element was shown, the ID that was swapped in, the response headers and a piece of the response (with secrets removed), a screenshot for page rows, and a link to the test run for test-case rows. Below the results, **Security findings from this matrix** lists the findings it raised, each with a link to the run that showed the problem.
+**Click a cell** to see its evidence: the status, the address it ended up on, whether the element was shown, the ID that was swapped in, the response headers and a piece of the response (with secrets removed), a screenshot for page rows, and a link to the test run for test-case rows.
+
+![The evidence panel for Admin panel as bob (todolite): Fail — access granted, Expected deny, Reason: the protected element is visible (status 200) — access granted; Status 200, Final URL http://localhost:8080/admin, Element present](../media/security/access-matrix/evidence.png)
+
+*The evidence for the failed cell opens at the side of the page.*
+
+Below the results, **Security findings from this matrix** lists the findings it raised, each with its status and a link to the run that showed the problem.
+
+![Security findings from this matrix: one Open finding, Access granted that should be denied: Admin panel as bob (todolite), with a View evidence in run #1 link](../media/security/access-matrix/findings.png)
 
 ## Watch it in use
 
 [▶ Watch the video](../media/security/access-matrix/walkthrough.mp4)
 
-*About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The matrix in the video is not saved.*
+*About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing in the video is changed.*
 
 ## How to…
 
@@ -146,7 +158,7 @@ On a saved matrix, the **Runs & results** tab has a **Run matrix** button, the *
 
 ## Good to know
 
-- **Findings look after themselves.** A Deny cell that got through creates one high-severity finding per row and identity, and a later run that gets through again updates the same finding rather than adding another. When a later run denies it again, an *Open* finding is closed by itself; if access gets through after that, it reopens. A finding marked *false positive* stays that way. Inconclusive cells change nothing.
+- **Findings look after themselves.** A Deny cell that got through creates one high-severity finding per row and identity, and a later run that gets through again updates the same finding rather than adding another. When a later run denies it again, the finding is marked *Verified fixed* by itself; if access gets through after that, it reopens. A finding marked *false positive* stays that way. Inconclusive cells change nothing.
 - **It only looks.** Request and page rows observe what the app answers; the only data they change is what a row itself sends (which is why those rows need your "I am authorized").
 - **Old results keep their labels.** Each run stores a copy of the matrix as it was, so editing the matrix later doesn't relabel past results.
 - **A run gives up after 45 minutes.** Cells still waiting then become *Inconclusive*, never Pass.
@@ -178,11 +190,12 @@ On a saved matrix, the **Runs & results** tab has a **Run matrix** button, the *
 What the walkthrough says, in order. The video and every picture on this page are made by the Playwright script [`security-access-matrix.spec.ts`](../../../../e2e/docs-capture/pages/security-access-matrix.spec.ts).
 
 1. An access matrix checks that each kind of user can reach only what they should.
-2. The demo project has no matrix yet. New matrix starts one.
-3. Give it a name, and the address of the app being checked.
-4. The columns are identities: saved logins called personas, plus Anonymous, someone not logged in.
-5. Each row is something to try: a page, a request, or one of your tests.
-6. Click a cell to say what should happen: Allow, Deny, or Skip.
-7. Here nobody should reach the admin list, so every cell says Deny.
-8. Before it can run, the app's address must be on the project's list of sites that may be tested.
-9. Create matrix saves it. Then Runs and results shows, cell by cell, what really happened.
+2. The list on the left holds the project's matrices. Open one to see its grid.
+3. The columns are identities: saved logins called personas, plus Anonymous, someone not logged in.
+4. Each row is something to try: a page, a request, or one of your tests.
+5. Each cell says what should happen: Allow, Deny, or Skip. A click changes it.
+6. Here only alice, the admin, should reach the admin panel.
+7. Runs and results shows what really happened, cell by cell.
+8. Red means access was granted that should have been denied. bob, a plain user, reached the admin panel.
+9. Click a cell to see its evidence.
+10. Each such hole becomes a security finding, listed below the results.

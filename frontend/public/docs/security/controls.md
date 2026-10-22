@@ -30,11 +30,11 @@ Gathering evidence once a year is slow and it goes out of date. This page answer
 
 ## A tour of the screen
 
-The demo workspace has no controls yet, so the page first shows "No controls yet":
+The page opens on the list of controls, with "Pick a control" on the right. The demo workspace has the 17 controls of the SOC 2 starter set (see ②):
 
-![The Controls page with a Workspace menu, a Load SOC 2 starter set button, a New control button, and the message No controls yet](../media/security/controls/page.png)
+![The Controls page: the heading with the counts 5 failing, 1 stale, 2 not assessed, 1 excepted, 8 passing; a Workspace menu set to Demo workspace, Load SOC 2 starter set and New control buttons; Framework, Status and Owner filters; the list of 17 controls, failing first; and Pick a control on the right](../media/security/controls/page.png)
 
-The picture below shows a new control being written. The numbers match the sections below.
+The picture below shows a new control being written above the list. The numbers match the sections below.
 
 ![The Controls page with the New control form open and five numbered parts: 1 the Workspace menu, 2 Load SOC 2 starter set, 3 New control, 4 the control's fields, 5 the automated evidence sources](../media/security/controls/page-annotated.png)
 
@@ -85,7 +85,9 @@ Checks TraceIQ makes for you, from its own records, every time the page is opene
 
 ### Statuses
 
-Once there are controls, the list shows each with its reference, title, framework and owner, **failing first**, then stale, then not assessed. The heading shows how many controls have each status, and the toolbar filters by framework, status and owner. A control's status is worked out every time you look; it is never stored:
+![The Controls heading with the counts 5 failing, 1 stale, 2 not assessed, 1 excepted, 8 passing, and the line Each control's status is worked out live from TraceIQ's own records](../media/security/controls/counts.png)
+
+The list shows each with its reference, title, framework and owner, **failing first**, then stale, then not assessed. The heading shows how many controls have each status, and the toolbar filters by framework, status and owner. A control's status is worked out every time you look; it is never stored:
 
 | Status | What it means |
 |---|---|
@@ -99,11 +101,19 @@ Once there are controls, the list shows each with its reference, title, framewor
 
 Click a control to open it on the right:
 
+![The control SOC 2 CC7.2 Security monitoring, owner and freshness SLA 90 days, with Edit control and Delete control buttons. Status Failing: the newest manual evidence records a failure. Automated evidence: no automated sources, this control relies on manual evidence. Manual evidence: Fail, Alert rules not yet routed to the on-call rota, with a Remove button, and a form to add evidence (Shows it works or Shows a failure, a note and an optional file). Exceptions: none, with a form to request one. History](../media/security/controls/detail.png)
+
+*A failing control in the demo: the newest evidence a person added records a failure.*
+
 - **Status**, with the reason in words (for example which source failed).
 - **Automated evidence**: each source with *Pass*, *Fail* or *Unknown*, and why.
 - **Manual evidence**: notes and files people added, each marked *Shows it works* or *Shows a failure*, with who added it, when, and the file's fingerprint (SHA-256). Files may be PDF, images, text, CSV, JSON or Office files up to 10 MB.
-- **Exceptions**: a time-limited waiver, with a reason, an optional compensating control (what reduces the risk meanwhile) and an end date at most 365 days away.
+- **Exceptions**: a time-limited waiver, with a reason, an optional compensating control (what reduces the risk meanwhile) and an end date at most 365 days away. A second admin, not the person who asked, must approve it.
 - **History**: every change to the control, its evidence and exceptions, from the audit log.
+
+![The Exceptions card of the control Single sign-on enforced: an approved exception requested by a team member, expiring 2027-01-10 and approved by the owner, with its reason, the compensating control MFA required for every admin; access review every quarter, the approver's note, and a Revoke exception button; below it the form to request another exception](../media/security/controls/exception.png)
+
+*The demo's one approved exception, which is why *Single sign-on enforced* shows as Excepted.*
 
 ## Watch it in use
 
@@ -164,9 +174,10 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. A control is one promise your organisation makes about security, for example "access is reviewed every quarter".
 2. This page lists your controls and checks, from TraceIQ's own records, whether each promise is being kept.
-3. The demo workspace has no controls yet. An admin can load a ready-made set for SOC 2, a common security standard.
-4. Or write your own with New control.
-5. A control has a standard, a reference in it, a title, and an owner.
-6. Freshness says how old the newest proof may be before the control counts as stale.
-7. Automated sources are checks TraceIQ makes for you, such as a recent access review.
-8. Once saved, people can add their own evidence, and admins can approve a time-limited exception.
+3. Each control shows its status, failing ones first.
+4. An admin can load a ready-made set for SOC 2, a common security standard.
+5. Or write your own with New control.
+6. A control has a standard, a reference in it, a title, and an owner.
+7. Freshness says how old the newest proof may be before the control counts as stale.
+8. Automated sources are checks TraceIQ makes for you, such as a recent access review.
+9. Once saved, people can add their own evidence, and admins can approve a time-limited exception.

@@ -32,9 +32,9 @@ TraceIQ's log is **append-only**: entries are only ever added. Each entry also c
 
 The page shows the newest entries first. The numbers on the screenshot match the sections below.
 
-![The Audit log page with five numbered parts: 1 the Workspace menu, 2 the Export CSV and Verify chain buttons, 3 the filters (Entity type, Action, User, From, To, Apply filters, Clear), 4 the table of entries, 5 the Previous page and Next page buttons](../media/security/audit-log/page-annotated.png)
+![The Audit log page with four numbered parts: 1 the Workspace menu, 2 the Export CSV and Verify chain buttons, 3 the filters (Entity type, Action, User, From, To, Apply filters, Clear), 4 the table of entries, newest first](../media/security/audit-log/page-annotated.png)
 
-*The audit log of the demo workspace, which has only its first few entries. Click the picture to see it larger.*
+*The audit log of the demo workspace. The page buttons (⑤) are below the table. Click the picture to see it larger.*
 
 ## 1. Workspace
 
@@ -62,7 +62,7 @@ Filters take effect when you press **Apply filters** (or Enter); **Clear** remov
 
 ## 4. The entries
 
-![A table with columns When, Who, Action, Entity, IP and a Details button. Rows: demo_create workspace #5, create project #7, create project #6, create workspace #5, all by the capture account](../media/security/audit-log/table.png)
+![The first rows of the table, with columns When, Who, Action, Entity, IP and a Details button: demo_create and compliance_load_soc2 on the workspace by the capture account; verified_fixed on three security findings by finding-lifecycle, marked system; approve on three page scripts by the capture account](../media/security/audit-log/table.png)
 
 | Column | What it shows |
 |---|---|
@@ -73,9 +73,11 @@ Filters take effect when you press **Apply filters** (or Enter); **Clear** remov
 | **IP** | The network address the request came from, when it was recorded. |
 | **Details** | Shows exactly what changed (before and after values). |
 
-![An opened entry showing its changes as text: seed 1307, runs 240](../media/security/audit-log/details.png)
+![An opened entry showing its changes as text: seed 1307, runs 236](../media/security/audit-log/details.png)
 
 ## 5. Pages
+
+![Previous page and Next page buttons, both greyed out, and the line Entries 1–23](../media/security/audit-log/paging.png)
 
 The table shows 50 entries at a time. **Next page** and **Previous page** move through older and newer ones; the line next to them says which entries you are looking at.
 

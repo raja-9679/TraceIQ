@@ -2,9 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/security/estate.html
-// The demo has no estates. Nothing here changes data: the New estate form is
-// opened but "Save estate" is never pressed, and the page's Project menu is
-// never touched (it switches the active project).
+// The demo's web project has one estate ("example.com estate (demo)", two
+// domains, scanned). Nothing here changes data: the New estate form is opened
+// but "Save estate" is never pressed, "Scan now", "Settings", "Delete estate",
+// "Remove" and "Import domains" are never pressed, and the page's Project menu
+// is never touched (it switches the active project).
 
 const DIR = 'security/estate';
 
@@ -12,7 +14,7 @@ async function open(p: Page) {
     await p.goto('/estate');
     await expect(p.getByRole('heading', { name: 'Estate', level: 1 })).toBeVisible();
     await settle(p);
-    await expect(p.getByText('No estates in this project yet.')).toBeVisible();
+    await expect(p.getByText('example.com estate (demo)')).toBeVisible();
 }
 
 test('Security › Estate', async ({ page, browser }) => {
@@ -41,13 +43,28 @@ test('Security › Estate', async ({ page, browser }) => {
     await form.screenshot({ path: out(`${DIR}/new-estate.png`) });
     await expect(buttons).toBeVisible();
 
-    // 3. The certificate calendar (empty in the demo).
+    // 3. Inside the demo estate: the domain table and one domain's checks.
+    await nav.getByText('example.com estate (demo)').click();
+    await expect(main.getByRole('heading', { name: 'example.com estate (demo)', level: 2 })).toBeVisible();
+    await settle(page);
+    const firstDomain = main.locator('table tbody tr').first().getByRole('button').first();
+    await firstDomain.click();
+    await expect(main.getByRole('heading', { name: 'How the score is made' })).toBeVisible();
+    await settle(page);
+    await page.setViewportSize({ width: 1440, height: 1500 });
+    await settle(page);
+    await main.getByRole('heading', { name: 'example.com estate (demo)', level: 2 })
+        .locator('xpath=ancestor::div[contains(@class,"space-y-5")][1]')
+        .screenshot({ path: out(`${DIR}/estate.png`) });
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // 4. The certificate calendar.
     await nav.getByRole('button', { name: 'Certificate calendar' }).click();
     await settle(page);
-    await expect(main.getByText(/No certificates observed yet/)).toBeVisible();
-    await main.getByText(/No certificates observed yet/).screenshot({ path: out(`${DIR}/certificates-empty.png`) });
+    await expect(main.locator('table')).toBeVisible();
+    await main.locator('table').locator('xpath=..').screenshot({ path: out(`${DIR}/certificates.png`) });
 
-    // 4. A short walkthrough video, with captions saying what is on screen.
+    // 5. A short walkthrough video, with captions saying what is on screen.
     await record(browser, `${DIR}/walkthrough.webm`, async (p) => {
         await open(p);
         const m = p.locator('main');
@@ -55,8 +72,8 @@ test('Security › Estate', async ({ page, browser }) => {
         await caption(p, 'Your estate is every web address your organisation owns, as the outside world sees it.', 2000);
         await caption(p, 'TraceIQ checks each one and gives it a score out of one hundred, worst first.');
         await beat(p, 1600);
-        await caption(p, 'An estate is a named group of domains. The demo project has none yet.');
-        await pointAt(p, m.getByText('No estates in this project yet.'), 1800);
+        await caption(p, 'An estate is a named group of domains. The number is its worst domain\'s score.');
+        await pointAt(p, n.getByText('example.com estate (demo)'), 1800);
         await caption(p, 'New estate starts one: a name, how often to check, and who to warn.');
         const nb = n.getByRole('button', { name: 'New estate' });
         await pointAt(p, nb, 600);
@@ -76,7 +93,7 @@ test('Security › Estate', async ({ page, browser }) => {
         await pointAt(p, cb, 600);
         await cb.click();
         await settle(p);
-        await pointAt(p, m.getByText(/No certificates observed yet/), 2200);
+        await pointAt(p, m.locator('table'), 2200);
         await caption(p, '');
     });
 });

@@ -30,9 +30,9 @@ The card-payment industry's security standard (**PCI DSS 4.0**) therefore asks f
 
 ## A tour of the screen
 
-The demo project doesn't monitor any page yet, so the page first shows an empty list on the left:
+The page opens on the list of pages the project watches; the demo's web project watches one checkout page:
 
-![The Script Inventory page with a Monitor a page button, the line No monitored pages yet, and a Project menu](../media/security/script-inventory/page.png)
+![The Script Inventory page with a Monitor a page button, one monitored page in the list (Checkout page (demo), result alert, 4 scripts, 2 unapproved), the line Choose a page, or start monitoring one, and a Project menu](../media/security/script-inventory/page.png)
 
 The picture below shows the form behind **Monitor a page**, filled in for a checkout page with defacement checks switched on. The numbers match the sections below.
 
@@ -91,6 +91,14 @@ A saved page shows its result, when it was last checked, and the buttons **Check
 - **Scripts**: one row per script, unapproved ones first. The *script* is its address, or "inline script" for code written into the page itself; it is marked *first party* (from your own site) or *third party*, with the day it was first seen. *SHA-384* is the script's fingerprint: any change to the code changes it. *SRI* says whether the page itself tells the browser to check that fingerprint ("none" means it doesn't). *Approval* is approved or unapproved. Tick **Include removed scripts** to see ones that have gone. **Security headers last seen** lists the protective headers the page sent.
 - **Change history**: every script added, changed, removed or approved, every header change and every defacement alert, with its time.
 - **Settings & defacement**: the same form as above.
+
+![Checkout page (demo), result alert, https://example.com/checkout, last checked 2026-10-20, with Check now and Delete page buttons and the tabs Scripts, Change history, Settings and defacement. The Scripts tab lists four scripts: https://tags.example.org/gtm.js (third party) and an inline script, both unapproved with an Approve… link; https://payments.example.net/v3/checkout.js (third party) and https://example.com/static/app.js (first party), both approved with their justification and a Withdraw approval link. Each has the start of its SHA-384 fingerprint and SRI none. At the bottom, Security headers last seen](../media/security/script-inventory/monitored-page.png)
+
+*The demo's checkout page: two scripts approved with a reason, two waiting for approval.*
+
+![The Change history tab: 2026-10-20, Script changed: https://tags.example.org/gtm.js; 2026-10-08, Baseline: Inventory started with 4 script(s)](../media/security/script-inventory/history.png)
+
+*Its change history: the tag manager script changed, so it lost its approval and the page is on alert.*
 
 ## Watch it in use
 
@@ -152,7 +160,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Script inventory keeps a list of every script that runs on your most sensitive pages, such as checkout.
 2. A script added or changed by an attacker can steal card details, so each one must be approved.
-3. The demo project monitors no pages yet. Monitor a page starts one.
+3. The list shows each watched page: here a checkout page with two unapproved scripts. Monitor a page adds another.
 4. Give the page a name and its address. The site must be on the project's list of sites that may be tested.
 5. The schedule says how often to look. Card-industry rules ask for at least once a week.
 6. Script inventory records the scripts. Defacement checks also watch the page's text.
