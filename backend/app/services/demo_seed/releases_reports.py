@@ -13,9 +13,11 @@ Pages this fills (user-guide gaps, info/GUIDE_FOLLOWUPS.md):
 * Reports → Journey coverage + Business journeys: an analytics export parsed
   by the real parser, and a "Sign in and manage todos" journey.
 * Release readiness / Quality gate / Requirements / Manual testing: a gate
-  policy that blocks (an active quarantine), JUnit reports, a manual suite with
-  two manual runs and two sign-offs, requirements with parsed acceptance
-  criteria in every coverage state, and a proposal generated from one.
+  policy the newest commit (a green release candidate) passes while older
+  commits are not ready or lack data, an active quarantine, JUnit reports, a
+  manual suite with two manual runs and two sign-offs, requirements with
+  parsed acceptance criteria in every coverage state, and a proposal
+  generated from one.
 """
 from __future__ import annotations
 
@@ -578,8 +580,10 @@ async def _gate(ctx) -> None:
     web = ctx.projects["web"]
     # Written the way PUT .../quality-gate/policy writes it: the JSON on the
     # project plus the version row that every later verdict names.
+    # One flaky case is tolerated (the quarantined one below); a second would
+    # block. With 0 no commit could ever be ready while the quarantine lasts.
     policy = QualityGatePolicy(min_pass_rate=90.0, max_high_severity_findings=0,
-                               require_external_tests_pass=True, max_flaky_cases=0,
+                               require_external_tests_pass=True, max_flaky_cases=1,
                                require_critical_passed=True, max_evidence_age_days=7)
     web.quality_gate_policy = policy.model_dump()
     ctx.session.add(web)
@@ -589,7 +593,13 @@ async def _gate(ctx) -> None:
     ctx.session.add(version)
 
     ci = [run for run in ctx.runs_of("web") if run.git_commit]
-    for run, failing in (((ci[-2], True), (ci[-1], False)) if len(ci) >= 2 else ()):
+    rc = await _release_candidate(ctx)
+    # Older commits stay judgeable both ways: ci[-2]'s report fails (not
+    # ready), ci[-1] passes, and every other CI commit has none (insufficient
+    # data). The release candidate — the newest run, so the default view — is
+    # green on everything the policy asks for.
+    reports = ((ci[-2], True), (ci[-1], False)) if len(ci) >= 2 else ()
+    for run, failing in reports + ((rc, False),):
         parsed = parse_junit_xml(_junit(failing))
         ctx.session.add(ExternalTestReport(
             project_id=web.id, source="junit", suite_name=parsed["suite_name"],
@@ -598,8 +608,8 @@ async def _gate(ctx) -> None:
             time_seconds=round(parsed["time_seconds"], 3), failed_cases=parsed["failed_cases"],
             uploaded_by="api-key:ci (demo)", created_at=ctx.past(run.created_at + timedelta(minutes=4))))
 
-    # An active manual quarantine on the flaky case: with max_flaky_cases 0
-    # the readiness verdict is "not ready" and says why.
+    # An active manual quarantine on the flaky case: the Flaky tests check
+    # shows it (1 of at most 1), and Release readiness lists it with its owner.
     add_todo = ctx.cases["web"]["add_todo"].id
     for flake in ctx.flake_records:
         if flake.test_case_id == add_todo:
@@ -607,3 +617,47 @@ async def _gate(ctx) -> None:
                                     reason="Times out waiting for the list to refresh; tracked in DEMO-102.",
                                     by_user_id=ctx.user.id, now=ctx.ago(days=3))
             ctx.session.add(flake)
+
+
+async def _release_candidate(ctx) -> Any:
+    """The release candidate: a full, green CI run of the web suite on a new
+    main commit, newer than every other web run the demo writes (manual
+    passes, the agent's targeted runs), so Release readiness and the Quality
+    gate open on a commit that is ready to release.
+
+    Registered with the core history (run_rows / result_rows) so the modules
+    after this one give it step evidence and accessibility checks like any
+    other run."""
+    from app.models import RunTrigger, TestCaseResult, TestRun, TestStatus
+    rng = ctx.rng_for("releases_reports:rc")
+    suite = ctx.suites["web_smoke"]
+    keys = [k for k in ctx.cases["web"]]
+    at = ctx.ago(minutes=40)
+    results = [{"case": k, "status": "passed", "error": None, "is_flaky": False, "retry_count": 0,
+                "cluster": None, "duration_ms": float(4200 + rng.randint(0, 2100))} for k in keys]
+    duration = sum(x["duration_ms"] for x in results)
+    commit = "%07x" % rng.getrandbits(28)
+    run = TestRun(
+        test_suite_id=suite.id, project_id=ctx.projects["web"].id, suite_name=suite.name,
+        status=TestStatus.PASSED, total_tests=len(results), passed_tests=len(results), failed_tests=0,
+        duration_ms=duration, browser="chromium", user_id=ctx.user.id,
+        environment_id=ctx.envs["web"].id, created_at=at,
+        finalized_at=ctx.past(at + timedelta(milliseconds=duration + 5000)),
+        triggered_by=RunTrigger.CI, git_commit=commit, git_branch="main", git_repo="example/demo",
+        selection_mode="full", selection_total=len(results),
+        screenshots=[], execution_log=[], network_events=[])
+    ctx.session.add(run)
+    await ctx.session.flush()
+    plan_run = {"project": "web", "suite": "web_smoke", "case": None, "created_at": at,
+                "trigger": "ci", "git_commit": commit, "git_branch": "main", "results": results,
+                "slot": 1}
+    ctx.run_rows.append((run, plan_run))
+    for x in results:
+        case = ctx.cases["web"][x["case"]]
+        result = TestCaseResult(test_run_id=run.id, test_name=case.name, test_case_id=case.id,
+                                status=TestStatus.PASSED, duration_ms=x["duration_ms"],
+                                is_flaky=False, retry_count=0, screenshots=[])
+        ctx.session.add(result)
+        ctx.result_rows.append((result, run, x))
+    ctx.extra["release_candidate"] = run
+    return run

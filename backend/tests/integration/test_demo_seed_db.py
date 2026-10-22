@@ -107,3 +107,46 @@ async def test_beat_never_scans_crawls_or_checks_a_demo(session, demo, monkeypat
         assert estate_tasks.due_estates(s, datetime.utcnow()) == []
         assert estate_tasks.due_pages(s, datetime.utcnow()) == []
     assert fq.process_due_crawls.run()["started"] == 0
+
+
+async def test_full_demo_pages_agree_with_each_other(session, owner, demo):
+    """With every module seeded: readiness opens on a ready commit and the
+    Quality gate judges the same evidence; manual runs are no browser; the
+    Agents list and its sessions add up."""
+    from datetime import date
+    from sqlmodel import select
+    from app.api import agents, reliability_reports
+    from app.api.endpoints import quality
+    from app.core.auth import AuthPrincipal
+    from app.models import AgentSession, Project, Workspace
+    from app.services import poc_report
+    p = AuthPrincipal(user=owner, api_key=None)
+    ws_id, web = demo["workspace_id"], demo["projects"][0]["id"]
+
+    ready = await quality.release_readiness_view(web, git_commit=None, git_branch=None,
+                                                 session=session, principal=p)
+    assert ready.verdict == "ready", ready.reasons
+    gate = await quality.evaluate_quality_gate(web, git_commit=None, git_branch=None,
+                                               session=session, principal=p)
+    assert gate.passed and gate.git_commit == ready.git_commit
+    assert sorted(gate.evaluated_run_ids) == sorted(ready.gate.evaluated_run_ids)
+
+    patterns = await reliability_reports.flake_patterns_report(web, days=30, principal=p, session=session)
+    assert "manual" not in {b["key"] for b in patterns["by_browser"]}
+    ws = await session.get(Workspace, ws_id)
+    projects = (await session.exec(select(Project).where(Project.workspace_id == ws_id))).all()
+    start, end = poc_report.parse_range(None, None)
+    report = await poc_report.build(session, ws, projects, start, end, poc_report.parse_assumptions())
+    assert "manual" not in report["activity"]["browsers"]
+    assert report["activity"]["manual_case_executions"] > 0
+
+    listed = await agents.list_agents(ws_id, session=session, principal=p)
+    sessions = (await session.exec(select(AgentSession).where(AgentSession.workspace_id == ws_id))).all()
+    for agent in listed["agents"]:
+        mine = [x for x in sessions if x.agent_id == agent["agent_id"]]
+        if not mine:
+            continue
+        assert agent["runs"] == sum(x.runs for x in mine), agent
+        assert agent["proposals"] == sum(x.proposals for x in mine), agent
+        # Nothing the agent did is newer than its newest session says.
+        assert agent["last_seen_at"] == max(x.last_seen_at for x in mine), agent

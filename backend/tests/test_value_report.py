@@ -126,6 +126,7 @@ def test_saving_uses_the_newest_comparable_full_run():
     # baseline = 4 × 2 min = 8 browser minutes; 3 of 4 cases skipped → 6
     assert v["saved_browser_minutes"] == 6.0
     assert v["saved_wall_minutes"] == 4.5          # 6 minutes wall × 0.75
+    assert v["saved_browser_seconds"] == 360 and v["saved_wall_seconds"] == 270
     assert v["cases_skipped"] == 3 and v["cases_ran"] == 1
     assert m["runs"][0]["baseline_first_run_id"] == 11
     assert m["measured_inputs"] == {"targeted_runs": 1, "estimated": 1, "no_baseline": 0, "not_estimable": 0}

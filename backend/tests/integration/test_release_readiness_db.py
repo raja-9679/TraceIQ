@@ -203,7 +203,7 @@ async def test_readiness_reports_evidence_and_verdict(session, scene):
     await _run(session, scene, "ccc", {cart: F, address: P})
     r = await _ready(session, scene, commit="ccc")
     assert r.verdict == "not_ready"
-    assert any(x.startswith("critical_passed") for x in r.reasons)
+    assert any(x.startswith("Critical tests passed: ") for x in r.reasons)
 
 
 async def test_readiness_for_unknown_commit_is_insufficient_not_pass(session, scene):
@@ -261,3 +261,38 @@ async def test_policy_edit_round_trips_and_is_audited(session, scene):
     rows = (await session.exec(select(AuditLog).where(
         AuditLog.action == "quality_gate_policy_update"))).all()
     assert len(rows) == 1 and "max_flaky_cases" in rows[0].changes
+
+
+async def test_default_gate_judges_the_same_commit_as_readiness(session, scene):
+    """No commit/branch: both endpoints let the newest run pick the commit and
+    judge every run on it. The gate used to judge the single newest run with
+    no commit, so commit-scoped checks disagreed with readiness."""
+    cart, address = scene.root_cases
+    await _critical(session, cart, address)
+    await _policy(session, scene, require_critical_passed=True, min_pass_rate=0)
+    t = datetime.utcnow()
+    await _run(session, scene, "aaa", {cart: P}, at=t - timedelta(hours=2))
+    # Newest run of commit aaa covers only address; cart's pass is in the older run.
+    await _run(session, scene, "aaa", {address: P}, at=t - timedelta(hours=1))
+
+    gate = await quality.evaluate_quality_gate(
+        scene.project_id, git_commit=None, git_branch=None, session=session, principal=_me(scene))
+    ready = await _ready(session, scene)
+    assert gate.git_commit == ready.git_commit == "aaa"
+    assert sorted(gate.evaluated_run_ids) == sorted(ready.gate.evaluated_run_ids)
+    assert _check(gate, "critical_passed").passed
+    assert [(c.name, c.passed, c.actual) for c in gate.checks] == \
+        [(c.name, c.passed, c.actual) for c in ready.gate.checks]
+
+
+async def test_last_result_is_the_newest_by_time_not_by_id(session, scene):
+    cart = scene.root_cases[0]
+    await _critical(session, cart)
+    t = datetime.utcnow()
+    await _run(session, scene, "new", {cart: P}, at=t - timedelta(hours=1))
+    # Written afterwards (higher ids) but two days older.
+    await _run(session, scene, None, {cart: F}, at=t - timedelta(days=2))
+    r = await _ready(session, scene, commit="new")
+    [row] = [c for c in r.critical_cases if c.case_id == cart]
+    assert row.last_status == "passed" and row.last_commit == "new"
+    assert row.last_at >= row.last_passed_at

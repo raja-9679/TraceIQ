@@ -203,7 +203,10 @@ async def _access_matrix(ctx) -> None:
                           description="Who may see todos and the admin panel. bob is a plain user; "
                                       "the admin panel should be alice-only.",
                           base_url=TODOLITE, persona_ids=[alice.id, bob.id], include_anonymous=True,
-                          deny_statuses=None, rows=rows, created_by_id=ctx.user.id,
+                          # Stored as the API stores them (parsed, defaults filled
+                          # in — e.g. the swap placeholder the editor shows).
+                          deny_statuses=None, rows=[r.model_dump(exclude_none=True) for r in parsed],
+                          created_by_id=ctx.user.id,
                           created_at=created, updated_at=created)
     ctx.session.add(matrix)
     await ctx.session.flush()

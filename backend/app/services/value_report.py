@@ -344,9 +344,14 @@ def targeted_savings(targeted: Sequence[Batch], full: Sequence[Batch],
                                 "in the 30 days before it to estimate against.")
     else:
         walls = [e["saved_wall_minutes"] for e in estimated if e["saved_wall_minutes"] is not None]
+        browser = sum(e["saved_browser_minutes"] for e in estimated)
         value, missing = {
-            "saved_browser_minutes": round(sum(e["saved_browser_minutes"] for e in estimated), 2),
+            "saved_browser_minutes": round(browser, 2),
             "saved_wall_minutes": round(sum(walls), 2) if walls else None,
+            # Seconds as well: a small suite saves well under a minute per
+            # run, and "0 min" reads as "saved nothing".
+            "saved_browser_seconds": round(browser * 60),
+            "saved_wall_seconds": round(sum(walls) * 60) if walls else None,
             "wall_samples": len(walls),
             "cases_skipped": sum(e["cases_total"] - e["cases_ran"] for e in estimated),
             "cases_ran": sum(e["cases_ran"] for e in estimated),

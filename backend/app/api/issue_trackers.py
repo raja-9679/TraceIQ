@@ -208,6 +208,9 @@ async def create_ticket(run_id: int, body: IssueTicketCreate,
             raise HTTPException(status_code=404, detail="Result not found in this run")
     if not config.enabled:
         raise HTTPException(status_code=400, detail="Tracker is disabled")
+    from app.services.demo_workspace import DEMO_NO_OUTBOUND, is_demo_workspace
+    if await is_demo_workspace(session, config.workspace_id):
+        raise HTTPException(status_code=409, detail=DEMO_NO_OUTBOUND)
     if config.provider not in OUTBOUND_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"{config.provider} connections are import-only")
 

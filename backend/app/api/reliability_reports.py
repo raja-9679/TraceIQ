@@ -29,7 +29,7 @@ from app.api.jobs import api_key_allows_project
 from app.core.auth import AuthPrincipal, get_current_principal
 from app.core.database import get_session
 from app.models import (
-    FlakeCaseScoreDaily, FlakeDailySnapshot, MonitorCheck, Project, ProjectEnvironment,
+    ExecutorType, FlakeCaseScoreDaily, FlakeDailySnapshot, MonitorCheck, Project, ProjectEnvironment,
     TestCase, TestCaseResult, TestRun, TestSchedule, TestStatus, VendorHealthDaily,
 )
 from app.services import flake_patterns, slo as slo_svc, vendor_health
@@ -213,8 +213,11 @@ async def flake_patterns_report(project_id: int, days: int = Query(30, ge=1, le=
     since = datetime.utcnow() - timedelta(days=days)
     flaky = func.sum(case((TestCaseResult.is_flaky == True, 1), else_=0))  # noqa: E712
     failed = func.sum(case((TestCaseResult.status.in_(_FAIL), 1), else_=0))
+    # Manual runs are left out: a person's pass/fail is no flakiness signal,
+    # and their browser column reads "manual", which is no browser.
     where = (TestRun.project_id == project_id, TestRun.created_at >= since,
-             TestCaseResult.status.in_(_FINISHED), counted())
+             TestCaseResult.status.in_(_FINISHED), counted(),
+             TestRun.executor != ExecutorType.MANUAL.value)
 
     async def grouped(col):
         return (await session.exec(
@@ -245,6 +248,7 @@ async def flake_patterns_report(project_id: int, days: int = Query(30, ge=1, le=
                count(*)
         FROM testcaseresult r JOIN testrun t ON t.id = r.test_run_id
         WHERE t.project_id = :pid AND t.created_at >= :since AND NOT t.is_validation
+          AND t.executor <> 'manual'
           AND (r.is_flaky OR r.status IN ('FAILED', 'ERROR'))
         GROUP BY 1, 2
     """).bindparams(pid=project_id, since=since))).all()

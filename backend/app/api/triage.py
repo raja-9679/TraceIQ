@@ -118,6 +118,9 @@ async def create_cluster_ticket(cluster_id: int, body: dict = Body(...),
     from app.api.issue_trackers import OUTBOUND_PROVIDERS
     if config.provider not in OUTBOUND_PROVIDERS:
         raise HTTPException(status_code=400, detail=f"{config.provider} connections are import-only")
+    from app.services.demo_workspace import DEMO_NO_OUTBOUND, is_demo_workspace
+    if await is_demo_workspace(session, config.workspace_id):
+        raise HTTPException(status_code=409, detail=DEMO_NO_OUTBOUND)
 
     summary = body.get("summary") or f"[TraceIQ] {cluster.category}: {cluster.title[:120]}"
     description = (f"Failure cluster #{cluster.id} — {cluster.occurrence_count} occurrence(s), "

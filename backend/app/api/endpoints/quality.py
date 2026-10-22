@@ -396,8 +396,11 @@ async def evaluate_quality_gate(
     policy_version: Annotated[Optional[int], Query(ge=1)] = None,
     run_ids: Annotated[Optional[List[int]], Query()] = None,
 ):
-    """Go/no-go for a release. Evaluates the runs for a commit (or branch, or
-    the single latest run) against the project policy.
+    """Go/no-go for a release. Evaluates the runs for a commit (or branch)
+    against the project policy. With neither, the newest finished run picks
+    the commit and every finished run on it is evaluated — the same scope
+    release readiness uses, so the two pages judge the same evidence (a
+    commit-less newest run is evaluated alone).
 
     To reproduce an earlier verdict pass the `policy_version` and the
     `evaluated_run_ids` it reported as `run_ids` (they must belong to this
@@ -410,6 +413,16 @@ async def evaluate_quality_gate(
         version = await gate_policy_versions.get_version(session, project_id, policy_version)
         if version is None:
             raise HTTPException(status_code=404, detail="Policy version not found")
+
+    if not run_ids and not git_commit and not git_branch:
+        # Judging only the newest single run disagreed with readiness on every
+        # commit-scoped check: external CI fell back to "newest report of any
+        # commit", and critical cases outside that one run (a targeted or
+        # manual run) read "no result" although the commit had them.
+        _scope, commit, latest = await release_readiness.resolve_runs(
+            session, project_id, None, None)
+        return await evaluate_gate_for_runs(session, project, latest, commit, None,
+                                            policy_version=version)
 
     stmt = select(TestRun).where(TestRun.project_id == project_id)
     if run_ids:
@@ -429,11 +442,7 @@ async def evaluate_quality_gate(
     runs = [r for r in runs if is_counted(r)]
 
     finished = [r for r in runs if r.status in FINISHED]
-    if not run_ids and not git_commit and not git_branch:
-        finished = finished[:1]  # latest finished run only
     ignored = [r.id for r in runs if r.status in run_status.NO_VERDICT]
-    if not run_ids and not git_commit and not git_branch:
-        ignored = []          # "latest run" scope: older no-verdict runs are not in it
 
     return await evaluate_gate_for_runs(session, project, finished, git_commit, git_branch,
                                         policy_version=version, ignored_run_ids=ignored)

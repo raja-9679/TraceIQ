@@ -238,6 +238,79 @@ async def test_demo_never_notifies(session, scene, monkeypatch):
     assert ow.dispatch_run_webhooks.run(run.id) == {"dispatched": 0, "skipped": "demo workspace"}
 
 
+async def test_demo_refuses_every_user_triggered_outbound_call(session, scene, monkeypatch):
+    """Redeliver, tickets, tracker import/sync and paging tests are things a
+    person clicks; each must refuse in a demo (409) and the senders behind
+    them must skip, even after the demo's disabled tracker is switched on."""
+    from starlette.requests import Request
+    from app.api import issue_trackers, paging as paging_api, requirements, triage
+    from app.api import workspace_webhooks
+    from app.core.secrets import encrypt_secret
+    from app.models import (FailureCluster, IssueTicket, IssueTicketCreate, IssueTrackerConfig,
+                            PagingChannel, WebhookDelivery)
+    from app.tasks import outbound_webhook_tasks as owt, ticket_tasks
+
+    def boom(*a, **kw):
+        raise AssertionError("a demo workspace must never call out")
+    import requests
+    monkeypatch.setattr(requests, "post", boom)
+    monkeypatch.setattr(owt.redeliver_webhook_delivery, "delay", boom)
+    monkeypatch.setattr(ticket_tasks.create_issue_ticket, "delay", boom)
+
+    out = await dw.create_demo_workspace(session, scene.user)
+    ws_id, web = out["workspace_id"], out["projects"][0]["id"]
+    me = AuthPrincipal(user=scene.user, api_key=None)
+    req = Request({"type": "http", "method": "POST", "path": "/", "headers": [], "client": ("203.0.113.1", 1)})
+
+    delivery = (await session.exec(select(WebhookDelivery).where(
+        WebhookDelivery.workspace_id == ws_id).limit(1))).one()
+    with pytest.raises(HTTPException) as exc:
+        await workspace_webhooks.redeliver(ws_id, delivery.webhook_id, delivery.id, req,
+                                           principal=me, session=session)
+    assert exc.value.status_code == 409
+    # The task itself skips too (a retry queued before, a direct call).
+    assert owt.redeliver_webhook_delivery.run(delivery.id) == {"skipped": "demo workspace"}
+    assert owt.retry_webhook_delivery.run(delivery.id) == {"skipped": "demo workspace"}
+
+    tracker = (await session.exec(select(IssueTrackerConfig).where(
+        IssueTrackerConfig.workspace_id == ws_id))).one()
+    tracker.enabled = True                      # the evaluator switched it on
+    session.add(tracker)
+    await session.commit()
+    run = (await session.exec(select(TestRun).where(TestRun.project_id == web).limit(1))).one()
+    with pytest.raises(HTTPException) as exc:
+        await issue_trackers.create_ticket(run.id, IssueTicketCreate(config_id=tracker.id),
+                                           session=session, principal=me)
+    assert exc.value.status_code == 409
+    cluster = (await session.exec(select(FailureCluster).where(
+        FailureCluster.project_id == web).limit(1))).first()
+    if cluster is not None:
+        with pytest.raises(HTTPException) as exc:
+            await triage.create_cluster_ticket(cluster.id, {"config_id": tracker.id},
+                                               session=session, principal=me)
+        assert exc.value.status_code == 409
+    with pytest.raises(HTTPException) as exc:
+        await requirements.import_requirements(web, requirements.ImportBody(config_id=tracker.id, keys=["DEMO-1"]),
+                                               principal=me, session=session)
+    assert exc.value.status_code == 409
+
+    ticket = IssueTicket(config_id=tracker.id, workspace_id=ws_id, run_id=run.id, provider="jira",
+                         summary="x", status="pending", created_by_id=scene.user.id)
+    session.add(ticket)
+    await session.commit()
+    ticket_tasks.create_issue_ticket.run(ticket.id)
+    await session.refresh(ticket)
+    assert ticket.status == "error" and "demo workspace" in ticket.error
+
+    channel = PagingChannel(project_id=web, name="on-call", kind="pagerduty",
+                            secret_encrypted=encrypt_secret("not-a-key"))
+    session.add(channel)
+    await session.commit()
+    with pytest.raises(HTTPException) as exc:
+        await paging_api.test_channel(web, channel.id, session=session, principal=me)
+    assert exc.value.status_code == 409
+
+
 # --- Test packs -------------------------------------------------------------------
 
 def _no_network(monkeypatch):

@@ -16,9 +16,9 @@ P, F, E = TestStatus.PASSED, TestStatus.FAILED, TestStatus.ERROR
 NOW = datetime(2026, 10, 15, 12, 0)
 
 
-def row(rid, status, browser="chromium", device=None, run=None):
+def row(rid, status, browser="chromium", device=None, run=None, at=None):
     return ResultRow(result_id=rid, case_id=1, status=status, run_id=run or rid,
-                     browser=browser, device=device)
+                     browser=browser, device=device, at=at)
 
 
 # -- policy defaults --------------------------------------------------------
@@ -162,7 +162,24 @@ def test_verdict_ready_mentions_partial_coverage():
                                   chk("coverage", True, detail="partial coverage")), True)
     assert v == "ready"
     assert reasons[0] == "all 2 checks passed over 2 run(s)"
-    assert reasons[1].startswith("coverage:")
+    assert reasons[1].startswith("Coverage: ")
+
+
+def test_reasons_name_checks_in_words_not_ids():
+    _, reasons = verdict_for(gate(chk("external_tests", False), chk("flaky_cases", False),
+                                  chk("some_new_check", False)), True)
+    assert reasons[0].startswith("External CI tests: a (needs t)")
+    assert reasons[1].startswith("Flaky tests: ")
+    assert reasons[2].startswith("Some new check: ")
+
+
+def test_newest_result_is_by_evidence_time_not_insert_order():
+    # A rerun written later (higher id) but finished earlier does not replace
+    # the newer failure.
+    old_pass = row(9, P, at=NOW - timedelta(days=2))
+    new_fail = row(3, F, at=NOW)
+    assert classify_case([old_pass, new_fail])[0] == FAILED
+    assert classify_case([row(3, F, at=NOW - timedelta(days=2)), row(9, P, at=NOW)])[0] == PASSED
 
 
 def test_verdict_not_ready_when_anything_actually_failed():

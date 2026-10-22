@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import copy
 import json
+import uuid
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -54,6 +55,20 @@ _DOM = {
 _API_PATHS = {"json": ("GET", "/json"), "echo": ("POST", "/anything"),
               "auth": ("GET", "/basic-auth/demo/demo"), "delay": ("GET", "/delay/1"),
               "headers": ("GET", "/headers")}
+
+
+def _agent_session(ctx, rng, first: datetime, last: datetime, *, runs: int = 0,
+                   proposals: int = 0) -> Any:
+    """One AgentSession whose counters and dates are exactly what is linked
+    to it, so the Agents list (counted from runs and proposals) and the sum
+    of its sessions agree."""
+    from app.models import AgentSession
+    row = AgentSession(workspace_id=ctx.ws.id, agent_id=ctx.extra.get("agent_id", DEFAULT_AGENT),
+                       agent_session_id=f"demo-{uuid.UUID(int=rng.getrandbits(128)).hex[:12]}",
+                       user_id=ctx.user.id, runs=runs, proposals=proposals, llm_tokens=0, denials=0,
+                       first_seen_at=first, last_seen_at=ctx.past(last))
+    ctx.session.add(row)
+    return row
 
 
 def _project_key(ctx, run) -> str:
@@ -263,9 +278,7 @@ async def _revise(ctx, case, source: str, at: datetime, user_id: Optional[int],
 async def _seed_case_proposals(ctx) -> None:
     from app.models import CaseProposal, CaseProposalAction, RepairOutcome
     agent = ctx.extra.get("agent_id", DEFAULT_AGENT)
-    # The setup module's agent session (if any) filed today's pending queue;
-    # the decided history predates it.
-    agent_session = ctx.extra.get("agent_session")
+    rng = ctx.rng_for("proposals_ai:sessions")
     web, api = ctx.projects["web"], ctx.projects["api"]
     wcases, acases = ctx.cases["web"], ctx.cases["api"]
     reviewer = next((m for m in ctx.members.values() if getattr(m, "id", None)), ctx.user)
@@ -273,7 +286,12 @@ async def _seed_case_proposals(ctx) -> None:
     def proposal(project, action, *, suite=None, target=None, payload, rationale, confidence,
                  created, run=None, session_id=None, **kw) -> Any:
         # Shaped as POST /case-proposals writes it: the human behind the
-        # agent's key is created_by_id (separation of duties).
+        # agent's key is created_by_id (separation of duties). A decided
+        # proposal came from a short session of its own; the pending queue
+        # passes today's session.
+        if session_id is None:
+            session_id = _agent_session(ctx, rng, created - timedelta(minutes=6), created,
+                                        proposals=1).agent_session_id
         p = CaseProposal(project_id=project.id, test_suite_id=suite.id if suite else None,
                          target_case_id=target.id if target else None, action=action,
                          payload=payload, rationale=rationale, ai_confidence=confidence,
@@ -350,10 +368,11 @@ async def _seed_case_proposals(ctx) -> None:
              decision_note="Not part of the API we ship.")
 
     # --- pending review queue ---
-    session_id = getattr(agent_session, "agent_session_id", None)
-    if agent_session is not None:
-        agent_session.proposals = (agent_session.proposals or 0) + 3
-        ctx.session.add(agent_session)
+    # Today's session: these three proposals, then the targeted runs that
+    # check the change (_seed_targeted adds its runs and moves last_seen_at).
+    today = _agent_session(ctx, rng, ctx.ago(hours=5, minutes=6), ctx.ago(hours=3), proposals=3)
+    ctx.extra["agent_today"] = today
+    session_id = today.agent_session_id
     login = wcases["login"]
     new_login = copy.deepcopy(list(login.steps))
     new_login[-1] = {**new_login[-1], "selector": '[data-testid="current-user"]'}
@@ -418,30 +437,55 @@ def _run_like(ctx, project_key: str, suite, at: datetime, **kw):
                    screenshots=[], execution_log=[], network_events=[], **kw)
 
 
+#: Targeted batches (days ago, cases) the agent ran from its PR branches;
+#: None = today, right after filing the pending proposals.
+_TARGETED = ((13, ("login",)), (11, ("add_todo",)), (9, ("home", "login")), (7, ("cookie",)),
+             (5, ("add_todo",)), (3, ("login", "cookie")), (1, ("home",)), (None, ("login", "add_todo")))
+
+
 async def _seed_targeted(ctx) -> None:
-    """An agent ran only the cases its diff touched (value report: CI time
-    saved against the newest earlier full run of the suite). Like
-    POST /runs with case_ids: one run per case, one batch."""
+    """The agent ran only the cases its diffs touched (value report: CI time
+    saved against the newest earlier full run of the suite) — a batch every
+    couple of days, each in its own session. Like POST /runs with case_ids:
+    one run per case, one batch."""
     from app.models import RunTrigger, TestCaseResult, TestStatus
     suite = ctx.suites["web_smoke"]
     total = len(ctx.cases["web"])
     rng = ctx.rng_for("targeted")
-    start = ctx.ago(hours=2, minutes=10)
-    commit = "%07x" % rng.getrandbits(28)
-    for n, key in enumerate(("login", "add_todo")):
-        case = ctx.cases["web"][key]
-        at = start + timedelta(seconds=20 * n)
-        duration = float(4200 + rng.randint(0, 1800))
-        run = _run_like(ctx, "web", suite, at, test_case_id=case.id, test_case_name=case.name,
-                        total_tests=1, passed_tests=1, failed_tests=0, duration_ms=duration,
-                        finalized_at=at + timedelta(milliseconds=duration + 4000),
-                        triggered_by=RunTrigger.API_AGENT, agent_id=ctx.extra.get("agent_id", DEFAULT_AGENT),
-                        git_commit=commit, git_branch="feature/todo-routes", git_repo="example/demo",
-                        selection_mode="targeted", selection_total=total)
-        ctx.session.add(run)
-        await ctx.session.flush()
-        ctx.session.add(TestCaseResult(test_run_id=run.id, test_name=case.name, test_case_id=case.id,
-                                       status=TestStatus.PASSED, duration_ms=duration, screenshots=[]))
+    for days, keys in _TARGETED:
+        today = days is None
+        start = ctx.ago(hours=2, minutes=10) if today else ctx.ago(days=days, hours=rng.randint(3, 8))
+        commit = "%07x" % rng.getrandbits(28)
+        end = start
+        runs = []
+        for n, key in enumerate(keys):
+            case = ctx.cases["web"][key]
+            at = start + timedelta(seconds=20 * n)
+            duration = float(4200 + rng.randint(0, 1800))
+            run = _run_like(ctx, "web", suite, at, test_case_id=case.id, test_case_name=case.name,
+                            total_tests=1, passed_tests=1, failed_tests=0, duration_ms=duration,
+                            finalized_at=at + timedelta(milliseconds=duration + 4000),
+                            triggered_by=RunTrigger.API_AGENT,
+                            agent_id=ctx.extra.get("agent_id", DEFAULT_AGENT),
+                            git_commit=commit, git_branch="feature/todo-routes" if today
+                            else f"feature/agent-{commit[:4]}", git_repo="example/demo",
+                            selection_mode="targeted", selection_total=total)
+            ctx.session.add(run)
+            await ctx.session.flush()
+            ctx.session.add(TestCaseResult(test_run_id=run.id, test_name=case.name, test_case_id=case.id,
+                                           status=TestStatus.PASSED, duration_ms=duration, screenshots=[]))
+            runs.append(run)
+            end = max(end, run.finalized_at)
+        sess = ctx.extra.get("agent_today") if today else None
+        if sess is None:
+            sess = _agent_session(ctx, rng, start - timedelta(minutes=3), end, runs=len(runs))
+        else:
+            sess.runs += len(runs)
+            sess.last_seen_at = ctx.past(max(sess.last_seen_at, end))
+            ctx.session.add(sess)
+        for run in runs:
+            run.agent_session_id = sess.agent_session_id
+            ctx.session.add(run)
 
 
 async def _seed_flags(ctx) -> None:

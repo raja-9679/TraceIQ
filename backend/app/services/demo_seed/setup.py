@@ -250,7 +250,7 @@ def _tracker(ctx) -> None:
 
 def _agent_session(ctx, rng) -> None:
     """One claude-code session that ran the web suite from a feature branch."""
-    from app.models import AgentSession, RunTrigger
+    from app.models import AgentControl, AgentSession, RunTrigger
     session_id = f"demo-{uuid.UUID(int=rng.getrandbits(128)).hex[:12]}"
     runs = [r for r in ctx.runs_of("web") if _trigger(r) == "ci"][-6:-3]
     for run in runs:
@@ -264,6 +264,11 @@ def _agent_session(ctx, rng) -> None:
                        user_id=ctx.user.id, runs=len(runs), proposals=0, llm_tokens=0, denials=0,
                        first_seen_at=first - timedelta(minutes=4), last_seen_at=ctx.past(last))
     ctx.session.add(row)
+    # The per-session run budget the session ran into (its denial below says
+    # so), so the Agents page's limits and the denial tell the same story.
+    ctx.session.add(AgentControl(workspace_id=ctx.ws.id, agent_id=AGENT_ID, max_runs=max(len(runs), 1),
+                                 updated_by_id=ctx.user.id, created_at=ctx.ago(days=20),
+                                 updated_at=ctx.ago(days=20)))
     ctx.extra["agent_id"] = AGENT_ID
     ctx.extra["agent_session"] = row
     ctx.extra["agent_runs"] = runs
@@ -333,9 +338,10 @@ def _policy_denials(ctx) -> None:
     # Reasons are worded as app/services/policy/rules.py words them.
     rows = [
         ("run.dispatch", "agent.budget",
-         "Agent session budget exhausted: 20/20 runs. Stop this task; a workspace admin can raise "
-         "the budget on the Agents page.", web, ctx.user.id, sess.agent_id, sess.agent_session_id,
-         {"limit": "max_runs", "used": 20, "max": 20, "kind": "run"}, ctx.past(sess.last_seen_at)),
+         f"Agent session budget exhausted: {sess.runs}/{sess.runs} runs. Stop this task; a workspace "
+         "admin can raise the budget on the Agents page.", web, ctx.user.id, sess.agent_id,
+         sess.agent_session_id, {"limit": "max_runs", "used": sess.runs, "max": sess.runs, "kind": "run"},
+         ctx.past(sess.last_seen_at)),
         ("proposal.approve", "proposal.separation_of_duties",
          "You filed this proposal, so you cannot accept it. This workspace requires a second "
          "person to approve agent changes.", web, ctx.members["li"].id, None, None, None,
