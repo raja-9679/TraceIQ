@@ -9,6 +9,7 @@ import { llmUsageApi, LLMUsageSummary } from '@/api/llmUsage';
 import { EmptyState, PageHeader, Pill } from '@/components/redesign/primitives';
 import { cn } from '@/lib/utils';
 import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
+import { featureLabel, fillDays } from '@/lib/llmUsage';
 
 const fmtTokens = (n: number) => {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
@@ -16,15 +17,6 @@ const fmtTokens = (n: number) => {
     return n.toLocaleString();
 };
 const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms)}ms`;
-const FEATURE_LABELS: Record<string, string> = {
-    failure_analysis: 'Failure analysis',
-    selector_heal: 'Selector healing',
-    case_generation: 'Test generation',
-    assistant: 'Assistant',
-    requirement_generation: 'Tests from requirements',
-    incident_regression: 'Regression tests from incidents',
-    unknown: 'Other',
-};
 
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
     return (
@@ -48,7 +40,9 @@ function Card({ title, right, children }: { title: string; right?: React.ReactNo
     );
 }
 
-function DailyTrend({ daily }: { daily: LLMUsageSummary['daily'] }) {
+type DailyPoint = LLMUsageSummary['daily'][number];
+
+function DailyTrend({ daily }: { daily: DailyPoint[] }) {
     const max = Math.max(...daily.map((d) => d.total_tokens), 1);
     const total = daily.reduce((s, d) => s + d.total_tokens, 0);
     // Nothing used: an empty axis read "peak 1 tokens/day".
@@ -56,7 +50,7 @@ function DailyTrend({ daily }: { daily: LLMUsageSummary['daily'] }) {
     return (
         <div>
             <div className="mb-1 flex justify-between text-xs text-ink-soft tabular-nums">
-                <span>0</span>
+                <span>AI tokens</span>
                 <span>peak {fmtTokens(max)} tokens/day</span>
             </div>
             <div
@@ -65,10 +59,10 @@ function DailyTrend({ daily }: { daily: LLMUsageSummary['daily'] }) {
                 className="flex h-36 items-end gap-[2px] border-b border-border"
             >
                 {daily.map((d) => (
-                    <div key={d.date} className="group relative flex h-full max-w-6 flex-1 items-end">
+                    <div key={d.date} className="group relative flex h-full min-w-0 flex-1 items-end justify-center">
                         <div
-                            className="w-full rounded-t-[4px] bg-ink/75 transition-colors group-hover:bg-ink"
-                            style={{ height: `${Math.max(2, (d.total_tokens / max) * 100)}%` }}
+                            className="w-full max-w-7 rounded-t-[4px] bg-ink/75 transition-colors group-hover:bg-ink"
+                            style={{ height: `${d.total_tokens > 0 ? Math.max(2, (d.total_tokens / max) * 100) : 0}%` }}
                         />
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-[11px] text-white shadow-lg group-hover:block">
                             <span className="font-semibold">{d.date}</span> · {d.total_tokens.toLocaleString()} tokens · {d.calls} call{d.calls === 1 ? '' : 's'}
@@ -155,7 +149,7 @@ export default function LLMUsage() {
                     >
                         {u.daily.length === 0
                             ? <p className="text-sm text-ink-soft">No calls in this window.</p>
-                            : <DailyTrend daily={u.daily} />}
+                            : <DailyTrend daily={fillDays(u.daily, u.window_days ?? days)} />}
                     </Card>
 
                     <Card title="By provider and model">
@@ -198,7 +192,7 @@ export default function LLMUsage() {
                                 return (
                                     <div key={f.feature}>
                                         <div className="mb-1 flex flex-wrap justify-between gap-x-3 text-sm">
-                                            <span className="text-ink">{FEATURE_LABELS[f.feature] || f.feature}</span>
+                                            <span className="text-ink">{featureLabel(f.feature)}</span>
                                             <span className="tabular-nums text-ink-soft">{f.total_tokens.toLocaleString()} tokens · {f.calls} calls</span>
                                         </div>
                                         <div className="h-2 overflow-hidden rounded-full bg-pastel-lavender" aria-hidden="true">

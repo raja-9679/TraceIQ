@@ -30,7 +30,7 @@ function VendorDetail({ v, note }: { v: VendorHealth; note: string }) {
 
             <div className="flex flex-col gap-2">
                 <Eyebrow>Errors per day</Eyebrow>
-                <Sparkline values={v.daily.map((d) => d.errors)} width={480} height={48} colour={ERR}
+                <Sparkline values={v.daily.map((d) => d.errors)} width={480} height={48} colour={ERR} fill
                     label={`Errors per day for ${v.name} over ${v.daily.length} days`} />
                 <span className="flex justify-between text-xs text-ink-soft">
                     <span>{v.daily[0]?.date}</span><span>{v.daily[v.daily.length - 1]?.date}</span>

@@ -12,6 +12,7 @@ import CostTrend from '@/components/costs/CostTrend';
 import BudgetEditor from '@/components/costs/BudgetEditor';
 import { budgetTone, formatMoney, formatTokens, NOT_PRICED } from '@/components/costs/costFormat';
 import { useActiveWorkspaceId } from '@/hooks/useActiveWorkspace';
+import { featureLabel } from '@/lib/llmUsage';
 
 function Stat({ label, value, sub }: { label: string; value: React.ReactNode; sub?: string }) {
     return (
@@ -34,11 +35,6 @@ function Card({ title, children, right }: { title: string; children: React.React
         </section>
     );
 }
-
-const FEATURE_LABELS: Record<string, string> = {
-    failure_analysis: 'Failure analysis', selector_heal: 'Selector healing',
-    case_generation: 'Test generation', unknown: 'Other',
-};
 
 /** What testing costs in money: AI tokens and worker time, per workspace or project. */
 export default function Costs() {
@@ -154,7 +150,7 @@ export default function Costs() {
                                     <TableBody>
                                         {r.llm.by_feature.map((f) => (
                                             <TableRow key={f.feature}>
-                                                <TableCell>{FEATURE_LABELS[f.feature] || f.feature}</TableCell>
+                                                <TableCell>{featureLabel(f.feature)}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{formatTokens(f.tokens)}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{money(f.amount)}{f.unpriced_tokens > 0 && f.amount != null ? ' + unpriced' : ''}</TableCell>
                                             </TableRow>

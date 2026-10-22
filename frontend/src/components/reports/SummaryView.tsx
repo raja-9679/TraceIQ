@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Pill } from '@/components/redesign/primitives';
 import { toneClasses } from '@/components/redesign/kinds';
 import { cn } from '@/lib/utils';
+import { labelReason } from '@/lib/gateChecks';
 import type { ClusterRow, DailyPoint, SummaryProjectRow, TopFailing, Verdict, WindowStats } from '@/api/reports';
 import { deltaTone, fmtDelta, fmtPct, verdictOf } from './reportHelpers';
 
@@ -55,11 +56,14 @@ function PassRateTrend({ daily }: { daily: DailyPoint[] }) {
         <div>
             <div role="img" aria-label={label} className="flex h-32 items-end gap-[2px] border-b border-border">
                 {daily.map((d) => (
-                    <div key={d.date} className="flex h-full max-w-6 flex-1 items-end" title={d.runs ? `${d.date}: ${d.pass_rate}% of ${d.runs} runs` : `${d.date}: no runs`}>
+                    // Each day gets an equal slot across the whole width, so the
+                    // first and last dates sit under the first and last bars;
+                    // the bar itself is capped and centred in its slot.
+                    <div key={d.date} className="flex h-full min-w-0 flex-1 items-end justify-center" title={d.runs ? `${d.date}: ${d.pass_rate}% of ${d.runs} runs` : `${d.date}: no runs`}>
                         {d.runs > 0 ? (
-                            <div className="w-full rounded-t-[4px] bg-ink/75 print:bg-ink" style={{ height: `${Math.max(3, d.pass_rate ?? 0)}%` }} />
+                            <div className="w-full max-w-7 rounded-t-[4px] bg-ink/75 print:bg-ink" style={{ height: `${Math.max(3, d.pass_rate ?? 0)}%` }} />
                         ) : (
-                            <div className="h-[3px] w-full rounded-full bg-secondary" />
+                            <div className="h-[3px] w-full max-w-7 rounded-full bg-secondary" />
                         )}
                     </div>
                 ))}
@@ -100,7 +104,7 @@ export function SummaryView({ data }: { data: SummaryData }) {
                 )}
                 {data.readiness?.reasons && data.readiness.reasons.length > 0 && (
                     <ul className="list-disc pl-5 text-[13px] text-ink-soft">
-                        {data.readiness.reasons.map((r) => <li key={r}>{r}</li>)}
+                        {data.readiness.reasons.map((r) => <li key={r}>{labelReason(r)}</li>)}
                     </ul>
                 )}
             </section>

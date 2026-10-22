@@ -69,7 +69,7 @@ Under the chart, a short note explains how browser-minutes are counted (see [Goo
 
 ## 5. By model and by feature
 
-![Two boxes. By model: claude-sonnet-4-5 (anthropic), 396k tokens in and 91k out, and qwen2.5-coder:14b (ollama), 246k in and 35k out, both not priced. By feature: Failure analysis 302k, Test generation 246k, Selector healing 128k, assistant 51k, requirement_generation 39k, all not priced](../media/reports/costs/by-model.png)
+![Two boxes. By model: claude-sonnet-4-5 (anthropic), 396k tokens in and 91k out, and qwen2.5-coder:14b (ollama), 246k in and 35k out, both not priced. By feature: Failure analysis 302k, Test generation 246k, Selector healing 128k, Assistant 51k, Tests from requirements 39k, all not priced](../media/reports/costs/by-model.png)
 
 The AI use split two ways: by **model** (which AI, with its provider, and the tokens sent in and received out) and by **feature** (what TraceIQ used it for, such as Failure analysis, Selector healing or Test generation). The most expensive comes first. When nothing used AI in the window, both say "No AI usage in this window."
 

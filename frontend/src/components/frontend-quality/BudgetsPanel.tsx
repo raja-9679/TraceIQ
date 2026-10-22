@@ -6,20 +6,26 @@ import { formatMetric } from './matrixHelpers';
 
 const TREND_METRICS = ['lcp_ms', 'cls', 'inp_ms', 'ttfb_ms', 'page_weight_kb', 'request_count'] as const;
 
-/** Bars oldest → newest; red where that sample was over its budget for the metric. */
-function MetricBars({ samples, metric }: { samples: BudgetSample[]; metric: string }) {
+// A metric card is ~100px wide; more bars than this shrank each one to
+// nothing (59 fixed-width spans squeezed into the card).
+const MAX_BARS = 16;
+
+/** Bars oldest → newest (the latest MAX_BARS samples); red where that sample
+ *  was over its budget for the metric. */
+function MetricBars({ samples: all, metric }: { samples: BudgetSample[]; metric: string }) {
+    const samples = all.slice(-MAX_BARS);
     const values = samples.map(s => s.metrics?.[metric]);
     const max = Math.max(...values.filter((v): v is number => typeof v === 'number'), 0);
     if (!max) return <span className="text-xs text-slate-300">no data</span>;
     return (
-        <div className="flex items-end gap-0.5 h-8" role="img"
+        <div className="mt-2 flex h-8 items-end gap-px" role="img"
             aria-label={`${metric} over the last ${samples.length} runs, latest ${formatMetric(metric, values[values.length - 1])}`}>
             {samples.map((s, i) => {
                 const v = values[i];
                 const over = s.checks?.some(c => c.metric === metric && !c.passed);
                 return (
                     <span key={s.id} title={`run #${s.test_run_id}: ${formatMetric(metric, v)}`}
-                        className={`inline-block w-1.5 rounded-sm ${over ? 'bg-rose-400' : 'bg-indigo-300'}`}
+                        className={`block min-w-[2px] max-w-1.5 flex-1 rounded-sm ${over ? 'bg-rose-400' : 'bg-indigo-300'}`}
                         style={{ height: `${typeof v === 'number' ? Math.max(6, (v / max) * 100) : 6}%` }} />
                 );
             })}

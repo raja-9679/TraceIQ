@@ -6,18 +6,24 @@ import { areaPath, barSlots, linePath, niceMax, pctWidth } from './chartMath';
 
 const INK = '#1C1B22';
 
-export function Sparkline({ values, label, width = 120, height = 28, max, colour = INK }: {
+/** `fill`: stretch to the container's width (height stays fixed) instead of
+ *  drawing at `width` px, for a sparkline that is the main chart of a card. */
+export function Sparkline({ values, label, width = 120, height = 28, max, colour = INK, fill = false }: {
     values: (number | null)[];
     label: string;
     width?: number;
     height?: number;
     max?: number;
     colour?: string;
+    fill?: boolean;
 }) {
     return (
-        <svg role="img" aria-label={label} viewBox={`0 0 ${width} ${height}`} width={width} height={height} className="block flex-none">
-            <line x1={0} x2={width} y1={height - 1} y2={height - 1} stroke="#EDEBE5" strokeWidth={1} />
-            <path d={linePath(values, width, height, max)} fill="none" stroke={colour} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" />
+        <svg role="img" aria-label={label} viewBox={`0 0 ${width} ${height}`}
+            {...(fill
+                ? { preserveAspectRatio: 'none', height, className: 'block w-full' }
+                : { width, height, className: 'block flex-none' })}>
+            <line x1={0} x2={width} y1={height - 1} y2={height - 1} stroke="#EDEBE5" strokeWidth={1} vectorEffect="non-scaling-stroke" />
+            <path d={linePath(values, width, height, max)} fill="none" stroke={colour} strokeWidth={1.6} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         </svg>
     );
 }

@@ -23,9 +23,11 @@ function Bars({ daily, value, label, peak, what }: {
                 className="flex h-36 items-end gap-[2px] border-b border-border"
             >
                 {daily.map((d) => (
-                    <div key={d.date} className="group relative flex h-full max-w-6 flex-1 items-end">
+                    // Equal slots across the whole width; the bar is capped and
+                    // centred, so a 7-day window doesn't leave the right half empty.
+                    <div key={d.date} className="group relative flex h-full min-w-0 flex-1 items-end justify-center">
                         <div
-                            className="w-full rounded-t-[4px] bg-ink/75 transition-colors group-hover:bg-ink"
+                            className="w-full max-w-7 rounded-t-[4px] bg-ink/75 transition-colors group-hover:bg-ink"
                             style={{ height: `${value(d) > 0 ? Math.max(2, (value(d) / max) * 100) : 0}%` }}
                         />
                         <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg bg-ink px-2.5 py-1.5 text-[11px] text-white shadow-lg group-hover:block">
