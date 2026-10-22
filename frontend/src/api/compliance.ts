@@ -179,7 +179,10 @@ export interface AuditFilters {
 
 export interface ChainVerdict {
     verified: boolean;
+    /** partial = rows since chaining verified; older rows can't be checked. */
+    status?: 'verified' | 'partial' | 'broken';
     rows_checked: number;
+    unverifiable_rows?: number;
     detail: string;
     first_bad_row_id?: number;
     first_bad_row_timestamp?: string;
