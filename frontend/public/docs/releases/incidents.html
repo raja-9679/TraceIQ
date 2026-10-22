@@ -58,11 +58,11 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Releases → Incidents</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo projects have no incidents yet, so the list is empty in these pictures; the
-          sections below describe what appears once there are some. The numbers on the screenshot
+        <p>The demo's web project has four incidents: two sign-in outages that are the same
+          problem, one escaped defect and one minor slowdown. The numbers on the screenshot
           match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/releases/incidents/page-annotated.png" alt="The Incidents page with four numbered parts: 1 the Project menu, 2 the four escaped-defect tiles, 3 the filter and action buttons, 4 the list of incidents, here empty, 5 the Webhook setup button" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/releases/incidents/page-annotated.png" alt="The Incidents page with five numbered parts: 1 the Project menu, 2 the four escaped-defect tiles, 3 the filter and action buttons, 4 the list of four incidents, 5 the Webhook setup button" loading="lazy" width="1440" height="900"></div>
           <figcaption>The Incidents page for the demo's web project. Click the picture to see it larger.</figcaption>
         </figure>
 
@@ -72,7 +72,7 @@
 
         <div class="part"><span class="num">2</span><h2 id="tiles" data-toc="② Escaped defects">Escaped defects</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/incidents/tiles.png" alt="Four tiles: Escaped defects (180d) 0, Test added afterwards —, Missed by an existing test 0, No test existed 0" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/incidents/tiles.png" alt="Four tiles: Escaped defects (180d) 1, Test added afterwards 100%, Missed by an existing test 1, No test existed 0" loading="lazy"></div>
         </figure>
         <p>An <em>escaped defect</em> is an incident that someone has marked as a bug the tests
           should have caught (see <a href="#row">Marking an escaped defect</a>). The tiles count
@@ -89,7 +89,8 @@
           </table>
         </div>
         <p>Once there are escaped defects, a table under the tiles splits the same numbers by
-          month (the month the incident started).</p>
+          month (the month the incident started). In the demo, the one escaped defect was missed
+          by an existing test, and a regression test was added after it, hence 100%.</p>
 
         <div class="part"><span class="num">3</span><h2 id="toolbar" data-toc="③ Filters and buttons">Filters and buttons</h2></div>
         <figure>
@@ -124,14 +125,20 @@
 
         <div class="part"><span class="num">4</span><h2 id="row" data-toc="④ The incidents">The incidents</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/incidents/empty.png" alt="An empty box saying No incidents yet." loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/incidents/list.png" alt="Four incidents, newest first: Homepage loads slowly for visitors in APAC (low, generic, acknowledged); Sign-in page returns 503 at 18:40 (high, pagerduty, resolved) labelled Recurrence #1; Sign-in page returns 502 at 19:12 (high, pagerduty, resolved); Todos disappear after adding a second item (medium, manual, resolved, regression: accepted) labelled Escaped" loading="lazy"></div>
         </figure>
         <p>Up to 200 incidents, newest first (by when they started). Each row shows the severity,
           the title, then the service, where it came from (<em>manual</em>, <em>pagerduty</em>,
           <em>opsgenie</em> or <em>generic</em>), when it started, its status and the state of its
           regression test. On the right, a <strong>Recurrence #N</strong> label when the same
           problem happened before, and <strong>Escaped</strong> when it is marked as an escaped
-          defect. Click a row to open it:</p>
+          defect. In the demo, the 503 sign-in outage is <em>Recurrence #1</em> of the 502 one a
+          week earlier: same service, same title once the numbers are taken out. Click a row to
+          open it:</p>
+        <figure>
+          <div class="frame"><img src="../media/releases/incidents/detail.png" alt="The incident Todos disappear after adding a second item, opened: Affected http://localhost:8080/todos, Release 2.1.0 with its commit, Regression test: Regression: two todos stay in the list, Escaped: missed by Add a todo with a note, a description, the Status menu set to resolved, a Delete button, and the escaped-defect form with Add a todo chosen, the note, Mark escaped and Clear" loading="lazy"></div>
+          <figcaption>The escaped defect, opened. It was missed by the test <em>Add a todo</em>, which only checks that one item is visible.</figcaption>
+        </figure>
         <ul>
           <li><strong>Details</strong>: the incident link, the affected address, the release and
             commit, the previous occurrence (<em>incident #12</em>), what TraceIQ matched it to (a

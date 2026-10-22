@@ -33,11 +33,11 @@ Proposals answers **"What do agents and TraceIQ want to change in my tests, and 
 
 ## A tour of the screen
 
-The page has four parts. The numbers on the screenshot match the sections below. The demo workspace has no proposals, so its queue is empty; the parts that appear once there is something to review are described under [④](#queue).
+The page has four parts. The numbers on the screenshot match the sections below. In the demo's web project three test changes are waiting: an edit to a test and two new tests.
 
-![The Proposals page with four numbered parts: 1 the Test changes and Selector fixes tabs, 2 the status filter Waiting, Accepted, Rejected, 3 the review policy with Auto-apply, Second approver and Validate before accept, 4 the queue, empty: No waiting for review test proposals](../media/today/proposals/page-annotated.png)
+![The Proposals page with four numbered parts: 1 the Test changes and Selector fixes tabs, 2 the status filter Waiting, Accepted, Rejected, 3 the review policy with Auto-apply, Second approver and Validate before accept, 4 the queue: on the left an Update box with Case #42 and a Create box with two new tests, on the right the selected edit](../media/today/proposals/page-annotated.png)
 
-*The Proposals page in the demo workspace, with an empty queue. Click the picture to see it larger.*
+*The Proposals page in the demo workspace, with three test changes waiting. Click the picture to see it larger.*
 
 ## 1. Two kinds of proposal
 
@@ -83,15 +83,15 @@ Three rules for the whole **workspace** the selected project belongs to. Everyon
 
 ## 4. The queue
 
-When there is nothing to show you see a message such as *"No test proposals waiting for review"*. Otherwise the list is on the left and the proposal you pick is shown in detail on the right (the first one is shown until you pick another).
-
-![The Selector fixes tab with four status buttons and the message No heal proposals waiting for review](../media/today/proposals/selector-fixes.png)
-
-*The Selector fixes tab in the demo workspace, also empty.*
+The list is on the left and the proposal you pick is shown in detail on the right (the first one is shown until you pick another). When there is nothing to show you see a message such as *"No test proposals waiting for review"*.
 
 ### A test change
 
-The list is boxed by what the change would do, the riskiest first: **Delete**, **Update**, **Create**, **Move**, then **Other** (changes to a suite's shared settings). Each row shows the test's name, the agent that sent it and how long ago, and the agent's confidence on the right, from 0% to 100%.
+The list is boxed by what the change would do, the riskiest first: **Delete**, **Update**, **Create**, **Move**, then **Other** (changes to a suite's shared settings). Each row shows the test's name, the agent that sent it and how long ago, and the agent's confidence on the right, from 0% to 100%. An edit that doesn't rename the test is listed by its number, such as *Case #42*.
+
+![A waiting Update proposal for Case #42 at 82% confidence: claude-code wants to change an existing test; its reason; the current and proposed steps side by side, the last step's selector changed from #current-user to a data-testid; the project and source run; Validation run Not validated with a Validate button; a review note and the Accept and apply and Reject buttons](../media/today/proposals/test-change.png)
+
+*An edit proposed by an agent: the last step's selector changes, the rest stays.*
 
 The detail shows, from top to bottom:
 
@@ -106,6 +106,10 @@ The detail shows, from top to bottom:
 ### A selector fix
 
 The list is boxed into **High confidence** (80% and above) and **Worth a closer look**. Each row shows the test, the step, the run where the step failed, and the confidence. The detail shows:
+
+![The Selector fixes tab: a High confidence box with one row, Add a todo at 89%, and its detail: the selector #todo-list li crossed out and [data-testid="todo-item"] after it, then three ranked candidates](../media/today/proposals/selector-fixes.png)
+
+*The Selector fixes tab in the demo workspace: one fix waiting for the Add a todo test.*
 
 - **Selector change**: the old selector (crossed out) and the one that would replace it.
 - **Ranked candidates**: several possible new selectors, best first. Each has the kind of clue it uses (a test id, the element's id, its role and name, a label, visible text, its position, or the AI's suggestion), how many elements it matched on the page, and a score. "AI agrees" means the AI picked the same one. Only a candidate with 1 match can be applied. You may pick a different candidate before applying.
@@ -181,6 +185,6 @@ What the walkthrough says, in order. The video and every picture on this page ar
 3. The filters on the right show what is waiting, or what was already decided.
 4. Auto-apply lets confident new tests and edits go in without waiting. It is off here.
 5. A workspace admin can require a second person to approve, or a validation run first.
-6. The demo has no proposals, so the queue is empty.
+6. Waiting proposals are listed on the left, the riskiest first. The one you pick is shown on the right.
 7. Selector fixes are new ways to find a button or field that moved on the page.
 8. TraceIQ suggests them after a step fails. Nothing changes until someone applies one.

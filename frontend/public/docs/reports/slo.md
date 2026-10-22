@@ -44,7 +44,7 @@ How many days of checks to count, ending now. **Each monitor's own window** uses
 
 ## 2. Name, target and status
 
-![Public API health (demo, paused). Last 30 days, 119 checks, target 99%. A label Target breached and an Edit targets button](../media/reports/slo/monitor-head.png)
+![Public API health (demo, paused). Last 30 days, 118 checks, target 99%. A label Target breached and an Edit targets button](../media/reports/slo/monitor-head.png)
 
 The monitor's name, then the window, the number of checks in it and the availability target. "(default target)" means no target has been set, so TraceIQ uses **99.9%**.
 
@@ -59,12 +59,12 @@ The monitor's name, then the window, the number of checks in it and the availabi
 
 ## 3. The four tiles
 
-![Four tiles: Compliance 98.32% (117 good, 2 failed checks); Error budget left -68.1% (2 of 1.19 allowed failures spent); Burn rate 1.68× (last 24 h 0.00×); Latency p95 984 ms, Within target, target 1.5 s](../media/reports/slo/tiles.png)
+![Four tiles: Compliance 98.31% (116 good, 2 failed checks); Error budget left -69.5% (2 of 1.18 allowed failures spent); Burn rate 1.69× (last 24 h 0.00×); Latency p95 984 ms, Within target, target 1.5 s](../media/reports/slo/tiles.png)
 
 | Tile | What it means |
 |---|---|
 | **Compliance** | The share of checks in the window that were good. Underneath: how many were good and how many failed. |
-| **Error budget left** | The **error budget** is how many failed checks the target allows. With a 99% target and 119 checks, 1% of 119 = 1.19 checks may fail. The tile shows how much of that is left: 100% = no failures yet, 0% = used up exactly. **Below zero means overspent**: in the example, 2 failures against 1.19 allowed is −68.1%. The bar is green, turns yellow under 25% and red at 0% or below. |
+| **Error budget left** | The **error budget** is how many failed checks the target allows. With a 99% target and 118 checks, 1% of 118 = 1.18 checks may fail. The tile shows how much of that is left: 100% = no failures yet, 0% = used up exactly. **Below zero means overspent**: in the example, 2 failures against 1.18 allowed is −69.5%. The bar is green, turns yellow under 25% and red at 0% or below. |
 | **Burn rate** | How fast the budget is being used. **1×** uses it up exactly at the end of the window; 2× twice as fast; under 1× leaves some over. The big number is for the whole window; the line underneath is for the last 24 hours, the early warning. |
 | **Latency p95** | How long checks took: 95% of checks were this quick or quicker, so a few slow ones don't hide behind the average. It is the duration of the check's whole test run. With a latency target set, a label says Within target or Over target. |
 

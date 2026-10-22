@@ -5,7 +5,7 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 // Nothing here changes data: tabs and status filters only change what is
 // shown, and the threshold editor is opened and cancelled, never saved. The
 // two policy toggles save on click, so they are pointed at, never pressed.
-// The demo workspace has no proposals, so every picture is an empty queue.
+// Accept/Reject/Validate are never pressed; rows are only selected.
 
 const DIR = 'today/proposals';
 
@@ -15,7 +15,8 @@ test('Today › Proposals', async ({ page, browser }) => {
     const main = page.locator('main');
     const policy = main.getByRole('region', { name: 'Review policy' });
     await expect(policy).toBeVisible();
-    await expect(main.getByText(/No waiting for review test proposals/)).toBeVisible();
+    const detail = main.getByRole('article', { name: 'Selected test proposal' });
+    await expect(detail).toBeVisible();
     await settle(page);
 
     // 1. The whole page as a reader first meets it.
@@ -24,12 +25,12 @@ test('Today › Proposals', async ({ page, browser }) => {
     // 2. Its parts, numbered (the guide explains each number).
     const tabs = main.getByRole('tablist', { name: 'Proposal type' });
     const filters = main.getByRole('group', { name: 'Filter by status' });
-    const empty = main.getByText(/No waiting for review test proposals/).locator('xpath=..');
+    const queue = detail.locator('xpath=../..');
     const clean = await annotate(page, [
         { n: 1, target: tabs },
         { n: 2, target: filters, side: 'right' },
         { n: 3, target: policy },
-        { n: 4, target: empty },
+        { n: 4, target: queue },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
@@ -38,6 +39,7 @@ test('Today › Proposals', async ({ page, browser }) => {
     await tabs.screenshot({ path: out(`${DIR}/tabs.png`) });
     await filters.screenshot({ path: out(`${DIR}/filters.png`) });
     await policy.screenshot({ path: out(`${DIR}/policy.png`) });
+    await detail.screenshot({ path: out(`${DIR}/test-change.png`) });
     // The threshold editor, opened and cancelled (nothing is saved).
     await policy.getByRole('button', { name: 'Edit' }).click();
     await expect(policy.getByLabel(/Auto-apply confidence threshold/)).toBeVisible();
@@ -46,7 +48,8 @@ test('Today › Proposals', async ({ page, browser }) => {
     await expect(policy.getByRole('button', { name: 'Edit' })).toBeVisible();
     // The second tab and its four status filters.
     await tabs.getByRole('tab', { name: 'Selector fixes' }).click();
-    await expect(main.getByText(/No waiting for review heal proposals/)).toBeVisible();
+    const heal = main.getByRole('article', { name: 'Selected heal proposal' });
+    await expect(heal).toBeVisible();
     await settle(page);
     await page.screenshot({ path: out(`${DIR}/selector-fixes.png`) });
     await filters.screenshot({ path: out(`${DIR}/filters-heals.png`) });
@@ -77,15 +80,15 @@ test('Today › Proposals', async ({ page, browser }) => {
         await caption(p, 'A workspace admin can require a second person to approve, or a validation run first.');
         await pointAt(p, pol.getByText('Second approver', { exact: true }), 1600);
         await pointAt(p, pol.getByText('Validate before accept', { exact: true }), 1600);
-        await caption(p, 'The demo has no proposals, so the queue is empty.');
-        await pointAt(p, m.getByText(/No waiting for review test proposals/), 2200);
+        await caption(p, 'Waiting proposals are listed on the left, the riskiest first. The one you pick is shown on the right.');
+        await pointAt(p, m.getByRole('article', { name: 'Selected test proposal' }), 2600);
         await caption(p, 'Selector fixes are new ways to find a button or field that moved on the page.');
         await pointAt(p, t.getByRole('tab', { name: 'Selector fixes' }), 900);
         await t.getByRole('tab', { name: 'Selector fixes' }).click();
         await settle(p);
         await beat(p, 1600);
         await caption(p, 'TraceIQ suggests them after a step fails. Nothing changes until someone applies one.');
-        await pointAt(p, m.getByText(/No waiting for review heal proposals/), 2600);
+        await pointAt(p, m.getByRole('article', { name: 'Selected heal proposal' }), 2600);
         await caption(p, '');
     });
 });

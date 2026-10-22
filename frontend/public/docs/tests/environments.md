@@ -42,7 +42,7 @@ Opens a form on the right: a **name** (for example "staging"; two environments i
 
 ## 2. The environments
 
-![A box titled Environments with two rows: local, http://localhost:8080, labelled Default; and public, https://example.com](../media/tests/environments/list.png)
+![A box titled Environments with three rows: local, http://localhost:8080, labelled Default; public, https://example.com; and shared-staging, https://example.com](../media/tests/environments/list.png)
 
 Each row shows the environment's name and base URL. Default marks the one used when a run doesn't name an environment. In use replaces it while an *exclusive* environment is taken by a run (see ⑤). **Click a row** to show it on the right.
 
@@ -78,7 +78,7 @@ Each row shows the environment's name and base URL. Default marks the one used w
 
 ![Exclusive use: Runs share this environment. Make it exclusive when runs would interfere with each other, such as a shared test account or database. A Make exclusive button](../media/tests/environments/exclusive.png)
 
-Normally several runs can use an environment at the same time. **Make exclusive** lets only one run use it at a time, which helps when runs would get in each other's way, for example two runs signing in with the same test account. While a run holds it, this box says *In use by run #…* (click it to open that run), and other runs wait, marked *Queued*, and start by themselves when it is free. **Allow parallel runs** switches it back.
+Normally several runs can use an environment at the same time. **Make exclusive** lets only one run use it at a time, which helps when runs would get in each other's way, for example two runs signing in with the same test account. While a run holds it, this box says *In use by run #…* (click it to open that run), and other runs wait, marked *Queued*, and start by themselves when it is free. **Allow parallel runs** switches it back. In the demo, *shared-staging* is exclusive.
 
 **Force release** appears while a run holds the environment. Use it only if a run is stuck: the run keeps going, and the next waiting run starts alongside it.
 

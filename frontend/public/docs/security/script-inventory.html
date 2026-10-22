@@ -68,10 +68,10 @@
           The page's own heading says <strong>Script Inventory</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo project doesn't monitor any page yet, so the page first shows an empty list
-          on the left:</p>
+        <p>The page opens on the list of pages the project watches; the demo's web project
+          watches one checkout page:</p>
         <figure>
-          <div class="frame"><img src="../media/security/script-inventory/page.png" alt="The Script Inventory page with a Monitor a page button, the line No monitored pages yet, and a Project menu" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/security/script-inventory/page.png" alt="The Script Inventory page with a Monitor a page button, one monitored page in the list (Checkout page (demo), result alert, 4 scripts, 2 unapproved), the line Choose a page, or start monitoring one, and a Project menu" loading="lazy" width="1440" height="900"></div>
         </figure>
         <p>The picture below shows the form behind <strong>Monitor a page</strong>, filled in for a
           checkout page with defacement checks switched on. The numbers match the sections below.</p>
@@ -147,6 +147,14 @@
           <li><strong>Change history</strong>: every script added, changed, removed or approved, every header change and every defacement alert, with its time.</li>
           <li><strong>Settings &amp; defacement</strong>: the same form as above.</li>
         </ul>
+        <figure>
+          <div class="frame"><img src="../media/security/script-inventory/monitored-page.png" alt="Checkout page (demo), result alert, https://example.com/checkout, last checked 2026-10-20, with Check now and Delete page buttons and the tabs Scripts, Change history, Settings and defacement. The Scripts tab lists four scripts: https://tags.example.org/gtm.js (third party) and an inline script, both unapproved with an Approve… link; https://payments.example.net/v3/checkout.js (third party) and https://example.com/static/app.js (first party), both approved with their justification and a Withdraw approval link. Each has the start of its SHA-384 fingerprint and SRI none. At the bottom, Security headers last seen" loading="lazy"></div>
+          <figcaption>The demo's checkout page: two scripts approved with a reason, two waiting for approval.</figcaption>
+        </figure>
+        <figure>
+          <div class="frame"><img src="../media/security/script-inventory/history.png" alt="The Change history tab: 2026-10-20, Script changed: https://tags.example.org/gtm.js; 2026-10-08, Baseline: Inventory started with 4 script(s)" loading="lazy"></div>
+          <figcaption>Its change history: the tag manager script changed, so it lost its approval and the page is on alert.</figcaption>
+        </figure>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">

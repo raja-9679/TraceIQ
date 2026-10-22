@@ -59,13 +59,13 @@
           A shorter version of the same list is in <em>My settings → Account and API keys</em>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The numbers on the screenshot match the sections below. The demo workspace has no keys,
-          so the picture shows the page before the first key is made.</p>
+        <p>The numbers on the screenshot match the sections below. The demo workspace has two
+          keys that no longer work: one expired, one revoked.</p>
         <figure>
-          <div class="frame"><img src="../media/setup/api-keys/page-annotated.png" alt="The API keys page with three numbered parts: 1 the Workspace menu, 2 the New API key button, 3 the list of keys, here empty with the text No API keys yet" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/setup/api-keys/page-annotated.png" alt="The API keys page with four numbered parts: 1 the Workspace menu, 2 the New API key button, 3 the list of keys with an Expired group (Claude Code — trial week) and a Revoked group (GitHub Actions (rotated)), 4 the selected key's details" loading="lazy" width="1440" height="900"></div>
           <figcaption>The API keys page for the demo workspace. Click the picture to see it larger.</figcaption>
         </figure>
-        <p>The line under the heading counts the keys, for example <em>"2 active of 3"</em>.</p>
+        <p>The line under the heading counts the keys, here <em>"0 active of 2"</em>.</p>
 
         <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
         <p>Keys belong to a <em>workspace</em>, not to a person. If you are in more than one
@@ -82,7 +82,7 @@
             <thead><tr><th style="width:26%">Field</th><th>What it does</th></tr></thead>
             <tbody>
               <tr><td><strong>Name</strong></td><td>Required. Say who uses the key, such as "ci-regression-bot" or "claude-code", so it can be recognised later.</td></tr>
-              <tr><td><strong>Project scope</strong></td><td><em>Entire workspace</em>, or one project. Limit it to one project whenever you can: a key for one project is refused for other projects' runs, results, reports and quality gates. (In this version that limit is not yet applied everywhere, for example not to reading suites and tests, so don't rely on it alone.)</td></tr>
+              <tr><td><strong>Project scope</strong></td><td><em>Entire workspace</em>, or one project. Limit it to one project whenever you can: a key for one project is refused for everything in other projects: suites, tests, runs, results, reports and quality gates.</td></tr>
               <tr><td><strong>Role limit</strong></td><td>Optional cap on what the key may do: Project Viewer, Editor or Admin, or Workspace Member or Admin. <em>Default</em> means no extra cap. It never gives the key more than its creator has (see below).</td></tr>
               <tr><td><strong>Expires in (days)</strong></td><td>After this many days the key stops working by itself. Empty means it never expires.</td></tr>
               <tr><td><strong>Allowed source IPs</strong></td><td>Optional. Network addresses (written like <code>203.0.113.0/24</code>, separated by commas) the key may be used from. A request from anywhere else is refused and recorded in the audit log. Empty means any address.</td></tr>
@@ -111,18 +111,26 @@
 
         <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list of keys">The list of keys</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/api-keys/empty.png" alt="An empty list with the title No API keys yet" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/api-keys/list.png" alt="The list of keys: an Expired group with Claude Code — trial week (Entire workspace) and a Revoked group with GitHub Actions (rotated) (Demo — Todo web app), each with when it was last used and the start of its key" loading="lazy"></div>
         </figure>
-        <p>Once there are keys, they are listed in three groups, <strong>Active keys</strong>,
-          <strong>Expired</strong> and <strong>Revoked</strong>, newest first. Each row shows the
-          key's name, its scope (a project, or "Entire workspace"), when it was last used, and the
-          first few characters of the key, so you can tell keys apart without seeing them. Click
-          a key to see its details on the right:</p>
+        <p>Keys are listed in up to three groups, <strong>Active keys</strong>,
+          <strong>Expired</strong> and <strong>Revoked</strong> (a group with no keys is left out).
+          Each row shows the key's name, its scope (a project, or "Entire workspace"), when it was
+          last used, and the first few characters of the key, so you can tell keys apart without
+          seeing them. A workspace with no keys at all shows <em>"No API keys yet"</em>.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="detail" data-toc="④ The selected key">The selected key</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/setup/api-keys/detail-revoked.png" alt="The details of the revoked key GitHub Actions (rotated): Revoked label, Key tiq_demo5939…, Scope Demo — Todo web app, Source IPs Any address, Last used and Revoked dates, and a note that it no longer authenticates" loading="lazy"></div>
+          <figcaption>A revoked key. Expired and revoked keys have no buttons.</figcaption>
+        </figure>
+        <p>Click a key to see its details on the right (the first key is shown until you pick
+          another):</p>
         <ul>
           <li><strong>Status</strong>: <span class="pill t-mint">Active</span>, <span class="pill t-butter">Expired</span> or <span class="pill t-peach">Revoked</span>.</li>
           <li><strong>Key, Scope, Source IPs, Last used</strong>, and when it expires (or was revoked).</li>
-          <li><strong>Edit source IPs</strong> changes the allowed addresses. Only the key's creator or a workspace admin may do this.</li>
-          <li><strong>Revoke key</strong> switches it off for good, after you confirm. Everything using it loses access at once. A revoked key stays in the list, so its history can still be traced.</li>
+          <li><strong>Edit source IPs</strong> (active keys only) changes the allowed addresses. Only the key's creator or a workspace admin may do this.</li>
+          <li><strong>Revoke key</strong> (active keys only) switches it off for good, after you confirm. Everything using it loses access at once. A revoked key stays in the list, so its history can still be traced.</li>
         </ul>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>

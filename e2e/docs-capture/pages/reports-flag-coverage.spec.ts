@@ -21,16 +21,17 @@ test('Reports › Flag coverage', async ({ page, browser }) => {
     const tabs = main.getByRole('tablist', { name: 'Flag coverage views' });
     const windowPick = main.getByLabel('Window').locator('xpath=..');
     const tiles = main.getByText('Runs with flags', { exact: true }).locator('xpath=ancestor::div[contains(@class,"flex-wrap")][1]');
-    const empty = main.getByText('No flags yet', { exact: true }).locator('xpath=..');
+    const flagCard = main.locator('section').filter({ has: page.getByRole('heading', { name: /^checkout_v2/, level: 2 }) });
     let clean = await annotate(page, [
         { n: 1, target: tabs },
         { n: 2, target: windowPick },
         { n: 3, target: tiles },
-        { n: 4, target: empty },
+        { n: 4, target: flagCard.getByRole('heading', { level: 2 }) },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
     await tiles.screenshot({ path: out(`${DIR}/tiles.png`) });
+    await flagCard.screenshot({ path: out(`${DIR}/flag-card.png`) });
 
     // 3. Catalogue tab, with an example typed into the form (not added).
     await tabs.getByRole('tab', { name: 'Flag catalogue' }).click();
@@ -38,9 +39,9 @@ test('Reports › Flag coverage', async ({ page, browser }) => {
     const addCard = main.locator('section').filter({ has: page.getByRole('heading', { name: 'Add a flag', level: 2 }) });
     const catCard = main.locator('section').filter({ has: page.getByRole('heading', { name: 'Catalogue', level: 2 }) });
     await expect(addCard).toBeVisible();
-    await addCard.getByLabel('Name').fill('checkout_v2');
+    await addCard.getByLabel('Name').fill('dark_mode');
     await addCard.getByLabel('Possible values').fill('true, false');
-    await addCard.getByLabel('Description').fill('New checkout page, being rolled out');
+    await addCard.getByLabel('Description').fill('Dark colour scheme, in beta');
     clean = await annotate(page, [
         { n: 5, target: addCard },
         { n: 6, target: catCard },
@@ -68,7 +69,9 @@ test('Reports › Flag coverage', async ({ page, browser }) => {
         await pointAt(p, m.getByText('Runs with flags', { exact: true }), 1200);
         await pointAt(p, m.getByText('Catalogue values never tested', { exact: true }), 1600);
         await caption(p, 'Below them, one card per flag: each value, how many runs used it, and how they went.');
-        await pointAt(p, m.getByText('No flags yet', { exact: true }), 2400);
+        await pointAt(p, m.getByRole('heading', { name: /^checkout_v2/, level: 2 }), 2400);
+        await caption(p, 'A red label counts the catalogue values that no run has tried.');
+        await pointAt(p, m.getByText('Never tested:').first(), 2200);
         await caption(p, 'The Flag catalogue tab lists the flags you have and every value they can take.');
         const tab = m.getByRole('tab', { name: 'Flag catalogue' });
         await pointAt(p, tab, 900);
@@ -77,12 +80,12 @@ test('Reports › Flag coverage', async ({ page, browser }) => {
         await beat(p, 600);
         const add = m.locator('section').filter({ has: p.getByRole('heading', { name: 'Add a flag', level: 2 }) });
         await caption(p, 'Type its name exactly as runs send it, and its possible values.');
-        await add.getByLabel('Name').pressSequentially('checkout_v2', { delay: 60 });
+        await add.getByLabel('Name').pressSequentially('dark_mode', { delay: 60 });
         await add.getByLabel('Possible values').pressSequentially('true, false', { delay: 60 });
         await beat(p, 600);
         await caption(p, 'Add flag would save it. Editors can do this; here we leave it unsaved.');
         await pointAt(p, add.getByRole('button', { name: 'Add flag' }), 2200);
-        await caption(p, 'Once it is in the catalogue, values that no run has tried are flagged on the Coverage tab.');
+        await caption(p, 'Once it is in the catalogue, values that no run has tried are counted on the Coverage tab.');
         await pointAt(p, m.getByRole('tab', { name: 'Coverage' }), 2400);
         await caption(p, '');
     });

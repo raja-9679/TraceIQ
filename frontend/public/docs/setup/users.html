@@ -62,10 +62,10 @@
         <p>The numbers on the screenshot match the sections below.</p>
         <figure>
           <div class="frame"><img src="../media/setup/users/page-annotated.png" alt="The Users page for the demo workspace with four numbered parts: 1 the workspace menu, 2 the Invite people button, 3 the search box and list of members, 4 the selected member's details" loading="lazy" width="1440" height="900"></div>
-          <figcaption>The Users page for the demo workspace, which has one member. Click the picture to see it larger.</figcaption>
+          <figcaption>The Users page for the demo workspace: four members and one pending invitation. Click the picture to see it larger.</figcaption>
         </figure>
-        <p>The line under the heading counts what is shown, for example <em>"1 member · 0 pending
-          invites in Demo workspace"</em>.</p>
+        <p>The line under the heading counts what is shown, for example <em>"4 members · 1 pending
+          invite in Demo workspace"</em>.</p>
 
         <div class="part"><span class="num">1</span><h2 id="scope" data-toc="① Whose people">Whose people</h2></div>
         <figure>
@@ -76,10 +76,11 @@
           choice, <strong>All workspaces</strong>, and starts there. Everyone else starts on their
           first workspace.</p>
         <p><strong>All workspaces</strong> lists each person in the organisation once, with their
-          highest role anywhere in it (for example <em>Tenant Admin</em>). It doesn't list pending
+          highest role anywhere in it (for example <em>Tenant Admin</em>) and the workspaces they
+          belong to. It doesn't list pending
           invitations, and to remove someone you first pick a single workspace. </p>
         <figure>
-          <div class="frame small"><img src="../media/setup/users/all-detail.png" alt="A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Last active, and the note Pick a single workspace in the scope menu to remove people from it" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/users/all-detail.png" alt="A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Workspace Demo workspace, Docs Guide, Last active, and the note Pick a single workspace in the scope menu to remove people from it" loading="lazy"></div>
         </figure>
 
         <div class="part"><span class="num">2</span><h2 id="invite" data-toc="② Invite people">Invite people</h2></div>
@@ -118,7 +119,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="list" data-toc="③ The list">The list</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/users/list.png" alt="A search box above a Members group with one person, Alex Morgan, with the role Admin" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/users/list.png" alt="A search box above a Members group with four people (Maya Rao and Alex Morgan with the role Admin, Sam Okafor and Li Chen with the role Member) and a Pending invites group with one address marked Pending" loading="lazy"></div>
         </figure>
         <p>Type in the search box to find someone by name or email. The list has up to two groups:</p>
         <ul>
@@ -128,21 +129,17 @@
 
         <div class="part"><span class="num">4</span><h2 id="detail" data-toc="④ The selected person">The selected person</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/users/detail.png" alt="The selected member card: Alex Morgan, the email address, Role Admin, Status active, Last active, and a Remove from workspace button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/users/detail.png" alt="The selected member card: Maya Rao, the email address, Role Admin, Status Active, Last active 1 day ago, and a Remove from workspace button" loading="lazy"></div>
         </figure>
         <p>Click someone in the list to see them here: their <strong>role</strong>, their
           <strong>status</strong>, and <strong>Last active</strong>, which is when they last signed
           in ("Never" if they haven't yet).</p>
-        <p><strong>Remove from workspace</strong> (admins only) takes the person out of the workspace
-          and out of all its teams, after you confirm. Their account itself is kept, and so is
-          everything they created.</p>
-        <div class="callout warn">
-          <span class="icon">!</span>
-          <div><strong class="title">Check their project access too</strong>
-            <p>Removing someone does not take away access that was given to them directly on a
-            project. After removing a person, open <em>Workspace → Projects</em> and remove them
-            from <em>Direct members</em> of each project as well.</p></div>
-        </div>
+        <p><strong>Remove from workspace</strong> (admins only) takes the person out of the workspace,
+          after you confirm, together with everything they held in it: their team memberships,
+          access given to them directly on its projects or tests, and their API keys for this
+          workspace, which stop working. Their account itself is kept, and so is everything they
+          created. The removal is recorded in the audit log. TraceIQ refuses to remove the
+          workspace's last admin.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">

@@ -18,7 +18,8 @@ async function open(p: Page) {
 test('Security › Scans & findings', async ({ page, browser }) => {
     await open(page);
     const main = page.locator('main');
-    await expect(main.getByText('No scans yet', { exact: true })).toBeVisible();
+    // The demo's web project has two baseline scans of https://example.com/.
+    await expect(main.getByText('Fixed since the previous scan', { exact: true })).toBeVisible();
 
     // 1. The page as a reader first meets it (the Scans view).
     await page.screenshot({ path: out(`${DIR}/page.png`) });
@@ -48,7 +49,10 @@ test('Security › Scans & findings', async ({ page, browser }) => {
     await expect(register.locator('tbody tr').first()).toBeVisible();
     const toolbar = register.getByLabel('Filter findings by status').locator('xpath=..');
     const table = register.locator('table');
-    await page.setViewportSize({ width: 1440, height: 1060 });
+    // One demo finding is an inline script named by its 64-character hash, which
+    // doesn't wrap and pushes Due and Status off the right edge at 1440 px
+    // (app layout bug, see info/GUIDE_FOLLOWUPS.md); a wider window shows them.
+    await page.setViewportSize({ width: 1920, height: 1500 });
     await settle(page);
     const clean = await annotate(page, [
         { n: 1, target: viewTabs },
@@ -72,8 +76,8 @@ test('Security › Scans & findings', async ({ page, browser }) => {
         await open(p);
         const m = p.locator('main');
         await caption(p, 'Scans and findings is where TraceIQ keeps the security problems it has found in your app.', 2000);
-        await caption(p, 'The Scans view lists the security scans run for this project. The demo project has none yet.');
-        await pointAt(p, m.getByText('No scans yet', { exact: true }), 2000);
+        await caption(p, 'The Scans view shows one scan at a time, and what changed since the scan before.');
+        await pointAt(p, m.getByText('Fixed since the previous scan', { exact: true }), 2000);
         await caption(p, 'Before anyone can scan, a project admin says which sites may be scanned, under Authorization.');
         const authBtn = m.getByRole('button', { name: 'Authorization', exact: true });
         await pointAt(p, authBtn, 800);

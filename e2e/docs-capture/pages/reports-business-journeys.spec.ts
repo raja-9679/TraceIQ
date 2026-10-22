@@ -4,7 +4,7 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 // Guide page: frontend/public/docs/reports/business-journeys.html
 // Nothing here changes data: the "New journey" form is filled in on screen
 // (cases added to its list, nothing typed that saves) and then left with
-// Cancel. "Save journey" is never pressed.
+// Cancel. "Save journey" and the card's Edit are never pressed.
 
 const DIR = 'reports/business-journeys';
 
@@ -14,18 +14,20 @@ test('Reports › Business journeys', async ({ page, browser }) => {
     await settle(page);
     const main = page.locator('main');
 
-    // 1. The page as a reader first meets it (the demo has no journeys yet).
+    // 1. The page as a reader first meets it: the demo's one journey.
+    const card = main.locator('section').filter({ has: page.getByRole('heading', { name: /^Sign in and manage todos/, level: 2 }) });
+    await expect(card.getByText('Daily pass rate, 14 days')).toBeVisible();
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. The board's parts, numbered.
     const newBtn = main.getByRole('button', { name: 'New journey' });
-    const empty = main.getByText('No journeys yet', { exact: true }).locator('xpath=..');
     let clean = await annotate(page, [
         { n: 1, target: newBtn, side: 'right' },
-        { n: 2, target: empty },
+        { n: 2, target: card, side: 'right' },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
+    await card.screenshot({ path: out(`${DIR}/card.png`) });
 
     // 3. The form, with three cases picked (only on screen; it is cancelled).
     await newBtn.click();
@@ -38,7 +40,7 @@ test('Reports › Business journeys', async ({ page, browser }) => {
     const picked = form.getByRole('heading', { name: /Cases in this journey/ }).locator('xpath=..');
     const adder = form.getByLabel('Add cases').locator('xpath=..');
     const buttons = form.getByRole('button', { name: 'Save journey' }).locator('xpath=..');
-    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.setViewportSize({ width: 1440, height: 1400 });
     await settle(page);
     clean = await annotate(page, [
         { n: 3, target: form.getByLabel('Name') },
@@ -55,7 +57,7 @@ test('Reports › Business journeys', async ({ page, browser }) => {
     await page.screenshot({ path: out(`${DIR}/form-details.png`), clip: { x: fb.x, y: fb.y, width: fb.width, height: cb.y - fb.y - 10 } });
     await picked.locator('xpath=..').screenshot({ path: out(`${DIR}/form-cases.png`) });
     await form.getByRole('button', { name: 'Cancel' }).click();
-    await expect(main.getByText('No journeys yet', { exact: true })).toBeVisible();
+    await expect(card).toBeVisible();
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 4. A short walkthrough video, with captions saying what is on screen.
@@ -105,7 +107,7 @@ test('Reports › Business journeys', async ({ page, browser }) => {
         await caption(p, 'On the board, each journey gets a card: its health, a 14-day trend, its requirements and its traffic.', {
             say: 'On the board, each journey gets a card: its health, a fourteen-day trend, its requirements and its traffic.',
         });
-        await pointAt(p, m.getByText('No journeys yet', { exact: true }), 2600);
+        await pointAt(p, m.locator('section').filter({ has: p.getByRole('heading', { name: /^Sign in and manage todos/, level: 2 }) }), 2600);
         await caption(p, '');
     });
 });

@@ -36,13 +36,13 @@ The share of linked tests is at the top, the requirements below it with the sele
 
 ## 1. Tests linked to a requirement
 
-![Tests linked to a requirement: 2 of 5, 40%, with a bar filled to 40%](../media/releases/traceability/share.png)
+![Tests linked to a requirement: 6 of 13, 46%, with a bar filled to 46%](../media/releases/traceability/share.png)
 
 How many of the project's tests have at least one link, out of all its tests, as a number and a percentage. A test with several links counts once.
 
 ## 2. The requirements
 
-![A box headed Passing with two rows: DEMO-101 A user can sign in, 1 test, 1 passing, 0 failing, 0 untested; DEMO-102 A user can add a todo, 1 test, 1 passing](../media/releases/traceability/list.png)
+![Three boxes. Failing: DEMO-104 Paying for Pro works end to end, 2 tests, 1 passing, 1 failing. Passing: DEMO-101 A user can sign in, DEMO-102 A user can add a todo and PRD-Security-3 Session cookies are HttpOnly and SameSite, 1 test each, passing. Not run yet: DEMO-103 A user can reset a forgotten password, 1 test, 1 untested](../media/releases/traceability/list.png)
 
 One row for every reference that has at least one test linked to it, boxed by status. The boxes come in this order, and inside a box the rows are in order of reference:
 
@@ -53,13 +53,13 @@ One row for every reference that has at least one test linked to it, boxed by st
 | Passing | …the newest result of every one of its tests passed. |
 | Not run yet | …none of its tests has run yet. |
 
-Under each reference: its number of tests, and how many are passing, failing and untested. Click a row to show it on the right; until you do, the first one is shown.
+Under each reference: its number of tests, and how many are passing, failing and untested. Click a row to show it on the right; until you do, the first one is shown. In the demo that is `DEMO-104`: one of its two payment tests is failing.
 
 If no test is linked to anything yet, the box says "No requirements linked yet".
 
 ## 3. The selected requirement
 
-![The selected requirement DEMO-101, labelled Passing, titled A user can sign in, with counts Tests 1, Passing 1, Failing 0, Not run yet 0, and Covered by Sign in as alice](../media/releases/traceability/detail.png)
+![The selected requirement DEMO-104, labelled Failing, with a link icon, titled Paying for Pro works end to end, with counts Tests 2, Passing 1, Failing 1, Not run yet 0, and Covered by Upgrade to Pro with a test card and Declined card keeps the free plan, each with a Remove link button](../media/releases/traceability/detail.png)
 
 - **The label** is its status from the table above.
 - **The reference**, and its title if one was saved with the link. When the link carries an address, the reference opens the ticket in a new tab.
@@ -68,9 +68,9 @@ If no test is linked to anything yet, the box says "No requirements linked yet".
 
 ## 4. Untraced tests
 
-![Untraced tests · 3: Homepage loads, No serious accessibility violations, Session cookie is HttpOnly, each with a REQ / ticket ref box and a Link button](../media/releases/traceability/untraced.png)
+![Untraced tests · 7: Todo list is usable on a phone, Sign-in works with a screen reader, Regression: two todos stay in the list, Complete a todo, No serious accessibility violations, Homepage loads, Add a draft todo, each with a REQ / ticket ref box and a greyed-out Link button](../media/releases/traceability/untraced.png)
 
-Every test of the project that isn't linked to anything, with the number in the heading. Type a reference in the box next to a test and press **Link**. The test then leaves this list, and the reference appears in ②. Up to 200 tests are listed; the line underneath says how many more there are. When every test is linked, this card disappears.
+Every test of the project that isn't linked to anything, with the number in the heading. Type a reference in the box next to a test and press **Link** (it stays greyed out until something is typed). The test then leaves this list, and the reference appears in ②. Up to 200 tests are listed; the line underneath says how many more there are. When every test is linked, this card disappears.
 
 ## Watch it in use
 

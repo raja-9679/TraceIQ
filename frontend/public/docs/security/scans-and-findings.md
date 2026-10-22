@@ -34,7 +34,7 @@ The page shows the project selected at the top of the sidebar. It has two views,
 
 ![The Security page on its Findings register view, with five numbered parts: 1 the Scans and Findings register tabs, 2 the Authorization and New scan buttons, 3 the filter, Overdue only and Download SARIF controls, 4 the table of findings, 5 the Remediation SLA box](../media/security/scans-and-findings/page-annotated.png)
 
-*The Findings register for the demo's web project, with one finding. Click the picture to see it larger.*
+*The Findings register for the demo's web project, with eleven findings from scans, test runs, the access matrix, the estate and the script inventory. Click the picture to see it larger.*
 
 ## 1. Scans and Findings register
 
@@ -43,11 +43,13 @@ The page shows the project selected at the top of the sidebar. It has two views,
 - **Scans** (shown when the page opens) is about one scan at a time: what it found, and what changed since the scan before.
 - **Findings register** is the whole list: every finding the project still has, whatever found it.
 
-Until someone runs a scan, the Scans view only says *No scans yet*, as in the demo:
+Until someone runs a scan, the Scans view only says *No scans yet*. The demo's web project has two scans of the same address, so the newest is compared with the one before:
 
-![The Security page on its Scans view, showing No scans yet: Set up authorization, then run a scan](../media/security/scans-and-findings/page.png)
+![The Security page on its Scans view: Scan #2 of https://example.com/, compared with scan #1, with SARIF for scan #2, Authorization and New scan buttons. Four numbers: New 1, Fixed since the previous scan 1, Still open 2, In progress 1. The scan's findings on the Open tab: two medium, Content Security Policy (CSP) Header Not Set (in progress) and Missing Anti-clickjacking Header, and one low, Strict-Transport-Security Header Not Set (new). The list of scans: #2 and #1, both completed baseline scans. On the right the selected finding, with why it matters and how to fix it, and the buttons Reopen, Mark fixed — queue retest, Accept risk and Not a real issue](../media/security/scans-and-findings/page.png)
 
-Once there are scans, the Scans view shows:
+*The Scans view of the demo's web project.*
+
+The Scans view shows:
 
 - **Four numbers** for the selected scan: *New* and *Fixed since the previous scan* (compared with the last finished scan of the same address; a dash if there is none), *Still open* and *In progress*.
 - **The scan's findings**, most serious first, on four tabs: *Open* (open and in progress), *Awaiting retest*, *Waived* (accepted risks and false positives) and *Verified fixed*.
@@ -63,7 +65,7 @@ Each button opens a box under the heading; press it again to close the box.
 
 **Authorization** is where a project admin decides what may be scanned at all. TraceIQ refuses every scan until this is set up, so it can't be used against someone else's site.
 
-![The Authorization box: Security scanning enabled, Allow active (attacking) scans for this project, Active scanning enabled for the workspace, Authorized domains (none yet, so every scan will be refused), a field to add a domain, and Save](../media/security/scans-and-findings/authorization.png)
+![The Authorization box: Security scanning enabled (ticked), Allow active (attacking) scans for this project (not ticked), Active scanning enabled for the workspace (not ticked), Authorized domains example.com and localhost, a field to add a domain, and Save](../media/security/scans-and-findings/authorization.png)
 
 | Setting | What it does |
 |---|---|
@@ -88,21 +90,21 @@ Changes to the project settings and domains are kept only when you press **Save*
 
 Above the register:
 
-- **"1 actionable"** next to the title counts findings that are *Open* or *In progress* in the current list, followed by how many of them are overdue, if any.
+- **"11 actionable"** next to the title counts findings that are *Open* or *In progress* in the current list, followed by how many of them are overdue, if any.
 - **The status filter** chooses which findings to list: *Open & in progress* (chosen first), *Awaiting retest*, *Accepted / false positive*, *Verified fixed* or *All*.
 - **Overdue only** keeps just the findings past their due date.
 - **Download SARIF** saves the project's findings as a *SARIF* file, a standard format that other security tools (GitHub code scanning, for example) can read. It contains every status, whatever the filter shows; accepted risks and false positives are marked as set aside.
 
 ## 4. The register
 
-![The Findings register: one row, Medium, Missing Content-Security-Policy header, passive, https://example.com/, owner Unowned, due 01/15/2027, status Open](../media/security/scans-and-findings/register.png)
+![The Findings register, 11 actionable: one high finding from the access matrix (Access granted that should be denied: Admin panel as bob), four medium (two from scans, one unapproved script, one from a test run's pages), four low and two info (from scans, the script inventory and the estate), each with an owner menu, a due date and a status; one medium finding is owned by Alex Morgan and In progress, the rest are Unowned and Open; the two info findings have no due date](../media/security/scans-and-findings/register.png)
 
 One row per finding, the most serious first and, within a severity, the one due soonest first. The same weakness found again by a later scan or run stays one row: the register shows its newest occurrence, and that row keeps its owner, due date and status.
 
 | Column | What it shows |
 |---|---|
 | **Severity** | How serious it is: Critical High Medium Low Info. |
-| **Finding** | Its name, then what found it and where: *zap* (a scan from this page), *passive* (the check of a test run's pages), *leak* (secrets found in a run's responses), *access_matrix* or *estate-…* (from the *Access matrix* and *Estate* pages), and the address. |
+| **Finding** | Its name, then what found it and where: *zap* (a scan from this page), *passive* (the check of a test run's pages), *leak* (secrets found in a run's responses), *access_matrix*, *estate-…* or *page-scripts* (from the *Access matrix*, *Estate* and *Script inventory* pages), and the address. |
 | **Owner** | Who is responsible. Choose from the people with editor access to the project, or *Unowned*. |
 | **Due** | The date it should be fixed by, set from the SLA (see ⑤). Overdue appears under it once the date has passed and it is still Open or In progress. Only a project admin can change the date. |
 | **Status** | Where it is in the workflow (table below). The menu only offers the moves that are allowed from the current status. |
@@ -192,7 +194,7 @@ A new SLA applies to findings found **from then on**. Findings that already have
 What the walkthrough says, in order. The video and every picture on this page are made by the Playwright script [`security-scans-and-findings.spec.ts`](../../../../e2e/docs-capture/pages/security-scans-and-findings.spec.ts).
 
 1. Scans and findings is where TraceIQ keeps the security problems it has found in your app.
-2. The Scans view lists the security scans run for this project. The demo project has none yet.
+2. The Scans view shows one scan at a time, and what changed since the scan before.
 3. Before anyone can scan, a project admin says which sites may be scanned, under Authorization.
 4. New scan starts a scan of one web address. You must confirm the site is yours.
 5. The Findings register lists every security problem found, from scans and from ordinary test runs.

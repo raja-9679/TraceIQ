@@ -32,9 +32,9 @@ The numbers on the screenshot match the sections below.
 
 ![The Users page for the demo workspace with four numbered parts: 1 the workspace menu, 2 the Invite people button, 3 the search box and list of members, 4 the selected member's details](../media/setup/users/page-annotated.png)
 
-*The Users page for the demo workspace, which has one member. Click the picture to see it larger.*
+*The Users page for the demo workspace: four members and one pending invitation. Click the picture to see it larger.*
 
-The line under the heading counts what is shown, for example *"1 member · 0 pending invites in Demo workspace"*.
+The line under the heading counts what is shown, for example *"4 members · 1 pending invite in Demo workspace"*.
 
 ## 1. Whose people
 
@@ -42,9 +42,9 @@ The line under the heading counts what is shown, for example *"1 member · 0 pen
 
 The menu chooses the workspace whose people are listed. If you are a *tenant admin* (an administrator of the whole organisation, see *Tenant admin*), it has one more choice, **All workspaces**, and starts there. Everyone else starts on their first workspace.
 
-**All workspaces** lists each person in the organisation once, with their highest role anywhere in it (for example *Tenant Admin*). It doesn't list pending invitations, and to remove someone you first pick a single workspace.
+**All workspaces** lists each person in the organisation once, with their highest role anywhere in it (for example *Tenant Admin*) and the workspaces they belong to. It doesn't list pending invitations, and to remove someone you first pick a single workspace.
 
-![A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Last active, and the note Pick a single workspace in the scope menu to remove people from it](../media/setup/users/all-detail.png)
+![A person selected under All workspaces: Alex Morgan, Role Tenant Admin, Status Active, Workspace Demo workspace, Docs Guide, Last active, and the note Pick a single workspace in the scope menu to remove people from it](../media/setup/users/all-detail.png)
 
 ## 2. Invite people
 
@@ -73,7 +73,7 @@ Only shown to people who may manage the workspace's members (workspace admins an
 
 ## 3. The list
 
-![A search box above a Members group with one person, Alex Morgan, with the role Admin](../media/setup/users/list.png)
+![A search box above a Members group with four people (Maya Rao and Alex Morgan with the role Admin, Sam Okafor and Li Chen with the role Member) and a Pending invites group with one address marked Pending](../media/setup/users/list.png)
 
 Type in the search box to find someone by name or email. The list has up to two groups:
 
@@ -82,15 +82,11 @@ Type in the search box to find someone by name or email. The list has up to two 
 
 ## 4. The selected person
 
-![The selected member card: Alex Morgan, the email address, Role Admin, Status active, Last active, and a Remove from workspace button](../media/setup/users/detail.png)
+![The selected member card: Maya Rao, the email address, Role Admin, Status Active, Last active 1 day ago, and a Remove from workspace button](../media/setup/users/detail.png)
 
 Click someone in the list to see them here: their **role**, their **status**, and **Last active**, which is when they last signed in ("Never" if they haven't yet).
 
-**Remove from workspace** (admins only) takes the person out of the workspace and out of all its teams, after you confirm. Their account itself is kept, and so is everything they created.
-
-> **Check their project access too**
->
-> Removing someone does not take away access that was given to them directly on a project. After removing a person, open *Workspace → Projects* and remove them from *Direct members* of each project as well.
+**Remove from workspace** (admins only) takes the person out of the workspace, after you confirm, together with everything they held in it: their team memberships, access given to them directly on its projects or tests, and their API keys for this workspace, which stop working. Their account itself is kept, and so is everything they created. The removal is recorded in the audit log. TraceIQ refuses to remove the workspace's last admin.
 
 ## Watch it in use
 

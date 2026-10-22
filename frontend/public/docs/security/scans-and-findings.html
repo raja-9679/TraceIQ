@@ -71,8 +71,8 @@
           <strong>Scans</strong> and <strong>Findings register</strong>. The picture shows the
           register; the numbers match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/security/scans-and-findings/page-annotated.png" alt="The Security page on its Findings register view, with five numbered parts: 1 the Scans and Findings register tabs, 2 the Authorization and New scan buttons, 3 the filter, Overdue only and Download SARIF controls, 4 the table of findings, 5 the Remediation SLA box" loading="lazy" width="1440" height="1060"></div>
-          <figcaption>The Findings register for the demo's web project, with one finding. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/security/scans-and-findings/page-annotated.png" alt="The Security page on its Findings register view, with five numbered parts: 1 the Scans and Findings register tabs, 2 the Authorization and New scan buttons, 3 the filter, Overdue only and Download SARIF controls, 4 the table of findings, 5 the Remediation SLA box" loading="lazy" width="1920" height="1500"></div>
+          <figcaption>The Findings register for the demo's web project, with eleven findings from scans, test runs, the access matrix, the estate and the script inventory. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="views" data-toc="① Scans and Findings register">Scans and Findings register</h2></div>
@@ -83,11 +83,14 @@
           <li><strong>Scans</strong> (shown when the page opens) is about one scan at a time: what it found, and what changed since the scan before.</li>
           <li><strong>Findings register</strong> is the whole list: every finding the project still has, whatever found it.</li>
         </ul>
-        <p>Until someone runs a scan, the Scans view only says <em>No scans yet</em>, as in the demo:</p>
+        <p>Until someone runs a scan, the Scans view only says <em>No scans yet</em>. The demo's
+          web project has two scans of the same address, so the newest is compared with the one
+          before:</p>
         <figure>
-          <div class="frame"><img src="../media/security/scans-and-findings/page.png" alt="The Security page on its Scans view, showing No scans yet: Set up authorization, then run a scan" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/security/scans-and-findings/page.png" alt="The Security page on its Scans view: Scan #2 of https://example.com/, compared with scan #1, with SARIF for scan #2, Authorization and New scan buttons. Four numbers: New 1, Fixed since the previous scan 1, Still open 2, In progress 1. The scan's findings on the Open tab: two medium, Content Security Policy (CSP) Header Not Set (in progress) and Missing Anti-clickjacking Header, and one low, Strict-Transport-Security Header Not Set (new). The list of scans: #2 and #1, both completed baseline scans. On the right the selected finding, with why it matters and how to fix it, and the buttons Reopen, Mark fixed — queue retest, Accept risk and Not a real issue" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Scans view of the demo's web project.</figcaption>
         </figure>
-        <p>Once there are scans, the Scans view shows:</p>
+        <p>The Scans view shows:</p>
         <ul>
           <li><strong>Four numbers</strong> for the selected scan: <em>New</em> and <em>Fixed since the previous scan</em> (compared with the last finished scan of the same address; a dash if there is none), <em>Still open</em> and <em>In progress</em>.</li>
           <li><strong>The scan's findings</strong>, most serious first, on four tabs: <em>Open</em> (open and in progress), <em>Awaiting retest</em>, <em>Waived</em> (accepted risks and false positives) and <em>Verified fixed</em>.</li>
@@ -105,7 +108,7 @@
           all. TraceIQ refuses every scan until this is set up, so it can't be used against
           someone else's site.</p>
         <figure>
-          <div class="frame small"><img src="../media/security/scans-and-findings/authorization.png" alt="The Authorization box: Security scanning enabled, Allow active (attacking) scans for this project, Active scanning enabled for the workspace, Authorized domains (none yet, so every scan will be refused), a field to add a domain, and Save" loading="lazy"></div>
+          <div class="frame small"><img src="../media/security/scans-and-findings/authorization.png" alt="The Authorization box: Security scanning enabled (ticked), Allow active (attacking) scans for this project (not ticked), Active scanning enabled for the workspace (not ticked), Authorized domains example.com and localhost, a field to add a domain, and Save" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
@@ -135,7 +138,7 @@
         <div class="part"><span class="num">3</span><h2 id="register-tools" data-toc="③ Filter and download">Filter and download</h2></div>
         <p>Above the register:</p>
         <ul>
-          <li><strong>"1 actionable"</strong> next to the title counts findings that are <em>Open</em> or <em>In progress</em> in the current list, followed by how many of them are overdue, if any.</li>
+          <li><strong>"11 actionable"</strong> next to the title counts findings that are <em>Open</em> or <em>In progress</em> in the current list, followed by how many of them are overdue, if any.</li>
           <li><strong>The status filter</strong> chooses which findings to list: <em>Open &amp; in progress</em> (chosen first), <em>Awaiting retest</em>, <em>Accepted / false positive</em>, <em>Verified fixed</em> or <em>All</em>.</li>
           <li><strong>Overdue only</strong> keeps just the findings past their due date.</li>
           <li><strong>Download SARIF</strong> saves the project's findings as a <em>SARIF</em> file, a standard format that other security tools (GitHub code scanning, for example) can read. It contains every status, whatever the filter shows; accepted risks and false positives are marked as set aside.</li>
@@ -143,7 +146,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="register" data-toc="④ The register">The register</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/scans-and-findings/register.png" alt="The Findings register: one row, Medium, Missing Content-Security-Policy header, passive, https://example.com/, owner Unowned, due 01/15/2027, status Open" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/scans-and-findings/register.png" alt="The Findings register, 11 actionable: one high finding from the access matrix (Access granted that should be denied: Admin panel as bob), four medium (two from scans, one unapproved script, one from a test run's pages), four low and two info (from scans, the script inventory and the estate), each with an owner menu, a due date and a status; one medium finding is owned by Alex Morgan and In progress, the rest are Unowned and Open; the two info findings have no due date" loading="lazy"></div>
         </figure>
         <p>One row per finding, the most serious first and, within a severity, the one due
           soonest first. The same weakness found again by a later scan or run stays one row: the
@@ -153,7 +156,7 @@
             <thead><tr><th style="width:24%">Column</th><th>What it shows</th></tr></thead>
             <tbody>
               <tr><td><strong>Severity</strong></td><td>How serious it is: <span class="pill t-pink">Critical</span> <span class="pill t-peach">High</span> <span class="pill t-butter">Medium</span> <span class="pill t-neutral">Low</span> <span class="pill t-neutral">Info</span>.</td></tr>
-              <tr><td><strong>Finding</strong></td><td>Its name, then what found it and where: <em>zap</em> (a scan from this page), <em>passive</em> (the check of a test run's pages), <em>leak</em> (secrets found in a run's responses), <em>access_matrix</em> or <em>estate-…</em> (from the <em>Access matrix</em> and <em>Estate</em> pages), and the address.</td></tr>
+              <tr><td><strong>Finding</strong></td><td>Its name, then what found it and where: <em>zap</em> (a scan from this page), <em>passive</em> (the check of a test run's pages), <em>leak</em> (secrets found in a run's responses), <em>access_matrix</em>, <em>estate-…</em> or <em>page-scripts</em> (from the <em>Access matrix</em>, <em>Estate</em> and <em>Script inventory</em> pages), and the address.</td></tr>
               <tr><td><strong>Owner</strong></td><td>Who is responsible. Choose from the people with editor access to the project, or <em>Unowned</em>.</td></tr>
               <tr><td><strong>Due</strong></td><td>The date it should be fixed by, set from the SLA (see ⑤). <span class="pill t-peach">Overdue</span> appears under it once the date has passed and it is still Open or In progress. Only a project admin can change the date.</td></tr>
               <tr><td><strong>Status</strong></td><td>Where it is in the workflow (table below). The menu only offers the moves that are allowed from the current status.</td></tr>

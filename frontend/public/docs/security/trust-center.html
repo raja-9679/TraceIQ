@@ -60,23 +60,23 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Security → Trust center</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The settings are in five boxes. In the demo workspace the trust center has never been
-          set up, so everything is at its starting values. The numbers on the screenshot match
-          the sections below.</p>
+        <p>The settings are in five boxes. In the demo workspace the trust center has been set up
+          as a draft that is not published yet. The numbers on the screenshot match the sections
+          below.</p>
         <figure>
           <div class="frame"><img src="../media/security/trust-center/page-annotated.png" alt="The Trust center page with six numbered parts: 1 the Workspace menu, 2 the Public page box, 3 the Security posture box, 4 the Uptime box, 5 the Gated documents box, 6 the Incident communications box" loading="lazy" width="1440" height="2300"></div>
-          <figcaption>The trust center settings of the demo workspace, never published. Click the picture to see it larger.</figcaption>
+          <figcaption>The trust center settings of the demo workspace, saved but not published. Click the picture to see it larger.</figcaption>
         </figure>
         <p>Each box has its own <strong>Save</strong> button and saves only its own settings.</p>
 
         <div class="part"><span class="num">1</span><h2 id="workspace" data-toc="① Workspace">Workspace</h2></div>
-        <p>Each workspace has its own trust center. The page opens on your <em>first</em>
-          workspace, which may not be the one you want, so check this menu first. It only appears
-          if you belong to more than one workspace.</p>
+        <p>Each workspace has its own trust center. The page opens on the workspace of the project
+          selected in the sidebar; pick another here. The menu only appears if you belong to more
+          than one workspace.</p>
 
         <div class="part"><span class="num">2</span><h2 id="public-page" data-toc="② Public page">Public page</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/trust-center/public-page.png" alt="The Public page box, marked Off: Publish the trust center (unticked), Title (Trust center), Security contact email, Introduction, Let visitors request document access (unticked), and Save" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/trust-center/public-page.png" alt="The Public page box, marked Off: Publish the trust center (unticked), Title Demo Co trust center, Security contact email security@example.com, an Introduction, Let visitors request document access (unticked), the Public link with Copy link and 0 views, and the Save and New public link buttons" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Publish the trust center</strong>: the main switch. Off hides the page and stops every document link at once. The label on the right says <span class="pill t-mint">Published</span> or <span class="pill t-neutral">Off</span>.</li>
@@ -91,7 +91,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="posture" data-toc="③ Security posture">Security posture</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/trust-center/posture.png" alt="The Security posture box: a list of statements, each with a tick box, a hint and a Would show line, for example Single sign-on enforced, would show No; Open critical or high security findings, would show None; Last access review completed, hidden: no data yet" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/trust-center/posture.png" alt="The Security posture box: a list of statements, each with a tick box, a hint and a Would show line. MFA for administrators and Tamper-evident audit log are ticked. Would show: Single sign-on enforced No; MFA for administrators No; Data encrypted at rest No; Tamper-evident audit log hidden: no data yet; Open critical or high security findings 1-4; Last access review completed 2026-09-08; Last backup restore drill hidden: no data yet; Compliance controls 9 of 17 passing (SOC 2). Save and Verify audit chain now buttons" loading="lazy"></div>
         </figure>
         <p>Short statements TraceIQ works out from its own records. Tick the ones to publish;
           under each, <strong>Would show</strong> previews what visitors would see today.</p>
@@ -115,13 +115,13 @@
 
         <div class="part"><span class="num">4</span><h2 id="uptime" data-toc="④ Uptime">Uptime</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/trust-center/uptime.png" alt="The Uptime box: No project in this workspace has a status page yet. Create one from a project's monitors." loading="lazy"></div>
+          <div class="frame"><img src="../media/security/trust-center/uptime.png" alt="The Uptime box with one status page, Demo — Public API · Public API status, ticked, and Save" loading="lazy"></div>
         </figure>
         <p>Tick the <strong>status pages</strong> (made from a project's monitors, under
           <em>Watch → Monitors</em>) whose monitors should appear. Visitors see each monitor's name,
           whether it is up or down, and its uptime over the last 24 hours and 7 days. Never the
           address it checks or any run details. A status page that is switched off drops out by
-          itself. The demo workspace has none yet.</p>
+          itself. When no project has a status page, the box says so instead.</p>
 
         <div class="part"><span class="num">5</span><h2 id="documents" data-toc="⑤ Gated documents">Gated documents</h2></div>
         <figure>
@@ -141,7 +141,7 @@
 
         <div class="part"><span class="num">6</span><h2 id="incidents" data-toc="⑥ Incident communications">Incident communications</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/trust-center/incidents.png" alt="The Incident communications box: fields for a new post (title, status, affected components, first update, published) and a Create post button" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/trust-center/incidents.png" alt="The Incident communications box: fields for a new post (title, status, affected components, first update, Publish now) and a Create post button; under Posts, one draft post, Elevated API latency, status Identified, Public API, 2 updates, with Publish and Delete buttons, its two updates, and fields to post a new status and update" loading="lazy"></div>
         </figure>
         <p>Posts you write for customers when something goes wrong: a title, a status
           (<span class="pill t-peach">Investigating</span> <span class="pill t-butter">Identified</span>

@@ -28,9 +28,9 @@ A test checks one journey. Frontend quality looks across the site and answers **
 
 ## A tour of the screen
 
-The demo has no crawls or measurements yet, so the pictures show each tab as it looks before its first result. The numbers match the sections below.
+The demo's web project has one saved crawl of example.com with two runs, a month of page measurements and a few selectors that broke, so every tab has something to show. The numbers match the sections below.
 
-![The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the list of crawls, empty](../media/tests/frontend-quality/page-annotated.png)
+![The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the crawl example.com link check (demo) with its latest run and its table of problems](../media/tests/frontend-quality/page-annotated.png)
 
 *The Frontend Quality page for the demo's web project, on its first tab. Click the picture to see it larger.*
 
@@ -66,6 +66,10 @@ A **crawl** starts at one address, follows the links it finds to other pages of 
 
 ## 4. Crawls and their problems
 
+![The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #2, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked](../media/tests/frontend-quality/crawl.png)
+
+*The demo's crawl, on its latest run.*
+
 Each saved crawl is a box with its start address and limits, **Run now** and **Delete**. After a run, a **Run** menu picks one of its runs and the box shows how many pages were crawled and links checked, then a table of problems with what was wrong, the address, the kind of element, the status, the time it took, and the page it was found on. Tick the problem types or element kinds to filter, or search the addresses. The table shows 100 problems at a time.
 
 | Problem | Meaning |
@@ -79,9 +83,9 @@ Each saved crawl is a box with its start address and limits, **Run now** and **D
 
 ## Page budgets
 
-![The Page budgets tab: a description and No page-budget samples yet.](../media/tests/frontend-quality/budgets.png)
+![The Page budgets tab: the page https://example.com/ on the left (59 samples, 8 over budget); on the right its latest run: LCP 2032 ms, CLS 0.016, INP no data, TTFB 216 ms, page weight 837 KB, 23 requests; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description](../media/tests/frontend-quality/budgets.png)
 
-Nothing appears here until a test contains a **check-page-budget** step. Then every run of that test measures the page, and this tab lists the pages measured in the last 30 days, those that went over budget first. Click a page to see, for its latest run and as small bars for recent runs:
+In the demo, the test *Homepage loads* measures example.com's home page. Nothing appears here until a test contains a **check-page-budget** step. Then every run of that test measures the page, and this tab lists the pages measured in the last 30 days, those that went over budget first. Click a page to see, for its latest run and as small bars for recent runs:
 
 - **LCP** (how long the main content takes to appear), **CLS** (how much the layout jumps while loading), **INP** (how quickly the page reacts to a click), **TTFB** (how long the server takes to start answering), **page weight** and **number of requests**. A red bar is a run that went over that budget.
 - **Budgets**: each limit set in the step, and whether the page was within it or over.
@@ -89,7 +93,7 @@ Nothing appears here until a test contains a **check-page-budget** step. Then ev
 
 ## Selector health
 
-![The Selector health tab: a description, a Window menu set to Last 90 days, 0 selectors, 0 heals, 0 failures, and No selector trouble in this window.](../media/tests/frontend-quality/selectors.png)
+![The Selector health tab: a Window menu set to Last 90 days, the line 2 selectors, 1 heal, 7 failures, and two selectors: #todo-list li in Add a todo (6 failed, 1 heal proposal) with the sturdier locator [data-testid=todo-item] and a Copy button, and h1 in Homepage loads (1 failed) with role=heading[name=Example Domains]](../media/tests/frontend-quality/selectors.png)
 
 A **selector** is the short code a test step uses to find an element on the page. When a page changes, selectors break. This tab lists the ones with the most trouble in the chosen window (30, 90, 180 or 365 days), worst first. For each one: the test and step it belongs to, how often it failed, how often TraceIQ proposed or made a repair, a bar per week, reasons it is fragile, and **sturdier locators** worked out from the page as it was when the step failed, with a **Copy** button. Suggestions are never applied for you: edit the test to use one.
 
@@ -160,4 +164,3 @@ What the walkthrough says, in order. The video and every picture on this page ar
 5. Page budgets tracks page speed and size, measured by a step in your tests.
 6. Selector health lists the page elements that tests keep failing to find.
 7. Storybook turns each story of a component library into a test.
-8. The demo has no results yet, so each tab shows its empty state.

@@ -70,14 +70,14 @@
 
         <div class="part"><span class="num">1</span><h2 id="share" data-toc="① Tests linked">Tests linked to a requirement</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/traceability/share.png" alt="Tests linked to a requirement: 2 of 5, 40%, with a bar filled to 40%" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/traceability/share.png" alt="Tests linked to a requirement: 6 of 13, 46%, with a bar filled to 46%" loading="lazy"></div>
         </figure>
         <p>How many of the project's tests have at least one link, out of all its tests, as a
           number and a percentage. A test with several links counts once.</p>
 
         <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The requirements">The requirements</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/traceability/list.png" alt="A box headed Passing with two rows: DEMO-101 A user can sign in, 1 test, 1 passing, 0 failing, 0 untested; DEMO-102 A user can add a todo, 1 test, 1 passing" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/traceability/list.png" alt="Three boxes. Failing: DEMO-104 Paying for Pro works end to end, 2 tests, 1 passing, 1 failing. Passing: DEMO-101 A user can sign in, DEMO-102 A user can add a todo and PRD-Security-3 Session cookies are HttpOnly and SameSite, 1 test each, passing. Not run yet: DEMO-103 A user can reset a forgotten password, 1 test, 1 untested" loading="lazy"></div>
         </figure>
         <p>One row for every reference that has at least one test linked to it, boxed by status.
           The boxes come in this order, and inside a box the rows are in order of reference:</p>
@@ -93,12 +93,13 @@
           </table>
         </div>
         <p>Under each reference: its number of tests, and how many are passing, failing and
-          untested. Click a row to show it on the right; until you do, the first one is shown.</p>
+          untested. Click a row to show it on the right; until you do, the first one is shown. In the demo
+          that is <code>DEMO-104</code>: one of its two payment tests is failing.</p>
         <p>If no test is linked to anything yet, the box says "No requirements linked yet".</p>
 
         <div class="part"><span class="num">3</span><h2 id="selected" data-toc="③ The selected requirement">The selected requirement</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/traceability/detail.png" alt="The selected requirement DEMO-101, labelled Passing, titled A user can sign in, with counts Tests 1, Passing 1, Failing 0, Not run yet 0, and Covered by Sign in as alice" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/traceability/detail.png" alt="The selected requirement DEMO-104, labelled Failing, with a link icon, titled Paying for Pro works end to end, with counts Tests 2, Passing 1, Failing 1, Not run yet 0, and Covered by Upgrade to Pro with a test card and Declined card keeps the free plan, each with a Remove link button" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>The label</strong> is its status from the table above.</li>
@@ -110,10 +111,11 @@
 
         <div class="part"><span class="num">4</span><h2 id="untraced" data-toc="④ Untraced tests">Untraced tests</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/traceability/untraced.png" alt="Untraced tests · 3: Homepage loads, No serious accessibility violations, Session cookie is HttpOnly, each with a REQ / ticket ref box and a Link button" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/traceability/untraced.png" alt="Untraced tests · 7: Todo list is usable on a phone, Sign-in works with a screen reader, Regression: two todos stay in the list, Complete a todo, No serious accessibility violations, Homepage loads, Add a draft todo, each with a REQ / ticket ref box and a greyed-out Link button" loading="lazy"></div>
         </figure>
         <p>Every test of the project that isn't linked to anything, with the number in the heading.
-          Type a reference in the box next to a test and press <strong>Link</strong>. The test
+          Type a reference in the box next to a test and press <strong>Link</strong> (it stays
+          greyed out until something is typed). The test
           then leaves this list, and the reference appears in ②. Up to 200 tests are listed; the
           line underneath says how many more there are. When every test is linked, this card
           disappears.</p>

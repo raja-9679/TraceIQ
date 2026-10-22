@@ -84,32 +84,36 @@
 
         <h3>Members</h3>
         <p>Everyone in the workspace, with their workspace role, and invitations not yet accepted
-          (shown only to admins). This is a read-only view: invite people with the button (③),
-          and remove them on the <em>Users</em> page.</p>
+          (shown only to admins). Invite people with the button (③), change
+          someone's workspace role in their details (⑤), and remove people on the <em>Users</em> page.</p>
 
         <h3>Teams</h3>
         <figure>
-          <div class="frame small"><img src="../media/setup/workspace/team-dialog.png" alt="The New team dialog: Team name, Description, and an optional Link to project menu" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/workspace/team-detail.png" alt="The selected team card for QA engineers: two members, Maya Rao and Li Chen, each with a remove ×, and the buttons Add member, Link project and Delete team" loading="lazy"></div>
         </figure>
         <p>A team gives several people the same access to a project at once, and new members of
-          the team get that access automatically. The demo workspace has no teams yet, so the tab
-          says "No teams created yet". Once there are teams, pick one to see its members and
-          three buttons:</p>
+          the team get that access automatically. The demo workspace has one team,
+          <em>QA engineers</em>, with editor access to the web project. Pick a team to see its
+          members and three buttons (with no teams, the tab says "No teams created yet"):</p>
         <ul>
           <li><strong>Add member</strong>: add someone already in the workspace, or type an email. Someone with an account is added at once; for an address with no account, TraceIQ keeps an invitation and adds them when they sign up.</li>
           <li><strong>Link project</strong>: give the whole team access to a project, as viewer, editor or admin.</li>
           <li><strong>Delete team</strong>, after you confirm. The people stay in the workspace, but lose any access they had only through this team.</li>
         </ul>
+        <figure>
+          <div class="frame small"><img src="../media/setup/workspace/team-dialog.png" alt="The New team dialog: Team name, Description, and an optional Link to project menu" loading="lazy"></div>
+          <figcaption>The New team dialog, opened with the button on the right of the tabs (③).</figcaption>
+        </figure>
         <p>The <strong>×</strong> next to a member takes them out of the team at once, without asking.
           Making, changing and deleting teams needs a workspace admin; the one exception is that
           anyone may take themselves out of a team.</p>
 
         <h3>Projects</h3>
         <figure>
-          <div class="frame small"><img src="../media/setup/workspace/projects-list.png" alt="The Projects list: Demo — Todo web app and Demo — Public API, each labelled Admin" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/workspace/projects-list.png" alt="The Projects list: Demo — Public API (selected) and Demo — Todo web app, each labelled Admin" loading="lazy"></div>
         </figure>
         <figure>
-          <div class="frame small"><img src="../media/setup/workspace/project-access.png" alt="The selected project card for Demo — Todo web app: Your access admin, Teams with access (none), Direct members with Alex Morgan as admin, Grant controls, and a Delete project button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/workspace/project-access.png" alt="The selected project card for Demo — Public API: Your access Admin, Teams with access: No teams linked, Direct members Alex Morgan (Admin) and Sam Okafor (Viewer), Grant controls, and a Delete project button" loading="lazy"></div>
         </figure>
         <p>The workspace's projects that you can see, each with your own access level. Pick one to
           see who can use it:</p>
@@ -139,16 +143,10 @@
         <p><strong>Delete workspace</strong> deletes the whole workspace: every team, project, test,
           run and stored file in it. TraceIQ first shows what would be removed, then asks you to
           type the workspace's exact name. The audit history is kept.</p>
-        <div class="callout note">
-          <span class="icon">!</span>
-          <div><strong class="title">Deleting a workspace is refused in this version</strong>
-            <p>The server currently refuses this for everyone, admins included: the dialog
-            shows "Permission denied: workspace:delete_workspace" where the list of what would
-            be removed should be. A demo workspace can still be removed with <strong>Delete demo
-            workspace</strong> on its own card (⑥).</p></div>
-        </div>
+        <p>A demo workspace can also be removed with <strong>Delete demo workspace</strong> on
+          its own card (⑥).</p>
         <figure>
-          <div class="frame small"><img src="../media/setup/workspace/delete-dialog.png" alt="The Delete workspace dialog for Demo workspace, showing Permission denied: workspace:delete_workspace in red above the box for typing the name" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/workspace/delete-dialog.png" alt="The Delete workspace dialog for Demo workspace: Will remove 2 projects, 4 suites, 18 test cases, 242 runs, 1 team (1886 records in total). Audit history is kept. Below, a box for typing the workspace name and a pale Delete workspace button" loading="lazy"></div>
         </figure>
 
         <div class="part"><span class="num">3</span><h2 id="action" data-toc="③ The tab's button">The tab's button</h2></div>
@@ -164,13 +162,13 @@
 
         <div class="part"><span class="num">4</span><h2 id="list" data-toc="④ The list">The list</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/workspace/members-list.png" alt="The Members group with one person, Alex Morgan, labelled Admin" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/workspace/members-list.png" alt="The Members group with four people, Maya Rao and Alex Morgan labelled Admin, Sam Okafor and Li Chen labelled Member, and below it a Pending invites group with one invitation, marked Invited" loading="lazy"></div>
         </figure>
         <p>The people, teams or projects of the current tab. Click one to see it on the right.</p>
 
         <div class="part"><span class="num">5</span><h2 id="detail" data-toc="⑤ The details">The details</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/workspace/member-detail.png" alt="The selected member card for Alex Morgan: Workspace role Admin, Status Active, Last active less than a minute ago, a Change workspace role control, and a Changing access note" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/workspace/member-detail.png" alt="The selected member card for Maya Rao: Workspace role Admin, Status Active, Last active 1 day ago, a Change workspace role control with a Change role button, and a Changing access note" loading="lazy"></div>
         </figure>
         <p>For a person: their workspace role (Admin or Member), status (Active, or Deactivated for
           a switched-off account) and when they last signed in, with a reminder that project access

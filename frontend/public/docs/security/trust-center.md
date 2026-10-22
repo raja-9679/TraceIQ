@@ -28,21 +28,21 @@ Before buying, customers' security teams ask the same questions: Do you use sing
 
 ## A tour of the screen
 
-The settings are in five boxes. In the demo workspace the trust center has never been set up, so everything is at its starting values. The numbers on the screenshot match the sections below.
+The settings are in five boxes. In the demo workspace the trust center has been set up as a draft that is not published yet. The numbers on the screenshot match the sections below.
 
 ![The Trust center page with six numbered parts: 1 the Workspace menu, 2 the Public page box, 3 the Security posture box, 4 the Uptime box, 5 the Gated documents box, 6 the Incident communications box](../media/security/trust-center/page-annotated.png)
 
-*The trust center settings of the demo workspace, never published. Click the picture to see it larger.*
+*The trust center settings of the demo workspace, saved but not published. Click the picture to see it larger.*
 
 Each box has its own **Save** button and saves only its own settings.
 
 ## 1. Workspace
 
-Each workspace has its own trust center. The page opens on your *first* workspace, which may not be the one you want, so check this menu first. It only appears if you belong to more than one workspace.
+Each workspace has its own trust center. The page opens on the workspace of the project selected in the sidebar; pick another here. The menu only appears if you belong to more than one workspace.
 
 ## 2. Public page
 
-![The Public page box, marked Off: Publish the trust center (unticked), Title (Trust center), Security contact email, Introduction, Let visitors request document access (unticked), and Save](../media/security/trust-center/public-page.png)
+![The Public page box, marked Off: Publish the trust center (unticked), Title Demo Co trust center, Security contact email security@example.com, an Introduction, Let visitors request document access (unticked), the Public link with Copy link and 0 views, and the Save and New public link buttons](../media/security/trust-center/public-page.png)
 
 - **Publish the trust center**: the main switch. Off hides the page and stops every document link at once. The label on the right says Published or Off.
 - **Title**, **Security contact email** (where people report security problems) and **Introduction** (plain text, shown as written).
@@ -52,7 +52,7 @@ After the first save, the box also shows the **public link** with **Copy link**,
 
 ## 3. Security posture
 
-![The Security posture box: a list of statements, each with a tick box, a hint and a Would show line, for example Single sign-on enforced, would show No; Open critical or high security findings, would show None; Last access review completed, hidden: no data yet](../media/security/trust-center/posture.png)
+![The Security posture box: a list of statements, each with a tick box, a hint and a Would show line. MFA for administrators and Tamper-evident audit log are ticked. Would show: Single sign-on enforced No; MFA for administrators No; Data encrypted at rest No; Tamper-evident audit log hidden: no data yet; Open critical or high security findings 1-4; Last access review completed 2026-09-08; Last backup restore drill hidden: no data yet; Compliance controls 9 of 17 passing (SOC 2). Save and Verify audit chain now buttons](../media/security/trust-center/posture.png)
 
 Short statements TraceIQ works out from its own records. Tick the ones to publish; under each, **Would show** previews what visitors would see today.
 
@@ -71,9 +71,9 @@ A statement TraceIQ has no data for ("hidden: no data yet") stays off the public
 
 ## 4. Uptime
 
-![The Uptime box: No project in this workspace has a status page yet. Create one from a project's monitors.](../media/security/trust-center/uptime.png)
+![The Uptime box with one status page, Demo — Public API · Public API status, ticked, and Save](../media/security/trust-center/uptime.png)
 
-Tick the **status pages** (made from a project's monitors, under *Watch → Monitors*) whose monitors should appear. Visitors see each monitor's name, whether it is up or down, and its uptime over the last 24 hours and 7 days. Never the address it checks or any run details. A status page that is switched off drops out by itself. The demo workspace has none yet.
+Tick the **status pages** (made from a project's monitors, under *Watch → Monitors*) whose monitors should appear. Visitors see each monitor's name, whether it is up or down, and its uptime over the last 24 hours and 7 days. Never the address it checks or any run details. A status page that is switched off drops out by itself. When no project has a status page, the box says so instead.
 
 ## 5. Gated documents
 
@@ -85,7 +85,7 @@ To give someone a document, open **Recipients and links** on it, type who it is 
 
 ## 6. Incident communications
 
-![The Incident communications box: fields for a new post (title, status, affected components, first update, published) and a Create post button](../media/security/trust-center/incidents.png)
+![The Incident communications box: fields for a new post (title, status, affected components, first update, Publish now) and a Create post button; under Posts, one draft post, Elevated API latency, status Identified, Public API, 2 updates, with Publish and Delete buttons, its two updates, and fields to post a new status and update](../media/security/trust-center/incidents.png)
 
 Posts you write for customers when something goes wrong: a title, a status (Investigating Identified Monitoring Resolved), the affected parts of the service, and updates as you learn more. A post is a *Draft* until you publish it (tick **Publish now**, or press **Publish** on the post); only published posts appear on the public page, the newest 20. Updates may use `**bold**`, `*italic*`, ``code`` and lists starting with `- `; links and HTML are shown as plain text.
 

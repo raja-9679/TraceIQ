@@ -32,11 +32,11 @@ The list of tests is on the left; the one you pick is shown on the right. The nu
 
 ![The Test review page with five numbered parts: 1 the counts line, 2 the tabs Needs review, Mine to review and All tests, 3 the list of tests grouped by status, 4 the selected test's name and status, 5 the Ownership and review box](../media/tests/test-review/page-annotated.png)
 
-*The Test review page for the demo's web project, where no test has been reviewed yet. Click the picture to see it larger.*
+*The Test review page for the demo's web project, where three tests were reviewed recently and the rest never have been. Click the picture to see it larger.*
 
 ## 1. The counts line
 
-Under the heading, for example *"0 overdue · 5 never reviewed · 0 with an owner who lost access · 5 unowned"*. It counts the tests of the whole project (on *Mine to review*: only your own), whichever tab you are on.
+Under the heading, for example *"0 overdue · 10 never reviewed · 0 with an owner who lost access · 9 unowned"*. It counts the tests of the whole project (on *Mine to review*: only your own), whichever tab you are on.
 
 | Status | What it means |
 |---|---|
@@ -53,19 +53,19 @@ Under the heading, for example *"0 overdue · 5 never reviewed · 0 with an owne
 - **Mine to review**: the same, but only tests where *you* are the owner. Being the backup owner doesn't count here.
 - **All tests**: every test in the project, whatever its status.
 
-![The Mine to review tab showing Nothing to review: every test is within its review interval](../media/tests/test-review/mine-empty.png)
+![The Mine to review tab with one test, No serious accessibility violations, owned by Alex Morgan and never reviewed; the counts line now reads 0 overdue · 1 never reviewed · 0 with an owner who lost access · 0 unowned](../media/tests/test-review/mine-empty.png)
 
-*Mine to review for someone who owns no tests that are due.*
+*Mine to review: the one due test the demo account owns. The counts line now counts only your own tests. When none of yours is due, the tab says *Nothing to review*.*
 
 ## 3. The list
 
-![A box titled Never reviewed with five tests, each with the line Web smoke (demo) · Unowned and Never reviewed · every 90 days](../media/tests/test-review/list.png)
+![A box titled Never reviewed with ten tests, each with its suite (Todo editing, Release checklist or Web smoke), its owner or Unowned, and Never reviewed · every 90 days](../media/tests/test-review/list.png)
 
 Tests are boxed in this order: **Owner no longer has access**, **Review overdue**, **Never reviewed** and, on *All tests*, **Up to date**. Inside a box, the test that has been overdue longest comes first. Each row shows the suite, the owner ("Unowned" if there is none), and the review status in words. **Click a row** to show it on the right.
 
 ## 4. The selected test
 
-![A Never reviewed label, the test name Add a todo, and the line Web smoke (demo) · Case #16 · Open the test](../media/tests/test-review/detail-header.png)
+![A Never reviewed label, the test name Add a draft todo, and the line Todo editing (demo) · Case #57 · Open the test](../media/tests/test-review/detail-header.png)
 
 The status, the test's name, its suite and number, and **Open the test**, which opens it in the step editor so you can read what it does before deciding.
 

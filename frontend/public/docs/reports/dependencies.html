@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="../_assets/docs.css">
 </head>
-<!-- Pictures: e2e/docs-capture/pages/reports-dependencies.spec.ts (empty state: the demo has no third-party traffic).
+<!-- Pictures: e2e/docs-capture/pages/reports-dependencies.spec.ts (the demo web project loads Google Fonts + Stripe).
      Page: frontend/src/pages/DependencyHealth.tsx. API: backend/app/api/reliability_reports.py (dependency-health);
      roll-up: app/tasks/reliability_tasks.py (aggregate_vendor_health); rules: app/services/vendor_health.py. -->
 <body data-page="reports/dependencies">
@@ -60,12 +60,13 @@
           The page's own heading says <strong>Third-party dependencies</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The page shows the project selected at the top of the sidebar. The demo projects only
-          call their own sites, so the screenshot shows what the page looks like before there is
-          anything to list. <a href="#with-data">When there is data</a> describes the full page.</p>
+        <p>The page shows the project selected at the top of the sidebar. The line under the
+          heading says how many outside services were seen, how many returned errors, and when
+          the figures were last added up. Below it, the page splits in two: a list on the left,
+          details on the right. The numbers on the screenshot match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/reports/dependencies/page-annotated.png" alt="The Third-party dependencies page with two numbered parts: 1 the window menu, 2 a box saying No third-party requests" loading="lazy" width="1440" height="900"></div>
-          <figcaption>The Dependencies page for the demo's web project, which loads nothing from outside services. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/reports/dependencies/page-annotated.png" alt="The Third-party dependencies page with three numbered parts: 1 the window menu set to Last 30 days, 2 the list of services: Stripe under Returned errors with 5.6%, Google APIs and Google static content under No errors, 3 the details of Stripe" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Dependencies page for the demo's web project, whose pages load Google Fonts and Stripe's script. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Window">Window</h2></div>
@@ -75,21 +76,10 @@
         <p>How many days to cover: the last 7, 30 (chosen first), 90 or 180 days, counted in whole
           calendar days (UTC) up to and including today.</p>
 
-        <div class="part"><span class="num">2</span><h2 id="empty" data-toc="② No third-party requests">No third-party requests</h2></div>
+        <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of services">The list of services</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/dependencies/empty.png" alt="No third-party requests. No third-party requests recorded in this window. Runs are rolled up hourly from their captured network traffic." loading="lazy"></div>
+          <div class="frame small"><img src="../media/reports/dependencies/list.png" alt="Two groups: Returned errors, with Stripe, 177 requests, p95 1.5 s, 5.6%; No errors, with Google APIs and Google static content, 177 requests each, p95 200 ms, 0.0%" loading="lazy"></div>
         </figure>
-        <p>This box means no run in the window loaded anything from an outside service, or the
-          runs haven't been added up yet. It is normal for an API-only project, or a site that
-          serves everything itself. Runs are added up <strong>once an hour</strong>, so a run
-          that just finished can take up to an hour to appear.</p>
-
-        <h2 id="with-data">When there is data</h2>
-        <p>The line under the heading then says how many outside services were seen, how many
-          returned errors, and when the figures were last added up. Below it, the page splits in
-          two: a list on the left, details on the right.</p>
-
-        <h3 id="list">The list of services</h3>
         <p>Services are in two groups, <strong>Returned errors</strong> first, then
           <strong>No errors</strong>; within each, the services with the most errors (then the
           most requests) come first. Each row shows the service's name, its number of requests
@@ -99,7 +89,11 @@
           Well-known ones get a readable name ("Stripe", "Google Analytics", "jsDelivr CDN"…);
           others are shown by their domain.</p>
 
-        <h3 id="detail">The selected service</h3>
+        <div class="part"><span class="num">3</span><h2 id="detail" data-toc="③ The selected service">The selected service</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/reports/dependencies/detail.png" alt="Stripe (stripe.com): Requests 177 in 59 runs, Error rate 5.6% (10 errors, 10 runs affected), Latency p50 200 ms, p95 1.5 s; a line of errors per day; Does it line up with failing tests? Failed results 50.0%, Passed results 15.8%, Failing results saw errors from this vendor 3.17× as often as passing ones. Worth a look. Hosts seen: js.stripe.com" loading="lazy"></div>
+          <figcaption>In the demo, half of the failed results came from runs where Stripe's script answered with an error, against about one in six passed results: "Worth a look".</figcaption>
+        </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Part</th><th>What it shows</th></tr></thead>
@@ -120,6 +114,12 @@
         </div>
         <p>At the bottom, <strong>How this is built</strong> repeats the rules in short (see <a href="#good-to-know">Good to know</a>).</p>
 
+        <h3 id="empty">When there is nothing to list</h3>
+        <p>When no run in the window loaded anything from an outside service, or the runs haven't
+          been added up yet, the page shows only the window menu and a box saying <em>"No
+          third-party requests"</em>. That is normal for an API-only project, or a site that
+          serves everything itself.</p>
+
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">
           <div class="frame">
@@ -128,7 +128,7 @@
               Your browser can't play this video.
             </video>
           </div>
-          <figcaption>About 45 seconds, with a spoken commentary, on the demo project (which has no outside services). The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
+          <figcaption>About 45 seconds, with a spoken commentary. It was recorded before the demo project loaded any outside services, so its list is empty. The captions at the bottom show the same words, so it also works with the sound off.</figcaption>
         </figure>
 
         <h2 id="how-to" data-toc="How to…">How to…</h2>

@@ -51,8 +51,8 @@ test('Releases › Release sign-off', async ({ page, browser }) => {
         await pointAt(p, m.getByRole('heading', { name: 'Release sign-off', level: 1 }), 2200);
         await caption(p, 'The approval rests on manual runs: tests that a person carried out by hand.');
         await pointAt(p, r.getByRole('heading').first(), 2000);
-        await caption(p, 'Tick the runs this release was tested with. Here there are none yet.');
-        await pointAt(p, r.locator('p, ul').last(), 2400);
+        await caption(p, 'Tick the runs this release was tested with. Each shows its counts and whether it passed.');
+        await pointAt(p, r.locator('ul').last(), 2400);
         await caption(p, 'Then name the release, for example its version number.');
         const label = f.getByLabel('Release');
         await pointAt(p, label, 600);

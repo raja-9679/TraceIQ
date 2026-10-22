@@ -90,7 +90,7 @@ The last card, **Retention**, only explains that how long runs are kept is a pro
 - **Notification email**: an address to use instead of the one you sign in with. Leave it empty to use your account email.
 - **Email me about**: *All runs*, or *Failed runs only*, which skips runs that passed.
 
-![The Per project card: three projects (My first project, Demo — Todo web app, Demo — Public API), each set to My default](../media/setup/my-settings/per-project.png)
+![The Per project card: three projects (My first project, Demo — Public API, Demo — Todo web app), each set to My default](../media/setup/my-settings/per-project.png)
 
 **Per project** lists every project you can see, and lets you override your default for one of them: *My default* (follow the card above), *All runs*, *Failed runs only* or *Nothing*. A choice here is saved the moment you pick it.
 
@@ -100,7 +100,7 @@ The last card, **Retention**, only explains that how long runs are kept is a pro
 
 ## 4. Account and API keys
 
-![The Profile card: Full name Alex Morgan, Email docs-guide-92886b@example.com](../media/setup/my-settings/profile.png)
+![The Profile card: Full name Alex Morgan, Email docs-guide-7d3e41@example.com](../media/setup/my-settings/profile.png)
 
 **Profile** shows the name and email address TraceIQ has for you. You can't change them here; ask your workspace administrator.
 
@@ -112,17 +112,16 @@ The last card, **Retention**, only explains that how long runs are kept is a pro
 
 ## 5. Two-factor sign-in
 
-![The Two-factor sign-in section: an Authenticator app card with a Set up authenticator button, a Recovery codes card, and a Turn off two-factor sign-in card](../media/setup/my-settings/two-factor.png)
+![The Two-factor sign-in section: the Authenticator app card with Status: Off and a Set up authenticator button](../media/setup/my-settings/two-factor.png)
 
 Two-factor sign-in means that signing in with your password also needs a 6-digit code from an *authenticator app* on your phone (Google Authenticator, Authy, 1Password and similar). Someone who learns your password still can't get in.
 
-- **Authenticator app**: set it up (see [How to…](#how-to)).
-- **Recovery codes**: a fresh set of 10 backup codes, for when you don't have your phone. Each code works once. Making a new set needs a current code from the app, and the old set stops working.
-- **Turn off two-factor sign-in**: enter a current 6-digit code and press **Disable MFA** (it stays greyed out until the code is complete) to go back to password only. Your recovery codes are deleted too.
+The **Authenticator app** card starts with a **Status** line: Off or On. What else appears depends on it:
 
-> **The page doesn't say whether it is on**
->
-> All three cards are always shown, whether or not you have two-factor sign-in. If you press **Set up authenticator** when it is already on, TraceIQ refuses with "MFA is already enabled"; to move to a new phone, turn it off first with a code from the old one, then set it up again.
+- **Off**: only **Set up authenticator** (see [How to…](#how-to)).
+- **On**: the card says you're asked for a code at every password sign-in, and two more cards appear. **Recovery codes**: a fresh set of 10 backup codes, for when you don't have your phone. Each code works once. Making a new set needs a current code from the app, and the old set stops working. **Turn off two-factor sign-in**: enter a current 6-digit code and press **Disable MFA** (it stays greyed out until the code is complete) to go back to password only. Your recovery codes are deleted too.
+
+To move to a new phone, turn it off with a code from the old one, then set it up again.
 
 ## Watch it in use
 
@@ -187,8 +186,8 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. My settings holds your own preferences. They never change anyone else’s.
 2. The list on the left switches between five sections.
-3. Each card has its own Save button, and saves only that card.
-4. AI test generation shows a Generate button on suite pages, in this browser only.
+3. AI test generation shows a Generate button on suite pages, in this browser only.
+4. Most cards have their own Save button, which saves only that card.
 5. Run defaults choose the browser and device when the test and its suite don’t.
 6. Recordings: which of your runs keep a video, a screenshot and a trace.
 7. The project’s capture level, just above, is the limit. Your choice can only record less.
@@ -196,3 +195,4 @@ What the walkthrough says, in order. The video and every picture on this page ar
 9. Per project overrides that default for one project. A change there saves at once.
 10. Account shows your name and email, and the A P I keys of your workspace.
 11. Two-factor sign-in asks for a code from an authenticator app as well as your password.
+12. The status line says whether it is on for your account.

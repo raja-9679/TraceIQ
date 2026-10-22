@@ -30,11 +30,11 @@ A few words used on this page: a **suite** is a folder of tests; a **run** is on
 
 ## A tour of the screen
 
-The page has three views: the empty page (or the list of benchmarks, once there are some), the form to start a new benchmark, and the comparison for the benchmark you pick. The numbers on the screenshots match the sections below.
+The page has two views: the list of benchmarks with the comparison for the one you pick, and the form to start a new benchmark. The numbers on the screenshots match the sections below.
 
-![The Benchmarks page with two numbered parts: 1 the New benchmark button, 2 the message No benchmarks yet](../media/reports/benchmarks/page-annotated.png)
+![The Benchmarks page with two numbered parts: 1 the New benchmark button, 2 the list with one benchmark, Web smoke: local vs public, 2 sites, chromium, complete. On the right its comparison: two sites, Local todolite and Public (example.com), both passed 5 of 5 tests, and a per-test table](../media/reports/benchmarks/page-annotated.png)
 
-*The Benchmarks page for the demo's web project, which has no benchmarks yet. Click the picture to see it larger.*
+*The Benchmarks page for the demo's web project, with its one benchmark opened. Click the picture to see it larger.*
 
 ## 1. New benchmark
 
@@ -42,9 +42,13 @@ Opens the form (parts 3 to 5 below). The button is hidden while the form is open
 
 ## 2. Benchmarks and their results
 
-Until the project has a benchmark, this says *"No benchmarks yet"*, as in the picture. Afterwards the left side lists the 50 newest benchmarks, newest first, each with its number of sites, the browser and when it was started, and a label: running while any of its runs is still queued or running, complete once they have all finished. The newest one is opened on the right until you click another.
+Until the project has a benchmark, this says *"No benchmarks yet"*. Afterwards the left side lists the 50 newest benchmarks, newest first, each with its number of sites, the browser and when it was started, and a label: running while any of its runs is still queued or running, complete once they have all finished. The newest one is opened on the right until you click another.
 
 The right side shows the chosen benchmark:
+
+![The comparison for Web smoke: local vs public: Run again and Delete buttons, a yellow warning that 2 tests open an absolute address, the per-site table (Local todolite 100%, 5 / 5, 21 s, 4.2 s per test; Public (example.com) 100%, 5 / 5, 37 s, 7.3 s per test), the summary line, and the Per test table](../media/reports/benchmarks/detail.png)
+
+*The demo's benchmark: the same five tests against two sites. Every test passed on both, but the second site was slower.*
 
 - **Its name**, the suite, the browser and the start time, with two buttons: **Run again** starts a new benchmark with the same suite and sites (it appears as a new entry in the list), and **Delete** removes the benchmark after asking; its runs stay in the run list.
 - While runs are still going, a line says so, and the view refreshes by itself every 5 seconds.
@@ -167,4 +171,4 @@ What the walkthrough says, in order. The video and every picture on this page ar
 5. Then list the sites, one per line: a short label, a bar, and the address.
 6. You need between two and ten sites. The count underneath checks what you typed.
 7. Start benchmark would start one run per site. We press Cancel instead.
-8. Each benchmark then shows a table per site, and every test side by side.
+8. Each benchmark shows a row per site, and every test side by side.

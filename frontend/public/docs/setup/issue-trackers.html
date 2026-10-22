@@ -59,13 +59,13 @@
         <p><strong>Where to find it:</strong> in the sidebar, open <strong>Setup → Issue trackers</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo workspace has no trackers yet, so the page shows <em>"No trackers yet"</em>.
-          The screenshot shows the form you get after pressing <strong>Add tracker</strong>,
+        <p>The demo workspace has one tracker, a Jira connection that is switched off, listed on
+          the left. The screenshot shows the form you get after pressing <strong>Add tracker</strong>,
           filled in with example values (the token box is left empty on purpose). The numbers
-          match the sections below. What the page looks like once a tracker is saved is described
-          after them, under <a href="#list">Your trackers</a>.</p>
+          match the sections below. The list and a saved tracker are described after them, under
+          <a href="#list">Your trackers</a>.</p>
         <figure>
-          <div class="frame"><img src="../media/setup/issue-trackers/page-annotated.png" alt="The Issue trackers page with the New tracker form open and six numbered parts: 1 the workspace picker, 2 Provider and Name, 3 Base URL, 4 the account and its token, 5 Settings JSON, 6 the Add tracker and Cancel buttons" loading="lazy" width="1440" height="1000"></div>
+          <div class="frame"><img src="../media/setup/issue-trackers/page-annotated.png" alt="The Issue trackers page with the demo's disabled Jira tracker listed on the left and the New tracker form open on the right, with six numbered parts: 1 the workspace picker, 2 Provider and Name, 3 Base URL, 4 the account and its token, 5 Settings JSON, 6 the Add tracker and Cancel buttons" loading="lazy" width="1440" height="1000"></div>
           <figcaption>The Issue trackers page for the demo workspace, with the form open. Click the picture to see it larger.</figcaption>
         </figure>
 
@@ -147,10 +147,15 @@
           first ticket you file shows whether it works.</p>
 
         <h2 id="list" data-toc="Your trackers">Your trackers</h2>
-        <p>Once a connection is saved, the left side lists every tracker of the workspace in one
-          box, <strong>Trackers</strong>. Each row shows the name, the provider and the base URL,
-          and <span class="pill t-mint">On</span> or <span class="pill t-neutral">Off</span>. Click
-          a row to see it on the right:</p>
+        <figure>
+          <div class="frame"><img src="../media/setup/issue-trackers/trackers.png" alt="The Trackers box listing Jira (demo, disabled), marked Off, and on the right its details: Disabled, Jira, Connection with Base URL https://demo-team.atlassian.example.invalid and User qa-bot@example.invalid, a What this does note, and Enable and Remove buttons" loading="lazy"></div>
+          <figcaption>The demo's tracker, switched off. Nothing reaches the address: it ends in <code>.invalid</code>.</figcaption>
+        </figure>
+        <p>The left side lists every tracker of the workspace in one box, <strong>Trackers</strong>.
+          Each row shows the name, the provider and the base URL, and
+          <span class="pill t-mint">On</span> or <span class="pill t-neutral">Off</span>. Click
+          a row to see it on the right (the first one is shown until you pick another). A workspace
+          with no trackers shows <em>"No trackers yet"</em> instead.</p>
         <ul>
           <li><span class="pill t-mint">Enabled</span> or <span class="pill t-neutral">Disabled</span>, the name and the provider.</li>
           <li><strong>Connection</strong>: the base URL and the account name. The token is never shown.</li>
@@ -202,7 +207,7 @@
           <li><strong>Only switched-on trackers are offered.</strong> The <em>Create ticket</em> menus on runs and in Failure triage list enabled Jira, iTop and GitHub trackers; Requirements lists enabled Jira and Linear ones.</li>
           <li><strong>The run page asks for a workspace first</strong> if you belong to several. Pick the workspace the run's project belongs to.</li>
           <li><strong>Failure triage only offers trackers of the project's own workspace</strong>, so a problem can't be filed into another team's tracker by mistake.</li>
-          <li><strong>The demo workspace starts with no trackers.</strong> You can add a test connection to try it, then remove it.</li>
+          <li><strong>The demo's Jira tracker is a placeholder.</strong> Its address can't be reached and its token is not real, so enabling it would only make ticket filing fail. To try the page, add your own test connection, then remove it.</li>
         </ul>
 
         <h2 id="related">Related pages</h2>

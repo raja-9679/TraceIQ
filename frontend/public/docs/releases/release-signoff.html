@@ -61,7 +61,7 @@
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
         <p>The page has three cards, from top to bottom. The numbers on the screenshot match the
-          sections below. The demo projects have no manual tests, so the cards are empty here.</p>
+          sections below. In the demo's web project, release 2.4.0 was tested by hand twice: rejected after the first run, approved after the second.</p>
         <figure>
           <div class="frame"><img src="../media/releases/release-signoff/page-annotated.png" alt="The Release sign-off page with three numbered cards: 1 Manual runs, 2 Sign off, 3 Sign-off history" loading="lazy" width="1440" height="1100"></div>
           <figcaption>The Release sign-off page for the demo's web project. Click the picture to see it larger.</figcaption>
@@ -69,7 +69,7 @@
 
         <div class="part"><span class="num">1</span><h2 id="runs" data-toc="① Manual runs">Manual runs</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-signoff/runs.png" alt="The Manual runs card: Choose the runs this release was tested with. Start a manual run from a suite that has manual tests. No manual runs in this project yet." loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-signoff/runs.png" alt="The Manual runs card with two runs of Release checklist (manual), both for 2.4.0: #289, 1 passed, 0 failed or blocked of 1, labelled passed; #288, 2 passed, 2 failed or blocked of 4, labelled failed; each with an Open link" loading="lazy"></div>
         </figure>
         <p>The 50 most recent manual runs of the project, newest first. Each row has:</p>
         <ul>
@@ -114,14 +114,16 @@
 
         <div class="part"><span class="num">3</span><h2 id="history" data-toc="③ Sign-off history">Sign-off history</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-signoff/history.png" alt="The Sign-off history card, showing No sign-offs yet" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-signoff/history.png" alt="The Sign-off history card with two sign-offs of 2.4.0 by Alex Morgan: Approved, covering runs #288 and #289, with the note Upgrade re-tested and passing; and, a day earlier, Rejected, covering run #288, with the note Both payment checks failed" loading="lazy"></div>
         </figure>
         <p>The 50 most recent sign-offs, newest first. Each one shows
           <span class="pill t-mint">Approved</span> or <span class="pill t-peach">Rejected</span>,
           the release name, who signed and when, the runs it covered (<em>runs #12, #14</em>), the
           commit if there was one, and the note.</p>
         <p>A sign-off can't be edited or deleted. If a decision changes, record a new one: the
-          newest sign-off is the one that counts.</p>
+          newest sign-off is the one that counts. That is what the demo shows: 2.4.0 was first
+          rejected because both payment checks failed, then approved a day later once they were
+          re-tested.</p>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">

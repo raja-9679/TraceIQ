@@ -190,7 +190,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="openapi" data-toc="④ OpenAPI spec">OpenAPI spec</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/setup/project-settings/openapi.png" alt="The OpenAPI spec card: No spec stored for this project, a Choose file button and an Or fetch from a URL field with a Fetch and save button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/setup/project-settings/openapi.png" alt="The OpenAPI spec card of Demo — Public API: Demo public API (httpbin) v1.1.0, 5 operations, from https://httpbin.org/spec.json, the operation list, Choose file, Or fetch from a URL, Remove spec, then Version history comparing v1 (1.0.0) with v2 (1.1.0, current): 2 breaking, 1 compatible, with GET /ip Operation removed and POST /anything Request property became required" loading="lazy"></div>
         </figure>
         <p>An <em>OpenAPI spec</em> is a file that describes an API: its addresses and what each
           answer should look like. Store your API's spec here, and API tests can check that every
@@ -198,8 +198,12 @@
         <ul>
           <li><strong>Choose file</strong> uploads a JSON file; <strong>Fetch and save</strong> downloads it from an address.</li>
           <li>Once stored, the card shows its title, version and the first 12 of its operations, and a <strong>Remove spec</strong> button.</li>
-          <li>Every new upload is kept as a numbered version. With two or more, the card lists them and shows what changed between two versions, <strong>breaking changes first</strong>, naming the project's tests that use each changed operation.</li>
+          <li>Every new upload is kept as a numbered version. With two or more, a <strong>Version history</strong> appears: pick two versions under <strong>Compare from (older)</strong> and <strong>To (newer)</strong> to see what changed for the API's users, grouped by operation, naming the project's tests that use each changed operation. Only <strong>breaking</strong> changes are listed until you tick <strong>Show compatible changes</strong>; <strong>Export SARIF</strong> downloads the comparison for code-scanning tools.</li>
         </ul>
+        <p>The picture shows the demo's <em>Public API</em> project, whose spec has two versions:
+          version 1.1.0 removed <code>GET /ip</code> and made a request field required, two breaking
+          changes. A project with no spec, like the demo's web project, says "No spec stored for
+          this project".</p>
         <p>Editors can change the spec, not only project admins. Tests created from an OpenAPI file
           (through TraceIQ's API, by a CI script or an AI agent) also store the spec here.</p>
 

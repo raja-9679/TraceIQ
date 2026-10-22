@@ -2,9 +2,9 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/setup/issue-trackers.html
-// Nothing here changes data. The demo workspace has no tracker connections,
-// so the pictures show the empty page and the "New tracker" form, filled in
-// with example values and then cancelled. The token / password field is never
+// Nothing here changes data. The demo workspace has one disabled Jira
+// connection (shown, never enabled or removed), and the "New tracker" form is
+// filled in with example values and then cancelled. The token / password field is never
 // typed into and "Add tracker" (the save button) is never pressed.
 
 const DIR = 'setup/issue-trackers';
@@ -17,7 +17,7 @@ async function openDemoWorkspace(p: Page) {
     await p.getByRole('combobox', { name: 'Workspace' }).click();
     await p.getByRole('option', { name: 'Demo workspace' }).click();
     await settle(p);
-    await expect(p.getByText('No trackers yet', { exact: true })).toBeVisible();
+    await expect(p.locator('main').getByRole('article', { name: 'Selected tracker' })).toBeVisible();
 }
 
 /** Screenshot of a Radix select's trigger together with its open list. */
@@ -42,8 +42,10 @@ test('Setup › Issue trackers', async ({ page, browser }) => {
     await openDemoWorkspace(page);
     const main = page.locator('main');
 
-    // 1. The page as the demo workspace shows it: no trackers yet.
+    // 1. The page as the demo workspace shows it: one (disabled) tracker.
     await page.screenshot({ path: out(`${DIR}/page.png`) });
+    const detail = main.getByRole('article', { name: 'Selected tracker' });
+    await detail.locator('xpath=..').locator('xpath=..').screenshot({ path: out(`${DIR}/trackers.png`) });
     await main.getByRole('combobox', { name: 'Workspace' }).locator('xpath=..').screenshot({ path: out(`${DIR}/header-actions.png`) });
 
     // 2. The "New tracker" form with example values (never saved).
@@ -90,7 +92,7 @@ test('Setup › Issue trackers', async ({ page, browser }) => {
         await beat(p, 900);
         await p.getByRole('option', { name: 'Demo workspace' }).click();
         await settle(p);
-        await caption(p, 'This one has no trackers yet. Add tracker opens the form.');
+        await caption(p, 'The demo has one Jira connection, switched off. Add tracker opens the form for another.');
         const add = m.getByRole('button', { name: 'Add tracker' });
         await pointAt(p, add, 1000);
         await add.click();
@@ -117,8 +119,8 @@ test('Setup › Issue trackers', async ({ page, browser }) => {
         await pointAt(p, f.getByRole('button', { name: 'Cancel', exact: true }), 700);
         await f.getByRole('button', { name: 'Cancel', exact: true }).click();
         await beat(p, 700);
-        await caption(p, 'Once saved, Create ticket on a run and on Failure triage offers it.');
-        await pointAt(p, m.getByText('No trackers yet', { exact: true }), 2400);
+        await caption(p, 'Once saved and enabled, Create ticket on a run and on Failure triage offers it.');
+        await pointAt(p, m.getByRole('article', { name: 'Selected tracker' }), 2400);
         await caption(p, '');
     });
 });

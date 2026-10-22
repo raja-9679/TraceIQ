@@ -64,8 +64,8 @@
           the left; the one you pick is shown in detail on the right. The numbers on the
           screenshot match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/today/flaky-tests/page-annotated.png" alt="The Flaky tests page with seven numbered parts: 1 the summary line, 2 the list of tests, 3 the flake score bar, 4 runs sampled and recent failures, 5 the owner, 6 what this means, 7 the Quarantine button" loading="lazy" width="1440" height="1000"></div>
-          <figcaption>The Flaky tests page for the demo's web project, which has one flaky test. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/today/flaky-tests/page-annotated.png" alt="The Flaky tests page with seven numbered parts: 1 the summary line, 2 the list of tests, 3 the flake score bar, 4 runs sampled and recent failures, 5 the owner, 6 what this means, 7 the Release back into runs button" loading="lazy" width="1440" height="1000"></div>
+          <figcaption>The Flaky tests page for the demo's web project, which has one flaky test, already quarantined. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="summary" data-toc="① The summary line">The summary line</h2></div>
@@ -76,7 +76,7 @@
 
         <div class="part"><span class="num">2</span><h2 id="list" data-toc="② The list of tests">The list of tests</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/today/flaky-tests/list.png" alt="A box titled Still in runs with one row: Add a todo, 6 recent failures, 60 runs sampled, Owner: Alex Morgan, a yellow bar and 40%" loading="lazy"></div>
+          <div class="frame small"><img src="../media/today/flaky-tests/list.png" alt="A box titled Quarantined with one row: Add a todo, 6 recent failures, 20 runs sampled, Owner: Alex Morgan, a yellow bar and 41%" loading="lazy"></div>
         </figure>
         <p>Tests are boxed by what is happening to them, highest score first in each box:</p>
         <div class="table-wrap">
@@ -96,7 +96,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="score" data-toc="③ The flake score">The flake score</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/today/flaky-tests/score.png" alt="Flake score 40%, a bar filled to 40% in yellow, labelled 0% stable on the left and 100% pure flake on the right" loading="lazy"></div>
+          <div class="frame small"><img src="../media/today/flaky-tests/score.png" alt="Flake score 41%, a bar filled to 41% in yellow, labelled 0% stable on the left and 100% pure flake on the right" loading="lazy"></div>
         </figure>
         <p>How often the test's result <strong>flipped</strong> between pass and fail over its
           most recent results. TraceIQ looks at the last 20 results of the test (in this project),
@@ -121,13 +121,13 @@
 
         <div class="part"><span class="num">4</span><h2 id="facts" data-toc="④ Runs sampled, recent failures">Runs sampled and recent failures</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/today/flaky-tests/facts.png" alt="Two boxes: Runs sampled 60, Recent failures 6" loading="lazy"></div>
+          <div class="frame small"><img src="../media/today/flaky-tests/facts.png" alt="Two boxes: Runs sampled 20, Recent failures 6" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Fact</th><th>What it tells you</th></tr></thead>
             <tbody>
-              <tr><td><strong>Runs sampled</strong></td><td>How many results the score is based on (at most the last 20 in a real project; the demo's made-up history says 60). With only a handful, the score is a rough guess.</td></tr>
+              <tr><td><strong>Runs sampled</strong></td><td>How many results the score is based on (at most the last 20). With only a handful, the score is a rough guess.</td></tr>
               <tr><td><strong>Recent failures</strong></td><td>How many times a test with this name ended <em>Failed</em> or <em>Error</em> in this project in the last 30 days.</td></tr>
             </tbody>
           </table>
@@ -144,7 +144,7 @@
 
         <div class="part"><span class="num">6</span><h2 id="meaning" data-toc="⑥ What this means">What this means, and the last failure</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/today/flaky-tests/meaning.png" alt="What this means: This test sometimes fails for no reason the code explains. Keep an eye on it; quarantine it if it starts blocking releases." loading="lazy"></div>
+          <div class="frame small"><img src="../media/today/flaky-tests/meaning.png" alt="What this means: Quarantined: it is skipped when runs are dispatched, so it no longer blocks regressions. The quarantine ends on its own; release it sooner once the cause is fixed." loading="lazy"></div>
         </figure>
         <p><strong>What this means</strong> puts the score, or the quarantine, into plain words
           and suggests what to do. Below it, <strong>Last failure</strong> is the error message
@@ -157,7 +157,7 @@
 
         <div class="part"><span class="num">7</span><h2 id="quarantine" data-toc="⑦ Quarantine and release">Quarantine and release</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/today/flaky-tests/actions.png" alt="A Quarantine button, with the note A quarantine needs a reason and ends on its own (14 days by default, at most 90)" loading="lazy"></div>
+          <div class="frame small"><img src="../media/today/flaky-tests/actions.png" alt="A Release back into runs button, with the note A quarantine needs a reason and ends on its own (14 days by default, at most 90)" loading="lazy"></div>
         </figure>
         <p>A <strong>quarantined</strong> test is left out of every run while the quarantine
           lasts, so its random failures stop blocking your results. It is not deleted, and its
@@ -172,7 +172,12 @@
           <figcaption>The quarantine form. The Quarantine button stays grey until you type a reason.</figcaption>
         </figure>
         <p>Once quarantined, the detail shows <span class="pill t-butter">Quarantined</span> and
-          a line such as <em>"Until 4 Nov 2026 · races the payment mock"</em>. A quarantine that
+          a <strong>Quarantine</strong> line with the end date and the reason:</p>
+        <figure>
+          <div class="frame small"><img src="../media/today/flaky-tests/quarantine.png" alt="Quarantine: Until Nov 2, 2026 · Times out waiting for the list to refresh; tracked in DEMO-102." loading="lazy"></div>
+          <figcaption>The demo's flaky test, quarantined until 2 November.</figcaption>
+        </figure>
+        <p>A quarantine that
           has ended shows <span class="pill t-peach">Quarantine expired</span>; a test that is
           not quarantined shows <span class="pill t-mint">Still running</span>.</p>
 

@@ -28,11 +28,11 @@ This page answers **"Is it us, or is it them?"** When tests fail, the cause is s
 
 ## A tour of the screen
 
-The page shows the project selected at the top of the sidebar. The demo projects only call their own sites, so the screenshot shows what the page looks like before there is anything to list. [When there is data](#with-data) describes the full page.
+The page shows the project selected at the top of the sidebar. The line under the heading says how many outside services were seen, how many returned errors, and when the figures were last added up. Below it, the page splits in two: a list on the left, details on the right. The numbers on the screenshot match the sections below.
 
-![The Third-party dependencies page with two numbered parts: 1 the window menu, 2 a box saying No third-party requests](../media/reports/dependencies/page-annotated.png)
+![The Third-party dependencies page with three numbered parts: 1 the window menu set to Last 30 days, 2 the list of services: Stripe under Returned errors with 5.6%, Google APIs and Google static content under No errors, 3 the details of Stripe](../media/reports/dependencies/page-annotated.png)
 
-*The Dependencies page for the demo's web project, which loads nothing from outside services. Click the picture to see it larger.*
+*The Dependencies page for the demo's web project, whose pages load Google Fonts and Stripe's script. Click the picture to see it larger.*
 
 ## 1. Window
 
@@ -40,23 +40,19 @@ The page shows the project selected at the top of the sidebar. The demo projects
 
 How many days to cover: the last 7, 30 (chosen first), 90 or 180 days, counted in whole calendar days (UTC) up to and including today.
 
-## 2. No third-party requests
+## 2. The list of services
 
-![No third-party requests. No third-party requests recorded in this window. Runs are rolled up hourly from their captured network traffic.](../media/reports/dependencies/empty.png)
-
-This box means no run in the window loaded anything from an outside service, or the runs haven't been added up yet. It is normal for an API-only project, or a site that serves everything itself. Runs are added up **once an hour**, so a run that just finished can take up to an hour to appear.
-
-## When there is data
-
-The line under the heading then says how many outside services were seen, how many returned errors, and when the figures were last added up. Below it, the page splits in two: a list on the left, details on the right.
-
-### The list of services
+![Two groups: Returned errors, with Stripe, 177 requests, p95 1.5 s, 5.6%; No errors, with Google APIs and Google static content, 177 requests each, p95 200 ms, 0.0%](../media/reports/dependencies/list.png)
 
 Services are in two groups, **Returned errors** first, then **No errors**; within each, the services with the most errors (then the most requests) come first. Each row shows the service's name, its number of requests and its p95 speed (see below), with its error rate on the right. Click a row to show it on the right; until you do, the first one is shown.
 
 A **service** is a web domain, such as `stripe.com`. Well-known ones get a readable name ("Stripe", "Google Analytics", "jsDelivr CDN"…); others are shown by their domain.
 
-### The selected service
+## 3. The selected service
+
+![Stripe (stripe.com): Requests 177 in 59 runs, Error rate 5.6% (10 errors, 10 runs affected), Latency p50 200 ms, p95 1.5 s; a line of errors per day; Does it line up with failing tests? Failed results 50.0%, Passed results 15.8%, Failing results saw errors from this vendor 3.17× as often as passing ones. Worth a look. Hosts seen: js.stripe.com](../media/reports/dependencies/detail.png)
+
+*In the demo, half of the failed results came from runs where Stripe's script answered with an error, against about one in six passed results: "Worth a look".*
 
 | Part | What it shows |
 |---|---|
@@ -69,11 +65,15 @@ A **service** is a web domain, such as `stripe.com`. Well-known ones get a reada
 
 At the bottom, **How this is built** repeats the rules in short (see [Good to know](#good-to-know)).
 
+### When there is nothing to list
+
+When no run in the window loaded anything from an outside service, or the runs haven't been added up yet, the page shows only the window menu and a box saying *"No third-party requests"*. That is normal for an API-only project, or a site that serves everything itself.
+
 ## Watch it in use
 
 [▶ Watch the video](../media/reports/dependencies/walkthrough.mp4)
 
-*About 45 seconds, with a spoken commentary, on the demo project (which has no outside services). The captions at the bottom show the same words, so it also works with the sound off.*
+*About 45 seconds, with a spoken commentary. It was recorded before the demo project loaded any outside services, so its list is empty. The captions at the bottom show the same words, so it also works with the sound off.*
 
 ## How to…
 
@@ -122,8 +122,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Dependencies lists the outside services your app loads while the tests run.
 2. For example analytics, payments, fonts or a content delivery network.
-3. For each one: how many requests failed, how slow it was, and whether that lines up with failing tests.
-4. This demo project only calls its own site, so there is nothing to show yet.
-5. TraceIQ adds up each run’s network traffic once an hour, so new runs appear within the hour.
+3. Services that returned errors come first, with their error rate on the right.
+4. The selected one is shown in detail: requests, error rate and how slow it was.
+5. And whether its errors came with failing tests more often than with passing ones.
 6. The window menu picks how many days to cover, up to a hundred and eighty.
-7. Pick a project whose tests load outside services to see its list.

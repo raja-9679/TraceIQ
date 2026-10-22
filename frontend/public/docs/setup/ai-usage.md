@@ -33,9 +33,9 @@ AI usage answers **"How much AI are we using, and for what?"** AI services charg
 
 ## A tour of the screen
 
-The demo workspace has made no AI calls, so its page shows only the two menus and *"No LLM calls in the last 30 days"* ("LLM", large language model, is the technical name for these AI services). Part ③ below describes what replaces that message once there are calls.
+The demo workspace has about a month of AI calls, made through two AI services. The numbers on the screenshot match the sections below. ("LLM", large language model, is the technical name for these AI services.)
 
-![The AI usage page with three numbered parts: 1 the time-window menu set to 30 days, 2 the workspace menu set to Demo workspace, 3 the message No LLM calls in the last 30 days](../media/setup/ai-usage/page-annotated.png)
+![The AI usage page with six numbered parts: 1 the time-window menu set to 30 days, 2 the workspace menu set to Demo workspace, 3 four totals (772k tokens, 181 calls, 645k in and 127k out, 5.1 s average), 4 the tokens-per-day bars, 5 the table by provider and model, 6 the bars by feature](../media/setup/ai-usage/page-annotated.png)
 
 *The AI usage page for the demo workspace. Click the picture to see it larger.*
 
@@ -49,11 +49,11 @@ How far back to count: the last **7**, **30** (the default) or **90** days. The 
 
 AI usage is counted per **workspace**. This menu chooses which one. The page opens on the workspace of the project picked in the sidebar.
 
-## 3. The usage report
+When the workspace has made no AI calls in the window, the page shows only these two menus and *"No LLM calls in the last 30 days"* in place of parts ③ to ⑥.
 
-When the workspace has made AI calls in the window, four parts take the place of the message.
+## 3. The four totals
 
-### The four totals
+![Four tiles: Total tokens 772k (772,290 in 30d), LLM calls 181, Input / output 645k / 127k, Average latency 5.1s](../media/setup/ai-usage/totals.png)
 
 | Tile | What the number means |
 |---|---|
@@ -62,17 +62,23 @@ When the workspace has made AI calls in the window, four parts take the place of
 | **Input / output** | The same tokens split into what was sent and what came back. |
 | **Average latency** | How long an answer took on average, in milliseconds (*ms*) or seconds (*s*). |
 
-### Tokens per day
+## 4. Tokens per day
+
+![A bar chart of tokens per day from 2026-09-22 to 2026-10-21, with the peak day at 48k tokens](../media/setup/ai-usage/daily.png)
 
 A bar for each day that had calls; the tallest bar is the busiest day, and the top corner names its total. Days without any calls get no bar at all, so two bars side by side are not always two days in a row: read the dates. Point at a bar to see its date, tokens and number of calls. Days are calendar days in **UTC**, so in India a call made before 5:30 a.m. counts towards the previous day.
 
 If the workspace's plan has a monthly AI limit, the top-right corner also shows it, for example *"2026-10: 120,000 / 1,000,000 tokens (12%)"*. That figure is for the **current calendar month**, whatever time window you picked.
 
-### By provider and model
+## 5. By provider and model
+
+![The By provider and model table: anthropic claude-sonnet-4-5 with 100 calls and 93% success, ollama qwen2.5-coder:14b with 81 calls and 98% success](../media/setup/ai-usage/providers.png)
 
 One row per AI service (the **provider**, as your administrator named it) and **model** (the particular AI version, such as a "mini" or a "large" one), the most-used first. The columns give calls, input, output and total tokens, and the average wait. **Success** is the share of calls that got an answer; below 90% it turns peach, which usually means the service was refusing or timing out.
 
-### By feature
+## 6. By feature
+
+![The By feature bars: Failure analysis, Test generation, Selector healing, Assistant and Tests from requirements, each with its tokens and calls](../media/setup/ai-usage/features.png)
 
 Which part of TraceIQ asked, with its tokens, calls and a bar showing its share of all tokens, the largest first:
 
@@ -144,8 +150,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 1. AI usage shows every call TraceIQ made to an AI service for your workspace.
 2. Usage is counted per workspace. Choose the workspace here.
 3. This menu picks how far back to look: seven, thirty or ninety days.
-4. The demo workspace has made no AI calls, so the page says so.
-5. With calls, you would see four totals: tokens, calls, input and output, and the average wait.
-6. Then a bar per day, and tables by AI provider and model, and by feature.
-7. A token is a small piece of text. AI services count and charge by tokens.
-8. This page only reports. To switch AI off for a workspace, use the Policies page.
+4. Four totals: tokens, calls, input and output, and the average wait.
+5. Then a bar per day, and tables by AI provider and model, and by feature.
+6. A token is a small piece of text. AI services count and charge by tokens.
+7. This page only reports. To switch AI off for a workspace, use the Policies page.

@@ -43,7 +43,7 @@ test('Releases › Release readiness', async ({ page, browser }) => {
 
     // 3. Close-ups used next to each explanation.
     await controls.screenshot({ path: out(`${DIR}/controls.png`) });
-    await verdict.screenshot({ path: out(`${DIR}/verdict-ready.png`) });
+    await verdict.screenshot({ path: out(`${DIR}/verdict-latest.png`) });
     await section(page, 'Gate checks').screenshot({ path: out(`${DIR}/checks.png`) });
     await section(page, 'Runs considered').screenshot({ path: out(`${DIR}/runs.png`) });
     await section(page, 'Critical cases').screenshot({ path: out(`${DIR}/critical.png`) });
@@ -58,18 +58,25 @@ test('Releases › Release readiness', async ({ page, browser }) => {
     const options = await listbox.getByRole('option').allInnerTexts();
     await page.keyboard.press('Escape');
 
-    // Find a commit the demo marks "Not ready" (preferably one where a
-    // critical case failed), to show that state too.
+    // Find a commit the demo marks "Ready to release", and one marked "Not
+    // ready" where a critical case failed, to show those states too.
     let notReady: string | null = null;
+    let ready = false;
+    let criticalFailed = false;
     for (const label of options.slice(1)) {
+        if (ready && criticalFailed) break;
         await main.locator('#rr-commit').click();
         await page.getByRole('option', { name: label, exact: true }).click();
         await settle(page);
+        if (!ready && await verdict.filter({ hasText: 'Ready to release' }).count()) {
+            await verdict.screenshot({ path: out(`${DIR}/verdict-ready.png`) });
+            ready = true;
+        }
         if (!(await verdict.filter({ hasText: 'Not ready' }).count())) continue;
         notReady ??= label;
-        if (await section(page, 'Critical cases').locator('tbody tr td:nth-child(2)').filter({ hasText: /failed/i }).count()) {
+        if (!criticalFailed && await section(page, 'Critical cases').locator('tbody tr td:nth-child(2)').filter({ hasText: /failed/i }).count()) {
             notReady = label;
-            break;
+            criticalFailed = true;
         }
     }
     if (notReady) {

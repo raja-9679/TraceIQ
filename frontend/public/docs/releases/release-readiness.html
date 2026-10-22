@@ -83,27 +83,30 @@
           <li><strong>Re-evaluate</strong> works the answer out again, for example after a new run.</li>
         </ul>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/commit-menu.png" alt="The Commit menu open: Latest run, then commits such as f4bfd81 · main · 1 run(s)" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/commit-menu.png" alt="The Commit menu open: Latest run, then commits such as 8025cea · feature/todo-routes · 2 run(s) and 00237be · main · 3 run(s)" loading="lazy"></div>
         </figure>
 
         <div class="part"><span class="num">2</span><h2 id="verdict" data-toc="② The answer">The answer</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/verdict-ready.png" alt="A green box: Ready to release, commit f4bfd81, 1 run(s) evaluated, chosen from the latest run; Every gate check passed on the evidence below; all 3 checks passed over 1 run(s)" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/verdict-latest.png" alt="A pink box: Not ready, commit 8025cea, 2 run(s) evaluated, chosen from the latest run; At least one gate check failed; External CI tests: no report (needs 0 failures); Flaky tests: 1 flaky (needs &lt;= 0) — Add a todo; Critical tests passed: 1 of 2 passed (needs all critical passed) — no result for commit 8025cea: Homepage loads" loading="lazy"></div>
+          <figcaption>The demo's newest commit. Its two runs passed, but the demo project's gate also asks for a report from the build system, no flaky tests, and every critical test passed on this commit.</figcaption>
         </figure>
         <p>The coloured box gives the answer, the commit it is about, how many runs were judged,
-          and the reasons as a list.</p>
+          and the reasons as a list. The demo project's rules are strict on purpose (no flaky
+          test at all, a build-system report on every commit), so no demo commit is ready to
+          release.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:26%">Answer</th><th>What it means</th></tr></thead>
             <tbody>
               <tr><td><span class="pill t-mint">Ready to release</span></td><td>Every quality-gate check passed on the runs of this commit.</td></tr>
-              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>Pass rate: 0.0% (needs &gt;= 100.0%)</em>.</td></tr>
+              <tr><td><span class="pill t-peach">Not ready</span></td><td>At least one check failed. The reasons say which one, what it found and what it needed, for example <em>Pass rate: 0.0% (needs &gt;= 90.0%)</em>.</td></tr>
               <tr><td><span class="pill t-butter">Insufficient data</span></td><td>Nothing failed, but evidence is missing: there is no finished run, or a required check has nothing to judge (a critical test that didn't run on this commit, no sign-off yet, no report from your build system). Missing evidence never counts as a pass.</td></tr>
             </tbody>
           </table>
         </div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/verdict-not-ready.png" alt="A pink box: Not ready, an older commit, 1 run(s) evaluated; At least one gate check failed; pass_rate: 0.0% (needs at least 100.0%)" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/verdict-not-ready.png" alt="A pink box: Not ready, an older commit, 1 run(s) evaluated; At least one gate check failed; Pass rate: 0.0% (needs &gt;= 90.0%), External CI tests: no report, Flaky tests: 1 flaky, Critical tests passed: 1 of 2 passed — failed: Homepage loads" loading="lazy"></div>
           <figcaption>An older demo commit whose only run failed. The critical-cases table below shows which test it was.</figcaption>
         </figure>
         <p>When the commit was chosen for you (from <em>Latest run</em> or a branch), the line
@@ -113,13 +116,15 @@
 
         <div class="part"><span class="num">3</span><h2 id="checks" data-toc="③ Gate checks">Gate checks</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/checks.png" alt="Gate checks: pass_rate 100.0% needs at least 100.0%, coverage full suite needs informational, security_high_findings 0 needs at most 0, each with a green tick" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/checks.png" alt="Gate checks on the newest commit: Pass rate 100.0% needs &gt;= 90.0%, Coverage targeted — 2 of 5 cases ran (informational), High-severity security findings 0 needs &lt;= 0, Evidence age oldest 0.2d needs &lt;= 7d, each with a green tick; External CI tests no report and Critical tests passed 1 of 2, each with an amber dash; Flaky tests 1 flaky needs &lt;= 0 with a red cross" loading="lazy"></div>
         </figure>
         <p>The checks of the project's <strong>quality gate</strong>, applied to every run in
           ④. Each line shows the value found, then "needs" and the rule. A green tick means
           passed, a red cross failed, and an amber dash failed <em>because evidence was
           missing</em>. A grey line under a check gives detail, such as the names of the tests
-          concerned. The checks appear under the same names as on the <em>Quality gate</em> page
+          concerned. In the demo, <em>External CI tests</em> and <em>Critical tests passed</em>
+          are amber (no report arrived, and <em>Homepage loads</em> didn't run on this commit),
+          and <em>Flaky tests</em> is red because <em>Add a todo</em> is quarantined. The checks appear under the same names as on the <em>Quality gate</em> page
           (<em>Pass rate</em>, <em>Critical tests passed</em>…), which explains each one; point at a
           name to read a one-line explanation.</p>
         <p>Which checks there are depends on the project's rules, which are set on the
@@ -139,7 +144,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="runs" data-toc="④ Runs considered">Runs considered</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/runs.png" alt="Runs considered: Every finished run on f4bfd81. One row: #484 Web smoke (demo) · chromium, 5/5, a date and time, PASSED" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/runs.png" alt="Runs considered: Every finished run on 8025cea. Two rows, #291 and #290 Web smoke (demo) · chromium · targeted, each 1/1, a date and time, PASSED" loading="lazy"></div>
         </figure>
         <p>Every finished run on the commit (passed, failed or error), newest first: the run
           number, the suite, the browser, and "targeted" or "case" when only part of the suite ran.
@@ -148,7 +153,7 @@
 
         <div class="part"><span class="num">5</span><h2 id="critical" data-toc="⑤ Critical cases">Critical cases</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/critical.png" alt="Critical cases table with two tests, Homepage loads and Sign in as alice, both PASSED on this commit and as last result, with dates, commit f4bfd81 and last passed time" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/critical.png" alt="Critical cases table with two tests: Homepage loads, NO RESULT on this commit (no run for this commit), and Sign in as alice, PASSED; both PASSED as last result, with dates and last passed time" loading="lazy"></div>
         </figure>
         <p>A <em>case</em> is one test. The tests whose priority is set to <strong>critical</strong>
           are the ones a release depends on, and each gets a row:</p>
@@ -163,7 +168,7 @@
           </table>
         </div>
         <figure>
-          <div class="frame"><img src="../media/releases/release-readiness/critical-not-ready.png" alt="Critical cases on the older commit: Homepage loads is FAILED on this commit (failed in run 420, chromium) although its last result anywhere is PASSED" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/release-readiness/critical-not-ready.png" alt="Critical cases on the older commit: Homepage loads is FAILED on this commit (failed in run 105, chromium) although its last result anywhere is PASSED" loading="lazy"></div>
           <figcaption>On that older commit a critical test failed; its newest result anywhere has since passed.</figcaption>
         </figure>
         <div class="callout info">
@@ -181,18 +186,19 @@
 
         <div class="part"><span class="num">6</span><h2 id="quarantines" data-toc="⑥ Active quarantines">Active quarantines</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/quarantines.png" alt="Active quarantines: No active quarantines, and a link Manage flaky tests" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/quarantines.png" alt="Active quarantines: Add a todo, score 0.41, manual; Owner Alex Morgan, an expiry date; Times out waiting for the list to refresh; tracked in DEMO-102. Below it a link Manage flaky tests" loading="lazy"></div>
         </figure>
         <p>Tests that are <em>quarantined</em> right now: flaky tests that TraceIQ leaves out of
           runs for a while. Because they didn't run, they are no evidence for this release. Each
           one shows its flake score, whether it was quarantined automatically or by a person, its
           owner, when the quarantine ends, and the reason given. <strong>Manage flaky tests</strong>
-          opens the <em>Flaky tests</em> page. In the demo there are none, so the box says
+          opens the <em>Flaky tests</em> page. In the demo, <em>Add a todo</em> was quarantined
+          by hand, with an owner and a reason. When nothing is quarantined, the box says
           "No active quarantines".</p>
 
         <div class="part"><span class="num">7</span><h2 id="requirements" data-toc="⑦ Requirements">Requirements</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/release-readiness/requirements.png" alt="Requirements: DEMO-101 A user can sign in, PASSING (Sign in as alice: passed); DEMO-102 A user can add a todo, PASSING (Add a todo: passed); and a link Manage requirement links" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/release-readiness/requirements.png" alt="Requirements: DEMO-103, DEMO-104 and PRD-Security-3, each UNTESTED with their tests showing no result; DEMO-101 A user can sign in, PASSING (Sign in as alice: passed); DEMO-102 A user can add a todo, PASSING (Add a todo: passed); and a link Manage requirement links" loading="lazy"></div>
         </figure>
         <p>Requirements (such as a ticket <code>DEMO-101</code>) that have tests linked to them,
           judged on the same commit as the critical tests. Under each one: its linked tests and

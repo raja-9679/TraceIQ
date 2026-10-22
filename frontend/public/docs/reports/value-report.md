@@ -30,13 +30,13 @@ The Value report answers **"Is TraceIQ actually helping, and how do we know?"** 
 
 The numbers on the screenshot match the sections below.
 
-![The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.1 h median, 4 AI failure-analysis accuracy with no ratings yet, 5 CI time saved by targeted runs with no targeted run, 6 Proposal outcomes with no proposals, 7 Reported elsewhere](../media/reports/value-report/page-annotated.png)
+![The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.6 h median, 4 AI failure-analysis accuracy with too few ratings (3 of the 5 needed), 5 CI time saved by targeted runs, 0 min from 1 targeted run, 6 Proposal outcomes 66.7% of decided proposals applied, 7 Reported elsewhere](../media/reports/value-report/page-annotated.png)
 
 *The Value report for the demo's web project, last 30 days. Click the picture to see it larger.*
 
 ## 1. Scope and dates
 
-![Scope This project, From 09/22/2026, To 10/21/2026, and an Update report button](../media/reports/value-report/controls.png)
+![Scope This project, From 09/23/2026, To 10/22/2026, and an Update report button](../media/reports/value-report/controls.png)
 
 - **Scope**: *This project* (the one selected in the sidebar) or *Workspace (projects you can read)*, which adds up every project of a workspace you have access to. With more than one workspace, a **Workspace** picker appears; it starts on your first one.
 - **From** / **To**: the period, both days included, the last 30 days to begin with, at most 366 days. New dates apply when you press **Update report**; the scope and workspace apply at once.
@@ -48,7 +48,7 @@ One line naming the project (or the workspace and how many projects), the dates,
 
 ### How every card is built
 
-![The Time to diagnosis card: a green Measured label, 24.1 h median, Sample: 2 diagnosed failure clusters, 90th percentile 24.6 h, 2 clusters not diagnosed yet, First signal passed again on a new commit: 2, then Definition and Data source](../media/reports/value-report/time-to-diagnosis.png)
+![The Time to diagnosis card: a green Measured label, 24.6 h median, Sample: 3 diagnosed failure clusters, 90th percentile 25.2 days, 1 cluster not diagnosed yet, First signal case quarantined: 1, First signal passed again on a new commit: 2, then Definition and Data source](../media/reports/value-report/time-to-diagnosis.png)
 
 - **The label** top right: Measured means counted from what happened; Estimate means worked out from assumptions.
 - **The big number**, with what it is ("median", for instance). If there isn't enough data, a grey box says why instead, such as "No targeted run in this window". It never shows 0 for "no data".
@@ -78,7 +78,7 @@ An **estimate**. A *targeted* run carries out only the tests affected by a chang
 
 **saved = full run's test time × (1 − tests run ÷ tests in the suite)**
 
-The big number is browser time saved; underneath are the wall-clock time saved (also an estimate) and the counts it rests on, including targeted runs that had no full run to compare with. Manual runs are left out.
+The big number is browser time saved; underneath are the wall-clock time saved (also an estimate) and the counts it rests on, including targeted runs that had no full run to compare with. Manual runs are left out. Times under an hour are rounded to whole minutes: the demo's one targeted run skipped 3 of 5 tests of a suite that takes well under a minute, so its saving reads *0 min*.
 
 ## 6. Proposal outcomes
 
@@ -123,7 +123,7 @@ Links to related numbers that live on their own pages and are not repeated here:
 - **You see only what you can access.** The workspace scope adds up only the projects you can read.
 - **Days are UTC days.** The period runs from midnight UTC on the first day to the end of the last day.
 - **Ratings are made by people.** Only editors can rate an AI explanation, and an API key (used by scripts and agents) can't, so an agent can't rate its own work. If the analysis is regenerated after you open the page, your vote is refused rather than counted against a different explanation.
-- **Small samples.** The demo's 24.1 hours comes from 2 problems. Read any number with a small sample as a direction, not a result.
+- **Small samples.** The demo's 24.6 hours comes from 3 problems. Read any number with a small sample as a direction, not a result.
 - **Not in shared links.** Unlike the PoC report and the executive summary, the Value report can't be shared as a public link; print it instead.
 
 ## Related pages

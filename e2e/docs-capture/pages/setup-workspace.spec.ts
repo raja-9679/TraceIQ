@@ -13,7 +13,7 @@ async function openDemo(page: Page) {
     await expect(page.getByRole('tablist', { name: 'Workspace sections' })).toBeVisible();
     await settle(page);
     // The page opens on the account's first workspace; the pictures show the demo.
-    await page.getByRole('combobox', { name: 'Workspace' }).click();
+    await page.getByRole('combobox', { name: 'Workspace', exact: true }).click();
     await page.getByRole('option', { name: /Demo workspace/ }).click();
     await expect(page.getByRole('heading', { name: /Demo workspace/, level: 1 })).toBeVisible();
     await settle(page);
@@ -29,7 +29,7 @@ test('Setup › Workspace', async ({ page, browser }) => {
     await page.screenshot({ path: out(`${DIR}/page.png`) });
 
     // 2. Its parts, numbered.
-    const picker = page.getByRole('combobox', { name: 'Workspace' });
+    const picker = page.getByRole('combobox', { name: 'Workspace', exact: true });
     const tabs = page.getByRole('tablist', { name: 'Workspace sections' });
     const invite = main.getByRole('button', { name: 'Invite people' });
     const list = main.locator('section').filter({ has: page.getByText('Members', { exact: true }) }).first();
@@ -63,7 +63,10 @@ test('Setup › Workspace', async ({ page, browser }) => {
 
     await tab(page, 'Teams').click();
     await settle(page);
-    await expect(main.getByText('No teams created yet')).toBeVisible();
+    const teamDetail = main.getByRole('article', { name: 'Selected team' });
+    await expect(teamDetail.getByText('QA engineers')).toBeVisible();
+    await settle(page);
+    await teamDetail.screenshot({ path: out(`${DIR}/team-detail.png`) });
     await main.getByRole('button', { name: 'New team' }).click();
     const teamDialog = page.getByRole('dialog', { name: 'New team' });
     await expect(teamDialog).toBeVisible();
@@ -102,7 +105,7 @@ test('Setup › Workspace', async ({ page, browser }) => {
         const m = p.locator('main');
         await caption(p, 'A workspace holds your projects and the people who work on them.', 1600);
         await caption(p, 'If you belong to several workspaces, pick one here.');
-        const pick = p.getByRole('combobox', { name: 'Workspace' });
+        const pick = p.getByRole('combobox', { name: 'Workspace', exact: true });
         await pointAt(p, pick, 900);
         await pick.click();
         await beat(p, 900);
@@ -118,7 +121,9 @@ test('Setup › Workspace', async ({ page, browser }) => {
         await tab(p, 'Teams').click();
         await settle(p);
         await caption(p, 'Teams group people, so a whole team can be given access to a project at once.');
-        await pointAt(p, m.getByRole('button', { name: 'New team' }), 2600);
+        await pointAt(p, m.getByRole('article', { name: 'Selected team' }), 2600);
+        await caption(p, 'New team makes another one.');
+        await pointAt(p, m.getByRole('button', { name: 'New team' }), 1800);
         await caption(p, '');
         await tab(p, 'Projects').click();
         await settle(p);

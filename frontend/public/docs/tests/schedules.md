@@ -44,13 +44,13 @@ The search box keeps only schedules whose name, description or timing contains w
 
 ## 3. The list
 
-![A box titled Paused with one schedule: Public API health (demo, paused), Paused · Test case #18, and the timing 0 */6 * * * · UTC](../media/tests/schedules/list.png)
+![A box titled Paused with one schedule: Public API health (demo, paused), Paused · Test case #45, and the timing 0 */6 * * * · UTC](../media/tests/schedules/list.png)
 
 Schedules are boxed into **Active** and **Paused**. Each row shows the schedule's name, when it runs next (or "Paused"), what it runs, and its timing. The icon is a folder for a whole suite (or sub-module) and a page for a single test, in colour while active and grey while paused. **Click a row** to show it on the right.
 
 ## 4. The four facts
 
-![Four boxes: Next run Paused, Last run Oct 21, Runs Test case #18, Browser and device chromium](../media/tests/schedules/facts.png)
+![Four boxes: Next run Paused, Last run Oct 22, Runs Test case #45, Browser and device chromium](../media/tests/schedules/facts.png)
 
 | Fact | What it tells you |
 |---|---|

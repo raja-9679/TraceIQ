@@ -60,27 +60,31 @@
           It shows the project selected at the top of the sidebar.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo has no stored accessibility scans yet, so the screenshot shows the page before
-          its first result. The numbers match the sections below; the parts that appear once there
-          are results are described after them.</p>
+        <p>The demo's web project runs an accessibility check on its landing page in every run, so
+          the page shows a month of results. The numbers on the screenshot match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/tests/accessibility/page-annotated.png" alt="The Accessibility page with three numbered parts: 1 the Window menu, 2 the note No accessibility scans yet, 3 the Waivers box with a New waiver button" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/tests/accessibility/page-annotated.png" alt="The Accessibility page with four numbered parts: 1 the Window menu set to Last 30 days, 2 the five number tiles (critical, serious, moderate and minor all 0, waived 1), followed by the Violations by impact chart and the New per day and Fixed per day strips, 3 the Open violations table with one waived moderate problem, 4 the Waivers box with one waiver and a New waiver button" loading="lazy" width="1440" height="1160"></div>
           <figcaption>The Accessibility page for the demo's web project. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="window" data-toc="① Window">Window</h2></div>
         <p>How far back to look: the last 7, 30 (shown first), 90 or 180 days of runs.</p>
 
-        <div class="part"><span class="num">2</span><h2 id="results" data-toc="② The results">The results</h2></div>
-        <p>Until a test with a <em>check-accessibility</em> step has run in the window, this place
-          says <em>"No accessibility scans yet"</em>. Once there are scans, it fills with four
-          parts:</p>
+        <div class="part"><span class="num">2</span><h2 id="results" data-toc="② The numbers and charts">The numbers and charts</h2></div>
+        <figure>
+          <div class="frame small"><img src="../media/tests/accessibility/tiles.png" alt="Five tiles: Critical 0, Serious 0, Moderate 0, Minor 0, each open in the latest scans, and Waived 1, 0 new since the previous run" loading="lazy"></div>
+        </figure>
         <ul>
-          <li><strong>Five number tiles</strong>: how many <em>critical</em>, <em>serious</em>, <em>moderate</em> and <em>minor</em> problems are open in the latest scans, and how many are <em>waived</em> (with how many are new since the run before).</li>
+          <li><strong>Five number tiles</strong>: how many <em>critical</em>, <em>serious</em>, <em>moderate</em> and <em>minor</em> problems are open in the latest scans, and how many are <em>waived</em> (with how many are new since the run before). A waived problem counts under Waived, not under its impact.</li>
           <li><strong>Violations by impact</strong>: a bar per day, stacked by how serious the problems were, with the number of runs and scans it is based on.</li>
           <li><strong>New per day</strong> and <strong>Fixed per day</strong>: problems that appeared, and problems that went away, compared with the previous run of the same test.</li>
-          <li><strong>Open violations</strong>: a table of the problems in the latest scan of each test (see below).</li>
         </ul>
+        <figure>
+          <div class="frame"><img src="../media/tests/accessibility/trend.png" alt="The Violations by impact chart: a bar per day for 30 days, mostly moderate (yellow), one day with a serious problem (orange) as well, and the line 59 runs, 59 scans in the last 30 days" loading="lazy"></div>
+          <figcaption>In the demo, one run found a serious problem (orange) as well as the usual moderate ones; the next run no longer had it.</figcaption>
+        </figure>
+        <p>Until a test with a <em>check-accessibility</em> step has run in the window, this part
+          of the page only says <em>"No accessibility scans yet"</em>.</p>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Impact</th><th>What it means</th></tr></thead>
@@ -92,7 +96,11 @@
             </tbody>
           </table>
         </div>
-        <p>Each row of <strong>Open violations</strong> shows the impact, the <strong>rule</strong>
+        <div class="part"><span class="num">3</span><h2 id="open" data-toc="③ Open violations">Open violations</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/tests/accessibility/open-violations.png" alt="The Open violations table with one row: impact moderate, rule region, target body > div > p, page https://example.com/ and the test No serious accessibility violations, 2 nodes, status waived" loading="lazy"></div>
+        </figure>
+        <p>The problems in the latest scan of each test. Each row shows the impact, the <strong>rule</strong>
           (click it for the axe explanation of what is wrong and how to fix it), the
           <strong>target</strong> (the selector of the element, see <em>Suites</em>), the page and
           test, the number of matching elements ("nodes"), and its status:
@@ -101,12 +109,17 @@
           <strong>Waive</strong> button that opens the waiver form already filled in for that rule
           and element.</p>
 
-        <div class="part"><span class="num">3</span><h2 id="waivers" data-toc="③ Waivers">Waivers</h2></div>
+        <div class="part"><span class="num">4</span><h2 id="waivers" data-toc="④ Waivers">Waivers</h2></div>
         <p>A <strong>waiver</strong> says "we know about this problem and accept it until a set
           date". While it lasts, matching problems are shown as waived and don't count against the
-          <em>quality gate</em> (see Good to know). <strong>New waiver</strong> opens the form:</p>
+          <em>quality gate</em> (see Good to know).</p>
         <figure>
-          <div class="frame"><img src="../media/tests/accessibility/waiver-form.png" alt="The Waivers box with its New waiver form: Rule (color-contrast), Selector pattern (* matches anything) set to *, Reason (Vendor widget, fix scheduled), Length (days, max 90) 30, Owner Me, and Add waiver and Cancel buttons" loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/accessibility/waivers.png" alt="The Waivers box: a New waiver button, a note on what waivers do, and one waiver, region on body > div *, with its reason, owner Alex Morgan, 40 days left, and Renew 30 days and Remove buttons" loading="lazy"></div>
+        </figure>
+        <p><strong>New waiver</strong> opens the form. Once there are scans it opens above the
+          Open violations table; before the first scan, inside the Waivers box.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/accessibility/waiver-form.png" alt="The New waiver form: Rule (example color-contrast), Selector pattern (* matches anything) set to *, Reason (example Vendor widget, fix scheduled), Length (days, max 90) 30, Owner Me, the note Rule must be an axe rule id, and Add waiver (greyed out) and Cancel buttons" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>

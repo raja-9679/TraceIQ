@@ -34,14 +34,24 @@ test('Security › Audit log', async ({ page, browser }) => {
         { n: 2, target: buttons },
         { n: 3, target: filters },
         { n: 4, target: table },
-        { n: 5, target: paging },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
 
     // 3. Close-ups.
     await filters.screenshot({ path: out(`${DIR}/filters.png`) });
-    await table.screenshot({ path: out(`${DIR}/table.png`) });
+    // The demo log has many entries: keep only the table's first eight rows.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const top = await table.boundingBox();
+    const eighth = await table.locator('tbody tr').nth(7).boundingBox();
+    if (top && eighth) {
+        await page.setViewportSize({ width: 1440, height: Math.ceil(eighth.y + eighth.height) + 40 });
+        await page.screenshot({ path: out(`${DIR}/table.png`),
+            clip: { x: top.x, y: top.y, width: top.width, height: eighth.y + eighth.height - top.y + 2 } });
+        await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    await paging.scrollIntoViewIfNeeded();
+    await paging.screenshot({ path: out(`${DIR}/paging.png`) });
     await main.getByRole('button', { name: 'Details' }).first().click();
     await expect(main.locator('pre').first()).toBeVisible();
     await main.locator('pre').first().locator('xpath=ancestor::tr[1]').screenshot({ path: out(`${DIR}/details.png`) });

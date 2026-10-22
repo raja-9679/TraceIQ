@@ -33,17 +33,17 @@ Agents answer **"What have the AI tools been doing here, and how do I keep them 
 
 ## A tour of the screen
 
-On the left: the agents, a box to set controls for a new agent, and the defaults for all agents. On the right: the agent you open. In the demo workspace no AI agent has worked yet, so the list is empty. The numbers match the sections below.
+On the left: the agents, a box to set controls for a new agent, and the defaults for all agents. On the right: the agent you open. In the demo workspace one AI agent, `claude-code`, has run the web tests from a feature branch and filed a few proposals. The numbers match the sections below.
 
-![The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent demo-seed, 5 its sessions](../media/setup/agents/page-annotated.png)
+![The Agents page with five numbered parts: 1 the list of agents, 2 the box to set controls for an agent id, 3 the defaults for every agent, 4 the controls for the opened agent claude-code, 5 its sessions; below them the timeline of its one session](../media/setup/agents/page-annotated.png)
 
-*The Agents page for the demo workspace, with demo-seed opened. Click the picture to see it larger.*
+*The Agents page for the demo workspace, with claude-code opened and its session's timeline shown. Click the picture to see it larger.*
 
 If you belong to more than one workspace, a **Workspace** menu sits under the heading. The page opens on the workspace of the project selected in the sidebar.
 
 ## 1. Agents
 
-![The Agents card listing schedule:4 and demo-seed, each with 0 sessions, 120 runs, 0 cases, 0 proposals, 0 tokens, a last-seen time, No limits, and an Open button](../media/setup/agents/list.png)
+![The Agents card listing claude-code with a 1 refused label: 1 session, 5 runs, 0 cases, 7 proposals, 16k tokens, a last-seen time, No limits, and a Selected button](../media/setup/agents/list.png)
 
 Every agent id that has worked in this workspace, the most recently active first. An agent appears once it has started a run, created a test, filed a proposal, or worked in a budgeted session. For each one:
 
@@ -54,7 +54,7 @@ Every agent id that has worked in this workspace, the most recently active first
 
 > **Not everything here is an AI**
 >
-> Runs started by a TraceIQ *schedule* or monitor carry the name `schedule:` plus the schedule's number, and the demo's sample history carries `demo-seed`. These are not AI agents, so the list leaves them out, unless someone has set controls for one of those names.
+> Runs started by a TraceIQ *schedule* or monitor carry the name `schedule:` plus the schedule's number, and older demo workspaces tagged their sample history `demo-seed`. These are not AI agents, so the list leaves them out, unless someone has set controls for one of those names.
 
 ## 2. Set controls for an agent id
 
@@ -68,7 +68,7 @@ The same controls as for one agent (see ④), applied to every agent that has no
 
 ## 4. Controls for one agent
 
-![The Controls for demo-seed card with a Block this agent (kill switch) checkbox, four limit boxes for runs, LLM tokens, proposals and minutes per session, and a Save button](../media/setup/agents/controls.png)
+![The Controls for claude-code card with a Block this agent (kill switch) checkbox, four limit boxes for runs, LLM tokens, proposals and minutes per session, and a Save button](../media/setup/agents/controls.png)
 
 - **Block this agent (kill switch)**: tick it and save, and the agent is refused every change it tries in this workspace: no runs, tests, suites or proposals, and its AI calls are skipped. It can still *read*, so it can report what happened. When ticked, a **Reason** box appears; the agent is shown that text.
 - **Four limits per session:**
@@ -84,11 +84,15 @@ Leave a box **empty** to inherit (the agent's own value, then the workspace defa
 
 ## 5. Sessions and timeline
 
-![The Sessions card saying No sessions recorded](../media/setup/agents/sessions.png)
+![The Sessions card with one session, demo-4dafe57dd589: Runs 3, proposals 3, tokens 16k, 1 refused, its first and last times, and a Showing timeline button](../media/setup/agents/sessions.png)
 
-One row per session of the opened agent, newest first (up to 100): its name, Out of runs (or tokens, proposals) when a budget is spent, how much it used against each limit (for example *Runs 12 / 50*), how many times it was refused, and when it started and last did something. The demo's two entries never send a session name, so it says *"No sessions recorded"*.
+One row per session of the opened agent, newest first (up to 100): its name, Out of runs (or tokens, proposals) when a budget is spent, how much it used against each limit (for example *Runs 12 / 50*), how many times it was refused, and when it started and last did something. Usage without a limit is shown as a plain count (*Runs 3*). An agent with no sessions shows *"No sessions recorded"*.
 
 **Show timeline** opens the **Session timeline** below it: everything that session did, newest first (up to 500 items), each with a coloured label and, where there is one, a link:
+
+![The Session timeline of the demo session: three pending proposals, runs of Web smoke (demo) that passed or failed, AI case_generation calls with their tokens, and one Refused item: the agent budget of 20 runs was used up](../media/setup/agents/timeline.png)
+
+*The demo session's timeline: runs, AI calls, proposals and one refusal.*
 
 | Label | What happened |
 |---|---|
@@ -158,11 +162,12 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Agents are programs, often AI assistants, that use TraceIQ on someone's behalf.
 2. This list shows every agent name seen in the workspace, with what it did.
-3. In the demo, these two are the monitor schedule and the sample-data generator.
+3. In the demo, claude-code ran the web tests from a feature branch.
 4. Open an agent to see its controls and its sessions.
 5. The kill switch stops this agent from changing anything here. It can still read.
 6. Budgets limit each session: runs, AI tokens, proposals and minutes.
 7. An empty box inherits the default. Zero means no limit.
-8. Sessions appear when an agent sends a session name with its requests.
-9. Defaults for every agent apply to any agent without its own controls.
-10. Changes only take effect when an admin presses Save.
+8. Each session shows what it used against its limits, and what was refused.
+9. Show timeline lists everything that session did, newest first.
+10. Defaults for every agent apply to any agent without its own controls.
+11. Changes only take effect when an admin presses Save.

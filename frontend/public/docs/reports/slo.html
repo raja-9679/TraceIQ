@@ -79,7 +79,7 @@
 
         <div class="part"><span class="num">2</span><h2 id="status" data-toc="② Name, target and status">Name, target and status</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/slo/monitor-head.png" alt="Public API health (demo, paused). Last 30 days, 119 checks, target 99%. A label Target breached and an Edit targets button" loading="lazy"></div>
+          <div class="frame"><img src="../media/reports/slo/monitor-head.png" alt="Public API health (demo, paused). Last 30 days, 118 checks, target 99%. A label Target breached and an Edit targets button" loading="lazy"></div>
         </figure>
         <p>The monitor's name, then the window, the number of checks in it and the availability
           target. "(default target)" means no target has been set, so TraceIQ uses
@@ -99,14 +99,14 @@
 
         <div class="part"><span class="num">3</span><h2 id="tiles" data-toc="③ The four tiles">The four tiles</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/slo/tiles.png" alt="Four tiles: Compliance 98.32% (117 good, 2 failed checks); Error budget left -68.1% (2 of 1.19 allowed failures spent); Burn rate 1.68× (last 24 h 0.00×); Latency p95 984 ms, Within target, target 1.5 s" loading="lazy"></div>
+          <div class="frame"><img src="../media/reports/slo/tiles.png" alt="Four tiles: Compliance 98.31% (116 good, 2 failed checks); Error budget left -69.5% (2 of 1.18 allowed failures spent); Burn rate 1.69× (last 24 h 0.00×); Latency p95 984 ms, Within target, target 1.5 s" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Tile</th><th>What it means</th></tr></thead>
             <tbody>
               <tr><td><strong>Compliance</strong></td><td>The share of checks in the window that were good. Underneath: how many were good and how many failed.</td></tr>
-              <tr><td><strong>Error budget left</strong></td><td>The <strong>error budget</strong> is how many failed checks the target allows. With a 99% target and 119 checks, 1% of 119 = 1.19 checks may fail. The tile shows how much of that is left: 100% = no failures yet, 0% = used up exactly. <strong>Below zero means overspent</strong>: in the example, 2 failures against 1.19 allowed is −68.1%. The bar is green, turns yellow under 25% and red at 0% or below.</td></tr>
+              <tr><td><strong>Error budget left</strong></td><td>The <strong>error budget</strong> is how many failed checks the target allows. With a 99% target and 118 checks, 1% of 118 = 1.18 checks may fail. The tile shows how much of that is left: 100% = no failures yet, 0% = used up exactly. <strong>Below zero means overspent</strong>: in the example, 2 failures against 1.18 allowed is −69.5%. The bar is green, turns yellow under 25% and red at 0% or below.</td></tr>
               <tr><td><strong>Burn rate</strong></td><td>How fast the budget is being used. <strong>1×</strong> uses it up exactly at the end of the window; 2× twice as fast; under 1× leaves some over. The big number is for the whole window; the line underneath is for the last 24 hours, the early warning.</td></tr>
               <tr><td><strong>Latency p95</strong></td><td>How long checks took: 95% of checks were this quick or quicker, so a few slow ones don't hide behind the average. It is the duration of the check's whole test run. With a latency target set, a label says <span class="pill t-mint">Within target</span> or <span class="pill t-peach">Over target</span>.</td></tr>
             </tbody>

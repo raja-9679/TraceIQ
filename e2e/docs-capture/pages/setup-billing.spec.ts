@@ -4,7 +4,8 @@ import { annotate, beat, caption, out, pointAt, record, settle } from '../captur
 // Guide page: frontend/public/docs/setup/billing.html
 // Nothing here changes data: no plan button ("Switch to …" / "Upgrade") is
 // ever pressed. The capture stack has no plans and no Stripe, so the demo
-// workspace shows "No plan (unlimited)", manual billing and an empty Plans list.
+// workspace shows "No plan (unlimited)" and manual billing; the Plans section
+// is hidden when there are no plans. The meters show the demo's seeded usage.
 
 const DIR = 'setup/billing';
 
@@ -17,6 +18,10 @@ async function openDemoWorkspace(p: Page) {
     await p.getByRole('option', { name: 'Demo workspace' }).click();
     await settle(p);
     await expect(p.getByText(/Current plan:/)).toBeVisible();
+    // The page asks /admin/instance-admins to learn whether the viewer is the
+    // instance admin; for anyone else that 403 pops a "Permission Denied"
+    // toast (an app bug, reported). Let it time out before taking pictures.
+    await expect(p.locator('[data-sonner-toast]')).toHaveCount(0, { timeout: 15_000 });
 }
 
 test('Setup › Billing', async ({ page, browser }) => {
@@ -31,14 +36,13 @@ test('Setup › Billing', async ({ page, browser }) => {
     const current = main.getByRole('region', { name: 'Current plan' });
     const heading = current.getByText(/Current plan:/).locator('xpath=ancestor::div[contains(@class,"justify-between")][1]');
     const meters = current.locator('div.grid').first();
-    const plans = main.getByRole('region', { name: 'Plans' });
+    await expect(main.getByRole('region', { name: 'Plans' })).toHaveCount(0);
     const note = main.getByText(/Plan changes take effect immediately/);
     const clean = await annotate(page, [
         { n: 1, target: main.getByRole('combobox', { name: 'Workspace' }), side: 'right' },
         { n: 2, target: heading },
         { n: 3, target: meters },
-        { n: 4, target: plans },
-        { n: 5, target: note },
+        { n: 4, target: note },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
@@ -73,9 +77,8 @@ test('Setup › Billing', async ({ page, browser }) => {
         await pointAt(p, cur.getByText('LLM tokens this month', { exact: true }), 1400);
         await caption(p, 'With a limit, the bar fills up and turns yellow, then orange, as it gets close.');
         await pointAt(p, cur.locator('[role="img"]').first(), 2200);
-        await caption(p, 'Plans lists the plans on offer, with their limits and a button to switch.');
-        await pointAt(p, m.getByRole('heading', { name: 'Plans' }), 2200);
-        await caption(p, 'This server has no plans set up, so the list is empty.');
+        await caption(p, 'When the server offers plans, they are listed below, with a button to switch.');
+        await caption(p, 'This server has no plans set up, so only the note about plan changes follows.');
         await pointAt(p, m.getByText(/Plan changes take effect immediately/), 2200);
         await caption(p, '');
     });

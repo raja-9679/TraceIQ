@@ -60,10 +60,11 @@
           The page's own heading says <strong>Frontend Quality</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo has no crawls or measurements yet, so the pictures show each tab as it looks
-          before its first result. The numbers match the sections below.</p>
+        <p>The demo's web project has one saved crawl of example.com with two runs, a month of page
+          measurements and a few selectors that broke, so every tab has something to show. The
+          numbers match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/page-annotated.png" alt="The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the list of crawls, empty" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/page-annotated.png" alt="The Frontend Quality page with four numbered parts: 1 the Project picker, 2 the four tabs, 3 the crawler's description and New crawl button, 4 the crawl example.com link check (demo) with its latest run and its table of problems" loading="lazy" width="1440" height="900"></div>
           <figcaption>The Frontend Quality page for the demo's web project, on its first tab. Click the picture to see it larger.</figcaption>
         </figure>
 
@@ -108,6 +109,10 @@
         </div>
 
         <div class="part"><span class="num">4</span><h2 id="crawls" data-toc="④ Crawls and their problems">Crawls and their problems</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/tests/frontend-quality/crawl.png" alt="The crawl example.com link check (demo): https://example.com/, depth 2, up to 50 pages, Run now and Delete; Run #2, completed, 6 pages, 31 links checked, 1 skipped by robots.txt; tick boxes per problem type with their counts and per element kind, a Search URLs box, and a table of five problems: a broken link to /careers (HTTP 404), a stylesheet loaded over http (mixed content), a long redirect chain for /team, a slow /pricing page (3650 ms), and a link to maps.example.net that was not checked" loading="lazy"></div>
+          <figcaption>The demo's crawl, on its latest run.</figcaption>
+        </figure>
         <p>Each saved crawl is a box with its start address and limits, <strong>Run now</strong> and
           <strong>Delete</strong>. After a run, a <strong>Run</strong> menu picks one of its runs and
           the box shows how many pages were crawled and links checked, then a table of problems with
@@ -130,9 +135,10 @@
 
         <h2 id="budgets" data-toc="Page budgets">Page budgets</h2>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: a description and No page-budget samples yet." loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/budgets.png" alt="The Page budgets tab: the page https://example.com/ on the left (59 samples, 8 over budget); on the right its latest run: LCP 2032 ms, CLS 0.016, INP no data, TTFB 216 ms, page weight 837 KB, 23 requests; Budgets (latest run) all within; SEO checks: title, h1 and lang ok, a warning for a missing meta description" loading="lazy"></div>
         </figure>
-        <p>Nothing appears here until a test contains a <strong>check-page-budget</strong> step. Then
+        <p>In the demo, the test <em>Homepage loads</em> measures example.com's home page. Nothing
+          appears here until a test contains a <strong>check-page-budget</strong> step. Then
           every run of that test measures the page, and this tab lists the pages measured in the last
           30 days, those that went over budget first. Click a page to see, for its latest run and as
           small bars for recent runs:</p>
@@ -144,7 +150,7 @@
 
         <h2 id="selectors" data-toc="Selector health">Selector health</h2>
         <figure>
-          <div class="frame"><img src="../media/tests/frontend-quality/selectors.png" alt="The Selector health tab: a description, a Window menu set to Last 90 days, 0 selectors, 0 heals, 0 failures, and No selector trouble in this window." loading="lazy"></div>
+          <div class="frame"><img src="../media/tests/frontend-quality/selectors.png" alt="The Selector health tab: a Window menu set to Last 90 days, the line 2 selectors, 1 heal, 7 failures, and two selectors: #todo-list li in Add a todo (6 failed, 1 heal proposal) with the sturdier locator [data-testid=todo-item] and a Copy button, and h1 in Homepage loads (1 failed) with role=heading[name=Example Domains]" loading="lazy"></div>
         </figure>
         <p>A <strong>selector</strong> is the short code a test step uses to find an element on the
           page. When a page changes, selectors break. This tab lists the ones with the most trouble

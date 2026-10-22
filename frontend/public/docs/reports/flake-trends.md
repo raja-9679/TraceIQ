@@ -47,7 +47,7 @@ The page shows the project selected at the top of the sidebar. The upper half is
 
 ## 2. Flaky tests over time
 
-![A chart from 2026-09-22 to 2026-10-21 with a yellow area and a dark line. Underneath: Latest: 1 flaky cases (score ≥ 33%), 0 quarantined](../media/reports/flake-trends/over-time.png)
+![A chart from 2026-09-23 to 2026-10-22 with a yellow area and a dark line. Underneath: Latest: 1 flaky cases (score ≥ 33%), 0 quarantined](../media/reports/flake-trends/over-time.png)
 
 One point per day, oldest on the left.
 
@@ -66,23 +66,23 @@ The line underneath gives the latest day's figures: the number of flaky tests an
 
 ## 3. The flakiest tests
 
-![Flakiest tests: score history. One row: Add a todo, a small red line rising slightly, and 40%](../media/reports/flake-trends/flakiest.png)
+![Flakiest tests: score history. One row: Add a todo, a small red line rising slightly, and 41%](../media/reports/flake-trends/flakiest.png)
 
 Up to 8 tests with the highest flakiness score in the latest snapshot (tests scoring 0% are left out). For each: a small line of how its score moved over the trend period (bottom = 0%, top = 100%), and its latest score. A line going up is a test that is getting flakier. The box is hidden when no test has a score.
 
 ## 4. Patterns summary
 
-![Patterns, last 30 days: 9 of 300 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more.](../media/reports/flake-trends/summary.png)
+![Patterns, last 30 days: 9 of 312 finished results were flaky. Rates are per result in each group, so a busy browser does not look flakier just for running more.](../media/reports/flake-trends/summary.png)
 
 How many of the period's finished test results were flaky. In the boxes below, every figure is a **rate** within its group, so a browser that runs ten times as often doesn't look ten times as flaky.
 
 ## 5. Where flakiness gathers
 
-![Four boxes. By browser: chromium 3.0% flaky, 9/300, 3.3% failed. By environment: local, the same figures. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: unknown (no per-step evidence), 9 flaky, 10 failed](../media/reports/flake-trends/patterns.png)
+![Four boxes. By browser: chromium 2.9% flaky, 9/307, 3.3% failed; manual 0.0% flaky, 0/5, 40.0% failed. By environment: local with the chromium figures, and default (no environment) with the manual ones. By time of day (UTC): two yellow bars, around 02:00 and 14:00. By failing step type: expect-visible 6 failed, expect-cookie-flags 2, check-accessibility 1, expect-text 1, and unknown (no per-step evidence) 9 flaky, 2 failed](../media/reports/flake-trends/patterns.png)
 
 | Box | What it shows |
 |---|---|
-| **By browser** | One row per browser, the flakiest first: "3.0% flaky · 9/300 · 3.3% failed" means 9 of its 300 results were flaky (3.0%), and 3.3% failed or ended in error. |
+| **By browser** | One row per browser, the flakiest first: "2.9% flaky · 9/307 · 3.3% failed" means 9 of its 307 results were flaky (2.9%), and 3.3% failed or ended in error. Results of manual test runs (see *Release sign-off*) are grouped as "manual". |
 | **By environment** | The same per environment. Runs without an environment are grouped as "default (no environment)". |
 | **By time of day (UTC)** | 24 bars, one per hour of the day in UTC, by when the run started. The taller the bar, the higher that hour's flaky rate. A grey stub means no run started in that hour. |
 | **By failing step type** | For flaky and failed results: the kind of step that failed first (for example a click, or an expected text). The bar is the total; the text splits it into flaky and failed. "unknown (no per-step evidence)" counts results that didn't record their steps, or flaky ones that passed in the end and so have no failed step. |

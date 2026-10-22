@@ -28,13 +28,13 @@ API keys answer **"How do our other tools talk to TraceIQ safely?"** The *API* i
 
 ## A tour of the screen
 
-The numbers on the screenshot match the sections below. The demo workspace has no keys, so the picture shows the page before the first key is made.
+The numbers on the screenshot match the sections below. The demo workspace has two keys that no longer work: one expired, one revoked.
 
-![The API keys page with three numbered parts: 1 the Workspace menu, 2 the New API key button, 3 the list of keys, here empty with the text No API keys yet](../media/setup/api-keys/page-annotated.png)
+![The API keys page with four numbered parts: 1 the Workspace menu, 2 the New API key button, 3 the list of keys with an Expired group (Claude Code — trial week) and a Revoked group (GitHub Actions (rotated)), 4 the selected key's details](../media/setup/api-keys/page-annotated.png)
 
 *The API keys page for the demo workspace. Click the picture to see it larger.*
 
-The line under the heading counts the keys, for example *"2 active of 3"*.
+The line under the heading counts the keys, here *"0 active of 2"*.
 
 ## 1. Workspace
 
@@ -49,7 +49,7 @@ Opens the form for a new key:
 | Field | What it does |
 |---|---|
 | **Name** | Required. Say who uses the key, such as "ci-regression-bot" or "claude-code", so it can be recognised later. |
-| **Project scope** | *Entire workspace*, or one project. Limit it to one project whenever you can: a key for one project is refused for other projects' runs, results, reports and quality gates. (In this version that limit is not yet applied everywhere, for example not to reading suites and tests, so don't rely on it alone.) |
+| **Project scope** | *Entire workspace*, or one project. Limit it to one project whenever you can: a key for one project is refused for everything in other projects: suites, tests, runs, results, reports and quality gates. |
 | **Role limit** | Optional cap on what the key may do: Project Viewer, Editor or Admin, or Workspace Member or Admin. *Default* means no extra cap. It never gives the key more than its creator has (see below). |
 | **Expires in (days)** | After this many days the key stops working by itself. Empty means it never expires. |
 | **Allowed source IPs** | Optional. Network addresses (written like `203.0.113.0/24`, separated by commas) the key may be used from. A request from anywhere else is refused and recorded in the audit log. Empty means any address. |
@@ -66,14 +66,22 @@ Press **Create key**. A yellow box marked Shown once then shows the whole key, w
 
 ## 3. The list of keys
 
-![An empty list with the title No API keys yet](../media/setup/api-keys/empty.png)
+![The list of keys: an Expired group with Claude Code — trial week (Entire workspace) and a Revoked group with GitHub Actions (rotated) (Demo — Todo web app), each with when it was last used and the start of its key](../media/setup/api-keys/list.png)
 
-Once there are keys, they are listed in three groups, **Active keys**, **Expired** and **Revoked**, newest first. Each row shows the key's name, its scope (a project, or "Entire workspace"), when it was last used, and the first few characters of the key, so you can tell keys apart without seeing them. Click a key to see its details on the right:
+Keys are listed in up to three groups, **Active keys**, **Expired** and **Revoked** (a group with no keys is left out). Each row shows the key's name, its scope (a project, or "Entire workspace"), when it was last used, and the first few characters of the key, so you can tell keys apart without seeing them. A workspace with no keys at all shows *"No API keys yet"*.
+
+## 4. The selected key
+
+![The details of the revoked key GitHub Actions (rotated): Revoked label, Key tiq_demo5939…, Scope Demo — Todo web app, Source IPs Any address, Last used and Revoked dates, and a note that it no longer authenticates](../media/setup/api-keys/detail-revoked.png)
+
+*A revoked key. Expired and revoked keys have no buttons.*
+
+Click a key to see its details on the right (the first key is shown until you pick another):
 
 - **Status**: Active, Expired or Revoked.
 - **Key, Scope, Source IPs, Last used**, and when it expires (or was revoked).
-- **Edit source IPs** changes the allowed addresses. Only the key's creator or a workspace admin may do this.
-- **Revoke key** switches it off for good, after you confirm. Everything using it loses access at once. A revoked key stays in the list, so its history can still be traced.
+- **Edit source IPs** (active keys only) changes the allowed addresses. Only the key's creator or a workspace admin may do this.
+- **Revoke key** (active keys only) switches it off for good, after you confirm. Everything using it loses access at once. A revoked key stays in the list, so its history can still be traced.
 
 ## Watch it in use
 
@@ -135,10 +143,10 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. A P I keys let other tools, such as a C I pipeline or an A I agent, use TraceIQ without a person signing in.
 2. Keys belong to a workspace. Pick the workspace here.
-3. This workspace has no keys yet, so the list is empty.
+3. Keys are listed as active, expired or revoked. The demo has one expired and one revoked key.
 4. New API key opens a short form.
 5. Give it a name that says who uses it, and if you can, limit it to one project.
 6. You can let it expire after a number of days, and accept it only from certain addresses.
-7. The Role is saved with the key, but a key always acts with its creatoru2019s own access.
+7. The role limit caps what the key may do. It never gets more than its creatoru2019s own access.
 8. After Create key, the full key is shown once. Copy it then: it can never be shown again.
-9. Each key in the list shows when it was last used, and has a Revoke button to switch it off at once.
+9. Click a key to see when it was last used. An active key also has a Revoke button.

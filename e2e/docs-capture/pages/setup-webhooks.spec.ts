@@ -2,9 +2,9 @@ import { expect, test, type Page } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/setup/webhooks.html
-// Nothing here changes data. The demo workspace has no webhooks (and never
-// sends any), so the pictures show the empty page and the "New webhook" form,
-// filled in with example values and then cancelled — "Create webhook" is never
+// Nothing here changes data. The demo workspace has one disabled webhook with
+// a seeded delivery log (a demo never sends any). The pictures show it, and the
+// "New webhook" form, filled in with example values and then cancelled — "Create webhook" is never
 // pressed, so no webhook and no signing secret is ever made.
 
 const DIR = 'setup/webhooks';
@@ -18,16 +18,25 @@ async function openDemoWorkspace(p: Page) {
     await picker.click();
     await p.getByRole('option', { name: 'Demo workspace' }).click();
     await settle(p);
-    await expect(p.getByText('No webhooks yet')).toBeVisible();
+    await expect(p.locator('main').getByRole('article', { name: 'Selected webhook' })).toBeVisible();
 }
 
 test('Setup › Webhooks', async ({ page, browser }) => {
     await openDemoWorkspace(page);
     const main = page.locator('main');
 
-    // 1. The page as the demo workspace shows it: no webhooks yet.
+    // 1. The page as the demo workspace shows it: one disabled webhook.
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.screenshot({ path: out(`${DIR}/page.png`) });
+    const detail = main.getByRole('article', { name: 'Selected webhook' });
+    await expect(detail.getByText('Recent deliveries')).toBeVisible();
+    await settle(page);
+    await page.setViewportSize({ width: 1440, height: 1600 });
+    await settle(page);
+    await detail.screenshot({ path: out(`${DIR}/detail.png`) });
+    await main.getByRole('heading', { name: 'Disabled' }).locator('xpath=ancestor::section[1]').screenshot({ path: out(`${DIR}/list.png`) });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => window.scrollTo(0, 0));
 
     // 2. The "New webhook" form, filled with example values (never submitted).
     await main.getByRole('button', { name: 'New webhook' }).click();
@@ -91,8 +100,8 @@ test('Setup › Webhooks', async ({ page, browser }) => {
         await beat(p, 900);
         await p.getByRole('option', { name: 'Demo workspace' }).click();
         await settle(p);
-        await caption(p, 'This workspace has none yet. New webhook opens the form.');
-        await pointAt(p, m.getByText('No webhooks yet'), 1400);
+        await caption(p, 'The demo has one webhook, switched off, with its recent deliveries. New webhook opens the form.');
+        await pointAt(p, m.getByRole('article', { name: 'Selected webhook' }), 1400);
         const nb = m.getByRole('button', { name: 'New webhook' });
         await pointAt(p, nb, 800);
         await nb.click();
@@ -122,8 +131,8 @@ test('Setup › Webhooks', async ({ page, browser }) => {
         await pointAt(p, f.getByRole('button', { name: 'Cancel', exact: true }), 900);
         await f.getByRole('button', { name: 'Cancel', exact: true }).click();
         await beat(p, 800);
-        await caption(p, 'Each webhook then appears in a list, with its recent deliveries and a switch to pause it.');
-        await pointAt(p, m.getByText('No webhooks yet'), 2600);
+        await caption(p, 'Each webhook appears in the list, with its recent deliveries and a switch to pause it.');
+        await pointAt(p, m.getByText('Recent deliveries'), 2600);
         await caption(p, '');
     });
 });

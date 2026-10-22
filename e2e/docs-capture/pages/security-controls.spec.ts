@@ -2,9 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 import { annotate, beat, caption, out, pointAt, record, settle } from '../capture';
 
 // Guide page: frontend/public/docs/security/controls.html
-// The demo workspace has no controls. Nothing here changes data: "Load SOC 2
-// starter set" is never pressed, and the New control form is filled in the
-// browser and closed with Cancel ("Create control" is never pressed).
+// The demo workspace has the 17 SOC 2 starter controls, with some evidence and
+// one exception. Nothing here changes data: "Load SOC 2 starter set" is never
+// pressed, the New control form is filled in the browser and closed with
+// Cancel ("Create control" is never pressed), and opening a control only
+// changes the address.
 
 const DIR = 'security/controls';
 
@@ -12,7 +14,7 @@ async function open(p: Page) {
     await p.goto('/compliance/controls');
     await expect(p.getByRole('heading', { name: 'Controls', level: 1 })).toBeVisible();
     await settle(p);
-    await expect(p.getByText('No controls yet', { exact: true })).toBeVisible();
+    await expect(p.getByText('Pick a control', { exact: true })).toBeVisible();
 }
 
 test('Security › Controls', async ({ page, browser }) => {
@@ -50,15 +52,36 @@ test('Security › Controls', async ({ page, browser }) => {
     await sources.screenshot({ path: out(`${DIR}/sources.png`) });
     await form.getByRole('button', { name: 'Cancel' }).click();
     await page.setViewportSize({ width: 1440, height: 900 });
+    await settle(page);
 
-    // 3. A short walkthrough video, with captions saying what is on screen.
+    // 3. The list's status counts, and two controls opened.
+    await main.getByRole('heading', { name: 'Controls', level: 1 }).locator('xpath=..')
+        .screenshot({ path: out(`${DIR}/counts.png`) });
+    const detail = (title: string) => main.getByRole('heading', { name: title, level: 2 })
+        .locator('xpath=ancestor::div[.//*[normalize-space()="History"]][1]');
+    await main.getByText('Security monitoring', { exact: false }).first().click();
+    await expect(detail('Security monitoring')).toBeVisible();
+    await settle(page);
+    await page.setViewportSize({ width: 1440, height: 2000 });
+    await settle(page);
+    await detail('Security monitoring').screenshot({ path: out(`${DIR}/detail.png`) });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await main.getByText('Single sign-on enforced', { exact: false }).first().click();
+    await expect(detail('Single sign-on enforced')).toBeVisible();
+    await settle(page);
+    await main.locator('section').filter({ has: page.getByRole('heading', { name: 'Exceptions' }) }).first()
+        .screenshot({ path: out(`${DIR}/exception.png`) });
+
+    // 4. A short walkthrough video, with captions saying what is on screen.
     await record(browser, `${DIR}/walkthrough.webm`, async (p) => {
         await open(p);
         const m = p.locator('main');
         await caption(p, 'A control is one promise your organisation makes about security, for example "access is reviewed every quarter".', 2000);
         await caption(p, 'This page lists your controls and checks, from TraceIQ\'s own records, whether each promise is being kept.');
         await beat(p, 1200);
-        await caption(p, 'The demo workspace has no controls yet. An admin can load a ready-made set for SOC 2, a common security standard.');
+        await caption(p, 'Each control shows its status, failing ones first.');
+        await pointAt(p, m.getByText('Failing', { exact: true }).first(), 2200);
+        await caption(p, 'An admin can load a ready-made set for SOC 2, a common security standard.');
         await pointAt(p, m.getByRole('button', { name: 'Load SOC 2 starter set' }), 2400);
         await caption(p, 'Or write your own with New control.');
         const nb = m.getByRole('button', { name: 'New control' });

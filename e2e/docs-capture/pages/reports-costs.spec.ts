@@ -53,6 +53,7 @@ test('Reports › Costs', async ({ page, browser }) => {
     // 3. Close-ups used next to each explanation.
     await tiles.screenshot({ path: out(`${DIR}/tiles.png`) });
     await trend.screenshot({ path: out(`${DIR}/trend.png`) });
+    await models.screenshot({ path: out(`${DIR}/by-model.png`) });
     await byProject.screenshot({ path: out(`${DIR}/by-project.png`) });
     await topRuns.screenshot({ path: out(`${DIR}/top-runs.png`) });
 

@@ -65,17 +65,18 @@
           The page's own heading says <strong>Access Matrix</strong>.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The demo project has no matrix yet, so the page first shows only an empty list on the
-          left and "Choose a matrix, or create a new one.":</p>
+        <p>When the page opens, the list on the left shows the project's matrices and the right
+          says "Choose a matrix, or create a new one.". The demo's web project has one matrix:</p>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/page.png" alt="The Access Matrix page with a New matrix button, the line No matrices in this project yet, and a Project menu at the top right" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/security/access-matrix/page.png" alt="The Access Matrix page with a New matrix button, one matrix in the list (Todo app roles (demo), 3 rows, 3 identities), the line Choose a matrix, or create a new one, and a Project menu at the top right" loading="lazy" width="1440" height="900"></div>
         </figure>
-        <p>The picture below shows a new matrix being filled in: two rows (the user's own todo
-          list, and an admin-only list of users) checked against two logged-in users and someone
-          who is not logged in. The numbers match the sections below.</p>
+        <p>The picture below shows that matrix opened on its <strong>Edit grid</strong> tab: three
+          rows (the todo list as a request, the admin panel as a page, and one user's todo read by
+          its ID) checked against two logged-in users, alice and bob, and someone who is not
+          logged in. The numbers match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/page-annotated.png" alt="The Access Matrix page with a new matrix being written, with six numbered parts: 1 the New matrix button and list, 2 the name, base URL, description and denied-statuses fields, 3 the identities, 4 the grid of rows and Allow or Deny cells, 5 the security-testing prerequisites, 6 the Create matrix button" loading="lazy" width="1440" height="1560"></div>
-          <figcaption>A draft matrix in the demo's web project (not saved). Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/security/access-matrix/page-annotated.png" alt="The Access Matrix page with the demo matrix open, with six numbered parts: 1 the New matrix button and list, 2 the name, base URL, description and denied-statuses fields, 3 the identities, 4 the grid of rows and Allow or Deny cells, 5 the security-testing prerequisites, 6 the Save changes button" loading="lazy" width="1440" height="1960"></div>
+          <figcaption>The demo matrix in the web project. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="list" data-toc="① The list of matrices">The list of matrices</h2></div>
@@ -89,11 +90,11 @@
 
         <div class="part"><span class="num">2</span><h2 id="fields" data-toc="② Name and address">Name and address</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/fields.png" alt="Four fields: Name (Todo items: who may see them), Base URL for relative paths (https://app.example.com), Description, and Statuses that count as denied (401, 403, 404 by default)" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-matrix/fields.png" alt="Four fields: Name (Todo app roles (demo)), Base URL for relative paths (http://localhost:8080), Description, and Statuses that count as denied (401, 403, 404, the default)" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Name</strong> (required) and <strong>Description</strong>: for people.</li>
-          <li><strong>Base URL</strong>: the address of the app. Rows can then give just a path, such as <code>/todos</code>.</li>
+          <li><strong>Base URL</strong>: the address of the app. Rows can then give just a path, such as <code>/api/todos</code>.</li>
           <li><strong>Statuses that count as denied</strong>: when the app refuses someone, it answers with a status number. By default <code>401</code> (not logged in), <code>403</code> (not allowed) and <code>404</code> (not found) count as "denied". Change the list if your app refuses in another way.</li>
         </ul>
 
@@ -110,7 +111,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="grid" data-toc="④ The grid">The grid</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/grid.png" alt="The grid. Row My todo list, a Page at /todos: Allow for alice, Allow for bob, Deny for Anonymous. Row Admin user list, a GET request to /api/admin/users: Deny for all three" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-matrix/grid.png" alt="The grid of the demo matrix. Row List my todos (API), a GET request to /api/todos: Allow with status 200 for alice and bob, Deny for Anonymous. Row Admin panel, a Page at /admin with the element selector #admin-panel: Allow for alice, Deny for bob and Anonymous. Row Read alice's todo by id, a GET request to /api/todos/{id} with ID swap ticked, owner persona alice, owner URL /api/todos, extractor 0.id: Allow for alice, Deny for bob and Anonymous" loading="lazy"></div>
         </figure>
         <p>Each row is one thing to try. Press <strong>Add row</strong> for another, and
           <strong>Remove row</strong> to drop one (up to 200 rows).</p>
@@ -151,7 +152,7 @@
 
         <div class="part"><span class="num">5</span><h2 id="prerequisites" data-toc="⑤ Security-testing prerequisites">Security-testing prerequisites</h2></div>
         <figure>
-          <div class="frame"><img src="../media/security/access-matrix/prerequisites.png" alt="Security-testing prerequisites: Security testing disabled, Authorized domains none, Needs attention: Security testing is disabled for this project, Needs attention: Not on the authorized domain list: https://app.example.com/todos, https://app.example.com/api/admin/users, and an Edit security settings link" loading="lazy"></div>
+          <div class="frame"><img src="../media/security/access-matrix/prerequisites.png" alt="Security-testing prerequisites: Security testing enabled, Authorized domains example.com, localhost, OK: Security testing is enabled for this project, OK: All targets are on the authorized domain list, and an Edit security settings link" loading="lazy"></div>
         </figure>
         <p>Request and page rows contact your app directly, so TraceIQ only runs them when the
           project allows security testing. This box checks your draft against those rules before
@@ -161,21 +162,27 @@
           <li>every address must be on the project's <strong>authorized domains</strong>. Both are set under <em>Scans &amp; findings → Authorization</em> (the <strong>Edit security settings</strong> link goes there).</li>
           <li>A row that <strong>changes data</strong> (any method other than GET, HEAD or OPTIONS, including the owner request of an ID swap) also needs you to tick "I am authorized…" when you run the matrix.</li>
         </ul>
-        <p>Test-case rows need none of this. The box is only a preview: when you run the matrix,
+        <p>In the demo project both are in order, so the box shows two green <em>OK</em> lines;
+          otherwise each problem is listed under <em>Needs attention</em>.
+          Test-case rows need none of this. The box is only a preview: when you run the matrix,
           TraceIQ checks again, and if it refuses, its reason is shown word for word.</p>
 
-        <div class="part"><span class="num">6</span><h2 id="save" data-toc="⑥ Create matrix">Create matrix</h2></div>
-        <p><strong>Create matrix</strong> saves a new matrix (it stays greyed out until it has a
-          name); on a saved one the button says <strong>Save changes</strong>, next to
+        <div class="part"><span class="num">6</span><h2 id="save" data-toc="⑥ Save changes">Save changes</h2></div>
+        <p>On a saved matrix, <strong>Save changes</strong> saves your edits; it sits next to
           <strong>Delete matrix</strong>, which asks first and also deletes all of the matrix's
-          runs. Nothing is saved until you press the button; leaving the page throws the draft
-          away.</p>
+          runs. For a new matrix the button says <strong>Create matrix</strong> (greyed out until it
+          has a name). Nothing is saved until you press the button; leaving the page throws your
+          changes away.</p>
 
         <h3 id="results">Reading the results</h3>
         <p>On a saved matrix, the <strong>Runs &amp; results</strong> tab has a <strong>Run
           matrix</strong> button, the <strong>Run history</strong> (newest first) and the results
           of the selected run: the same grid, with each cell showing what was expected, what was
           observed, and a verdict. While a run is going, the page refreshes every 3 seconds.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/results.png" alt="Run history with Run #1, completed: Pass 7, Fail 1, Inconclusive 1. Results of run #1: Pass 7, Fail 1, Inconclusive 1, 1 access granted that should be denied. In the grid every cell passes except Admin panel as bob, Fail — access granted (expected deny, observed 200, element visible), and Admin panel as Anonymous, Inconclusive (expected deny, observed timeout)" loading="lazy"></div>
+          <figcaption>The demo run: bob, a plain user, could open the admin panel, and the visit as Anonymous timed out.</figcaption>
+        </figure>
         <div class="table-wrap">
           <table>
             <thead><tr><th style="width:24%">Verdict</th><th>What it means</th></tr></thead>
@@ -191,9 +198,16 @@
         <p><strong>Click a cell</strong> to see its evidence: the status, the address it ended up
           on, whether the element was shown, the ID that was swapped in, the response headers and
           a piece of the response (with secrets removed), a screenshot for page rows, and a link
-          to the test run for test-case rows. Below the results, <strong>Security findings from
-          this matrix</strong> lists the findings it raised, each with a link to the run that
-          showed the problem.</p>
+          to the test run for test-case rows.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/evidence.png" alt="The evidence panel for Admin panel as bob (todolite): Fail — access granted, Expected deny, Reason: the protected element is visible (status 200) — access granted; Status 200, Final URL http://localhost:8080/admin, Element present" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The evidence for the failed cell opens at the side of the page.</figcaption>
+        </figure>
+        <p>Below the results, <strong>Security findings from this matrix</strong> lists the
+          findings it raised, each with its status and a link to the run that showed the problem.</p>
+        <figure>
+          <div class="frame"><img src="../media/security/access-matrix/findings.png" alt="Security findings from this matrix: one Open finding, Access granted that should be denied: Admin panel as bob (todolite), with a View evidence in run #1 link" loading="lazy"></div>
+        </figure>
 
         <h2 id="video" data-toc="Watch it in use">Watch it in use</h2>
         <figure class="video">
@@ -203,7 +217,7 @@
               Your browser can't play this video.
             </video>
           </div>
-          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. The matrix in the video is not saved.</figcaption>
+          <figcaption>About a minute, with a spoken commentary. The captions at the bottom show the same words, so it also works with the sound off. Nothing in the video is changed.</figcaption>
         </figure>
 
         <h2 id="how-to" data-toc="How to…">How to…</h2>
@@ -232,7 +246,7 @@
 
         <h2 id="good-to-know">Good to know</h2>
         <ul>
-          <li><strong>Findings look after themselves.</strong> A Deny cell that got through creates one high-severity finding per row and identity, and a later run that gets through again updates the same finding rather than adding another. When a later run denies it again, an <em>Open</em> finding is closed by itself; if access gets through after that, it reopens. A finding marked <em>false positive</em> stays that way. Inconclusive cells change nothing.</li>
+          <li><strong>Findings look after themselves.</strong> A Deny cell that got through creates one high-severity finding per row and identity, and a later run that gets through again updates the same finding rather than adding another. When a later run denies it again, the finding is marked <em>Verified fixed</em> by itself; if access gets through after that, it reopens. A finding marked <em>false positive</em> stays that way. Inconclusive cells change nothing.</li>
           <li><strong>It only looks.</strong> Request and page rows observe what the app answers; the only data they change is what a row itself sends (which is why those rows need your "I am authorized").</li>
           <li><strong>Old results keep their labels.</strong> Each run stores a copy of the matrix as it was, so editing the matrix later doesn't relabel past results.</li>
           <li><strong>A run gives up after 45 minutes.</strong> Cells still waiting then become <em>Inconclusive</em>, never Pass.</li>

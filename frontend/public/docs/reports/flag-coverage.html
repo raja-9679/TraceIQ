@@ -75,8 +75,8 @@
           catalogue</strong> (the list of flags you expect). The numbers on the screenshots match
           the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/reports/flag-coverage/page-annotated.png" alt="The Flag coverage page on the Coverage tab, with four numbered parts: 1 the two tabs, 2 the Window menu set to Last 30 days, 3 four number tiles all showing 0, 4 the message No flags yet" loading="lazy" width="1440" height="900"></div>
-          <figcaption>The Coverage tab for the demo's web project. None of the demo's runs sent flags, so every number is zero. Click the picture to see it larger.</figcaption>
+          <div class="frame"><img src="../media/reports/flag-coverage/page-annotated.png" alt="The Flag coverage page on the Coverage tab, with four numbered parts: 1 the two tabs, 2 the Window menu set to Last 30 days, 3 four number tiles: Runs with flags 10, Flags seen or catalogued 2, Catalogue values never tested 2, Flags not in the catalogue 0, 4 the card of the flag checkout_v2" loading="lazy" width="1440" height="900"></div>
+          <figcaption>The Coverage tab for the demo's web project, where ten runs said which flags they ran with. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="tabs" data-toc="① The tabs">The tabs</h2></div>
@@ -89,7 +89,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="tiles" data-toc="③ The four tiles">The four tiles</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/reports/flag-coverage/tiles.png" alt="Four tiles: Runs with flags 0, last 30 days; Flags seen or catalogued 0; Catalogue values never tested 0; Flags not in the catalogue 0" loading="lazy"></div>
+          <div class="frame small"><img src="../media/reports/flag-coverage/tiles.png" alt="Four tiles: Runs with flags 10, last 30 days; Flags seen or catalogued 2; Catalogue values never tested 2; Flags not in the catalogue 0" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>
@@ -106,7 +106,12 @@
         <div class="part"><span class="num">4</span><h2 id="flags" data-toc="④ One card per flag">One card per flag</h2></div>
         <p>Below the tiles there is one card per flag, in alphabetical order. While no run has
           sent flags and the catalogue is empty, there is only the message <em>"No flags
-          yet"</em>, as in the picture. A card shows:</p>
+          yet"</em>.</p>
+        <figure>
+          <div class="frame"><img src="../media/reports/flag-coverage/flag-card.png" alt="The card of checkout_v2, labelled 1 value(s) never tested, with its description New checkout flow (A/B); 'holdout' is the 5 % control, the line Never tested: holdout, and a table: on, 6 runs, 5 cases, 5 passed, 1 failed; off, 4 runs, 5 cases, 3 passed, 1 failed, each with when it was last seen and a run link" loading="lazy"></div>
+          <figcaption>In the demo, runs tried <code>on</code> and <code>off</code>, but no run has tried the catalogue's third value, <code>holdout</code>.</figcaption>
+        </figure>
+        <p>A card shows:</p>
         <ul>
           <li><strong>The flag's name</strong>, with labels: <span class="pill t-lavender">not in catalogue</span> when runs sent it but it isn't listed, and <span class="pill t-peach">2 value(s) never tested</span> when catalogue values are missing from the runs. The catalogue's description is shown underneath.</li>
           <li><strong>Never tested:</strong> the catalogue values no run has used.</li>
@@ -128,13 +133,13 @@
 
         <h3 id="catalogue">The Flag catalogue tab</h3>
         <figure>
-          <div class="frame"><img src="../media/reports/flag-coverage/catalogue-annotated.png" alt="The Flag catalogue tab with two numbered parts: 5 the Add a flag form filled in with checkout_v2, true, false and a description, 6 the Catalogue box saying No flags catalogued yet" loading="lazy" width="1440" height="900"></div>
+          <div class="frame"><img src="../media/reports/flag-coverage/catalogue-annotated.png" alt="The Flag catalogue tab with two numbered parts: 5 the Add a flag form filled in with dark_mode, true, false and a description, 6 the Catalogue box with two flags, checkout_v2 (on, off, holdout) and new_onboarding (true, false), each with Save and Remove" loading="lazy" width="1440" height="900"></div>
           <figcaption>The catalogue tab with an example typed in. Add flag was not pressed, so nothing was saved.</figcaption>
         </figure>
 
         <div class="part"><span class="num">5</span><h2 id="add" data-toc="⑤ Add a flag">Add a flag</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/reports/flag-coverage/add-flag.png" alt="The Add a flag form: Name checkout_v2, Possible values true, false, Description New checkout page, being rolled out, and an Add flag button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/reports/flag-coverage/add-flag.png" alt="The Add a flag form: Name dark_mode, Possible values true, false, Description Dark colour scheme, in beta, and an Add flag button" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Name</strong>: exactly as runs send it, up to 64 letters, digits, <code>_</code>, <code>.</code> or <code>-</code>. Capital letters count: <code>Checkout</code> and <code>checkout</code> are two flags.</li>

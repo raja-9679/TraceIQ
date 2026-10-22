@@ -30,9 +30,9 @@ The checks are **passive**: TraceIQ only reads public records and visits each si
 
 ## A tour of the screen
 
-The demo project has no estate yet, so the page first shows an empty list:
+The page opens on the list of the project's estates; the demo's web project has one:
 
-![The Estate page with New estate and Certificate calendar buttons, the line No estates in this project yet, and a Project menu](../media/security/estate/page.png)
+![The Estate page with New estate and Certificate calendar buttons, one estate in the list (example.com estate (demo), worst score 87, 2 domains, average 94), the line Choose an estate, or create a new one, and a Project menu](../media/security/estate/page.png)
 
 The picture below shows the form behind **New estate**. The numbers match the sections below.
 
@@ -46,9 +46,11 @@ An **estate** is a named group of domains, for example "Public websites" or "Pay
 
 ## 2. Certificate calendar
 
-A **certificate** is what lets a browser show the padlock for a site; it has an end date, and when it passes, visitors get a warning page instead of your site. The calendar lists every certificate seen on every domain, in every estate of the workspace that you can see, the soonest to expire first: the date, the days left, the host, the estate and the project. Seven days or fewer show in red, 30 or fewer in amber. Until a scan has run, it says:
+A **certificate** is what lets a browser show the padlock for a site; it has an end date, and when it passes, visitors get a warning page instead of your site. The calendar lists every certificate seen on every domain, in every estate of the workspace that you can see, the soonest to expire first: the date, the days left, the host, the estate and the project. Seven days or fewer show in red, 30 or fewer in amber. Until a scan has run, it says "No certificates observed yet — scan an estate first."
 
-![No certificates observed yet — scan an estate first.](../media/security/estate/certificates-empty.png)
+![The certificate calendar with columns Expires, Days left, Host, Estate and Project: example.com and www.example.com, both expiring 2027-01-13, 82 days left, in example.com estate (demo), project Demo — Todo web app](../media/security/estate/certificates.png)
+
+*The demo's two certificates.*
 
 ## 3. Project
 
@@ -74,7 +76,11 @@ Nothing is saved until you press **Save estate**.
 
 Once saved, the estate's page has **Scan now**, **Settings** and **Delete estate** (which asks first and also deletes the scan history), and three parts:
 
-- **The domain table**, lowest score first: the domain (with "from CT logs" if it was discovered, "zone apex" for a main domain), its score, a small trend line of up to 12 recent scores from the last 120 days, and the days left on its certificate. *Remove* takes a domain out of the estate straight away.
+![The demo estate, example.com estate (demo), last scan completed 2026-10-21, with Scan now, Settings and Delete estate buttons and the line Passive checks only. The domain table: example.com, zone apex, score 87, 82 days left on its certificate; www.example.com, score 100, 82 days. Below it the Add domains box and Import domains. On the right the checks for example.com, 87 out of 100: how the score is made (100 start, minus 3 SPF softfail, 6 DMARC p=none, 2 no CAA record, 2 no DNSSEC, equals 87) and every check with Pass or Warn. At the bottom the scan history: two scheduled scans, averages 94 and 91](../media/security/estate/estate.png)
+
+*The demo estate with *example.com* opened: its score lost 13 points to four email and DNS warnings.*
+
+- **The domain table**, lowest score first: the domain (with "from CT logs" if it was discovered, "zone apex" for a main domain), its score, a small trend line of up to 12 recent scores from the last 120 days, and the days left on its certificate. *Remove* takes a domain out of the estate, after asking (its past scan results are deleted too).
 - **Add domains**: paste domains, one per line, comma-separated or the first column of a CSV, then press **Import domains**. Each one must be on the project's allowed list; refused ones are listed with the reason. An estate holds up to 500 domains.
 - **A domain's checks**: click a domain to see every check, with what it found, why it matters, and the arithmetic of its score.
 
@@ -152,7 +158,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 
 1. Your estate is every web address your organisation owns, as the outside world sees it.
 2. TraceIQ checks each one and gives it a score out of one hundred, worst first.
-3. An estate is a named group of domains. The demo project has none yet.
+3. An estate is a named group of domains. The number is its worst domain's score.
 4. New estate starts one: a name, how often to check, and who to warn.
 5. Certificate alerts warn you a set number of days before a site's certificate runs out.
 6. TraceIQ can also find more of your sub-domains in public certificate records.

@@ -57,12 +57,20 @@ test('Setup › Project settings', async ({ page, browser }) => {
     await section(page, 'Backend traces');
     await card(page, 'ps-traces').screenshot({ path: out(`${DIR}/traces.png`) });
 
-    await section(page, 'OpenAPI spec');
-    await page.locator('section[aria-labelledby="openapi-spec-title"]').screenshot({ path: out(`${DIR}/openapi.png`) });
-
     await section(page, 'Members and other policies');
     await page.locator('main').getByText('Members and access', { exact: true })
         .locator('xpath=ancestor::div[contains(@class,"flex-col")][2]').screenshot({ path: out(`${DIR}/more.png`) });
+
+    // The demo's OpenAPI spec (two versions) belongs to "Demo — Public API":
+    // switch the sidebar project (a browser-side preference, not data).
+    await page.getByRole('button', { name: /^Project: / }).first().click();
+    await page.getByRole('menuitem', { name: /Demo — Public API/ }).click();
+    await settle(page);
+    await section(page, 'OpenAPI spec');
+    const spec = page.locator('section[aria-labelledby="openapi-spec-title"]');
+    await expect(spec.getByText(/breaking/).first()).toBeVisible();
+    await settle(page);
+    await spec.screenshot({ path: out(`${DIR}/openapi.png`) });
     await page.setViewportSize({ width: 1440, height: 900 });
 
     // 4. A short walkthrough video, with captions saying what is on screen.

@@ -63,13 +63,13 @@
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
         <p>The numbers on the screenshot match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/reports/value-report/page-annotated.png" alt="The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.1 h median, 4 AI failure-analysis accuracy with no ratings yet, 5 CI time saved by targeted runs with no targeted run, 6 Proposal outcomes with no proposals, 7 Reported elsewhere" loading="lazy" width="1440" height="1500"></div>
+          <div class="frame"><img src="../media/reports/value-report/page-annotated.png" alt="The Value report for the demo web project with seven numbered parts: 1 the Scope, From, To and Update report controls, 2 the line saying what is covered, 3 Time to diagnosis 24.6 h median, 4 AI failure-analysis accuracy with too few ratings (3 of the 5 needed), 5 CI time saved by targeted runs, 0 min from 1 targeted run, 6 Proposal outcomes 66.7% of decided proposals applied, 7 Reported elsewhere" loading="lazy" width="1440" height="1500"></div>
           <figcaption>The Value report for the demo's web project, last 30 days. Click the picture to see it larger.</figcaption>
         </figure>
 
         <div class="part"><span class="num">1</span><h2 id="controls" data-toc="① Scope and dates">Scope and dates</h2></div>
         <figure>
-          <div class="frame"><img src="../media/reports/value-report/controls.png" alt="Scope This project, From 09/22/2026, To 10/21/2026, and an Update report button" loading="lazy"></div>
+          <div class="frame"><img src="../media/reports/value-report/controls.png" alt="Scope This project, From 09/23/2026, To 10/22/2026, and an Update report button" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Scope</strong>: <em>This project</em> (the one selected in the sidebar) or <em>Workspace (projects you can read)</em>, which adds up every project of a workspace you have access to. With more than one workspace, a <strong>Workspace</strong> picker appears; it starts on your first one.</li>
@@ -84,7 +84,7 @@
 
         <h3 id="cards">How every card is built</h3>
         <figure>
-          <div class="frame small"><img src="../media/reports/value-report/time-to-diagnosis.png" alt="The Time to diagnosis card: a green Measured label, 24.1 h median, Sample: 2 diagnosed failure clusters, 90th percentile 24.6 h, 2 clusters not diagnosed yet, First signal passed again on a new commit: 2, then Definition and Data source" loading="lazy"></div>
+          <div class="frame small"><img src="../media/reports/value-report/time-to-diagnosis.png" alt="The Time to diagnosis card: a green Measured label, 24.6 h median, Sample: 3 diagnosed failure clusters, 90th percentile 25.2 days, 1 cluster not diagnosed yet, First signal case quarantined: 1, First signal passed again on a new commit: 2, then Definition and Data source" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>The label</strong> top right: <span class="pill t-mint">Measured</span> means counted from what happened; <span class="pill t-butter">Estimate</span> means worked out from assumptions.</li>
@@ -128,7 +128,9 @@
         <p><strong>saved = full run's test time × (1 − tests run ÷ tests in the suite)</strong></p>
         <p>The big number is browser time saved; underneath are the wall-clock time saved
           (also an estimate) and the counts it rests on, including targeted runs that had no
-          full run to compare with. Manual runs are left out.</p>
+          full run to compare with. Manual runs are left out. Times under an hour are rounded to
+          whole minutes: the demo's one targeted run skipped 3 of 5 tests of a suite that takes
+          well under a minute, so its saving reads <em>0 min</em>.</p>
 
         <div class="part"><span class="num">6</span><h2 id="proposals" data-toc="⑥ Proposal outcomes">Proposal outcomes</h2></div>
         <p>What happened to the fixes TraceIQ (or an AI agent) suggested in the period: new or
@@ -185,7 +187,7 @@
           <li><strong>You see only what you can access.</strong> The workspace scope adds up only the projects you can read.</li>
           <li><strong>Days are UTC days.</strong> The period runs from midnight UTC on the first day to the end of the last day.</li>
           <li><strong>Ratings are made by people.</strong> Only editors can rate an AI explanation, and an API key (used by scripts and agents) can't, so an agent can't rate its own work. If the analysis is regenerated after you open the page, your vote is refused rather than counted against a different explanation.</li>
-          <li><strong>Small samples.</strong> The demo's 24.1 hours comes from 2 problems. Read any number with a small sample as a direction, not a result.</li>
+          <li><strong>Small samples.</strong> The demo's 24.6 hours comes from 3 problems. Read any number with a small sample as a direction, not a result.</li>
           <li><strong>Not in shared links.</strong> Unlike the PoC report and the executive summary, the Value report can't be shared as a public link; print it instead.</li>
         </ul>
 

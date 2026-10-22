@@ -38,7 +38,7 @@ The **Project** menu at the top right is the same choice as the project picker i
 
 ## 1. The four counts
 
-![Four tiles: Covered 2, Failing 0, Not run yet 0, Not covered 0](../media/releases/requirements/tiles.png)
+![Four tiles: Covered 2, Failing 1, Not run yet 1, Not covered 1](../media/releases/requirements/tiles.png)
 
 Every imported ticket falls into exactly one of these:
 
@@ -62,7 +62,7 @@ Every imported ticket falls into exactly one of these:
 
 ![The import panel, saying No Jira or Linear connection in this workspace yet. Add one on the Issue Trackers page.](../media/releases/requirements/import.png)
 
-*The demo workspace has no Jira or Linear connection, so the panel says where to add one.*
+*The demo workspace's Jira connection is switched off, and the panel only offers connections that are switched on, so it says where to add one.*
 
 Once a connection exists (set up on **Setup → Issue trackers**, and switched on), the panel has:
 
@@ -75,16 +75,18 @@ Importing a ticket that is already there updates it instead of adding a second c
 
 ## 3. A ticket
 
-![A ticket row: DEMO-101 A user can sign in; 0 criteria, 0 proposed, 1 linked test(s), synced with a date; a Covered label](../media/releases/requirements/row.png)
+![A ticket row: DEMO-101 A user can sign in; 2 criteria, 0 proposed, 1 linked test(s), synced with a date; a Covered label](../media/releases/requirements/row.png)
 
 One row per imported ticket, in order of their keys. The first line is the ticket's key and title. The second line says how many acceptance criteria were found, how many already have a suggested test ("proposed"), how many are too vague ("ambiguous", in amber), how many tests are linked, and when it was last fetched. "sync error" in red means the last fetch failed. On the right is its count from ①. Click the row to open it.
 
+The demo's web project has five tickets, one or more in each count: `DEMO-101` and `DEMO-102` are covered (102 has one vague criterion), `DEMO-103`'s test has never run, `DEMO-104` has a failing test, and `DEMO-105` has no test yet, only a suggested one.
+
 ## 4. An opened ticket
 
-![An opened ticket: buttons Re-sync and Remove, an empty Acceptance criteria list, Covered by Sign in as alice · passed, and a Generate tests box with Target suite, Target URL, Include ambiguous](../media/releases/requirements/detail.png)
+![An opened ticket: Open in jira, buttons Re-sync and Remove, two acceptance criteria written as Given/When/Then scenarios (AC1 Sign in with valid credentials, AC2 Wrong password), Covered by Sign in as alice · passed, and a Generate tests box with Target suite, Target URL, Include ambiguous](../media/releases/requirements/detail.png)
 
 - **Open in jira / linear** (when the ticket has an address) opens the original ticket. **Re-sync** fetches just this one again. **Remove** takes the ticket off this page after you confirm; the tests and their links stay.
-- **Acceptance criteria**: each criterion found in the ticket, numbered AC1, AC2… A criterion that already has a suggested test shows its number and state (for example *#41 pending*), which links to the *Proposals* page. A vague one says why in amber, for example *Ambiguous: vague term "fast"*. The demo tickets were created without a description, so this list is empty for them.
+- **Acceptance criteria**: each criterion found in the ticket, numbered AC1, AC2… A criterion that already has a suggested test shows its number and state (for example *#41 pending*), which links to the *Proposals* page. A vague one says why in amber, for example *Ambiguous: vague term "fast"*. In the picture, `DEMO-101`'s two criteria are Given/When/Then scenarios.
 - **Covered by**: the linked tests and the result of each one's newest run ("not run" if it never ran).
 - **Generate tests**: pick the suite the suggested tests should go into, optionally the address of the page they should start on, and whether to include the vague criteria. Then press **Generate tests**.
 

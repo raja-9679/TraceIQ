@@ -36,7 +36,6 @@ test('Setup › My settings', async ({ page, browser }) => {
     await clean();
 
     // 3. Close-ups, one section at a time.
-    await card(page, 'settings-display').screenshot({ path: out(`${DIR}/display.png`) });
     await card(page, 'settings-features').screenshot({ path: out(`${DIR}/features.png`) });
 
     await page.setViewportSize({ width: 1440, height: 2200 });
@@ -56,6 +55,7 @@ test('Setup › My settings', async ({ page, browser }) => {
     await card(page, 'settings-api-keys').screenshot({ path: out(`${DIR}/api-keys.png`) });
 
     await section(page, 'Two-factor sign-in');
+    await expect(card(page, 'settings-mfa-enable').getByText('Status:')).toBeVisible();
     await page.locator('main').screenshot({ path: out(`${DIR}/two-factor.png`) });
     await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -71,13 +71,13 @@ test('Setup › My settings', async ({ page, browser }) => {
         await caption(p, 'My settings holds your own preferences. They never change anyone else’s.', 2200);
         await caption(p, 'The list on the left switches between five sections.');
         await pointAt(p, n, 2200);
-        await caption(p, 'Each card has its own Save button, and saves only that card.');
-        await pointAt(p, card(p, 'settings-display').getByRole('button', { name: 'Save' }), 2200);
         await caption(p, 'AI test generation shows a Generate button on suite pages, in this browser only.');
         await pointAt(p, card(p, 'settings-features').getByText('AI test generation', { exact: true }), 2200);
 
         await caption(p, '');
         await go('Runs and recordings');
+        await caption(p, 'Most cards have their own Save button, which saves only that card.');
+        await pointAt(p, card(p, 'settings-exec-defaults').getByRole('button', { name: 'Save' }), 2200);
         await caption(p, 'Run defaults choose the browser and device when the test and its suite don’t.');
         await pointAt(p, card(p, 'settings-exec-defaults').getByText('Default browser', { exact: true }), 2400);
         const rec = card(p, 'settings-artifacts');
@@ -106,6 +106,8 @@ test('Setup › My settings', async ({ page, browser }) => {
         await caption(p, '');
         await go('Two-factor sign-in');
         await caption(p, 'Two-factor sign-in asks for a code from an authenticator app as well as your password.');
+        await caption(p, 'The status line says whether it is on for your account.');
+        await pointAt(p, card(p, 'settings-mfa-enable').getByText('Status:'), 2200);
         await pointAt(p, p.getByRole('button', { name: 'Set up authenticator' }), 2600);
         await caption(p, '');
     });

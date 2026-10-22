@@ -40,7 +40,17 @@ test('Releases › Incidents', async ({ page, browser }) => {
     // 3. Close-ups.
     await tiles.screenshot({ path: out(`${DIR}/tiles.png`) });
     await bar.screenshot({ path: out(`${DIR}/toolbar.png`) });
-    await list.screenshot({ path: out(`${DIR}/empty.png`) });
+    await list.screenshot({ path: out(`${DIR}/list.png`) });
+
+    // One incident opened (a click only expands it; nothing is changed).
+    await page.setViewportSize({ width: 1440, height: 1300 });
+    const escaped = list.getByRole('button', { name: /Todos disappear after adding a second item/ });
+    await escaped.click();
+    const row = escaped.locator('xpath=..');
+    await expect(row.getByText('Escaped defect — should have been caught by')).toBeVisible();
+    await settle(page);
+    await row.screenshot({ path: out(`${DIR}/detail.png`) });
+    await escaped.click();
 
     // The New incident form (opened and cancelled) and the webhook panel.
     await page.setViewportSize({ width: 1440, height: 1100 });
@@ -70,7 +80,10 @@ test('Releases › Incidents', async ({ page, browser }) => {
         await pointAt(p, m.getByText('No test existed', { exact: true }), 1400);
         await caption(p, 'The buttons show all incidents, only open ones, or only escaped defects.');
         await pointAt(p, m.getByRole('group', { name: 'Filter incidents' }), 2400);
-        await caption(p, 'New incident records one by hand. The demo project has none yet.');
+        await caption(p, 'Each row is one incident. Recurrence and Escaped labels sit on the right.');
+        await pointAt(p, m.getByText(/Recurrence #/).first(), 1600);
+        await pointAt(p, m.getByText('Escaped', { exact: true }).last(), 1600);
+        await caption(p, 'New incident records one by hand.');
         await pointAt(p, m.getByRole('button', { name: 'New incident' }), 800);
         await m.getByRole('button', { name: 'New incident' }).click();
         const f = m.getByRole('heading', { name: 'New incident' }).locator('xpath=..');
