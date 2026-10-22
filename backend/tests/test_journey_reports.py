@@ -117,6 +117,27 @@ def test_csv_with_aliases_dates_and_journeys():
     assert p.total_views == 300
 
 
+def test_ga4_report_export():
+    data = (b"# ----------------------------------------\n"
+            b"# Pages and screens: Page path and screen class\n"
+            b"# Account: Demo, Inc\n"
+            b"# ----------------------------------------\n"
+            b"#\n"
+            b"# Start date: 20261001\n"
+            b"# End date: 20261021\n"
+            b"Page path and screen class,Views,Users,Event count\n"
+            b"/cart,\"1,200\",300,9000\n"
+            b"/,400,250,1000\n")
+    p = jc.parse_import(data, filename="pages.csv")
+    assert {r["path"]: r["views"] for r in p.rows} == {"/cart": 1200, "/": 400}
+    assert not any("no views column" in w for w in p.warnings)
+
+
+def test_ga4_exploration_headers():
+    p = jc.parse_import(b"Page path + query string,Screen page views\n/a?x=1,5\n/a,2\n")
+    assert {r["path"]: r["views"] for r in p.rows} == {"/a": 7}
+
+
 def test_semicolon_csv_without_views_counts_rows():
     p = jc.parse_import(b"url;other\n/a;1\n/a;2\n/b;3\n")
     assert {r["path"]: r["views"] for r in p.rows} == {"/a": 2, "/b": 1}
