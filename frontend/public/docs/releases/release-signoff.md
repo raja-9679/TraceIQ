@@ -36,7 +36,7 @@ The page has three cards, from top to bottom. The numbers on the screenshot matc
 
 ## 1. Manual runs
 
-![The Manual runs card with two runs of Release checklist (manual), both for 2.4.0: #289, 1 passed, 0 failed or blocked of 1, labelled passed; #288, 2 passed, 2 failed or blocked of 4, labelled failed; each with an Open link](../media/releases/release-signoff/runs.png)
+![The Manual runs card with two runs of Release checklist (manual), both for 2.4.0: #531, 1 passed, 0 failed or blocked of 1, labelled passed; #530, 2 passed, 2 failed or blocked of 4, labelled failed; each with an Open link](../media/releases/release-signoff/runs.png)
 
 The 50 most recent manual runs of the project, newest first. Each row has:
 
@@ -67,7 +67,7 @@ Once recorded, a message confirms it ("Approved 2.4.0"), the ticks and note are 
 
 ## 3. Sign-off history
 
-![The Sign-off history card with two sign-offs of 2.4.0 by Alex Morgan: Approved, covering runs #288 and #289, with the note Upgrade re-tested and passing; and, a day earlier, Rejected, covering run #288, with the note Both payment checks failed](../media/releases/release-signoff/history.png)
+![The Sign-off history card with two sign-offs of 2.4.0 by Alex Morgan: Approved, covering runs #530 and #531, with the note Upgrade re-tested and passing; and, a day earlier, Rejected, covering run #530, with the note Both payment checks failed](../media/releases/release-signoff/history.png)
 
 The 50 most recent sign-offs, newest first. Each one shows Approved or Rejected, the release name, who signed and when, the runs it covered (*runs #12, #14*), the commit if there was one, and the note.
 

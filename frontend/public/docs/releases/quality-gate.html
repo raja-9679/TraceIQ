@@ -38,7 +38,7 @@
         <div class="in-short">
           <div class="label">In short</div>
           <p>A short list of rules a release has to meet, such as "every test passed" and "no
-            serious security problem". The page checks the newest run against those rules and
+            serious security problem". The page checks the runs of the newest commit against those rules and
             says <strong>Ready to ship</strong> or <strong>Not ready</strong>, with the reason for
             each rule.</p>
         </div>
@@ -70,14 +70,14 @@
 
         <div class="part"><span class="num">1</span><h2 id="verdict" data-toc="① The verdict">The verdict</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/quality-gate/header.png" alt="The heading Releases with a label Not ready · 2 blockers, the line Gate evaluated on run #291 · rules v1, and two buttons, Gate rules and Re-evaluate" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/quality-gate/header.png" alt="The heading Releases with a label Ready to ship, the line Gate evaluated on run #532 · ac0d0bb · rules v1, and two buttons, Gate rules and Re-evaluate" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>The label next to the heading</strong> is the verdict:
             <span class="pill t-mint">Ready to ship</span> when every check passes, or
             <span class="pill t-peach">Not ready · 2 blockers</span> with the number of checks that fail.</li>
           <li><strong>The line underneath</strong> says what was judged: the run number (for
-            example <em>run #291</em>), its branch and commit if the run recorded them, and the
+            example <em>run #532</em>), its branch and commit if the run recorded them, and the
             version of the rules used (<em>rules v1</em>). If runs were left out because they were
             cancelled or timed out, it says how many.</li>
           <li><strong>Gate rules</strong> (⑥) opens the rules below the heading (see
@@ -86,26 +86,27 @@
         </ul>
         <div class="callout note">
           <span class="icon">!</span>
-          <div><strong class="title">This page judges one run: the newest finished one</strong>
-            <p>On this page, the gate looks only at the <strong>most recent run that finished</strong>
-            in the project (passed, failed or error), whichever suite it was. So the pass-rate check
-            is either 100% or 0% here. To judge everything that ran on one version of your app (one
-            <em>commit</em>), use <strong>Release readiness</strong>, or let your build system ask
-            the gate for a commit or a branch: then every finished run on it is counted.</p></div>
+          <div><strong class="title">This page judges the newest commit</strong>
+            <p>The gate starts from the <strong>most recent run that finished</strong> in the
+            project (passed, failed or error) and judges <strong>every finished run on that run's
+            commit</strong>, the same runs <strong>Release readiness</strong> looks at when it opens,
+            so the two pages agree. If that run recorded no commit, only that one run is judged.
+            Release readiness can also judge an older commit or a branch; your build system can ask
+            the gate for a commit or a branch too.</p></div>
         </div>
 
         <div class="part"><span class="num">2</span><h2 id="checks" data-toc="② The checks">The checks</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/quality-gate/checks.png" alt="A ring showing 5/7 with the text 2 checks blocking the release, a list headed Blocking with Flaky tests 1 flaky and Critical tests passed 0 of 2 passed, and a list headed Passing with Pass rate 100.0%, Coverage targeted — 1 of 5 cases ran, High-severity security findings 0, External CI tests 0 failed of 5, Evidence age oldest 0.2d (Homepage loads)" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/quality-gate/checks.png" alt="A ring showing 7/7 with the text Every check passes, Nothing stands between this project and a release, and a list headed Passing: Pass rate 100.0%, Coverage full suite, High-severity security findings 0, External CI tests 0 failed of 5, Flaky tests 1 flaky, Critical tests passed 2 of 2 passed, Evidence age oldest 0.0d (Homepage loads)" loading="lazy"></div>
         </figure>
         <p>The ring counts the checks that pass out of all checks. Below it, the checks are split
           into <strong>Blocking</strong> (failing, shown first) and <strong>Passing</strong>. Each
           row shows the check's name and, on the right, the value it found. Click a row to show it
           in detail on the right.</p>
-        <p>In the demo the newest run (#291) ran only one of the five tests, so <em>Critical
-          tests passed</em> blocks (neither critical test ran in it), and <em>Flaky tests</em>
-          blocks because the demo's rules allow no flaky test and <em>Add a todo</em> is
-          quarantined.</p>
+        <p>In the demo the newest commit (run #532, all five tests) passes all seven checks.
+          <em>Flaky tests</em> finds one flaky test (<em>Add a todo</em>, quarantined), which the
+          demo's rules allow. When something fails, the failing checks are listed first under
+          <strong>Blocking</strong>, and the label in the heading counts them.</p>
         <p>Which checks appear depends on the rules. Three are always there:</p>
         <div class="table-wrap">
           <table>
@@ -125,7 +126,7 @@
 
         <div class="part"><span class="num">3</span><h2 id="selected" data-toc="③ The selected check">The selected check</h2></div>
         <figure>
-          <div class="frame small"><img src="../media/releases/quality-gate/detail.png" alt="The selected check Flaky tests, labelled Blocking: Now 1 flaky, Rule &lt;= 0, a box What this check looks at naming Add a todo, and an Evidence link Open Flaky tests" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/quality-gate/detail.png" alt="The selected check Pass rate, labelled Passing: Now 100.0%, Rule &gt;= 90.0%, a box What this check looks at, and Evidence links See the evaluated runs and Group the failures" loading="lazy"></div>
         </figure>
         <ul>
           <li><strong>Passing / Blocking</strong>: whether this check meets its rule.</li>
@@ -143,7 +144,7 @@
 
         <div class="part"><span class="num">4</span><h2 id="health" data-toc="④ Project health">Project health</h2></div>
         <figure>
-          <div class="frame"><img src="../media/releases/quality-gate/health.png" alt="Project health with a 7 days menu and five tiles: Pass rate 75% (15 of 20 finished runs), Runs 20, Flaky tests 1 (1 quarantined), Monitors down 0 of 0, Security findings 1 high (5 medium, 8 low); below, a daily pass-rate chart and External CI results listing two web unit tests (vitest) reports: 5 tests all green, and 5 tests 1 failed" loading="lazy"></div>
+          <div class="frame"><img src="../media/releases/quality-gate/health.png" alt="Project health with a 7 days menu and five tiles: Pass rate 80% (20 of 25 finished runs), Runs 25, Flaky tests 1 (1 quarantined), Monitors down 0 of 0, Security findings 1 high (5 medium, 8 low); below, a daily pass-rate chart and External CI results listing three web unit tests (vitest) reports: two with 5 tests all green, one with 5 tests 1 failed" loading="lazy"></div>
         </figure>
         <p>The wider picture, separate from the verdict. The menu on the right chooses the period:
           the last <strong>7</strong>, <strong>14</strong> or <strong>30 days</strong>.</p>
@@ -177,17 +178,17 @@
         </div>
         <p><strong>External CI results</strong> lists the five newest test reports your own build
           system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each
-          with its number of tests and failures (the demo has two). Until one arrives it says "None yet". These
+          with its number of tests and failures (the demo has three). Until one arrives it says "None yet". These
           reports count towards the verdict only when the rule <em>Require external CI tests
           green</em> is on.</p>
 
         <div class="part"><span class="num">6</span><h2 id="rules" data-toc="⑥ Gate rules">Gate rules</h2></div>
         <p>Press <strong>Gate rules</strong> in the heading to open the rules. Anyone can read them;
           only <em>editors</em> can save changes. The demo's web project has a stricter set than the
-          defaults listed below: 90% pass rate, external CI tests required, no flaky tests, every
-          critical test passed and results no older than 7 days.</p>
+          defaults listed below: 90% pass rate, external CI tests required, at most one flaky test,
+          every critical test passed and results no older than 7 days.</p>
         <figure>
-          <div class="frame small"><img src="../media/releases/quality-gate/rules.png" alt="The Gate rules form as the demo project sets it: Minimum pass rate 90, Maximum high findings 0, Maximum medium findings blank, Require monitors up unticked, Require external CI tests green ticked; Release readiness: Maximum flaky cases 0, Require every critical case passed ticked, Maximum evidence age 7 days, sign-off and accessibility unticked; an API contract section; Performance budgets all 0; and a Save rules button" loading="lazy"></div>
+          <div class="frame small"><img src="../media/releases/quality-gate/rules.png" alt="The Gate rules form as the demo project sets it: Minimum pass rate 90, Maximum high findings 0, Maximum medium findings blank, Require monitors up unticked, Require external CI tests green ticked; Release readiness: Maximum flaky cases 1, Require every critical case passed ticked, Maximum evidence age 7 days, sign-off and accessibility unticked; an API contract section; Performance budgets all 0; and a Save rules button" loading="lazy"></div>
         </figure>
         <div class="table-wrap">
           <table>

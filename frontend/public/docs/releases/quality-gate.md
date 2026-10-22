@@ -6,7 +6,7 @@ Releases · Everyone with access to the project can see it · Editors can change
 
 > **In short**
 >
-> A short list of rules a release has to meet, such as "every test passed" and "no serious security problem". The page checks the newest run against those rules and says **Ready to ship** or **Not ready**, with the reason for each rule.
+> A short list of rules a release has to meet, such as "every test passed" and "no serious security problem". The page checks the runs of the newest commit against those rules and says **Ready to ship** or **Not ready**, with the reason for each rule.
 
 ## What it is for
 
@@ -36,24 +36,24 @@ The verdict and its checks are at the top; the project's general health is under
 
 ## 1. The verdict
 
-![The heading Releases with a label Not ready · 2 blockers, the line Gate evaluated on run #291 · rules v1, and two buttons, Gate rules and Re-evaluate](../media/releases/quality-gate/header.png)
+![The heading Releases with a label Ready to ship, the line Gate evaluated on run #532 · ac0d0bb · rules v1, and two buttons, Gate rules and Re-evaluate](../media/releases/quality-gate/header.png)
 
 - **The label next to the heading** is the verdict: Ready to ship when every check passes, or Not ready · 2 blockers with the number of checks that fail.
-- **The line underneath** says what was judged: the run number (for example *run #291*), its branch and commit if the run recorded them, and the version of the rules used (*rules v1*). If runs were left out because they were cancelled or timed out, it says how many.
+- **The line underneath** says what was judged: the run number (for example *run #532*), its branch and commit if the run recorded them, and the version of the rules used (*rules v1*). If runs were left out because they were cancelled or timed out, it says how many.
 - **Gate rules** (⑥) opens the rules below the heading (see [Gate rules](#rules)). Press it again to close them.
 - **Re-evaluate** checks the gate again, for example after a new run has finished.
 
-> **This page judges one run: the newest finished one**
+> **This page judges the newest commit**
 >
-> On this page, the gate looks only at the **most recent run that finished** in the project (passed, failed or error), whichever suite it was. So the pass-rate check is either 100% or 0% here. To judge everything that ran on one version of your app (one *commit*), use **Release readiness**, or let your build system ask the gate for a commit or a branch: then every finished run on it is counted.
+> The gate starts from the **most recent run that finished** in the project (passed, failed or error) and judges **every finished run on that run's commit**, the same runs **Release readiness** looks at when it opens, so the two pages agree. If that run recorded no commit, only that one run is judged. Release readiness can also judge an older commit or a branch; your build system can ask the gate for a commit or a branch too.
 
 ## 2. The checks
 
-![A ring showing 5/7 with the text 2 checks blocking the release, a list headed Blocking with Flaky tests 1 flaky and Critical tests passed 0 of 2 passed, and a list headed Passing with Pass rate 100.0%, Coverage targeted — 1 of 5 cases ran, High-severity security findings 0, External CI tests 0 failed of 5, Evidence age oldest 0.2d (Homepage loads)](../media/releases/quality-gate/checks.png)
+![A ring showing 7/7 with the text Every check passes, Nothing stands between this project and a release, and a list headed Passing: Pass rate 100.0%, Coverage full suite, High-severity security findings 0, External CI tests 0 failed of 5, Flaky tests 1 flaky, Critical tests passed 2 of 2 passed, Evidence age oldest 0.0d (Homepage loads)](../media/releases/quality-gate/checks.png)
 
 The ring counts the checks that pass out of all checks. Below it, the checks are split into **Blocking** (failing, shown first) and **Passing**. Each row shows the check's name and, on the right, the value it found. Click a row to show it in detail on the right.
 
-In the demo the newest run (#291) ran only one of the five tests, so *Critical tests passed* blocks (neither critical test ran in it), and *Flaky tests* blocks because the demo's rules allow no flaky test and *Add a todo* is quarantined.
+In the demo the newest commit (run #532, all five tests) passes all seven checks. *Flaky tests* finds one flaky test (*Add a todo*, quarantined), which the demo's rules allow. When something fails, the failing checks are listed first under **Blocking**, and the label in the heading counts them.
 
 Which checks appear depends on the rules. Three are always there:
 
@@ -67,7 +67,7 @@ Others appear only when a rule switches them on: medium-severity findings, monit
 
 ## 3. The selected check
 
-![The selected check Flaky tests, labelled Blocking: Now 1 flaky, Rule &lt;= 0, a box What this check looks at naming Add a todo, and an Evidence link Open Flaky tests](../media/releases/quality-gate/detail.png)
+![The selected check Pass rate, labelled Passing: Now 100.0%, Rule &gt;= 90.0%, a box What this check looks at, and Evidence links See the evaluated runs and Group the failures](../media/releases/quality-gate/detail.png)
 
 - **Passing / Blocking**: whether this check meets its rule.
 - **Now** is the value found; **Rule** is what it must be (`>=` means "at least", `<=` means "at most").
@@ -78,7 +78,7 @@ When the page opens, the first blocking check is shown; if nothing blocks, the f
 
 ## 4. Project health
 
-![Project health with a 7 days menu and five tiles: Pass rate 75% (15 of 20 finished runs), Runs 20, Flaky tests 1 (1 quarantined), Monitors down 0 of 0, Security findings 1 high (5 medium, 8 low); below, a daily pass-rate chart and External CI results listing two web unit tests (vitest) reports: 5 tests all green, and 5 tests 1 failed](../media/releases/quality-gate/health.png)
+![Project health with a 7 days menu and five tiles: Pass rate 80% (20 of 25 finished runs), Runs 25, Flaky tests 1 (1 quarantined), Monitors down 0 of 0, Security findings 1 high (5 medium, 8 low); below, a daily pass-rate chart and External CI results listing three web unit tests (vitest) reports: two with 5 tests all green, one with 5 tests 1 failed](../media/releases/quality-gate/health.png)
 
 The wider picture, separate from the verdict. The menu on the right chooses the period: the last **7**, **14** or **30 days**.
 
@@ -100,13 +100,13 @@ The wider picture, separate from the verdict. The menu on the right chooses the 
 | Yellow | Between 60% and 89% passed. |
 | Orange | Less than 60% passed. A day where nothing passed still shows a thin orange stub. |
 
-**External CI results** lists the five newest test reports your own build system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each with its number of tests and failures (the demo has two). Until one arrives it says "None yet". These reports count towards the verdict only when the rule *Require external CI tests green* is on.
+**External CI results** lists the five newest test reports your own build system has sent to TraceIQ (JUnit reports from tests that run outside TraceIQ), each with its number of tests and failures (the demo has three). Until one arrives it says "None yet". These reports count towards the verdict only when the rule *Require external CI tests green* is on.
 
 ## 6. Gate rules
 
-Press **Gate rules** in the heading to open the rules. Anyone can read them; only *editors* can save changes. The demo's web project has a stricter set than the defaults listed below: 90% pass rate, external CI tests required, no flaky tests, every critical test passed and results no older than 7 days.
+Press **Gate rules** in the heading to open the rules. Anyone can read them; only *editors* can save changes. The demo's web project has a stricter set than the defaults listed below: 90% pass rate, external CI tests required, at most one flaky test, every critical test passed and results no older than 7 days.
 
-![The Gate rules form as the demo project sets it: Minimum pass rate 90, Maximum high findings 0, Maximum medium findings blank, Require monitors up unticked, Require external CI tests green ticked; Release readiness: Maximum flaky cases 0, Require every critical case passed ticked, Maximum evidence age 7 days, sign-off and accessibility unticked; an API contract section; Performance budgets all 0; and a Save rules button](../media/releases/quality-gate/rules.png)
+![The Gate rules form as the demo project sets it: Minimum pass rate 90, Maximum high findings 0, Maximum medium findings blank, Require monitors up unticked, Require external CI tests green ticked; Release readiness: Maximum flaky cases 1, Require every critical case passed ticked, Maximum evidence age 7 days, sign-off and accessibility unticked; an API contract section; Performance budgets all 0; and a Save rules button](../media/releases/quality-gate/rules.png)
 
 | Rule | What it does (default) |
 |---|---|

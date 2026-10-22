@@ -68,7 +68,7 @@ If no test is linked to anything yet, the box says "No requirements linked yet".
 
 ## 4. Untraced tests
 
-![Untraced tests · 7: Todo list is usable on a phone, Sign-in works with a screen reader, Regression: two todos stay in the list, Complete a todo, No serious accessibility violations, Homepage loads, Add a draft todo, each with a REQ / ticket ref box and a greyed-out Link button](../media/releases/traceability/untraced.png)
+![Untraced tests · 7: Regression: two todos stay in the list, Todo list is usable on a phone, Sign-in works with a screen reader, No serious accessibility violations, Complete a todo, Add a draft todo, Homepage loads, each with a REQ / ticket ref box and a greyed-out Link button](../media/releases/traceability/untraced.png)
 
 Every test of the project that isn't linked to anything, with the number in the heading. Type a reference in the box next to a test and press **Link** (it stays greyed out until something is typed). The test then leaves this list, and the reference appears in ②. Up to 200 tests are listed; the line underneath says how many more there are. When every test is linked, this card disappears.
 

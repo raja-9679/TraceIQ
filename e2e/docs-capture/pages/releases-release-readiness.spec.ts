@@ -58,23 +58,19 @@ test('Releases › Release readiness', async ({ page, browser }) => {
     const options = await listbox.getByRole('option').allInnerTexts();
     await page.keyboard.press('Escape');
 
-    // Find a commit the demo marks "Ready to release", and one marked "Not
-    // ready" where a critical case failed, to show those states too.
+    // The newest commit is the demo's ready release candidate (verdict-latest).
+    // Find an older commit marked "Not ready", preferring one where a critical
+    // case failed, to show that state too.
     let notReady: string | null = null;
-    let ready = false;
     let criticalFailed = false;
     for (const label of options.slice(1)) {
-        if (ready && criticalFailed) break;
+        if (criticalFailed) break;
         await main.locator('#rr-commit').click();
         await page.getByRole('option', { name: label, exact: true }).click();
         await settle(page);
-        if (!ready && await verdict.filter({ hasText: 'Ready to release' }).count()) {
-            await verdict.screenshot({ path: out(`${DIR}/verdict-ready.png`) });
-            ready = true;
-        }
         if (!(await verdict.filter({ hasText: 'Not ready' }).count())) continue;
         notReady ??= label;
-        if (!criticalFailed && await section(page, 'Critical cases').locator('tbody tr td:nth-child(2)').filter({ hasText: /failed/i }).count()) {
+        if (await section(page, 'Critical cases').locator('tbody tr td:nth-child(2)').filter({ hasText: /failed/i }).count()) {
             notReady = label;
             criticalFailed = true;
         }
@@ -84,7 +80,7 @@ test('Releases › Release readiness', async ({ page, browser }) => {
         await page.getByRole('option', { name: notReady, exact: true }).click();
         await settle(page);
         await verdict.screenshot({ path: out(`${DIR}/verdict-not-ready.png`) });
-        await section(page, 'Critical cases').screenshot({ path: out(`${DIR}/critical-not-ready.png`) });
+        if (criticalFailed) await section(page, 'Critical cases').screenshot({ path: out(`${DIR}/critical-not-ready.png`) });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
 
