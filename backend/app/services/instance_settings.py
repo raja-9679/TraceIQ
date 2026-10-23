@@ -435,6 +435,13 @@ REGISTRY: Dict[str, SettingDef] = {d.key: d for d in [
                label="Maximum job duration (ms)",
                description="hard wall-clock cap per job; the job is failed when it "
                            "is exceeded. Blank/0 keeps MAX_JOB_DURATION_MS"),
+    # Read by the backend's check_stale_runs sweep, not shipped to workers.
+    SettingDef("STALE_RUN_INACTIVITY_MINUTES", "worker", type="int",
+               label="Stuck-run timeout (minutes)",
+               description="a running test with no result this long after a worker "
+                           "picked it up is marked Timed out (tests still waiting in "
+                           "the queue are not). Keep it above the maximum job "
+                           "duration. Blank/0 = 15"),
     SettingDef("WORKER_RUNTIME_HEAL_ENABLED", "worker", type="bool",
                label="Runtime self-heal",
                description="retry a step with an LLM-healed selector when it uniquely "
