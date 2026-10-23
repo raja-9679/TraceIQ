@@ -16,6 +16,7 @@ import { executeVisualMatch } from './visual-step';
 import { traceApiHeaders } from './trace-context';
 import { executeMockResponse, executeHarReplay } from './network-mocks';
 import { summariseAxe, reportAccessibility } from './accessibility';
+import { parseExpectedStatus, navigationStatusError } from './expect-status';
 
 // jsonPath lives in ./json-path (shared with the wait-for-webhook step);
 // re-exported so existing imports keep working.
@@ -121,6 +122,9 @@ export class TestExecutor {
                 let attempts = 0;
                 const maxAttempts = 3;
                 const waitUntil = (step.params?.wait_until as 'load' | 'domcontentloaded' | 'networkidle' | 'commit') || 'domcontentloaded';
+                // Parsed up front so a malformed value fails before any navigation.
+                const expectStatus = parseExpectedStatus(step.params?.expect_status);
+                let navResponse: any = null;
 
                 while (attempts < maxAttempts) {
                     try {
@@ -128,7 +132,7 @@ export class TestExecutor {
                         if (page.isClosed()) {
                             throw new Error('Page has been closed - cannot navigate');
                         }
-                        await page.goto(url, { waitUntil, timeout: gotoTimeout });
+                        navResponse = await page.goto(url, { waitUntil, timeout: gotoTimeout });
                         break;
                     } catch (e: any) {
                         attempts++;
@@ -140,6 +144,13 @@ export class TestExecutor {
                         if (attempts === maxAttempts) throw e;
                         await new Promise(r => setTimeout(r, 2000)); // Increased retry delay
                     }
+                }
+                // Checked after the retry loop: a wrong status is an answer, not a
+                // transient failure, so it is never retried.
+                if (expectStatus) {
+                    const statusError = navigationStatusError(navResponse, expectStatus);
+                    if (statusError) throw new Error(statusError);
+                    console.log(`  [Navigation] HTTP ${navResponse.status()} matches expected ${expectStatus.label}`);
                 }
                 break;
             }
