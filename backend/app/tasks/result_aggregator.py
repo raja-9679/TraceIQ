@@ -20,7 +20,7 @@ Every time a result is processed, we record `last_progress_at` in Redis:
 check_stale_runs() reads this field to decide whether a run is inactive.
 """
 import json
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 import math
 from typing import Dict, Any, List, Optional
 import redis
@@ -1099,6 +1099,68 @@ def publish_progress_update(run_id: int, payload: Dict[str, Any]):
         print(f"[Aggregator] Failed to publish update for run {run_id}: {e}")
 
 
+def _naive_utc(value: Optional[str]) -> Optional[datetime]:
+    """Parse a progress-hash timestamp into naive UTC, or None.
+
+    The two writers disagree: the aggregator stores ``datetime.utcnow()``
+    (naive) while the worker stores ``new Date().toISOString()`` (``…Z``,
+    aware). Comparing an aware value with a naive cutoff raised TypeError and
+    crashed the whole sweep, rolling back every run it had marked.
+    """
+    if not value:
+        return None
+    try:
+        ts = datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+    return ts
+
+
+def stale_reason(created_at: Optional[datetime], progress: Optional[Dict[str, str]],
+                 now: datetime, inactivity_minutes: int, max_hours: int) -> Optional[str]:
+    """Why a RUNNING run should be marked TIMED_OUT, or None to leave it.
+
+    Inactivity is measured from the last result, else from when a worker
+    first picked up one of its jobs. A run no worker has touched yet is still
+    WAITING IN THE QUEUE — a big suite on a few workers can queue for hours —
+    so only the absolute cap applies to it. (It used to fall back to
+    created_at, which timed out every queued case of a large per-case run
+    15 minutes after dispatch.)
+    """
+    inactivity_cutoff = now - timedelta(minutes=inactivity_minutes)
+    if created_at and created_at < now - timedelta(hours=max_hours):
+        return f"exceeded maximum run duration ({max_hours}h hard cap)"
+
+    if not progress:
+        # No hash at all: dispatch never recorded the run. The grace period
+        # gives the dispatcher time to write it after creating the row.
+        if created_at and created_at < inactivity_cutoff:
+            return "no progress data found in Redis"
+        return None
+
+    try:
+        completed = int(progress.get('completed', 0))
+        total = int(progress.get('total', 0))
+    except (TypeError, ValueError):
+        completed = total = 0
+    if total > 0 and completed >= total:
+        # The aggregator finalizes it on its next cycle.
+        return None
+
+    last_progress_at = _naive_utc(progress.get('last_progress_at'))
+    if last_progress_at:
+        if last_progress_at < inactivity_cutoff:
+            return f"no job results received for {inactivity_minutes}+ minutes"
+        return None
+
+    worker_started_at = _naive_utc(progress.get('worker_started_at'))
+    if worker_started_at and worker_started_at < inactivity_cutoff:
+        return "no initial results arrived within expected time"
+    return None
+
+
 @celery_app.task(name="app.tasks.result_aggregator.check_stale_runs")
 def check_stale_runs():
     """
@@ -1111,13 +1173,14 @@ def check_stale_runs():
     IMPORTANT: A run with 700+ test cases legitimately takes hours. We must NOT
     kill it just because it is old — only kill it if progress has STOPPED.
     """
-    from datetime import timedelta
-
-    inactivity_minutes = getattr(settings, 'STALE_RUN_INACTIVITY_MINUTES', 15)
+    from app.services.instance_settings import effective
+    try:
+        inactivity_minutes = int(effective('STALE_RUN_INACTIVITY_MINUTES') or 0)
+    except (TypeError, ValueError):
+        inactivity_minutes = 0
+    if inactivity_minutes <= 0:
+        inactivity_minutes = 15
     max_hours = getattr(settings, 'MAX_RUN_DURATION_HOURS', 6)
-
-    inactivity_cutoff = datetime.utcnow() - timedelta(minutes=inactivity_minutes)
-    absolute_cutoff = datetime.utcnow() - timedelta(hours=max_hours)
 
     with Session(sync_engine) as session:
         # Load all currently RUNNING runs — no created_at filter so we can
@@ -1126,77 +1189,15 @@ def check_stale_runs():
             select(TestRun).where(TestRun.status == TestStatus.RUNNING)
         ).all()
 
+        now = datetime.utcnow()
         killed = 0
         for run in running_runs:
             progress = redis_client.hgetall(f'runs:{run.id}:progress')
-
-            # Case 1: Absolute hard-cap exceeded — kill regardless of activity
-            if run.created_at and run.created_at < absolute_cutoff:
-                _mark_run_timeout(
-                    run, progress, session,
-                    reason=f"exceeded maximum run duration ({max_hours}h hard cap)"
-                )
+            reason = stale_reason(run.created_at, progress, now,
+                                  inactivity_minutes, max_hours)
+            if reason:
+                _mark_run_timeout(run, progress, session, reason=reason)
                 killed += 1
-                continue
-
-            # Case 2: No Redis progress data at all
-            if not progress:
-                # Only kill if the run was created more than inactivity_minutes ago
-                # (gives the dispatcher time to write the progress hash after creation)
-                if run.created_at and run.created_at < inactivity_cutoff:
-                    _mark_run_timeout(
-                        run, progress, session,
-                        reason="no progress data found in Redis"
-                    )
-                    killed += 1
-                continue
-
-            # Case 3: Has progress data — check last_progress_at timestamp
-            last_progress_str = progress.get('last_progress_at')
-            completed = int(progress.get('completed', 0))
-            total = int(progress.get('total', 0))
-
-            # If all jobs completed but run is still RUNNING, the aggregator
-            # update_run_from_progress() will handle finalizing it on the next
-            # process_job_results() cycle. Don't interfere here.
-            if total > 0 and completed >= total:
-                continue
-
-            if last_progress_str:
-                try:
-                    last_progress_at = datetime.fromisoformat(last_progress_str)
-                except ValueError:
-                    last_progress_at = None
-
-                if last_progress_at and last_progress_at < inactivity_cutoff:
-                    # Progress has stalled — real timeout
-                    _mark_run_timeout(
-                        run, progress, session,
-                        reason=f"no job results received for {inactivity_minutes}+ minutes"
-                    )
-                    killed += 1
-                # else: last progress was recent — run is healthy, skip
-            else:
-                # last_progress_at not yet recorded (first result not arrived yet).
-                # If a worker has already picked up a job (worker_started_at is set),
-                # use that as the activity baseline so we don't false-timeout a run
-                # that is legitimately waiting in a busy queue.
-                # If no worker has touched the run yet, fall back to created_at.
-                worker_started_str = progress.get('worker_started_at')
-                baseline = None
-                if worker_started_str:
-                    try:
-                        baseline = datetime.fromisoformat(worker_started_str)
-                    except ValueError:
-                        pass
-                if baseline is None:
-                    baseline = run.created_at
-                if baseline and baseline < inactivity_cutoff:
-                    _mark_run_timeout(
-                        run, progress, session,
-                        reason="no initial results arrived within expected time"
-                    )
-                    killed += 1
 
         if killed > 0:
             session.commit()
