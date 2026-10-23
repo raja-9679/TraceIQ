@@ -629,6 +629,17 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     </Select>
                                 )}
 
+                                {step.type === 'goto' && (
+                                    <Input
+                                        placeholder="Expect status"
+                                        title="HTTP status the page must answer with, e.g. 200, 404,410 or 2xx. Empty = any status (an error page still passes)."
+                                        aria-label="Expected HTTP status"
+                                        value={step.params?.expect_status ?? ''}
+                                        onChange={(e) => updateParams('expect_status', e.target.value)}
+                                        className={`w-32 shrink-0 h-12 rounded-xl focus-visible:ring-${meta.hue}-500/20 bg-white border-none shadow-sm text-slate-600`}
+                                    />
+                                )}
+
                                 {(step.type === 'fill' || step.type === 'expect-text' || step.type === 'expect-not-text' || step.type === 'select-option' || step.type === 'drag-and-drop' || step.type === 'upload-file') && (
                                     <Input
                                         placeholder={

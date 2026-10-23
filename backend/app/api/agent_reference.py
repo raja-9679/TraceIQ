@@ -47,9 +47,17 @@ _STEP_TYPES: List[Dict[str, Any]] = [
     {
         "type": "goto",
         "category": "navigation",
-        "params": {"value": "Absolute URL to navigate to"},
-        "example": {"id": "<uuid>", "type": "goto", "value": "http://app/login"},
-        "notes": "Use full URLs reachable from the worker container (often via the docker bridge gateway).",
+        "params": {
+            "value": "Absolute URL to navigate to",
+            "params.wait_until": "'domcontentloaded' (default) | 'load' | 'networkidle' | 'commit'",
+            "params.expect_status": "HTTP status the page must answer with (optional): 200, '200,301', '2xx', '404,410' or a list",
+        },
+        "example": {"id": "<uuid>", "type": "goto", "value": "http://app/login",
+                    "params": {"expect_status": 200}},
+        "notes": ("Use full URLs reachable from the worker container (often via the docker bridge gateway). "
+                  "Without expect_status a 404/500 error page loads and the step PASSES — set it whenever "
+                  "the page's status matters. The FINAL status after redirects is checked; a mismatch fails "
+                  "the step (not retried) and names the redirect chain."),
     },
     {
         "type": "click",

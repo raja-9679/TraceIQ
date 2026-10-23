@@ -197,6 +197,10 @@ In steps:
 - `{"type": "goto", "value": "/dashboard"}` — relative URLs resolve
   against the environment's `base_url`, so one suite runs on dev,
   staging, and prod unchanged.
+- `goto` does NOT fail on a 404/500 — the error page loads like any
+  other. Add `"params": {"expect_status": 200}` (or `"404,410"`, `"2xx"`)
+  whenever the page's own status matters; the final status after
+  redirects is checked.
 - `{{env.KEY}}` interpolates an environment variable,
   `{{secret.KEY}}` a secret — in step values, headers, params, bodies.
 - `run_suite` accepts `environment_id`; omitted, the project's default
