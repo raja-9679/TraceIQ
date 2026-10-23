@@ -135,6 +135,7 @@ The **AI provider (legacy single-provider fallback)** group under it only applie
 
 - **One server, everyone.** A change here applies to every workspace on the installation, not just yours.
 - **You can't lock yourself out with sign-in settings.** Instance admins can always sign in with their password, even when password login is switched off for everyone else.
+- **Slow websites need three time limits raised together.** In **Execution workers**: *Default step timeout (ms)* is how long a test waits for a page or an element (a page is tried up to 3 times); *Maximum job duration (ms)* is the most one test may take in total, so keep it above three page waits plus the checks; *Stuck-run timeout (minutes)* is how long a test may go without a result after a test machine picked it up before it is marked *Timed out*, so keep it above the maximum job duration. For example 300000, 1800000 and 35. Tests still waiting in the queue are never marked Timed out by this, however long the queue is. The test machines pick up the first two within 60 seconds; the third applies from the server's next check (every 5 minutes).
 - **Leaving the page loses unsaved changes.** Nothing is saved until you press Save.
 
 ## Related pages

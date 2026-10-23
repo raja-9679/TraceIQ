@@ -210,6 +210,7 @@
         <ul>
           <li><strong>One server, everyone.</strong> A change here applies to every workspace on the installation, not just yours.</li>
           <li><strong>You can't lock yourself out with sign-in settings.</strong> Instance admins can always sign in with their password, even when password login is switched off for everyone else.</li>
+          <li><strong>Slow websites need three time limits raised together.</strong> In <strong>Execution workers</strong>: <em>Default step timeout (ms)</em> is how long a test waits for a page or an element (a page is tried up to 3 times); <em>Maximum job duration (ms)</em> is the most one test may take in total, so keep it above three page waits plus the checks; <em>Stuck-run timeout (minutes)</em> is how long a test may go without a result after a test machine picked it up before it is marked <em>Timed out</em>, so keep it above the maximum job duration. For example 300000, 1800000 and 35. Tests still waiting in the queue are never marked Timed out by this, however long the queue is. The test machines pick up the first two within 60 seconds; the third applies from the server's next check (every 5 minutes).</li>
           <li><strong>Leaving the page loses unsaved changes.</strong> Nothing is saved until you press Save.</li>
         </ul>
 
