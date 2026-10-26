@@ -1703,6 +1703,24 @@ TraceIQ exposes integration points so AI coding agents can trigger and consume r
   `results`, and steps typed into password fields (`redactSteps`). Open:
   fullwidth-digit PANs (Python redacts, TS keeps) and form-encoding of `*`/`~`.
   Worker image rebuild needed.
+- **Run another test (`run-test`, 2026-10-26)** — no migration. Step
+  `{type:"run-test", params:{case_id, overrides?}}` is replaced in
+  `app/worker.py:_case_payload` (before schemas/HARs/inbox hooks, so they
+  apply to the inlined steps) by the called case's CURRENT steps —
+  `app/services/case_calls.py:expand_steps`; the repro bundle expands the
+  same way. Same project, same worker family (web = ui_playwright/api,
+  mobile = mobile_appium), no loops, ≤5 levels, ≤1000 steps. `overrides`
+  (`env.X`/`secret.X`/`data.X`/bare `X` → text) are a single-pass textual
+  substitution in that call's steps; innermost call wins. Checked at save
+  (400) and again at dispatch, where a bad call becomes a `run-test` step
+  with `params.error` that the worker fails with that reason (an older
+  worker fails it as an unknown type). Inlined steps carry
+  `from={case_id,case_name,call_id,depth}` → step evidence (worker
+  `core/case-calls.ts`, aggregator `_step_origin`) → run page groups them.
+  Heal proposals for an inlined step target the called case
+  (`owner_of_step`). Not in suite hooks (refused). `GET
+  /api/cases/{id}/used-by`; `GET /api/cases?q=` searches names. Worker
+  rebuild needed only for the clear error text and the grouping.
 - **Data-capture policy + redaction** (see `info/REGULATED_READINESS.md`) —
   `Project.data_policy` (migration `b7c8d9e0f1a2`, NULL → built-in default)
   declares `capture_level` (`none|minimal|standard|full`), `store_bodies`,

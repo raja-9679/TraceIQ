@@ -143,8 +143,13 @@ async def download_repro_bundle(
         raise HTTPException(status_code=404, detail="The test case behind this result no longer exists")
 
     placeholders: Dict[str, str] = {}
-    steps = repro_bundle.scrub_steps(
-        [s.dict() if hasattr(s, "dict") else s for s in (case.steps or [])], placeholders)
+    from app.services.case_calls import expand_steps, loader_async
+    raw_steps = [s.dict() if hasattr(s, "dict") else s for s in (case.steps or [])]
+    # 'Run another test' steps → the called steps, as dispatch does.
+    raw_steps = expand_steps(raw_steps, case_id=case.id, project_id=case.project_id,
+                             executor=getattr(case.executor, "value", case.executor),
+                             load=await loader_async(session, raw_steps))
+    steps = repro_bundle.scrub_steps(raw_steps, placeholders)
     settings = repro_bundle.scrub_settings(
         await test_service.get_effective_settings(case.test_suite_id, session), placeholders)
     row_index, data_row = repro_bundle.data_row_for(case.dataset, result.test_name)

@@ -1911,6 +1911,56 @@
         "title": "CaseProposalRead",
         "type": "object"
       },
+      "CaseUsedByItem": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "test_suite_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Test Suite Id"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "title": "CaseUsedByItem",
+        "type": "object"
+      },
+      "CaseUsedByResponse": {
+        "properties": {
+          "case_id": {
+            "title": "Case Id",
+            "type": "integer"
+          },
+          "used_by": {
+            "items": {
+              "$ref": "#/components/schemas/CaseUsedByItem"
+            },
+            "title": "Used By",
+            "type": "array"
+          }
+        },
+        "required": [
+          "case_id",
+          "used_by"
+        ],
+        "title": "CaseUsedByResponse",
+        "type": "object"
+      },
       "ChannelIn": {
         "properties": {
           "api_region": {
@@ -20124,7 +20174,7 @@
     },
     "/api/cases": {
       "get": {
-        "description": "List test cases in a project (agent/MCP surface). Filters: suite, tag.",
+        "description": "List test cases in a project (agent/MCP surface). Filters: suite, tag,\n`q` (name contains, case-insensitive).",
         "operationId": "list_test_cases_api_cases_get",
         "parameters": [
           {
@@ -20166,6 +20216,22 @@
                 }
               ],
               "title": "Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
             }
           },
           {
@@ -21121,6 +21187,54 @@
         "summary": "Case Run History",
         "tags": [
           "agent-ownership"
+        ]
+      }
+    },
+    "/api/cases/{case_id}/used-by": {
+      "get": {
+        "description": "Tests of the same project with a 'Run another test' step that runs\nthis one (direct callers only).",
+        "operationId": "get_case_used_by_api_cases__case_id__used_by_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "case_id",
+            "required": true,
+            "schema": {
+              "title": "Case Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseUsedByResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Get Case Used By",
+        "tags": [
+          "cases"
         ]
       }
     },

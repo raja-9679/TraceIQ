@@ -1792,7 +1792,8 @@ export interface paths {
         };
         /**
          * List Test Cases
-         * @description List test cases in a project (agent/MCP surface). Filters: suite, tag.
+         * @description List test cases in a project (agent/MCP surface). Filters: suite, tag,
+         *     `q` (name contains, case-insensitive).
          */
         get: operations["list_test_cases_api_cases_get"];
         put?: never;
@@ -2095,6 +2096,27 @@ export interface paths {
         };
         /** Case Run History */
         get: operations["case_run_history_api_cases__case_id__run_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cases/{case_id}/used-by": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Case Used By
+         * @description Tests of the same project with a 'Run another test' step that runs
+         *     this one (direct callers only).
+         */
+        get: operations["get_case_used_by_api_cases__case_id__used_by_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8592,6 +8614,22 @@ export interface components {
             validation_run_id?: number | null;
             /** Validation Status */
             validation_status?: string | null;
+        };
+        /** CaseUsedByItem */
+        CaseUsedByItem: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Test Suite Id */
+            test_suite_id?: number | null;
+        };
+        /** CaseUsedByResponse */
+        CaseUsedByResponse: {
+            /** Case Id */
+            case_id: number;
+            /** Used By */
+            used_by: components["schemas"]["CaseUsedByItem"][];
         };
         /** ChannelIn */
         ChannelIn: {
@@ -16365,6 +16403,7 @@ export interface operations {
                 project_id: number;
                 test_suite_id?: number | null;
                 tag?: string | null;
+                q?: string | null;
                 limit?: number;
                 offset?: number;
             };
@@ -16968,6 +17007,37 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_case_used_by_api_cases__case_id__used_by_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                case_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseUsedByResponse"];
                 };
             };
             /** @description Validation Error */

@@ -89,6 +89,17 @@ def _check_manual(case: TestCase, step_types: set) -> None:
             raise HTTPException(status_code=400, detail=str(exc))
 
 
+async def _check_calls(session: AsyncSession, case: TestCase) -> None:
+    """'Run another test' steps must name a test of this project that can run
+    here, with no loop (app/services/case_calls.py). Dispatch re-checks."""
+    from app.services.case_calls import CaseCallError, check_calls_async
+    try:
+        await check_calls_async(session, case.id, case.project_id,
+                                getattr(case.executor, 'value', case.executor), case.steps or [])
+    except CaseCallError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
 @router.post("/suites/{suite_id}/cases", response_model=TestCaseRead)
 async def create_test_case(
     suite_id: int,
@@ -129,6 +140,7 @@ async def create_test_case(
     elif any(t and str(t).startswith('mobile-') for t in _step_types):
         case.executor = ExecutorType.MOBILE_APPIUM
     _check_manual(case, _step_types)
+    await _check_calls(session, case)
     session.add(case)
     await session.commit()
     await session.refresh(case)
@@ -171,12 +183,14 @@ async def list_test_cases(
     project_id: int,
     test_suite_id: Optional[int] = None,
     tag: Optional[str] = None,
+    q: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
     session: AsyncSession = Depends(get_session),
     principal: AuthPrincipal = Depends(get_current_principal),
 ):
-    """List test cases in a project (agent/MCP surface). Filters: suite, tag."""
+    """List test cases in a project (agent/MCP surface). Filters: suite, tag,
+    `q` (name contains, case-insensitive)."""
     if not await access_service.has_project_access(principal.user.id, project_id, session):
         raise HTTPException(status_code=403, detail="Access denied")
 
@@ -186,6 +200,9 @@ async def list_test_cases(
     stmt = select(TestCase).where(TestCase.project_id == project_id)
     if test_suite_id is not None:
         stmt = stmt.where(TestCase.test_suite_id == test_suite_id)
+    if q and q.strip():
+        needle = q.strip()[:200].replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        stmt = stmt.where(TestCase.name.ilike(f"%{needle}%", escape="\\"))
     result = await session.exec(stmt.order_by(TestCase.id))
     cases = result.all()
 
@@ -226,6 +243,39 @@ async def get_test_case(case_id: int, session: AsyncSession = Depends(get_sessio
         
     return case
 
+class CaseUsedByItem(BaseModel):
+    id: int
+    name: str
+    test_suite_id: Optional[int] = None
+
+
+class CaseUsedByResponse(BaseModel):
+    case_id: int
+    used_by: List[CaseUsedByItem]
+
+
+@router.get("/cases/{case_id}/used-by", response_model=CaseUsedByResponse)
+async def get_case_used_by(case_id: int, session: AsyncSession = Depends(get_session),
+                           current_user: User = Depends(get_current_user)):
+    """Tests of the same project with a 'Run another test' step that runs
+    this one (direct callers only)."""
+    import sqlalchemy as sa
+    from app.services.case_calls import RUN_TEST, callers_of
+    case = await session.get(TestCase, case_id)
+    if not case:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    if not await access_service.has_test_case_access(current_user.id, case_id, session):
+        raise HTTPException(status_code=403, detail="Access denied")
+    rows = (await session.exec(select(TestCase).where(
+        TestCase.project_id == case.project_id,
+        TestCase.id != case_id,
+        sa.cast(TestCase.steps, sa.String).like(f'%{RUN_TEST}%'),
+    ))).all()
+    callers = sorted(callers_of(rows, case_id), key=lambda c: c.id)
+    return CaseUsedByResponse(case_id=case_id, used_by=[
+        CaseUsedByItem(id=c.id, name=c.name, test_suite_id=c.test_suite_id) for c in callers])
+
+
 @router.put("/cases/{case_id}", response_model=TestCaseRead)
 async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: AsyncSession = Depends(get_session), principal: AuthPrincipal = Depends(get_current_principal)):
     current_user = principal.user
@@ -262,6 +312,7 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
         elif not has_mobile_step and db_case.executor == ExecutorType.MOBILE_APPIUM:
             db_case.executor = ExecutorType.UI_PLAYWRIGHT
         _check_manual(db_case, _step_types)
+        await _check_calls(session, db_case)
 
     # A person saving an AI-authored case in the builder is the human review
     # of it (generation no longer pre-stamps that). API-key callers never

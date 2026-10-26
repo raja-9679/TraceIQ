@@ -439,6 +439,14 @@ def _case_payload(case, row_index=None, data_row=None, run_id=None, session=None
         'is_auth_setup': getattr(case, 'is_auth_setup', False),
         'use_auth_session': getattr(case, 'use_auth_session', True),
     }
+    # run-test steps → the called cases' current steps, before anything else
+    # below looks at the step list (schemas, HARs, inbox hooks apply to them too).
+    if session is not None:
+        from app.services.case_calls import expand_steps, loader_sync
+        payload['steps'] = expand_steps(
+            payload['steps'], case_id=getattr(case, 'id', None),
+            project_id=getattr(case, 'project_id', None),
+            executor=payload['executor'], load=loader_sync(session))
     # expect_schema {openapi: ...} → inline JSON Schema from the project's
     # stored spec (WP11); the worker has no database to look it up in.
     from app.services.api_specs import has_openapi_refs, load_spec_sync, resolve_step_schemas

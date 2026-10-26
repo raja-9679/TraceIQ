@@ -564,6 +564,29 @@ _STEP_TYPES: List[Dict[str, Any]] = [
         "notes": "TLS probe: validates the chain and the expiry window. Pairs well with a monitor schedule for cert-expiry alerting.",
     },
     {
+        "type": "run-test",
+        "category": "flow",
+        "params": {
+            "params.case_id": "Id of another test case in the same project whose steps run here",
+            "params.overrides": ("Optional {token: value} used only inside this call, e.g. "
+                                 "{'env.LOGIN_USER': 'sub@example.com', "
+                                 "'secret.LOGIN_PASSWORD': '{{secret.SUB_PASSWORD}}'}. Keys: env.NAME, "
+                                 "secret.NAME, data.NAME or a runtime variable NAME"),
+        },
+        "example": {"id": "<uuid>", "type": "run-test",
+                    "params": {"case_id": 42, "overrides": {"env.LOGIN_USER": "sub@example.com"}}},
+        "notes": (
+            "'Run Test' (runs another test's steps): replaced at dispatch by the called case's CURRENT steps (a link, not a "
+            "copy), which run in place in the same browser with this case's settings, environment, "
+            "secrets and data row — cookies, page and extracted variables carry on to the next step. "
+            "Without overrides the called steps use the same variables as this case. Same project and "
+            "same kind of worker (web/mobile) only; no loops; at most 5 levels deep. A call that can't "
+            "be expanded (case deleted, loop) fails the case at that step. The called steps are grouped "
+            "under the called test's name in step evidence (`from`). GET /api/cases/{id}/used-by lists "
+            "the tests that run a case."
+        ),
+    },
+    {
         "type": "manual-step",
         "category": "manual",
         "params": {
@@ -910,7 +933,7 @@ async def list_step_types() -> Dict[str, Any]:
         "step_types": _STEP_TYPES,
         "total": len(_STEP_TYPES),
         "templates": _TEMPLATES,
-        "last_updated": "2026-10-16",
+        "last_updated": "2026-10-26",
     }
 
 

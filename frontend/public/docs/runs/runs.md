@@ -160,7 +160,7 @@ The test's name, result and duration, then whatever the run recorded for it:
 
 - **Error Details**: the full error message of a failure.
 - **Retries**: when the test was tried more than once, each attempt and its result.
-- **Step evidence**: each step in order with its result, and for the failing step its console messages, failed requests, a screenshot and a piece of the page. How much is kept depends on the project's data settings.
+- **Step evidence**: each step in order with its result, and for the failing step its console messages, failed requests, a screenshot and a piece of the page. How much is kept depends on the project's data settings. Steps that came from a *Run Test* step are grouped under “From *test name* (test #…)”, so you can see which test the failing step belongs to.
 - **Reproduce locally (.zip)**: a download with the test, its settings and a script a developer can run on their own computer. Passwords and keys are never included; the script asks for them.
 - Tabs for the request and response **details**, **headers**, the test's own **media** and its **network** requests, when there are any.
 

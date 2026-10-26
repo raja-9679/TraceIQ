@@ -24,10 +24,11 @@ import { FrontendQualityStepFields } from './FrontendQualityStepFields';
 import { NETWORK_MOCK_LABELS, isNetworkMockStep } from './networkMockSteps';
 import { NetworkMockStepFields } from './NetworkMockStepFields';
 import { FeedAssertionGeneratorModal } from './FeedAssertionGeneratorModal';
+import { RunTestStepFields } from './RunTestStepFields';
 
 export interface TestStep {
     id: string;
-    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match' | 'expect-header' | 'expect-cookie-flags' | 'expect-blocked-after' | 'expect-session-dead' | 'expect-no-horizontal-overflow' | 'expect-rtl-layout' | 'check-page-budget' | 'mock-response' | 'har-replay';
+    type: 'goto' | 'click' | 'fill' | 'check' | 'uncheck' | 'double-click' | 'right-click' | 'drag-and-drop' | 'upload-file' | 'download-file' | 'handle-dialog' | 'switch-tab' | 'switch-frame' | 'expect-visible' | 'expect-hidden' | 'expect-text' | 'expect-not-text' | 'expect-url' | 'expect-title' | 'expect-visual-match' | 'hover' | 'select-option' | 'press-key' | 'screenshot' | 'scroll-to' | 'wait-timeout' | 'wait-for-response' | 'wait-for-email' | 'wait-for-webhook' | 'http-request' | 'graphql' | 'oauth2-token' | 'feed-check' | 'extract-value' | 'totp' | 'run-script' | 'assert' | 'amp-validate' | 'load-test' | 'check-tls' | 'mobile-launch-app' | 'mobile-terminate-app' | 'mobile-tap' | 'mobile-long-press' | 'mobile-type' | 'mobile-swipe' | 'mobile-press-key' | 'mobile-wait-for' | 'mobile-expect-visible' | 'mobile-expect-text' | 'mobile-screenshot' | 'mobile-extract-value' | 'mobile-expect-visual-match' | 'expect-header' | 'expect-cookie-flags' | 'expect-blocked-after' | 'expect-session-dead' | 'expect-no-horizontal-overflow' | 'expect-rtl-layout' | 'check-page-budget' | 'mock-response' | 'har-replay' | 'run-test';
     selector?: string;
     value?: string;
     params?: {
@@ -57,11 +58,13 @@ interface StepComponentProps {
     isLast: boolean;
     /** URL prefilled into the element picker (usually the case's goto step) */
     pickerUrl?: string;
+    /** Offer "Run another test" (test cases only — suite hooks can't run one). */
+    allowRunTest?: boolean;
 }
 
 const stepAction = 'inline-flex h-7 items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 text-[11px] font-medium text-slate-500 transition-colors hover:border-slate-300 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40';
 
-export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast, pickerUrl }) => {
+export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updateStep, removeStep, moveStep, insertStep, isFirst, isLast, pickerUrl, allowRunTest = true }) => {
     const [showPicker, setShowPicker] = React.useState(false);
     const [localHeaders, setLocalHeaders] = React.useState(JSON.stringify(step.params?.headers || {}, null, 2));
     const [localParams, setLocalParams] = React.useState(JSON.stringify(step.params?.params || {}, null, 2));
@@ -176,6 +179,7 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                 return { border: 'border-red-200', bg: 'bg-red-50 text-red-600', hue: 'red', icon: <KeyRound size={18} />, label: SECURITY_STEP_LABELS[type] };
             case 'expect-no-horizontal-overflow': case 'expect-rtl-layout': case 'check-page-budget':
                 return { border: 'border-teal-200', bg: 'bg-teal-50 text-teal-600', hue: 'teal', icon: <Eye size={18} />, label: FRONTEND_QUALITY_LABELS[type] };
+            case 'run-test': return { border: 'border-violet-200', bg: 'bg-violet-50 text-violet-600', hue: 'violet', icon: <PlayCircle size={18} />, label: 'Run Test' };
             case 'mock-response': case 'har-replay':
                 return { border: 'border-sky-200', bg: 'bg-sky-50 text-sky-600', hue: 'sky', icon: <Activity size={18} />, label: NETWORK_MOCK_LABELS[type] };
             case '': return { border: 'border-dashed border-slate-300', bg: 'bg-slate-100 text-slate-400', hue: 'slate', icon: <PlusCircle size={18} />, label: 'Choose action…' };
@@ -259,6 +263,10 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Network mocks</div>
                                 <SelectItem value="mock-response"><div className="flex items-center gap-2"><Activity size={14} className="text-sky-500"/> Mock Response</div></SelectItem>
                                 <SelectItem value="har-replay"><div className="flex items-center gap-2"><Activity size={14} className="text-sky-500"/> Replay HAR</div></SelectItem>
+                                {allowRunTest && (<>
+                                <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Reuse</div>
+                                <SelectItem value="run-test"><div className="flex items-center gap-2"><PlayCircle size={14} className="text-violet-500"/> Run Test (another test's steps)</div></SelectItem>
+                                </>)}
                                 <div className="p-2 text-xs font-bold text-slate-400 uppercase tracking-widest border-t mt-1">Advanced</div>
                                 <SelectItem value="wait-timeout"><div className="flex items-center gap-2"><Clock size={14} className="text-rose-500"/> Wait (ms)</div></SelectItem>
                                 <SelectItem value="wait-for-response"><div className="flex items-center gap-2"><Activity size={14} className="text-rose-500"/> Wait For Response</div></SelectItem>
@@ -310,6 +318,9 @@ export const StepComponent: React.FC<StepComponentProps> = ({ step, index, updat
                                     className={`flex-1 min-w-0 h-12 rounded-xl border-none shadow-sm focus-visible:ring-2 focus-visible:ring-${meta.hue}-500/20 bg-white px-4 font-mono`}
                                 />
                             </>
+                        ) : step.type === 'run-test' ? (
+                            <RunTestStepFields params={step.params || {}}
+                                onParams={(p) => updateStep(step.id, 'params', p)} />
                         ) : isNetworkMockStep(step.type) ? (
                             <NetworkMockStepFields type={step.type} params={step.params || {}} selector={step.selector} value={step.value}
                                 onParams={(p) => updateStep(step.id, 'params', p)}

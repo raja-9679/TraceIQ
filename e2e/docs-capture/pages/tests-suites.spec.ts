@@ -124,8 +124,31 @@ test('Tests › Suites', async ({ page, browser }) => {
     await settle(page);
     await beat(page, 600);
     await page.screenshot({ path: out(`${DIR}/editor.png`) });
+
+    // A "Run Another Test" step, filled in but never saved: the draft lives in
+    // this browser only and is removed before leaving.
+    await page.getByRole('button', { name: 'Step', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Step action: Choose action…' }).click();
+    await page.getByRole('option', { name: /Run Test/ }).click();
+    const pickTest = page.getByLabel('Test to run');
+    await expect(pickTest.locator('option').nth(1)).toBeAttached();
+    await pickTest.selectOption({ index: 1 });
+    await page.getByRole('button', { name: 'Use a different value' }).click();
+    await page.getByLabel('Value name 1').fill('env.LOGIN_USER');
+    await page.getByLabel('Value 1', { exact: true }).fill('subscriber@example.com');
+    const runTestCard = pickTest.locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][last()]');
+    await runTestCard.scrollIntoViewIfNeeded();
+    await settle(page);
+    await beat(page, 400);
+    await runTestCard.screenshot({ path: out(`${DIR}/run-test-step.png`) });
+    const dropDrafts = () => page.evaluate(() => {
+        for (const k of Object.keys(localStorage)) if (k.startsWith('testBuilder_draft_')) localStorage.removeItem(k);
+    });
+    await dropDrafts();
+    page.once('dialog', (d) => d.accept());
     await page.getByRole('button', { name: 'Back' }).click();
     await page.waitForURL(/\/suites\/\d+$/);
+    await dropDrafts();
 
     // 4. A short walkthrough video, with captions saying what is on screen.
     await record(browser, `${DIR}/walkthrough.webm`, async (p) => {

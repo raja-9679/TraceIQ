@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, CheckCircle, CircleSlash, Code2, Globe, ListOrdered, Terminal, Wrench, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle, CircleSlash, Code2, Globe, ListOrdered, PlayCircle, Terminal, Wrench, XCircle } from 'lucide-react';
 import { getArtifactUrl } from '@/lib/api';
-import { requestOutcome, stepAnchorId, type StepEvidence } from './evidenceHelpers';
+import { requestOutcome, segmentByOrigin, stepAnchorId, type StepEvidence } from './evidenceHelpers';
 
 // Per-step evidence for one result (result_payload.step_evidence, sent by
 // workers since failure investigation v2). Each step is an anchor that the
@@ -45,7 +45,21 @@ export function StepEvidenceTimeline({
                 <ListOrdered size={14} /> Step evidence ({steps.length})
             </p>
             <ol className="space-y-1.5">
-                {steps.map((s) => {
+                {segmentByOrigin(steps).map((seg) => seg.origin === null ? seg.steps.map(renderStep) : (
+                    <li key={`call-${seg.steps[0].id}`} style={{ marginLeft: (seg.origin.depth - 1) * 12 }}
+                        className={`rounded-lg border-l-4 pl-2 ${seg.steps.some(x => x.status === 'failed') ? 'border-rose-300' : 'border-violet-200'}`}>
+                        <p className="flex items-center gap-1.5 py-1 text-[11px] font-semibold text-violet-700">
+                            <PlayCircle size={12} aria-hidden />
+                            From “{seg.origin.case_name}” (test #{seg.origin.case_id})
+                        </p>
+                        <ol className="space-y-1.5">{seg.steps.map(renderStep)}</ol>
+                    </li>
+                ))}
+            </ol>
+        </div>
+    );
+
+    function renderStep(s: StepEvidence) {
                     const st = STATUS_STYLE[s.status] ?? STATUS_STYLE.passed;
                     const Icon = st.icon;
                     const highlighted = highlightedStep === s.index;
@@ -114,8 +128,5 @@ export function StepEvidenceTimeline({
                             )}
                         </li>
                     );
-                })}
-            </ol>
-        </div>
-    );
+    }
 }

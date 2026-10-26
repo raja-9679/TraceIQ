@@ -255,6 +255,28 @@
           <li><strong>History</strong> shows earlier versions of the test and can bring one back.</li>
           <li><strong>Ownership and review</strong> names who looks after the test (see <em>Test review</em>).</li>
         </ul>
+        <h3 id="run-another-test">Using one test inside another</h3>
+        <p>Steps you need in many tests, such as signing in, can live in one test and be used by the
+          others. The <strong>Run Test</strong> step (under <em>Reuse</em> in the step's drop-down)
+          runs another test's steps at that point, in the same browser: whatever it leaves behind
+          (signed in, a page open, a value it saved) is still there for the steps after it.</p>
+        <figure>
+          <div class="frame"><img src="../media/tests/suites/run-test-step.png" alt="A Run Test step in the step editor: a Find a test box, the chosen test in a drop-down with an Open link, the note that the test's steps run here in the same browser using this test's values, and one different value: env.LOGIN_USER set to subscriber@example.com" loading="lazy"></div>
+        </figure>
+        <ul>
+          <li><strong>Find a test</strong> narrows the list by name; the drop-down shows the tests of
+            this project. <em>Open</em> opens the chosen test in a new tab.</li>
+          <li><strong>It uses the latest version.</strong> The chosen test is not copied: when you
+            change it, every test that uses it runs the changed steps from its next run on.</li>
+          <li><strong>Same values by default.</strong> The steps use this test's environment, secrets
+            and data row. <strong>Use a different value</strong> changes one placeholder for this step
+            only: for example <code>env.LOGIN_USER</code> = <code>subscriber@example.com</code> and
+            <code>secret.LOGIN_PASSWORD</code> = <code>{{secret.SUBSCRIBER_PASSWORD}}</code> signs in as
+            a subscriber, while another test uses the same sign-in test as a free user. The names
+            the chosen test uses are suggested as you type.</li>
+          <li><strong>Used by.</strong> The editor of a test that others use says which tests use it,
+            and deleting it warns you first.</li>
+        </ul>
         <p>Nothing is saved until you press <strong>Save Test</strong> (or <strong>Update Test</strong>
           for an existing one). Unsaved changes are kept in your browser for up to an hour, so they
           are offered back if you leave by accident; <strong>Cancel</strong> asks before leaving them.</p>
@@ -284,6 +306,17 @@
           <li>Add the steps in order with the dark bar: usually <em>Navigate</em> first, then the clicks and typing, then at least one check (<em>Assert</em>).</li>
           <li>Press <strong>Save Test</strong>, then <strong>Run now</strong> to see it work.</li>
         </ol>
+        <h3>…check a page as a signed-in subscriber</h3>
+        <ol class="steps">
+          <li>Have a test that signs in, using placeholders for the user, for example
+            <code>{{env.LOGIN_USER}}</code> and <code>{{secret.LOGIN_PASSWORD}}</code>.</li>
+          <li>In the new test, add <em>Navigate</em> to the page, then a <strong>Step</strong> whose
+            action is <strong>Run Test</strong>, and choose the sign-in test.</li>
+          <li>Press <strong>Use a different value</strong> twice: <code>env.LOGIN_USER</code> = the
+            subscriber's email, <code>secret.LOGIN_PASSWORD</code> =
+            <code>{{secret.SUBSCRIBER_PASSWORD}}</code> (a secret you add in <em>Environments</em>).</li>
+          <li>Add the checks that only a subscriber should pass, then <strong>Save Test</strong>.</li>
+        </ol>
         <h3>…find out what a test checks</h3>
         <ol class="steps">
           <li>Open its suite and click the test in the list.</li>
@@ -303,6 +336,13 @@
           <li><strong>New tests go into sub-modules.</strong> TraceIQ refuses a sub-module in a suite that already has tests, and a new test in a suite that has sub-modules: once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself. A suite that holds both (like the demo's Web smoke, or one imported that way) lists and runs both.</li>
           <li><strong>Settings flow downwards.</strong> A sub-module uses its parent's settings unless its own <em>Inherit settings</em> is switched off; then it starts fresh from there down.</li>
           <li><strong>Opening a page does not check its status on its own.</strong> A <em>Navigate</em> step passes even when the site answers "page not found" (404) or shows an error page, because that page still opens. To check it, type the code you expect in the step's <em>Expect status</em> box: <code>200</code> for a page that must work, <code>404,410</code> for one that must be gone, or <code>2xx</code> for any success code. If the site redirects, the code of the page it ends up on is checked, and a wrong code fails the step with the code it got. An empty box accepts any code.</li>
+          <li><strong>Limits of Run Test.</strong> The chosen test must be in the same
+            project and run in the same way (web tests use web tests, mobile tests mobile tests);
+            manual and imported Playwright tests can't be used. A test can't end up running itself,
+            and tests can use each other at most 5 levels deep: saving refuses both. The chosen
+            test's suite settings are not used; this test's apply to every step. If the chosen test
+            is deleted later, the step fails with "Test #… no longer exists in this project". Suite
+            setup and teardown steps can't use it.</li>
           <li><strong>Exports carry no secrets.</strong> Suite and test exports include steps, tags and descriptions, but never the value of a secret.</li>
           <li><strong>It doesn't update by itself.</strong> Reload the page to see suites or tests that colleagues added meanwhile.</li>
         </ul>

@@ -221,3 +221,20 @@ test('ignore list is capped', () => {
     const many = Array.from({ length: 80 }, (_, i) => `p${i}`);
     assert.equal(consoleFailurePolicy({ fail_on_console_errors: true, console_error_ignore_patterns: many }, {}).ignore.length, 50);
 });
+
+test('steps from a Run another test call keep their origin, run or skipped', () => {
+    const from = { case_id: 42, case_name: 'Login', call_id: 'c1', depth: 1 };
+    const steps = [
+        { id: 'l1', type: 'fill', selector: '#u', from },
+        { id: 'l2', type: 'click', selector: '#go', from: { ...from, case_id: '42' } },
+        { id: 'x', type: 'click', selector: '#own' },
+    ];
+    const r = new StepEvidenceRecorder(sources(), 't', 'none');
+    r.begin(steps[0], 0);
+    r.end('failed', 'nope');
+    r.skipRemaining(steps, 1);
+    const [a, b, c] = r.list();
+    assert.deepEqual(a.from, from);
+    assert.equal(b.from, undefined); // malformed origin dropped
+    assert.equal(c.from, undefined);
+});

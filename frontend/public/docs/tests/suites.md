@@ -179,6 +179,17 @@ What to type, which address to open, or what text to expect.
 - **History** shows earlier versions of the test and can bring one back.
 - **Ownership and review** names who looks after the test (see *Test review*).
 
+### Using one test inside another
+
+Steps you need in many tests, such as signing in, can live in one test and be used by the others. The **Run Test** step (under *Reuse* in the step's drop-down) runs another test's steps at that point, in the same browser: whatever it leaves behind (signed in, a page open, a value it saved) is still there for the steps after it.
+
+![A Run Test step in the step editor: a Find a test box, the chosen test in a drop-down with an Open link, the note that the test's steps run here in the same browser using this test's values, and one different value: env.LOGIN_USER set to subscriber@example.com](../media/tests/suites/run-test-step.png)
+
+- **Find a test** narrows the list by name; the drop-down shows the tests of this project. *Open* opens the chosen test in a new tab.
+- **It uses the latest version.** The chosen test is not copied: when you change it, every test that uses it runs the changed steps from its next run on.
+- **Same values by default.** The steps use this test's environment, secrets and data row. **Use a different value** changes one placeholder for this step only: for example `env.LOGIN_USER` = `subscriber@example.com` and `secret.LOGIN_PASSWORD` = `{{secret.SUBSCRIBER_PASSWORD}}` signs in as a subscriber, while another test uses the same sign-in test as a free user. The names the chosen test uses are suggested as you type.
+- **Used by.** The editor of a test that others use says which tests use it, and deleting it warns you first.
+
 Nothing is saved until you press **Save Test** (or **Update Test** for an existing one). Unsaved changes are kept in your browser for up to an hour, so they are offered back if you leave by accident; **Cancel** asks before leaving them.
 
 ## Watch it in use
@@ -202,6 +213,13 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 3. Add the steps in order with the dark bar: usually *Navigate* first, then the clicks and typing, then at least one check (*Assert*).
 4. Press **Save Test**, then **Run now** to see it work.
 
+### …check a page as a signed-in subscriber
+
+1. Have a test that signs in, using placeholders for the user, for example `{{env.LOGIN_USER}}` and `{{secret.LOGIN_PASSWORD}}`.
+2. In the new test, add *Navigate* to the page, then a **Step** whose action is **Run Test**, and choose the sign-in test.
+3. Press **Use a different value** twice: `env.LOGIN_USER` = the subscriber's email, `secret.LOGIN_PASSWORD` = `{{secret.SUBSCRIBER_PASSWORD}}` (a secret you add in *Environments*).
+4. Add the checks that only a subscriber should pass, then **Save Test**.
+
 ### …find out what a test checks
 
 1. Open its suite and click the test in the list.
@@ -220,6 +238,7 @@ Nothing is saved until you press **Save Test** (or **Update Test** for an existi
 - **New tests go into sub-modules.** TraceIQ refuses a sub-module in a suite that already has tests, and a new test in a suite that has sub-modules: once a suite has sub-modules, new tests go into one of them, and a Continuous suite is switched to Separate by itself. A suite that holds both (like the demo's Web smoke, or one imported that way) lists and runs both.
 - **Settings flow downwards.** A sub-module uses its parent's settings unless its own *Inherit settings* is switched off; then it starts fresh from there down.
 - **Opening a page does not check its status on its own.** A *Navigate* step passes even when the site answers "page not found" (404) or shows an error page, because that page still opens. To check it, type the code you expect in the step's *Expect status* box: `200` for a page that must work, `404,410` for one that must be gone, or `2xx` for any success code. If the site redirects, the code of the page it ends up on is checked, and a wrong code fails the step with the code it got. An empty box accepts any code.
+- **Limits of Run Test.** The chosen test must be in the same project and run in the same way (web tests use web tests, mobile tests mobile tests); manual and imported Playwright tests can't be used. A test can't end up running itself, and tests can use each other at most 5 levels deep: saving refuses both. The chosen test's suite settings are not used; this test's apply to every step. If the chosen test is deleted later, the step fails with "Test #… no longer exists in this project". Suite setup and teardown steps can't use it.
 - **Exports carry no secrets.** Suite and test exports include steps, tags and descriptions, but never the value of a secret.
 - **It doesn't update by itself.** Reload the page to see suites or tests that colleagues added meanwhile.
 

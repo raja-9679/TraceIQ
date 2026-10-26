@@ -46,6 +46,7 @@ process.env.REDIS_CONSUMER_GROUP = process.env.REDIS_CONSUMER_GROUP || 'mobile-w
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { JobQueue, workerRegion } = require('./core/job-queue') as typeof import('./core/job-queue');
+import { runTestStepError } from './core/case-calls';
 import { abortedJobResult, CANCELLED_MESSAGE, isJobAbort, RunControl } from './core/run-control';
 import { Heartbeat } from './core/heartbeat';
 import { initTracing, shutdownTracing, startJobSpan } from './core/tracing';
@@ -81,6 +82,7 @@ const SUPPORTED_MOBILE_STEP_TYPES: readonly string[] = [
     'mobile-long-press', 'mobile-type', 'mobile-swipe', 'mobile-press-key',
     'mobile-wait-for', 'mobile-expect-visible', 'mobile-expect-text',
     'mobile-screenshot', 'mobile-extract-value', 'mobile-expect-visual-match',
+    'run-test',
 ];
 
 type MobileApp = NonNullable<TestJob['settings']['mobile_app']>;
@@ -581,6 +583,9 @@ export class MobileWorker {
                     }
                     break;
                 }
+
+                case 'run-test':
+                    throw runTestStepError(step);
 
                 default:
                     // Same contract as the Playwright worker: unknown types fail

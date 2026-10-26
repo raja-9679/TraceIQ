@@ -518,6 +518,21 @@ def _clip(value: Any, limit: int) -> Optional[str]:
     return value[:limit] if isinstance(value, str) else None
 
 
+def _step_origin(raw: Any) -> Optional[Dict[str, Any]]:
+    """`from` on a step that a 'Run another test' step pulled in
+    (app/services/case_calls.py): which test, which call, how deep."""
+    if not isinstance(raw, dict):
+        return None
+    cid, depth = raw.get('case_id'), raw.get('depth')
+    if not isinstance(cid, int) or isinstance(cid, bool) or cid <= 0:
+        return None
+    out: Dict[str, Any] = {'case_id': cid,
+                           'case_name': _clip(raw.get('case_name'), 200) or f"#{cid}",
+                           'call_id': _clip(raw.get('call_id'), 100) or ''}
+    out['depth'] = depth if isinstance(depth, int) and not isinstance(depth, bool) and 0 < depth <= 10 else 1
+    return out
+
+
 def normalise_step_evidence(raw: Any, run_id: Optional[int] = None) -> List[Dict[str, Any]]:
     """Per-step evidence (worker `step_evidence`), rebuilt field by field.
 
@@ -556,6 +571,9 @@ def normalise_step_evidence(raw: Any, run_id: Optional[int] = None) -> List[Dict
                 entry[key] = v
         if isinstance(item.get('duration_ms'), (int, float)) and not isinstance(item.get('duration_ms'), bool):
             entry['duration_ms'] = max(0, int(item['duration_ms']))
+        origin = _step_origin(item.get('from'))
+        if origin:
+            entry['from'] = origin
         console = []
         for c in (item.get('console') or [])[:min(_MAX_EVIDENCE_ITEMS, budget)] if isinstance(item.get('console'), list) else []:
             if isinstance(c, dict) and isinstance(c.get('text'), str):
@@ -724,6 +742,12 @@ def _persist_heal_suggestions(result: Dict[str, Any]):
             for s in suggestions[:10]:
                 if not s.get('test_case_id') or not s.get('new_selector'):
                     continue
+                # A step that came from a 'Run another test' step belongs to
+                # the called case: that is where the selector must be fixed.
+                from app.services.case_calls import owner_of_step
+                s = {**s, 'test_case_id': owner_of_step(
+                    session, session.get(TestCase, s['test_case_id']), s.get('step_id') or '')
+                    or s['test_case_id']}
                 existing = session.exec(
                     select(SelectorHealProposal).where(
                         SelectorHealProposal.test_case_id == s['test_case_id'],

@@ -40,6 +40,7 @@ function HookStepList({ label, steps, onChange }: {
                         insertStep={insertAfter}
                         isFirst={index === 0}
                         isLast={index === steps.length - 1}
+                        allowRunTest={false}
                     />
                 ))}
             </div>

@@ -1,3 +1,4 @@
+import { runTestStepError } from './case-calls';
 import { Page, FrameLocator, Locator } from 'playwright';
 import { DOMParser } from '@xmldom/xmldom';
 import * as xpath from 'xpath';
@@ -39,7 +40,7 @@ export class TestExecutor {
         'expect-visible', 'expect-visual-match', 'extract-value', 'feed-check',
         'fill', 'goto', 'graphql', 'handle-dialog', 'har-replay', 'hover', 'http-request',
         'mock-response', 'oauth2-token', 'press-key', 'right-click',
-        'run-script', 'screenshot', 'scroll-to', 'select-option',
+        'run-script', 'run-test', 'screenshot', 'scroll-to', 'select-option',
         'set-network-latency', 'switch-frame', 'switch-tab', 'totp', 'uncheck',
         'upload-file', 'verify-nth-child', 'wait-for-email', 'wait-for-response',
         'wait-for-selector', 'wait-for-webhook', 'wait-timeout',
@@ -873,6 +874,10 @@ export class TestExecutor {
                 await executeMockResponse(page, step, resolve);
                 break;
             }
+
+            case 'run-test':
+                // Only reaches a worker when the backend could not expand it.
+                throw runTestStepError(step);
 
             case 'har-replay': {
                 // Answer requests from an uploaded (redacted) HAR — ./network-mocks.ts.

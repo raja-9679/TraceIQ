@@ -3,6 +3,7 @@
  * analysis and proactive selector heal. Pure helpers, kept out of worker.ts
  * (which starts a worker on import) so they can be unit-tested.
  */
+import { stepOrigin, type StepOrigin } from './case-calls';
 import * as vm from 'vm';
 import type { FrameLocator, Page } from 'playwright';
 import type { CaptureLevel } from './artifact-store';
@@ -115,6 +116,8 @@ export interface StepEvidence {
     // and how many requests carried them. Ids, not content: the redaction
     // twins leave them alone.
     trace?: StepTrace;
+    // The test a 'Run another test' step pulled this step in from.
+    from?: StepOrigin;
 }
 
 const LEVEL_RANK: Record<CaptureLevel, number> = { none: 0, minimal: 1, standard: 2, full: 3 };
@@ -204,6 +207,8 @@ export class StepEvidenceRecorder {
             duration_ms: Date.now() - this.mark.t,
         };
         if (step?.id) entry.step_id = String(step.id);
+        const origin = stepOrigin(step);
+        if (origin) entry.from = origin;
         if (step?.selector) entry.selector = redactText(clip(step.selector, MAX_SELECTOR_CHARS), this.policy);
         if (error) entry.error = redactText(clip(error, 1000), this.policy);
         if (stepTrace) entry.trace = stepTrace;
@@ -258,6 +263,8 @@ export class StepEvidenceRecorder {
             const entry: StepEvidence = { id: `s${i}`, index: i, type: String(step?.type || 'unknown'), status: 'skipped' };
             if (step?.id) entry.step_id = String(step.id);
             if (step?.selector) entry.selector = redactText(clip(step.selector, MAX_SELECTOR_CHARS), this.policy);
+            const origin = stepOrigin(step);
+            if (origin) entry.from = origin;
             this.entries.push(entry);
         }
     }

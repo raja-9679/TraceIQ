@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { UsedByNotice } from '@/components/test-builder/UsedByNotice';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { CaseSplit } from '@/components/redesign/CaseSplit';
 import { describeStep } from '@/components/redesign/steps';
@@ -1711,6 +1712,7 @@ export default function SuiteDetails() {
                             <p className="text-sm text-slate-600 mb-6">
                                 Are you sure you want to delete <strong>{testCaseToDelete.name}</strong>? This action cannot be undone.
                             </p>
+                            <UsedByNotice caseId={testCaseToDelete.id} warning />
                             <div className="flex gap-2 justify-end">
                                 <Button variant="outline" onClick={() => { setShowDeleteTestCaseDialog(false); setTestCaseToDelete(null); }}>Cancel</Button>
                                 <Button

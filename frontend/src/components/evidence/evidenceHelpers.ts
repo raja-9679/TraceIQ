@@ -28,6 +28,30 @@ export interface StepEvidence {
     dom_scope?: 'target' | 'page';
     /** WP16a: ids this step propagated in `traceparent` (trace correlation). */
     trace?: { trace_id: string; span_id: string; requests?: number };
+    /** The test a 'Run another test' step pulled this step in from (innermost). */
+    from?: StepOrigin;
+}
+
+export interface StepOrigin { case_id: number; case_name: string; call_id: string; depth: number }
+
+/** Steps cut into runs: own steps (origin null) and, for each 'Run another
+ *  test' call, the consecutive steps that came from it. */
+export interface StepSegment { origin: StepOrigin | null; steps: StepEvidence[] }
+
+const sameCall = (a?: StepOrigin, b?: StepOrigin) =>
+    !!a && !!b && a.case_id === b.case_id && a.call_id === b.call_id && a.depth === b.depth;
+
+export function segmentByOrigin(steps: StepEvidence[]): StepSegment[] {
+    const out: StepSegment[] = [];
+    for (const s of steps) {
+        const last = out[out.length - 1];
+        if (last && (s.from ? sameCall(last.origin ?? undefined, s.from) : last.origin === null)) {
+            last.steps.push(s);
+        } else {
+            out.push({ origin: s.from ?? null, steps: [s] });
+        }
+    }
+    return out;
 }
 
 export interface EvidenceItem { id: string; kind: string; label: string; step_index?: number | null }

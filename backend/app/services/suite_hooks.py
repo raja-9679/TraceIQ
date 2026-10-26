@@ -87,6 +87,10 @@ def validate_suite_settings(settings: Any) -> Any:
     for key in HOOK_KEYS:
         if key in out:
             steps = _normalize_steps(out[key], key)
+            # Hooks are not expanded at dispatch (app/services/case_calls.py
+            # runs over case steps only), so a run-test here would just fail.
+            if any(isinstance(s, dict) and s.get("type") == "run-test" for s in steps or []):
+                raise SuiteHookError(f"{key}: 'Run Test' steps can only be used in test cases")
             if steps:
                 out[key] = steps
             else:
