@@ -488,6 +488,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/job-queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Job Queue
+         * @description Waiting jobs per stream, oldest claimed first, then oldest unclaimed.
+         */
+        get: operations["list_job_queue_api_admin_job_queue_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/job-queue/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Clear Job Queue
+         * @description Cancel the runs and delete their waiting jobs.
+         *
+         *     Pass `run_ids`, `entries` ([{stream, entry_id}]) or `clear_all: true`.
+         */
+        post: operations["clear_job_queue_api_admin_job_queue_clear_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/llm-providers": {
         parameters: {
             query?: never;
@@ -4402,8 +4444,11 @@ export interface paths {
         };
         /**
          * Evaluate Quality Gate
-         * @description Go/no-go for a release. Evaluates the runs for a commit (or branch, or
-         *     the single latest run) against the project policy.
+         * @description Go/no-go for a release. Evaluates the runs for a commit (or branch)
+         *     against the project policy. With neither, the newest finished run picks
+         *     the commit and every finished run on it is evaluated — the same scope
+         *     release readiness uses, so the two pages judge the same evidence (a
+         *     commit-less newest run is evaluated alone).
          *
          *     To reproduce an earlier verdict pass the `policy_version` and the
          *     `evaluated_run_ids` it reported as `run_ids` (they must belong to this
@@ -7701,8 +7746,35 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Remove User From Workspace */
+        /**
+         * Remove User From Workspace
+         * @description Remove a member and everything they hold in this workspace: team
+         *     memberships, direct project grants, per-case overrides and their API keys
+         *     for it. 409 when they are the last workspace admin.
+         */
         delete: operations["remove_user_from_workspace_api_workspaces__workspace_id__users__user_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/{workspace_id}/users/{user_id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Workspace Member Role
+         * @description Change an existing member's workspace role. Inviting/assigning only ever
+         *     ADDS a membership, so before this there was no way to promote or demote
+         *     anyone. Audited; refuses (409) to demote the last admin.
+         */
+        put: operations["set_workspace_member_role_api_workspaces__workspace_id__users__user_id__role_put"];
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -8573,6 +8645,20 @@ export interface components {
              * @default true
              */
             post_pr_comment?: boolean;
+        };
+        /** ClearRequest */
+        ClearRequest: {
+            /**
+             * Clear All
+             * @default false
+             */
+            clear_all?: boolean;
+            /** Entries */
+            entries?: {
+                [key: string]: string;
+            }[] | null;
+            /** Run Ids */
+            run_ids?: number[] | null;
         };
         /** CommentCreate */
         CommentCreate: {
@@ -9652,6 +9738,29 @@ export interface components {
              * @default false
              */
             authorized?: boolean;
+        };
+        /**
+         * MeRead
+         * @description `GET /auth/me` only: facts about the caller that other users must not
+         *     see through member lists (which use UserRead).
+         */
+        MeRead: {
+            /** Email */
+            email: string;
+            /** Full Name */
+            full_name: string;
+            /** Id */
+            id: number;
+            /**
+             * Is Instance Admin
+             * @default false
+             */
+            is_instance_admin?: boolean;
+            /**
+             * Mfa Enabled
+             * @default false
+             */
+            mfa_enabled?: boolean;
         };
         /** MessageCreate */
         MessageCreate: {
@@ -13011,6 +13120,11 @@ export interface components {
              */
             role?: string;
         };
+        /** WorkspaceRoleUpdate */
+        WorkspaceRoleUpdate: {
+            /** Role */
+            role: string;
+        };
         /** WorkspaceWebhookCreate */
         WorkspaceWebhookCreate: {
             /** Event Filter */
@@ -14024,6 +14138,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_job_queue_api_admin_job_queue_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_job_queue_api_admin_job_queue_clear_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClearRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -15302,7 +15484,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UserRead"];
+                    "application/json": components["schemas"]["MeRead"];
                 };
             };
         };
@@ -30179,6 +30361,42 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_workspace_member_role_api_workspaces__workspace_id__users__user_id__role_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: number;
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkspaceRoleUpdate"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

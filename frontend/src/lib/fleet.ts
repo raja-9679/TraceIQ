@@ -83,3 +83,32 @@ export function isoToLocalInput(iso: string | null | undefined): string {
 }
 
 export const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+export interface QueueGroup<J> {
+    /** null = side jobs (crawls, page checks…) that belong to no run. */
+    runId: number | null;
+    jobs: J[];
+    claimed: number;
+    oldestWaitingSeconds: number | null;
+}
+
+/** Waiting jobs grouped by run, oldest-waiting group first. Clearing works per
+ * run (it cancels the run), so the screen shows runs, not single jobs. */
+export function groupQueueByRun<J extends { run_id: number | null; claimed: boolean; waiting_seconds: number | null }>(
+    jobs: J[],
+): QueueGroup<J>[] {
+    const byRun = new Map<number | null, QueueGroup<J>>();
+    for (const j of jobs) {
+        let g = byRun.get(j.run_id);
+        if (!g) {
+            g = { runId: j.run_id, jobs: [], claimed: 0, oldestWaitingSeconds: null };
+            byRun.set(j.run_id, g);
+        }
+        g.jobs.push(j);
+        if (j.claimed) g.claimed += 1;
+        if (j.waiting_seconds !== null && (g.oldestWaitingSeconds === null || j.waiting_seconds > g.oldestWaitingSeconds)) {
+            g.oldestWaitingSeconds = j.waiting_seconds;
+        }
+    }
+    return [...byRun.values()].sort((a, b) => (b.oldestWaitingSeconds ?? 0) - (a.oldestWaitingSeconds ?? 0));
+}

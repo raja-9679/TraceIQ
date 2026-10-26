@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/table';
 import { fleetApi } from '@/api/fleet';
 import { formatAge } from '@/lib/fleet';
+import { DeadLetterPanel, JobQueuePanel } from '@/components/fleet/QueuePanels';
 
 type ApiErr = { response?: { status?: number; data?: { detail?: unknown } }; message?: string };
 const errDetail = (err: unknown): string => {
@@ -192,6 +193,9 @@ export default function WorkerFleet() {
                             </Table>
                         </div>
                     </div>
+
+                    <JobQueuePanel />
+                    <DeadLetterPanel />
 
                     <h2 className="text-lg font-bold text-slate-800 mb-3">Job streams</h2>
                     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">

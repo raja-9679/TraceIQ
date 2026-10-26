@@ -1996,6 +1996,48 @@
         "title": "CiSettings",
         "type": "object"
       },
+      "ClearRequest": {
+        "properties": {
+          "clear_all": {
+            "default": false,
+            "title": "Clear All",
+            "type": "boolean"
+          },
+          "entries": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entries"
+          },
+          "run_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Ids"
+          }
+        },
+        "title": "ClearRequest",
+        "type": "object"
+      },
       "CommentCreate": {
         "properties": {
           "body": {
@@ -5238,6 +5280,40 @@
           }
         },
         "title": "MatrixRunRequest",
+        "type": "object"
+      },
+      "MeRead": {
+        "description": "`GET /auth/me` only: facts about the caller that other users must not\nsee through member lists (which use UserRead).",
+        "properties": {
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "full_name": {
+            "title": "Full Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "is_instance_admin": {
+            "default": false,
+            "title": "Is Instance Admin",
+            "type": "boolean"
+          },
+          "mfa_enabled": {
+            "default": false,
+            "title": "Mfa Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "full_name"
+        ],
+        "title": "MeRead",
         "type": "object"
       },
       "MessageCreate": {
@@ -15140,6 +15216,19 @@
         "title": "WorkspaceInvite",
         "type": "object"
       },
+      "WorkspaceRoleUpdate": {
+        "properties": {
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "WorkspaceRoleUpdate",
+        "type": "object"
+      },
       "WorkspaceWebhookCreate": {
         "properties": {
           "event_filter": {
@@ -16759,6 +16848,106 @@
         "summary": "Reset Instance Setting",
         "tags": [
           "instance-settings"
+        ]
+      }
+    },
+    "/api/admin/job-queue": {
+      "get": {
+        "description": "Waiting jobs per stream, oldest claimed first, then oldest unclaimed.",
+        "operationId": "list_job_queue_api_admin_job_queue_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Job Queue Api Admin Job Queue Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List Job Queue",
+        "tags": [
+          "job-queue"
+        ]
+      }
+    },
+    "/api/admin/job-queue/clear": {
+      "post": {
+        "description": "Cancel the runs and delete their waiting jobs.\n\nPass `run_ids`, `entries` ([{stream, entry_id}]) or `clear_all: true`.",
+        "operationId": "clear_job_queue_api_admin_job_queue_clear_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Clear Job Queue Api Admin Job Queue Clear Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Clear Job Queue",
+        "tags": [
+          "job-queue"
         ]
       }
     },
@@ -18746,7 +18935,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserRead"
+                  "$ref": "#/components/schemas/MeRead"
                 }
               }
             },
@@ -30097,7 +30286,7 @@
     },
     "/api/projects/{project_id}/quality-gate": {
       "get": {
-        "description": "Go/no-go for a release. Evaluates the runs for a commit (or branch, or\nthe single latest run) against the project policy.\n\nTo reproduce an earlier verdict pass the `policy_version` and the\n`evaluated_run_ids` it reported as `run_ids` (they must belong to this\nproject). Cancelled / timed-out runs are never counted; they are listed\nin `ignored_run_ids`.",
+        "description": "Go/no-go for a release. Evaluates the runs for a commit (or branch)\nagainst the project policy. With neither, the newest finished run picks\nthe commit and every finished run on it is evaluated — the same scope\nrelease readiness uses, so the two pages judge the same evidence (a\ncommit-less newest run is evaluated alone).\n\nTo reproduce an earlier verdict pass the `policy_version` and the\n`evaluated_run_ids` it reported as `run_ids` (they must belong to this\nproject). Cancelled / timed-out runs are never counted; they are listed\nin `ignored_run_ids`.",
         "operationId": "evaluate_quality_gate_api_projects__project_id__quality_gate_get",
         "parameters": [
           {
@@ -43237,6 +43426,7 @@
     },
     "/api/workspaces/{workspace_id}/users/{user_id}": {
       "delete": {
+        "description": "Remove a member and everything they hold in this workspace: team\nmemberships, direct project grants, per-case overrides and their API keys\nfor it. 409 when they are the last workspace admin.",
         "operationId": "remove_user_from_workspace_api_workspaces__workspace_id__users__user_id__delete",
         "parameters": [
           {
@@ -43284,6 +43474,71 @@
           }
         ],
         "summary": "Remove User From Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/users/{user_id}/role": {
+      "put": {
+        "description": "Change an existing member's workspace role. Inviting/assigning only ever\nADDS a membership, so before this there was no way to promote or demote\nanyone. Audited; refuses (409) to demote the last admin.",
+        "operationId": "set_workspace_member_role_api_workspaces__workspace_id__users__user_id__role_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceRoleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Set Workspace Member Role",
         "tags": [
           "workspaces"
         ]

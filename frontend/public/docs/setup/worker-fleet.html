@@ -32,14 +32,15 @@
         <div class="meta-row">
           <span class="tag t-neutral">Setup</span>
           <span class="tag t-neutral">Instance admin only</span>
-          <span class="tag t-neutral">Read-only page</span>
+          <span class="tag t-neutral">Can cancel queued work</span>
         </div>
 
         <div class="in-short">
           <div class="label">In short</div>
           <p>Tests don't run inside the TraceIQ website itself: they run on separate machines
             called <em>workers</em>, each with its own browser. This page shows those workers,
-            whether each one is alive, what it is doing, and how much work is waiting for them.</p>
+            whether each one is alive, what it is doing, and which jobs are waiting for them. From
+            here you can also cancel work that is stuck in the queue and retry jobs that failed.</p>
         </div>
 
         <h2 id="what-for">What it is for</h2>
@@ -56,9 +57,9 @@
           The sidebar shows it to organisation admins too, but only an instance admin can open it.</p>
 
         <h2 id="tour" data-toc="A tour of the screen">A tour of the screen</h2>
-        <p>The page has three parts. The numbers on the screenshot match the sections below.</p>
+        <p>The page has five parts. The numbers on the screenshot match the sections below.</p>
         <figure>
-          <div class="frame"><img src="../media/setup/worker-fleet/page-annotated.png" alt="The Worker fleet page with three numbered parts: 1 five number tiles, 2 the table of workers, 3 the table of job streams" loading="lazy" width="1440" height="1100"></div>
+          <div class="frame"><img src="../media/setup/worker-fleet/page-annotated.png" alt="The Worker fleet page with five numbered parts: 1 five number tiles, 2 the table of workers, 3 waiting jobs, 4 failed jobs, 5 the table of job streams" loading="lazy" width="1440" height="1500"></div>
           <figcaption>The Worker fleet page with two workers alive and nothing waiting. Click the picture to see it larger.</figcaption>
         </figure>
         <p>Above the tiles, the page reminds you how it decides that a worker is alive: every
@@ -103,7 +104,49 @@
           </table>
         </div>
 
-        <div class="part"><span class="num">3</span><h2 id="streams" data-toc="③ Job streams">Job streams</h2></div>
+        <div class="part"><span class="num">3</span><h2 id="waiting" data-toc="③ Waiting jobs">Waiting jobs</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/setup/worker-fleet/waiting.png" alt="The Waiting jobs section, saying nothing is waiting" loading="lazy"></div>
+          <figcaption>Here nothing is waiting, which is the normal state between runs.</figcaption>
+        </figure>
+        <p>Every job that no worker has finished yet, grouped by the run it belongs to. The run
+          that has been waiting longest is at the top. Click the arrow next to a run to see its
+          jobs one by one: the test's name, the browser, and whether it is still <em>queued</em> or
+          already <em>on</em> a worker (with the worker's name).</p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th style="width:22%">Column</th><th>What it shows</th></tr></thead>
+            <tbody>
+              <tr><td><strong>Run</strong></td><td>The run, as a link, and its status. <em>Background checks</em> collects jobs that belong to no run: site crawls, page checks and persona refreshes.</td></tr>
+              <tr><td><strong>Project / suite</strong></td><td>Where the run came from.</td></tr>
+              <tr><td><strong>Jobs</strong></td><td>How many of the run's jobs are waiting, and how many of those a worker has already taken.</td></tr>
+              <tr><td><strong>Oldest waiting</strong></td><td>How long the run's oldest job has been in the queue.</td></tr>
+              <tr><td><strong>Action</strong></td><td><strong>Cancel run</strong> (or <strong>Clear</strong> for background checks). Asks you to confirm first.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p><strong>Clearing a job cancels its whole run.</strong> The run is marked
+          <em>Cancelled</em>, its waiting jobs are removed, and it keeps the results it already has.
+          A cancelled run counts as neither a pass nor a failure and sends no notifications. A job a
+          worker is already running is not cut off mid-step: the worker stops before its next step.
+          <strong>Clear whole queue</strong> (above the table) does the same for every run with a
+          waiting job. Every cancel is written to the audit log.</p>
+        <p>The table lists up to 200 jobs per queue. When more are waiting, a note under the
+          table says so; <strong>Clear whole queue</strong> still covers all of them.</p>
+
+        <div class="part"><span class="num">4</span><h2 id="failed" data-toc="④ Failed jobs">Failed jobs</h2></div>
+        <figure>
+          <div class="frame"><img src="../media/setup/worker-fleet/failed.png" alt="The Failed jobs section, saying there are no failed jobs" loading="lazy"></div>
+        </figure>
+        <p>Jobs that crashed a worker three times in a row and were set aside so they don't block
+          the queue (the <strong>Dead letters</strong> tile counts them). Each row shows the run, the
+          test, why it failed and when it was set aside.</p>
+        <ul>
+          <li><strong>Retry</strong> puts the job back in the queue for another worker to try. <strong>Retry all</strong> does it for every row.</li>
+          <li><strong>Discard</strong> deletes the job for good. <strong>Discard all</strong> asks you to confirm first.</li>
+        </ul>
+
+        <div class="part"><span class="num">5</span><h2 id="streams" data-toc="⑤ Job streams">Job streams</h2></div>
         <figure>
           <div class="frame"><img src="../media/setup/worker-fleet/streams.png" alt="A table of two queues, jobs:pending and jobs:mobile:pending, both global, with their length, queued and in-flight counts" loading="lazy"></div>
         </figure>
@@ -139,6 +182,18 @@
           <li>Look at <strong>Alive</strong>. If it is zero, no worker is running: start the workers on the server.</li>
           <li>If workers are alive, look at <strong>Busy</strong>. If every alive worker is busy, runs are waiting their turn; more workers would help.</li>
           <li>In <strong>Job streams</strong>, find the queue with a bold <strong>Queued</strong> number. If the yellow box says no live worker serves it (for example a region with no worker), start a worker for that region.</li>
+          <li>In <strong>Waiting jobs</strong>, see which runs are holding the queue up.</li>
+        </ol>
+        <h3>…get rid of a run that is stuck in the queue</h3>
+        <ol class="steps">
+          <li>In <strong>Waiting jobs</strong>, find the run.</li>
+          <li>Click <strong>Cancel run</strong>, then confirm. The run shows as <em>Cancelled</em> and its jobs leave the queue.</li>
+          <li>To empty the queue completely, click <strong>Clear whole queue</strong> instead. Every run with a waiting job is cancelled.</li>
+        </ol>
+        <h3>…retry jobs that were set aside</h3>
+        <ol class="steps">
+          <li>In <strong>Failed jobs</strong>, read <em>Why it failed</em>. If the cause is fixed (for example a worker that kept crashing was replaced), click <strong>Retry</strong>.</li>
+          <li>If the job is not worth running again, click <strong>Discard</strong>.</li>
         </ol>
         <h3>…check that an update reached every worker</h3>
         <ol class="steps">
@@ -150,7 +205,8 @@
         <ul>
           <li><strong>It updates by itself</strong> every 15 seconds. <strong>Refresh</strong> (top right) updates it straight away.</li>
           <li><strong>Lost isn't always bad.</strong> A worker that was stopped on purpose, or replaced by a new one, shows as lost for 10 minutes and then leaves the list.</li>
-          <li><strong>Nothing can be changed here.</strong> Starting, stopping or adding workers happens on the server. Jobs in <em>Dead letters</em> can be retried or thrown away only through TraceIQ's API, by an instance admin; ask whoever runs your TraceIQ server.</li>
+          <li><strong>Workers are added on the server, not here.</strong> Starting, stopping or adding workers is done by whoever runs your TraceIQ server.</li>
+          <li><strong>Cancelling can't be undone.</strong> To run the tests again, start a new run.</li>
           <li><strong>Local workers</strong> (on a developer's computer) appear here while they are running, labelled with their workspace.</li>
         </ul>
 

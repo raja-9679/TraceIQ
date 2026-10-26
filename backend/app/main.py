@@ -57,6 +57,7 @@ from app.api import siem as siem_api
 from app.api import access_reviews as access_reviews_api
 from app.api import developer as developer_api
 from app.api import fleet as fleet_api
+from app.api import job_queue as job_queue_api
 from app.api import trace_correlation as trace_correlation_api
 from app.api import paging as paging_api
 from app.core.config import settings as core_settings
@@ -186,6 +187,7 @@ app.include_router(siem_api.router, prefix="/api", tags=["siem"])
 app.include_router(access_reviews_api.router, prefix="/api", tags=["access-reviews"])
 app.include_router(compliance_api.router, prefix="/api", tags=["compliance"])
 app.include_router(fleet_api.router, prefix="/api", tags=["fleet"])
+app.include_router(job_queue_api.router, prefix="/api", tags=["job-queue"])
 app.include_router(trace_correlation_api.router, prefix="/api", tags=["trace-correlation"])
 app.include_router(paging_api.router, prefix="/api", tags=["paging"])
 app.include_router(websockets.router, prefix="/api", tags=["websockets"])

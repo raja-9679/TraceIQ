@@ -17,18 +17,24 @@ test('Setup › Worker fleet', async ({ page, browser }) => {
 
     const tiles = main.getByText('Alive', { exact: true }).locator('xpath=ancestor::div[contains(@class,"grid")][1]');
     const workers = main.getByRole('heading', { name: 'Workers', level: 2 }).locator('xpath=following-sibling::div[1]');
+    const waiting = main.getByRole('heading', { name: 'Waiting jobs', level: 2 }).locator('xpath=ancestor::section[1]');
+    const failed = main.getByRole('heading', { name: 'Failed jobs', level: 2 }).locator('xpath=ancestor::section[1]');
     const streams = main.getByRole('heading', { name: 'Job streams', level: 2 }).locator('xpath=following-sibling::div[1]');
-    await page.setViewportSize({ width: 1440, height: 1100 });
+    await page.setViewportSize({ width: 1440, height: 1500 });
     await settle(page);
     const clean = await annotate(page, [
         { n: 1, target: tiles },
         { n: 2, target: workers },
-        { n: 3, target: streams },
+        { n: 3, target: waiting },
+        { n: 4, target: failed },
+        { n: 5, target: streams },
     ]);
     await page.screenshot({ path: out(`${DIR}/page-annotated.png`) });
     await clean();
     await tiles.screenshot({ path: out(`${DIR}/tiles.png`) });
     await workers.screenshot({ path: out(`${DIR}/workers.png`) });
+    await waiting.screenshot({ path: out(`${DIR}/waiting.png`) });
+    await failed.screenshot({ path: out(`${DIR}/failed.png`) });
     await streams.screenshot({ path: out(`${DIR}/streams.png`) });
     await page.setViewportSize({ width: 1440, height: 900 });
 
@@ -51,10 +57,18 @@ test('Setup › Worker fleet', async ({ page, browser }) => {
         await w.scrollIntoViewIfNeeded();
         await caption(p, 'One row per worker: its status, version, current job, and how many jobs it has done.');
         await pointAt(p, m.locator('table').first().locator('tbody tr').first(), 2600);
+        const q = m.getByRole('heading', { name: 'Waiting jobs', level: 2 });
+        await q.scrollIntoViewIfNeeded();
+        await caption(p, 'Waiting jobs lists every run with work in the queue. Cancel run clears its jobs and cancels the run.');
+        await pointAt(p, q.locator('xpath=ancestor::section[1]'), 2600);
+        const f = m.getByRole('heading', { name: 'Failed jobs', level: 2 });
+        await f.scrollIntoViewIfNeeded();
+        await caption(p, 'Failed jobs were set aside after crashing three times. You can retry them or discard them.');
+        await pointAt(p, f.locator('xpath=ancestor::section[1]'), 2400);
         const s = m.getByRole('heading', { name: 'Job streams', level: 2 });
         await s.scrollIntoViewIfNeeded();
         await caption(p, 'Job streams are the queues. Queued means waiting for a worker; in flight means being run.');
-        await pointAt(p, m.locator('table').nth(1).locator('tbody tr').first(), 2600);
+        await pointAt(p, s.locator('xpath=following-sibling::div[1]').locator('tbody tr').first(), 2600);
         await caption(p, 'The page refreshes itself every 15 seconds.', { say: 'The page refreshes itself every fifteen seconds.' });
         await pointAt(p, m.getByRole('button', { name: 'Refresh worker fleet' }), 1800);
         await caption(p, '');

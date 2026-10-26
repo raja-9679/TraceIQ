@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    formatAge, formatPromQueries, localInputToIso, parseCidrList, parseHostList,
+    formatAge, formatPromQueries, groupQueueByRun, localInputToIso, parseCidrList, parseHostList,
     parsePromQueries, parseRegions,
 } from './fleet';
 
@@ -36,5 +36,19 @@ describe('fleet helpers', () => {
         expect(formatAge(null)).toBe('—');
         expect(localInputToIso('')).toBeNull();
         expect(localInputToIso('2026-10-15T10:00')).toMatch(/Z$/);
+    });
+});
+
+describe('groupQueueByRun', () => {
+    it('groups per run, counts claimed, oldest group first, side jobs as null', () => {
+        const groups = groupQueueByRun([
+            { run_id: 1, claimed: true, waiting_seconds: 10 },
+            { run_id: 2, claimed: false, waiting_seconds: 90 },
+            { run_id: 1, claimed: false, waiting_seconds: 30 },
+            { run_id: null, claimed: false, waiting_seconds: 5 },
+        ]);
+        expect(groups.map((g) => g.runId)).toEqual([2, 1, null]);
+        expect(groups[1]).toMatchObject({ claimed: 1, oldestWaitingSeconds: 30 });
+        expect(groups[1].jobs).toHaveLength(2);
     });
 });

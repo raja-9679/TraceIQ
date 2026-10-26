@@ -2,11 +2,11 @@
 
 # Worker fleet
 
-Setup · Instance admin only · Read-only page
+Setup · Instance admin only · Can cancel queued work
 
 > **In short**
 >
-> Tests don't run inside the TraceIQ website itself: they run on separate machines called *workers*, each with its own browser. This page shows those workers, whether each one is alive, what it is doing, and how much work is waiting for them.
+> Tests don't run inside the TraceIQ website itself: they run on separate machines called *workers*, each with its own browser. This page shows those workers, whether each one is alive, what it is doing, and which jobs are waiting for them. From here you can also cancel work that is stuck in the queue and retry jobs that failed.
 
 ## What it is for
 
@@ -18,9 +18,9 @@ It is a page for the person who looks after the TraceIQ server (the *instance ad
 
 ## A tour of the screen
 
-The page has three parts. The numbers on the screenshot match the sections below.
+The page has five parts. The numbers on the screenshot match the sections below.
 
-![The Worker fleet page with three numbered parts: 1 five number tiles, 2 the table of workers, 3 the table of job streams](../media/setup/worker-fleet/page-annotated.png)
+![The Worker fleet page with five numbered parts: 1 five number tiles, 2 the table of workers, 3 waiting jobs, 4 failed jobs, 5 the table of job streams](../media/setup/worker-fleet/page-annotated.png)
 
 *The Worker fleet page with two workers alive and nothing waiting. Click the picture to see it larger.*
 
@@ -55,7 +55,36 @@ One row per worker. Alive workers come first.
 | **Processed / failed** | How many jobs it has finished since it started, and how many of those did not pass. A test that failed counts as failed here too, so this is not a measure of the worker's health on its own. |
 | **Started**, **Last seen** | When the worker started, and how long ago it last checked in. |
 
-## 3. Job streams
+## 3. Waiting jobs
+
+![The Waiting jobs section, saying nothing is waiting](../media/setup/worker-fleet/waiting.png)
+
+*Here nothing is waiting, which is the normal state between runs.*
+
+Every job that no worker has finished yet, grouped by the run it belongs to. The run that has been waiting longest is at the top. Click the arrow next to a run to see its jobs one by one: the test's name, the browser, and whether it is still *queued* or already *on* a worker (with the worker's name).
+
+| Column | What it shows |
+|---|---|
+| **Run** | The run, as a link, and its status. *Background checks* collects jobs that belong to no run: site crawls, page checks and persona refreshes. |
+| **Project / suite** | Where the run came from. |
+| **Jobs** | How many of the run's jobs are waiting, and how many of those a worker has already taken. |
+| **Oldest waiting** | How long the run's oldest job has been in the queue. |
+| **Action** | **Cancel run** (or **Clear** for background checks). Asks you to confirm first. |
+
+**Clearing a job cancels its whole run.** The run is marked *Cancelled*, its waiting jobs are removed, and it keeps the results it already has. A cancelled run counts as neither a pass nor a failure and sends no notifications. A job a worker is already running is not cut off mid-step: the worker stops before its next step. **Clear whole queue** (above the table) does the same for every run with a waiting job. Every cancel is written to the audit log.
+
+The table lists up to 200 jobs per queue. When more are waiting, a note under the table says so; **Clear whole queue** still covers all of them.
+
+## 4. Failed jobs
+
+![The Failed jobs section, saying there are no failed jobs](../media/setup/worker-fleet/failed.png)
+
+Jobs that crashed a worker three times in a row and were set aside so they don't block the queue (the **Dead letters** tile counts them). Each row shows the run, the test, why it failed and when it was set aside.
+
+- **Retry** puts the job back in the queue for another worker to try. **Retry all** does it for every row.
+- **Discard** deletes the job for good. **Discard all** asks you to confirm first.
+
+## 5. Job streams
 
 ![A table of two queues, jobs:pending and jobs:mobile:pending, both global, with their length, queued and in-flight counts](../media/setup/worker-fleet/streams.png)
 
@@ -81,6 +110,18 @@ A *job stream* is a queue of work. When you start a run, TraceIQ puts one job pe
 1. Look at **Alive**. If it is zero, no worker is running: start the workers on the server.
 2. If workers are alive, look at **Busy**. If every alive worker is busy, runs are waiting their turn; more workers would help.
 3. In **Job streams**, find the queue with a bold **Queued** number. If the yellow box says no live worker serves it (for example a region with no worker), start a worker for that region.
+4. In **Waiting jobs**, see which runs are holding the queue up.
+
+### …get rid of a run that is stuck in the queue
+
+1. In **Waiting jobs**, find the run.
+2. Click **Cancel run**, then confirm. The run shows as *Cancelled* and its jobs leave the queue.
+3. To empty the queue completely, click **Clear whole queue** instead. Every run with a waiting job is cancelled.
+
+### …retry jobs that were set aside
+
+1. In **Failed jobs**, read *Why it failed*. If the cause is fixed (for example a worker that kept crashing was replaced), click **Retry**.
+2. If the job is not worth running again, click **Discard**.
 
 ### …check that an update reached every worker
 
@@ -91,7 +132,8 @@ A *job stream* is a queue of work. When you start a run, TraceIQ puts one job pe
 
 - **It updates by itself** every 15 seconds. **Refresh** (top right) updates it straight away.
 - **Lost isn't always bad.** A worker that was stopped on purpose, or replaced by a new one, shows as lost for 10 minutes and then leaves the list.
-- **Nothing can be changed here.** Starting, stopping or adding workers happens on the server. Jobs in *Dead letters* can be retried or thrown away only through TraceIQ's API, by an instance admin; ask whoever runs your TraceIQ server.
+- **Workers are added on the server, not here.** Starting, stopping or adding workers is done by whoever runs your TraceIQ server.
+- **Cancelling can't be undone.** To run the tests again, start a new run.
 - **Local workers** (on a developer's computer) appear here while they are running, labelled with their workspace.
 
 ## Related pages
@@ -117,5 +159,7 @@ What the walkthrough says, in order. The video and every picture on this page ar
 3. Lost workers stopped checking in. Busy ones are running a test right now.
 4. Dead letters are tests that failed to run several times and were set aside.
 5. One row per worker: its status, version, current job, and how many jobs it has done.
-6. Job streams are the queues. Queued means waiting for a worker; in flight means being run.
-7. The page refreshes itself every fifteen seconds.
+6. Waiting jobs lists every run with work in the queue. Cancel run clears its jobs and cancels the run.
+7. Failed jobs were set aside after crashing three times. You can retry them or discard them.
+8. Job streams are the queues. Queued means waiting for a worker; in flight means being run.
+9. The page refreshes itself every fifteen seconds.
