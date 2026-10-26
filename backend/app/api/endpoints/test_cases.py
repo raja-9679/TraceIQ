@@ -89,13 +89,14 @@ def _check_manual(case: TestCase, step_types: set) -> None:
             raise HTTPException(status_code=400, detail=str(exc))
 
 
-async def _check_calls(session: AsyncSession, case: TestCase) -> None:
+async def _check_calls(session: AsyncSession, case: TestCase, user_id: int) -> None:
     """'Run another test' steps must name a test of this project that can run
     here, with no loop (app/services/case_calls.py). Dispatch re-checks."""
     from app.services.case_calls import CaseCallError, check_calls_async
     try:
         await check_calls_async(session, case.id, case.project_id,
-                                getattr(case.executor, 'value', case.executor), case.steps or [])
+                                getattr(case.executor, 'value', case.executor), case.steps or [],
+                                can_read=lambda cid: access_service.has_test_case_access(user_id, cid, session))
     except CaseCallError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -140,7 +141,7 @@ async def create_test_case(
     elif any(t and str(t).startswith('mobile-') for t in _step_types):
         case.executor = ExecutorType.MOBILE_APPIUM
     _check_manual(case, _step_types)
-    await _check_calls(session, case)
+    await _check_calls(session, case, current_user.id)
     session.add(case)
     await session.commit()
     await session.refresh(case)
@@ -271,7 +272,10 @@ async def get_case_used_by(case_id: int, session: AsyncSession = Depends(get_ses
         TestCase.id != case_id,
         sa.cast(TestCase.steps, sa.String).like(f'%{RUN_TEST}%'),
     ))).all()
-    callers = sorted(callers_of(rows, case_id), key=lambda c: c.id)
+    # Per-case grants exist (UserTestCaseAccess): a caller is listed only if
+    # this user may see it, or its name would leak.
+    callers = [c for c in sorted(callers_of(rows, case_id), key=lambda c: c.id)
+               if await access_service.has_test_case_access(current_user.id, c.id, session)]
     return CaseUsedByResponse(case_id=case_id, used_by=[
         CaseUsedByItem(id=c.id, name=c.name, test_suite_id=c.test_suite_id) for c in callers])
 
@@ -312,7 +316,7 @@ async def update_test_case(case_id: int, case_update: TestCaseUpdate, session: A
         elif not has_mobile_step and db_case.executor == ExecutorType.MOBILE_APPIUM:
             db_case.executor = ExecutorType.UI_PLAYWRIGHT
         _check_manual(db_case, _step_types)
-        await _check_calls(session, db_case)
+        await _check_calls(session, db_case, current_user.id)
 
     # A person saving an AI-authored case in the builder is the human review
     # of it (generation no longer pre-stamps that). API-key callers never

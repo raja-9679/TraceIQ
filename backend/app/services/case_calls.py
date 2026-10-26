@@ -190,8 +190,13 @@ def _graph_problem(case_id: Optional[int], project_id: Optional[int], executor: 
 
 
 async def check_calls_async(session, case_id: Optional[int], project_id: Optional[int],
-                            executor: Optional[str], steps: List[Any]) -> None:
-    """Raise CaseCallError if saving `steps` on this case would break a rule."""
+                            executor: Optional[str], steps: List[Any],
+                            can_read: Optional[Callable[[int], Any]] = None) -> None:
+    """Raise CaseCallError if saving `steps` on this case would break a rule.
+
+    `can_read(case_id)` (awaitable) — a case the saving user may not see is
+    treated as missing, directly or deeper down, so neither its steps nor its
+    name are reachable through a call."""
     if not call_targets(steps):
         for s in steps or []:
             if is_call(s):
@@ -206,7 +211,7 @@ async def check_calls_async(session, case_id: Optional[int], project_id: Optiona
             break
         for cid in list(todo):
             c = await session.get(TestCase, cid)
-            if c is not None:
+            if c is not None and (can_read is None or await can_read(cid)):
                 cases[cid] = c
         todo = {t for c in cases.values() for t in call_targets(c.steps or [])}
     problem = _graph_problem(case_id, project_id, executor, steps, cases)
